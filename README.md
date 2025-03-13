@@ -14,6 +14,8 @@
   <img src="./documentation/marketing_material/Diagram.png" width="760px"/>
 </p>
 
+> 🚀 **Don’t let "Aerodynamics" fool you!** While the name openONDA suggests a focus on aerodynamics, this solver is built for any computational fluid dynamics (CFD) application. Whether you're dealing with airflow, water simulations, or something even more exotic, openONDA has you covered! (And yes, we know... changing "Aerodynamics" in the acronym would break the name. But hey, ONDA sounds cool, so let’s roll with it! 😉)
+
 ---
 
 ## 🔹 **Solver Capabilities**
@@ -111,10 +113,16 @@ conda activate openONDA
 ```
 
 🔹 **Run tests**
+
+**Note:** run the tests from within the tests directory!
+
 ```bash
-pytest -v -s --tb=long ./tests/test1_import_modules.py > test1.log
-pytest -v -s --tb=long ./tests/test2_eulerian_solver_communication.py > test2.log
+pytest -v -s --tb=long ./test1_import_modules.py > test1.log
+pytest -v -s --tb=long ./test2_eulerian_solver_communication.py > test2.log
 ```
+
+✅ If no errors appear in the log files, you should be good to go.
+
 ✅ Example cases can be found in the `./examples/` directory.
 
 ---
@@ -175,3 +183,4 @@ If you use **openONDA** in your work, please cite:
 ## 🔹 **Support & Contributions**
 - *Want to contribute? Found a bug?* Contact via email above or open an **issue** or **pull request** on GitHub!
 
+---
