@@ -16,6 +16,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
+*.cpp
+*.so
 
 # Ignore virtual environments
 .env/

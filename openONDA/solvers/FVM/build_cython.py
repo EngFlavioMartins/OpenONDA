@@ -19,7 +19,7 @@ find . -type f -name "*.so" -delete
 -------------------------------
 To rebuid the extension:
 -------------------------------
-python setup.py build_ext --inplace
+python built_cython.py build_ext --inplace
 """
 
 

@@ -32,7 +32,7 @@ class ParticleSystem:
       ----------
       particles : list of Particle
             Collection of Particle objects in the system.
-      dt : float
+      time_step_size : float
             Time step size for the simulation in seconds.
       nu : float
             Kinematic viscosity of the fluid in m²/s.
@@ -54,7 +54,7 @@ class ParticleSystem:
             flow_model: str = 'DNS', 
             viscous_scheme: str = 'CoreSpreading', 
             monitor_variables: list[str] = None, 
-            time: float = 0.0, 
+            flow_time: float = 0.0, 
             time_step: int = 0, 
             backup_frequency: int = 1, 
             backup_filename: str ="particle_data",
@@ -79,8 +79,8 @@ class ParticleSystem:
 
             # Simulation parameters
             self.particles          = []
-            self.dt                 = time_step_size
-            self.flow_time          = time
+            self.time_step_size     = time_step_size
+            self.flow_time          = flow_time
             self.time_step          = time_step
             self.flow_model         = flow_model
             self.viscous_scheme     = viscous_scheme
@@ -204,7 +204,7 @@ class ParticleSystem:
                   f"{'-' * 60}\n"
                   f"Starting from step:  {self.time_step}\n"
                   f"Simulation Time:     {self.flow_time:.3E} s\n"
-                  f"Time Step Size:      {self.dt:.3E} s\n"
+                  f"Time Step Size:      {self.time_step_size:.3E} s\n"
                   f"Viscous scheme:      {self.viscous_scheme}\n"
                   f"Total strength:      {self.get_total_strength_magnitude():.3E} m³/s\n"
                   f"Integration Method:  {self.time_integration_method}\n"
@@ -550,7 +550,7 @@ class ParticleSystem:
                   self.log_diagnostics()
 
             # Update time:
-            self.flow_time += self.dt
+            self.flow_time += self.time_step_size
             self.time_step += 1
             
             print(f"\n>>> Flow time: {self.flow_time:0.3E} s, Time-step: {self.time_step:d}\n")
@@ -577,7 +577,7 @@ class ParticleSystem:
                   Updated particle positions (N-by-3).
             """
             print("• Used Euler scheme for advection.")
-            return positions + velocities_1 * self.dt
+            return positions + velocities_1 * self.time_step_size
 
 
       def _rk2_update_position(self, positions, velocities_1):
@@ -601,13 +601,13 @@ class ParticleSystem:
             radii     = self.get_particle_radii()
   
             # Stage 1: Compute intermediate positions
-            positions_1 = positions + velocities_1 * (self.dt * 0.5)
+            positions_1 = positions + velocities_1 * (self.time_step_size * 0.5)
 
             # Stage 2: Compute velocities at the intermediate step
             velocities_2 = self.physics.get_selfinduced_velocity(positions_1, strengths, radii)
 
             # Final update
-            positions_next = positions + velocities_2 * self.dt
+            positions_next = positions + velocities_2 * self.time_step_size
             
             print("• Used second-order Runge-Kutta scheme for advection.")
 
@@ -634,17 +634,17 @@ class ParticleSystem:
             radii = self.get_particle_radii()
 
             # Stage 1: Initial update (standard RK3 step)
-            positions_1 = positions + velocities_1 * (self.dt / 2)
+            positions_1 = positions + velocities_1 * (self.time_step_size / 2)
 
             # Stage 2: Compute velocities at the half-step (midpoint update)
             velocities_2 = self.physics.get_selfinduced_velocity(positions_1, strengths, radii)
-            positions_2 = positions + (self.dt / 2) * velocities_2
+            positions_2 = positions + (self.time_step_size / 2) * velocities_2
 
             # Stage 3: Compute velocities for the final update (using positions_2)
             velocities_3 = self.physics.get_selfinduced_velocity(positions_2, strengths, radii)
 
             # Final update using RK3 weights
-            positions_next = positions + self.dt * velocities_3
+            positions_next = positions + self.time_step_size * velocities_3
             
             print("• Used third-order Runge-Kutta scheme for advection.")
 
@@ -672,20 +672,20 @@ class ParticleSystem:
             # Stage 1: Initial velocities
             k1 = velocities_1
 
-            # Stage 2: Compute velocities at intermediate step (positions + dt/2 * k1)
-            positions_1 = positions + (self.dt / 2) * k1
+            # Stage 2: Compute velocities at intermediate step (positions + time_step_size/2 * k1)
+            positions_1 = positions + (self.time_step_size / 2) * k1
             k2 = self.physics.get_selfinduced_velocity(positions_1, strengths, radii)
 
-            # Stage 3: Compute velocities at another intermediate step (positions + dt/2 * k2)
-            positions_2 = positions + (self.dt / 2) * k2
+            # Stage 3: Compute velocities at another intermediate step (positions + time_step_size/2 * k2)
+            positions_2 = positions + (self.time_step_size / 2) * k2
             k3 = self.physics.get_selfinduced_velocity(positions_2, strengths, radii)
 
-            # Stage 4: Compute velocities at final step (positions + dt * k3)
-            positions_3 = positions + self.dt * k3
+            # Stage 4: Compute velocities at final step (positions + time_step_size * k3)
+            positions_3 = positions + self.time_step_size * k3
             k4 = self.physics.get_selfinduced_velocity(positions_3, strengths, radii)
 
             # Combine the stages to compute the next positions
-            positions_next = positions + (self.dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
+            positions_next = positions + (self.time_step_size / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
             
             print("• Used fourth-order Runge-Kutta scheme for advection.")
 
@@ -693,7 +693,7 @@ class ParticleSystem:
 
 
       def update_dt(self, time_step_size: float): 
-            self.dt = time_step_size
+            self.time_step_size = time_step_size
 
 
       def update_velocities(self):
@@ -751,13 +751,13 @@ class ParticleSystem:
                   if self.time_step == 0:
                         # Euler scheme for the first time step
                         dGamma_dt = self.physics.get_strength_gradients(positions, strengths, radii)
-                        strengths += self.dt * dGamma_dt
+                        strengths += self.time_step_size * dGamma_dt
                         print("\t• Used Euler scheme for the first time step for vortex stretching.")
 
                   elif self.time_step == 1:
                         # Second-order backward scheme (BDF2) for the second time step
                         dGamma_dt = self.physics.get_strength_gradients(positions, strengths, radii)
-                        strengths = (4 * strengths - self.previous_strengths) / 3 + (2 / 3) * self.dt * dGamma_dt
+                        strengths = (4 * strengths - self.previous_strengths) / 3 + (2 / 3) * self.time_step_size * dGamma_dt
                         print("\t• Used second-order backward difference scheme for the second time step for vortex stretching.")
 
                   elif self.time_step == 2:
@@ -765,7 +765,7 @@ class ParticleSystem:
                         dGamma_dt = self.physics.get_strength_gradients(positions, strengths, radii)
                         strengths = (
                               (18 * strengths - 9 * self.previous_strengths + 2 * self.previous_previous_strengths) / 11
-                              + (6 / 11) * self.dt * dGamma_dt
+                              + (6 / 11) * self.time_step_size * dGamma_dt
                         )
                         print("\t• Used third-order backward difference scheme for the third time step for vortex stretching.")
 
@@ -775,7 +775,7 @@ class ParticleSystem:
                         strengths = (
                               (48 * strengths - 36 * self.previous_strengths + 16 * self.previous_previous_strengths
                               - 3 * self.previous_previous_previous_strengths) / 25
-                              + (12 / 25) * self.dt * dGamma_dt
+                              + (12 / 25) * self.time_step_size * dGamma_dt
                         )
                         print("\t• Used fourth-order backward difference scheme for vortex stretching.")
 
@@ -802,14 +802,14 @@ class ParticleSystem:
                         # Euler scheme for the first time step
                         dGamma_dt = self.physics.get_strength_gradients_PSE(positions, strengths, radii, viscosities)
                         
-                        strengths += self.dt * dGamma_dt
+                        strengths += self.time_step_size * dGamma_dt
                         print("\t• Used Euler scheme for viscous diffusion via PSE.")
 
                   elif self.time_step == 1:
                         # Second-order backward scheme (BDF2)
                         dGamma_dt = self.physics.get_strength_gradients_PSE(positions, strengths, radii, viscosities)
                         
-                        strengths = (4 * strengths - self.previous_strengths) / 3 + (2 / 3) * self.dt * dGamma_dt
+                        strengths = (4 * strengths - self.previous_strengths) / 3 + (2 / 3) * self.time_step_size * dGamma_dt
                         print("\t• Used second-order backward difference scheme for viscous diffusion via PSE.")
 
                   elif self.time_step == 2:
@@ -818,7 +818,7 @@ class ParticleSystem:
                         
                         strengths = (
                               (18 * strengths - 9 * self.previous_strengths + 2 * self.previous_previous_strengths) / 11
-                              + (6 / 11) * self.dt * dGamma_dt
+                              + (6 / 11) * self.time_step_size * dGamma_dt
                         )
                         print("\t• Used third-order backward difference scheme for viscous diffusion via PSE.")
 
@@ -829,7 +829,7 @@ class ParticleSystem:
                         strengths = (
                               (48 * strengths - 36 * self.previous_strengths + 16 * self.previous_previous_strengths
                               - 3 * self.previous_previous_previous_strengths) / 25
-                              + (12 / 25) * self.dt * dGamma_dt
+                              + (12 / 25) * self.time_step_size * dGamma_dt
                         )
                         print("\t• Used fourth-order backward difference scheme for viscous diffusion via PSE.")
 
@@ -854,7 +854,7 @@ class ParticleSystem:
                   
                   C = 5.34 # it should be 4, but I believe there is an issue when translating from the Gaussian kernel to the high algebraic.
 
-                  new_radius = np.sqrt(radii**2 + C * viscosity_eff * self.dt)
+                  new_radius = np.sqrt(radii**2 + C * viscosity_eff * self.time_step_size)
                   
                   for p, particle in enumerate(self.particles):
                         particle.update_state(radius=new_radius[p])

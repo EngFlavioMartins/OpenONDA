@@ -4,6 +4,7 @@
 from .solvers.FVM import fvmModule
 
 from .solvers.VPM import vpmModule
+
 from .utilities import (
     vortex_filament_model, vortex_ring_model, inflating_dipole_model, doublet_flow_model,
     set_initial_condition, set_eulerian_module, set_boundary_conditions,
