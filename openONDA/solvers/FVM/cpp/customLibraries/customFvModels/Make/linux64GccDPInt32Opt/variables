@@ -1,0 +1,4 @@
+generalSources=general
+derivedSources=derived
+interRegion = interRegion
+LIB = $(FOAM_USER_LIBBIN)/libpimpleStepperFoamFvModels

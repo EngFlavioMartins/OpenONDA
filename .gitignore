@@ -1,5 +1,6 @@
-# Ignore all OpenFOAM solution directories, except those ending with .orig
-**/
+# Ignore OpenFOAM case directories (0, 1, 2, 1.2, etc.)
+[0-9]*/  # Matches directories like 0, 1, 2, etc.
+[0-9]*.[0-9]*/  # Matches directories like 1.2, 2.5, etc.
 !**/*.orig
 Data/
 Raw/
