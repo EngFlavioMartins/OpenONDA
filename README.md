@@ -80,7 +80,7 @@ python E2_vortex_ring_flow.py
 
 #### **1.3 Clone the Repository**  
 ```bash
-git clone https://github.com/your-repo/openONDA.git
+git clone https://github.com/EngFlavioMartins/openONDA.git
 cd openONDA
 ```
 
