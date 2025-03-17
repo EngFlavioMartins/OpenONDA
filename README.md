@@ -66,8 +66,10 @@ python E2_vortex_ring_flow.py
 ### **1️⃣ Install Prerequisites**
 
 #### **1.1 Install Conda**  
-- Download and install **Anaconda** or **Miniconda**:  
+- Download and install the latest version **Anaconda** or **Miniconda**:  
   🔗 [Anaconda](https://www.anaconda.com) | 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+📌 *Note: avoid old versions of Anaconda as they might lead to incompatibility issues.*
 
 - Install necessary system dependencies (**Linux only**):
     ```bash
