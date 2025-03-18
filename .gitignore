@@ -18,6 +18,8 @@ __pycache__/
 *.egg-info/
 *.cpp
 *.so
+**/Make/linux64Gcc*/
+build/
 
 # Ignore virtual environments
 .env/
