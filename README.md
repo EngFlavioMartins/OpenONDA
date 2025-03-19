@@ -16,7 +16,6 @@
 
 > 🚀 **Don’t let "Aerodynamics" fool you!** While the name openONDA suggests a focus on aerodynamics, this solver is built for any computational fluid dynamics (CFD) application. Whether you're dealing with airflow, water simulations, or something even more exotic, openONDA has you covered! (And yes, we know... changing "Aerodynamics" in the acronym would break the name. But hey, ONDA sounds cool, so let’s roll with it! 😉)
 
----
 
 ## 🔹 **Solver Capabilities**
 ✅ 3D unsteady flow simulations  
@@ -24,7 +23,6 @@
 ✅ Seamless interfacing with external solvers via Python  
 🚧 *(In development)*: Integration between OpenFOAM and VPM solvers  
 
----
 
 ## 🔹 **Example Simulations**
 
@@ -48,7 +46,6 @@ python E2_vortex_ring_flow.py
 <img src="./documentation/examples_of_results/Example_2.gif" alt="Vortex-Ring" width="550px"/>
 </p>
 
----
 
 ## 🔹 **System Requirements**
 ✔ **OS**: Ubuntu 22.10 (and, very likely, 22.04 LTS)  
@@ -59,17 +56,18 @@ python E2_vortex_ring_flow.py
    - `cython`, `libboost-all-dev` (for Boost.Python)  
    - `pyublas`  
 
----
 
 ## 🔹 **Installation Guide**
 
 ### **1️⃣ Install Prerequisites**
 
+Here's your proofread text with improved clarity and flow while keeping all your original content:
+
 #### **1.1 Install Conda**  
-- Download and install the latest version **Anaconda** or **Miniconda**:  
+- Download and install the latest version of **Anaconda** or **Miniconda**:  
   🔗 [Anaconda](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) | 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 
-📌 *Note: Anaconda is preferred for this. Also, avoid old versions of Anaconda as they might lead to incompatibility issues.*
+📌 *Note: Anaconda is preferred. Avoid older versions, as they may cause compatibility issues.*
 
 - Install necessary system dependencies (**Linux only**):
     ```bash
@@ -78,9 +76,9 @@ python E2_vortex_ring_flow.py
     ```
 
 #### **1.2 Install OpenFOAM**  
-- Download and install the pre-compiled version of 🔗 [OpenFOAM](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian)
+- Download and install the precompiled version of 🔗 [OpenFOAM](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian).
 
-📌 *Note: openONDA is tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed.*
+📌 *Note: openONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed.*
 
 #### **1.3 Clone the Repository**  
 ```bash
@@ -96,42 +94,52 @@ conda activate openONDA
 
 ### **2️⃣ Install openONDA**
 
-Make sure you have sourced Anaconda and you are currently in a conda environment (for instance, check if it says "(base)" at the start of your terminal). With that, simply run:
+Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(base)`). Then, run:
 
 ```bash
 python setup_environment.py; source ~/.bashrc
 ```
 
-- This will create the environment variables into your bashrc and will source them. Now, you should see that your terminal is in the openONDA conda enviroment (openONDA in the beggining of the terminal). 
+This script will:  
+✅ Set up the necessary environment variables in your `~/.bashrc` and source them.  
+✅ Activate the `openONDA` Conda environment (your terminal prompt should now begin with `(openONDA)`).  
+✅ Automatically source OpenFOAM for you.  
 
-- The command above will also source OpenFOAM automatically for you! You can check if OpenFOAM is correctly installed and sourced by running ```foamVersion``` from your terminal. If it prints the version 2406 of OpenFOAM, and you are within openONDA. You are good to go!
+To verify that OpenFOAM is installed and correctly sourced, run:  
+```bash
+foamVersion
+```
+If it prints **"OpenFOAM v2406"** and you are inside the `openONDA` environment, you're all set!
 
-- We also added the alias ```of2406``` to your bashrc, in case you want to source its manually (although, its not needed since this is done automatically)
+📌 Additionally, the alias `of2406` has been added to your `~/.bashrc`, allowing you to manually source OpenFOAM if needed. However, this step is not required since sourcing is handled automatically.
 
-If so, procced with the installation by running:
+Now, proceed with the installation by running:
 
 ```bash
 pip install -e .
 ```
-✔ *This compiles and installs all necessary components for openONDA.*  
+✔ *This will compile and install all necessary components for openONDA.*  
 
 
 ## 🔹 **Running Your First Test Case**
 
-After installation, make sure you are within the appropriate Conda environment (conda activate openONDA), and verify functionality with:
+After installation, make sure you are inside the `openONDA` Conda environment (`conda activate openONDA`). Then, verify that everything is working correctly by running the test scripts:
 
-**Note:** run the tests from within the tests directory!
+📌 *Run these commands from within the `tests` directory!*
 
 ```bash
-pytest -v -s --tb=long ./test1_import_modules.py > test1.log
-pytest -v -s --tb=long ./test2_eulerian_solver_communication.py > test2.log
+pytest -v -s --tb=long ./test1_import_modules.py
+pytest -v -s --tb=long ./test2_eulerian_solver_communication.py
 ```
 
-✅ If no errors appear in the log files, you should be good to go.
+✅ If no errors appear in the log files, everything is set up correctly.  
+✅ Example cases can be found in the `./examples/` directory.
 
-✅ Example cases can be found in the `./examples/` directory. 
+📌 **Tip:** To ensure you have the correct permissions to execute all Bash scripts in this project, run the following command from the `examples` directory:
 
-📌 Tip: In order to grant execute (`+x`) permission to the user (`u`) to run all the bash commands provided in this project, run the following command from the exampled directory: `chmod u+x ./*.sh */*.sh`
+```bash
+chmod u+x ./*.sh */*.sh
+```
 
 
 ## 🔹 **Troubleshooting Guide**
