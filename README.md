@@ -94,7 +94,7 @@ conda activate openONDA
 
 ### **2️⃣ Install openONDA**
 
-Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(base)`). Then, run:
+📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(base)`). Then, run:
 
 ```bash
 python setup_environment.py; source ~/.bashrc
