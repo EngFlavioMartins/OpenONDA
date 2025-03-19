@@ -3,6 +3,7 @@ $(generalSources)/codedSource/codedFvSources.C
 $(generalSources)/semiImplicitSource/semiImplicitSources.C
 
 derivedSources=derived
+<<<<<<< HEAD
 $(derivedSources)/acousticDampingSource/acousticDampingSource.C
 $(derivedSources)/actuationDiskSource/actuationDiskSource.C
 $(derivedSources)/buoyancyEnergy/buoyancyEnergy.C
@@ -15,6 +16,16 @@ $(derivedSources)/meanVelocityForce/patchMeanVelocityForce/patchMeanVelocityForc
 $(derivedSources)/multiphaseStabilizedTurbulence/multiphaseStabilizedTurbulence.C
 $(derivedSources)/phaseLimitStabilization/phaseLimitStabilization.C
 $(derivedSources)/radialActuationDiskSource/radialActuationDiskSource.C
+=======
+$(derivedSources)/actuationDiskSource/actuationDiskSource.C
+$(derivedSources)/directionalPressureGradientExplicitSource/directionalPressureGradientExplicitSource.C
+$(derivedSources)/explicitPorositySource/explicitPorositySource.C
+$(derivedSources)/fanMomentumSource/fanMomentumSource.C
+$(derivedSources)/meanVelocityForce/meanVelocityForce.C
+$(derivedSources)/patchCellsSource/patchCellsSource.C
+$(derivedSources)/radialActuationDiskSource/radialActuationDiskSource.C
+$(derivedSources)/meanVelocityForce/patchMeanVelocityForce/patchMeanVelocityForce.C
+>>>>>>> development
 $(derivedSources)/rotorDiskSource/rotorDiskSource.C
 $(derivedSources)/rotorDiskSource/bladeModel/bladeModel.C
 $(derivedSources)/rotorDiskSource/profileModel/profileModel.C
@@ -25,6 +36,7 @@ $(derivedSources)/rotorDiskSource/trimModel/trimModel/trimModel.C
 $(derivedSources)/rotorDiskSource/trimModel/trimModel/trimModelNew.C
 $(derivedSources)/rotorDiskSource/trimModel/fixed/fixedTrim.C
 $(derivedSources)/rotorDiskSource/trimModel/targetCoeff/targetCoeffTrim.C
+<<<<<<< HEAD
 $(derivedSources)/solidificationMeltingSource/solidificationMeltingSource.C
 $(derivedSources)/tabulatedAccelerationSource/tabulatedAccelerationSource.C
 $(derivedSources)/tabulatedAccelerationSource/tabulated6DoFAcceleration/tabulated6DoFAcceleration.C
@@ -46,5 +58,10 @@ $(interRegion)/interRegionHeatTransfer/tabulatedHeatTransfer/tabulatedHeatTransf
 $(interRegion)/interRegionHeatTransfer/tabulatedNTUHeatTransfer/tabulatedNTUHeatTransfer.C
 $(interRegion)/interRegionHeatTransfer/variableHeatTransfer/variableHeatTransfer.C
 $(interRegion)/interRegionExplicitPorositySource/interRegionExplicitPorositySource.C
+=======
+$(derivedSources)/tabulatedAccelerationSource/tabulatedAccelerationSource.C
+$(derivedSources)/tabulatedAccelerationSource/tabulated6DoFAcceleration/tabulated6DoFAcceleration.C
+$(derivedSources)/viscousDissipation/viscousDissipation.C
+>>>>>>> development
 
 LIB = $(FOAM_USER_LIBBIN)/libpimpleStepperFoamFvModels
