@@ -1,4 +1,4 @@
-name: openONDA
+name: OpenONDA
 channels:
   - conda-forge
   - defaults

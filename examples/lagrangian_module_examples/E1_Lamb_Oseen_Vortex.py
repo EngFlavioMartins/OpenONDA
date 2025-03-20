@@ -3,11 +3,11 @@ import sys
 import os
 
 # Import all relevant moduli:
-from openONDA.solvers.VPM import vpmModule as vpm
+from OpenONDA.solvers.VPM import vpmModule as vpm
 
-import openONDA.utilities.vpm_flow_models   as vpm_fm
-import openONDA.utilities.vpm_solver_helper as vpm_sh
-from   openONDA.utilities.scripts_helper import remove_files
+import OpenONDA.utilities.vpm_flow_models   as vpm_fm
+import OpenONDA.utilities.vpm_solver_helper as vpm_sh
+from   OpenONDA.utilities.scripts_helper import remove_files
 
 # ==================================================
 # Set up some basic IO

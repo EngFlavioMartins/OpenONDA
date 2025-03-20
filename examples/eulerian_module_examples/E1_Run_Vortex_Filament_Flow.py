@@ -2,8 +2,8 @@ import os
 import time
 import numpy as np
 
-from openONDA.solvers.FVM import fvmModule as fvm
-from openONDA.utilities import (
+from OpenONDA.solvers.FVM import fvmModule as fvm
+from OpenONDA.utilities import (
     set_initial_condition,
     set_eulerian_module,
     set_boundary_conditions,
@@ -123,7 +123,7 @@ for step in range(num_time_steps):
 # ============================
 
 summary = (
-    f"openONDA runtime: {phiflow_runtime:.3e} s\n"
+    f"OpenONDA runtime: {phiflow_runtime:.3e} s\n"
     f"OpenFOAM runtime: {openfoam_runtime:.3e} s\n"
 )
 

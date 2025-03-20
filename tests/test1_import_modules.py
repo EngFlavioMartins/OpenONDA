@@ -3,19 +3,19 @@ import pytest
 # Run this using: pytest test.py
 
 # Test importing the main package
-def test_import_openONDA():
+def test_import_OpenONDA():
     try:
-        import openONDA
+        import OpenONDA
     except Exception as e:
-        pytest.fail(f"Failed to import openONDA: {e}")
+        pytest.fail(f"Failed to import OpenONDA: {e}")
 
 # Test importing submodules (FVM, VPM, and utilities)
 def test_import_submodules():
     """Test if all major modules can be imported successfully."""
     try:
-        from openONDA.solvers.FVM import fvmModule  # Import fvmModule from FVM
-        from openONDA.solvers.VPM import vpmModule  # Import vpmModule from VPM
-        from openONDA.utilities import set_initial_condition  # Import utility functions
+        from OpenONDA.solvers.FVM import fvmModule  # Import fvmModule from FVM
+        from OpenONDA.solvers.VPM import vpmModule  # Import vpmModule from VPM
+        from OpenONDA.utilities import set_initial_condition  # Import utility functions
     except Exception as e:
         pytest.fail(f"Module import error: {e}")
 
@@ -23,7 +23,7 @@ def test_import_submodules():
 def test_particle_system():
     """Test the basic functionality of ParticleSystem."""
     try:
-        from openONDA.solvers.VPM import vpmModule  # Import vpmModule from VPM
+        from OpenONDA.solvers.VPM import vpmModule  # Import vpmModule from VPM
         
         # Define required parameters
         flow_model = 'LES'

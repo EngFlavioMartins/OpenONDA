@@ -7918,7 +7918,7 @@
         <Domain name="bool" id="6519.DecomposePolyhedra.bool"/>
       </Property>
       <Property name="FileName" id="6519.FileName" number_of_elements="1">
-        <Element index="0" value="/home/flaviomartins/ownCloud/Research/openONDA/examples/eulerian_module_examples/E5_parabolic_flow_over_airfoil/parabolic_velocity.foam"/>
+        <Element index="0" value="/home/flaviomartins/ownCloud/Research/OpenONDA/examples/eulerian_module_examples/E5_parabolic_flow_over_airfoil/parabolic_velocity.foam"/>
         <Domain name="files" id="6519.FileName.files"/>
       </Property>
       <Property name="LagrangianArrayInfo" id="6519.LagrangianArrayInfo"/>

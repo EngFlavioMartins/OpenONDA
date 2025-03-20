@@ -6,7 +6,7 @@ import importlib.util
 import numpy as np
 import pyvista as pv
 from numba import cuda
-from openONDA.solvers.VPM.Particle import Particle
+from OpenONDA.solvers.VPM.Particle import Particle
 from numba import njit
 
 np.bool = np.bool_
@@ -143,9 +143,9 @@ class ParticleSystem:
             Dynamically imports the physics module based on the selected processing unit.
             """
             if self.processing_unit == "CPU":
-                  module_name = "openONDA.solvers.VPM.ParticlesPhysics" 
+                  module_name = "OpenONDA.solvers.VPM.ParticlesPhysics" 
             elif self.processing_unit == "GPU":
-                  module_name = "openONDA.solvers.VPM.ParticlesPhysicsCuda"
+                  module_name = "OpenONDA.solvers.VPM.ParticlesPhysicsCuda"
             else:
                   raise ValueError(f"Unknown processing unit: {self.processing_unit}")
 

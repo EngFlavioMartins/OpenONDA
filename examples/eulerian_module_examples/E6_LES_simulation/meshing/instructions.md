@@ -20,5 +20,5 @@
     
         **Note:** It reorders the mesh cells, faces, and points to reduce the bandwidth of the system matrix used in solving equations. The goal is to minimize indirect memory access and improve solver efficiency.
 
-    - Copy the final mesh file to the default openONDAs directory: ```cp -r ./constant/polyMesh/ ./constant/polyMesh.orig```
+    - Copy the final mesh file to the default OpenONDAs directory: ```cp -r ./constant/polyMesh/ ./constant/polyMesh.orig```
 

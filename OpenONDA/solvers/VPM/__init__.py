@@ -1,4 +1,4 @@
-# openONDA/solvers/VPM/__init__.py
+# OpenONDA/solvers/VPM/__init__.py
 
 # Directly expose vpmModule for import
 from . import vpmModule

@@ -1,4 +1,4 @@
-# openONDA/__init__.py
+# OpenONDA/__init__.py
 
 # Import key modules or functions
 from .solvers.FVM import fvmModule

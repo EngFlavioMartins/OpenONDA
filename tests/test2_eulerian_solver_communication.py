@@ -1,8 +1,8 @@
 import os
 import pytest
 import numpy as np
-from openONDA.solvers.FVM import fvmModule as fvm
-from openONDA.utilities import set_eulerian_module
+from OpenONDA.solvers.FVM import fvmModule as fvm
+from OpenONDA.utilities import set_eulerian_module
 
 @pytest.fixture
 def setup_solver():

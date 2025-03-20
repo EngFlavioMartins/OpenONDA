@@ -1,4 +1,4 @@
-# openONDA/solvers/FVM/__init__.py
+# OpenONDA/solvers/FVM/__init__.py
 
 # Directly expose fvmModule for import
 from . import fvmModule

@@ -17,7 +17,7 @@ def compile_openfoam():
     print("# ======================================== #")
 
     try:
-        os.chdir(os.path.join(root, "openONDA/solvers/FVM/cpp/boundaryConditions"))
+        os.chdir(os.path.join(root, "OpenONDA/solvers/FVM/cpp/boundaryConditions"))
         print(subprocess.run(["wclean"], check=True, capture_output=True, text=True).stdout)
         print(subprocess.run(["wmake"], check=True, capture_output=True, text=True).stdout)
 
@@ -25,7 +25,7 @@ def compile_openfoam():
         print("# Compiling OpenFOAM custom libraries      #")
         print("# ======================================== #")
 
-        os.chdir(os.path.join(root, "openONDA/solvers/FVM/cpp/customLibraries/customFvModels"))
+        os.chdir(os.path.join(root, "OpenONDA/solvers/FVM/cpp/customLibraries/customFvModels"))
 
         for lib_dir in os.listdir():
             lib_path = os.path.join(os.getcwd(), lib_dir)
@@ -45,7 +45,7 @@ def compile_openfoam():
 
 def compile_cython():
     """Compile Cython-based Eulerian solver."""
-    cython_dir = os.path.join(root, "openONDA/solvers/FVM")
+    cython_dir = os.path.join(root, "OpenONDA/solvers/FVM")
 
     os.chdir(cython_dir)
 
@@ -76,7 +76,7 @@ def main():
     compile_cython()
 
     setup(
-        name="openONDA",
+        name="OpenONDA",
         version="0.0.1",
         packages=find_packages(where="."),
         package_dir={"": "."},
