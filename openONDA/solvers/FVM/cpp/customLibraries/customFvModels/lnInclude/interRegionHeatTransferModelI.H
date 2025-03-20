@@ -1,1 +1,0 @@
-../interRegion/interRegionHeatTransfer/interRegionHeatTransferModel/interRegionHeatTransferModelI.H

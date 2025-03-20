@@ -1,1 +1,0 @@
-../derived/rotorDiskSource/trimModel/fixed/fixedTrim.H

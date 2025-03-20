@@ -1,1 +1,0 @@
-../derived/rotorDiskSource/trimModel/trimModel/trimModelNew.C

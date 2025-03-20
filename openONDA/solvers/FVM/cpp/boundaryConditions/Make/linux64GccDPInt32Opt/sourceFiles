@@ -1,7 +1,0 @@
-SOURCE = \
-fluxControlledPressure/fluxControlledPressureFvPatchScalarField.C \
-timeVaryingPressureGradient/timeVaryingPressureGradientFvPatchScalarField.C \
-timeVaryingInletOutlet/timeVaryingInletOutletFvPatchField.C \
-timeVaryingOutletInlet/timeVaryingOutletInletFvPatchField.C \
-
-# sources

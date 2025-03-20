@@ -1,6 +1,0 @@
-fluxControlledPressure/fluxControlledPressureFvPatchScalarField.C
-timeVaryingPressureGradient/timeVaryingPressureGradientFvPatchScalarField.C
-timeVaryingInletOutlet/timeVaryingInletOutletFvPatchField.C
-timeVaryingOutletInlet/timeVaryingOutletInletFvPatchField.C
-
-LIB = $(FOAM_USER_LIBBIN)/libpimpleStepperFoamBC
