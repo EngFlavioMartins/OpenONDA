@@ -69,9 +69,6 @@ def add_to_bashrc(wm_project_dir, foam_version):
                 file.write(f"\n{line}")
 
     print("\n>>> OpenFOAM environment variables added to ~/.bashrc.")
-    print(">>> Run 'source ~/.bashrc' or restart your terminal to apply changes.")
-    print(f">>> Use 'of{foam_version}' to quickly source OpenFOAM.")
-
 # ======================================= #
 
 if __name__ == "__main__":
