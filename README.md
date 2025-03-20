@@ -136,9 +136,6 @@ This script will:
 ✅ Automatically source OpenFOAM for you.  
 
 
-
-📌 Additionally, the alias `of2406` has been added to your `~/.bashrc`, allowing you to manually source OpenFOAM if needed. However, this step is not required since sourcing is handled automatically.
-
 Now, proceed with the installation by running:
 
 ```bash
@@ -166,7 +163,6 @@ pytest -v -s --tb=long ./test2_eulerian_solver_communication.py
 ```bash
 chmod u+x ./*.sh */*.sh
 ```
-
 
 ## 🔹 **Troubleshooting Guide**
 📌 **Common Issues & Fixes**
