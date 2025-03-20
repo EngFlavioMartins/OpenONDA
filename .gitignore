@@ -2,6 +2,7 @@
 [0-9]*/
 [0-9]*.[0-9]*/
 !**/*.orig
+polyMesh/
 Data/
 Raw/
 
