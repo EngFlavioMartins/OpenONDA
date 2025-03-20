@@ -102,21 +102,23 @@ Here's your proofread text with improved clarity and flow while keeping all your
 
   📌 *Note: OpenONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed. In case to change for more recent version, library links must be modified accordingly.*
 
+  📌 To verify that OpenFOAM is installed and correctly sourced, type `foamVersion` on your terminal. If this prints out **"OpenFOAM v2406"** and you are inside the `OpenONDA` environment, you're all set!
+
 #### **1.3 Clone the Repository**  
-```bash
-git clone https://github.com/EngFlavioMartins/OpenONDA.git
-cd OpenONDA
-```
+  ```bash
+  git clone https://github.com/EngFlavioMartins/OpenONDA.git
+  cd OpenONDA
+  ```
 
 #### **1.4 Set Up the Conda Environment**  
-```bash
-conda env create --file=./documentation/environment.yml; 
-conda activate OpenONDA
+  ```bash
+  conda env create --file=./documentation/environment.yml; 
+  conda activate OpenONDA
 ```
 
 ### **2️⃣ Install OpenONDA**
 
-📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`). Then, run:
+📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`)! Then, run:
 
 ```bash
 python setup_environment.py
@@ -133,11 +135,7 @@ This script will:
 ✅ Activate the `OpenONDA` Conda environment (your terminal prompt should now begin with `(OpenONDA)`).  
 ✅ Automatically source OpenFOAM for you.  
 
-To verify that OpenFOAM is installed and correctly sourced, run:  
-```bash
-foamVersion
-```
-If it prints **"OpenFOAM v2406"** and you are inside the `OpenONDA` environment, you're all set!
+
 
 📌 Additionally, the alias `of2406` has been added to your `~/.bashrc`, allowing you to manually source OpenFOAM if needed. However, this step is not required since sourcing is handled automatically.
 
