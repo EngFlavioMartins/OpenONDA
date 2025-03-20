@@ -2,9 +2,9 @@
   <img src="./documentation/marketing_material/Logo_V7_Color.png" width="900px"/>
 </p>
 
-# **openONDA: Hybrid CFD Solver in Python**
+# **OpenONDA: Hybrid CFD Solver in Python**
 
-🚀 **openONDA** is an advanced and efficient **Computational Fluid Dynamics (CFD) solver** for Python. It enables execution and manipulation of the **Vortex Particle Method (VPM)** and **Finite Volume Method (FVM)** directly within Python.
+🚀 **OpenONDA** is an advanced and efficient **Computational Fluid Dynamics (CFD) solver** for Python. It enables execution and manipulation of the **Vortex Particle Method (VPM)** and **Finite Volume Method (FVM)** directly within Python.
 
 🔹 **ONDA** (*"wave" in Portuguese*) stands for **"Operator for Numerical Design and Aerodynamics"**. It is a **hybrid solver** with the following capabilities:
    - **Eulerian flow simulations**: OpenFOAM is wrapped and exposed as a Python class: `fvmSolver`.
@@ -14,7 +14,7 @@
   <img src="./documentation/marketing_material/Diagram.png" width="760px"/>
 </p>
 
-> 🚀 **Don’t let "Aerodynamics" fool you!** While the name openONDA suggests a focus on aerodynamics, this solver is built for any computational fluid dynamics (CFD) application. Whether you're dealing with airflow, water simulations, or something even more exotic, openONDA has you covered! (And yes, we know... changing "Aerodynamics" in the acronym would break the name. But hey, ONDA sounds cool, so let’s roll with it! 😉)
+> 🚀 **Don’t let "Aerodynamics" fool you!** While the name OpenONDA suggests a focus on aerodynamics, this solver is built for any computational fluid dynamics (CFD) application. Whether you're dealing with airflow, water simulations, or something even more exotic, OpenONDA has you covered! (And yes, we know... changing "Aerodynamics" in the acronym would break the name. But hey, ONDA sounds cool, so let’s roll with it! 😉)
 
 
 ## 🔹 **Solver Capabilities**
@@ -64,10 +64,14 @@ python E2_vortex_ring_flow.py
 Here's your proofread text with improved clarity and flow while keeping all your original content:
 
 #### **1.1 Install Conda**  
-- Download and install the latest version of **Anaconda** or **Miniconda**:  
-  🔗 [Anaconda](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) | 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+- Use the script below to download and install the 2024-10-1 version of **Anaconda** or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)) for other, more recent version:
 
-📌 *Note: Anaconda is preferred. Avoid older versions, as they may cause compatibility issues.*
+  ```bash
+  curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
+  bash ~/Anaconda3-2024.10-1-Linux-x86_64.sh
+  source ~/.bashrc
+  ```
+
 
 - Install necessary system dependencies (**Linux only**):
     ```bash
@@ -76,40 +80,64 @@ Here's your proofread text with improved clarity and flow while keeping all your
     ```
 
 #### **1.2 Install OpenFOAM**  
-- Download and install the precompiled version of 🔗 [OpenFOAM](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian).
+- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using:
 
-📌 *Note: openONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed.*
+  ```bash
+  # Add the repository
+  curl https://dl.openfoam.com/add-debian-repo.sh | sudo bash
+
+  # Update the repository information
+  sudo apt-get update
+
+  # Install preferred package. Eg,
+  sudo apt-get install openfoam2406-default
+
+  # Add OpenFOAM sourcing and alias to ~/.bashrc
+  echo 'source /usr/lib/openfoam/openfoam2406/etc/bashrc' >> ~/.bashrc
+  echo 'alias of2406="source /usr/lib/openfoam/openfoam2406/etc/bashrc"' >> ~/.bashrc
+
+  # Source to apply the changes immediately
+  source ~/.bashrc
+  ````
+
+  📌 *Note: OpenONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed. In case to change for more recent version, library links must be modified accordingly.*
 
 #### **1.3 Clone the Repository**  
 ```bash
-git clone https://github.com/EngFlavioMartins/openONDA.git
-cd openONDA
+git clone https://github.com/EngFlavioMartins/OpenONDA.git
+cd OpenONDA
 ```
 
 #### **1.4 Set Up the Conda Environment**  
 ```bash
-conda env create --file ./documentation/environment.yml
-conda activate openONDA
+conda env create --file=./documentation/environment.yml; 
+conda activate OpenONDA
 ```
 
-### **2️⃣ Install openONDA**
+### **2️⃣ Install OpenONDA**
 
-📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(base)`). Then, run:
+📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`). Then, run:
 
 ```bash
-python setup_environment.py; source ~/.bashrc
+python setup_environment.py
+```
+
+If no error messaged appear, then source your changes using:
+
+```bash
+source ~/.bashrc
 ```
 
 This script will:  
 ✅ Set up the necessary environment variables in your `~/.bashrc` and source them.  
-✅ Activate the `openONDA` Conda environment (your terminal prompt should now begin with `(openONDA)`).  
+✅ Activate the `OpenONDA` Conda environment (your terminal prompt should now begin with `(OpenONDA)`).  
 ✅ Automatically source OpenFOAM for you.  
 
 To verify that OpenFOAM is installed and correctly sourced, run:  
 ```bash
 foamVersion
 ```
-If it prints **"OpenFOAM v2406"** and you are inside the `openONDA` environment, you're all set!
+If it prints **"OpenFOAM v2406"** and you are inside the `OpenONDA` environment, you're all set!
 
 📌 Additionally, the alias `of2406` has been added to your `~/.bashrc`, allowing you to manually source OpenFOAM if needed. However, this step is not required since sourcing is handled automatically.
 
@@ -118,12 +146,12 @@ Now, proceed with the installation by running:
 ```bash
 pip install -e .
 ```
-✔ *This will compile and install all necessary components for openONDA.*  
+✔ *This will compile and install all necessary components for OpenONDA.*  
 
 
 ## 🔹 **Running Your First Test Case**
 
-After installation, make sure you are inside the `openONDA` Conda environment (`conda activate openONDA`). Then, verify that everything is working correctly by running the test scripts:
+After installation, make sure you are inside the `OpenONDA` Conda environment (`conda activate OpenONDA`). Then, verify that everything is working correctly by running the test scripts:
 
 📌 *Run these commands from within the `tests` directory!*
 
@@ -166,12 +194,12 @@ chmod u+x ./*.sh */*.sh
 
 
 ## 🔹 **License**
-📄 **openONDA** is distributed under the **GNU General Public License (GPL) v3** or later.
+📄 **OpenONDA** is distributed under the **GNU General Public License (GPL) v3** or later.
 
 
 ## 🔹 **How to Cite**
 
-If you use **openONDA** in your work, please cite:
+If you use **OpenONDA** in your work, please cite:
 
 📌 **To cite the VPM solver**:  
 - *Martins, F., Lastname, S., & Lastname, C. (2025). FLARE: A hybrid OpenFOAM and vortex particle method for external flow simulations. *Journal of Computational Fluid Dynamics, 12*(3), 123–145. https://doi.org/10.1234/dummy-doi*
@@ -179,14 +207,14 @@ If you use **openONDA** in your work, please cite:
 📌 **To cite the PyFoamLink Python interface**:  
 - *Martins, F., Lastname, S., & Lastname, C. (2025). FLARE: A hybrid OpenFOAM and vortex particle method for external flow simulations. *Journal of Computational Fluid Dynamics, 12*(3), 123–145. https://doi.org/10.1234/dummy-doi*
 
-📌 **To cite the complete openONDA framework**:  
+📌 **To cite the complete OpenONDA framework**:  
 - *Martins, F., Lastname, S., & Lastname, C. (2025). FLARE: A hybrid OpenFOAM and vortex particle method for external flow simulations. *Journal of Computational Fluid Dynamics, 12*(3), 123–145. https://doi.org/10.1234/dummy-doi*
 
 
 ## 🔹 **Authors and Contributions**
 👨‍💻 **Artur Palha** (2013-2016) - Initial development, pHyFlow  
 👨‍💻 **Rention Pasolari** (2022-2024) - Major modifications, pHyFlow  
-👨‍💻 **Flavio Martins** (2024-Present) - 3D flow capabilities, Eulerian-Lagrangian communication, VPM solver, debugging, examples, documentation, conversion to openONDA  
+👨‍💻 **Flavio Martins** (2024-Present) - 3D flow capabilities, Eulerian-Lagrangian communication, VPM solver, debugging, examples, documentation, conversion to OpenONDA  
 
 📩 **Contact:** [Flavio Martins](mailto:f.m.martins@tudelft.nl)
 
