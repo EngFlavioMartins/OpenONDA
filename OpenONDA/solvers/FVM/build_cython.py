@@ -28,8 +28,9 @@ try:
     FOAM_SRC = os.environ['FOAM_SRC']
     FOAM_LIBBIN = os.environ['FOAM_LIBBIN']
     FOAM_USER_LIBBIN = os.environ['FOAM_USER_LIBBIN']
+    print(">>> OpenFOAM environment variables are correctly set. Continuing...")
 except KeyError:
-    raise RuntimeError("OpenFOAM environment variables are not set. Source OpenFOAM before installation.")
+    raise RuntimeError(">>> OpenFOAM environment variables are not set. Source OpenFOAM before installation.")
 
 # Define Cython extension for Eulerian solver
 ext_modules = [

@@ -61,48 +61,46 @@ python E2_vortex_ring_flow.py
 
 ### **1️⃣ Install Prerequisites**
 
-Here's your proofread text with improved clarity and flow while keeping all your original content:
+
 
 #### **1.1 Install Conda**  
 - Use the script below to download and install the 2024-10-1 version of **Anaconda** or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)) for other, more recent version:
 
   ```bash
   curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
-  bash ~/Anaconda3-2024.10-1-Linux-x86_64.sh
+  chmod u+x Anaconda3-2024.10-1-Linux-x86_64.sh
+  bash Anaconda3-2024.10-1-Linux-x86_64.sh
   source ~/.bashrc
   ```
 
+  📌 Continue if you succesfully installed Anaconda and your terminal prompt shows `base`. 
 
-- Install necessary system dependencies (**Linux only**):
-    ```bash
-    sudo apt update
-    sudo apt install -y libboost-all-dev
-    ```
+
 
 #### **1.2 Install OpenFOAM**  
-- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using:
+- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using (you might need to do a `chmod +x setup_environment.sh` to get permision to run it):
 
   ```bash
-  # Add the repository
-  curl https://dl.openfoam.com/add-debian-repo.sh | sudo bash
-
-  # Update the repository information
-  sudo apt-get update
-
-  # Install preferred package. Eg,
-  sudo apt-get install openfoam2406-default
-
-  # Add OpenFOAM sourcing and alias to ~/.bashrc
-  echo 'source /usr/lib/openfoam/openfoam2406/etc/bashrc' >> ~/.bashrc
-  echo 'alias of2406="source /usr/lib/openfoam/openfoam2406/etc/bashrc"' >> ~/.bashrc
-
-  # Source to apply the changes immediately
-  source ~/.bashrc
+  ./setup_environment.sh
   ````
 
-  📌 *Note: OpenONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed. In case to change for more recent version, library links must be modified accordingly.*
+  This script will:  
+  
+  ✅ Set up the necessary environment variables in your `~/.bashrc` and source them.  
+  ✅ Activate the `OpenONDA` Conda environment (your terminal prompt should now begin with `(OpenONDA)`).  
+  ✅ Automatically source OpenFOAM for you.  
+
+  Source to apply the changes immediately:
+
+  ```bash
+  source ~/.bashrc
+  ```
+
+  📌 Note: OpenONDA has been tested with OpenFOAM v2406. Compatibility with newer versions is not guaranteed. In case to change for more recent version, library links must be modified accordingly.
 
   📌 To verify that OpenFOAM is installed and correctly sourced, type `foamVersion` on your terminal. If this prints out **"OpenFOAM v2406"** and you are inside the `OpenONDA` environment, you're all set!
+
+
 
 #### **1.3 Clone the Repository**  
   ```bash
@@ -111,29 +109,17 @@ Here's your proofread text with improved clarity and flow while keeping all your
   ```
 
 #### **1.4 Set Up the Conda Environment**  
+  
+  Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`)
+
   ```bash
-  conda env create --file=./documentation/environment.yml; 
+  conda env create --f ./documentation/environment.yml; 
   conda activate OpenONDA
 ```
 
 ### **2️⃣ Install OpenONDA**
 
-📌 Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`)! Then, run:
 
-```bash
-python setup_environment.py
-```
-
-If no error messaged appear, then source your changes using:
-
-```bash
-source ~/.bashrc
-```
-
-This script will:  
-✅ Set up the necessary environment variables in your `~/.bashrc` and source them.  
-✅ Activate the `OpenONDA` Conda environment (your terminal prompt should now begin with `(OpenONDA)`).  
-✅ Automatically source OpenFOAM for you.  
 
 
 Now, proceed with the installation by running:

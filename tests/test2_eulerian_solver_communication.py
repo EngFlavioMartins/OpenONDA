@@ -123,7 +123,7 @@ def test_get_vorticity_boundary_field(setup_solver):
 
 def test_set_time_step(setup_solver):
     solver = setup_solver
-    time_step = np.array([0.01])  # Example time step value
+    time_step = 0.01 
     try:
         solver.set_time_step(time_step)
     except Exception as e:
