@@ -78,10 +78,10 @@ python E2_vortex_ring_flow.py
 
 
 #### **1.2 Install OpenFOAM**  
-- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using (you might need to do a `chmod +x setup_environment.sh` to get permision to run it):
+- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using (you might need to do a `chmod +x prepare_environment.sh` to get permision to run it):
 
   ```bash
-  ./setup_environment.sh
+  ./prepare_environment.sh
   ````
 
   This script will:  
@@ -113,7 +113,7 @@ python E2_vortex_ring_flow.py
   Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`)
 
   ```bash
-  conda env create --f ./documentation/environment.yml; 
+  conda env create --f ./documentation/openonda_environment.yml; 
   conda activate OpenONDA
 ```
 
