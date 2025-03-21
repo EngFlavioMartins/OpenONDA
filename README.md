@@ -54,7 +54,7 @@ python E2_vortex_ring_flow.py
 ✔ **Required Libraries**:  
    - `numpy`, `matplotlib`, `scipy`  
    - `cython`, `libboost-all-dev` (for Boost.Python)  
-   - `pyublas`  
+   - `pyublas` , `curl` 
 
 
 ## 🔹 **Installation Guide**
@@ -64,12 +64,15 @@ python E2_vortex_ring_flow.py
 
 
 #### **1.1 Install Conda**  
-- Use the script below to download and install the 2024-10-1 version of **Anaconda** or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)) for other, more recent version:
+- Use the script below **line-by-line** to download and install the 2024-10-1 version of **Anaconda** or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)) for other, more recent version:
 
   ```bash
   curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
+
   chmod u+x Anaconda3-2024.10-1-Linux-x86_64.sh
+
   bash Anaconda3-2024.10-1-Linux-x86_64.sh
+
   source ~/.bashrc
   ```
 
@@ -78,10 +81,10 @@ python E2_vortex_ring_flow.py
 
 
 #### **1.2 Install OpenFOAM**  
-- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using (you might need to do a `chmod +x prepare_environment.sh` to get permision to run it):
+- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian) using (you might need to do a `chmod +x install_openfoam.sh` to get permision to run it):
 
   ```bash
-  ./prepare_environment.sh
+  ./install_openfoam.sh
   ````
 
   This script will:  
@@ -110,12 +113,15 @@ python E2_vortex_ring_flow.py
 
 #### **1.4 Set Up the Conda Environment**  
   
-  Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`)
+  Ensure that Anaconda is correctly sourced and that you are inside a Conda environment (e.g., your terminal prompt should display `(OpenONDA)`).
 
   ```bash
-  conda env create --f ./documentation/openonda_environment.yml; 
+  conda env create --f ./documentation/openonda_environment.yml
+
   conda activate OpenONDA
 ```
+
+ 📌 This can take about 10-30min, depending on your internet connection!
 
 ### **2️⃣ Install OpenONDA**
 
@@ -142,9 +148,9 @@ pytest -v -s --tb=long ./test2_eulerian_solver_communication.py
 ```
 
 ✅ If no errors appear in the log files, everything is set up correctly.  
-✅ Example cases can be found in the `./examples/` directory.
+✅ Example cases can be found in the `./examples/`  directory.
 
-📌 **Tip:** To ensure you have the correct permissions to execute all Bash scripts in this project, run the following command from the `examples` directory:
+📌 **Tip:** To ensure you have the correct permissions to execute all Bash scripts in this project, run the following command from the `examples` or `./tests/` directories:
 
 ```bash
 chmod u+x ./*.sh */*.sh
