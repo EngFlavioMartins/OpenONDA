@@ -9,9 +9,9 @@
 - [x] Fix logo
 - [ ] Add set_nut and get_nut methods
 
-- [ ] Test particle methods -> vpm
-- [ ] Re-structure vpm solver to better reflect nomenclature of fvm solver
-- [ ] Add examples for particle methods
+- [x] Test particle methods -> vpm
+- [x] Re-structure vpm solver to better reflect nomenclature of fvm solver
+- [x] Add examples for particle methods
 - [ ] Add documentation of vpm solver
 
 - [ ] Test correct_mass_flux() method

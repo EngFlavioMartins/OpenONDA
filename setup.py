@@ -12,11 +12,12 @@ def compile_openfoam():
     """
     Compile OpenFOAM boundary conditions and custom libraries.
     """
-    print("# ======================================== #")
-    print("# Compiling OpenFOAM boundary conditions   #")
-    print("# ======================================== #")
-
+    
     try:
+        print("# ======================================== #")
+        print("# Compiling OpenFOAM boundary conditions   #")
+        print("# ======================================== #")
+
         os.chdir(os.path.join(root, "OpenONDA/solvers/FVM/cpp/boundaryConditions"))
         print(subprocess.run(["wclean"], check=True, capture_output=True, text=True).stdout)
         print(subprocess.run(["wmake"], check=True, capture_output=True, text=True).stdout)
@@ -25,14 +26,10 @@ def compile_openfoam():
         print("# Compiling OpenFOAM custom libraries      #")
         print("# ======================================== #")
 
-        os.chdir(os.path.join(root, "OpenONDA/solvers/FVM/cpp/customLibraries/customFvModels"))
+        os.chdir(os.path.join(root, "OpenONDA/solvers/FVM/cpp/customFvModels")) 
 
-        for lib_dir in os.listdir():
-            lib_path = os.path.join(os.getcwd(), lib_dir)
-            if os.path.isdir(lib_path):
-                os.chdir(lib_path)
-                print(subprocess.run(["wclean"], check=True, capture_output=True, text=True).stdout)
-                print(subprocess.run(["wmake", "libso"], check=True, capture_output=True, text=True).stdout)
+        print(subprocess.run(["wclean"], check=True, capture_output=True, text=True).stdout)
+        print(subprocess.run(["wmake", "libso"], check=True, capture_output=True, text=True).stdout)
 
         os.chdir(root)
         print("OpenFOAM compilation complete.")
@@ -72,7 +69,11 @@ def compile_cython():
     print("Cython compilation complete.")
 
 def main():
+
+    print(">>> Starting compilation of custom OpenFOAM boundary conditions and libraries.")
     compile_openfoam()
+
+    print(">>> Starting compilation of the Cython-based Eulerian solver.")
     compile_cython()
 
     setup(

@@ -78,7 +78,7 @@ ext_modules = [
             FOAM_SRC + "/OSspecific/POSIX/lnInclude",
             "./cpp/solver",
             "./cpp/boundaryConditions/lnInclude",
-            "./cpp/customLibraries/customFvModels/lnInclude",
+            "./cpp/customFvModels/lnInclude",
             "./lnInclude",
             ".",
             numpy.get_include()

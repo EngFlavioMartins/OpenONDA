@@ -12,7 +12,7 @@ EXE_INC = \
     -I$(LIB_SRC)/OpenFOAM/lnInclude \
     -I$(LIB_SRC)/OSspecific/POSIX/lnInclude \
     -I../boundaryConditions/lnInclude \
-    -I../customLibraries/foamSolverBridge/lnInclude \
+    -I../customFvModels/lnInclude \  # -I../foamSolverBridge/lnInclude \
     -I./lnInclude \
     -I. \
 
