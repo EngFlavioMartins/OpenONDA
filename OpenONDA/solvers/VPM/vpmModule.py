@@ -511,7 +511,7 @@ class ParticleSystem:
             point_cloud.point_data['Viscosity'] = viscosities
             point_cloud.point_data['Viscosity_t'] = viscosities_t
 
-            backup_filename = f"{self.backup_filename}_{str(self.time_step).zfill(4)}.vtp"
+            backup_filename = f"{self.backup_filename}_{str(self.time_step).zfill(7)}.vtp"
             point_cloud.save(backup_filename)
             print(f"• Particle data exported to {backup_filename}")
 
