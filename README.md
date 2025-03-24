@@ -25,22 +25,15 @@
 ## 🔹 **Example Simulations**
 
 ### **Vortex Filament Flow**  
-_Run with:_  
-```bash
-cd ./examples/lagrangian_module_examples
-python E1_vortex_filament_flow.py
-```
+
 <p align="center">
 <img src="./documentation/examples_of_results/Example_1.gif" alt="Vortex-Filament" width="550px"/>
 </p>
 
 ### **Vortex Ring Flow**  
-_Run with:_  
-```bash
-cd ./examples/lagrangian_module_examples
-python E2_vortex_ring_flow.py
-```
+
 <p align="center">
+
 <img src="./documentation/examples_of_results/Example_2.gif" alt="Vortex-Ring" width="550px"/>
 </p>
 
@@ -53,7 +46,7 @@ python E2_vortex_ring_flow.py
 
 ### **1️⃣ Install Prerequisites**
 
-#### **1.1 Install Conda**  
+#### **1.1 Install Conda**  (skip if you already have conda)
 - Use the scripts below to download and install the **2024-10-1 version** of Anaconda, or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)):
 
   ```bash
@@ -71,7 +64,7 @@ python E2_vortex_ring_flow.py
 
   📌 Continue if you **successfully** installed Anaconda and your terminal prompt shows `base`.  
 
-#### **1.2 Install OpenFOAM**  
+#### **1.2 Install OpenFOAM** (do not skip!)
 - Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian)
 
   ```bash
@@ -97,7 +90,7 @@ python E2_vortex_ring_flow.py
   foamVersion
   ```
 
-  If this prints **"OpenFOAM v2406"**, and you are inside the `OpenONDA` environment, you're all set!
+  If this prints **"OpenFOAM v2406"**, and you are inside the `base` environment, you're all set!
 
 #### **1.3 Clone the Repository**  
 ```bash
@@ -110,23 +103,25 @@ Ensure Anaconda is correctly sourced and that you are inside a Conda environment
 
 ```bash
 conda env create -f ./documentation/openonda_environment.yml
+```
+```bash
 conda activate OpenONDA
 ```
 
-📌 This process may take **10–30 minutes**, depending on your internet speed.
+📌 This process may take **10–30 minutes**, depending on your internet speed. If you are inside the `OpenONDA` conda environment, you are good to go!
 
 ### **2️⃣ Install OpenONDA**
 Now, proceed with the installation by running:
 
 ```bash
-pip install -e .
+ pip install --use-pep517 .
 ```
 
 ✔ *This will compile and install all necessary components for OpenONDA.*  
 
 ## 🔹 **Running Your First Test Case**
 
-After installation, activate the `OpenONDA` Conda environment:
+After installation, make sure you are inside the `OpenONDA` Conda environment:
 
 ```bash
 conda activate OpenONDA
@@ -136,6 +131,9 @@ Then, run the test scripts from within the `tests` directory:
 
 ```bash
 pytest -v -s --tb=long ./test1_import_modules.py
+```
+and
+```bash
 pytest -v -s --tb=long ./test2_eulerian_solver_communication.py
 ```
 
@@ -195,12 +193,14 @@ chmod u+x ./*.sh */*.sh
 ```
 
 ## 🔹 **Authors and Contributions**
-👨‍💻 **Flavio Martins** (2024–Present) - Major contributions, solver development, documentation, debugging.  
+👨‍💻 Artur Palha (2013-2016) - Initial development, pHyFlow
 
-📩 **Contact:** [Flavio Martins](mailto:f.m.martins@tudelft.nl)
+👨‍💻 Rention Pasolari (2022-2024) - Major modifications, pHyFlow
+
+👨‍💻 Flavio Martins (2024-Present) - 3D flow capabilities, Eulerian-Lagrangian communication, VPM solver, debugging, examples, documentation, conversion to openONDA
+📩 
+
+**Contact:** [Flavio Martins](mailto:f.m.martins@tudelft.nl)
 
 ## 🔹 **Support & Contributions**
 Want to contribute? Found a bug? Open an **issue** or **pull request** on GitHub!  
-```
-
-Now it's even clearer and more polished! 🚀
