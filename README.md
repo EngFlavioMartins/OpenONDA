@@ -36,10 +36,14 @@
 <img src="./documentation/examples_of_results/Example_2.gif" alt="Vortex-Ring" width="550px"/>
 </p>
 
+---
+
 ## 🔹 **System Requirements**
 ✔ **OS**: Ubuntu 22.10 and 22.04 LTS (and, very likely, other Debian-based OS's)  
 ✔ **CFD Framework**: OpenFOAM v2406 (2024)  
 ✔ **Python Version**: 3.12  
+
+---
 
 ## 🔹 **Installation Guide**
 
@@ -96,6 +100,8 @@ foamVersion
 ```
 If this prints **"OpenFOAM-v2406"**, and you are inside the `(OpenONDA)` environment, you're all set!  
 
+---
+
 ### **2️⃣ Install OpenONDA**
 Now, install OpenONDA:
 ```bash
@@ -107,16 +113,25 @@ python -c "import OpenONDA; print('\nInstallation successful =)\n')"
 ```
 ✔ *This will compile and install all necessary components for OpenONDA.*  
 
+---
+
 ## 🔹 **Running Your First Test Case**
 Ensure you are in the `OpenONDA` Conda environment:
+
 ```bash
 conda activate OpenONDA
 ```
+
 Run the test scripts:
+
 ```bash
 pytest -v -s --tb=long ./test1_import_modules.py
+```
+
+```bash
 pytest -v -s --tb=long ./test2_eulerian_solver_communication.py
 ```
+
 ✅ If no errors appear, everything is set up correctly.  
 ✅ Example cases are available in `./examples/`.
 
