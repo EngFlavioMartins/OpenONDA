@@ -20,6 +20,7 @@ install_dependencies(){
 # Install OpenFOAM
 # ======================
 install_openfoam(){ 
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo '>>> Installing OpenFOAM'
     echo '# ----------------------------------------------- #'
@@ -28,6 +29,7 @@ install_openfoam(){
     sudo apt-get update
     sudo apt-get install openfoam2406-default
 
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo '>>> Adding OpenFOAM to bashrc'
     echo '# ----------------------------------------------- #'
@@ -51,6 +53,7 @@ install_openfoam(){
     # Source bashrc to apply the changes
     source ~/.bashrc
 
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo '>>> OpenFOAM setup complete. Paths available.'
     echo '# ----------------------------------------------- #'
@@ -61,6 +64,7 @@ install_openfoam(){
 # Verify environment:
 # =======================
 verify_env(){
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo '>>> Verifying environment:'
     echo '# ----------------------------------------------- #'
@@ -77,28 +81,11 @@ verify_env(){
     source /usr/lib/openfoam/openfoam2406/etc/bashrc
 }
 
-
-# =======================
-# Fix libstdc++ in OpenONDA Conda environment
-# =======================
-fix_libstdcpp(){
-    CONDA_ENV_PATH="$HOME/anaconda3/envs/OpenONDA/lib"
-    SYSTEM_LIBSTDCPP="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
-
-    if [ -f "$SYSTEM_LIBSTDCPP" ]; then
-        echo 'Copying system libstdc++.so.6 to Conda environment...'
-        cp "$SYSTEM_LIBSTDCPP" "$CONDA_ENV_PATH/"
-        echo '>>> libstdc++.so.6 successfully copied!'
-    else
-        echo '>>> Warning: System libstdc++.so.6 not found! Check your installation.'
-    fi
-}
-
-
 # =======================
 # Compile custom OpenFOAM
 # =======================
 compile_custom_openfoam() {
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo ">>> Compiling custom OpenFOAM boundary conditions"
     echo '# ----------------------------------------------- #'
@@ -106,6 +93,7 @@ compile_custom_openfoam() {
     wclean
     wmake
 
+    echo ' '
     echo '# ----------------------------------------------- #'
     echo ">>> Compiling OpenFOAM custom libraries"
     echo '# ----------------------------------------------- #'
@@ -116,62 +104,17 @@ compile_custom_openfoam() {
     echo ">>> OpenFOAM compilation complete."
 }
 
-# =======================
-# Compile Cython
-# =======================
-compile_cython() {
-    echo '# ----------------------------------------------- #'
-    echo ">>> Compiling Cython-based PIMPLE solver"
-    echo '# ----------------------------------------------- #'
-    CYTHON_DIR="$CURRENT_DIR/OpenONDA/solvers/FVM"
-    cd "$CYTHON_DIR" || exit 1
-
-    echo ">>> Cleaning up previous installations"
-    rm -f fvmModule*.so fvmModule*.cpp
-
-    if [ ! -f "build_cython.py" ]; then
-        echo "Error: build_cython.py not found!"
-        exit 1
-    fi
-
-    echo '# ----------------------------------------------- #'
-    echo ">>> Building Cython"
-    echo '# ----------------------------------------------- #'
-    python3 build_cython.py build_ext --inplace
-
-    SO_FILE=$(ls fvmModule*.so 2>/dev/null | head -n 1)
-    if [[ -z "$SO_FILE" ]]; then
-        echo "Error: Cython compilation failed: No .so file found."
-        exit 1
-    fi
-
-    NEW_SO_FILE="fvmModule.so"
-    mv "$SO_FILE" "$NEW_SO_FILE"
-
-    if [[ -z "$FOAM_USER_LIBBIN" || ! -d "$FOAM_USER_LIBBIN" ]]; then
-        echo "Error: FOAM_USER_LIBBIN is not set or does not exist."
-        exit 1
-    fi
-    
-    cp "$NEW_SO_FILE" "$FOAM_USER_LIBBIN/$NEW_SO_FILE"
-    cd "$ROOT_DIR"
-    echo '# ----------------------------------------------- #'
-    echo ">>> Cython compilation complete."
-    echo '# ----------------------------------------------- #'
-}
-
-
 # Execute steps sequentially
+echo ' '
 echo '# ================================================ #'
 echo '# Stating the installation...'
 echo '# ================================================ #'
 install_dependencies
 install_openfoam
-# fix_libstdcpp
 verify_env
 compile_custom_openfoam
-compile_cython
 
+echo ' '
 echo '# ================================================ #'
 echo '# Installation complete!'
 echo '# ================================================ #'

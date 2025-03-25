@@ -517,7 +517,6 @@ dependencies:
   - pip:
       - cython==3.0.12
       - mako==1.3.9
-      - openonda==0.0.1
       - pooch==1.8.2
       - pycuda==2025.1
       - pytools==2025.1.1
