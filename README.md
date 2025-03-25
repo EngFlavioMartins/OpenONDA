@@ -46,75 +46,64 @@
 
 ### **1️⃣ Install Prerequisites**
 
-#### **1.1 Install Conda**  (skip if you already have conda)
-- Use the scripts below to download and install the **2024-10-1 version** of Anaconda, or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)):
-
-  ```bash
-  curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
-  ```
-  ```bash
-  chmod u+x Anaconda3-2024.10-1-Linux-x86_64.sh
-  ```
-  ```bash
-  bash Anaconda3-2024.10-1-Linux-x86_64.sh
-  ```
-  ```bash
-  source ~/.bashrc
-  ```
-
-  📌 Continue if you **successfully** installed Anaconda and your terminal prompt shows `base`.  
-
-#### **1.2 Install OpenFOAM** (do not skip!)
-- Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian)
-
-  ```bash
-  ./install_openfoam.sh
-  ```
-
-  📌 You might need to run `chmod +x install_openfoam.sh` to get permission to execute it.
-
-- This script will:  
-  ✅ Set up the necessary environment variables in your `~/.bashrc` and source them.  
-  ✅ Activate the `OpenONDA` Conda environment (your terminal prompt should now begin with `(OpenONDA)`).  
-  ✅ Automatically source OpenFOAM for you.  
-
-- Apply the changes immediately:
-
-  ```bash
-  source ~/.bashrc
-  ```
-
-  📌 To verify OpenFOAM is installed correctly, run:
-
-  ```bash
-  foamVersion
-  ```
-
-  If this prints **"OpenFOAM v2406"**, and you are inside the `base` environment, you're all set!
-
-#### **1.3 Clone the Repository**  
+#### **1.0 Clone the Repository**  
 ```bash
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 ```
 
-#### **1.4 Set Up the Conda Environment**  
+####  **1.1 (If you don't have Conda) Install Set Up the Conda Environment Conda** 
+Use the scripts below to download and install the **2024-10-1 version** of Anaconda, or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation) (see also 🔗 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)):
+
+```bash
+./install_anaconda.sh
+```
+
+#### **1.1 (If you alread have Conda) Set Up the Conda Environment**  
 Ensure Anaconda is correctly sourced and that you are inside a Conda environment:
 
 ```bash
 conda env create -f ./documentation/openonda_environment.yml
-```
-```bash
 conda activate OpenONDA
 ```
 
-📌 This process may take **10–30 minutes**, depending on your internet speed. If you are inside the `OpenONDA` conda environment, you are good to go!
+📌 Continue if you **successfully** installed Anaconda and your terminal prompt shows `OpenONDA`.  
+
+#### **1.2 Install OpenFOAM**
+Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian)
+
+```bash
+./install_openfoam.sh
+```
+
+📌 You might need to run `chmod +x install_openfoam.sh` to get permission to execute it.
+
+📌 This process may take **5-15 minutes**, depending on your internet speed.
+
+Apply the changes immediately:
+
+```bash
+source ~/.bashrc
+```
+
+To verify OpenFOAM is installed correctly, run:
+
+```bash
+foamVersion
+```
+
+If this prints **"OpenFOAM v2406"**, and you are inside the `OpenONDA` environment, you're all set!
+
+This script will:  
+✅ Set up the necessary environment variables in your `~/.bashrc` and source them.    
+✅ Automatically source OpenFOAM for you.  
+✅ Compile all necessary, custom OpenFOAM libraries
 
 ### **2️⃣ Install OpenONDA**
 Now, proceed with the installation by running:
 
 ```bash
- pip install --use-pep517 .
+pip install --no-cache-dir --use-pep517 .
 ```
 
 ✔ *This will compile and install all necessary components for OpenONDA.*  

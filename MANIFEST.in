@@ -1,0 +1,3 @@
+include OpenONDA/solvers/FVM/fvmModule.so
+include OpenONDA/solvers/VPM/fvmModule
+recursive-include OpenONDA/utilities *

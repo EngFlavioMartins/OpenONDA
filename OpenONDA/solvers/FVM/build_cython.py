@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import os
 from setuptools import Extension, setup
 from Cython.Build import cythonize
@@ -19,7 +17,7 @@ find . -type f -name "*.so" -delete
 -------------------------------
 To rebuid the extension:
 -------------------------------
-python built_cython.py build_ext --inplace
+python build_cython.py build_ext --inplace
 """
 
 

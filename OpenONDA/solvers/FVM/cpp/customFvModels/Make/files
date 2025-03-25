@@ -1,9 +1,7 @@
-# General source files
 generalSources = general
 $(generalSources)/codedSource/codedFvSources.C
 $(generalSources)/semiImplicitSource/semiImplicitSources.C
 
-# Derived source files
 derivedSources = derived
 $(derivedSources)/actuationDiskSource/actuationDiskSource.C
 $(derivedSources)/directionalPressureGradientExplicitSource/directionalPressureGradientExplicitSource.C
@@ -25,5 +23,4 @@ $(derivedSources)/rotorDiskSource/trimModel/targetCoeff/targetCoeffTrim.C
 $(derivedSources)/tabulatedAccelerationSource/tabulatedAccelerationSource.C
 $(derivedSources)/viscousDissipation/viscousDissipation.C
 
-# Library location
 LIB = $(FOAM_USER_LIBBIN)/libpimpleStepperFoamFvModels
