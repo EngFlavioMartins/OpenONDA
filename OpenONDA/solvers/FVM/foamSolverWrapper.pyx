@@ -32,7 +32,7 @@ from scipy.interpolate import griddata as _griddata
 from libc.stdlib cimport malloc, free
 from cpython.version cimport PY_MAJOR_VERSION
 
-from foamSolverWrapper cimport cppFoamSolver
+from .foamSolverWrapper cimport cppFoamSolver
 
 # ==================================================
 # Python Wrapper Class
