@@ -1,10 +1,12 @@
 # setup.py (Modified)
 
 from setuptools import setup, find_packages
-import subprocess
+
 import os
 import sys
 import glob
+import shutil
+import subprocess
 
 root = os.getcwd()
 
@@ -46,9 +48,26 @@ def compile_cython():
     os.chdir(root)
     print("Cython compilation complete.")
 
+
+# =======================
+# Fix libstdc++ in OpenONDA Conda environment
+# =======================
+def fix_libstdcpp():
+    conda_env_path = os.path.expanduser("~/anaconda3/envs/OpenONDA/lib")
+    system_libstdcpp = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+
+    if os.path.isfile(system_libstdcpp):
+        print("Copying system libstdc++.so.6 to Conda environment...")
+        shutil.copy(system_libstdcpp, conda_env_path)
+        print(">>> libstdc++.so.6 successfully copied!")
+    else:
+        print(">>> Warning: System libstdc++.so.6 not found! Check your installation.")
+
+
 def main():
 
     compile_cython()
+    fix_libstdcpp()
 
     setup(
         name="OpenONDA",
