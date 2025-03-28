@@ -129,7 +129,7 @@ source ~/.bashrc
 ### **2️⃣ Install OpenONDA**
 Now, install OpenONDA:
 ```bash
-pip install --no-cache-dir --use-pep517 .
+pip install -e .
 ```
 Verify the installation:
 ```bash
