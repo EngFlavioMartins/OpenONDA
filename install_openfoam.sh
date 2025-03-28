@@ -12,7 +12,8 @@ install_dependencies(){
     echo '# ----------------------------------------------- #'
     sudo apt update
     sudo apt install -y libboost-all-dev
-    sudo apt install nvidia-cuda-toolkit
+    sudo apt install nvidia-cuda-toolkit -y
+    sudo apt install curl -y
 }
 
 
@@ -39,14 +40,17 @@ install_openfoam(){
 
     if ! grep -Fxq '# >>> OpenFOAM setup >>>' ~/.bashrc; then
         echo '# >>> OpenFOAM setup >>>' >> ~/.bashrc
-        echo "source ${WM_PROJECT_DIR}/etc/bashrc" >> ~/.bashrc
-        echo "alias of2406=\"source ${WM_PROJECT_DIR}/etc/bashrc\"" >> ~/.bashrc
+        echo 'source ${WM_PROJECT_DIR}/etc/bashrc' >> ~/.bashrc
+        echo "alias of${WM_PROJECT_VERSION}=\"source \${WM_PROJECT_DIR}/etc/bashrc\"" >> ~/.bashrc
 
-        echo "export WM_PROJECT_VERSION=${WM_PROJECT_VERSION}" >> ~/.bashrc
-        echo "export WM_PROJECT_DIR=${WM_PROJECT_DIR}" >> ~/.bashrc
-        echo "export CPLUS_INCLUDE_PATH=\"${CPLUS_INCLUDE_PATH}:${WM_PROJECT_DIR}/src/OpenFOAM/lnInclude\"" >> ~/.bashrc
-        echo "export LIBRARY_PATH=\"${LIBRARY_PATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/lib\"" >> ~/.bashrc
-        echo "export LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/lib\"" >> ~/.bashrc
+        echo 'export WM_PROJECT_VERSION=${WM_PROJECT_VERSION}' >> ~/.bashrc
+        echo 'export WM_PROJECT_DIR=${WM_PROJECT_DIR}' >> ~/.bashrc
+        echo 'export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH}:${WM_PROJECT_DIR}/src/OpenFOAM/lnInclude"' >> ~/.bashrc
+        echo 'export LIBRARY_PATH="${LIBRARY_PATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/lib"' >> ~/.bashrc
+        echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"' >> ~/.bashrc
+        echo 'export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/lib"' >> ~/.bashrc
+        echo 'export PYTHONPATH="${PYTHONPATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/lib"' >> ~/.bashrc
+        echo 'export PYTHONPATH="${PYTHONPATH}:${WM_PROJECT_DIR}/platforms/linux64GccDPInt32Opt/bin"' >> ~/.bashrc
         echo "# <<< OpenFOAM ${WM_PROJECT_VERSION} setup <<<" >> ~/.bashrc
     fi
 
@@ -104,6 +108,24 @@ compile_custom_openfoam() {
     echo ">>> OpenFOAM compilation complete."
 }
 
+# =======================
+# Compile custom OpenFOAM
+# =======================
+build_custom_solver() {
+    echo ' '
+    echo '# ----------------------------------------------- #'
+    echo ">>> Building the custom solver"
+    echo '# ----------------------------------------------- #'
+    cd "$CURRENT_DIR/OpenONDA/solvers/FVM/" || exit 1
+    # Build the Cython extension
+    python build_cython.py build_ext --inplace || { echo "Cython build failed"; exit 1; }
+
+    # Rename the shared object file
+    mv fvmModule*.so fvmModule.so || { echo "Failed to rename the .so file"; exit 1; }
+    cd "$CURRENT_DIR"
+    echo ">>> Build fvmModule.so file"
+}
+
 # Execute steps sequentially
 echo ' '
 echo '# ================================================ #'
@@ -111,6 +133,7 @@ echo '# Stating the installation...'
 echo '# ================================================ #'
 install_dependencies
 install_openfoam
+#build_custom_solver
 verify_env
 compile_custom_openfoam
 
