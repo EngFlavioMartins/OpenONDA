@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use OpenONDA in your research, please cite it using the following metadata."
+title: "OpenONDA: Operator for Numerical Design and Fluidynamics"
+version: "0.1.1"  # Update this with your current version
+doi: 10.5281/zenodo.15111460 
+authors:
+  - name: "Flavio Martins"
+    affiliation: ""
+    orcid: ""  # Add your ORCID if available
+date-released: "2025-03-31"  # Adjust as needed
+repository-code: "https://github.com/EngFlavioMartins/OpenONDA"
+license: "MIT"  # Update if using a different license
