@@ -4,7 +4,7 @@ title: "OpenONDA: Operator for Numerical Design and Fluidynamics"
 version: "0.1.1"
 doi: 10.5281/zenodo.15111460 
 authors:
-  - name: "Flavio Martins"
+  - name: "Flavio Avila Correia Martins"
     affiliation: "Faculty of Aerospace Engineering, FPT dpt, Wind Energy Section. TU Delft, NL"
     orcid: "0000-0002-1374-5760" 
 date-released: "2025-03-31"  # Adjust as needed
