@@ -2,7 +2,15 @@
   <img src="./documentation/marketing_material/Logo_V7_Color.png" width="900px"/>
 </p>
 
+
+
 # **OpenONDA: Hybrid CFD Solver in Python**
+
+
+
+[![DOI](https://zenodo.org/badge/947793258.svg)](https://doi.org/10.5281/zenodo.15111460)
+
+
 
 🚀 **OpenONDA** is an advanced and efficient **Computational Fluid Dynamics (CFD) solver** for Python. It enables execution and manipulation of the **Vortex Particle Method (VPM)** and **Finite Volume Method (FVM)** directly within Python.
 
