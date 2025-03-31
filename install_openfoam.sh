@@ -40,6 +40,7 @@ install_openfoam(){
 
     if ! grep -Fxq '# >>> OpenFOAM setup >>>' ~/.bashrc; then
         echo '# >>> OpenFOAM setup >>>' >> ~/.bashrc
+        echo 'WM_PROJECT_DIR="/usr/lib/openfoam/openfoam2406"' >> ~/.bashrc
         echo 'source ${WM_PROJECT_DIR}/etc/bashrc' >> ~/.bashrc
         echo "alias of${WM_PROJECT_VERSION}=\"source \${WM_PROJECT_DIR}/etc/bashrc\"" >> ~/.bashrc
 
@@ -108,23 +109,6 @@ compile_custom_openfoam() {
     echo ">>> OpenFOAM compilation complete."
 }
 
-# =======================
-# Compile custom OpenFOAM
-# =======================
-build_custom_solver() {
-    echo ' '
-    echo '# ----------------------------------------------- #'
-    echo ">>> Building the custom solver"
-    echo '# ----------------------------------------------- #'
-    cd "$CURRENT_DIR/OpenONDA/solvers/FVM/" || exit 1
-    # Build the Cython extension
-    python build_cython.py build_ext --inplace || { echo "Cython build failed"; exit 1; }
-
-    # Rename the shared object file
-    mv fvmModule*.so fvmModule.so || { echo "Failed to rename the .so file"; exit 1; }
-    cd "$CURRENT_DIR"
-    echo ">>> Build fvmModule.so file"
-}
 
 # Execute steps sequentially
 echo ' '
@@ -133,7 +117,6 @@ echo '# Stating the installation...'
 echo '# ================================================ #'
 install_dependencies
 install_openfoam
-#build_custom_solver
 verify_env
 compile_custom_openfoam
 

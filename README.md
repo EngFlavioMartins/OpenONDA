@@ -49,14 +49,14 @@
 
 ### **1️⃣ Install Prerequisites**
 
-#### **1.1 Clone the Repository**  
+#### **1.1) Clone the Repository**  
 
 ```bash
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 ```
 
-#### **1.3 Set Up the Conda Environment**  
+#### **1.2) Set Up the Conda Environment**  
 If you **don’t have Conda installed**, use the script below to install Anaconda or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation):
 
 ```bash
@@ -66,18 +66,13 @@ If you **don’t have Conda installed**, use the script below to install Anacond
 If Conda is already installed, make sure conda `(base)` is shown in your prompt and create and activate the environment:
 
 ```bash
-conda env create -f ./documentation/openonda_environment.yml
+conda env create -f environment.yml
 conda activate OpenONDA
-```
-
-Apply the changes immediately:
-```bash
-source ~/.bashrc
 ```
 
 📌 Ensure your terminal prompt now shows `(OpenONDA)` before proceeding
 
-#### **1.2 Install OpenFOAM**
+#### **1.3) Install OpenFOAM**
 Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/debian)
 
 ```bash
@@ -87,6 +82,7 @@ Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://de
 📌 If needed, grant execution permission: `chmod +x install_openfoam.sh`
 
 📌 This process may take **5-15 minutes**, depending on your internet speed.
+
 📌 This script will:
 
 ✅ Set up necessary environment variables in your `~/.bashrc` and source them.  
@@ -101,28 +97,6 @@ foamVersion
 If this prints **"OpenFOAM-v2406"**, and you are inside the `(OpenONDA)` environment, you're all set!  
 
 📌 If the above does not work, type `cat /usr/lib/openfoam`. If no results appear, OpenFOAM installation failed. 
-
-
-#### **1.3 Set Up the Conda Environment**  
-If you **don’t have Conda installed**, use the script below to install Anaconda or follow the official 🔗 [installation guide](https://www.anaconda.com/docs/getting-started/anaconda/install#macos-linux-installation):
-
-```bash
-./install_anaconda.sh
-```
-
-If Conda is already installed, make sure conda `(base)` is shown in your prompt and create and activate the environment:
-
-```bash
-conda env create -f environment.yml
-conda activate OpenONDA
-```
-
-Apply the changes immediately:
-```bash
-source ~/.bashrc
-```
-
-📌 Ensure your terminal prompt now shows `(OpenONDA)` before proceeding.  
 
 ---
 
