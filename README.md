@@ -8,7 +8,7 @@
 
 
 
-[![DOI](https://zenodo.org/badge/947793258.svg)](https://doi.org/10.5281/zenodo.15111460)
+[![DOI](https://zenodo.org/badge/947793258.svg)](https://doi.org/10.5281/zenodo.15111460) ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EngFLavioMartins/OpenONDA/total)
 
 
 
@@ -71,6 +71,8 @@ If you **don’t have Conda installed**, use the script below to install Anacond
 ./install_anaconda.sh
 ```
 
+📌 If needed, grant execution permission: `chmod +x install_*`
+
 If Conda is already installed, make sure conda `(base)` is shown in your prompt and create and activate the environment:
 
 ```bash
@@ -87,14 +89,11 @@ Download and install the precompiled version of 🔗 [OpenFOAM-v2406](https://de
 ./install_openfoam.sh
 ```
 
-📌 If needed, grant execution permission: `chmod +x install_openfoam.sh`
-
 📌 This process may take **5-15 minutes**, depending on your internet speed.
 
 📌 This script will:
 
-✅ Set up necessary environment variables in your `~/.bashrc` and source them.  
-✅ Automatically source OpenFOAM.  
+✅ Set up necessary environment variables in your `~/.bashrc` and source them.   
 ✅ Compile all necessary OpenFOAM libraries.
 
 Verify the installation:
@@ -175,19 +174,10 @@ chmod u+x ./*.sh */*.sh
 
 ## 🔹 **How to Cite**
 
-📌 **To cite OpenONDA or its components, use the following:** *(Replace placeholder names and DOIs!)*
+📌 **To cite OpenONDA or its components, use the following:** 
 
 ```bibtex
-@article{martins2025,
-  author    = {Martins, F. and Lastname, S. and Lastname, C.},
-  title     = {OpenONDA: A hybrid OpenFOAM and vortex particle method for external flow simulations},
-  journal   = {Journal of Computational Fluid Dynamics},
-  volume    = {12},
-  number    = {3},
-  pages     = {123–145},
-  year      = {2025},
-  doi       = {10.1234/dummy-doi}
-}
+(Publication under review...)
 ```
 
 ## 🔹 **Authors and Contributions**
