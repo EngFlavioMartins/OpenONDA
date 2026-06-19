@@ -1,0 +1,295 @@
+[build-system]
+requires = [
+    "setuptools>=68.0",
+    "wheel",
+    "numpy>=1.24.0",
+    "cython>=0.29.0; platform_system=='Linux' and extra=='full'",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OpenONDA"
+dynamic = ["version"]
+description = "Python interface for in-line control and coupling of OpenFOAM solvers"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
+    {name = "Artur Palha"},
+    {name = "Rention Pasolari"},
+]
+maintainers = [
+    {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+]
+keywords = [
+    "CFD",
+    "computational fluid dynamics",
+    "finite volume method",
+    "OpenFOAM",
+    "Python",
+    "Cython",
+    "external coupling"
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "matplotlib>=3.6.0",
+    "pydantic>=2.0.0",
+    "typing-extensions>=4.0.0",
+    "h5py>=3.8.0",
+    "numba>=0.57.0",
+    "pandas>=2.0.0",
+    "defusedxml>=0.7.1",
+]
+
+[project.optional-dependencies]
+# OpenFOAM wrapper (requires a local OpenFOAM installation)
+full = [
+    "cython>=0.29.0",
+    "pyyaml>=5.0.0",
+]
+
+# Development dependencies
+dev = [
+    "cython>=0.29.0",
+    "pytest>=6.0.0",
+    "pytest-cov>=2.10.0",
+    "pytest-timeout>=2.0.0",
+    "hypothesis>=6.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.0.0",
+    "complexipy>=0.1.0",
+    "vulture>=2.0.0",
+    "tach>=0.1.0",
+    "interrogate>=1.5.0",
+    "bandit[toml]>=1.7.0",
+    "pip-audit>=2.0.0",
+    "scalene>=1.5.0",
+    "pre-commit>=2.10.0",
+    "pytest-benchmark>=4.0.0",
+    "pyamg>=4.0.0",
+]
+
+# Documentation building
+docs = [
+    "sphinx>=4.0.0",
+    "sphinx-rtd-theme>=0.5.0",
+    "myst-parser>=0.15.0",
+    "sphinx-autodoc-typehints>=1.12.0",
+]
+
+# Visualization tools
+viz = [
+    "pyvista>=0.32.0",
+    "vtk>=9.0.0",
+    "plotly>=5.0.0",
+]
+
+# All dependencies
+all = [
+    "cython>=0.29.0",
+    "pytest>=6.0.0",
+    "pytest-cov>=2.10.0",
+    "ruff>=0.9.0",
+    "ty>=0.0.1",
+    "skylos>=0.1.0",
+    "pre-commit>=2.10.0",
+    "sphinx>=4.0.0",
+    "sphinx-rtd-theme>=0.5.0",
+    "myst-parser>=0.15.0",
+    "sphinx-autodoc-typehints>=1.12.0",
+    "pyvista>=0.32.0",
+    "vtk>=9.0.0",
+    "plotly>=5.0.0",
+    "pyamg>=4.0.0",
+]
+
+[tool.vulture]
+# Minimum confidence for reporting unused code (0-100).
+min_confidence = 80
+# b_vec: mutated in-place with numpy +=; vulture cannot track writes as reads.
+# gamma_old2: Taichi kernel template parameter; reserved for BDF-2 KJ stencil.
+ignore_names = ["b_vec", "gamma_old2"]
+
+[project.urls]
+Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
+Repository = "https://github.com/EngFlavioMartins/OpenONDA"
+Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/main/documentation"
+"Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
+Changelog = "https://github.com/EngFlavioMartins/OpenONDA/blob/main/CHANGELOG.md"
+
+[project.scripts]
+openonda-test = "OpenONDA.utilities.scripts_helper:run_tests"
+
+[tool.setuptools.dynamic]
+version = {attr = "source.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["source*"]
+exclude = ["tests*", "docs*", "examples*"]
+
+[tool.setuptools.package-data]
+"source" = ["py.typed"]
+"source.solvers.FVM" = ["*.py", "*.pyx"]
+"source.utilities" = ["*.py"]
+
+# Development tools configuration
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [
+    ".git",
+    "__pycache__",
+    "docs/",
+    "build/",
+    "dist/",
+    ".eggs/",
+    "source/solvers/OFW/build/",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "N803",   # argument name should be lowercase — scientific notation (A, N, U, …)
+    "N806",   # variable in function should be lowercase — scientific notation
+    "N802",   # function name should be lowercase — physics conventions
+    "N815",   # mixed-case variable in class — scientific conventions
+    "N999",   # module name invalid — tutorial/script names
+    "E402",   # module-level import not at top — intentional conditional imports
+    "B008",   # function call in default argument — Taichi/pydantic patterns
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tutorials/*" = ["ALL"]
+"scripts/*" = ["T201"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+implicit_optional = true
+warn_unused_ignores = false
+warn_return_any = false
+warn_unused_configs = false
+show_error_codes = true
+
+# Taichi DSL uses invalid Python type syntax (ti.template(), etc.)
+# Suppress globally because it appears across many VPM files.
+disable_error_code = ["valid-type"]
+
+# VPM and FVM have legacy type debt that is being fixed incrementally.
+# When running mypy on coupler/, ignore errors in imported solver code
+# so that only genuine coupler/ issues are reported.
+[[tool.mypy.overrides]]
+module = "source.solvers.FVM.*"
+ignore_errors = true
+
+[tool.ty]
+
+[tool.ty.environment]
+python-version = "3.10"
+root = ["source/"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+# Taichi DSL uses invalid Python type syntax (ti.template(), ti.types.vector() etc.)
+# Equivalent to mypy's disable_error_code = ["valid-type"] for the VPM module.
+invalid-type-form = "ignore"
+# Dynamic attributes: Taichi field members and sys._vpm_* stdout redirect helpers
+unresolved-attribute = "ignore"
+# Legacy: many parameters use `= None` as default on typed params; fixing incrementally
+invalid-parameter-default = "ignore"
+# Legacy: class fields typed as ndarray/module but assigned None at class level
+invalid-assignment = "ignore"
+# Taichi types are subscriptable at runtime but not visible to static analysis
+not-subscriptable = "ignore"
+# Taichi-aware function calls and duck-typed VPM API; fixing incrementally
+invalid-argument-type = "ignore"
+call-top-callable = "ignore"
+unknown-argument = "ignore"
+unsupported-operator = "ignore"
+invalid-return-type = "ignore"
+missing-argument = "ignore"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests as requiring GPU (deselect with '-m \"not gpu\"')",
+    "openfoam: marks tests as requiring OpenFOAM (deselect with '-m \"not openfoam\"')",
+    "benchmark: marks tests as performance benchmarks",
+    "regression: marks tests as regression / snapshot tests",
+    "fast: CPU-only tests for fast CI (deselect with '-m \"not fast\"')",
+]
+
+[tool.coverage.run]
+source = ["source"]
+omit = [
+    "*/tests/*",
+    "*/examples/*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.complexipy]
+max_complexity = 15
+exclude = ["tests/*", "tutorials/*", "scripts/*"]
+
+[tool.skylos]
+include = ["source/"]
+exclude = ["tests/", "tutorials/", "scripts/", "**/__pycache__/"]
+min_confidence = 80
+
+[tool.bandit]
+exclude_dirs = ["tests", "tutorials"]
+skips = ["B101"]  # Skip assert_used warnings (needed for unit tests)
+
+[tool.pytest-benchmark]
+# Configuration for pytest-benchmark plugin
+only_run_benchmarks = false
+disable_gc = true
+min_time = 0.000005
+max_time = 1.0
+min_rounds = 5
+timer = "time.perf_counter"
+calibration_precision = 10
+warmup = true

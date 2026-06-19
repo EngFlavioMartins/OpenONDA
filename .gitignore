@@ -1,0 +1,144 @@
+# ===============================
+# Python build, cache, and eggs
+# ===============================
+__pycache__/
+.taichi_cache/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.pytest_cache
+.ruff_cache
+.complexipy_cache
+.coverage
+.claude
+.github
+.mypy_cache
+
+dist/
+build/
+
+# ===============================
+# Jupyter Notebooks
+# ===============================
+.ipynb_checkpoints/
+*.ipynb
+
+# ===============================
+# IDE/editor files
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+
+# ===============================
+# OS-specific files
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# Virtual environments
+# ===============================
+.env/
+.venv/
+venv/
+
+# ===============================
+# Logs and temporary files
+# ===============================
+*.log
+*.tmp
+*.bak
+
+# ===============================
+# C++/build artifacts
+# ===============================
+*.cpp
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+**/Make/linux64Gcc*/
+
+# ===============================
+# OpenFOAM/CFD and simulation outputs
+# ===============================
+# Time directories (OpenFOAM convention)
+[0-9]*/
+[0-9]*.[0-9]*/
+!**/*.orig
+
+# OpenFOAM mesh and processor data
+polyMesh/
+processor*/
+
+# Solution and data directories
+**/solution/
+**/Solution/
+**/referenceFlow/
+Data/
+Raw/
+data/
+raw/
+samples/
+postProcessing/
+
+# Log files
+log.*
+*.log
+
+# ===============================
+# Data, results, and scientific formats
+# ===============================
+# Large binary data files - use DVC for these
+*.h5
+*.hdf5
+*.npz
+
+# VTK/ParaView files (except in specific approved locations)
+*.vtp
+*.vtu
+*.pvd
+*.pvtu
+
+# Mesh files
+*.msh
+*.stl
+*.ply
+*.obj
+
+# Other simulation data
+*.xdmf
+*.out
+*.dat
+*.csv
+
+# VPM JSON outputs
+vpm*.json
+
+# ===============================
+# Keep visualization outputs in git
+# ===============================
+# Images and plots are small and should be versioned
+!**/*.png
+!**/*.pdf
+!**/*.jpg
+!**/*.jpeg
+!**/*.svg
+
+# ===============================
+# Specific tutorial data management
+# ===============================
+# Keep small reference text files but ignore large data
+!tutorials/**/README*.md
+!tutorials/**/README*.txt
+!tutorials/**/*.py
+!tutorials/**/*.sh
+tests/**/referenceFlow/**

@@ -1,0 +1,17 @@
+name: OpenONDA
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13
+  - pip
+  - c-compiler
+  - cxx-compiler
+  - cython
+  - numpy
+  - scipy
+  - matplotlib
+  - pyyaml
+  # Visualization dependencies (hard to build via pip)
+  - pyvista
+  - vtk
