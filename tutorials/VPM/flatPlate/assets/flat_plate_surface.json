@@ -1,0 +1,57 @@
+{
+  "uid": "flat_plate",
+  "wings": [
+    {
+      "uid": "main_wing",
+      "symmetry": 2,
+      "segments": [
+        {
+          "uid": "segment_0",
+          "vertices": {
+            "a": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "b": [
+              0.0,
+              5.0,
+              0.0
+            ],
+            "c": [
+              1.0,
+              5.0,
+              0.0
+            ],
+            "d": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "panels_chord": 8,
+          "panels_span": 16,
+          "airfoils": {
+            "inner": "flat",
+            "outer": "flat"
+          }
+        }
+      ]
+    }
+  ],
+  "refs": {
+    "area": 10.0,
+    "chord": 1.0,
+    "span": 10.0,
+    "gcenter": [
+      0.5,
+      2.5,
+      0.0
+    ],
+    "rcenter": [
+      0.5,
+      2.5,
+      0.0
+    ]
+  }
+}
