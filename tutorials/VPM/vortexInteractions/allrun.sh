@@ -62,6 +62,17 @@ DT="0.103"          # Δt_d — DVH fires once per step (diffusion active every 
 # collision impact at t ≈ 4.2 s.
 STEPS="${N_STEPS:-120}"
 
+# --- Leapfrog rungs: stable, well-resolved settings -------------------------
+# The original leapfrog rungs used DVH at Δt_d=0.103 → advective CFL≈4.  At that
+# CFL the M4′ grid-regeneration redistributes circulation across the narrow gap
+# between the two rings every step, so the cores MERGE almost immediately instead
+# of leapfrogging, and frozen-∇u GRADU injects energy faster than the model
+# drains it (divergence).  Fix: Core-Spreading viscosity (no grid regen → no
+# cross-gap mixing), advective CFL<1 (dt=0.02), and the rVPM stretching
+# stabiliser (caps parallel |Γ| growth).  ~600×0.02 = 12 s, same physical window.
+LF_DT="0.02"
+LF_STEPS="${N_STEPS:-600}"
+
 _RESULTS=()
 
 run_case() {
@@ -92,27 +103,27 @@ fi
 
 run_case "1/7 leapfrog_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode dns \
-    --dt "$DT" --num-steps "$STEPS" \
-    --stretching gradu \
+    --dt "$LF_DT" --num-steps "$LF_STEPS" \
+    --viscous cs --stretching rvpm \
     --name leapfrog_dns
 
 run_case "2/7 leapfrog_les — +LES" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --dt "$DT" --num-steps "$STEPS" \
-    --stretching gradu \
+    --dt "$LF_DT" --num-steps "$LF_STEPS" \
+    --viscous cs --stretching rvpm \
     --name leapfrog_les
 
 run_case "3/7 leapfrog_les_isr — +ISR (conservative ADM blend, C=1.5)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --dt "$DT" --num-steps "$STEPS" \
-    --stretching gradu --relaxation blend --isr-C 1.5 --deconv 1 \
+    --dt "$LF_DT" --num-steps "$LF_STEPS" \
+    --viscous cs --stretching rvpm --relaxation blend --isr-C 1.5 --deconv 1 \
     --device vulkan \
     --name leapfrog_les_isr
 
 run_case "4/7 leapfrog_les_pedr — +Pedrizzetti variant (|Γ|-preserving)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --dt "$DT" --num-steps "$STEPS" \
-    --stretching gradu --relaxation pedrizzetti --isr-C 1.5 --deconv 1 \
+    --dt "$LF_DT" --num-steps "$LF_STEPS" \
+    --viscous cs --stretching rvpm --relaxation pedrizzetti --isr-C 1.5 --deconv 1 \
     --device vulkan \
     --name leapfrog_les_pedr
 

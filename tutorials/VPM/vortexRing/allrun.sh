@@ -30,6 +30,10 @@ echo "Starting LES simulation (transposed stretching, Pedrizzetti ISR α=0.95)..
 "$PYTHON" ring_setup.py --mode les --stretching transposed --name LES_transposed \
     --direction-alpha 0.95 --solution-dir ./solution
 
+echo "Starting LES simulation (rVPM reformulated stretching, Alvarez & Ning)..."
+"$PYTHON" ring_setup.py --mode les --stretching rvpm --name LES_rvpm \
+    --solution-dir ./solution
+
 echo "Generating comparison plots..."
 ./allplot.sh
 

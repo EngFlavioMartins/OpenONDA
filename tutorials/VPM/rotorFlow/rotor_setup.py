@@ -37,7 +37,10 @@ from generate_blade import create_blade, save_surface
 
 def main():
     parser = argparse.ArgumentParser(description="RotorFlow VLM-VPM simulation")
-    parser.add_argument("--num-steps", type=int, default=1232, help="Number of time steps")
+    # Default extended so the wake convects out to ~9 rotor diameters (the
+    # farthest validation plane).  Near-wake convects at ~U(1-a) ≈ 4.7 m/s, so
+    # ~9D = 108 m needs ~15-20 s of physical time (dt=0.005 → ~3500 steps).
+    parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
     args = parser.parse_args()
 
     # ================================================
@@ -115,10 +118,12 @@ def main():
     # ================================================
     backup_dir = "solution"
 
-    # Downstream YZ cross-plane samplers for wake / induction validation
-    # Planes at 1R, 2R, 4R downstream (x-axis is axial / freestream direction)
-    wake_half = rotor_radius * 1.4  # bounds: ±1.4R in y and z
-    wake_spacing = rotor_radius / 12  # ~0.5 m for R=6
+    # Downstream YZ cross-plane samplers for wake / induction validation.
+    # Planes at 3D, 6D, 9D downstream (D = 2R = 12 m → x = 36, 72, 108 m);
+    # x-axis is the axial / freestream direction.
+    rotor_diameter = 2.0 * rotor_radius
+    wake_half = rotor_radius * 2.0  # bounds: ±2R (room for far-wake expansion)
+    wake_spacing = rotor_radius / 36  # 3x finer than before (~0.167 m for R=6)
     plane_samplers = [
         SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
@@ -128,7 +133,7 @@ def main():
             file_name=f"slice_x{int(round(x_loc))}m",
             output_dir=backup_dir + "/samples",
         )
-        for x_loc in [rotor_radius, 2 * rotor_radius, 4 * rotor_radius]
+        for x_loc in [3 * rotor_diameter, 6 * rotor_diameter, 9 * rotor_diameter]
     ]
 
     solver_config = SolverConfig(
@@ -136,7 +141,17 @@ def main():
         vlm_solver=vlm,
         background_velocity=[freestream_velocity, 0, 0],
         turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
-        stretching=StretchingConfig.transposed(),
+        # Stretching STABILISER: the reformulated-VPM (Alvarez & Ning) scheme
+        # caps the parallel growth of |Γ| (conserving σ²|Γ|), which keeps the
+        # helical tip-vortex wake bounded over the full run.  Combined with the
+        # Pedrizzetti strength relaxation (|Γ|-preserving realignment) this
+        # holds the solution stable to the final step instead of blowing up.
+        stretching=StretchingConfig.rvpm(),
+        isr_enabled=True,
+        isr_mode="pedrizzetti",
+        isr_gate="constant",
+        isr_rlx=0.95,
+        isr_conserve=True,
         backup_file_name="rotor",
         backup_directory=backup_dir,
         backup_frequency=3,

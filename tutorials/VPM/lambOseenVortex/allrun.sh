@@ -61,24 +61,26 @@ echo 'DONE WITH SINGLE VORTEX'
 # ============================================================
 # TEST CASE 2: Vortex dipole (counter-rotating pair)
 # ============================================================
+# NOTE: the dipole runs 2x longer than the single-vortex case (40 s vs 20 s) so
+# the counter-rotating pair convects far enough to study its mutual induction.
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes cs \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 40.0 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes rwm \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 40.0 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes dvh \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 40.0 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes gbd \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 40.0 \
     --solution-dir ./solution --clean
 
 

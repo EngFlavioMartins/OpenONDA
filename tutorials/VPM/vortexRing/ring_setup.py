@@ -33,9 +33,10 @@ def main():
     parser.add_argument("--name", default="LES", help="Output file name prefix")
     parser.add_argument(
         "--stretching",
-        choices=["direct", "transposed", "mixed"],
+        choices=["direct", "transposed", "mixed", "rvpm"],
         default="transposed",
-        help="Vortex stretching scheme for LES (ignored for DNS)",
+        help="Vortex stretching scheme for LES (ignored for DNS). 'rvpm' is the "
+        "Alvarez & Ning reformulated-VPM scheme (circulation-corrected, conserves σ²|Γ|).",
     )
     parser.add_argument(
         "--solution-dir",
@@ -93,6 +94,7 @@ def main():
         "direct": StretchingConfig.classical(),
         "transposed": StretchingConfig.transposed(),
         "mixed": StretchingConfig.mixed(),
+        "rvpm": StretchingConfig.rvpm(),
     }
     stretching = _stretching_map[args.stretching]
 

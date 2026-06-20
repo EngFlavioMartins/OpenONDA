@@ -164,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--sample-spacing", type=float, default=0.08, help="Grid spacing for mid-span sampler [m]"
     )
+    p.add_argument(
+        "--sample-crossflow",
+        action="store_true",
+        help="Attach 3 streamwise-normal crossflow plane samplers at x = 5, 15, 25 "
+        "(y in [-6, 6], z in [-0.5, 5.0]) to visualise the trailing wake.",
+    )
 
     return p
 
@@ -368,6 +374,22 @@ def main():
                 output_dir=backup_dir + "/samples",
             )
         )
+
+    if args.sample_crossflow:
+        # Streamwise-normal (y-z) crossflow planes at x = 5, 15, 25 to capture the
+        # trailing-vortex roll-up.  Grid spacing ~ shed-particle spacing (U*dt).
+        cf_spacing = max(args.U_inf * (args.dt if args.dt else 0.01), 0.05)
+        for x_loc in (5.0, 15.0, 25.0):
+            samplers.append(
+                SurfaceSampler(
+                    point=[x_loc, 0.0, 0.0],
+                    normal=[1, 0, 0],
+                    bounds=[-6.0, 6.0, -0.5, 5.0],
+                    spacing=cf_spacing,
+                    file_name=f"{args.name}_crossflow_x{int(x_loc)}",
+                    output_dir=backup_dir + "/samples",
+                )
+            )
 
     # ── Solver config ─────────────────────────────────────────────────
     cfg_kwargs = dict(

@@ -23,4 +23,9 @@ python assets/plot_plate_spanwise.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
+# Kelvin's theorem (bound vs shed circulation) for the static AoA=8 case.
+python assets/plot_kelvin.py --name exp_static_aoa08 \
+    --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" || \
+    echo "  (Kelvin plot skipped — run exp_static_aoa08 with --sample-crossflow/backups first)"
+
 echo "Done. Figures saved to $FIGURES_DIR"

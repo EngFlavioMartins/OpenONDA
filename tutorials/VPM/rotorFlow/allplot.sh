@@ -12,6 +12,9 @@ esac; done
 mkdir -p figures
 FIGURES_DIR="$SCRIPT_DIR/figures"
 
-echo "[1/1] Rotor diagnostics ..."
+echo "[1/2] Rotor diagnostics ..."
 python assets/allplot.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR"
+echo "[2/2] Wake-plane validation vs momentum theory (3/6/9 D) ..."
+python assets/plot_wake_planes.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" || \
+    echo "  (wake-plane plot skipped)"
 echo "Done. Figures saved to $FIGURES_DIR"
