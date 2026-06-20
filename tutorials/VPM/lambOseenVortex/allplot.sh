@@ -9,6 +9,11 @@
 #
 # Defaults: --solution-dir ./solution  --dpi 400
 
+# Resolve Python interpreter: same precedence as allrun.sh.
+PYTHON="$(conda run -n OpenONDA which python 2>/dev/null \
+       || command -v python3 \
+       || command -v python)"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -42,7 +47,7 @@ echo ""
 
 # ── Figure 1: Single vortex — radial profiles ─────────────────────────────
 echo "[1/5] Lamb-Oseen radial profiles ..."
-python assets/plot_vortex_comparison.py \
+"$PYTHON" assets/plot_vortex_comparison.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
@@ -50,7 +55,7 @@ python assets/plot_vortex_comparison.py \
 
 # ── Figure 2: Vortex dipole — trajectory and core radius ─────────────────
 echo "[2/5] Dipole comparison ..."
-python assets/plot_dipole_comparison.py \
+"$PYTHON" assets/plot_dipole_comparison.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
@@ -58,7 +63,7 @@ python assets/plot_dipole_comparison.py \
 
 # ── Figure 3: Co-rotating merger — angle, core, separation ───────────────
 echo "[3/5] Merging vortex comparison ..."
-python assets/plot_merging_comparison.py \
+"$PYTHON" assets/plot_merging_comparison.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
@@ -66,7 +71,7 @@ python assets/plot_merging_comparison.py \
 
 # ── Figure 4: z = 0 surface fields — tiled quadrant comparison ───────────
 echo "[4/5] z=0 surface fields ..."
-python assets/plot_vortex_surface_fields.py \
+"$PYTHON" assets/plot_vortex_surface_fields.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
@@ -74,7 +79,7 @@ python assets/plot_vortex_surface_fields.py \
 
 # ── Figure 5: Energy balance — dE/dt vs -nuΩ ──────────────────────────────
 echo "[5/5] Energy balance ..."
-python assets/plot_energy_enstrophy.py \
+"$PYTHON" assets/plot_energy_enstrophy.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \

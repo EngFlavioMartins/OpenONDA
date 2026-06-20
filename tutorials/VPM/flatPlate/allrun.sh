@@ -37,7 +37,7 @@ cd "$SCRIPT_DIR"
 
 ./allclean.sh
 
-PYTHON="$(conda run -n OpenONDA-VPM which python 2>/dev/null || command -v python3 || command -v python)"
+PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
 RUN="$PYTHON setup_plate.py"
 
 # Common flags shared by every moving-wing run

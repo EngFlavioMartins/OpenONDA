@@ -5,13 +5,31 @@ channels:
 dependencies:
   - python=3.13
   - pip
+  # Build toolchain (needed to compile the OFW Cython/C++ extension)
   - c-compiler
   - cxx-compiler
   - cython
+  # Core numerics
   - numpy
   - scipy
   - matplotlib
   - pyyaml
+  - pandas
+  - h5py
+  - numba
+  - pydantic
+  - defusedxml
   # Visualization dependencies (hard to build via pip)
   - pyvista
   - vtk
+  - pip:
+    # GPU backend for the VPM solver (pip-only; pinned to the tested release).
+    # On NVIDIA driver 580+ the CUDA backend is buggy with 1.7.4 — run the VPM
+    # tutorials with OPENONDA_PROCESSING_UNIT=GPU_VULKAN (see tutorial allrun.sh).
+    - taichi==1.7.4
+    # Data Version Control for simulation results (see docs/data_management.md).
+    - dvc
+# Optional — only needed for the Python-side MPI features of the OFW/coupler
+# solvers.  The tutorials also run in parallel without it (OpenFOAM provides MPI
+# via `mpirun`).  Install a build matched to your system MPI to avoid ABI
+# clashes with OpenFOAM:  pip install mpi4py

@@ -18,16 +18,20 @@ ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
 
 | Requirement | Version tested |
 |---|---|
-| OpenFOAM | v2406 (OpenCFD) |
-| Python | >= 3.10 |
+| OpenFOAM | v2506 (OpenCFD) |
+| Python | 3.13 |
 | Cython | >= 0.29 |
 | NumPy | >= 1.24 |
 | SciPy | >= 1.10 |
-| Taichi | >= 1.7 (required for VPM) |
+| Taichi | 1.7.4 (required for VPM) |
 | GCC / Clang | compatible with your OpenFOAM installation |
 
 > OpenFOAM must be installed and its environment sourced before using the OFW or FVM solvers.  
-> Typical source command: `source /usr/lib/openfoam/openfoam2406/etc/bashrc`
+> Typical source command: `source /usr/lib/openfoam/openfoam2506/etc/bashrc`
+
+Helper install scripts for a fresh machine live in [`scripts/install/`](scripts/install/):
+`install_anaconda.sh`, `install_openfoam.sh` (OpenFOAM v2506),
+`install_vulkan_sdk.sh` (GPU backend for VPM) and `install_paraview.sh`.
 
 ---
 
@@ -43,12 +47,11 @@ cd OpenONDA
 ### 2. Create and activate a Python environment
 
 ```bash
-conda create -n OpenONDA python=3.10
+conda env create -f scripts/environment/environment.yml
 conda activate OpenONDA
-pip install numpy scipy matplotlib cython taichi pydantic
 ```
 
-Or install all Python dependencies at once:
+Or install all Python dependencies at once into an existing env:
 
 ```bash
 pip install -e ".[full]"
@@ -57,52 +60,60 @@ pip install -e ".[full]"
 ### 3. Source OpenFOAM (required for FVM/OFW)
 
 ```bash
-source /usr/lib/openfoam/openfoam2406/etc/bashrc
+source /usr/lib/openfoam/openfoam2506/etc/bashrc
 ```
 
-### 4. Build the C++ extensions and Cython wrapper
+### 4. Build the native solver extension
 
 ```bash
-chmod +x Allwmake
-./Allwmake
+scripts/install/build_solvers.sh
 ```
 
-This script compiles the custom boundary conditions (`wmake`) and the Cython extension (`python setup.py build_ext --inplace`).
+This (re)compiles the **OFW** solver — the Cython/C++ extension
+(`source/solvers/OFW/fvm_solver*.so`) that links against OpenFOAM. It is the
+only compiled component: the **VPM** solver is pure Python + Taichi (JIT-compiled
+on the GPU at run time) and the **FVM-VPM coupler** is pure Python.
+
+Re-run this script whenever you change anything under `source/solvers/OFW/`,
+switch OpenFOAM versions, or pull changes that touch the OFW sources — a stale
+`fvm_solver*.so` silently runs outdated logic. Use `--clean` to force a full
+rebuild from scratch:
+
+```bash
+scripts/install/build_solvers.sh --clean
+```
 
 ---
 
 ## Data Management
 
-This repository uses **DVC (Data Version Control)** to manage large simulation data files separately from git.
+This repository keeps **code in git** and **large simulation data in DVC**, with
+**Nextcloud** as the DVC remote so results sync across machines.
 
-### Quick Start
+### What's tracked where?
+
+- **Git** — files needed to _run_ a case: setup scripts, `system/`,
+  `constant/{transportProperties,turbulenceProperties}`, `constant/polyMesh.orig/`,
+  `0.orig/`, `assets/`, and visualizations (`figures/*.png`, `*.pdf`).
+- **DVC** — files _produced_ by a run: `solution/`, `referenceFlow/`, and
+  OpenFOAM reconstructed time directories.
+- **Ignored** — regenerable scratch: `processor*/`, runtime `constant/polyMesh/`
+  and `0/`, `*.foam`, `log.*`, `VTK/`, `postProcessing/`.
+
+### Quick start
 
 ```bash
-# Install DVC
-pip install dvc
+# Start a session
+git pull && dvc pull
 
-# Pull simulation data from remote storage
-python -m dvc pull
-
-# After running a simulation, track and backup the data
-python -m dvc add tutorials/VPM/myCase/solution
-python -m dvc push
-git add tutorials/VPM/myCase/solution.dvc
-git commit -m "Add myCase simulation"
-git push
+# After running a simulation: track all new results, then back them up
+scripts/dvc_add_solutions.sh        # dvc add's solution/, referenceFlow/, time dirs
+dvc push                            # upload to Nextcloud
+git commit -am "Add myCase results" && git push
 ```
 
-### Documentation
-
-- **[Multi-Computer Workflow Guide](docs/multi_computer_workflow.md)** - Complete guide for managing data across multiple machines
-- **[DVC Quick Reference](docs/DVC_QUICK_REFERENCE.md)** - Cheat sheet for common DVC operations
-- **[DVC Workflow Details](docs/dvc_workflow.md)** - In-depth DVC usage guide
-
-### What's Tracked Where?
-
-- **Git**: Code, scripts, documentation, visualizations (PNG, PDF)
-- **DVC**: Large simulation data (HDF5, VTK, mesh files)
-- **Nextcloud**: Automatic cloud backup of DVC-tracked data
+See **[docs/data_management.md](docs/data_management.md)** for the full folder
+policy, multi-computer workflow, and troubleshooting.
 
 ---
 

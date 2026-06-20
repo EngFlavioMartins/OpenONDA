@@ -21,7 +21,6 @@ from source.solvers.VPM.config.types import (
     ViscousConfig,
     AdaptationConfig,
     StretchingConfig,
-    RegularizationConfig,
 )
 from source.solvers.VPM.utils import VortexRingVPM
 
@@ -50,6 +49,12 @@ def main():
         help="Pedrizzetti direction-relaxation coefficient (default: 1.0 = disabled, "
         "range [0.85, 0.99] recommended for stabilization)",
     )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=600,
+        help="Number of time steps (default: 600)",
+    )
     args = parser.parse_args()
 
     # ================================================
@@ -65,7 +70,7 @@ def main():
     # ================================================
     particle_spacing = 0.03  # Grid spacing [m]
     time_step = 0.02  # [s]
-    num_steps = 600  # Simulation steps
+    num_steps = args.num_steps
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -93,10 +98,22 @@ def main():
 
     output_dir = Path(args.solution_dir) / args.name
 
+    # Map legacy direction_alpha to the ISR API:
+    #   alpha == 1.0  → disabled (ISR off, default)
+    #   alpha  < 1.0  → Pedrizzetti constant-relaxation mode (range [0.85, 0.99])
+    isr_kwargs: dict = {}
+    if args.direction_alpha < 1.0:
+        isr_kwargs = dict(
+            isr_enabled=True,
+            isr_mode="pedrizzetti",
+            isr_gate="constant",
+            isr_rlx=args.direction_alpha,
+            isr_conserve=True,
+        )
+
     solver_config = SolverConfig(
         time_step_size=time_step,
         turbulence=turbulence,
-        regularization=RegularizationConfig(direction_alpha=args.direction_alpha),
         stretching=stretching,
         velocity=VelocityConfig.treecode(theta=0.5),
         viscous=ViscousConfig.cs(),
@@ -105,6 +122,7 @@ def main():
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
+        **isr_kwargs,
     )
 
     vpm = Solver(config=solver_config)

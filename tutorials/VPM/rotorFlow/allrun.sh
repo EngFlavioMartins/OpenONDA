@@ -7,7 +7,7 @@
 #   - Ct/Cp approach a stationary average over the last revolution
 #
 # Output redirect: /tmp/rotor_run.log  (outside case dir, safe from allclean.sh)
-PYTHON="$(conda run -n OpenONDA-VPM which python 2>/dev/null || command -v python3 || command -v python)"
+PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 ./allclean.sh

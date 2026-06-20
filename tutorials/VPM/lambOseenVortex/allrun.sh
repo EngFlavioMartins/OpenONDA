@@ -19,9 +19,11 @@
 #   Uc_ref = 1/(2π·0.125) ≃ 1.2732 m s⁻¹
 #   ωc_ref = (Γ/(π r_{c}^{2})) = 1/(π·0.125²) ≃ 20.37 s⁻¹
 
-# Resolve Python interpreter: prefer OpenONDA-VPM conda env (Taichi needs Python <=3.11),
-# fall back to python3 / python for systems without conda.
-PYTHON="$(conda run -n OpenONDA-VPM which python 2>/dev/null || command -v python3 || command -v python)"
+# Resolve Python interpreter: prefer the OpenONDA conda env, fall back to legacy
+# then to whatever python3/python is on PATH.
+PYTHON="$(conda run -n OpenONDA which python 2>/dev/null \
+       || command -v python3 \
+       || command -v python)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
