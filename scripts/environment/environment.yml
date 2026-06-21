@@ -29,7 +29,8 @@ dependencies:
     - taichi==1.7.4
     # Data Version Control for simulation results (see docs/data_management.md).
     - dvc
-# Optional — only needed for the Python-side MPI features of the OFW/coupler
-# solvers.  The tutorials also run in parallel without it (OpenFOAM provides MPI
-# via `mpirun`).  Install a build matched to your system MPI to avoid ABI
-# clashes with OpenFOAM:  pip install mpi4py
+    # Python-side MPI for the OFW/coupler parallel runs (cross-rank Barrier in
+    # source/coupler/core/solver.py:497).  Installed via pip — NOT conda — so it
+    # builds against the *system* MPI that `mpirun` and OpenFOAM use, avoiding an
+    # ABI clash.  Requires a system mpicc on PATH (e.g. OpenMPI 5.x).
+    - mpi4py

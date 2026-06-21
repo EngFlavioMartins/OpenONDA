@@ -98,7 +98,13 @@ def main():
         linear_solver="SCIPY",
         sample_surface_forces=True,
     )
-    rotation_kinematics = RotatingVLM(omega=angular_velocity, axis=[1, 0, 0])
+    # NB: the blade is built with its LE on the −Z side (chord points +Z from
+    # LE→TE).  For the blade to advance LEADING-EDGE first it must rotate so the
+    # +Y blade moves toward −Z, i.e. ω = ω·(−x̂).  With axis=[+1,0,0] the blade
+    # advanced TE-first and vorticity was shed from the aerodynamic LE (verified:
+    # relwind·chord < 0 at every station).  axis=[-1,0,0] gives a positive AoA
+    # (~5° at the tip once induction develops) and TE shedding.
+    rotation_kinematics = RotatingVLM(omega=angular_velocity, axis=[-1, 0, 0])
 
     # Add three blades at 120° azimuthal spacing
     blade_azimuths = [0, 120, 240]
