@@ -26,19 +26,21 @@ contains the OFW solver together with five self-contained tutorial cases.
 OFW is built and tested on Linux. It needs a working OpenFOAM installation (it
 links against OpenFOAM's shared libraries) plus a small Python stack.
 
-| Requirement        | Version (tested)        | Purpose                                   |
-|--------------------|-------------------------|-------------------------------------------|
-| OpenFOAM (OpenCFD) | v2512                   | Native solver libraries (sourced at build & run)|
-| C++ compiler       | C++17 (GCC/Clang)        | Compiles the extension (ships with OpenFOAM)    |
-| PyVista + VTK      | ≥ 0.32 / ≥ 9.0           | Tutorial field-slice figures                    |
-| mpi4py             | ≥ 3.1 *      | Parallel runs |
+| Requirement        | Version | Purpose                               |
+|--------------------|---------|---------------------------------------|
+| OpenFOAM (OpenCFD) | v2512   | Native solver libraries (build & run) |
+| Python             | ≥ 3.10  | Host interpreter                      |
+| mpi4py             | ≥ 3.1 * | Parallel runs                         |
 
 All of the Python packages above are installed by the conda environment file
 [`scripts/environment/environment.yml`](scripts/environment/environment.yml)
 (see [Installation](#installation)).
 
-OpenFOAM must be installed and its environment **sourced** before building or
-running OFW, e.g.:
+---
+
+## Installation
+
+OpenFOAM must be installed and its environment **sourced** before building our OFW:
 
 ```bash
 source /usr/lib/openfoam/openfoam2512/etc/bashrc
@@ -47,9 +49,6 @@ source /usr/lib/openfoam/openfoam2512/etc/bashrc
 A reference install helper for OpenFOAM v2512 is provided in
 [`scripts/install/install_openfoam.sh`](scripts/install/install_openfoam.sh).
 
----
-
-## Installation
 
 ### 1. Clone the repository
 
@@ -64,12 +63,6 @@ git checkout openfoam-journal
 ```bash
 conda env create -f scripts/environment/environment.yml
 conda activate ofw
-```
-
-Or install into an existing environment:
-
-```bash
-pip install -e ".[viz,mpi]"
 ```
 
 ### 3. Source OpenFOAM
@@ -125,17 +118,8 @@ cd tutorials/vortexRing
 ```
 
 > **Python environment.** The `Allrun`/`Allplot` scripts run Python from a conda
-> environment named **`ofw`** (created from
+> environment named **`ofw`** (use
 > [`scripts/environment/environment.yml`](scripts/environment/environment.yml)),
-> falling back to `python3` if that environment is not found. Create it with
-> `conda env create -f scripts/environment/environment.yml` (or make sure your
-> active interpreter has NumPy, SciPy, PyYAML, matplotlib, PyVista and VTK
-> installed). PyVista/VTK are required for the `Allplot` field-slice figures.
-
-Useful environment knobs (read by `Allrun`):
-
-- `NPROCS` — number of MPI ranks (default `4`; must match `system/decomposeParDict`).
-- `OFW_STEPS` — override the step count for a short smoke run.
 
 | Case                    | Demonstrates                                              |
 |-------------------------|----------------------------------------------------------|
@@ -202,3 +186,7 @@ OpenFOAM source code and is likewise GPL-3.
 ## Use of AI
 
 All code, algorithms, and documentation in this repository were originally written by humans (for 10+ years!). Documentation refinement, code cleanup (hygiene), and test generation were automated using agentic AI.
+
+> **OFW vs OpenONDA:** *OpenONDA* is the broader research project; **OFW**
+> (this repository/branch) is its standalone OpenFOAM-interface component.
+
