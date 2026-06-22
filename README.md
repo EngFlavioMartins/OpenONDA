@@ -190,3 +190,15 @@ All code, algorithms, and documentation in this repository were originally writt
 > **OFW vs OpenONDA:** *OpenONDA* is the broader research project; **OFW**
 > (this repository/branch) is its standalone OpenFOAM-interface component.
 
+---
+
+<p align="center">
+  <a href="https://opensource.org">
+    <img src="./docs/OSI_logo.svg" width="100px" alt="OSI Approved License®"/>
+  </a>
+  <br/>
+  <em>This project is distributed under an OSI-approved open source license (GPL v3).</em>
+  <br/>
+  <small>The OSI logo trademark is the trademark of the <a href="https://opensource.org">Open Source Initiative</a>.</small>
+</p>
+
