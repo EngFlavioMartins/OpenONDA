@@ -28,10 +28,14 @@ links against OpenFOAM's shared libraries) plus a small Python stack.
 
 | Requirement        | Version (tested)        | Purpose                                   |
 |--------------------|-------------------------|-------------------------------------------|
-| OpenFOAM (OpenCFD) |  v2512       | Native solver libraries (sourced at build & run) |
-| Python             | ≥ 3.10    | Host interpreter                          |
-| Cython             | ≥ 0.29                  | Builds the extension (build-time only)    |         |
-| mpi4py             | ≥ 3.1 *(optional)*      | Parallel (multi-rank) tutorial runs       |
+| OpenFOAM (OpenCFD) | v2512                   | Native solver libraries (sourced at build & run)|
+| C++ compiler       | C++17 (GCC/Clang)        | Compiles the extension (ships with OpenFOAM)    |
+| PyVista + VTK      | ≥ 0.32 / ≥ 9.0           | Tutorial field-slice figures                    |
+| mpi4py             | ≥ 3.1 *      | Parallel runs |
+
+All of the Python packages above are installed by the conda environment file
+[`scripts/environment/environment.yml`](scripts/environment/environment.yml)
+(see [Installation](#installation)).
 
 OpenFOAM must be installed and its environment **sourced** before building or
 running OFW, e.g.:
@@ -119,6 +123,14 @@ cd tutorials/vortexRing
 ./Allplot       # write diagnostics + field-slice figures into figures/
 ./Allclean      # reset the case
 ```
+
+> **Python environment.** The `Allrun`/`Allplot` scripts run Python from a conda
+> environment named **`ofw`** (created from
+> [`scripts/environment/environment.yml`](scripts/environment/environment.yml)),
+> falling back to `python3` if that environment is not found. Create it with
+> `conda env create -f scripts/environment/environment.yml` (or make sure your
+> active interpreter has NumPy, SciPy, PyYAML, matplotlib, PyVista and VTK
+> installed). PyVista/VTK are required for the `Allplot` field-slice figures.
 
 Useful environment knobs (read by `Allrun`):
 

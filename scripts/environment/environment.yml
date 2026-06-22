@@ -14,7 +14,7 @@ dependencies:
   - scipy
   - matplotlib
   - pyyaml
-  # Visualization (used by the tutorials' field-slice plotting; optional)
+  # Visualization — required for the tutorials' field-slice figures (Allplot)
   - pyvista
   - vtk
   - pip:
