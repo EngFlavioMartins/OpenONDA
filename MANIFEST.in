@@ -1,0 +1,19 @@
+# Include package metadata and configuration
+include README.md
+include LICENSE
+include CITATION.cff
+include pyproject.toml
+include Allwmake
+
+# Include the OFW package sources (Cython, C++, headers, type stubs)
+recursive-include ofw *.py *.pyx *.pxd *.pyi
+recursive-include ofw/cpp *.C *.H
+include ofw/py.typed
+
+# Exclude build artifacts and cache files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude build/*
