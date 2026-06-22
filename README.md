@@ -103,6 +103,9 @@ for _ in range(n_steps):
     solver.update_state()                # advance one FVM time step
 ```
 
+The full list of interface methods, with usage notes, is in
+[`docs/OFW_API.md`](docs/OFW_API.md).
+
 ---
 
 ## Tutorials
@@ -181,3 +184,9 @@ OpenFOAM source code and is likewise GPL-3.
   [ORCID 0000-0002-1374-5760](https://orcid.org/0000-0002-1374-5760)
 - **Artur Palha**, **Rention Pasolari**, **Lento Manickathan**; original
   pHyFlow OpenFOAM Python wrapper this work derives from.
+
+---
+
+## Use of AI
+
+All code, algorithms, and documentation in this repository were originally written by humans (for 10+ years!). Documentation refinement, code cleanup (hygiene), and test generation were automated using agentic AI.
