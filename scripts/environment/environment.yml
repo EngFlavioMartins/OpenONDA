@@ -1,4 +1,4 @@
-name: OpenONDA
+name: ofw
 channels:
   - conda-forge
   - nodefaults
@@ -14,23 +14,11 @@ dependencies:
   - scipy
   - matplotlib
   - pyyaml
-  - pandas
-  - h5py
-  - numba
-  - pydantic
-  - defusedxml
-  # Visualization dependencies (hard to build via pip)
+  # Visualization (used by the tutorials' field-slice plotting; optional)
   - pyvista
   - vtk
   - pip:
-    # GPU backend for the VPM solver (pip-only; pinned to the tested release).
-    # On NVIDIA driver 580+ the CUDA backend is buggy with 1.7.4 — run the VPM
-    # tutorials with OPENONDA_PROCESSING_UNIT=GPU_VULKAN (see tutorial allrun.sh).
-    - taichi==1.7.4
-    # Data Version Control for simulation results (see docs/data_management.md).
-    - dvc
-    # Python-side MPI for the OFW/coupler parallel runs (cross-rank Barrier in
-    # source/coupler/core/solver.py:497).  Installed via pip — NOT conda — so it
-    # builds against the *system* MPI that `mpirun` and OpenFOAM use, avoiding an
-    # ABI clash.  Requires a system mpicc on PATH (e.g. OpenMPI 5.x).
+    # Python-side MPI for OFW parallel runs.  Installed via pip — NOT conda — so
+    # it builds against the *system* MPI that `mpirun` and OpenFOAM use, avoiding
+    # an ABI clash.  Requires a system mpicc on PATH (e.g. OpenMPI).
     - mpi4py
