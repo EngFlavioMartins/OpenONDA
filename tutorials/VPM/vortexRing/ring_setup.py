@@ -59,8 +59,8 @@ def main():
     )
     parser.add_argument("--cs", type=float, default=0.10, help="Smagorinsky constant for LES.")
     parser.add_argument(
-        "--particle-spacing", type=float, default=0.04,
-        help="Initial particle spacing [m] (2.5 points per core radius).",
+        "--particle-spacing", type=float, default=0.035,
+        help="Initial particle spacing [m] (about 2.9 points per core radius).",
     )
     parser.add_argument(
         "--widnall-amplitude", type=float, default=0.0,
@@ -148,7 +148,7 @@ def main():
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
-        max_particles=20_000,
+        max_particles=30_000,
         **isr_kwargs,
     )
 

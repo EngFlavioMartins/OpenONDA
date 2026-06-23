@@ -54,7 +54,7 @@ from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     SmoothRampVLM,
     PitchingVLM,
 )
-from source.solvers.VPM.config.types import AdaptationConfig
+from source.solvers.VPM.config.types import AdaptationConfig, AdvectionConfig
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
 from generate_surface import create_flat_plate, save_surface
@@ -406,6 +406,7 @@ def main():
     # ── Solver config ─────────────────────────────────────────────────
     cfg_kwargs = dict(
         time_step_size=dt,
+        advection=AdvectionConfig(scheme="RK2"),
         vlm_solver=vlm,
         background_velocity=bg_vel,
         logging_frequency=args.log_freq,
