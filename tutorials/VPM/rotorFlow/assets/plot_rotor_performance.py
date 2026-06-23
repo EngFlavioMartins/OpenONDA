@@ -93,9 +93,9 @@ def plot_rotor_performance(args) -> int:
     qAU = q * A * U
 
     # Coefficients
-    # Fx is negative for thrust (pointing upstream); take absolute value
-    ct = (-df["Fx"].to_numpy()) / qA
-    cp = (df["Mx"].to_numpy() * omega) / qAU
+    # U_inf is +x and omega_vec is -omega*xhat.
+    ct = df["Fx"].to_numpy() / qA
+    cp = (-df["Mx"].to_numpy() * omega) / qAU
     time = df["time"].to_numpy()
     rotations = time * omega / (2.0 * np.pi)
 

@@ -85,7 +85,17 @@ class VLMDiagnostics:
             n_panels = vlm_solver.lattice.num_panels
             is_tenp = vlm_solver.lattice.is_TE_panel.to_numpy()[:n_panels]
             gamma_cum = vlm_solver.lattice.cumulative_circulation.to_numpy()[:n_panels]
-            gamma_bound_y = float(gamma_cum[is_tenp == 1].sum())
+
+            # VPM particle ``circulation`` stores vector vortex strength
+            # alpha = integral(omega dV), with units m^3/s.  A plain sum of
+            # scalar VLM circulation is both dimensionally incompatible and
+            # cancels between mirrored halves.  Convert the TE bound vortices
+            # to the same vector-strength measure using their oriented legs.
+            vortex_points = vlm_solver.lattice.vortex_points.to_numpy()[:n_panels]
+            te_mask = is_tenp == 1
+            bound_legs = vortex_points[te_mask, 2] - vortex_points[te_mask, 1]
+            gamma_bound_vec = np.sum(gamma_cum[te_mask, None] * bound_legs, axis=0)
+            gamma_bound_y = float(gamma_bound_vec[1])
 
             n_p = particles.number_of_particles
             gamma_wake_y = float(particles_strengths[:, 1].sum()) if n_p > 0 else 0.0

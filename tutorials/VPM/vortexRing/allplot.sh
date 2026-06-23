@@ -11,6 +11,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
 
 # ── Parse optional overrides ─────────────────────────────────────────────────
 SOLUTION_DIR="./solution"
@@ -33,21 +34,21 @@ echo ""
 
 # ── Figure 1: Ring self-induced velocity  U/U₀ vs normalized time ────────────
 echo "[1/3] Ring self-induced velocity ..."
-python assets/plot_ring_motion.py \
+"$PYTHON" assets/plot_ring_motion.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir  "$FIGURES_DIR"  \
     --dpi "$DPI"
 
 # ── Figure 2: Energy dissipation  dE/dt & −nuΩ vs normalized time ────────────
 echo "[2/3] Energy dissipation ..."
-python assets/plot_ring_energy.py \
+"$PYTHON" assets/plot_ring_energy.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir  "$FIGURES_DIR"  \
     --dpi "$DPI"
 
 # ── Figure 3: Total circulation  Σ|Γᵢ|/Γ₀ vs normalized time (all variants) ──
 echo "[3/3] Total circulation (DNS + LES, all stretching variants) ..."
-python assets/plot_ring_circulation.py \
+"$PYTHON" assets/plot_ring_circulation.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir  "$FIGURES_DIR"  \
     --dpi "$DPI"

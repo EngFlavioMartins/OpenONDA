@@ -30,7 +30,8 @@ sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
 
 from source.solvers.VPM import Solver, SolverConfig
 from source.solvers.VPM.config.types import AdaptationConfig, TurbulenceConfig, StretchingConfig
-from source.solvers.VPM.boundary_elements.vlm import VLMSolver, RotatingVLM
+from source.solvers.VPM.boundary_elements.vlm import VLMSolver
+from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 from generate_blade import create_blade, save_surface
 
@@ -41,17 +42,24 @@ def main():
     # farthest validation plane).  Near-wake convects at ~U(1-a) ≈ 4.7 m/s, so
     # ~9D = 108 m needs ~15-20 s of physical time (dt=0.005 → ~3500 steps).
     parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
+    parser.add_argument("--dt", type=float, default=0.005, help="Time-step size [s].")
     # --- Stabiliser knobs (in-house LES + stretching stabiliser) -------------
-    parser.add_argument("--cs", type=float, default=0.3, help="Smagorinsky constant (in-house LES).")
-    parser.add_argument("--rvpm-g", type=float, default=0.2,
-                        help="rVPM g: 0.2 (default, partial) … 1/3 (full parallel-growth suppression).")
+    parser.add_argument("--cs", type=float, default=0.16, help="Smagorinsky constant (in-house LES).")
+    parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0,
+                        help="rVPM g: 0.2 (partial) … 1/3 (default; full parallel-growth suppression).")
     parser.add_argument("--rvpm-f", type=float, default=0.0, help="rVPM f parameter.")
-    parser.add_argument("--isr-mode", choices=["pedrizzetti", "blend"], default="pedrizzetti",
+    parser.add_argument("--isr-mode", choices=["pedrizzetti", "blend"], default="blend",
                         help="ISR strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
                         "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).")
     parser.add_argument("--isr-rlx", type=float, default=0.95,
                         help="Pedrizzetti relaxation coeff (lower = stronger).")
     parser.add_argument("--isr-c", type=float, default=1.0, help="ISR strain-gate constant C (blend mode).")
+    parser.add_argument("--isr-k-max", type=int, default=64,
+                        help="Maximum stretching/ISR substeps for high-strain particles.")
+    parser.add_argument("--ramp-rotations", type=float, default=1.0,
+                        help="Smooth sin-squared spin-up duration [rotor rotations].")
+    parser.add_argument("--max-strength", type=float, default=1.0e3,
+                        help="Abort cleanly if any particle strength exceeds this value.")
     parser.add_argument("--solution-dir", default="solution", help="Output directory.")
     args = parser.parse_args()
 
@@ -69,7 +77,7 @@ def main():
     # ================================================
     # 2. Numerical Parameters
     # ================================================
-    time_step = 0.005
+    time_step = args.dt
     num_steps = args.num_steps
 
     # Wake cutoff: remove particles beyond this x-coordinate:
@@ -105,6 +113,7 @@ def main():
     # 4. Configure VLM Solver
     # ================================================
     vlm = VLMSolver(
+        max_panels=512,
         viscosity=kinematic_viscosity,
         density=rho,
         linear_solver="SCIPY",
@@ -116,7 +125,20 @@ def main():
     # advanced TE-first and vorticity was shed from the aerodynamic LE (verified:
     # relwind·chord < 0 at every station).  axis=[-1,0,0] gives a positive AoA
     # (~5° at the tip once induction develops) and TE shedding.
-    rotation_kinematics = RotatingVLM(omega=angular_velocity, axis=[-1, 0, 0])
+    rotation_period = 2.0 * np.pi / angular_velocity
+    ramp_time = max(0.0, args.ramp_rotations * rotation_period)
+
+    def rotor_angular_velocity(t: float) -> np.ndarray:
+        if ramp_time > 0.0 and t < ramp_time:
+            factor = np.sin(0.5 * np.pi * max(t, 0.0) / ramp_time) ** 2
+        else:
+            factor = 1.0
+        return np.array([-angular_velocity * factor, 0.0, 0.0])
+
+    rotation_kinematics = ManeuverVLM(
+        angular_velocity_fn=rotor_angular_velocity,
+        rotation_center=np.zeros(3),
+    )
 
     # Add three blades at 120° azimuthal spacing
     blade_azimuths = [0, 120, 240]
@@ -167,16 +189,26 @@ def main():
         stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
         isr_enabled=True,
         isr_mode=args.isr_mode,
-        isr_gate="constant",
+        isr_gate="strain",
         isr_rlx=args.isr_rlx,
         isr_C=args.isr_c,
         isr_conserve=True,
+        isr_cfl=0.2,
+        isr_k_max=args.isr_k_max,
         backup_file_name="rotor",
         backup_directory=backup_dir,
-        backup_frequency=3,
-        logging_frequency=3,
+        backup_frequency=25,
+        logging_frequency=25,
         adaptation=AdaptationConfig(
             max_core_radius=2.0,
+            remove_particles_by_bounds=[
+                -rotor_diameter,
+                wake_cutoff_distance,
+                -2.0 * rotor_radius,
+                2.0 * rotor_radius,
+                -2.0 * rotor_radius,
+                2.0 * rotor_radius,
+            ],
         ),
         processing_unit="GPU_VULKAN",
         samplers=plane_samplers,
@@ -190,6 +222,14 @@ def main():
     # ================================================
     for step in range(num_steps):
         vpm.update_state()
+        if (step + 1) % 25 == 0 and vpm.particles.number_of_particles:
+            strengths = vpm.particles.circulation.to_numpy()[:vpm.particles.number_of_particles]
+            max_strength = float(np.linalg.norm(strengths, axis=1).max())
+            if not np.isfinite(max_strength) or max_strength > args.max_strength:
+                raise RuntimeError(
+                    f"Rotor wake became unbounded at step {step + 1}: "
+                    f"max |alpha|={max_strength:.6e} (limit={args.max_strength:.6e})"
+                )
 
 
 if __name__ == "__main__":

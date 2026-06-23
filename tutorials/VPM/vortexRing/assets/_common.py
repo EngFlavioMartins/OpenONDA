@@ -52,6 +52,7 @@ VARIANT_STYLE: dict[str, dict[str, str]] = {
     "LES_direct": {"color": "#0E8A85", "marker": "D"},
     "LES_transposed": {"color": "#1A8C88", "marker": "v"},
     "LES_mixed": {"color": "#2B7A4E", "marker": "p"},
+    "LES_rvpm": {"color": "#0E8A85", "marker": "v"},
 }
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
@@ -135,13 +136,12 @@ def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _ring_props_from_h5(path) -> dict | None:
-    """Return {ring_id: {time, x_centroid, major_R, strength_max}} or None."""
+    """Return impulse/strength-based properties for each vortex ring."""
     try:
         with h5py.File(path, "r") as f:
             pos = f["particles/position"][:]
-            vort = f["particles/vorticity"][:]
             gid = f["particles/group_id"][:]
-            smag = np.linalg.norm(f["particles/circulation"][:], axis=1)
+            strength = f["particles/circulation"][:]
             t = float(f["solver"].attrs.get("flow_time", 0.0))
     except Exception as e:
         print(f"Error reading {path}: {e}")
@@ -150,15 +150,26 @@ def _ring_props_from_h5(path) -> dict | None:
     out: dict = {}
     for rid in np.unique(gid):
         m_ = gid == rid
-        vm = np.linalg.norm(vort[m_], axis=1)
-        core = vm > 0.1 * vm.max()
-        if not core.any():
+        pc = pos[m_]
+        alpha = strength[m_]
+        amag = np.linalg.norm(alpha, axis=1)
+        total_length_strength = float(amag.sum())
+        if total_length_strength <= 1e-30:
             continue
-        pc, vc = pos[m_][core], vm[core]
-        w = vc.sum()
-        xc = (pc[:, 0] * vc).sum() / w
-        Rc = (np.sqrt(pc[:, 1] ** 2 + pc[:, 2] ** 2) * vc).sum() / w
-        out[rid] = dict(time=t, x_centroid=xc, major_R=Rc, strength_max=smag[m_].max())
+        xc = float(np.dot(amag, pc[:, 0]) / total_length_strength)
+        impulse_x = float(0.5 * np.sum(pc[:, 1] * alpha[:, 2] - pc[:, 2] * alpha[:, 1]))
+        major_R = abs(2.0 * impulse_x / total_length_strength)
+        gamma = (
+            total_length_strength / (2.0 * np.pi * major_R) if major_R > 1e-12 else np.nan
+        )
+        out[rid] = dict(
+            time=t,
+            x_centroid=xc,
+            major_R=major_R,
+            gamma=gamma,
+            impulse_x=impulse_x,
+            strength_max=float(amag.max()),
+        )
     return out
 
 
@@ -192,10 +203,9 @@ def normalise_ring_data(raw: dict) -> dict:
 def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     """Return (t_star, U_norm) for a single vortex ring.
 
-    Computes the self-induced velocity as dx_centroid/dt (via np.gradient)
-    for the lowest group_id, then normalises by its own initial value so
-    every numerical curve starts at exactly 1 (for fair start-point
-    comparison with the analytical Saffman model).
+    Computes the self-induced velocity from a local least-squares slope of the
+    strength-weighted centroid.  It is normalised by the analytical U_REF,
+    rather than by its own first noisy finite difference.
     Reuses load_ring_data so blow-up detection is inherited.
     """
     raw = load_ring_data(h5_files)
@@ -214,15 +224,12 @@ def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     t = np.array([d["time"] for d in entries])
     x = np.array([d["x_centroid"] for d in entries])
 
-    U_num = np.gradient(x, t)  # central differences
-    # Drop the last 6 points – centroid noise grows as the blow-up precursor
-    # develops, and np.gradient's one-sided boundary stencil amplifies it.
-    clip = max(len(t) - 6, 1)
-    t_star = t[:clip] / T_REF
-    U0 = U_num[0]  # initial self-induced speed (numerical)
-    if U0 <= 0.0:
-        return t_star, np.ones(clip)
-    return t_star, U_num[:clip] / U0
+    U_num = np.empty_like(x)
+    for i in range(len(t)):
+        lo = max(0, i - 2)
+        hi = min(len(t), i + 3)
+        U_num[i] = np.polyfit(t[lo:hi], x[lo:hi], 1)[0]
+    return t / T_REF, U_num / U_REF
 
 
 # ── Log-file parser ───────────────────────────────────────────────────────────

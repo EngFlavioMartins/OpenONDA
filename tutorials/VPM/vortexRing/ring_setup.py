@@ -56,6 +56,14 @@ def main():
         default=600,
         help="Number of time steps (default: 600)",
     )
+    parser.add_argument("--cs", type=float, default=0.10, help="Smagorinsky constant for LES.")
+    parser.add_argument(
+        "--widnall-amplitude", type=float, default=0.0,
+        help="Optional Widnall perturbation amplitude (zero for Saffman validation).",
+    )
+    parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0)
+    parser.add_argument("--isr-mode", choices=["off", "blend", "pedrizzetti"], default="off")
+    parser.add_argument("--isr-C", type=float, default=1.0)
     args = parser.parse_args()
 
     # ================================================
@@ -87,14 +95,14 @@ def main():
     turbulence = (
         TurbulenceConfig.dns()
         if args.mode == "dns"
-        else TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+        else TurbulenceConfig.les_smagorinsky(cs=args.cs, ce=1.048)
     )
 
     _stretching_map = {
         "direct": StretchingConfig.classical(),
         "transposed": StretchingConfig.transposed(),
         "mixed": StretchingConfig.mixed(),
-        "rvpm": StretchingConfig.rvpm(),
+        "rvpm": StretchingConfig.rvpm(g=args.rvpm_g),
     }
     stretching = _stretching_map[args.stretching]
 
@@ -111,6 +119,16 @@ def main():
             isr_gate="constant",
             isr_rlx=args.direction_alpha,
             isr_conserve=True,
+        )
+    elif args.isr_mode != "off":
+        isr_kwargs = dict(
+            isr_enabled=True,
+            isr_mode=args.isr_mode,
+            isr_gate="strain",
+            isr_C=args.isr_C,
+            isr_conserve=True,
+            isr_cfl=0.2,
+            isr_k_max=64,
         )
 
     solver_config = SolverConfig(
@@ -141,7 +159,7 @@ def main():
         avg_particle_radius=radii.mean(),
         positions=positions,
         volumes=volumes,
-        epsilon_W=0.05,
+        epsilon_W=args.widnall_amplitude,
         anti_diffuse_flag=True,
     )
 

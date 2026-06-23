@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # RotorFlow VLM-VPM — full certification run
 #
-# Runs 8 rotor revolutions (1232 steps at dt=0.005 s, TSR=7, R=6 m).
-# Eight revolutions ensure:
-#   - wake develops past 4R downstream (required for induction figures)
-#   - Ct/Cp approach a stationary average over the last revolution
+# Runs 3500 steps (17.5 s at dt=0.005 s), long enough for the wake to
+# convect through the 3D/6D/9D validation planes.
 #
 # Output redirect: /tmp/rotor_run.log  (outside case dir, safe from allclean.sh)
+set -euo pipefail
 PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -15,7 +14,7 @@ cd "$SCRIPT_DIR"
 LOG=/tmp/rotor_run.log
 echo "Logging to $LOG"
 
-"$PYTHON" rotor_setup.py --num-steps 1232 > "$LOG" 2>&1
+"$PYTHON" rotor_setup.py --num-steps 3500 > "$LOG" 2>&1
 
 ./allplot.sh
 echo "All runs and plots complete."

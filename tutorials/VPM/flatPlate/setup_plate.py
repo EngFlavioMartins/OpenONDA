@@ -205,7 +205,18 @@ def compute_time_params(args):
         def chord_travel_fn(step_indices, _dt=dt, _U=U, _c=c):
             return step_indices * _dt * _U / _c
 
-    else:
+    elif args.kinematics == "static":
+        dt = args.dt if args.dt else 0.01
+        t_ramp = 0.0
+        if args.steps:
+            n_steps = args.steps
+        else:
+            n_steps = int(round(args.tau_max * c / (U * dt)))
+
+        def chord_travel_fn(step_indices, _dt=dt, _U=U, _c=c):
+            return step_indices * _dt * _U / _c
+
+    else:  # smooth translational ramp
         dt = args.dt if args.dt else 0.01
 
         t_ramp = 2.0 * args.tau_ramp * c / U  # ramp duration [s] (sin² ramp)
@@ -477,6 +488,14 @@ def main():
             print(f"  Particles   = {n_part}")
             print(f"  Output      = {dst_csv}")
             print(f"  ───────────────────────────────────────────────────────\n")
+
+            if "chords" in df and df["chords"].max() >= 5.0:
+                tail = df[df["chords"] >= df["chords"].max() - 5.0]
+                cl_scale = max(abs(float(tail["CL"].mean())), 1e-12)
+                rel_range = float(tail["CL"].max() - tail["CL"].min()) / cl_scale
+                print(f"  CL tail range (last 5c) = {100.0 * rel_range:.4f}%")
+                if rel_range > 2e-3:
+                    print("  [WARNING] CL has not met the 0.2% steady-state criterion.")
     else:
         print("  [WARNING] vlm_forces.csv not found; no CSV output produced.")
 

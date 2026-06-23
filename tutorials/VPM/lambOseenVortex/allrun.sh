@@ -19,6 +19,8 @@
 #   Uc_ref = 1/(2π·0.125) ≃ 1.2732 m s⁻¹
 #   ωc_ref = (Γ/(π r_{c}^{2})) = 1/(π·0.125²) ≃ 20.37 s⁻¹
 
+set -euo pipefail
+
 # Resolve Python interpreter: prefer the OpenONDA conda env, fall back to legacy
 # then to whatever python3/python is on PATH.
 PYTHON="$(conda run -n OpenONDA which python 2>/dev/null \
@@ -85,6 +87,9 @@ echo 'DONE WITH SINGLE VORTEX'
 
 
 echo 'DONE WITH DIPOLE'
+
+"$PYTHON" assets/validate_solution.py --solution-dir ./solution \
+    --case dipole --expected-time 40.0
 
 sleep 15
 

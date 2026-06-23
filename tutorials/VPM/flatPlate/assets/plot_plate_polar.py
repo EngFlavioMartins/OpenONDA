@@ -112,9 +112,12 @@ def final_coefficients(name: str) -> tuple[float, float, float]:
     df = load_csv(name)
     if df is None:
         return float("nan"), float("nan"), float("nan")
-    cl = float(df["CL"].iloc[-1])
-    cd = float(df["CD"].iloc[-1])
-    cm = float(df["Cm_c4"].iloc[-1]) if "Cm_c4" in df.columns else float("nan")
+    # Average the converged tail rather than using one noise-sensitive sample.
+    if "chords" in df and df["chords"].max() >= 5.0:
+        df = df[df["chords"] >= df["chords"].max() - 5.0]
+    cl = float(df["CL"].mean())
+    cd = float(df["CD"].mean())
+    cm = float(df["Cm_c4"].mean()) if "Cm_c4" in df.columns else float("nan")
     return cl, cd, cm
 
 

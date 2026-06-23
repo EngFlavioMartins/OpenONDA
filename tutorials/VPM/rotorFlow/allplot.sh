@@ -13,8 +13,9 @@ mkdir -p figures
 FIGURES_DIR="$SCRIPT_DIR/figures"
 
 echo "[1/2] Rotor diagnostics ..."
-python assets/allplot.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR"
+"$PYTHON" assets/allplot.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" \
+    --dpi "$DPI" --format "$FORMAT"
 echo "[2/2] Wake-plane validation vs momentum theory (3/6/9 D) ..."
-python assets/plot_wake_planes.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" || \
-    echo "  (wake-plane plot skipped)"
+"$PYTHON" assets/plot_wake_planes.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" \
+    --dpi "$DPI" --format "$FORMAT"
 echo "Done. Figures saved to $FIGURES_DIR"

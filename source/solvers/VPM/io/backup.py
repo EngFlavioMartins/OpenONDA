@@ -68,8 +68,19 @@ class BackupSystem:
             if backup_dir:
                 os.makedirs(backup_dir, exist_ok=True)
 
-            # 1. Save numerical data to HDF5 (preserves precision) - use float32 time
-            BackupSystem._save_numerical_data(solver, hdf5_file, time_float32)
+            # 1. Save numerical data atomically.  An interrupted direct write
+            # used to leave a zero-byte/truncated .h5 file that crashed later
+            # post-processing.  The temporary sibling is invisible to readers;
+            # os.replace is atomic on the destination filesystem.
+            hdf5_tmp = f"{hdf5_file}.tmp"
+            try:
+                if os.path.exists(hdf5_tmp):
+                    os.remove(hdf5_tmp)
+                BackupSystem._save_numerical_data(solver, hdf5_tmp, time_float32)
+                os.replace(hdf5_tmp, hdf5_file)
+            finally:
+                if os.path.exists(hdf5_tmp):
+                    os.remove(hdf5_tmp)
 
             # 2. Configuration JSON is NOT saved at every timestep (use save_state() explicitly)
             # This reduces IO overhead during simulation
