@@ -589,6 +589,40 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     U[idx : idx + nf] = np.where(outflow[:, np.newaxis], U[own], inlet_val)
 
 
+def _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior):
+    """directionMixed / Robin velocity BC (Billuart 2023, Eq. 11–14).
+
+    Per face reconstruct the ghost value so the normal component is Dirichlet
+    (``u·n̂ = u_target·n̂``) and the tangential component satisfies a vorticity-
+    matched Neumann condition (``∂u_t/∂n = ω_target × n̂``):
+
+        u_b = (u_target·n̂) n̂ + u_owner_t + d (ω_target × n̂),
+
+    with ``u_owner_t`` the owner's tangential velocity and ``d`` the wall
+    distance.  ``ω_target × n̂`` is already tangential.  Targets are stored per
+    face by ``set_robin_velocity_boundary_condition``.
+    """
+    start = boundary["startFace"]
+    nf = boundary["nFaces"]
+    idx = n_elements + (start - n_interior)
+    own = owners[start : start + nf]
+    sf = geo_data["face_sf"][start : start + nf]
+    n = sf / (np.linalg.norm(sf, axis=1, keepdims=True) + 1e-30)
+    d = geo_data["wall_dist"][start : start + nf][:, np.newaxis]
+
+    ut = boundary.get("u_target_field")
+    om = boundary.get("omega_target_field")
+    if ut is None:
+        ut = np.zeros((nf, 3))
+    if om is None:
+        om = np.zeros((nf, 3))
+
+    u_owner = U[own]
+    u_owner_t = u_owner - np.sum(u_owner * n, axis=1, keepdims=True) * n
+    u_target_n = np.sum(ut * n, axis=1, keepdims=True) * n
+    U[idx : idx + nf] = u_target_n + u_owner_t + d * np.cross(om, n)
+
+
 def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries):
     """Apply zeroGradient velocity BC (extrapolate from the owner cell)."""
     start = boundary["startFace"]
@@ -599,16 +633,21 @@ def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, bo
 
 
 def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
-    """Apply fixedValue or noSlip velocity BC."""
+    """Apply fixedValue or noSlip velocity BC.
+
+    Honours a per-face ``value_U_field`` (n_faces_patch, 3) when present (e.g. a
+    non-uniform coupler donor BC), otherwise the uniform ``value_U``.
+    """
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
     bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
     if bc_type_u == "noSlip":
         U[idx : idx + nf] = [0.0, 0.0, 0.0]
+    elif boundary.get("value_U_field") is not None:
+        U[idx : idx + nf] = boundary["value_U_field"]
     elif "value_U" in boundary:
-        val = np.array(boundary["value_U"])
-        U[idx : idx + nf] = val
+        U[idx : idx + nf] = np.array(boundary["value_U"])
 
 
 def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
@@ -630,6 +669,8 @@ def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_int
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
         elif bc_type_u == "inletOutlet":
             _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
+        elif bc_type_u == "directionMixed":
+            _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior)
         elif bc_type_u in ("fixedValue", "noSlip"):
             _apply_fixed_value_bc(U, boundary, n_elements, n_interior)
         elif bc_type_u in ("empty", "slip", "symmetry"):
@@ -766,12 +807,15 @@ class SIMPLESolver:
 
         self.residuals = []
 
-    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None):
+    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None,
+             source_explicit=None, source_implicit=None):
         """
         Perform a single SIMPLE iteration.
 
         ``U_old_old`` is accepted for interface parity with the transient driver
-        but is unused by steady SIMPLE (no second time-history level).
+        but is unused by steady SIMPLE.  ``source_explicit``/``source_implicit``
+        are optional volumetric momentum sources (e.g. the coupling fringe
+        S = λ(Utarget − U)) forwarded to the momentum predictor.
         """
         # 1. Solve momentum predictor
         U_star, A_U = momentum.solve_momentum_predictor(
@@ -787,6 +831,8 @@ class SIMPLESolver:
             solver=self.params["linear_solver"],
             under_relaxation=self.params["alpha_u"],
             dt=dt,  # Use dt if provided (e.g. for PIMPLE)
+            source_explicit=source_explicit,
+            source_implicit=source_implicit,
         )
 
         # 2. Solve pressure correction

@@ -270,9 +270,16 @@ class FVMVPMCoupler:
             setup_h = SetupHandler(cfg)
             setup_h.prepare_directories(self.period_multiplier, self.dt_fvm, restart=False)
 
-        # Build OFW — the FVM marches on the small dt_fvm.
+        # Build the Eulerian backend — it marches on the small dt_fvm.  Default
+        # is the OFW (OpenFOAM) wrapper; "FVM" selects the OpenONDA native solver,
+        # which exposes the same OFW contract and builds from the case directory.
         with self.ofw_redirector:
-            self.ofw = fvm_solver(str(self.case_dir))
+            if str(getattr(cfg, "eulerian_backend", "OFW")).upper() == "FVM":
+                from source.solvers.FVM import Solver as _FVMSolver
+
+                self.ofw = _FVMSolver.from_case(str(self.case_dir))
+            else:
+                self.ofw = fvm_solver(str(self.case_dir))
         self.ofw.set_time_step(self.dt_fvm)
         self.ofw.set_kinematic_viscosity(cfg.nu)
 

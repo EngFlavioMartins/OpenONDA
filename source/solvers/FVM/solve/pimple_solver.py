@@ -55,7 +55,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
-    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None):
+    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None,
+             source_explicit=None, source_implicit=None):
         """
         Perform a single PIMPLE time step.
 
@@ -93,10 +94,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
         # 1. PIMPLE Outer Loop
         for outer in range(n_outer):
-            # Save pre-outer state for under-relaxation
-            if outer > 0:
-                U_before = U[:n_elem].copy()
-                p_before = p[:n_elem].copy()
+            # Save pre-outer state for the between-outer under-relaxation below
+            # (must be set on every iteration, incl. outer==0, since the blend
+            # runs for all but the last outer corrector).
+            U_before = U[:n_elem].copy()
+            p_before = p[:n_elem].copy()
 
             # ---- 1a. Momentum Predictor (once per outer iteration) ----
             logging.Timer.start("    Momentum Predictor")
@@ -107,6 +109,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 solver=self.params["linear_solver"],
                 under_relaxation=alpha_u,
                 dt=dt, U_old=U_old, U_old_old=U_old_old, ddt_scheme=ddt_scheme,
+                source_explicit=source_explicit, source_implicit=source_implicit,
                 reuse_ilu=self.params.get("reuse_ilu", False),
                 ilu_key=self.params.get("ilu_key", None),
                 ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),

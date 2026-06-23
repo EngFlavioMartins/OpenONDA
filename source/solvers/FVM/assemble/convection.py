@@ -200,7 +200,7 @@ def assemble_convection_term_limited(phi, mdot, mesh_data, geo_data, grad_phi, l
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
 
-def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
+def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data, geo_data=None, grad_phi=None):
     """
     Assemble convection term for boundary faces.
 
@@ -209,6 +209,12 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
         mdot: Mass flow rate
         boundary_patch: Boundary patch info
         mesh_data: Mesh connectivity
+        geo_data: Geometric data (required for the high-order outflow correction)
+        grad_phi: Cell gradient of ``phi`` (n_total, 3).  When provided (any
+            non-upwind scheme), outflow faces use a linearUpwind extrapolation
+            ``φ_face = φ_owner + ∇φ_owner·(x_f − x_owner)`` via deferred
+            correction, lifting the boundary convection from 1st to 2nd order.
+            Inflow faces always use the prescribed (Dirichlet) boundary value.
 
     Returns:
         dict: Flux coefficients for boundary
@@ -252,6 +258,16 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     phi_b = phi[b_elem_indices]
 
     flux_vf = flux_ff_val * phi_b
+
+    # High-order (linearUpwind) outflow extrapolation, deferred correction:
+    #   φ_face = φ_owner + ∇φ_owner·(x_f − x_owner)  ⇒  + flux_cf·(∇φ·d).
+    # Negligible at walls/inlets (flux_cf = max(mdot,0) ≈ 0 there).
+    if grad_phi is not None and geo_data is not None:
+        g = grad_phi[owners_b]
+        if g.ndim == 3:
+            g = g[:, :, 0]
+        d = geo_data["face_centroids"][b_face_indices] - geo_data["element_centroids"][owners_b]
+        flux_vf = flux_vf + flux_cf * np.sum(g * d, axis=1)
 
     flux_tf = flux_cf * phi_c + flux_vf
 
@@ -329,7 +345,12 @@ def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme=
         if boundary.get("bc_type_U") == "empty" or boundary.get("type") == "empty":
             continue
 
-        b_fluxes = assemble_convection_term_boundary(phi, mdot, boundary, mesh_data)
+        # Pure upwind keeps 1st-order boundaries; every other scheme gets the
+        # high-order outflow extrapolation (needs grad_phi).
+        gp_b = None if s == "upwind" else grad_phi
+        b_fluxes = assemble_convection_term_boundary(
+            phi, mdot, boundary, mesh_data, geo_data, gp_b
+        )
 
         indices = b_fluxes["face_indices"]
         flux_cf[indices] = b_fluxes["flux_cf"]

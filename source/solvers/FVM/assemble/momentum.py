@@ -78,12 +78,14 @@ def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
     bc_type = boundary.get("bc_type_U")
 
-    if bc_type in ("zeroGradient", "inletOutlet"):
+    if bc_type in ("zeroGradient", "inletOutlet", "directionMixed"):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[owners_b]
     elif bc_type in ("fixedValue", "noSlip"):
         if bc_type == "noSlip":
             U_star[b_elem_indices] = [0.0, 0.0, 0.0]
+        elif boundary.get("value_U_field") is not None:
+            U_star[b_elem_indices] = boundary["value_U_field"]
         elif "value_U" in boundary:
             U_star[b_elem_indices] = np.array(boundary["value_U"])
         else:

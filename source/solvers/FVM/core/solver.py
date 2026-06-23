@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from ..config.types import FVMConfig
+from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
 from ..mesh import geometry, mesh_io
 from ..solve import pimple_solver, simple_solver
@@ -59,9 +60,11 @@ def _enforce_u_boundary_constraints(
         end = start + boundary["nFaces"]
         if bc_type == "noSlip":
             U[start:end] = 0.0
+        elif bc_type in ["fixedValue", "freestream"] and boundary.get("value_U_field") is not None:
+            U[start:end] = boundary["value_U_field"]
         elif bc_type in ["fixedValue", "freestream"] and "value_U" in boundary:
             U[start:end] = boundary["value_U"]
-        elif bc_type in ("zeroGradient", "inletOutlet"):
+        elif bc_type in ("zeroGradient", "inletOutlet", "directionMixed"):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
@@ -77,7 +80,7 @@ def _enforce_u_boundary_constraints(
                 U[start + i] = _remove_normal_component(U[owners_b[i]], face_sf[i])
 
 
-class Solver:
+class Solver(OFWInterfaceMixin):
     """Finite Volume Method (FVM) simulator for incompressible flow.
 
     Provides a high-level Python API for managing unstructured mesh CFD simulations.
@@ -112,6 +115,13 @@ class Solver:
         self.config = config
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         self.auto_write = True
+
+        # Fail fast on typo'd / unsupported scheme or turbulence-model names
+        # (otherwise the error only surfaces deep inside the first assembly).
+        from ..schemes import validate_solver_params, validate_turbulence
+
+        validate_solver_params(self.config.solver)
+        validate_turbulence(self.config.turbulence)
 
         # 0. UI Header
         logging.print_openonda_header()
@@ -158,6 +168,11 @@ class Solver:
         self._force_log_counter = 0
         self.cfl_max = 0.0
         self._time_since_last_write = 0.0
+        # Coupling / driver-split state
+        self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
+        self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
+        self._current_dt = self.dt
+        self._last_residuals = None
 
         logging.Logging.solver_summary(self)
         logging.Timer.log("Total Initialization")
@@ -167,6 +182,45 @@ class Solver:
         from ..solve import simple_solver
 
         simple_solver.update_scalar_boundaries(self.p, self.mesh_data, self.boundaries, "p")
+
+    @classmethod
+    def from_case(cls, case_dir: str, **overrides):
+        """Build a Solver from an OpenFOAM case directory.
+
+        Assembles an :class:`FVMConfig` from the case's ``system``/``constant``/``0``
+        dictionaries (reusing the ``from_*`` loaders) so the FVM is constructable
+        the same way the coupler builds the OFW backend (``backend(case_dir)``).
+        Missing dictionaries fall back to defaults.  ``overrides`` are applied to
+        the assembled ``FVMConfig`` (e.g. ``case_name=...``).
+        """
+        from ..config.types import (
+            BoundaryConfig,
+            FVMConfig,
+            SolverParams,
+            TimeConfig,
+            TransportConfig,
+            TurbulenceConfig,
+        )
+
+        case_dir = os.path.abspath(case_dir)
+
+        def _try(fn, default):
+            try:
+                return fn()
+            except Exception:
+                return default
+
+        cfg = FVMConfig(
+            case_name=os.path.basename(case_dir.rstrip("/")) or "case",
+            time=_try(lambda: TimeConfig.from_control_dict(case_dir), TimeConfig()),
+            solver=_try(lambda: SolverParams.from_system(case_dir), SolverParams()),
+            transport=_try(lambda: TransportConfig.from_foam_file(case_dir), TransportConfig()),
+            turbulence=_try(lambda: TurbulenceConfig.from_foam_file(case_dir), None),
+            boundaries=_try(lambda: BoundaryConfig.load_from_time_dir(case_dir, "0"), []),
+        )
+        for key, val in overrides.items():
+            setattr(cfg, key, val)
+        return cls(cfg, case_dir=case_dir)
 
     def _setup_boundary_conditions(self):
         """Maps user-defined BoundaryConfig to internal mesh boundary data."""
@@ -289,8 +343,97 @@ class Solver:
         self.mesh_data["points"] = orig_points
         logging.Timer.log("  Precompute Dynamic Weights")
 
+    def _effective_viscosity(self):
+        """Molecular + turbulent (SGS) kinematic viscosity for the next solve."""
+        if self.turbulence is not None:
+            try:
+                self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
+                return self.config.transport.nu + self.nut
+            except Exception as e:
+                print(f"Warning: nut computation failed: {e}")
+        return self.config.transport.nu
+
+    def _fringe_source(self):
+        """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − U) from
+        registered coupling fields, or (None, None) if not set.
+
+        ``lambdaRelax`` (volScalarField) and ``Utarget`` (volVectorField) are
+        pushed by the coupler (source/coupler/core/helpers/fvm_fringe.py).
+        Sp = λ goes on the momentum diagonal (fvm::Sp), Su = λ·Utarget on the
+        RHS, so the cell velocity relaxes toward the VPM target in the fringe
+        band while the FVM core (λ = 0) is untouched.
+        """
+        lam = self.registered_fields.get("lambdaRelax")
+        ut = self.registered_fields.get("Utarget")
+        if lam is None or ut is None:
+            return None, None
+        n = self.mesh_data["n_elements"]
+        lam = np.asarray(lam, dtype=np.float64)[:n]
+        ut = np.asarray(ut, dtype=np.float64)[:n]
+        return lam[:, np.newaxis] * ut, lam
+
+    def solve_pimple(self, dt: float | None = None):
+        """Solve the pressure–velocity system at the current time level WITHOUT
+        advancing the clock (OFW-contract method).
+
+        Re-callable within a step: the coupler's donor-BC↔pressure Picard loop
+        calls this repeatedly with the boundary condition re-imposed between
+        solves, then a single :meth:`advance_time`.  The committed previous level
+        ``U_old`` is the transient reference on every call.
+        """
+        from ..fields import diagnostics
+
+        step_dt = dt if dt is not None else self.dt
+        self._current_dt = step_dt
+
+        if self.cache.is_dynamic:
+            cached = self.cache.get_weights(self.time_step + 1)
+            if cached:
+                self.geo_data.update(cached)
+
+        nu_eff = self._effective_viscosity()
+        # BDF2 needs u^{n-1}; available only once at least one step is committed.
+        u_old_old_arg = self.U_old_old if self._n_committed >= 1 else None
+        src_exp, src_imp = self._fringe_source()
+
+        self.U, self.p, self.phi, residuals = self.algorithm.step(
+            self.U,
+            self.p,
+            self.phi,
+            self.U_old,
+            step_dt,
+            rho=self.config.transport.density,
+            nu=nu_eff,
+            U_old_old=u_old_old_arg,
+            source_explicit=src_exp,
+            source_implicit=src_imp,
+        )
+        self._last_residuals = residuals
+        logging.Logging.convergence_info(residuals)
+
+        # Continuity (incompressibility) diagnostic: a divergence-free solution
+        # has ~0 net flux per cell.  Surfacing this makes loss of mass
+        # conservation visible instead of silent.
+        cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
+        vol = self.geo_data["element_volumes"]
+        self.continuity_max = float(np.max(np.abs(cont) / (vol + 1e-30)))
+        self.continuity_sum = float(np.sum(np.abs(cont)))
+        print(
+            f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
+            f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
+        )
+
+        # Surface divergence loudly instead of hiding it behind a velocity clip.
+        if not np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])):
+            print(
+                "  WARNING: non-finite velocity detected — the solution is "
+                "diverging (try a smaller dt, more correctors, or a bounded "
+                "convection scheme)."
+            )
+        return residuals
+
     def evolve(self, dt: float | None = None) -> None:
-        """Advance the simulation by one time step.
+        """Advance the simulation by one full time step (= solve_pimple + advance_time).
 
         Args:
             dt: Optional override for the time step size [s].
@@ -308,69 +451,11 @@ class Solver:
                 cfg_time.max_delta_t,
             )
 
-        step_dt = dt or self.dt
-        self.time_step += 1
-        self.flow_time += step_dt
+        step_dt = dt if dt is not None else self.dt
+        logging.Timer.start(f"  Step {self.time_step + 1}")
+        logging.Logging.step_info(self.flow_time + step_dt, self.time_step + 1, step_dt)
 
-        logging.Timer.start(f"  Step {self.time_step}")
-        logging.Logging.step_info(self.flow_time, self.time_step, step_dt)
-
-        if self.cache.is_dynamic:
-            cached = self.cache.get_weights(self.time_step)
-            if cached:
-                self.geo_data.update(cached)
-
-        # Roll the time-history ring: U_old_old <- u^{n-1}, U_old <- u^n.
-        # BDF2 needs u^{n-1}; pass it only from the 2nd step onward so the first
-        # step self-starts with BDF1 (standard BDF2 startup).
-        self.U_old_old[:] = self.U_old[:]
-        self.U_old[:] = self.U[:]
-        u_old_old_arg = self.U_old_old if self.time_step >= 2 else None
-
-        # Determine effective viscosity
-        if self.turbulence is not None:
-            try:
-                self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
-                nu_eff = self.config.transport.nu + self.nut
-            except Exception as e:
-                print(f"Warning: nut computation failed: {e}")
-                nu_eff = self.config.transport.nu
-        else:
-            nu_eff = self.config.transport.nu
-
-        # Solve step
-        self.U, self.p, self.phi, residuals = self.algorithm.step(
-            self.U,
-            self.p,
-            self.phi,
-            self.U_old,
-            step_dt,
-            rho=self.config.transport.density,
-            nu=nu_eff,
-            U_old_old=u_old_old_arg,
-        )
-
-        logging.Logging.convergence_info(residuals)
-
-        # Continuity (incompressibility) diagnostic: a divergence-free solution
-        # has ~0 net flux per cell.  Surfacing this each step makes loss of
-        # mass conservation visible instead of silent.
-        cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
-        vol = self.geo_data["element_volumes"]
-        self.continuity_max = float(np.max(np.abs(cont) / (vol + 1e-30)))
-        self.continuity_sum = float(np.sum(np.abs(cont)))
-        print(
-            f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
-            f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
-        )
-
-        # Surface divergence loudly instead of hiding it behind a velocity clip.
-        if not np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])):
-            print(
-                "  WARNING: non-finite velocity detected — the solution is "
-                "diverging (try a smaller dt, more correctors, or a bounded "
-                "convection scheme)."
-            )
+        self.solve_pimple(step_dt)
 
         # Compute CFL after step (for next step's dt adjustment)
         if cfg_time.adjust_timestep:
@@ -380,6 +465,27 @@ class Solver:
             self.cfl_max = float(np.max(Co_field))
             print(f"  max Co = {self.cfl_max:.3f}  dt = {step_dt:.6f} s  (target Co <= {cfg_time.max_cfl})")
             sys.stdout.flush()
+
+        self.advance_time()
+
+        elapsed = logging.Timer.log(f"  Step {self.time_step}")
+        print(f"\nStep completed in {elapsed:.3f} s")
+        sys.stdout.flush()
+
+    def advance_time(self) -> None:
+        """Commit the solved field as the new time level and advance the clock
+        (OFW-contract method): roll the BDF history, increment step/time, then
+        run per-step force logging and output control."""
+        from ..fields import diagnostics
+
+        # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
+        self.U_old_old[:] = self.U_old[:]
+        self.U_old[:] = self.U[:]
+        self._n_committed += 1
+        self.time_step += 1
+        self.flow_time += self._current_dt
+        step_dt = self._current_dt
+        cfg_time = self.config.time
 
         # y+ and Turbulence info
         patch_names = getattr(self.config.solver, "yplus_patches", None)
@@ -459,10 +565,6 @@ class Solver:
             else:
                 if self.time_step % cfg_time.write_interval == 0:
                     self.write_vtk()
-
-        elapsed = logging.Timer.log(f"  Step {self.time_step}")
-        print(f"\nStep completed in {elapsed:.3f} s")
-        sys.stdout.flush()
 
     def write_vtk(self, filename: str | None = None) -> None:
         """Exports the current simulation state to VTK format with PVD support."""

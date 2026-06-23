@@ -49,6 +49,12 @@ class CouplerConfig:
     """Steps between sampler outputs."""
 
     # ── Near field (FVM / OpenFOAM) ───────────────────────────────────────
+    eulerian_backend: str = "OFW"
+    """Eulerian (near-body) backend: ``"OFW"`` (OpenFOAM Cython wrapper, default)
+    or ``"FVM"`` (OpenONDA native finite-volume solver).  Both expose the same
+    duck-typed contract; ``"FVM"`` builds via ``source.solvers.FVM.Solver.from_case``
+    and runs serially (``n_procs()==1``)."""
+
     fvm_box: tuple[float, float, float, float, float, float] = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
     """OpenFOAM domain bounds [x0, x1, y0, y1, z0, z1] [m]."""
 
