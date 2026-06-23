@@ -200,6 +200,8 @@ class Solver:
         self.U = _load_velocity_field(self.config, self.case_dir, n_total, self.mesh_data)
         self.p = _load_pressure_field(self.config, self.case_dir, n_total, self.mesh_data)
         self.U_old = self.U.copy()
+        # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
+        self.U_old_old = self.U.copy()
 
         _enforce_u_boundary_constraints(
             self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
@@ -239,13 +241,14 @@ class Solver:
         self.nut = None
         if self.config.turbulence and self.config.turbulence.model.lower() != "none":
             try:
-                from ..turbulence import Smagorinsky
+                from ..turbulence import create_model
 
-                t_cfg = self.config.turbulence
-                self.turbulence = Smagorinsky(
-                    self.mesh_data, self.geo_data, Cs=t_cfg.Cs, dynamic=t_cfg.dynamic
+                self.turbulence = create_model(
+                    self.config.turbulence, self.mesh_data, self.geo_data
                 )
-                print(f"Turbulence model: {t_cfg.model} (Cs={t_cfg.Cs}, dynamic={t_cfg.dynamic})")
+                if self.turbulence is not None:
+                    info = self.turbulence.get_filter_info()
+                    print(f"Turbulence model: {info['model']} (coeff={info['Cs']:.3g})")
             except Exception as e:
                 print(f"Warning: Failed to initialize turbulence: {e}")
 
@@ -317,7 +320,12 @@ class Solver:
             if cached:
                 self.geo_data.update(cached)
 
+        # Roll the time-history ring: U_old_old <- u^{n-1}, U_old <- u^n.
+        # BDF2 needs u^{n-1}; pass it only from the 2nd step onward so the first
+        # step self-starts with BDF1 (standard BDF2 startup).
+        self.U_old_old[:] = self.U_old[:]
         self.U_old[:] = self.U[:]
+        u_old_old_arg = self.U_old_old if self.time_step >= 2 else None
 
         # Determine effective viscosity
         if self.turbulence is not None:
@@ -339,9 +347,22 @@ class Solver:
             step_dt,
             rho=self.config.transport.density,
             nu=nu_eff,
+            U_old_old=u_old_old_arg,
         )
 
         logging.Logging.convergence_info(residuals)
+
+        # Continuity (incompressibility) diagnostic: a divergence-free solution
+        # has ~0 net flux per cell.  Surfacing this each step makes loss of
+        # mass conservation visible instead of silent.
+        cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
+        vol = self.geo_data["element_volumes"]
+        self.continuity_max = float(np.max(np.abs(cont) / (vol + 1e-30)))
+        self.continuity_sum = float(np.sum(np.abs(cont)))
+        print(
+            f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
+            f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
+        )
 
         # Compute CFL after step (for next step's dt adjustment)
         if cfg_time.adjust_timestep:

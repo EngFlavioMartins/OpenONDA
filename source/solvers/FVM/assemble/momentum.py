@@ -31,15 +31,31 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
     return b_mom
 
 
-def _add_transient_term(A, b_vec, rho, vol, dt, U_old_comp, U_curr_comp):
-    """Apply Euler implicit transient term (only called when dt is not None)."""
-    if U_old_comp is not None:
-        coeff = rho * vol / dt
-        b_vec += coeff * U_old_comp
+def _add_transient_term(
+    A, b_vec, rho, vol, dt, U_old_comp, U_curr_comp, U_old_old_comp=None, scheme="euler"
+):
+    """Apply the implicit transient ``∂(ρu)/∂t`` term (only called when dt is not None).
+
+    Schemes (constant Δt):
+      * ``"euler"`` / ``"backward_euler"`` — BDF1, first order:
+        ``(ρV/Δt)(uⁿ⁺¹ − uⁿ)``.
+      * ``"backward"`` — BDF2, second order:
+        ``(ρV/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  Falls back to BDF1 on the
+        first step (when ``U_old_old_comp`` is None), which is the standard
+        self-starting BDF2 procedure.
+
+    BDF2 here assumes a constant time step; under adaptive Δt it silently
+    behaves as the constant-step formula (the variable-step weights are a
+    future refinement — see the temporal-order test).
+    """
+    coeff = rho * vol / dt
+    if scheme == "backward" and U_old_comp is not None and U_old_old_comp is not None:
+        A.setdiag(A.diagonal() + 1.5 * coeff)
+        b_vec += coeff * (2.0 * U_old_comp - 0.5 * U_old_old_comp)
     else:
-        coeff = vol / dt
-        b_vec += coeff * U_curr_comp
-    A.setdiag(A.diagonal() + coeff)
+        # BDF1 (Euler implicit), also the BDF2 startup step.
+        A.setdiag(A.diagonal() + coeff)
+        b_vec += coeff * (U_old_comp if U_old_comp is not None else U_curr_comp)
 
 
 def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
@@ -92,6 +108,10 @@ def assemble_momentum_equation(
     convection_scheme="deferred",
     dt=None,
     U_old=None,
+    U_old_old=None,
+    ddt_scheme="euler",
+    source_explicit=None,
+    source_implicit=None,
 ):
     """
     Assemble momentum equation for all three velocity components.
@@ -109,6 +129,14 @@ def assemble_momentum_equation(
         convection_scheme: Convection discretization scheme
         dt: Time step size (optional)
         U_old: Previous time step velocity (optional, for transient term)
+        source_explicit: Optional explicit volumetric source Su (n_elements, 3),
+            per unit volume.  Added to the RHS as ``Su * V`` for each component
+            (e.g. body force, MMS forcing, or the explicit part λ·Utarget of the
+            coupling fringe source).
+        source_implicit: Optional implicit volumetric source coefficient Sp
+            (n_elements,), per unit volume.  Added to the diagonal as ``Sp * V``
+            (e.g. the implicit part λ of the fringe source S = λ(Utarget − U)).
+            Must be >= 0 to preserve diagonal dominance.
 
     Returns:
         dict: For each component (x, y, z):
@@ -163,9 +191,11 @@ def assemble_momentum_equation(
             U_comp, grad_U_comp, mu, mesh_data, geo_data, momentum_boundaries
         )
 
-        # 2. Convection term: ∇·(ρUU)
+        # 2. Convection term: ∇·(ρUU).  grad_U_comp feeds the gradient-based
+        #    TVD limiter for high-resolution schemes (ignored by the others).
         conv_flux = convection.assemble_convection_term(
-            U_comp, mdot, mesh_data, geo_data, boundaries, scheme=convection_scheme
+            U_comp, mdot, mesh_data, geo_data, boundaries, scheme=convection_scheme,
+            grad_phi=grad_U_comp,
         )
 
         # 3. Combine fluxes (diffusion + convection)
@@ -185,7 +215,7 @@ def assemble_momentum_equation(
         grad_p_comp = grad_p[:n_elements, i_comp]
         b -= grad_p_comp * vol
 
-        # 6. Transient Term (Euler Implicit)
+        # 6. Transient Term (BDF1/BDF2, selected by ddt_scheme)
         if dt is not None:
             _add_transient_term(
                 A,
@@ -195,7 +225,17 @@ def assemble_momentum_equation(
                 dt,
                 U_old[:n_elements, i_comp] if U_old is not None else None,
                 U[:n_elements, i_comp],
+                U_old_old[:n_elements, i_comp] if U_old_old is not None else None,
+                scheme=ddt_scheme,
             )
+
+        # 6b. Generic volumetric source terms: S = Su + Sp·U (per unit volume).
+        #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping U implicit.
+        #     Used by MMS forcing and the coupling fringe S = λ(Utarget − U).
+        if source_explicit is not None:
+            b += source_explicit[:n_elements, i_comp] * vol
+        if source_implicit is not None:
+            A.setdiag(A.diagonal() + source_implicit[:n_elements] * vol)
 
         # 7. Compute H operator (diagonal of A, needed for pressure correction)
         H = A.diagonal().copy()
@@ -224,10 +264,19 @@ def solve_momentum_predictor(
     under_relaxation=0.7,
     dt=None,
     U_old=None,
+    U_old_old=None,
+    ddt_scheme="euler",
+    source_explicit=None,
+    source_implicit=None,
     **solver_kwargs,
 ):
     """
     Solve momentum equation to get predicted velocity (U*).
+
+    ``U_old_old`` / ``ddt_scheme`` select the time discretisation (BDF1 default,
+    BDF2 via ``ddt_scheme="backward"``).  ``source_explicit`` / ``source_implicit``
+    are forwarded to :func:`assemble_momentum_equation` (see that docstring for
+    the Su/Sp convention).
     """
 
     n_elements = mesh_data["n_elements"]
@@ -235,7 +284,9 @@ def solve_momentum_predictor(
 
     # Assemble momentum equations
     mom_eqs = assemble_momentum_equation(
-        U, p, phi, rho, nu, mesh_data, geo_data, boundaries, convection_scheme, dt=dt, U_old=U_old
+        U, p, phi, rho, nu, mesh_data, geo_data, boundaries, convection_scheme, dt=dt, U_old=U_old,
+        U_old_old=U_old_old, ddt_scheme=ddt_scheme,
+        source_explicit=source_explicit, source_implicit=source_implicit,
     )
 
     # Solve for each component

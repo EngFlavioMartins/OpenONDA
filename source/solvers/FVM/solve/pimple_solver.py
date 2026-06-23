@@ -55,7 +55,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
-    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01):
+    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None):
         """
         Perform a single PIMPLE time step.
 
@@ -81,6 +81,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         alpha_u = self.params["alpha_u"]
         alpha_p = self.params["alpha_p"]
 
+        # Resolve the time-discretisation scheme: BDF2 ("backward") needs the
+        # second history level u^{n-1}; otherwise fall back to BDF1 ("euler").
+        ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
+        ddt_scheme = "backward" if ts in ("backward", "bdf2") else "euler"
+        if ddt_scheme == "backward" and U_old_old is None:
+            ddt_scheme = "euler"  # self-starting first step
+
         # 0. Update Pressure Boundaries (Ghost Cells)
         simple_solver.update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p")
 
@@ -99,7 +106,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 convection_scheme=self.params["convection_scheme"],
                 solver=self.params["linear_solver"],
                 under_relaxation=alpha_u,
-                dt=dt, U_old=U_old,
+                dt=dt, U_old=U_old, U_old_old=U_old_old, ddt_scheme=ddt_scheme,
                 reuse_ilu=self.params.get("reuse_ilu", False),
                 ilu_key=self.params.get("ilu_key", None),
                 ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),

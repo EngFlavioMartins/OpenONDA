@@ -12,6 +12,8 @@ Converted from uFVM cfdAssembleConvectionTerm.m
 
 import numpy as np
 
+from ..schemes.limiters import apply_limiter, is_limited_scheme
+
 
 def assemble_convection_term_upwind(phi, mdot, mesh_data):
     """
@@ -136,6 +138,68 @@ def assemble_convection_term_deferred_correction(phi, mdot, mesh_data, geo_data)
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
 
+def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter):
+    """Per-face TVD blend factor ψ ∈ [0, 1] (gradient-based NVD/TVD ratio).
+
+    r = 2 (d · ∇φ_upwind) / (φ_N − φ_P) − 1,  d = c_N − c_C (owner→neighbour).
+    Extrema (φ_N ≈ φ_P) are handled by saturating r so the limiter → upwind.
+    """
+    if grad_phi is None:
+        raise ValueError("Limited convection schemes require grad_phi (cell gradient).")
+    if grad_phi.ndim == 3 and grad_phi.shape[2] == 1:
+        grad_phi = grad_phi.squeeze(-1)
+
+    phi_p = phi[owners]
+    phi_n = phi[neighbours]
+    gradf = phi_n - phi_p
+
+    grad_cp = np.sum(grad_phi[owners] * cf_vector, axis=1)
+    grad_cn = np.sum(grad_phi[neighbours] * cf_vector, axis=1)
+    grad_cf = np.where(mdot_i >= 0.0, grad_cp, grad_cn)
+
+    small = np.abs(gradf) < 1e-30 * np.maximum(np.abs(grad_cf), 1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r = 2.0 * grad_cf / gradf - 1.0
+    # At an extremum (gradf→0) force upwind (r large negative → ψ=0) unless the
+    # upwind gradient agrees in sign (smooth plateau → keep some blend).
+    r = np.where(small, np.where(np.sign(grad_cf) == np.sign(gradf), 1000.0, -1.0), r)
+    r = np.nan_to_num(r, nan=-1.0, posinf=1000.0, neginf=-1.0)
+    return apply_limiter(limiter, r)
+
+
+def assemble_convection_term_limited(phi, mdot, mesh_data, geo_data, grad_phi, limiter, psi=None):
+    """High-resolution TVD convection in deferred-correction form.
+
+    Implicit part = upwind (bounded, diagonally dominant); explicit correction =
+    ``ψ · mdot · (φ_linear − φ_upwind)`` where ψ comes from the TVD limiter (or a
+    constant ``psi`` for blended schemes such as LUST).  ψ = 1 ⇒ pure central,
+    ψ = 0 ⇒ upwind.
+    """
+    n_interior_faces = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"][:n_interior_faces]
+    neighbours = mesh_data["neighbours"][:n_interior_faces]
+    mdot_i = mdot[:n_interior_faces]
+    weights = geo_data["face_weights"][:n_interior_faces]
+    cf_vector = geo_data["face_cf_vector"][:n_interior_faces]
+
+    if psi is None:
+        psi = _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter)
+    else:
+        psi = np.full_like(mdot_i, float(psi))
+
+    # Implicit upwind coefficients.
+    flux_cf = np.maximum(mdot_i, 0.0)
+    flux_ff = np.minimum(mdot_i, 0.0)
+
+    # Deferred high-resolution correction: ψ·mdot·(φ_linear − φ_upwind).
+    phi_upwind = np.where(mdot_i >= 0.0, phi[owners], phi[neighbours])
+    phi_linear = weights * phi[neighbours] + (1.0 - weights) * phi[owners]
+    flux_vf = psi * mdot_i * (phi_linear - phi_upwind)
+
+    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
+    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+
+
 def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     """
     Assemble convection term for boundary faces.
@@ -200,7 +264,7 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     }
 
 
-def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred"):
+def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred", grad_phi=None):
     """
     Assemble complete convection term.
 
@@ -210,7 +274,14 @@ def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme=
         mesh_data: Mesh connectivity
         geo_data: Geometric data
         boundaries: Boundary patch list
-        scheme: 'upwind', 'central', or 'deferred'
+        scheme: Convection scheme. First-order: ``'upwind'``.  Second-order
+            (unbounded, energy-conserving): ``'central'`` / ``'linear'``,
+            ``'deferred'`` (= central via deferred correction).  Blended:
+            ``'LUST'`` (0.75 linear + 0.25 upwind).  Bounded high-resolution
+            TVD (require ``grad_phi``): ``'limitedLinear'``, ``'vanLeer'``,
+            ``'MUSCL'``, ``'minmod'``, ``'superbee'``.
+        grad_phi: Cell gradient of ``phi`` (n_total, 3), required by the TVD
+            schemes; ignored by the others.
 
     Returns:
         dict: Complete flux data
@@ -226,13 +297,24 @@ def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme=
     flux_tf = np.zeros(n_faces)
 
     # Interior faces
-    if scheme == "upwind":
+    s = str(scheme)
+    if s == "upwind":
         interior_fluxes = assemble_convection_term_upwind(phi, mdot, mesh_data)
-    elif scheme == "central":
+    elif s in ("central", "linear"):
         interior_fluxes = assemble_convection_term_central(phi, mdot, mesh_data, geo_data)
-    elif scheme == "deferred":
+    elif s == "deferred":
         interior_fluxes = assemble_convection_term_deferred_correction(
             phi, mdot, mesh_data, geo_data
+        )
+    elif s in ("LUST", "lust"):
+        # 0.75 linear + 0.25 upwind: constant blend ψ = 0.75 (low-dissipation,
+        # still slightly stabilised relative to pure central).
+        interior_fluxes = assemble_convection_term_limited(
+            phi, mdot, mesh_data, geo_data, grad_phi, limiter=None, psi=0.75
+        )
+    elif is_limited_scheme(s):
+        interior_fluxes = assemble_convection_term_limited(
+            phi, mdot, mesh_data, geo_data, grad_phi, limiter=s
         )
     else:
         raise ValueError(f"Unknown scheme: {scheme}")

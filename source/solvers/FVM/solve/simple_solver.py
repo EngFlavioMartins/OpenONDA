@@ -771,9 +771,12 @@ class SIMPLESolver:
 
         self.residuals = []
 
-    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01):
+    def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None):
         """
         Perform a single SIMPLE iteration.
+
+        ``U_old_old`` is accepted for interface parity with the transient driver
+        but is unused by steady SIMPLE (no second time-history level).
         """
         # 1. Solve momentum predictor
         U_star, A_U = momentum.solve_momentum_predictor(

@@ -54,6 +54,34 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     return Co
 
 
+def compute_continuity_error(phi, mesh_data, geo_data):
+    """Per-cell continuity residual ∮ U·dS = Σ_f (±φ_f) [m³/s].
+
+    For a discretely divergence-free (incompressible) solution this net face
+    flux is ~0 in every cell.  Returned unnormalised so callers can form both
+    the global mass imbalance Σ|residual| and the local divergence
+    max|residual / V|.
+
+    Args:
+        phi: Face volumetric/mass flux (U·Sf), length n_faces.
+        mesh_data: Mesh connectivity.
+        geo_data: Geometric data (unused; kept for signature parity).
+
+    Returns:
+        np.ndarray: net flux per cell (n_elements,).
+    """
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"]
+    neighbours = mesh_data["neighbours"]
+
+    div = np.zeros(n_elements)
+    np.add.at(div, owners[:n_interior], phi[:n_interior])
+    np.add.at(div, neighbours[:n_interior], -phi[:n_interior])
+    np.add.at(div, owners[n_interior:], phi[n_interior:])
+    return div
+
+
 def compute_vorticity(U, mesh_data, geo_data):
     """
     Compute vorticity field: w = curl(U)

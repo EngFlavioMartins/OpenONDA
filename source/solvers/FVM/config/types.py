@@ -345,8 +345,12 @@ class SolverParams:
     moment_centre: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     # Schemes (OpenFOAM-like)
-    convection_scheme: str = "upwind"
-    time_scheme: str = "euler_implicit"
+    # Default to a bounded 2nd-order TVD scheme: far less diffusive than upwind
+    # (the previous default) yet oscillation-free, unlike pure central.  Other
+    # options: "upwind", "central"/"linear" (energy-conserving, unbounded),
+    # "deferred", "LUST", "vanLeer", "MUSCL", "minmod", "superbee".
+    convection_scheme: str = "limitedLinear"
+    time_scheme: str = "euler_implicit"  # "euler_implicit" (BDF1) | "backward" (BDF2)
     gradient_scheme: str = "lsq"  # "gauss" | "lsq"
 
     @staticmethod
@@ -358,13 +362,21 @@ class SolverParams:
         alpha_p: float = 1.0,
         convection_scheme: str = "deferred",
         gradient_scheme: str = "lsq",
+        time_scheme: str = "euler_implicit",
     ) -> "SolverParams":
         """Create PIMPLE solver parameters with transient-appropriate defaults.
 
         For transient (PIMPLE/PISO) simulations, under-relaxation should be
-        1.0 (no relaxation) unless outer correctors are used.  The deferred
-        correction convection scheme gives second-order accuracy with the
-        stability of upwind.
+        1.0 (no relaxation) unless outer correctors are used.  The default
+        ``"deferred"`` convection scheme is second-order central applied via
+        deferred correction (energy-conserving but *unbounded*); for
+        under-resolved LES prefer a bounded TVD scheme (e.g. ``"limitedLinear"``)
+        or pair ``"deferred"`` with enough correctors.
+
+        ``time_scheme`` selects the time discretisation: ``"euler_implicit"``
+        (BDF1, first order, default) or ``"backward"`` (BDF2, second order).
+        BDF2 needs ≥1 outer/PISO corrector per step for the deferred convection
+        correction to keep pace; pair it with ``n_correctors>=2``.
         """
         return SolverParams(
             algorithm="PIMPLE",
@@ -375,6 +387,7 @@ class SolverParams:
             alpha_p=alpha_p,
             convection_scheme=convection_scheme,
             gradient_scheme=gradient_scheme,
+            time_scheme=time_scheme,
         )
 
     @staticmethod
@@ -512,13 +525,37 @@ class TurbulenceConfig:
     This mirrors an OpenFOAM-style 'turbulenceProperties' dictionary.
     """
 
-    model: str = "None"  # e.g. 'Smagorinsky'
-    Cs: float = 0.17  # Smagorinsky constant
-    dynamic: bool = False  # Use Lilly/Germano identity (dynamic model)
+    # Model name (case-insensitive): "None"/"ILES", "Smagorinsky", "WALE",
+    # "sigma", "dynamicSmagorinsky".  ``Cs`` carries the model coefficient
+    # (Smagorinsky Cs, WALE Cw, sigma Cσ) — use the factories below to get the
+    # right default for each model.
+    model: str = "None"
+    Cs: float = 0.17  # model coefficient (meaning depends on model)
+    dynamic: bool = False  # Smagorinsky only: use the Germano/Lilly dynamic procedure
 
     @staticmethod
     def smagorinsky(Cs: float = 0.17, dynamic: bool = False) -> "TurbulenceConfig":
         return TurbulenceConfig(model="Smagorinsky", Cs=Cs, dynamic=dynamic)
+
+    @staticmethod
+    def wale(Cw: float = 0.325) -> "TurbulenceConfig":
+        """Wall-adapting WALE model (recommended for wall-bounded LES)."""
+        return TurbulenceConfig(model="WALE", Cs=Cw)
+
+    @staticmethod
+    def sigma(Csigma: float = 1.35) -> "TurbulenceConfig":
+        """sigma model — zero ν_t in 2D / pure-shear / solid-rotation regions."""
+        return TurbulenceConfig(model="sigma", Cs=Csigma)
+
+    @staticmethod
+    def dynamic_smagorinsky() -> "TurbulenceConfig":
+        """Germano–Lilly dynamic Smagorinsky (globally averaged coefficient)."""
+        return TurbulenceConfig(model="dynamicSmagorinsky", dynamic=True)
+
+    @staticmethod
+    def none() -> "TurbulenceConfig":
+        """No subgrid model (ILES / DNS); pair with a low-dissipation scheme."""
+        return TurbulenceConfig(model="None")
 
     @classmethod
     def from_foam_file(cls, path: str) -> "TurbulenceConfig":
@@ -589,7 +626,7 @@ class FVMConfig:
             "alpha_u": solver_data.get("alpha_u", 0.7),
             "alpha_p": solver_data.get("alpha_p", 0.3),
             "linear_solver": solver_data.get("linear_solver", "spsolve"),
-            "convection_scheme": solver_data.get("convection_scheme", "upwind"),
+            "convection_scheme": solver_data.get("convection_scheme", "limitedLinear"),
             "time_scheme": solver_data.get("time_scheme", "euler_implicit"),
         }
         solver = SolverParams(**solver_obj_data)

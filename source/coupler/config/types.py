@@ -106,6 +106,31 @@ class CouplerConfig:
     effective wake Reynolds number and suppressing bluff-body shedding.
     0 disables the sub-grid model entirely."""
 
+    # ── Stretching stabilization (ISR — Implicit Strain Relaxation) ────────
+    isr_enabled: bool = False
+    """Enable VPM strength-relaxation stabilization of the vortex-stretching
+    term (``source/solvers/VPM/stabilization/strength_relaxation.py``).  When
+    True the (ω·∇)u update is sub-stepped so σ_eff·dt_sub ≤ ``isr_cfl`` AND the
+    kernel-unrepresentable strength residual (the grid-scale checkerboard that
+    explicit stretching amplifies) is filtered each sub-step.  Without it the
+    free-wake stretching term blows up for long runs.  Default False (passes
+    straight through to the VPM ``SolverConfig``, which also defaults False)."""
+
+    isr_mode: str = "blend"
+    """ISR relaxation mode: ``"blend"`` (residual filter, damps the
+    unrepresentable magnitude — the right choice for a magnitude runaway) or
+    ``"pedrizzetti"`` (direction realignment, |Γ|-preserving)."""
+
+    isr_cfl: float = 0.2
+    """Target σ_eff·dt per ISR sub-step (sets the sub-step count
+    k = ceil(max σ_eff·dt / isr_cfl))."""
+
+    isr_C: float = 1.0
+    """ISR strain-gate rate constant: r = 1 − exp(−C·σ_eff·dt_sub) per sub-step."""
+
+    isr_k_max: int = 8
+    """Hard cap on ISR sub-steps per macro step."""
+
     precision: Literal["f32", "f64"] = "f32"
     """Floating-point precision shared by the VPM solver and every coupler
     data hand-off (donor BC, particle injection, body-panel RHS).  ``'f32'``
@@ -359,6 +384,11 @@ class CouplerConfig:
                 "particles_kernel": self.particles_kernel,
                 "treecode_theta": self.treecode_theta,
                 "advection_scheme": self.advection_scheme,
+                "isr_enabled": self.isr_enabled,
+                "isr_mode": self.isr_mode,
+                "isr_cfl": self.isr_cfl,
+                "isr_C": self.isr_C,
+                "isr_k_max": self.isr_k_max,
                 "vpm_domain": {
                     "xmin": self.vpm_domain[0],
                     "xmax": self.vpm_domain[1],
