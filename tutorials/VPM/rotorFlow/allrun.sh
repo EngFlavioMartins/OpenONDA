@@ -6,7 +6,7 @@
 #
 # Output redirect: /tmp/rotor_run.log  (outside case dir, safe from allclean.sh)
 set -euo pipefail
-PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
+PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 ./allclean.sh

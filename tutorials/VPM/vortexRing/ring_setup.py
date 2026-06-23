@@ -17,6 +17,7 @@ from pathlib import Path
 
 from source.solvers.VPM import Solver, SolverConfig, VelocityConfig, ParticleDistributor
 from source.solvers.VPM.config.types import (
+    AdvectionConfig,
     TurbulenceConfig,
     ViscousConfig,
     AdaptationConfig,
@@ -58,6 +59,10 @@ def main():
     )
     parser.add_argument("--cs", type=float, default=0.10, help="Smagorinsky constant for LES.")
     parser.add_argument(
+        "--particle-spacing", type=float, default=0.04,
+        help="Initial particle spacing [m] (2.5 points per core radius).",
+    )
+    parser.add_argument(
         "--widnall-amplitude", type=float, default=0.0,
         help="Optional Widnall perturbation amplitude (zero for Saffman validation).",
     )
@@ -77,7 +82,7 @@ def main():
     # ================================================
     # 2. Numerical Parameters
     # ================================================
-    particle_spacing = 0.03  # Grid spacing [m]
+    particle_spacing = args.particle_spacing  # Grid spacing [m]
     time_step = 0.02  # [s]
     num_steps = args.num_steps
 
@@ -133,6 +138,7 @@ def main():
 
     solver_config = SolverConfig(
         time_step_size=time_step,
+        advection=AdvectionConfig(scheme="RK2"),
         turbulence=turbulence,
         stretching=stretching,
         velocity=VelocityConfig.treecode(theta=0.5),
@@ -142,6 +148,7 @@ def main():
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
+        max_particles=20_000,
         **isr_kwargs,
     )
 

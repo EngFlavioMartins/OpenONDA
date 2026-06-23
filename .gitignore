@@ -3,6 +3,7 @@
 # ===============================
 __pycache__/
 .taichi_cache/
+.opencdde
 *.py[cod]
 *.pyc
 *.pyo

@@ -9,10 +9,12 @@
 #
 # Defaults: --solution-dir ./solution  --dpi 400
 
+set -euo pipefail
+
 # Resolve Python interpreter: same precedence as allrun.sh.
-PYTHON="$(conda run -n OpenONDA which python 2>/dev/null \
+PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
        || command -v python3 \
-       || command -v python)"
+       || command -v python)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"

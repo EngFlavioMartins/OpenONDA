@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
+set -euo pipefail
+PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 SOLUTION_DIR="./solution"; DPI=300; FORMAT="png"

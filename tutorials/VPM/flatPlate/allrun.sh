@@ -32,13 +32,36 @@
 # Author:  Flavio A. C. Martins, OpenONDA Team
 # Date: June 2026
 # =============================================================================
+set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 ./allclean.sh
 
-PYTHON="$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)"
-RUN="$PYTHON setup_plate.py"
+PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
+JOBS="${FP_JOBS:-4}"
+PIDS=()
+FAILED=0
+
+run_case() {
+    "$PYTHON" setup_plate.py "$@" &
+    PIDS+=("$!")
+    if [ "${#PIDS[@]}" -ge "$JOBS" ]; then
+        wait "${PIDS[0]}" || FAILED=1
+        PIDS=("${PIDS[@]:1}")
+    fi
+}
+
+wait_cases() {
+    for pid in "${PIDS[@]}"; do
+        wait "$pid" || FAILED=1
+    done
+    PIDS=()
+    if [ "$FAILED" -ne 0 ]; then
+        echo "One or more flat-plate simulations failed." >&2
+        exit 1
+    fi
+}
 
 # Common flags shared by every moving-wing run
 COMMON="--kinematics ramp --frame body
@@ -62,43 +85,43 @@ echo "--- Part A: AoA polar sweep ---"
 echo ""
 
 echo "  [A01] α = -10°"
-$RUN --name exp_moving_aoan10 $COMMON --aoa=-10
+run_case --name exp_moving_aoan10 $COMMON --aoa=-10
 echo ""
 
 echo "  [A02] α = -5°"
-$RUN --name exp_moving_aoan05 $COMMON --aoa=-5
+run_case --name exp_moving_aoan05 $COMMON --aoa=-5
 echo ""
 
 echo "  [A03] α = -2°"
-$RUN --name exp_moving_aoan02 $COMMON --aoa=-2
+run_case --name exp_moving_aoan02 $COMMON --aoa=-2
 echo ""
 
 echo "  [A04] α = 0°"
-$RUN --name exp_moving_aoa00 $COMMON --aoa=0
+run_case --name exp_moving_aoa00 $COMMON --aoa=0
 echo ""
 
 echo "  [A05] α = 2°"
-$RUN --name exp_moving_aoa02 $COMMON --aoa=2
+run_case --name exp_moving_aoa02 $COMMON --aoa=2
 echo ""
 
 echo "  [A06] α = 5°"
-$RUN --name exp_moving_aoa05 $COMMON --aoa=5
+run_case --name exp_moving_aoa05 $COMMON --aoa=5
 echo ""
 
 echo "  [A07] α = 8°"
-$RUN --name exp_moving_aoa08 $COMMON --aoa=8
+run_case --name exp_moving_aoa08 $COMMON --aoa=8
 echo ""
 
 echo "  [A08] α = 10°"
-$RUN --name exp_moving_aoa10 $COMMON --aoa=10
+run_case --name exp_moving_aoa10 $COMMON --aoa=10
 echo ""
 
 echo "  [A09] α = 12°"
-$RUN --name exp_moving_aoa12 $COMMON --aoa=12
+run_case --name exp_moving_aoa12 $COMMON --aoa=12
 echo ""
 
 echo "  [A10] α = 15°"
-$RUN --name exp_moving_aoa15 $COMMON --aoa=15
+run_case --name exp_moving_aoa15 $COMMON --aoa=15
 echo ""
 
 # =============================================================================
@@ -108,48 +131,49 @@ echo "--- Part B: Wind-frame static polar sweep ---"
 echo ""
 
 echo "  [B01] α = -10°"
-$RUN --name exp_static_aoan10 $STATIC --aoa=-10
+run_case --name exp_static_aoan10 $STATIC --aoa=-10
 echo ""
 
 echo "  [B02] α = -5°"
-$RUN --name exp_static_aoan05 $STATIC --aoa=-5
+run_case --name exp_static_aoan05 $STATIC --aoa=-5
 echo ""
 
 echo "  [B03] α = -2°"
-$RUN --name exp_static_aoan02 $STATIC --aoa=-2
+run_case --name exp_static_aoan02 $STATIC --aoa=-2
 echo ""
 
 echo "  [B04] α = 0°"
-$RUN --name exp_static_aoa00 $STATIC --aoa=0
+run_case --name exp_static_aoa00 $STATIC --aoa=0
 echo ""
 
 echo "  [B05] α = 2°"
-$RUN --name exp_static_aoa02 $STATIC --aoa=2
+run_case --name exp_static_aoa02 $STATIC --aoa=2
 echo ""
 
 echo "  [B06] α = 5°"
-$RUN --name exp_static_aoa05 $STATIC --aoa=5
+run_case --name exp_static_aoa05 $STATIC --aoa=5
 echo ""
 
 echo "  [B07] α = 8°"
-$RUN --name exp_static_aoa08 $STATIC --aoa=8
+run_case --name exp_static_aoa08 $STATIC --aoa=8 --sample-crossflow
 echo ""
 
 echo "  [B08] α = 10°"
-$RUN --name exp_static_aoa10 $STATIC --aoa=10
+run_case --name exp_static_aoa10 $STATIC --aoa=10
 echo ""
 
 echo "  [B09] α = 12°"
-$RUN --name exp_static_aoa12 $STATIC --aoa=12
+run_case --name exp_static_aoa12 $STATIC --aoa=12
 echo ""
 
 echo "  [B10] α = 15°"
-$RUN --name exp_static_aoa15 $STATIC --aoa=15
+run_case --name exp_static_aoa15 $STATIC --aoa=15
 echo ""
 
 # =============================================================================
 # Post-processing
 # =============================================================================
+wait_cases
 echo "========================================================"
 echo "  All experiments complete.  Generating figures..."
 echo "========================================================"

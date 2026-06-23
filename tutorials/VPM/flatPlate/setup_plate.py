@@ -358,7 +358,7 @@ def main():
         U_ref = np.array([args.U_inf, 0.0, 0.0])
 
     vlm = VLMSolver(
-        max_panels=max(1024, args.panels_chord * args.panels_span * 4),
+        max_panels=max(512, args.panels_chord * args.panels_span * 4),
         density=args.density,
         viscosity=args.viscosity,
         linear_solver="SCIPY",
@@ -366,6 +366,7 @@ def main():
         force=force_cfg,
         sigma_factor=args.sigma_factor,
         sample_surface_forces=True,
+        logging_frequency=args.log_freq,
     )
     vlm.add_surface(surface_file, kinematics=kin)
 
@@ -407,11 +408,15 @@ def main():
         time_step_size=dt,
         vlm_solver=vlm,
         background_velocity=bg_vel,
-        logging_frequency=2,
-        backup_frequency=2,
+        logging_frequency=args.log_freq,
+        backup_frequency=args.backup_freq,
         backup_file_name=args.name,
         backup_directory=backup_dir,
-        samplers=samplers if samplers else None,
+        solution_name=backup_dir,
+        max_particles=50_000,
+        # Field planes are certification snapshots, not transient probes.  They
+        # are sampled once after the final steady step below.
+        samplers=None,
     )
 
     solver_config = SolverConfig.les_simulation(cs=args.cs, **cfg_kwargs)
@@ -469,6 +474,10 @@ def main():
     # ── Simulation loop ───────────────────────────────────────────────
     for _step in range(n_steps):
         solver.update_state()
+
+    if samplers:
+        solver.config.samplers = samplers
+        solver._execute_samplers()
 
     # ── Post-process ──────────────────────────────────────────────────
     if src_csv.exists():

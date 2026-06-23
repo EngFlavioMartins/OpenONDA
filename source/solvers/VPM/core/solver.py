@@ -736,8 +736,19 @@ class Solver:
         # ----------------------------------------------------------------------
         # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
         # ----------------------------------------------------------------------
-        with self._measure_time(timing, "flow_integrals"):
-            self._update_all_flow_integrals()
+        # The regularised energy/enstrophy kernel is O(N^2).  Computing it on
+        # every step made ``logging_frequency`` cosmetic and dominated large
+        # tutorial runs.  Sample it at the requested diagnostic cadence; its
+        # finite-difference dE/dt uses the actual flow timestamps, so skipped
+        # intermediate steps do not bias the reported rate.  VLM force
+        # bookkeeping remains per-step (its own exporter applies its cadence).
+        _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
+        if _diag_due:
+            with self._measure_time(timing, "flow_integrals"):
+                self._update_all_flow_integrals()
+        elif self.vlm_solver is not None:
+            with self._measure_time(timing, "vlm_diagnostics"):
+                self._record_vlm_diagnostics()
 
         # ----------------------------------------------------------------------
         # 4. ADAPTATION (Splitting / Remeshing / Wake Cutoff)

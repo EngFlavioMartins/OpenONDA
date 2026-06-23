@@ -8,7 +8,7 @@ the VPM wake simulation.  Post-processing is handled by allplot.sh.
 
 Usage::
 
-    python rotor_setup.py --num-steps 1232
+    python rotor_setup.py --num-steps 3500
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -29,7 +29,12 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
 
 from source.solvers.VPM import Solver, SolverConfig
-from source.solvers.VPM.config.types import AdaptationConfig, TurbulenceConfig, StretchingConfig
+from source.solvers.VPM.config.types import (
+    AdaptationConfig,
+    AdvectionConfig,
+    TurbulenceConfig,
+    StretchingConfig,
+)
 from source.solvers.VPM.boundary_elements.vlm import VLMSolver
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
@@ -118,6 +123,7 @@ def main():
         density=rho,
         linear_solver="SCIPY",
         sample_surface_forces=True,
+        logging_frequency=25,
     )
     # NB: the blade is built with its LE on the −Z side (chord points +Z from
     # LE→TE).  For the blade to advance LEADING-EDGE first it must rotate so the
@@ -178,6 +184,7 @@ def main():
 
     solver_config = SolverConfig(
         time_step_size=time_step,
+        advection=AdvectionConfig(scheme="RK2"),
         vlm_solver=vlm,
         background_velocity=[freestream_velocity, 0, 0],
         turbulence=TurbulenceConfig.les_smagorinsky(cs=args.cs),
@@ -197,6 +204,7 @@ def main():
         isr_k_max=args.isr_k_max,
         backup_file_name="rotor",
         backup_directory=backup_dir,
+        solution_name=backup_dir,
         backup_frequency=25,
         logging_frequency=25,
         adaptation=AdaptationConfig(
@@ -211,7 +219,10 @@ def main():
             ],
         ),
         processing_unit="GPU_VULKAN",
-        samplers=plane_samplers,
+        # These far-wake planes are expensive (3 × ~21k targets).  Sampling
+        # them at every log step dominated the simulation.  Evaluate them once
+        # from the final, fully-developed wake below.
+        samplers=None,
     )
 
     vpm = Solver(config=solver_config)
@@ -230,6 +241,11 @@ def main():
                     f"Rotor wake became unbounded at step {step + 1}: "
                     f"max |alpha|={max_strength:.6e} (limit={args.max_strength:.6e})"
                 )
+
+    # One high-resolution snapshot at all validation planes is sufficient for
+    # the steady 3D/6D/9D comparison and avoids repeatedly sampling empty planes.
+    vpm.config.samplers = plane_samplers
+    vpm._execute_samplers()
 
 
 if __name__ == "__main__":

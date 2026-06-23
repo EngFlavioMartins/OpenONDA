@@ -457,6 +457,13 @@ def initialize_taichi_backend(
         if name != "METAL":
             init_kwargs["random_seed"] = 42
             init_kwargs["advanced_optimization"] = True
+        if name == "CPU":
+            # Allow parallel tutorial launchers to partition host cores instead
+            # of every Taichi process claiming the whole machine and
+            # oversubscribing it.  Absent the override, retain Taichi's default.
+            cpu_threads = os.environ.get("OPENONDA_CPU_THREADS", "").strip()
+            if cpu_threads:
+                init_kwargs["cpu_max_num_threads"] = max(1, int(cpu_threads))
         if memory_kwargs:
             init_kwargs.update(memory_kwargs)
 
