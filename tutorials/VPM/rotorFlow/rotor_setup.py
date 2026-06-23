@@ -41,6 +41,18 @@ def main():
     # farthest validation plane).  Near-wake convects at ~U(1-a) ≈ 4.7 m/s, so
     # ~9D = 108 m needs ~15-20 s of physical time (dt=0.005 → ~3500 steps).
     parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
+    # --- Stabiliser knobs (in-house LES + stretching stabiliser) -------------
+    parser.add_argument("--cs", type=float, default=0.3, help="Smagorinsky constant (in-house LES).")
+    parser.add_argument("--rvpm-g", type=float, default=0.2,
+                        help="rVPM g: 0.2 (default, partial) … 1/3 (full parallel-growth suppression).")
+    parser.add_argument("--rvpm-f", type=float, default=0.0, help="rVPM f parameter.")
+    parser.add_argument("--isr-mode", choices=["pedrizzetti", "blend"], default="pedrizzetti",
+                        help="ISR strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
+                        "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).")
+    parser.add_argument("--isr-rlx", type=float, default=0.95,
+                        help="Pedrizzetti relaxation coeff (lower = stronger).")
+    parser.add_argument("--isr-c", type=float, default=1.0, help="ISR strain-gate constant C (blend mode).")
+    parser.add_argument("--solution-dir", default="solution", help="Output directory.")
     args = parser.parse_args()
 
     # ================================================
@@ -122,7 +134,7 @@ def main():
     # ================================================
     # 5. Configure VPM Solver
     # ================================================
-    backup_dir = "solution"
+    backup_dir = args.solution_dir
 
     # Downstream YZ cross-plane samplers for wake / induction validation.
     # Planes at 3D, 6D, 9D downstream (D = 2R = 12 m → x = 36, 72, 108 m);
@@ -146,17 +158,18 @@ def main():
         time_step_size=time_step,
         vlm_solver=vlm,
         background_velocity=[freestream_velocity, 0, 0],
-        turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
+        turbulence=TurbulenceConfig.les_smagorinsky(cs=args.cs),
         # Stretching STABILISER: the reformulated-VPM (Alvarez & Ning) scheme
-        # caps the parallel growth of |Γ| (conserving σ²|Γ|), which keeps the
-        # helical tip-vortex wake bounded over the full run.  Combined with the
-        # Pedrizzetti strength relaxation (|Γ|-preserving realignment) this
-        # holds the solution stable to the final step instead of blowing up.
-        stretching=StretchingConfig.rvpm(),
+        # caps the parallel growth of |Γ| (conserving σ²|Γ|).  Combined with the
+        # ISR strength relaxation it keeps the helical tip-vortex wake bounded.
+        # NB: pedrizzetti ISR is |Γ|-PRESERVING (realign only); 'blend' mode is
+        # dissipative (ADM-residual filter) and can DRAIN runaway tip-vortex |Γ|.
+        stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
         isr_enabled=True,
-        isr_mode="pedrizzetti",
+        isr_mode=args.isr_mode,
         isr_gate="constant",
-        isr_rlx=0.95,
+        isr_rlx=args.isr_rlx,
+        isr_C=args.isr_c,
         isr_conserve=True,
         backup_file_name="rotor",
         backup_directory=backup_dir,

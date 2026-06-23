@@ -68,6 +68,8 @@ source/solvers/**/*.html
 *.lib
 *.a
 **/Make/linux64Gcc*/
+# wmake-generated symlink farms (regenerated on build; never commit)
+source/solvers/OFW/**/lnInclude/
 
 # ===============================
 # OpenFOAM/CFD and simulation outputs

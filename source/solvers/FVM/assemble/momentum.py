@@ -78,7 +78,7 @@ def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
     bc_type = boundary.get("bc_type_U")
 
-    if bc_type == "zeroGradient":
+    if bc_type in ("zeroGradient", "inletOutlet"):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[owners_b]
     elif bc_type in ("fixedValue", "noSlip"):

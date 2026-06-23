@@ -149,8 +149,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 )
 
                 # Velocity clipping to prevent divergence in transient steps
-                max_vel = float(self.params.get("max_velocity_clip", 50.0))
-                U_iter[:n_elem] = np.clip(U_iter[:n_elem], -max_vel, max_vel)
+                # Optional hard velocity cap.  Disabled by default: clipping
+                # silently masks divergence, which the continuity diagnostic and
+                # the finite-value guard now surface instead.  Set
+                # solver.max_velocity_clip to re-enable as a last resort.
+                cap = self.params.get("max_velocity_clip", None)
+                if cap is not None:
+                    np.clip(U_iter[:n_elem], -float(cap), float(cap), out=U_iter[:n_elem])
 
                 logging.Timer.log("    Velocity Correction")
 
@@ -182,8 +187,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     self.mesh_data, self.geo_data, self.boundaries,
                     rho=rho, alpha_u=alpha_u,
                 )
-                max_vel = float(self.params.get("max_velocity_clip", 50.0))
-                U_iter[:n_elem] = np.clip(U_iter[:n_elem], -max_vel, max_vel)
+                # Optional hard velocity cap.  Disabled by default: clipping
+                # silently masks divergence, which the continuity diagnostic and
+                # the finite-value guard now surface instead.  Set
+                # solver.max_velocity_clip to re-enable as a last resort.
+                cap = self.params.get("max_velocity_clip", None)
+                if cap is not None:
+                    np.clip(U_iter[:n_elem], -float(cap), float(cap), out=U_iter[:n_elem])
                 p[:n_elem] += alpha_p * p_prime
                 simple_solver.update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p")
 

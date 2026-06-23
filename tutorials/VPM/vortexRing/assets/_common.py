@@ -54,9 +54,6 @@ VARIANT_STYLE: dict[str, dict[str, str]] = {
     "LES_mixed": {"color": "#2B7A4E", "marker": "p"},
 }
 
-# Normalized time above which DNS solutions become unreliable (blow-up onset).
-T_UNSTABLE = 15.0
-
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
 
@@ -272,27 +269,6 @@ def save_fig(fig, path, dpi: int = 400) -> None:
     fig.savefig(path, dpi=dpi)
     print(f"Generated: {path}")
     plt.close(fig)
-
-
-def add_instability_region(ax: object) -> None:
-    """Add gray background shading and label where DNS becomes unsteady."""
-    from matplotlib import pyplot as plt
-
-    x0, x1 = ax.get_xlim()
-    x_end = max(x1, T_UNSTABLE + 10)
-    ax.set_xlim(x0, min(x_end, 55))
-    ax.axvspan(T_UNSTABLE, ax.get_xlim()[1], color="gray", alpha=0.12, zorder=0)
-    ax.text(
-        28,
-        0.93,
-        "Unsteady DNS",
-        transform=ax.get_xaxis_transform(),
-        fontsize=10,
-        ha="left",
-        va="top",
-        color="black",
-        zorder=20,
-    )
 
 
 def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:

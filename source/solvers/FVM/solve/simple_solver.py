@@ -572,37 +572,30 @@ def _correct_boundary_fluxes(
         phi[idx] += rho * geo_diff_b * p_prime[own]
 
 
-def _find_inlet_velocity(boundaries):
-    """Return the inlet fixed velocity from the boundary list, or None."""
-    for b in boundaries:
-        if b.get("name", "").lower() == "inlet" and "value_U" in b:
-            return np.array(b["value_U"])
-    return None
+def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
+    """inletOutlet velocity BC: zeroGradient on outflow, fixed value on inflow.
 
-
-def _handle_outlet_backflow(U, phi, boundary, owners, boundaries, idx, own, start, nf):
-    """Prevent reverse-flow inflow acceleration at outlet faces."""
-    try:
-        inflow_mask = phi[np.arange(start, start + nf)] < 0
-        if not np.any(inflow_mask):
-            return
-        inlet_val = _find_inlet_velocity(boundaries)
-        for i_local, inflow in enumerate(inflow_mask):
-            if inflow:
-                U[idx + i_local] = inlet_val if inlet_val is not None else U[own[i_local]]
-    except Exception:
-        pass
+    Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
+    (zeroGradient); incoming flux (φ < 0) → impose the boundary ``value_U`` (the
+    inletValue, default 0).  Physically bounds reverse flow at outlets, replacing
+    the old patch-name heuristic.
+    """
+    start = boundary["startFace"]
+    nf = boundary["nFaces"]
+    idx = n_elements + (start - n_interior)
+    own = owners[start : start + nf]
+    inlet_val = np.asarray(boundary.get("value_U", [0.0, 0.0, 0.0]), dtype=float)
+    outflow = phi[start : start + nf] >= 0.0
+    U[idx : idx + nf] = np.where(outflow[:, np.newaxis], U[own], inlet_val)
 
 
 def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries):
-    """Apply zeroGradient (and outlet backflow) velocity BC."""
+    """Apply zeroGradient velocity BC (extrapolate from the owner cell)."""
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
     own = owners[start : start + nf]
     U[idx : idx + nf] = U[own]
-    if "outlet" in boundary.get("name", "").lower():
-        _handle_outlet_backflow(U, phi, boundary, owners, boundaries, idx, own, start, nf)
 
 
 def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
@@ -635,6 +628,8 @@ def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_int
         bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
         if bc_type_u == "zeroGradient":
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
+        elif bc_type_u == "inletOutlet":
+            _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
         elif bc_type_u in ("fixedValue", "noSlip"):
             _apply_fixed_value_bc(U, boundary, n_elements, n_interior)
         elif bc_type_u in ("empty", "slip", "symmetry"):

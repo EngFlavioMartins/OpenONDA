@@ -45,15 +45,22 @@ def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
 
 
 def read_h5(path: Path):
-    with h5py.File(path, "r") as f:
-        t = float(f["solver"].attrs["flow_time"])
-        n = int(f["solver"].attrs["number_of_particles"])
-        if n == 0:
-            return t, None, None, None
-        pos = f["particles"]["position"][:n].astype(np.float64)
-        circ = f["particles"]["circulation"][:n].astype(np.float64)
-        radius = f["particles"]["radius"][:n].astype(np.float64)
-    return t, pos, circ[:, 2], radius
+    # Guard against truncated/corrupt backups (e.g. from an interrupted run):
+    # a bad file raises OSError ("file signature not found") — skip it rather
+    # than killing the whole figure.
+    try:
+        with h5py.File(path, "r") as f:
+            t = float(f["solver"].attrs["flow_time"])
+            n = int(f["solver"].attrs["number_of_particles"])
+            if n == 0:
+                return t, None, None, None
+            pos = f["particles"]["position"][:n].astype(np.float64)
+            circ = f["particles"]["circulation"][:n].astype(np.float64)
+            radius = f["particles"]["radius"][:n].astype(np.float64)
+        return t, pos, circ[:, 2], radius
+    except (OSError, KeyError) as exc:
+        print(f"  [warn] skipping unreadable backup {path.name}: {exc}")
+        return None, None, None, None
 
 
 def core_properties(pos: np.ndarray, gz: np.ndarray, sign: float = 1.0):

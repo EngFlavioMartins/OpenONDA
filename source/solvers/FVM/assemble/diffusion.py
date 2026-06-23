@@ -52,18 +52,22 @@ def assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data):
     mag_cf = np.linalg.norm(cf_vector, axis=1)
     e = cf_vector / mag_cf[:, np.newaxis]
 
-    # |Sf|
-    mag_sf = np.linalg.norm(sf, axis=1)
-
-    # Orthogonal component: Ef = |Sf| * e
-    ef = mag_sf[:, np.newaxis] * e
+    # Over-relaxed orthogonal decomposition  Sf = Ef + Tf,  Ef ∥ e,
+    # |Ef| = (Sf·Sf)/(Sf·e).  This keeps the implicit Laplacian aligned with the
+    # owner→neighbour line (best conditioning / accuracy on non-orthogonal
+    # meshes) and pushes the residual into the explicit Tf correction.  On an
+    # orthogonal mesh Sf·e = |Sf| ⇒ Ef = Sf, Tf = 0, recovering the exact result.
+    sf_dot_e = np.sum(sf * e, axis=1)
+    sf_dot_e = np.where(np.abs(sf_dot_e) < 1e-30, 1e-30, sf_dot_e)
+    mag_sf2 = np.sum(sf * sf, axis=1)
+    ef_mag = mag_sf2 / sf_dot_e  # = |Ef|
 
     # Non-orthogonal component: Tf = Sf - Ef
+    ef = ef_mag[:, np.newaxis] * e
     tf = sf - ef
 
     # Geometric diffusion: |Ef| / |CF|
-    mag_ef = np.linalg.norm(ef, axis=1)
-    geo_diff = mag_ef / mag_cf
+    geo_diff = ef_mag / mag_cf
 
     # Interpolate gamma to faces (linear interpolation using geometric weights)
     weights = geo_data["face_weights"][:n_interior_faces]

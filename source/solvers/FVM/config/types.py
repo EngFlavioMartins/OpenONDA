@@ -133,7 +133,9 @@ class BoundaryConfig:
 
     @staticmethod
     def outlet(name: str, p: float = 0.0) -> "BoundaryConfig":
-        return BoundaryConfig(name=name, type_U="zeroGradient", type_p="fixedValue", value_p=p)
+        """Outlet: fixed pressure + ``inletOutlet`` velocity (zeroGradient on
+        outflow, zero inflow on reverse flow — bounded, no patch-name heuristic)."""
+        return BoundaryConfig(name=name, type_U="inletOutlet", type_p="fixedValue", value_p=p)
 
     @staticmethod
     def freestream(name: str, velocity: list[float]) -> "BoundaryConfig":

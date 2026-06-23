@@ -61,7 +61,7 @@ def _enforce_u_boundary_constraints(
             U[start:end] = 0.0
         elif bc_type in ["fixedValue", "freestream"] and "value_U" in boundary:
             U[start:end] = boundary["value_U"]
-        elif bc_type == "zeroGradient":
+        elif bc_type in ("zeroGradient", "inletOutlet"):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
@@ -363,6 +363,14 @@ class Solver:
             f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
             f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
         )
+
+        # Surface divergence loudly instead of hiding it behind a velocity clip.
+        if not np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])):
+            print(
+                "  WARNING: non-finite velocity detected — the solution is "
+                "diverging (try a smaller dt, more correctors, or a bounded "
+                "convection scheme)."
+            )
 
         # Compute CFL after step (for next step's dt adjustment)
         if cfg_time.adjust_timestep:
