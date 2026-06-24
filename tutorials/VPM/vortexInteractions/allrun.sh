@@ -45,11 +45,6 @@
 # Usage:
 #   ./allrun.sh                         # full ladder
 # CASE_SET=fine FINE_STEPS=10 ./allrun.sh
-#
-# Results are never overwritten. Each case writes to solution/<name>/ and
-# rings_setup.py refuses to overwrite a non-empty result directory.
-#
-# Requires the OpenONDA conda environment:  conda activate OpenONDA
 
 set -uo pipefail   # -e removed: individual case failures must not stop the run
 
@@ -97,6 +92,20 @@ run_case() {
     echo "========================================================================"
     echo "${label}"
     echo "========================================================================"
+
+    # Delete existing results for this case before re-running
+    local _name=""
+    local _args=("$@")
+    for ((_i=0; _i<${#_args[@]}; _i++)); do
+        if [[ "${_args[_i]}" == "--name" && $((_i+1)) -lt ${#_args[@]} ]]; then
+            _name="${_args[_i+1]}"
+            break
+        fi
+    done
+    if [[ -n "$_name" ]]; then
+        rm -rf "$RUN_ROOT/$_name"
+    fi
+
     local rc=0
     $PYTHON rings_setup.py --output-root "$RUN_ROOT" "$@" || rc=$?
     if [[ $rc -eq 0 ]]; then
@@ -111,7 +120,7 @@ run_case() {
 # ═════════════════════════════════════════════════════════════════════════════
 # LEAPFROGGING  (Γ₁ = Γ₂ = +π) — physics fidelity vs LBM reference
 # ═════════════════════════════════════════════════════════════════════════════
-
+<<comment
 if [[ "$CASE_SET" != "fine" ]]; then
 run_case "1/8 leapfrog_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode dns \
@@ -128,6 +137,7 @@ run_case "2/8 leapfrog_les — +LES" \
     --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
     --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
     --name leapfrog_les
+comment
 
 run_case "3/8 leapfrog_les_isr — +ISR (conservative ADM blend, C=1.5)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \

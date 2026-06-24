@@ -11,6 +11,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 try:
     from .solver import FVMVPMCoupler
 except ImportError:
-    FVMVPMCoupler = None  # type: ignore[assignment,misc]
+    print("ERROR: FVMVPMCoupler import failed. Check Cython extensions / OpenFOAM linkage.")
+    raise
 
 __all__ = ["FVMVPMCoupler"]

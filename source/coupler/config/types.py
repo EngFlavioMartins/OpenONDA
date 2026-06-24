@@ -14,7 +14,11 @@ from typing import Literal
 
 import numpy as np
 
-from source.solvers.VPM.config.types import StabilizationConfig, ViscousConfig
+from source.solvers.VPM.config.types import (
+    StabilizationConfig,
+    StretchingConfig,
+    ViscousConfig,
+)
 
 
 @dataclass
@@ -101,6 +105,20 @@ class CouplerConfig:
 
     viscous_scheme: ViscousConfig | None = None
     """VPM viscous diffusion scheme (``None`` = Core Spreading)."""
+
+    stretching_scheme: Literal[
+        "transposed", "classical", "mixed", "gradu", "rvpm"
+    ] = "transposed"
+    """VPM vortex-stretching formulation (Γ-stretching term).
+
+    ``"transposed"`` (default) is the conservative direct O(N²) scheme and
+    reproduces the legacy coupler behaviour.  ``"rvpm"`` is the reformulated-VPM
+    operator (Alvarez & Ning): a local O(N) scheme that conserves the element
+    volume measure σ²·|Γ| and is the most stable option for high-strain wakes —
+    it is the stretching used by the stable interactingVortices rungs.  Note that
+    enabling strength relaxation forces the effective mode to GRADU/RVPM, so
+    ``"rvpm"`` is preserved under relaxation while ``"transposed"`` is mapped to
+    GRADU internally."""
 
     les_smagorinsky_cs: float = 0.17
     """Smagorinsky constant Cs for the VPM sub-grid model (ν_t = (Cs·Δ)²|S|).
@@ -368,6 +386,7 @@ class CouplerConfig:
                 "particles_kernel": self.particles_kernel,
                 "treecode_theta": self.treecode_theta,
                 "advection_scheme": self.advection_scheme,
+                "stretching_scheme": self.stretching_scheme,
                 "stabilization": asdict(self.stabilization),
                 "vpm_domain": {
                     "xmin": self.vpm_domain[0],

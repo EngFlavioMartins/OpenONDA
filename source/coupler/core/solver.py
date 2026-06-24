@@ -51,6 +51,7 @@ from source.solvers.VPM import Solver as VPM_Solver
 from source.solvers.VPM import SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
+    StretchingConfig,
     TurbulenceConfig,
     VelocityConfig,
 )
@@ -206,9 +207,18 @@ class FVMVPMCoupler:
         # VPM + GPU: rank 0 only.  Non-master ranks only participate in the
         # collective FVM solve; they never touch Taichi or particle data.
         if self._is_master:
+            stretching_factory = {
+                "transposed": StretchingConfig.transposed,
+                "classical": StretchingConfig.classical,
+                "mixed": StretchingConfig.mixed,
+                "gradu": StretchingConfig.gradu,
+                "rvpm": StretchingConfig.rvpm,
+            }[getattr(cfg, "stretching_scheme", "transposed")]
+
             vpm_cfg = SolverConfig(
                 time_step_size=self.dt,
                 viscous=cfg.viscous_scheme,
+                stretching=stretching_factory(),
                 advection=AdvectionConfig(scheme=getattr(cfg, "advection_scheme", "RK2")),
                 turbulence=TurbulenceConfig.les_smagorinsky(cs=cfg.les_smagorinsky_cs),
                 stabilization=replace(
