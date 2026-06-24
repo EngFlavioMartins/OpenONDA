@@ -47,7 +47,13 @@ def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
 def read_h5(path: Path):
     # Guard against truncated/corrupt backups (e.g. from an interrupted run):
     # a bad file raises OSError ("file signature not found") — skip it rather
-    # than killing the whole figure.
+    # than killing the whole figure. A zero-byte / too-small file (the run died
+    # mid-write) is detected up front so we emit a clear message instead of
+    # h5py's cryptic "file signature not found".
+    if not path.is_file() or path.stat().st_size < 4096:
+        print(f"  [warn] skipping truncated backup {path.name} "
+              f"({path.stat().st_size if path.is_file() else 0} bytes)")
+        return None, None, None, None
     try:
         with h5py.File(path, "r") as f:
             t = float(f["solver"].attrs["flow_time"])

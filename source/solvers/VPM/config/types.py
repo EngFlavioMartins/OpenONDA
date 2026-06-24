@@ -864,6 +864,12 @@ class StabilizationConfig:
     remeshing_radius: float | None = None
     """Core radius [m] for remeshed particles.  None → spacing × RADIUS_RATIO."""
 
+    remeshing_project_solenoidal: bool = False
+    """Apply a Helmholtz projection to grid vorticity during conservative remeshing."""
+
+    remeshing_projection_padding: int = 4
+    """Zero-padding cells used by the isolated-domain FFT projection."""
+
     # ── Factory methods ───────────────────────────────────────────────────────
     @staticmethod
     def disabled() -> "StabilizationConfig":
@@ -894,6 +900,8 @@ class StabilizationConfig:
         delta_correction: bool = False,
         impulse_constraint: str = "3d",
         radius: float | None = None,
+        project_solenoidal: bool = False,
+        projection_padding: int = 4,
     ) -> "StabilizationConfig":
         """Periodic conservative remeshing."""
         if frequency <= 0:
@@ -908,6 +916,8 @@ class StabilizationConfig:
             raise ValueError("impulse_constraint must be '3d' or 'z'")
         if radius is not None and radius <= 0:
             raise ValueError("remeshing radius must be positive")
+        if projection_padding < 0:
+            raise ValueError("projection_padding must be non-negative")
         return StabilizationConfig(
             remeshing_frequency=frequency,
             remeshing_spacing=spacing,
@@ -918,6 +928,8 @@ class StabilizationConfig:
             remeshing_delta_correction=delta_correction,
             remeshing_impulse_constraint=impulse_constraint,
             remeshing_radius=radius,
+            remeshing_project_solenoidal=project_solenoidal,
+            remeshing_projection_padding=projection_padding,
         )
 
     @classmethod
@@ -1257,6 +1269,27 @@ class SolverConfig:
     time_step: int = 0
     """Initial time step number"""
 
+    physics_substeps: int = 1
+    """Minimum number of complete VPM physics microsteps per output step.
+
+    Unlike ISR substeps, a physics microstep advances positions, recomputes
+    velocity gradients and LES state, then advances stretching and diffusion.
+    The default of one preserves the legacy update path exactly.
+    """
+
+    deformation_cfl: float | None = None
+    """Optional adaptive deformation limit ``max(||S||_F) * dt_sub``.
+
+    When set, the solver increases ``physics_substeps`` so the limit is met.
+    This controls the complete VPM update rather than repeatedly integrating a
+    frozen velocity-gradient tensor.
+    """
+
+    max_physics_substeps: int = 64
+    """Safety ceiling for complete physics microsteps. Exceeding it aborts the
+    step instead of silently violating ``deformation_cfl``.
+    """
+
     # ===== PHYSICS CONFIGURATION =====
     advection: AdvectionConfig | None = None
     """Configuration for advection term (scheme, etc.)."""
@@ -1521,6 +1554,12 @@ class SolverConfig:
         # Time step validation
         if self.time_step_size <= 0:
             raise ValueError("time_step_size must be positive")
+        if self.physics_substeps < 1:
+            raise ValueError("physics_substeps must be at least 1")
+        if self.deformation_cfl is not None and self.deformation_cfl <= 0.0:
+            raise ValueError("deformation_cfl must be positive when provided")
+        if self.max_physics_substeps < self.physics_substeps:
+            raise ValueError("max_physics_substeps must be >= physics_substeps")
 
         # Frequency validation
         if self.logging_frequency < 0:
@@ -1570,6 +1609,9 @@ class SolverConfig:
             "time_step_size": self.time_step_size,
             "flow_time": self.flow_time,
             "time_step": self.time_step,
+            "physics_substeps": self.physics_substeps,
+            "deformation_cfl": self.deformation_cfl,
+            "max_physics_substeps": self.max_physics_substeps,
             "advection": _as_dict(self.advection) if self.advection else None,
             "stretching": _as_dict(self.stretching) if self.stretching else None,
             "viscous": _as_dict(self.viscous) if self.viscous else None,

@@ -2,9 +2,9 @@
 # Vortex-ring interactions — generate the stabilization comparison figures.
 #
 # Usage:
-#   ./allplot.sh [--solution-dir PATH] [--dpi N]
+#   ./allplot.sh [--solution-dir PATH] [--figures-dir PATH] [--dpi N]
 #
-# Defaults: --solution-dir ./solution  --dpi 300
+# Defaults: --solution-dir ./solution  --dpi 400
 #
 # Case directories under solution-dir/ are auto-discovered (any name with
 # vpm_*_NNNNNN.h5 backups) — see assets/compare_stabilization.py.
@@ -16,16 +16,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 SOLUTION_DIR="./solution"
-DPI=300
+FIGURES_DIR="$SCRIPT_DIR/figures"
+DPI=400
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
+        --figures-dir)  FIGURES_DIR="$2";  shift 2 ;;
         --dpi)          DPI="$2";          shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
-FIGURES_DIR="$SCRIPT_DIR/figures"
 mkdir -p "$FIGURES_DIR"
 
 echo "[allplot] solution-dir : $SOLUTION_DIR"

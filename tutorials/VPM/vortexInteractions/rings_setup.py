@@ -14,8 +14,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import argparse
+import csv
+from datetime import datetime, timezone
+import json
 import numpy as np
 from pathlib import Path
+import subprocess
 
 from source.solvers.VPM import Solver, SolverConfig, VelocityConfig, ParticleDistributor
 from source.solvers.VPM.config.types import (
@@ -67,6 +71,33 @@ def main():
         default=1200,
         help="Number of time steps (default: 1200)",
     )
+    parser.add_argument(
+        "--particle-spacing",
+        type=float,
+        default=0.025,
+        help="Initial particle spacing h [m] (default: 0.025).",
+    )
+    parser.add_argument(
+        "--output-root",
+        default="solution",
+        help="Parent directory; this case is written to <output-root>/<name>.",
+    )
+    parser.add_argument("--backup-frequency", type=int, default=2)
+    parser.add_argument("--logging-frequency", type=int, default=2)
+    parser.add_argument("--max-particles", type=int, default=500_000)
+    parser.add_argument(
+        "--physics-substeps",
+        type=int,
+        default=1,
+        help="Minimum complete VPM physics microsteps per output step.",
+    )
+    parser.add_argument(
+        "--deformation-cfl",
+        type=float,
+        default=None,
+        help="Optional adaptive limit max(||S||_F)*dt_sub.",
+    )
+    parser.add_argument("--max-physics-substeps", type=int, default=64)
     parser.add_argument(
         "--isr",
         type=float,
@@ -150,7 +181,9 @@ def main():
     # ================================================
     # 2. Numerical Parameters
     # ================================================
-    particle_spacing = 0.025  # Particle spacing h [m]
+    particle_spacing = args.particle_spacing  # Particle spacing h [m]
+    if particle_spacing <= 0.0:
+        parser.error("--particle-spacing must be positive")
     time_step = args.dt  # [s]
     num_steps = args.num_steps  # Simulation steps
 
@@ -185,7 +218,13 @@ def main():
     else:
         stretching = StretchingConfig.transposed()
 
-    output_dir = Path("solution") / args.name
+    output_dir = Path(args.output_root) / args.name
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise FileExistsError(
+            f"Refusing to overwrite non-empty result directory: {output_dir}. "
+            "Choose a new --name or --output-root."
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # XZ-plane field sampler for diagnostic analysis
     if case_label == "collide":
@@ -232,11 +271,12 @@ def main():
         velocity=VelocityConfig.treecode(theta=0.3),
         viscous=viscous_cfg,
         advection=advection_cfg,
-        backup_frequency=2,
-        logging_frequency=2,
+        backup_frequency=args.backup_frequency,
+        logging_frequency=args.logging_frequency,
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
+        max_particles=args.max_particles,
         samplers=[(xz_sampler, "xz_slice")],
         isr_enabled=isr_enabled,
         isr_mode=relaxation_mode if isr_enabled else "blend",
@@ -244,7 +284,40 @@ def main():
         isr_deconv=args.deconv,
         isr_conserve=True,
         isr_cfl=0.2,
+        physics_substeps=args.physics_substeps,
+        deformation_cfl=args.deformation_cfl,
+        max_physics_substeps=args.max_physics_substeps,
     )
+
+    def _jsonable(value):
+        if isinstance(value, dict):
+            return {str(key): _jsonable(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_jsonable(item) for item in value]
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        return value
+
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except OSError:
+        revision = ""
+    manifest = {
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "git_revision": revision or None,
+        "arguments": vars(args),
+        "case_label": case_label,
+        "output_directory": str(output_dir),
+        "solver_config": _jsonable(solver_config.to_dict()),
+    }
+    (output_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
 
     vpm = Solver(config=solver_config)
 
@@ -284,8 +357,11 @@ def main():
             viscosity=visc,
             group_id=np.full(len(positions), group_index, dtype=np.int32),
         )
+        # Prune each ring before allocating the next full background lattice.
+        # At h=0.020 the unfiltered two-ring lattice exceeds 8e5 particles even
+        # though only a narrow tubular core carries meaningful circulation.
+        vpm.remove_weak_particles(percent=0.1, per_group=True)
 
-    vpm.remove_weak_particles(percent=0.1, per_group=True)
     vpm.info()
 
     # ================================================
@@ -294,18 +370,89 @@ def main():
     initial_max_norm = float(np.linalg.norm(vpm.particles_circulation, axis=1).max())
     blowup_threshold = max(50.0 * initial_max_norm, 0.1)
 
-    for step in range(num_steps):
-        vpm.update_state()
-        max_norm = float(np.linalg.norm(vpm.particles_circulation, axis=1).max())
-        if max_norm > blowup_threshold:
-            print(
-                f"\n*** BLOWUP DETECTED at step {step + 1} (t={vpm.flow_time:.2f} s) "
-                f"— max|Γ|={max_norm:.4f} > {blowup_threshold:.4f} ***"
+    metric_fields = [
+        "step",
+        "time",
+        "n_particles",
+        "max_gamma",
+        "p999_gamma",
+        "sum_gamma_magnitude",
+        "max_strain_frobenius",
+        "max_parallel_strain",
+        "radius_min",
+        "radius_max",
+        "physics_substeps",
+        "physics_dt_sub",
+    ]
+
+    def stability_metrics(step):
+        """Return inexpensive indicators of the stretching feedback loop."""
+        circulation = vpm.particles_circulation
+        n_particles = len(circulation)
+        gamma_norm = np.linalg.norm(circulation, axis=1)
+        strain = vpm.particles.strain_rate_cpu(use_cache=False)[:n_particles]
+        strain_norm = np.linalg.norm(strain.reshape(n_particles, 9), axis=1)
+
+        parallel_strain = np.zeros(n_particles)
+        nonzero = gamma_norm > np.finfo(float).eps
+        if np.any(nonzero):
+            gamma_hat = circulation[nonzero] / gamma_norm[nonzero, None]
+            parallel_strain[nonzero] = np.einsum(
+                "ni,nij,nj->n", gamma_hat, strain[nonzero], gamma_hat
             )
-            vpm.save_state(str(output_dir / "pre_blowup"))
-            break
-    else:
-        print(f"Simulation completed {num_steps} steps without blowup.")
+
+        radii = vpm.particles_radii
+        microstep_info = getattr(vpm, "last_physics_substeps", {})
+        return {
+            "step": step,
+            "time": vpm.flow_time,
+            "n_particles": n_particles,
+            "max_gamma": float(gamma_norm.max()),
+            "p999_gamma": float(np.quantile(gamma_norm, 0.999)),
+            "sum_gamma_magnitude": float(gamma_norm.sum()),
+            "max_strain_frobenius": float(strain_norm.max()),
+            "max_parallel_strain": float(parallel_strain.max()),
+            "radius_min": float(radii.min()),
+            "radius_max": float(radii.max()),
+            "physics_substeps": int(microstep_info.get("count", 1)),
+            "physics_dt_sub": float(microstep_info.get("dt_sub", time_step)),
+        }
+
+    metrics_path = output_dir / "stability_metrics.csv"
+    with metrics_path.open("w", newline="", buffering=1) as metrics_file:
+        metrics_writer = csv.DictWriter(metrics_file, fieldnames=metric_fields)
+        metrics_writer.writeheader()
+        metrics_writer.writerow(stability_metrics(0))
+
+        for step in range(num_steps):
+            # The complete-physics microstep path is fail-fast by design: it
+            # raises when the adaptive substep count exceeds its safety ceiling
+            # (acceptance criterion 5) or when the strain used to size the
+            # microsteps is non-finite (criterion 1).  Both are *defined* failure
+            # outcomes of the stability challenge, not script bugs — record them
+            # like a blow-up so the partial trajectory is still recoverable for
+            # post-processing instead of crashing the whole ladder.
+            try:
+                vpm.update_state()
+            except (RuntimeError, FloatingPointError) as exc:
+                print(
+                    f"\n*** INSTABILITY ABORT at step {step + 1} "
+                    f"(t={vpm.flow_time:.2f} s) — {exc} ***"
+                )
+                vpm.save_state(str(output_dir / "pre_blowup"))
+                break
+            metrics = stability_metrics(step + 1)
+            metrics_writer.writerow(metrics)
+            max_norm = metrics["max_gamma"]
+            if not np.isfinite(max_norm) or max_norm > blowup_threshold:
+                print(
+                    f"\n*** BLOWUP DETECTED at step {step + 1} (t={vpm.flow_time:.2f} s) "
+                    f"— max|Γ|={max_norm:.4f} > {blowup_threshold:.4f} ***"
+                )
+                vpm.save_state(str(output_dir / "pre_blowup"))
+                break
+        else:
+            print(f"Simulation completed {num_steps} steps without blowup.")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ License: GPL-3.0-or-later
 # Standard library imports
 from contextlib import contextmanager
 from dataclasses import replace
+import math
 import os
 from pathlib import Path
 import time
@@ -698,40 +699,40 @@ class Solver:
             with self._measure_time(timing, "panel"):
                 self._advance_panel()
 
-        # ----------------------------------------------------------------------
-        # 1. VELOCITY & GRADIENTS (At t_n)
-        # ----------------------------------------------------------------------
-        # The self-velocity at t_n is recomputed by the advection integrator as
-        # its RK stage-1 (k1) at the same positions, and nothing between here and
-        # advection reads particles.velocity (∇u, LES and stretching all use the
-        # velocity_gradient field).  So the separate pass is a redundant treecode
-        # evaluation (~1 of ~6/step) — skip it when advection will run.  Kept when
-        # advection is off (then it is the only velocity computation, needed for
-        # diagnostics) or when VPM source/panel particles add induction that the
-        # advection k1 does not include.
-        _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
-        if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
-            with self._measure_time(timing, "velocities"):
-                self._update_velocities()
+        if self._full_state_substepping_enabled():
+            # Complete VPM microsteps: advance positions, refresh ∇u/S at the
+            # new positions, then advance strengths and diffusion.  This avoids
+            # repeatedly integrating strengths against the macro-step's frozen
+            # velocity gradient (the failure mode targeted by this path).
+            with self._measure_time(timing, "physics_microsteps"):
+                self._advance_physics_microsteps(self.time_step_size)
+        else:
+            # Legacy one-pass ordering, retained byte-for-byte by default.
+            # ------------------------------------------------------------------
+            # 1. VELOCITY & GRADIENTS (At t_n)
+            # ------------------------------------------------------------------
+            _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
+            if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
+                with self._measure_time(timing, "velocities"):
+                    self._update_velocities()
 
-        # Velocity gradients/strain-rate
-        with self._measure_time(timing, "velocity_gradients"):
-            self._update_velocity_gradients()
+            with self._measure_time(timing, "velocity_gradients"):
+                self._update_velocity_gradients()
 
-        with self._measure_time(timing, "les"):
-            self._update_LES_state()
+            with self._measure_time(timing, "les"):
+                self._update_LES_state()
 
-        # ----------------------------------------------------------------------
-        # 2. CONVECTION (Advection x_n -> x_n+1)
-        # ----------------------------------------------------------------------
-        with self._measure_time(timing, "positions"):
-            self._update_positions()
+            # ------------------------------------------------------------------
+            # 2. CONVECTION (Advection x_n -> x_n+1)
+            # ------------------------------------------------------------------
+            with self._measure_time(timing, "positions"):
+                self._update_positions()
 
-        # ----------------------------------------------------------------------
-        # 3. STRENGTH & DIFFUSION (Update alpha)
-        # ----------------------------------------------------------------------
-        with self._measure_time(timing, "strengths"):
-            self._update_strength()
+            # ------------------------------------------------------------------
+            # 3. STRENGTH & DIFFUSION (Update alpha)
+            # ------------------------------------------------------------------
+            with self._measure_time(timing, "strengths"):
+                self._update_strength()
 
         # ----------------------------------------------------------------------
         # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
@@ -2170,7 +2171,83 @@ class Solver:
                 self.num_sources,
             )
 
-    def _update_velocity_gradients(self) -> None:
+    def _full_state_substepping_enabled(self) -> bool:
+        """Whether the opt-in complete-physics microstep path is active."""
+        return bool(
+            getattr(self.config, "physics_substeps", 1) > 1
+            or getattr(self.config, "deformation_cfl", None) is not None
+        )
+
+    def _max_deformation_rate(self) -> float:
+        """Maximum Frobenius norm of the current strain tensor [1/s]."""
+        n = self.particles.number_of_particles
+        if n == 0:
+            return 0.0
+        strain = self.particles.strain_rate_cpu()[:n]
+        if strain.size == 0:
+            return 0.0
+        norms = np.linalg.norm(strain.reshape(n, 9), axis=1)
+        finite = norms[np.isfinite(norms)]
+        return float(finite.max()) if finite.size else float("inf")
+
+    def _select_physics_substeps(self, macro_dt: float) -> tuple[int, float]:
+        """Choose complete VPM microsteps from fixed and deformation limits."""
+        requested = max(1, int(getattr(self.config, "physics_substeps", 1)))
+        deformation_rate = 0.0
+        cfl = getattr(self.config, "deformation_cfl", None)
+        if cfl is not None and self.particles.number_of_particles > 0:
+            # This sizing gradient is deliberately fresh. The first microstep
+            # advects before refreshing it again at the new positions.
+            self._update_velocity_gradients()
+            ti.sync()
+            deformation_rate = self._max_deformation_rate()
+            if not np.isfinite(deformation_rate):
+                raise FloatingPointError("Non-finite strain encountered while sizing VPM microsteps")
+            requested = max(requested, int(math.ceil(deformation_rate * macro_dt / cfl)))
+
+        limit = int(getattr(self.config, "max_physics_substeps", 64))
+        if requested > limit:
+            raise RuntimeError(
+                "Complete VPM substepping requires "
+                f"{requested} microsteps (max ||S||_F={deformation_rate:.3e} 1/s, "
+                f"dt={macro_dt:.3e} s), exceeding max_physics_substeps={limit}. "
+                "Reduce the macro timestep or raise the explicit safety ceiling."
+            )
+        if requested > 1 and self.viscous_scheme == "DVH":
+            raise RuntimeError(
+                "Complete physics substepping is incompatible with DVH: each DVH firing "
+                "advances its fixed diffusion time regardless of dt_sub. Use CS/GBD/RWM, "
+                "or keep physics_substeps=1 and deformation_cfl=None."
+            )
+        return requested, deformation_rate
+
+    def _advance_physics_microsteps(self, macro_dt: float) -> None:
+        """Advance advection, fresh-gradient stretching and diffusion in microsteps."""
+        count, deformation_rate = self._select_physics_substeps(macro_dt)
+        dt_sub = macro_dt / count
+        self.last_physics_substeps = {
+            "count": count,
+            "dt_sub": dt_sub,
+            "max_deformation_rate": deformation_rate,
+        }
+        print(
+            f"Complete VPM substepping: k={count}, dt_sub={dt_sub:.4e} s"
+            + (
+                f", max ||S||_F={deformation_rate:.3e} s⁻¹"
+                if getattr(self.config, "deformation_cfl", None) is not None
+                else ""
+            )
+        )
+
+        for substep in range(count):
+            # Lie-split at the microstep scale. Crucially, stretching uses the
+            # strain at the advected positions, not the macro-step's stale S.
+            self._update_positions(dt=dt_sub)
+            self._update_velocity_gradients(announce=substep == 0)
+            self._update_LES_state(dt=dt_sub)
+            self._update_strength(dt=dt_sub, announce=substep == 0)
+
+    def _update_velocity_gradients(self, announce: bool = True) -> None:
         """
         Update velocity gradient tensors for all particles.
 
@@ -2188,13 +2265,15 @@ class Solver:
         theta = self.config.velocity.theta if self.config.velocity else 0.5
 
         if use_treecode:
-            print(f"Updating velocity gradient tensor, ∇u (treecode, θ={theta})")
+            if announce:
+                print(f"Updating velocity gradient tensor, ∇u (treecode, θ={theta})")
             self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
         else:
-            print("Updating velocity gradient tensor, ∇u")
+            if announce:
+                print("Updating velocity gradient tensor, ∇u")
             self.physics.compute_velocity_gradients(self.particles)
 
-    def _update_LES_state(self) -> None:
+    def _update_LES_state(self, dt: float | None = None) -> None:
         """
         Update turbulence state for DNS/LES models.
 
@@ -2205,9 +2284,12 @@ class Solver:
         if self.flow_model == "LES":
             # Compute enstrophy for enstrophy-based dissipation (used by SFS model)
             self.physics.compute_enstrophy(self.particles)
-            self.LES.compute(self.particles, dt=self.time_step_size)
+            self.LES.compute(
+                self.particles,
+                dt=self.time_step_size if dt is None else dt,
+            )
 
-    def _update_strength(self) -> None:
+    def _update_strength(self, dt: float | None = None, announce: bool = True) -> None:
         """
         Update particle vortex strengths via stretching and diffusion.
 
@@ -2229,9 +2311,10 @@ class Solver:
             "RVPM": "(∇u)ᵀ·ω − c_r(ω̂·(∇u)ᵀω̂)ω (rVPM)",
         }.get(effective_mode, f"({effective_mode})")
         suffix = " [GRADU forced by strength relaxation]" if effective_mode != self.stretching_mode else ""
-        print(f"Updating strengths via {mode_eq}{suffix}")
+        if announce:
+            print(f"Updating strengths via {mode_eq}{suffix}")
 
-        dt = self.time_step_size
+        dt = self.time_step_size if dt is None else dt
         self._apply_stretching_with_relaxation(dt)
         self._apply_viscous_diffusion(dt)
 
@@ -2467,6 +2550,8 @@ class Solver:
                 delta_correction=cfg.remeshing_delta_correction,
                 impulse_constraint=cfg.remeshing_impulse_constraint,
                 particle_radius=cfg.remeshing_radius,
+                project_solenoidal=cfg.remeshing_project_solenoidal,
+                projection_padding=cfg.remeshing_projection_padding,
             )
             # Recompute flow integrals from the post-remesh particle state so the
             # logged CSV row is consistent with the particle distribution used next step.
@@ -2492,7 +2577,7 @@ class Solver:
             self.physics, self.particles, pos_pre, str_pre, rad_pre, vort_pre, mask_split, stats
         )
 
-    def _update_positions(self) -> None:
+    def _update_positions(self, dt: float | None = None) -> None:
         """
         Update particle positions through advection.
 
@@ -2505,7 +2590,7 @@ class Solver:
             return
         self.physics.update_positions(
             self.particles,
-            self.time_step_size,
+            self.time_step_size if dt is None else dt,
             scheme=self.advection_scheme,
         )
 
