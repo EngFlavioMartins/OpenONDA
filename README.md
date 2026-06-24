@@ -8,6 +8,10 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+<p align="center">
+  <img src="./docs/logos/graphical_illustration.png" width="720px"/>
+</p>
+
 **OFW** (OpenFOAM-Wrapper) is a Cython/C++ extension that exposes OpenFOAM's
 incompressible `pimpleFoam` solver to Python. It lets an external Python program
 **advance an OpenFOAM case one time step at a time** and **read or write mesh
@@ -30,11 +34,7 @@ links against OpenFOAM's shared libraries) plus a small Python stack.
 |--------------------|---------|---------------------------------------|
 | OpenFOAM (OpenCFD) | v2512   | Native solver libraries (build & run) |
 | Python             | ≥ 3.10  | Host interpreter                      |
-| mpi4py             | ≥ 3.1 * | Parallel runs                         |
-
-All of the Python packages above are installed by the conda environment file
-[`scripts/environment/environment.yml`](scripts/environment/environment.yml)
-(see [Installation](#installation)).
+| mpi4py             | ≥ 3.10  | Parallel runs                         |
 
 ---
 
@@ -110,16 +110,16 @@ The full list of interface methods, with usage notes, is in
 Each case under [`tutorials/`](tutorials/) is **self-contained** and ships a
 pre-built mesh. Run a case end-to-end with its `Allrun` script:
 
+> **Reminder!** The `Allrun`/`Allplot` scripts run Python from a conda
+> environment named **`ofw`** (use
+> [`scripts/environment/environment.yml`](scripts/environment/environment.yml)),
+
 ```bash
 cd tutorials/vortexRing
 ./Allrun        # decompose -> run (mpirun) -> reconstruct
 ./Allplot       # write diagnostics + field-slice figures into figures/
 ./Allclean      # reset the case
 ```
-
-> **Python environment.** The `Allrun`/`Allplot` scripts run Python from a conda
-> environment named **`ofw`** (use
-> [`scripts/environment/environment.yml`](scripts/environment/environment.yml)),
 
 | Case                    | Demonstrates                                              |
 |-------------------------|----------------------------------------------------------|
@@ -186,11 +186,6 @@ OpenFOAM source code and is likewise GPL-3.
 ## Use of AI
 
 All code, algorithms, and documentation in this repository were originally written by humans (for 10+ years!). Documentation refinement, code cleanup (hygiene), and test generation were automated using agentic AI.
-
-> **OFW vs OpenONDA:** *OpenONDA* is the broader research project; **OFW**
-> (this repository/branch) is its standalone OpenFOAM-interface component.
-
----
 
 <p align="center">
   <a href="https://opensource.org">
