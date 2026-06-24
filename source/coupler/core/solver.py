@@ -19,6 +19,7 @@ FVM-VPM Coupled Solver — overset/Chimera-style four-step loop.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import logging
@@ -49,7 +50,6 @@ from source.solvers.OFW.fvm_solver import fvm_solver
 from source.solvers.VPM import Solver as VPM_Solver
 from source.solvers.VPM import SolverConfig
 from source.solvers.VPM.config.types import (
-    AdaptationConfig,
     AdvectionConfig,
     TurbulenceConfig,
     VelocityConfig,
@@ -211,7 +211,8 @@ class FVMVPMCoupler:
                 viscous=cfg.viscous_scheme,
                 advection=AdvectionConfig(scheme=getattr(cfg, "advection_scheme", "RK2")),
                 turbulence=TurbulenceConfig.les_smagorinsky(cs=cfg.les_smagorinsky_cs),
-                adaptation=AdaptationConfig(
+                stabilization=replace(
+                    cfg.stabilization,
                     remove_particles_by_bounds=list(cfg.vpm_domain),
                 ),
                 particles_kernel=cfg.particles_kernel,
@@ -224,14 +225,6 @@ class FVMVPMCoupler:
                 vpm_domain_bounds=list(cfg.vpm_domain),
                 max_particles=cfg.max_particles,
                 precision=cfg.precision,
-                # Stretching stabilization (ISR).  Default off → byte-identical
-                # to the legacy path; enabled per-case (cubeFlow) to suppress the
-                # free-wake explicit-stretching blow-up.
-                isr_enabled=getattr(cfg, "isr_enabled", False),
-                isr_mode=getattr(cfg, "isr_mode", "blend"),
-                isr_cfl=getattr(cfg, "isr_cfl", 0.2),
-                isr_C=getattr(cfg, "isr_C", 1.0),
-                isr_k_max=getattr(cfg, "isr_k_max", 8),
             )
 
             with self.vpm_redirector:

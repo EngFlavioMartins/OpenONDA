@@ -538,7 +538,7 @@ class BackupSystem:
             print(f"(Info) Warning: Loading older backup format {format_version}")
 
         # Create SolverConfig instance with validation
-        config = SolverConfig(**config_dict)
+        config = SolverConfig.from_dict(config_dict)
 
         print(f"Configuration validated (format v{format_version})")
         return config

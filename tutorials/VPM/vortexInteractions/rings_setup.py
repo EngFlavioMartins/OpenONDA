@@ -21,7 +21,13 @@ import numpy as np
 from pathlib import Path
 import subprocess
 
-from source.solvers.VPM import Solver, SolverConfig, VelocityConfig, ParticleDistributor
+from source.solvers.VPM import (
+    ParticleDistributor,
+    Solver,
+    SolverConfig,
+    StabilizationConfig,
+    VelocityConfig,
+)
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     TurbulenceConfig,
@@ -82,8 +88,8 @@ def main():
         default="solution",
         help="Parent directory; this case is written to <output-root>/<name>.",
     )
-    parser.add_argument("--backup-frequency", type=int, default=2)
-    parser.add_argument("--logging-frequency", type=int, default=2)
+    parser.add_argument("--backup-frequency", type=int, default=5)
+    parser.add_argument("--logging-frequency", type=int, default=5)
     parser.add_argument("--max-particles", type=int, default=500_000)
     parser.add_argument(
         "--physics-substeps",
@@ -99,13 +105,6 @@ def main():
     )
     parser.add_argument("--max-physics-substeps", type=int, default=64)
     parser.add_argument(
-        "--isr",
-        type=float,
-        default=0.0,
-        help="(legacy) enable blend relaxation with strain-gate constant C "
-        "(0 = disabled). Equivalent to --relaxation blend --isr-C <value>.",
-    )
-    parser.add_argument(
         "--relaxation",
         choices=["none", "blend", "pedrizzetti"],
         default="none",
@@ -113,7 +112,7 @@ def main():
         "filter) or pedrizzetti (|Γ|-preserving realignment).",
     )
     parser.add_argument(
-        "--isr-C",
+        "--relaxation-rate",
         type=float,
         default=1.0,
         help="Strain-gate rate constant C for the relaxation (default 1.0).",
@@ -187,13 +186,8 @@ def main():
     time_step = args.dt  # [s]
     num_steps = args.num_steps  # Simulation steps
 
-    # Relaxation: --relaxation flag, with --isr <C> as a legacy alias for blend
     relaxation_mode = args.relaxation
-    isr_C = args.isr_C
-    if args.isr > 0.0 and relaxation_mode == "none":
-        relaxation_mode = "blend"
-        isr_C = args.isr
-    isr_enabled = relaxation_mode != "none"
+    relaxation_enabled = relaxation_mode != "none"
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -262,6 +256,17 @@ def main():
         )
 
     advection_cfg = AdvectionConfig(scheme="RK2")
+    stabilization_cfg = (
+        StabilizationConfig.strength_relaxation(
+            mode=relaxation_mode,
+            rate=args.relaxation_rate,
+            deconv=args.deconv,
+            conserve=True,
+            cfl=0.2,
+        )
+        if relaxation_enabled
+        else StabilizationConfig.disabled()
+    )
 
     solver_config = SolverConfig(
         time_step_size=time_step,
@@ -271,6 +276,7 @@ def main():
         velocity=VelocityConfig.treecode(theta=0.3),
         viscous=viscous_cfg,
         advection=advection_cfg,
+        stabilization=stabilization_cfg,
         backup_frequency=args.backup_frequency,
         logging_frequency=args.logging_frequency,
         backup_file_name=args.name,
@@ -278,12 +284,6 @@ def main():
         backup_directory=str(output_dir),
         max_particles=args.max_particles,
         samplers=[(xz_sampler, "xz_slice")],
-        isr_enabled=isr_enabled,
-        isr_mode=relaxation_mode if isr_enabled else "blend",
-        isr_C=isr_C,
-        isr_deconv=args.deconv,
-        isr_conserve=True,
-        isr_cfl=0.2,
         physics_substeps=args.physics_substeps,
         deformation_cfl=args.deformation_cfl,
         max_physics_substeps=args.max_physics_substeps,
@@ -357,9 +357,6 @@ def main():
             viscosity=visc,
             group_id=np.full(len(positions), group_index, dtype=np.int32),
         )
-        # Prune each ring before allocating the next full background lattice.
-        # At h=0.020 the unfiltered two-ring lattice exceeds 8e5 particles even
-        # though only a narrow tubular core carries meaningful circulation.
         vpm.remove_weak_particles(percent=0.1, per_group=True)
 
     vpm.info()
@@ -425,13 +422,6 @@ def main():
         metrics_writer.writerow(stability_metrics(0))
 
         for step in range(num_steps):
-            # The complete-physics microstep path is fail-fast by design: it
-            # raises when the adaptive substep count exceeds its safety ceiling
-            # (acceptance criterion 5) or when the strain used to size the
-            # microsteps is non-finite (criterion 1).  Both are *defined* failure
-            # outcomes of the stability challenge, not script bugs — record them
-            # like a blow-up so the partial trajectory is still recoverable for
-            # post-processing instead of crashing the whole ladder.
             try:
                 vpm.update_state()
             except (RuntimeError, FloatingPointError) as exc:

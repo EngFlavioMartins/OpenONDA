@@ -15,12 +15,17 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from source.solvers.VPM import Solver, SolverConfig, VelocityConfig, ParticleDistributor
+from source.solvers.VPM import (
+    ParticleDistributor,
+    Solver,
+    SolverConfig,
+    StabilizationConfig,
+    VelocityConfig,
+)
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     TurbulenceConfig,
     ViscousConfig,
-    AdaptationConfig,
     StretchingConfig,
 )
 from source.solvers.VPM.utils import VortexRingVPM
@@ -45,13 +50,6 @@ def main():
         help="Root directory for solution output (default: solution/)",
     )
     parser.add_argument(
-        "--direction-alpha",
-        type=float,
-        default=1.0,
-        help="Pedrizzetti direction-relaxation coefficient (default: 1.0 = disabled, "
-        "range [0.85, 0.99] recommended for stabilization)",
-    )
-    parser.add_argument(
         "--num-steps",
         type=int,
         default=600,
@@ -67,8 +65,9 @@ def main():
         help="Optional Widnall perturbation amplitude (zero for Saffman validation).",
     )
     parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0)
-    parser.add_argument("--isr-mode", choices=["off", "blend", "pedrizzetti"], default="off")
-    parser.add_argument("--isr-C", type=float, default=1.0)
+    parser.add_argument("--relaxation", choices=["off", "blend", "pedrizzetti"], default="off")
+    parser.add_argument("--relaxation-rate", type=float, default=1.0)
+    parser.add_argument("--relaxation-factor", type=float, default=0.95)
     args = parser.parse_args()
 
     # ================================================
@@ -113,28 +112,18 @@ def main():
 
     output_dir = Path(args.solution_dir) / args.name
 
-    # Map legacy direction_alpha to the ISR API:
-    #   alpha == 1.0  → disabled (ISR off, default)
-    #   alpha  < 1.0  → Pedrizzetti constant-relaxation mode (range [0.85, 0.99])
-    isr_kwargs: dict = {}
-    if args.direction_alpha < 1.0:
-        isr_kwargs = dict(
-            isr_enabled=True,
-            isr_mode="pedrizzetti",
-            isr_gate="constant",
-            isr_rlx=args.direction_alpha,
-            isr_conserve=True,
+    if args.relaxation != "off":
+        stabilization_cfg = StabilizationConfig.strength_relaxation(
+            mode=args.relaxation,
+            gate="constant" if args.relaxation == "pedrizzetti" else "strain",
+            factor=args.relaxation_factor,
+            rate=args.relaxation_rate,
+            conserve=True,
+            cfl=0.2,
+            max_substeps=64,
         )
-    elif args.isr_mode != "off":
-        isr_kwargs = dict(
-            isr_enabled=True,
-            isr_mode=args.isr_mode,
-            isr_gate="strain",
-            isr_C=args.isr_C,
-            isr_conserve=True,
-            isr_cfl=0.2,
-            isr_k_max=64,
-        )
+    else:
+        stabilization_cfg = StabilizationConfig.disabled()
 
     solver_config = SolverConfig(
         time_step_size=time_step,
@@ -143,13 +132,13 @@ def main():
         stretching=stretching,
         velocity=VelocityConfig.treecode(theta=0.5),
         viscous=ViscousConfig.cs(),
+        stabilization=stabilization_cfg,
         backup_frequency=6,
         logging_frequency=6,
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
         max_particles=30_000,
-        **isr_kwargs,
     )
 
     vpm = Solver(config=solver_config)

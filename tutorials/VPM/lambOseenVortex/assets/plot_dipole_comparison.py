@@ -178,7 +178,7 @@ def plot_dipole_case(args) -> int:
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.5 / 2.54, 7.5 / 2.54))
+    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.5 / 2.54))
     fig.subplots_adjust(wspace=0.25, bottom=0.30, top=0.92, left=0.08, right=0.92)
 
     for scheme in SCHEMES:

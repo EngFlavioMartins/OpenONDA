@@ -25,6 +25,8 @@ SOLUTION_DIR = SCRIPT_DIR / "solution"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
+CM = 1 / 2.54  # cm → inch
+
 # ── Physical constants  (match ring_setup.py) ─────────────────────────────────────
 R0 = 1.0  # ring major radius [m]
 GAMMA = np.pi  # circulation [m²/s]
@@ -40,8 +42,6 @@ U_REF = GAMMA / (4.0 * np.pi * R0) * (np.log(8.0 / _eps0) - _C0)
 # Reference energy & dissipation rate scales (per unit density)
 E_REF = GAMMA**2 * R0  # [m⁵/s²]  kinetic energy scale for a ring
 P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
-
-CM = 1 / 2.54  # cm → inch
 
 # Consistent colour & marker per solution variant (used by every figure).
 # DNS → dashed line (--),  LES → solid line (-).
@@ -272,10 +272,12 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def save_fig(fig, path, dpi: int = 400) -> None:
     import matplotlib.pyplot as plt
 
-    plt.tight_layout()
-    fig.savefig(path, dpi=dpi)
-    print(f"Generated: {path}")
+    fig.tight_layout()
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
+    print(f"  Saved: {out}")
 
 
 def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:

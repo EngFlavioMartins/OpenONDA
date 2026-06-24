@@ -25,7 +25,7 @@ FIGURES_DIR="$SCRIPT_DIR/figures"
     --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
 # Kelvin's theorem (bound vs shed circulation) for the static AoA=8 case.
-"$PYTHON" assets/plot_kelvin.py --name exp_static_aoa08 \
+"$PYTHON" assets/plot_flat_plate_kelvin.py --name exp_static_aoa08 \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" || \
     echo "  (Kelvin plot skipped — run exp_static_aoa08 with --sample-crossflow/backups first)"
 

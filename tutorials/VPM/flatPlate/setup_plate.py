@@ -54,7 +54,7 @@ from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     SmoothRampVLM,
     PitchingVLM,
 )
-from source.solvers.VPM.config.types import AdaptationConfig, AdvectionConfig
+from source.solvers.VPM.config.types import AdvectionConfig
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
 from generate_surface import create_flat_plate, save_surface

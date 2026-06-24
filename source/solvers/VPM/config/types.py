@@ -616,7 +616,7 @@ class TurbulenceConfig:
           config = SolverConfig(
               turbulence=TurbulenceConfig.inviscid(),
               viscous=ViscousConfig.inviscid(),
-              isr_enabled=True,
+              stabilization=StabilizationConfig.strength_relaxation(),
           )
     """
 
@@ -750,9 +750,8 @@ class TurbulenceConfig:
         - Running inviscid validation sweeps.
         - Comparing damping/regularisation methods without LES or CS.
 
-        **Note:** Enable ``isr_enabled=True`` in ``SolverConfig`` to add
-        Implicit Strain Relaxation stabilisation.  Without ISR the stretching
-        term will blow up for long inviscid runs.
+        **Note:** Pass ``StabilizationConfig.strength_relaxation()`` to
+        ``SolverConfig.stabilization`` to stabilize long inviscid runs.
 
         Returns:
             TurbulenceConfig: INVISCID configuration instance
@@ -761,23 +760,7 @@ class TurbulenceConfig:
 
 
 # =====================================================================================
-# REGULARIZATION CONFIGURATION
-# =====================================================================================
-
-
-@dataclass
-class RegularizationConfig:
-    """
-    Legacy configuration placeholder (deprecated).
-
-    .. deprecated::
-        Use ``StabilizationConfig`` instead.  Kept only for backward compatibility;
-        converted to a ``StabilizationConfig`` inside ``SolverConfig.__post_init__``.
-    """
-
-
-# =====================================================================================
-# STABILIZATION CONFIGURATION  (unified regularisation + adaptation)
+# STABILIZATION CONFIGURATION
 # =====================================================================================
 
 
@@ -814,7 +797,7 @@ class StabilizationConfig:
         stab = StabilizationConfig(max_core_radius=0.12)
 
         # Periodic remeshing
-        stab = StabilizationConfig.with_remeshing(frequency=20, spacing=0.03)
+        stab = StabilizationConfig.conservative_remeshing(frequency=20, spacing=0.03)
 
         # Splitting + remeshing
         stab = StabilizationConfig(max_core_radius=0.12,
@@ -870,6 +853,85 @@ class StabilizationConfig:
     remeshing_projection_padding: int = 4
     """Zero-padding cells used by the isolated-domain FFT projection."""
 
+    # ── Strength relaxation ──────────────────────────────────────────────
+    relaxation_enabled: bool = False
+    """Enable strength-relaxation stabilization of vortex stretching."""
+
+    relaxation_mode: Literal["blend", "pedrizzetti"] = "blend"
+    """Relaxation update: residual filtering (``blend``) or direction
+    realignment at fixed |Gamma| (``pedrizzetti``)."""
+
+    relaxation_deconv: int = 1
+    """Van Cittert approximate-deconvolution iterations (0 through 3)."""
+
+    relaxation_gate: Literal["strain", "constant"] = "strain"
+    """Use a local strain-rate gate or a constant relaxation factor."""
+
+    relaxation_factor: float = 0.3
+    """Constant relaxation factor used with the constant gate."""
+
+    relaxation_conserve: bool = True
+    """Restore configured circulation/impulse invariants after relaxation."""
+
+    relaxation_constraint: Literal["both", "sum", "linear"] = "both"
+    """Invariants restored when conservation is enabled."""
+
+    relaxation_rate: float = 1.0
+    """Strain-gate rate constant."""
+
+    relaxation_seff_min: float = 1e-4
+    """Skip strain-gated corrections below this effective-strain increment."""
+
+    relaxation_verbose: bool = False
+    """Collect per-step strength-relaxation diagnostics."""
+
+    relaxation_cfl: float = 0.2
+    """Target effective-strain increment per relaxation sub-step."""
+
+    relaxation_max_substeps: int = 8
+    """Maximum number of relaxation sub-steps per VPM step."""
+
+    def __post_init__(self) -> None:
+        """Validate direct construction as well as factory-created configs."""
+        if self.max_core_radius is not None and self.max_core_radius <= 0:
+            raise ValueError("max_core_radius must be positive")
+        if self.remove_particles_by_bounds is not None and len(self.remove_particles_by_bounds) != 6:
+            raise ValueError("remove_particles_by_bounds must have 6 elements")
+        if self.weak_threshold_percent is not None and not 0 <= self.weak_threshold_percent <= 100:
+            raise ValueError("weak_threshold_percent must be between 0 and 100")
+        if self.remeshing_frequency is not None and self.remeshing_frequency <= 0:
+            raise ValueError("remeshing_frequency must be positive")
+        if self.remeshing_spacing is not None and self.remeshing_spacing <= 0:
+            raise ValueError("remeshing_spacing must be positive")
+        if self.remeshing_bounds is not None and len(self.remeshing_bounds) != 6:
+            raise ValueError("remeshing_bounds must have 6 elements")
+        if not 0 <= self.remeshing_relative_threshold <= 1:
+            raise ValueError("remeshing_relative_threshold must be in [0, 1]")
+        if self.remeshing_impulse_constraint not in ("3d", "z"):
+            raise ValueError("remeshing_impulse_constraint must be '3d' or 'z'")
+        if self.remeshing_radius is not None and self.remeshing_radius <= 0:
+            raise ValueError("remeshing_radius must be positive")
+        if self.remeshing_projection_padding < 0:
+            raise ValueError("remeshing_projection_padding must be non-negative")
+        if self.relaxation_mode not in ("blend", "pedrizzetti"):
+            raise ValueError("relaxation_mode must be 'blend' or 'pedrizzetti'")
+        if self.relaxation_gate not in ("strain", "constant"):
+            raise ValueError("relaxation_gate must be 'strain' or 'constant'")
+        if self.relaxation_constraint not in ("both", "sum", "linear"):
+            raise ValueError("relaxation_constraint must be 'both', 'sum', or 'linear'")
+        if not 0 <= self.relaxation_deconv <= 3:
+            raise ValueError("relaxation_deconv must be between 0 and 3")
+        if not 0 <= self.relaxation_factor <= 1:
+            raise ValueError("relaxation_factor must be between 0 and 1")
+        if self.relaxation_rate < 0:
+            raise ValueError("relaxation_rate must be non-negative")
+        if self.relaxation_seff_min < 0:
+            raise ValueError("relaxation_seff_min must be non-negative")
+        if self.relaxation_cfl <= 0:
+            raise ValueError("relaxation_cfl must be positive")
+        if self.relaxation_max_substeps < 1:
+            raise ValueError("relaxation_max_substeps must be at least 1")
+
     # ── Factory methods ───────────────────────────────────────────────────────
     @staticmethod
     def disabled() -> "StabilizationConfig":
@@ -877,7 +939,7 @@ class StabilizationConfig:
         return StabilizationConfig()
 
     @staticmethod
-    def with_max_radius(
+    def particle_splitting(
         radius: float,
         weak_threshold_percent: float = 1.0,
     ) -> "StabilizationConfig":
@@ -890,7 +952,7 @@ class StabilizationConfig:
         )
 
     @staticmethod
-    def with_remeshing(
+    def conservative_remeshing(
         frequency: int = 20,
         spacing: float | None = None,
         bounds: list[float] | None = None,
@@ -915,7 +977,7 @@ class StabilizationConfig:
         if impulse_constraint not in ("3d", "z"):
             raise ValueError("impulse_constraint must be '3d' or 'z'")
         if radius is not None and radius <= 0:
-            raise ValueError("remeshing radius must be positive")
+            raise ValueError("remeshing_radius must be positive")
         if projection_padding < 0:
             raise ValueError("projection_padding must be non-negative")
         return StabilizationConfig(
@@ -932,28 +994,35 @@ class StabilizationConfig:
             remeshing_projection_padding=projection_padding,
         )
 
-    @classmethod
-    def from_legacy(
-        cls,
-        regularization: "RegularizationConfig | None",
-        adaptation: "AdaptationConfig | None",
+    @staticmethod
+    def strength_relaxation(
+        mode: Literal["blend", "pedrizzetti"] = "blend",
+        *,
+        deconv: int = 1,
+        gate: Literal["strain", "constant"] = "strain",
+        factor: float = 0.3,
+        conserve: bool = True,
+        constraint: Literal["both", "sum", "linear"] = "both",
+        rate: float = 1.0,
+        seff_min: float = 1e-4,
+        verbose: bool = False,
+        cfl: float = 0.2,
+        max_substeps: int = 8,
     ) -> "StabilizationConfig":
-        """Build from the legacy pair of configs (used by SolverConfig backward compat)."""
-        adp = adaptation if adaptation is not None else AdaptationConfig()
-        return cls(
-            max_core_radius=adp.max_core_radius,
-            remove_particles_by_bounds=adp.remove_particles_by_bounds,
-            weak_threshold_percent=adp.weak_threshold_percent,
-            per_group=adp.per_group,
-            remeshing_frequency=adp.remeshing_frequency,
-            remeshing_spacing=adp.remeshing_spacing,
-            remeshing_bounds=adp.remeshing_bounds,
-            remeshing_relative_threshold=adp.remeshing_relative_threshold,
-            remeshing_absolute_threshold=adp.remeshing_absolute_threshold,
-            remeshing_conserve_impulse=adp.remeshing_conserve_impulse,
-            remeshing_delta_correction=adp.remeshing_delta_correction,
-            remeshing_impulse_constraint=adp.remeshing_impulse_constraint,
-            remeshing_radius=adp.remeshing_radius,
+        """Enable strength relaxation with its complete set of controls."""
+        return StabilizationConfig(
+            relaxation_enabled=True,
+            relaxation_mode=mode,
+            relaxation_deconv=deconv,
+            relaxation_gate=gate,
+            relaxation_factor=factor,
+            relaxation_conserve=conserve,
+            relaxation_constraint=constraint,
+            relaxation_rate=rate,
+            relaxation_seff_min=seff_min,
+            relaxation_verbose=verbose,
+            relaxation_cfl=cfl,
+            relaxation_max_substeps=max_substeps,
         )
 
 
@@ -1028,216 +1097,6 @@ class VLMSolverConfig:
 
 
 # =====================================================================================
-# ADAPTATION CONFIGURATION
-# =====================================================================================
-@dataclass
-class AdaptationConfig:
-    """
-    Configuration for particle adaptation methods.
-
-    Controls three adaptation mechanisms (each independently enabled):
-    1. max_core_radius - Split particles when core radius exceeds threshold
-    2. wake_cutoff - Remove particles outside specified spatial bounds
-    3. weak_removal - Remove particles with negligible strength
-
-    Examples:
-        # Disabled (default)
-        adaptation = AdaptationConfig.disabled()
-
-        # Enable only max core radius splitting
-        adaptation = AdaptationConfig(max_core_radius=0.5)
-
-      # Enable wake cutoff
-      adaptation = AdaptationConfig(remove_particles_by_bounds=[0, 10, -5, 5, -5, 5])
-
-        # Enable weak particle removal
-        adaptation = AdaptationConfig(weak_threshold_percent=1.0)
-
-        # Combine multiple features
-        adaptation = AdaptationConfig(
-            max_core_radius=0.5,
-            weak_threshold_percent=1.0
-        )
-    """
-
-    # Core radius threshold for splitting
-    max_core_radius: float | None = None
-    """Maximum particle core radius [m]. Particles exceeding this are split. None = disabled."""
-
-    # Wake cutoff control (remove_particles_by_bounds)
-    remove_particles_by_bounds: list[float] | None = None
-    """Spatial bounds [xmin, xmax, ymin, ymax, zmin, zmax] for removing particles. None = disabled."""
-
-    # Weak particle removal control
-    weak_threshold_percent: float | None = None
-    """Percentage threshold for weak particle removal (0-100). None = disabled."""
-
-    per_group: bool = True
-    """Apply weak particle threshold per group (True) or globally (False)."""
-
-    # ===== Conservative Remeshing Configuration =====
-    remeshing_frequency: int | None = None
-    """Apply conservative remeshing every N steps. None = disabled."""
-
-    remeshing_spacing: float | None = None
-    """Grid spacing [m] for remeshing. If None, uses mean particle spacing."""
-
-    remeshing_bounds: list[float] | None = None
-    """[xmin, xmax, ymin, ymax, zmin, zmax] for remeshing domain."""
-
-    remeshing_relative_threshold: float = 0.05
-    """Relative vorticity threshold for delta injection (5% default)."""
-
-    remeshing_absolute_threshold: float = 1e-6
-    """Absolute vorticity threshold [1/s] for delta injection."""
-
-    remeshing_conserve_impulse: bool = True
-    """Apply post-remesh correction to conserve linear/angular impulse."""
-
-    remeshing_delta_correction: bool = False
-    """Inject delta-correction particles to capture sub-grid vorticity residuals.
-    Disabled by default: delta particles accumulate across remesh cycles, causing
-    particle-count explosion without meaningful accuracy gain when impulse
-    conservation is already applied analytically."""
-
-    remeshing_impulse_constraint: str = "3d"
-    """Constraint mode for the post-remesh impulse conservation correction.
-
-    "3d"  — apply ΔΓ_p = 2(c × x_p) to all components (default, general 3-D).
-    "z"   — project the correction onto the z-component only: ΔΓ_p ← (ΔΓ_p · ẑ) ẑ.
-            Prevents spurious ω_x/ω_y from contaminating predominantly 2-D flows
-            (Lamb-Oseen, dipole, merging).  The z-only correction still conserves
-            I_z exactly; I_x, I_y are not corrected but are zero by symmetry.
-    """
-
-    remeshing_radius: float | None = None
-    """Core radius [m] assigned to remeshed particles. If None, uses spacing × 1.5
-    (the RADIUS_RATIO default).  Set this to match the initial particle radius
-    (e.g. 2 × spacing for hexagonal distributions) to match the initial
-    particle radius across remesh cycles."""
-
-    @staticmethod
-    def disabled():
-        """No adaptation (default)."""
-        return AdaptationConfig()
-
-    @staticmethod
-    def with_max_radius(radius: float, weak_threshold_percent: float = 1.0):
-        """
-        Enable grid reinitialization with specified maximum core radius.
-
-        When particle radii exceed max_core_radius, they are reinitialized
-        onto a uniform grid using RBF interpolation (Barba's method).
-        Weak particles are then removed.
-
-        Args:
-            radius: Maximum allowed particle core radius [m].
-            weak_threshold_percent: Threshold for removing weak particles (0-100).
-                                   Default 1.0% removes particles with <1% of max strength.
-        """
-        if radius <= 0:
-            raise ValueError("max_core_radius must be positive")
-        if not 0 <= weak_threshold_percent <= 100:
-            raise ValueError("weak_threshold_percent must be between 0 and 100")
-        return AdaptationConfig(
-            max_core_radius=radius, weak_threshold_percent=weak_threshold_percent
-        )
-
-    @staticmethod
-    def with_wake_cutoff(bounds: list[float]):
-        """
-        Enable wake cutoff with specified spatial bounds.
-
-        Args:
-            bounds: [xmin, xmax, ymin, ymax, zmin, zmax]
-        """
-        if len(bounds) != 6:
-            raise ValueError("bounds must have 6 elements")
-        return AdaptationConfig(remove_particles_by_bounds=bounds)
-
-    @staticmethod
-    def with_weak_removal(percent: float, per_group: bool = True):
-        """
-        Enable weak particle removal.
-
-        Args:
-            percent: Threshold as percentage of max strength (0-100)
-            per_group: Apply threshold per group or globally
-        """
-        if not 0 <= percent <= 100:
-            raise ValueError("weak_threshold_percent must be between 0 and 100")
-        return AdaptationConfig(weak_threshold_percent=percent, per_group=per_group)
-
-    @staticmethod
-    def with_conservative_remeshing(
-        frequency: int = 20,
-        spacing: float | None = None,
-        bounds: list[float] | None = None,
-        relative_threshold: float = 0.01,
-        absolute_threshold: float = 1e-6,
-        conserve_impulse: bool = True,
-        delta_correction: bool = False,
-        impulse_constraint: str = "3d",
-        radius: float | None = None,
-    ):
-        """
-        Enable conservative remeshing regularization.
-
-        This method periodically remeshes the particle system onto a uniform grid
-        and injects corrective particles to maintain accuracy. Uses proper
-        conservation correction for linear and angular impulse.
-
-        Args:
-            frequency: Apply remeshing every N steps (default: 20)
-            spacing: Grid spacing [m]. If None, uses mean particle spacing.
-            bounds: [xmin, xmax, ymin, ymax, zmin, zmax]. If None, uses auto-bounds.
-            relative_threshold: Relative vorticity threshold for delta injection (0.05 = 5%)
-            absolute_threshold: Absolute vorticity threshold [1/s]
-            conserve_impulse: Apply post-remesh impulse conservation correction
-            impulse_constraint: "3d" (default) for full 3-component correction,
-                "z" to project correction onto z-only (prevents spurious ω_x/ω_y
-                in 2-D-like flows such as Lamb-Oseen dipoles and merging).
-            radius: Core radius [m] for remeshed particles. If None, uses
-                spacing × 1.5 (RADIUS_RATIO default).  Set to 2 × spacing to
-                match hexagonal-distribution particles.
-
-        Example:
-            adaptation = AdaptationConfig.with_conservative_remeshing(
-                frequency=20,
-                spacing=0.05,
-                bounds=[-1, 5, -2, 2, -2, 2]
-            )
-        """
-        if frequency <= 0:
-            raise ValueError("remeshing_frequency must be positive")
-        if spacing is not None and spacing <= 0:
-            raise ValueError("remeshing_spacing must be positive")
-        if bounds is not None and len(bounds) != 6:
-            raise ValueError(
-                "remeshing_bounds must have 6 elements [xmin, xmax, ymin, ymax, zmin, zmax]"
-            )
-        if not 0 <= relative_threshold <= 1:
-            raise ValueError("remeshing_relative_threshold must be between 0 and 1")
-        if impulse_constraint not in ("3d", "z"):
-            raise ValueError("impulse_constraint must be '3d' or 'z'")
-        if radius is not None and radius <= 0:
-            raise ValueError("remeshing_radius must be positive")
-
-        return AdaptationConfig(
-            remeshing_frequency=frequency,
-            remeshing_spacing=spacing,
-            remeshing_bounds=bounds,
-            remeshing_relative_threshold=relative_threshold,
-            remeshing_absolute_threshold=absolute_threshold,
-            remeshing_conserve_impulse=conserve_impulse,
-            remeshing_delta_correction=delta_correction,
-            remeshing_impulse_constraint=impulse_constraint,
-            remeshing_radius=radius,
-            weak_threshold_percent=None,
-        )
-
-
-# =====================================================================================
 # SOLVER CONFIGURATION DATACLASS
 # =====================================================================================
 
@@ -1305,21 +1164,10 @@ class SolverConfig:
 
     stabilization: "StabilizationConfig | None" = None
     """Unified configuration for all stabilization mechanisms (stretching regularisation,
-    particle splitting, wake cutoff, weak removal, conservative remeshing).
-    When provided, the legacy ``regularization`` and ``adaptation`` fields are ignored."""
-
-    regularization: RegularizationConfig | None = None
-    """Stretching regularisation config.
-    Deprecated — use ``stabilization`` instead.  Still accepted for backward
-    compatibility; merged into ``stabilization`` during ``__post_init__``."""
+    particle splitting, wake cutoff, weak removal, and conservative remeshing)."""
 
     vlm: VLMSolverConfig | None = None
     """Configuration for VLM coupling."""
-
-    adaptation: AdaptationConfig | None = None
-    """Particle adaptation config.
-    Deprecated — use ``stabilization`` instead.  Still accepted for backward
-    compatibility; merged into ``stabilization`` during ``__post_init__``."""
 
     force: ForceConfig | None = None
     """Configuration for force evaluation method (Kutta-Joukowski vs Impulse-based)."""
@@ -1376,13 +1224,6 @@ class SolverConfig:
     clean: bool = False
     """If True, delete the backup_directory before starting the simulation."""
 
-    # ===== ADVANCED FEATURES =====
-    regularization_frequency: int = 0  # TODO: This is a placeholder for now
-    """Apply particle regularization every N steps (0 = disabled)"""
-
-    relaxation_frequency: int = 0  # TODO: This is a placeholder for now
-    """Apply particle relaxation every N steps (0 = disabled)"""
-
     # ===== PHYSICS PARAMETERS =====
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     """Cutoff radius multiplier for particle interactions (performance optimization)"""
@@ -1413,73 +1254,6 @@ class SolverConfig:
 
     verbose: bool = True
     """Enable verbose output (print particle shedding info, etc.)."""
-
-    # ===== STRENGTH RELAXATION (numerical regularization of particle strengths) =====
-    # NOTE: enabling relaxation switches vortex stretching to the frozen-∇u GRADU
-    # operator (O(N) per sub-step) regardless of StretchingConfig.mode.
-    isr_enabled: bool = False
-    """Enable strength-relaxation stabilization (strain-gated residual filter or
-    Pedrizzetti realignment — see isr_mode). Default: False."""
-
-    isr_mode: str = "blend"
-    """Relaxation update applied to each gated particle:
-    "blend"       — residual filter Γ ← V·ω_h + (1−r)(Γ − V·ω_h): damps only the
-                    kernel-unrepresentable residual; slightly dissipative on it.
-    "pedrizzetti" — corrected Pedrizzetti (1992) realignment
-                    Γ ← |Γ|·normalize((1−r)Γ̂ + r·ω̂_h): preserves |Γ| exactly
-                    (zero added dissipation); FLOWVPM's default stabilizer."""
-
-    isr_deconv: int = 1
-    """Van Cittert approximate-deconvolution iterations for the relaxation target
-    (Stolz–Adams ADM). p=0 relaxes toward the raw mollified field GΓ, which erodes
-    resolved peaks by the O(σ²) mollification bias; p=1 (default) targets 2GΓ − G²Γ,
-    reducing the smooth-field bias to O((I−G)²) while still damping unrepresentable
-    noise at full rate. Each iteration costs one extra ω_h reconstruction."""
-
-    isr_gate: str = "strain"
-    """How the relaxation factor r is chosen per particle:
-    "strain"   — r = 1 − exp(−C·σ_eff·dt), σ_eff = Γ̂·S·Γ̂ (only actively
-                 stretched particles are touched; minimal disturbance).
-    "constant" — r = isr_rlx for all particles (FLOWVPM-style)."""
-
-    isr_rlx: float = 0.3
-    """Constant relaxation factor used when isr_gate="constant" (FLOWVPM default 0.3)."""
-
-    isr_conserve: bool = True
-    """Restore total circulation ΣΓ and linear impulse after each relaxation
-    application via a minimum-norm ΔΓ correction (makes the filter a conservative
-    redistribution of strength)."""
-
-    isr_constraint: str = "both"
-    """Invariants restored when isr_conserve=True: "both" (ΣΓ + linear impulse),
-    "sum" (ΣΓ only), or "linear" (linear impulse only)."""
-
-    isr_C: float = 1.0
-    """Strain-gate rate constant: r = 1 − exp(−C·σ_eff·dt_sub) per sub-step.
-    The filter damps the unrepresentable residual at rate ≈ C·σ_eff; it does NOT
-    suppress physical stretching growth of the representable field.
-    Default 1.0; increase toward 1.5 for stronger residual damping."""
-
-    isr_seff_min: float = 1e-4
-    """Strain gate only: skip particles where σ_eff·dt_sub < isr_seff_min.
-    The correction for those particles is < (1−exp(−1e-4)) < 0.01 % of the residual
-    — below f32 noise.  Raise to e.g. 0.01 to skip even more particles (more speed,
-    marginally less damping on slowly-stretching particles)."""
-
-    isr_verbose: bool = False
-    """When True, relaxation apply() populates last_diag each step with
-    max_sij_frob, max_seff_dt, n_active, mean_damp, max_damp, resid_rel, conserve_rel.
-    Adds one CPU round-trip per step; use only for diagnostics."""
-
-    isr_cfl: float = 0.2
-    """Target σ_eff·dt per relaxation sub-step.  k = ceil(max_σ_eff·dt / isr_cfl).
-    Keeps the frozen-∇u GRADU stretching update accurate per sub-step.
-    Smaller values → more sub-steps → more accurate but more expensive."""
-
-    isr_k_max: int = 8
-    """Hard cap on the number of relaxation sub-steps per macro-step (enforced).
-    If k would exceed this, the solver warns that σ_eff·dt_sub exceeds isr_cfl —
-    reduce dt or raise the cap. Default 8."""
 
     # ===== VELOCITY COMPUTATION =====
     velocity: VelocityConfig | None = None
@@ -1526,15 +1300,8 @@ class SolverConfig:
         if self.vlm is None:
             object.__setattr__(self, "vlm", VLMSolverConfig.disabled())
 
-        # Build the unified stabilization config.
-        # Priority: explicit `stabilization` > legacy pair (`regularization`, `adaptation`).
         if self.stabilization is None:
-            stab = StabilizationConfig.from_legacy(self.regularization, self.adaptation)
-            object.__setattr__(self, "stabilization", stab)
-
-        # Keep legacy adaptation field populated for backward-compat attribute access.
-        if self.adaptation is None:
-            object.__setattr__(self, "adaptation", AdaptationConfig.disabled())
+            object.__setattr__(self, "stabilization", StabilizationConfig.disabled())
 
         if self.force is None:
             object.__setattr__(self, "force", ForceConfig.kutta_joukowski())
@@ -1616,14 +1383,13 @@ class SolverConfig:
             "stretching": _as_dict(self.stretching) if self.stretching else None,
             "viscous": _as_dict(self.viscous) if self.viscous else None,
             "turbulence": _as_dict(self.turbulence) if self.turbulence else None,
+            "stabilization": _as_dict(self.stabilization) if self.stabilization else None,
             "vlm": _as_dict(self.vlm) if self.vlm else None,
             "particles_kernel": self.particles_kernel,
             "logging_frequency": self.logging_frequency,
             "backup_frequency": self.backup_frequency,
             "backup_file_name": self.backup_file_name,
             "backup_directory": self.backup_directory,
-            "regularization_frequency": self.regularization_frequency,
-            "relaxation_frequency": self.relaxation_frequency,
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
             "background_velocity": list(self.background_velocity)
@@ -1636,7 +1402,20 @@ class SolverConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SolverConfig":
         """Create configuration from dictionary."""
-        return cls(**data)
+        values = dict(data)
+        nested_types = {
+            "advection": AdvectionConfig,
+            "stretching": StretchingConfig,
+            "viscous": ViscousConfig,
+            "turbulence": TurbulenceConfig,
+            "stabilization": StabilizationConfig,
+            "velocity": VelocityConfig,
+            "vlm": VLMSolverConfig,
+        }
+        for name, config_type in nested_types.items():
+            if isinstance(values.get(name), dict):
+                values[name] = config_type(**values[name])
+        return cls(**values)
 
     @staticmethod
     def viscous_flow_simulation(
@@ -2183,7 +1962,5 @@ __all__ = [
     "CachedParticleProperty",
     "SetFlowModel",
     "ViscousConfig",
-    "RegularizationConfig",
     "StabilizationConfig",
-    "AdaptationConfig",
 ]

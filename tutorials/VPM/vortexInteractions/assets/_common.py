@@ -25,6 +25,8 @@ SOLUTION_DIR = SCRIPT_DIR / "solution"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
+CM = 1 / 2.54  # cm → inch
+
 # ── Physical constants  (match rings_setup.py) ────────────────────────────────
 R0 = 1.0  # ring major radius [m]
 GAMMA = np.pi  # circulation [m²/s]
@@ -38,8 +40,6 @@ U_REF = GAMMA / (4 * np.pi * R0) * (np.log(8 / _eps) + _C)  # Saffman speed [m/s
 # Reference energy dissipation rate scale (per unit density)
 E_REF = GAMMA**2 * R0  # [m⁵/s²]  kinetic energy scale for a ring
 P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
-
-CM = 1 / 2.54  # cm → inch
 
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
@@ -81,6 +81,101 @@ def build_arg_parser(description: str):
     p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
     p.add_argument("--dpi", type=int, default=400, help="Figure DPI.")
     return p
+
+
+# ── Case styling (shared across every comparison figure) ──────────────────────
+# Encoding (kept identical in all four figures so the legend reads the same):
+#   • LINESTYLE  → physics family   (leapfrog = solid, collide = dashed)
+#   • COLOUR     → stabilization rung (dns / les / les_isr / les_pedr / fine)
+#   • MARKER     → stabilization rung (redundant cue for black-and-white print)
+# Both rings of a given case therefore share one colour + linestyle + marker.
+_FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
+_RUNG_COLOR = {
+    "dns": "#2E3D46",       # DarkText  — neutral baseline
+    "les": "#0E8A85",       # TUDcyan
+    "les_isr": "#5C3D9B",   # VPMpurple
+    "les_pedr": "#772953",  # FVMorange
+    "fine": "#2B7A4E",      # AccentGreen
+}
+_RUNG_MARKER = {"dns": "o", "les": "s", "les_isr": "^", "les_pedr": "D", "fine": "v"}
+_BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
+
+
+def case_style(name: str) -> dict:
+    """Return a consistent {color, linestyle, marker, label, family, rung} for a case."""
+    family, _, rung = name.partition("_")
+    rung = rung or "dns"
+    return {
+        "color": _RUNG_COLOR.get(rung, "#6E8898"),
+        "linestyle": _FAMILY_LINESTYLE.get(family, "-"),
+        "marker": _RUNG_MARKER.get(rung, "o"),
+        "label": name.replace("_", " "),
+        "family": family,
+        "rung": rung,
+    }
+
+
+def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
+    """Return sorted case directories that hold run data, optionally by family prefix.
+
+    A directory counts as a case if it carries either per-step metrics
+    (``stability_metrics.csv``) or full-state backups (``vpm_*.h5``).
+    """
+    sol = Path(solution_dir)
+    if not sol.is_dir():
+        return []
+    cases = []
+    for d in sorted(sol.iterdir()):
+        if not d.is_dir() or (family and not d.name.startswith(family)):
+            continue
+        if (d / "stability_metrics.csv").exists() or any(d.glob("vpm_*.h5")):
+            cases.append(d)
+    return cases
+
+
+def read_metric(case_dir, column: str, truncate_blowup: bool = True):
+    """Return (t*, column) from a case's ``stability_metrics.csv``.
+
+    ``t*`` is the time normalised by ``T_REF``.  When ``truncate_blowup`` is set
+    the series is cut at the first snapshot where ``max_gamma`` exceeds the
+    blow-up factor, so diverging runs do not swamp the axis scale.
+    """
+    csv = Path(case_dir) / "stability_metrics.csv"
+    if not csv.exists():
+        return np.array([]), np.array([])
+    df = pd.read_csv(csv)
+    if column not in df.columns or "time" not in df.columns:
+        return np.array([]), np.array([])
+    t = df["time"].to_numpy(float) / T_REF
+    y = df[column].to_numpy(float)
+    if truncate_blowup and "max_gamma" in df.columns:
+        mg = df["max_gamma"].to_numpy(float)
+        if mg.size and mg[0] > 0.0:
+            bad = np.flatnonzero(mg > _BLOWUP_FACTOR * mg[0])
+            if bad.size:
+                t, y = t[: bad[0] + 1], y[: bad[0] + 1]
+    return t, y
+
+
+def read_integrals(case_dir):
+    """Return the flow-integral DataFrame for a case, or None.
+
+    Keeps only the last monotonically increasing time segment so appended
+    restart rows do not double back on the time axis.
+    """
+    csv = Path(case_dir) / "samples" / "flow_integrals.csv"
+    if not csv.exists():
+        return None
+    df = pd.read_csv(csv)
+    if "time" in df.columns and len(df) > 1:
+        times = df["time"].to_numpy()
+        last_restart = 0
+        for i in range(1, len(times)):
+            if times[i] < times[i - 1]:
+                last_restart = i
+        if last_restart:
+            df = df.iloc[last_restart:].reset_index(drop=True)
+    return df
 
 
 # ── H5 helpers ────────────────────────────────────────────────────────────────
@@ -216,10 +311,12 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def save_fig(fig, path, dpi: int = 400) -> None:
     import matplotlib.pyplot as plt
 
-    plt.tight_layout()
-    fig.savefig(path, dpi=dpi)
-    print(f"Generated: {path}")
+    fig.tight_layout()
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
+    print(f"  Saved: {out}")
 
 
 def read_csv(assets_dir, fname: str, xcol: str, ycol: str):

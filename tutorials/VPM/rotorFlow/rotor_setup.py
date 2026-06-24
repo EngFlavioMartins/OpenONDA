@@ -28,9 +28,8 @@ import numpy as np
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, SolverConfig, StabilizationConfig
 from source.solvers.VPM.config.types import (
-    AdaptationConfig,
     AdvectionConfig,
     TurbulenceConfig,
     StretchingConfig,
@@ -53,19 +52,20 @@ def main():
     parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0,
                         help="rVPM g: 0.2 (partial) … 1/3 (default; full parallel-growth suppression).")
     parser.add_argument("--rvpm-f", type=float, default=0.0, help="rVPM f parameter.")
-    parser.add_argument("--isr-mode", choices=["pedrizzetti", "blend"], default="blend",
-                        help="ISR strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
+    parser.add_argument("--relaxation", choices=["pedrizzetti", "blend"], default="blend",
+                        help="Strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
                         "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).")
-    parser.add_argument("--isr-rlx", type=float, default=0.95,
+    parser.add_argument("--relaxation-factor", type=float, default=0.95,
                         help="Pedrizzetti relaxation coeff (lower = stronger).")
-    parser.add_argument("--isr-c", type=float, default=1.0, help="ISR strain-gate constant C (blend mode).")
-    parser.add_argument("--isr-k-max", type=int, default=64,
-                        help="Maximum stretching/ISR substeps for high-strain particles.")
+    parser.add_argument("--relaxation-rate", type=float, default=1.0,
+                        help="Strain-gate rate constant (blend mode).")
+    parser.add_argument("--relaxation-max-substeps", type=int, default=64,
+                        help="Maximum stretching/relaxation substeps for high-strain particles.")
     parser.add_argument("--ramp-rotations", type=float, default=1.0,
                         help="Smooth sin-squared spin-up duration [rotor rotations].")
     parser.add_argument("--max-strength", type=float, default=1.0e3,
                         help="Abort cleanly if any particle strength exceeds this value.")
-    parser.add_argument("--solution-dir", default="solution", help="Output directory.")
+    parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
     args = parser.parse_args()
 
     # ================================================
@@ -194,20 +194,12 @@ def main():
         # NB: pedrizzetti ISR is |Γ|-PRESERVING (realign only); 'blend' mode is
         # dissipative (ADM-residual filter) and can DRAIN runaway tip-vortex |Γ|.
         stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
-        isr_enabled=True,
-        isr_mode=args.isr_mode,
-        isr_gate="strain",
-        isr_rlx=args.isr_rlx,
-        isr_C=args.isr_c,
-        isr_conserve=True,
-        isr_cfl=0.2,
-        isr_k_max=args.isr_k_max,
         backup_file_name="rotor",
         backup_directory=backup_dir,
         solution_name=backup_dir,
         backup_frequency=25,
         logging_frequency=25,
-        adaptation=AdaptationConfig(
+        stabilization=StabilizationConfig(
             max_core_radius=2.0,
             remove_particles_by_bounds=[
                 -rotor_diameter,
@@ -217,6 +209,14 @@ def main():
                 -2.0 * rotor_radius,
                 2.0 * rotor_radius,
             ],
+            relaxation_enabled=True,
+            relaxation_mode=args.relaxation,
+            relaxation_gate="strain",
+            relaxation_factor=args.relaxation_factor,
+            relaxation_rate=args.relaxation_rate,
+            relaxation_conserve=True,
+            relaxation_cfl=0.2,
+            relaxation_max_substeps=args.relaxation_max_substeps,
         ),
         processing_unit="GPU_VULKAN",
         # These far-wake planes are expensive (3 × ~21k targets).  Sampling

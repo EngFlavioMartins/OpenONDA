@@ -18,7 +18,7 @@ Date: June 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from source.solvers.VPM.config.types import ViscousConfig  # noqa: F401
+from source.solvers.VPM.config.types import StabilizationConfig, ViscousConfig  # noqa: F401
 
 from .config.types import CouplerConfig
 
@@ -30,5 +30,6 @@ except ImportError:
 __all__ = [
     "CouplerConfig",
     "FVMVPMCoupler",
+    "StabilizationConfig",
     "ViscousConfig",
 ]

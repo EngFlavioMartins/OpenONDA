@@ -29,8 +29,8 @@ import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 TUTORIAL_DIR = SCRIPT_DIR.parent
-THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
+THEME_PATH = TUTORIAL_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
+FONT_PATH = TUTORIAL_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 
 def _load_theme() -> tuple[dict[str, str], object | None]:

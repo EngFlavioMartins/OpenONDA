@@ -3,6 +3,7 @@
 # ===============================
 __pycache__/
 .taichi_cache/
+.dvc
 .opencode
 *.py[cod]
 *.pyc

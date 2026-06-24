@@ -41,7 +41,6 @@ args, _ = parser.parse_known_args()
 SOL_DIR = Path(args.solution_dir).resolve()
 FIG_DIR = Path(args.figures_dir).resolve()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-
 # ── Theme ─────────────────────────────────────────────────────────────────────
 m = None
 if THEME_PATH.exists():

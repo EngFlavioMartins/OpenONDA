@@ -496,22 +496,27 @@ class Logging:
         return lines
 
     @staticmethod
-    def _format_adaptation_config(system) -> list:
-        """Format adaptation and remeshing section."""
+    def _format_stabilization_config(system) -> list:
+        """Format stabilization and remeshing section."""
         lines = []
         lines.append("\n" + "-" * 60)
-        lines.append("ADAPTATION & REMESHING")
+        lines.append("STABILIZATION")
         lines.append("-" * 60)
 
-        cfg = getattr(system.config, "adaptation", None)
+        cfg = getattr(system.config, "stabilization", None)
         if cfg is not None:
             if cfg.remeshing_frequency is not None:
                 lines.append(f"  Remeshing Frequency      : {cfg.remeshing_frequency} steps")
-                lines.append(f"  Remeshing Spacing (h_rem): {cfg.remeshing_spacing:.4e} m")
+                spacing_label = (
+                    f"{cfg.remeshing_spacing:.4e} m"
+                    if cfg.remeshing_spacing is not None
+                    else "automatic"
+                )
+                lines.append(f"  Remeshing Spacing (h_rem): {spacing_label}")
 
                 # Try to estimate grid points if bounds are available
                 bounds = cfg.remeshing_bounds or cfg.remove_particles_by_bounds
-                if bounds:
+                if bounds and cfg.remeshing_spacing is not None:
                     xmin, xmax, ymin, ymax, zmin, zmax = bounds
                     spacing = cfg.remeshing_spacing
                     nx = max(2, int(np.ceil((xmax - xmin) / spacing)))
@@ -535,6 +540,10 @@ class Logging:
                 lines.append(f"  Weak Removal Threshold   : {cfg.weak_threshold_percent}%")
             if cfg.max_core_radius is not None:
                 lines.append(f"  Max Core Radius (Split) : {cfg.max_core_radius:.4e} m")
+            if cfg.relaxation_enabled:
+                lines.append(f"  Strength Relaxation      : {cfg.relaxation_mode}")
+                lines.append(f"  Relaxation Gate          : {cfg.relaxation_gate}")
+                lines.append(f"  Relaxation CFL           : {cfg.relaxation_cfl:.3g}")
         else:
             lines.append("  Status                   : Not configured")
         return lines
@@ -562,7 +571,7 @@ class Logging:
         lines.extend(Logging._format_solver_config(system))
         lines.extend(Logging._format_particle_system(system))
         lines.extend(Logging._format_physics_model(system))
-        lines.extend(Logging._format_adaptation_config(system))
+        lines.extend(Logging._format_stabilization_config(system))
         lines.extend(Logging._format_viscous_model(system))
         lines.extend(Logging._format_turbulence_model(system))
         lines.extend(Logging._format_monitoring_io(system))

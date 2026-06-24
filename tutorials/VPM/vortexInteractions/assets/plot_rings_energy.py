@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""
-Figure 2 — Energy dissipation  dE/dt & −nuΩ vs t*
+"""Energy and enstrophy evolution — ``rings_energy.png``.
 
-Compares energy diagnostics from leapfrog DNS, leapfrog LES, and collision LES.
+Two stacked panels for every case discovered under ``solution/`` (read from
+``samples/flow_integrals.csv``):
 
-Saves: figures/vortex_rings_energy.png
+  (top)    Kinetic energy   E(t)/E(0)
+  (bottom) Enstrophy        ε(t)/ε(0)
+
+Colour encodes the stabilization rung, linestyle the physics family — the
+same key shared by every comparison figure (see ``_common.case_style``).
 """
 
 from pathlib import Path
@@ -12,60 +16,58 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from _common import (
-    build_arg_parser,
-    load_theme,
-    parse_log,
-    save_fig,
-    T_REF,
-    P_REF,
     CM,
+    T_REF,
+    build_arg_parser,
+    case_style,
+    discover_cases,
+    load_theme,
+    read_integrals,
+    save_fig,
 )
 
-C_DNS = "#5C3D9B"
-C_LES = "#1A8C88"
-C_COL = "#B85C2A"
 
-
-def main():
-    args = build_arg_parser("Energy dissipation dE/dt & -nuΩ vs t*.").parse_args()
-    sol = Path(args.solution_dir)
+def main() -> None:
+    args = build_arg_parser("Kinetic energy E/E₀ and enstrophy ε/ε₀ vs t*.").parse_args()
     figs = Path(args.figures_dir)
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
+    fig, (ax_e, ax_w) = plt.subplots(2, 1, figsize=(12.8 * CM, 11.0 * CM), sharex=True)
 
-    fig, ax = plt.subplots(figsize=(12 * CM, 7 * CM))
-
-    runs = [
-        (sol / "leapfrog_DNS" / "leapfrog_DNS.log", C_DNS, "DNS leapfrog"),
-        (sol / "leapfrog_LES" / "leapfrog_LES.log", C_LES, "LES leapfrog"),
-        (sol / "collide_LES" / "collide_LES.log", C_COL, "LES collision"),
-    ]
-
-    for log, color, label in runs:
-        times, nuEns, dedt = parse_log(log)
-        if times.size == 0:
+    plotted = False
+    for case_dir in discover_cases(args.solution_dir):
+        df = read_integrals(case_dir)
+        if df is None or "kinetic_energy" not in df.columns or len(df) == 0:
             continue
-        t = times / T_REF
-        ax.plot(t, dedt / P_REF, "--", color=color, lw=1.1, label=f"{label}, $dE/dt$")
-        ax.plot(
-            t,
-            nuEns / P_REF,
-            "-",
-            color=color,
+        st = case_style(case_dir.name)
+        t_star = df["time"].to_numpy(float) / T_REF
+        ke = df["kinetic_energy"].to_numpy(float)
+        common = dict(
+            color=st["color"],
+            linestyle=st["linestyle"],
             lw=1.1,
-            marker="o",
+            marker=st["marker"],
             ms=3,
-            markevery=3,
-            label=rf"{label}, $-\nu\Omega$",
+            markevery=4,
+            mew=0.4,
         )
+        if ke[0] > 0.0:
+            ax_e.plot(t_star, ke / ke[0], label=st["label"], **common)
+            plotted = True
+        if "enstrophy" in df.columns:
+            ens = df["enstrophy"].to_numpy(float)
+            if ens[0] > 0.0:
+                ax_w.plot(t_star, ens / ens[0], **common)
 
-    ax.axhspan(0.0, 10.0, facecolor="gray", alpha=0.15, zorder=0)
-    ax.set_ylim(-0.4, 0.1)
-    ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
-    ax.set_ylabel(r"Dissipation rate, $(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
-    ax.legend(fontsize=10, ncol=2)
-    save_fig(fig, figs / "vortex_rings_energy.png", dpi=args.dpi)
+    ax_e.set_ylabel(r"Kinetic energy, $E / E_0$")
+    ax_e.set_title("Energy and enstrophy evolution")
+    ax_w.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
+    ax_w.set_ylabel(r"Enstrophy, $\varepsilon / \varepsilon_0$")
+    if plotted:
+        ax_e.legend(fontsize=10, ncol=2)
+
+    save_fig(fig, figs / "rings_energy.png", dpi=args.dpi)
 
 
 if __name__ == "__main__":

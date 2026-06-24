@@ -287,10 +287,7 @@ class Solver:
         self.flow_model = final_config.turbulence.flow_model.upper()
         self.viscous_scheme = final_config.viscous.scheme
         self._viscous_config = final_config.viscous
-        # Unified stabilization config (built from legacy pair if needed by __post_init__)
         self.stabilization_config: StabilizationConfig = final_config.stabilization
-        # Keep legacy alias for code that still references adaptation_config directly
-        self.adaptation_config = final_config.adaptation
         self.particles_kernel = final_config.particles_kernel.upper()
         self.backup_frequency = final_config._backup_frequency_internal
         self.logging_frequency = final_config.logging_frequency
@@ -428,26 +425,23 @@ class Solver:
 
         # Strength relaxation (formerly ISR — Implicit Strain Relaxation)
         self._strength_relaxation = None
-        isr_enabled = getattr(final_config, "isr_enabled", False)
-        if isr_enabled:
+        stabilization = final_config.stabilization
+        if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
-            isr_C = getattr(final_config, "isr_C", 1.5)
-            isr_verbose = getattr(final_config, "isr_verbose", False)
-            isr_seff_min = getattr(final_config, "isr_seff_min", 1e-4)
             self._strength_relaxation = StrengthRelaxation(
-                C=isr_C,
+                C=stabilization.relaxation_rate,
                 particles_kernel=self.particles_kernel,
                 max_particles=max_p,
                 precision=self.precision,
-                verbose=isr_verbose,
-                seff_min=isr_seff_min,
-                mode=getattr(final_config, "isr_mode", "blend"),
-                deconv=getattr(final_config, "isr_deconv", 1),
-                gate=getattr(final_config, "isr_gate", "strain"),
-                rlx=getattr(final_config, "isr_rlx", 0.3),
-                conserve=getattr(final_config, "isr_conserve", True),
-                constraint=getattr(final_config, "isr_constraint", "both"),
+                verbose=stabilization.relaxation_verbose,
+                seff_min=stabilization.relaxation_seff_min,
+                mode=stabilization.relaxation_mode,
+                deconv=stabilization.relaxation_deconv,
+                gate=stabilization.relaxation_gate,
+                rlx=stabilization.relaxation_factor,
+                conserve=stabilization.relaxation_conserve,
+                constraint=stabilization.relaxation_constraint,
             )
 
     def _init_diagnostics_and_solvers(self, final_config: SolverConfig) -> None:
@@ -2342,18 +2336,20 @@ class Solver:
         if self._strength_relaxation is not None and self.stretching_enabled:
             import math
 
-            isr_cfl = getattr(self.config, "isr_cfl", 0.2)
-            isr_k_max = getattr(self.config, "isr_k_max", 8)
+            stabilization = self.stabilization_config
+            relaxation_cfl = stabilization.relaxation_cfl
+            max_substeps = stabilization.relaxation_max_substeps
             max_seff = self._strength_relaxation.compute_max_seff(self.particles)
-            k = max(1, math.ceil(max_seff * dt / isr_cfl))
-            if k > isr_k_max:
+            k = max(1, math.ceil(max_seff * dt / relaxation_cfl))
+            if k > max_substeps:
                 print(
                     f"  WARNING: strength-relaxation needs k={k} sub-steps to keep "
-                    f"σ_eff·dt_sub ≤ {isr_cfl} but isr_k_max={isr_k_max} caps it — "
-                    f"σ_eff·dt_sub={max_seff * dt / isr_k_max:.2f} exceeds the target; "
-                    f"reduce dt or raise isr_k_max."
+                    f"σ_eff·dt_sub ≤ {relaxation_cfl} but "
+                    f"relaxation_max_substeps={max_substeps} caps it — "
+                    f"σ_eff·dt_sub={max_seff * dt / max_substeps:.2f} exceeds the target; "
+                    f"reduce dt or raise the cap."
                 )
-                k = isr_k_max
+                k = max_substeps
             dt_sub = dt / k
             if k > 1:
                 print(
@@ -2382,7 +2378,7 @@ class Solver:
                     from ..stabilization.strength_relaxation import max_seff_from_particles
 
                     sigma_max = max_seff_from_particles(self.particles)
-                    c_stab = getattr(self.config, "isr_cfl", 0.2)
+                    c_stab = self.stabilization_config.relaxation_cfl
                     if sigma_max > 0.0:
                         dt_rec = c_stab / sigma_max
                         if dt > dt_rec:

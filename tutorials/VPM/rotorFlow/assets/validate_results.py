@@ -18,7 +18,7 @@ def _step(path: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--solution-dir", default="solution")
+    ap.add_argument("--solution-dir", default="solution/rotor")
     ap.add_argument("--figures-dir", default="figures")
     ap.add_argument("--expected-step", type=int, default=3500)
     args = ap.parse_args()

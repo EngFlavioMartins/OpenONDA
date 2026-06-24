@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 ./allclean.sh
 
-"$PYTHON" assets/delta_wing_setup.py
+"$PYTHON" delta_wing_setup.py
 
 ./allplot.sh
 echo "All runs and plots complete."

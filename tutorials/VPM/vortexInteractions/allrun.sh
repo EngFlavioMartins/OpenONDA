@@ -43,11 +43,11 @@
 # read from the logs / figures/compare_summary.csv (last_step column).
 #
 # Usage:
-#   ./allrun.sh                         # new, isolated full ladder
-#   CASE_SET=fine RUN_ID=smoke FINE_STEPS=10 ./allrun.sh
+#   ./allrun.sh                         # full ladder
+# CASE_SET=fine FINE_STEPS=10 ./allrun.sh
 #
-# Results are never overwritten. Each invocation writes below
-# solution/runs/<RUN_ID> and refuses to reuse a non-empty run root.
+# Results are never overwritten. Each case writes to solution/<name>/ and
+# rings_setup.py refuses to overwrite a non-empty result directory.
 #
 # Requires the OpenONDA conda environment:  conda activate OpenONDA
 
@@ -74,19 +74,11 @@ LEGACY_BACKUP_FREQUENCY="${LEGACY_BACKUP_FREQUENCY:-20}"
 LEGACY_LOGGING_FREQUENCY="${LEGACY_LOGGING_FREQUENCY:-10}"
 
 # --- Leapfrog rungs: stable, well-resolved settings -------------------------
-# The original leapfrog rungs used DVH at Δt_d=0.103 → advective CFL≈4.  At that
-# CFL the M4′ grid-regeneration redistributes circulation across the narrow gap
-# between the two rings every step, so the cores MERGE almost immediately instead
-# of leapfrogging, and frozen-∇u GRADU injects energy faster than the model
-# drains it (divergence).  Fix: Core-Spreading viscosity (no grid regen → no
-# cross-gap mixing), advective CFL<1 (dt=0.02), and the rVPM stretching
-# stabiliser (caps parallel |Γ| growth).  ~600×0.02 = 12 s, same physical window.
 LF_DT="0.02"
 LF_STEPS="${LF_STEPS:-600}"
 FINE_STEPS="${FINE_STEPS:-2000}"
-RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-RUN_ROOT="${RUN_ROOT:-solution/runs/${RUN_ID}}"
-FIGURES_ROOT="${FIGURES_ROOT:-figures/runs/${RUN_ID}}"
+RUN_ROOT="${RUN_ROOT:-solution}"
+FIGURES_ROOT="${FIGURES_ROOT:-figures}"
 CASE_SET="${CASE_SET:-all}"  # all | legacy | fine
 
 if [[ "$CASE_SET" != "all" && "$CASE_SET" != "legacy" && "$CASE_SET" != "fine" ]]; then
@@ -94,14 +86,7 @@ if [[ "$CASE_SET" != "all" && "$CASE_SET" != "legacy" && "$CASE_SET" != "fine" ]
     exit 2
 fi
 
-for root in "$RUN_ROOT" "$FIGURES_ROOT"; do
-    if [[ -e "$root" ]] && find "$root" -mindepth 1 -print -quit | grep -q .; then
-        echo "Refusing to reuse non-empty output root: $root" >&2
-        exit 2
-    fi
-done
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
-echo "Run ID      : $RUN_ID"
 echo "Results root: $RUN_ROOT"
 
 _RESULTS=()
@@ -147,7 +132,7 @@ run_case "2/8 leapfrog_les — +LES" \
 run_case "3/8 leapfrog_les_isr — +ISR (conservative ADM blend, C=1.5)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm --relaxation blend --isr-C 1.5 --deconv 1 \
+    --viscous cs --stretching rvpm --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
     --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
@@ -156,7 +141,7 @@ run_case "3/8 leapfrog_les_isr — +ISR (conservative ADM blend, C=1.5)" \
 run_case "4/8 leapfrog_les_pedr — +Pedrizzetti variant (|Γ|-preserving)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm --relaxation pedrizzetti --isr-C 1.5 --deconv 1 \
+    --viscous cs --stretching rvpm --relaxation pedrizzetti --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
     --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
@@ -185,7 +170,7 @@ run_case "6/8 collide_les — +LES (expected to fail later)" \
 run_case "7/8 collide_les_isr — +ISR (expected to survive longest)" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
     --dt "$DT" --num-steps "$COLLIDE_STEPS" \
-    --stretching gradu --relaxation blend --isr-C 1.5 --deconv 1 \
+    --stretching gradu --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
     --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \

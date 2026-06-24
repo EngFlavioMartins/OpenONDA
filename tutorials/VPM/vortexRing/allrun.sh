@@ -31,11 +31,11 @@ echo "Starting DNS simulation (mixed stretching)..."
 
 echo "Starting LES comparison simulation (transposed stretching, Pedrizzetti ISR α=0.95)..."
 "$PYTHON" ring_setup.py --mode les --stretching transposed --name LES_transposed \
-    --direction-alpha 0.95 --solution-dir ./solution
+    --relaxation pedrizzetti --relaxation-factor 0.95 --solution-dir ./solution
 
 echo "Starting LES simulation (rVPM reformulated stretching, Alvarez & Ning)..."
 "$PYTHON" ring_setup.py --mode les --stretching rvpm --name LES_rvpm \
-    --rvpm-g 0.3333333333333333 --isr-mode blend --solution-dir ./solution
+    --rvpm-g 0.3333333333333333 --relaxation blend --solution-dir ./solution
 
 echo "Generating comparison plots..."
 ./allplot.sh

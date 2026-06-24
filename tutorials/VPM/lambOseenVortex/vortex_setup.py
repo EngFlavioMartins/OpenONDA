@@ -147,7 +147,6 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         ),
     ]
 
-    adaptation = None
     config = SolverConfig.dns_simulation(
         time_step_size=args.dt,
         viscous=build_viscous_config(scheme, nu, args, spacing),
@@ -161,7 +160,6 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         samplers=samplers,
         clean=args.clean,
         vpm_domain_bounds=domain_bounds,
-        adaptation=adaptation,
     )
 
     solver = Solver(config=config)
