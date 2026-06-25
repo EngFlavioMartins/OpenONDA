@@ -368,6 +368,7 @@ def plot_merging_case(args) -> int:
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
+    tau_max = run_nu * args.total_time / (args.b0**2)
 
     fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.68 / 2.54))
     fig.subplots_adjust(wspace=0.6, top=0.93, bottom=0.37, left=0.09, right=0.91)
@@ -419,7 +420,7 @@ def plot_merging_case(args) -> int:
     # Use ML convention: a0_ML = r_c0/sqrt(2), sigma²=2*nu*t
     a0_sigma = run_a0_over_b0 / np.sqrt(2.0)  # a0_ML/b0
 
-    tau_fc = np.linspace(0.0, 0.050, 300)
+    tau_fc = np.linspace(0.0, tau_max, 300)
     eps2 = a0_sigma**2 + 2.0 * tau_fc  # sigma^2/b0^2  (grows as 2*tau)
     eps = np.sqrt(eps2)
     corr = 1.0 + 2.0 * eps2 * (1.0 - 2.0 * np.log(np.maximum(eps, 1e-12)))
@@ -440,7 +441,7 @@ def plot_merging_case(args) -> int:
     )
 
     # a²/b₀² panel: pure-diffusion reference in ML convention (slope=2, a² = a₀²+2τ)
-    tau_pd = np.linspace(0.0, 0.050, 200)
+    tau_pd = np.linspace(0.0, tau_max, 200)
     a0_sigma_sq = a0_sigma**2
     axes[1].plot(
         tau_pd,
@@ -454,7 +455,7 @@ def plot_merging_case(args) -> int:
 
     axes[0].set_xlabel(r"$\nu t / b_0^2$")
     axes[0].set_ylabel(r"$\theta$ [deg]")
-    axes[0].set_title(r"Rotation angle, $\theta$ [deg]")
+    axes[0].set_title(r"Rotation angle, $\theta$")
     axes[0].set_ylim([-10, 520])
 
     axes[1].set_xlabel(r"$\nu t / b_0^2$")

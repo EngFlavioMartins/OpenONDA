@@ -100,6 +100,7 @@ def add_physics_args(parser) -> None:
     parser.add_argument("--circulation", type=float, default=1.0)
     parser.add_argument("--b0", type=float, default=1.0)
     parser.add_argument("--a0-over-b0", type=float, default=0.125)
+    parser.add_argument("--total-time", type=float, default=40.0)
 
 
 def read_flow_time(csv_path: Path) -> float | None:

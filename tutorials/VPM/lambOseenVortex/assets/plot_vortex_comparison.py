@@ -129,7 +129,7 @@ def plot_vortex_case(args) -> int:
     half_length = 4.0 * rc_ref
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
-    fig.subplots_adjust(hspace=0.45, top=0.95, bottom=0.19, left=0.15, right=0.85)
+    fig.subplots_adjust(hspace=0.25, top=0.95, bottom=0.19, left=0.15, right=0.85)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
@@ -156,16 +156,14 @@ def plot_vortex_case(args) -> int:
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
     r_line = np.linspace(-10.0 * rc_ref, 10.0 * rc_ref, 400)
-    kw_theory = {"color": "black", "lw": 1.0, "zorder": 0}
-    if scheme_data:
-        _, t_last, *_ = scheme_data[-1]
-        theory_t = run_t0 + t_last
-        tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
-        to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
-        tg = np.gradient(tv, r_line)
-        axes[0].plot(r_line / rc_ref, tv / uc_ref, label="Theory", **kw_theory)
-        axes[1].plot(r_line / rc_ref, to / wc_ref, **kw_theory)
-        axes[2].plot(r_line / rc_ref, tg / gc_ref, **kw_theory)
+    kw_theory = {"color": "black", "lw": 1.0, "zorder": 0, "linestyle": "--"}
+    theory_t = run_t0 + args.total_time
+    tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
+    to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
+    tg = np.gradient(tv, r_line)
+    axes[0].plot(r_line / rc_ref, tv / uc_ref, label="Theory", **kw_theory)
+    axes[1].plot(r_line / rc_ref, to / wc_ref, **kw_theory)
+    axes[2].plot(r_line / rc_ref, tg / gc_ref, **kw_theory)
 
     axes[0].set_title(r"Azimuthal velocity, $u_\theta / U_{c,0}$")
     axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
@@ -177,7 +175,7 @@ def plot_vortex_case(args) -> int:
     axes[1].set_ylim(bottom=-0.01)
 
     axes[2].set_title(r"Velocity gradient, $(\partial u_y / \partial x)\,r_{c,0} / U_{c,0}$")
-    axes[2].set_xlabel(r"$r / r_{c,0}$")
+    axes[2].set_xlabel(r"Normalized radius, $r / r_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,r_{c,0} / U_{c,0}$")
     axes[2].set_xlim([-7.5, 7.5])
 
