@@ -1,52 +1,24 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — stabilization LADDER demonstration.
+# Vortex-ring interactions — fair stabilization comparison.
 #
-# Objective
-# ---------
-# Compare the existing DNS/LES/relaxation ladder with a finer leapfrogging case
-# that resolves the coupled advection--stretching update in complete microsteps:
+# This script reruns the intended six-case matrix at the same initial particle
+# concentration:
 #
-#     DNS        →  may fail (blow up) first
-#     +LES       →  fails later
-#     +LES+ISR   →  strength-filtered legacy stabilization
-#     fine       →  deformation-limited full-state temporal refinement
-#
-# Lower rungs ARE allowed to fail — what matters is the failure ordering and
-# that the surviving rungs track the physics (LBM leapfrog trajectory data in
-# assets/, conserved invariants, sensible energy decay).
-#
-# Numerical ground rules (post-mortem driven — see docs/vpm_stabilization_audit.md):
-#   * dt = Δt_d ≈ 0.103 s (the DVH-pinned step — the diffusion operator
-#     fires once per step): advective CFL ≈ 4.  Refine h (which shrinks
-#     Δt_d = β·R_d²/(4nu) ∝ h²) or switch to GBD/CS for a smaller CFL.
-#   * DVH regen threshold in BUDGET mode (≤2e-4 of Σ|Γ| lost per firing) with
-#     a 250k node cap: the old absolute threshold (3e-5) destroyed ~1.2% of
-#     the circulation PER FIRING (total evaporation by step ~450) — the rings
-#     merged and dissolved unphysically in every case.
-#   * All cases share the GRADU stretching operator so the only difference
-#     between rungs is the stabilization layer.
-#
-# Case matrix:
-#   LEAPFROG (physics fidelity; rungs likely all survive — compare vs LBM):
+#   LEAPFROG, Γ1 = Γ2 = +π:
 #     1. leapfrog_dns      2. leapfrog_les      3. leapfrog_les_isr
-#     4. leapfrog_les_pedr (|Γ|-preserving Pedrizzetti variant)
-#   COLLISION (stability ladder — strain peaks at impact):
-#     5. collide_dns       6. collide_les       7. collide_les_isr
-#   LONG LEAPFROG CHALLENGE:
-#     8. leapfrog_fine (h=.020, dt=.010, adaptive complete-physics substeps)
 #
-# LES+relaxation cases run on Vulkan (Taichi 1.7.4 CUDA-backend bug with this
-# combination — see rings_setup --device help).
+#   HEAD-ON COLLISION, Γ1 = +π, Γ2 = -π:
+#     4. collide_dns       5. collide_les       6. collide_les_isr
 #
-# A blow-up is detected by rings_setup.py (max|Γ| > 50× initial) — the run
-# stops, saves a pre_blowup state, and still counts as PASS; survival time is
-# read from the logs / figures/compare_summary.csv (last_step column).
+# Every case writes:
+#   - stability_metrics.csv at every step
+#   - flow_integrals.csv at LOGGING_FREQUENCY
+#   - energy_budget.csv at ENERGY_AUDIT_FREQUENCY
 #
-# Usage:
-#   ./allrun.sh                         # full ladder
-# CASE_SET=fine FINE_STEPS=10 ./allrun.sh
+# Existing result directories for these six case names are deleted before their
+# rerun so each directory contains one clean, comparable realization.
 
-set -uo pipefail   # -e removed: individual case failures must not stop the run
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -56,35 +28,31 @@ PYTHON="$(conda run -n OpenONDA which python 2>/dev/null \
           || command -v python)"
 
 GAMMA_PI="3.14159265358979"
-DT="0.103"          # Δt_d — DVH fires once per step (diffusion active every step)
 
-# 120 × 0.103 ≈ 12.4 s physical — covers the LBM range x/R0 ≲ 10;
-# collision impact at t ≈ 4.2 s.
-COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-120}}"
-
-# Per-step stability_metrics.csv stays enabled independently of these cadences.
-# Sparse full-state backups keep trajectory reconstruction possible without the
-# multi-gigabyte output produced by the historical every-2-step setting.
-LEGACY_BACKUP_FREQUENCY="${LEGACY_BACKUP_FREQUENCY:-20}"
-LEGACY_LOGGING_FREQUENCY="${LEGACY_LOGGING_FREQUENCY:-10}"
-
-# --- Leapfrog rungs: stable, well-resolved settings -------------------------
-LF_DT="0.02"
-LF_STEPS="${LF_STEPS:-600}"
-FINE_STEPS="${FINE_STEPS:-2000}"
 RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
-CASE_SET="${CASE_SET:-all}"  # all | legacy | fine
+PARTICLE_SPACING="${PARTICLE_SPACING:-0.025}"
 
-if [[ "$CASE_SET" != "all" && "$CASE_SET" != "legacy" && "$CASE_SET" != "fine" ]]; then
-    echo "CASE_SET must be one of: all, legacy, fine (got: $CASE_SET)" >&2
-    exit 2
-fi
+# Leapfrog uses CS/RVPM with a smaller step than the DVH-pinned collision cases.
+LF_DT="${LF_DT:-0.02}"
+LF_STEPS="${LF_STEPS:-600}"
+
+# Collision uses DVH; rings_setup.py pins the actual step to the DVH diffusion
+# time when DVH is selected. 120 steps covers t≈12.4 s at h=0.025.
+COLLIDE_DT="${COLLIDE_DT:-0.103}"
+COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-120}}"
+
+BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
+LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
+ENERGY_AUDIT_FREQUENCY="${ENERGY_AUDIT_FREQUENCY:-1}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
 echo "Results root: $RUN_ROOT"
+echo "Figures root: $FIGURES_ROOT"
+echo "Particle spacing: $PARTICLE_SPACING"
+echo "Energy-audit frequency: every $ENERGY_AUDIT_FREQUENCY step(s)"
 
-_RESULTS=()
+RESULTS=()
 
 run_case() {
     local label="$1"; shift
@@ -93,138 +61,123 @@ run_case() {
     echo "${label}"
     echo "========================================================================"
 
-    # Delete existing results for this case before re-running
-    local _name=""
-    local _args=("$@")
-    for ((_i=0; _i<${#_args[@]}; _i++)); do
-        if [[ "${_args[_i]}" == "--name" && $((_i+1)) -lt ${#_args[@]} ]]; then
-            _name="${_args[_i+1]}"
+    local case_name=""
+    local args=("$@")
+    for ((i=0; i<${#args[@]}; i++)); do
+        if [[ "${args[i]}" == "--name" && $((i+1)) -lt ${#args[@]} ]]; then
+            case_name="${args[i+1]}"
             break
         fi
     done
-    if [[ -n "$_name" ]]; then
-        rm -rf "$RUN_ROOT/$_name"
+
+    if [[ -n "$case_name" ]]; then
+        rm -rf "$RUN_ROOT/$case_name"
     fi
 
     local rc=0
-    $PYTHON rings_setup.py --output-root "$RUN_ROOT" "$@" || rc=$?
+    "$PYTHON" rings_setup.py --output-root "$RUN_ROOT" "$@" || rc=$?
     if [[ $rc -eq 0 ]]; then
-        echo "→ ${label} complete."
-        _RESULTS+=("PASS — ${label}")
+        echo "-> ${label} complete."
+        RESULTS+=("PASS — ${label}")
     else
-        echo "*** ${label} exited with code ${rc} — continuing ***" >&2
-        _RESULTS+=("FAIL (exit ${rc}) — ${label}")
+        echo "*** ${label} exited with code ${rc}; continuing ***" >&2
+        RESULTS+=("FAIL (exit ${rc}) — ${label}")
     fi
 }
 
-# ═════════════════════════════════════════════════════════════════════════════
-# LEAPFROGGING  (Γ₁ = Γ₂ = +π) — physics fidelity vs LBM reference
-# ═════════════════════════════════════════════════════════════════════════════
-<<comment
-if [[ "$CASE_SET" != "fine" ]]; then
-run_case "1/8 leapfrog_dns — DNS baseline" \
+# ---------------------------------------------------------------------------
+# LEAPFROGGING: Γ1 = Γ2 = +π
+# ---------------------------------------------------------------------------
+
+run_case "1/6 leapfrog_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode dns \
+    --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
     --viscous cs --stretching rvpm \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name leapfrog_dns
 
-run_case "2/8 leapfrog_les — +LES" \
+run_case "2/6 leapfrog_les — LES" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
+    --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
     --viscous cs --stretching rvpm \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name leapfrog_les
-comment
 
-run_case "3/8 leapfrog_les_isr — +ISR (conservative ADM blend, C=1.5)" \
+run_case "3/6 leapfrog_les_isr — LES + ISR" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
+    --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm --relaxation blend --relaxation-rate 1.5 --deconv 1 \
+    --viscous cs --stretching rvpm \
+    --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name leapfrog_les_isr
 
-run_case "4/8 leapfrog_les_pedr — +Pedrizzetti variant (|Γ|-preserving)" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm --relaxation pedrizzetti --relaxation-rate 1.5 --deconv 1 \
-    --device vulkan \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
-    --name leapfrog_les_pedr
+# ---------------------------------------------------------------------------
+# HEAD-ON COLLISION: Γ1 = +π, Γ2 = -π
+# ---------------------------------------------------------------------------
 
-# ═════════════════════════════════════════════════════════════════════════════
-# HEAD-ON COLLISION  (Γ₁ = +π, Γ₂ = −π) — the stability ladder
-# ═════════════════════════════════════════════════════════════════════════════
-
-run_case "5/8 collide_dns — DNS baseline (expected to fail first)" \
+run_case "4/6 collide_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode dns \
-    --dt "$DT" --num-steps "$COLLIDE_STEPS" \
-    --stretching gradu \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --particle-spacing "$PARTICLE_SPACING" \
+    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
+    --viscous dvh --stretching gradu \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name collide_dns
 
-run_case "6/8 collide_les — +LES (expected to fail later)" \
+run_case "5/6 collide_les — LES" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
-    --dt "$DT" --num-steps "$COLLIDE_STEPS" \
-    --stretching gradu \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --particle-spacing "$PARTICLE_SPACING" \
+    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
+    --viscous dvh --stretching gradu \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name collide_les
 
-run_case "7/8 collide_les_isr — +ISR (expected to survive longest)" \
+run_case "6/6 collide_les_isr — LES + ISR" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
-    --dt "$DT" --num-steps "$COLLIDE_STEPS" \
-    --stretching gradu --relaxation blend --relaxation-rate 1.5 --deconv 1 \
+    --particle-spacing "$PARTICLE_SPACING" \
+    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
+    --viscous dvh --stretching gradu \
+    --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
-    --backup-frequency "$LEGACY_BACKUP_FREQUENCY" \
-    --logging-frequency "$LEGACY_LOGGING_FREQUENCY" \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name collide_les_isr
-fi
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FINE LEAPFROG STABILITY CHALLENGE
-# ═══════════════════════════════════════════════════════════════════════════════
-
-if [[ "$CASE_SET" != "legacy" ]]; then
-run_case "8/8 leapfrog_fine — fine, full-state deformation subcycling" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --particle-spacing 0.020 --dt 0.010 --num-steps "$FINE_STEPS" \
-    --viscous cs --stretching rvpm --relaxation none \
-    --physics-substeps 1 --deformation-cfl 0.15 --max-physics-substeps 64 \
-    --backup-frequency 20 --logging-frequency 5 --max-particles 750000 \
-    --name leapfrog_fine
-fi
-
-# ── summary ───────────────────────────────────────────────────────────────────
 
 echo ""
 echo "========================================================================"
 echo "Run summary"
 echo "========================================================================"
-_n_pass=0; _n_fail=0
-for entry in "${_RESULTS[@]}"; do
+n_pass=0
+n_fail=0
+for entry in "${RESULTS[@]}"; do
     echo "  ${entry}"
     if [[ "${entry}" == PASS* ]]; then
-        (( _n_pass++ ))
+        (( n_pass++ ))
     else
-        (( _n_fail++ ))
+        (( n_fail++ ))
     fi
 done
 echo ""
-echo "  ${_n_pass} passed, ${_n_fail} failed"
-echo "  (blow-ups are expected on the lower collision rungs — survival times"
-echo "   are in figures/compare_summary.csv after allplot.sh)"
+echo "  ${n_pass} passed, ${n_fail} failed"
 echo ""
 
 if [[ -x ./allplot.sh ]]; then
-    echo "Generating comparison figures…"
+    echo "Generating comparison figures..."
     ./allplot.sh --solution-dir "$RUN_ROOT" --figures-dir "$FIGURES_ROOT" || true
 fi
 
-[[ $_n_fail -eq 0 ]]
+[[ $n_fail -eq 0 ]]

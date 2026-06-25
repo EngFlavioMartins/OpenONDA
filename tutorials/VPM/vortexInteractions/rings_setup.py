@@ -90,6 +90,14 @@ def main():
     )
     parser.add_argument("--backup-frequency", type=int, default=5)
     parser.add_argument("--logging-frequency", type=int, default=5)
+    parser.add_argument(
+        "--energy-audit-frequency",
+        type=int,
+        default=0,
+        help="Write samples/energy_budget.csv every N steps without running "
+        "surface samplers or verbose logging. Use 1 for short calibration "
+        "runs that need a fine dE/dt audit; 0 disables the extra audit.",
+    )
     parser.add_argument("--max-particles", type=int, default=500_000)
     parser.add_argument(
         "--physics-substeps",
@@ -118,6 +126,18 @@ def main():
         help="Strain-gate rate constant C for the relaxation (default 1.0).",
     )
     parser.add_argument(
+        "--relaxation-cfl",
+        type=float,
+        default=0.2,
+        help="Target sigma_eff*dt_sub for strength-relaxation substepping.",
+    )
+    parser.add_argument(
+        "--relaxation-max-substeps",
+        type=int,
+        default=8,
+        help="Maximum strength-relaxation substeps per VPM step.",
+    )
+    parser.add_argument(
         "--deconv",
         type=int,
         default=1,
@@ -130,6 +150,20 @@ def main():
         default="transposed",
         help="Stretching scheme: transposed (direct O(N²)), gradu (local O(N)), "
         "or rvpm (Alvarez & Ning reformulation, local O(N), conserves σ²|Γ|).",
+    )
+    parser.add_argument("--rvpm-f", type=float, default=0.0)
+    parser.add_argument("--rvpm-g", type=float, default=0.2)
+    parser.add_argument(
+        "--smagorinsky-cs",
+        type=float,
+        default=0.16,
+        help="Smagorinsky Cs used when --mode les.",
+    )
+    parser.add_argument(
+        "--smagorinsky-ce",
+        type=float,
+        default=1.048,
+        help="Smagorinsky Ce used when --mode les.",
     )
     parser.add_argument(
         "--viscous",
@@ -183,6 +217,8 @@ def main():
     particle_spacing = args.particle_spacing  # Particle spacing h [m]
     if particle_spacing <= 0.0:
         parser.error("--particle-spacing must be positive")
+    if args.energy_audit_frequency < 0:
+        parser.error("--energy-audit-frequency must be non-negative")
     time_step = args.dt  # [s]
     num_steps = args.num_steps  # Simulation steps
 
@@ -203,10 +239,13 @@ def main():
     if args.mode == "dns":
         turbulence = TurbulenceConfig.dns()
     else:
-        turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+        turbulence = TurbulenceConfig.les_smagorinsky(
+            cs=args.smagorinsky_cs,
+            ce=args.smagorinsky_ce,
+        )
 
     if args.stretching == "rvpm":
-        stretching = StretchingConfig.rvpm()
+        stretching = StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g)
     elif args.stretching == "gradu":
         stretching = StretchingConfig.gradu()
     else:
@@ -262,7 +301,8 @@ def main():
             rate=args.relaxation_rate,
             deconv=args.deconv,
             conserve=True,
-            cfl=0.2,
+            cfl=args.relaxation_cfl,
+            max_substeps=args.relaxation_max_substeps,
         )
         if relaxation_enabled
         else StabilizationConfig.disabled()
@@ -416,33 +456,129 @@ def main():
         }
 
     metrics_path = output_dir / "stability_metrics.csv"
-    with metrics_path.open("w", newline="", buffering=1) as metrics_file:
-        metrics_writer = csv.DictWriter(metrics_file, fieldnames=metric_fields)
-        metrics_writer.writeheader()
-        metrics_writer.writerow(stability_metrics(0))
+    energy_audit_file = None
+    energy_audit_writer = None
+    if args.energy_audit_frequency > 0:
+        energy_audit_dir = output_dir / "samples"
+        energy_audit_dir.mkdir(parents=True, exist_ok=True)
+        energy_audit_path = energy_audit_dir / "energy_budget.csv"
+        energy_audit_fields = [
+            "step",
+            "time",
+            "n_particles",
+            "kinetic_energy",
+            "enstrophy",
+            "dEdt_solver",
+            "neg_nu_enstrophy",
+            "strength_magnitude",
+            "strength_x",
+            "strength_y",
+            "strength_z",
+            "impulse_x",
+            "impulse_y",
+            "impulse_z",
+            "angular_impulse_x",
+            "angular_impulse_y",
+            "angular_impulse_z",
+            "max_gamma",
+            "p999_gamma",
+            "sum_gamma_magnitude",
+            "max_strain_frobenius",
+            "max_parallel_strain",
+            "radius_min",
+            "radius_max",
+        ]
+        energy_audit_file = energy_audit_path.open("w", newline="", buffering=1)
+        energy_audit_writer = csv.DictWriter(energy_audit_file, fieldnames=energy_audit_fields)
+        energy_audit_writer.writeheader()
 
-        for step in range(num_steps):
-            try:
-                vpm.update_state()
-            except (RuntimeError, FloatingPointError) as exc:
-                print(
-                    f"\n*** INSTABILITY ABORT at step {step + 1} "
-                    f"(t={vpm.flow_time:.2f} s) — {exc} ***"
-                )
-                vpm.save_state(str(output_dir / "pre_blowup"))
-                break
-            metrics = stability_metrics(step + 1)
-            metrics_writer.writerow(metrics)
-            max_norm = metrics["max_gamma"]
-            if not np.isfinite(max_norm) or max_norm > blowup_threshold:
-                print(
-                    f"\n*** BLOWUP DETECTED at step {step + 1} (t={vpm.flow_time:.2f} s) "
-                    f"— max|Γ|={max_norm:.4f} > {blowup_threshold:.4f} ***"
-                )
-                vpm.save_state(str(output_dir / "pre_blowup"))
-                break
-        else:
-            print(f"Simulation completed {num_steps} steps without blowup.")
+    def write_energy_audit(step, metrics=None, force_recompute=True):
+        """Append one high-cadence energy identity sample for post-processing."""
+        if energy_audit_writer is None:
+            return
+        if force_recompute or not getattr(vpm, "_flow_integrals", None):
+            vpm._update_all_flow_integrals()
+        flow = vpm._flow_integrals
+        strength = flow.get("strength", np.zeros(3))
+        impulse = flow.get("linear_impulse", np.zeros(3))
+        angular_impulse = flow.get("angular_impulse", np.zeros(3))
+        if metrics is None:
+            metrics = stability_metrics(step)
+        energy_audit_writer.writerow(
+            {
+                "step": step,
+                "time": vpm.flow_time,
+                "n_particles": vpm.particles.number_of_particles,
+                "kinetic_energy": flow.get("kinetic_energy", 0.0),
+                "enstrophy": flow.get("enstrophy", 0.0),
+                "dEdt_solver": flow.get("kinetic_energy_dissipation_rate", 0.0),
+                "neg_nu_enstrophy": flow.get("vorticity_dissipation_rate", 0.0),
+                "strength_magnitude": flow.get("strength_magnitude", 0.0),
+                "strength_x": float(strength[0]),
+                "strength_y": float(strength[1]),
+                "strength_z": float(strength[2]),
+                "impulse_x": float(impulse[0]),
+                "impulse_y": float(impulse[1]),
+                "impulse_z": float(impulse[2]),
+                "angular_impulse_x": float(angular_impulse[0]),
+                "angular_impulse_y": float(angular_impulse[1]),
+                "angular_impulse_z": float(angular_impulse[2]),
+                "max_gamma": metrics["max_gamma"],
+                "p999_gamma": metrics["p999_gamma"],
+                "sum_gamma_magnitude": metrics["sum_gamma_magnitude"],
+                "max_strain_frobenius": metrics["max_strain_frobenius"],
+                "max_parallel_strain": metrics["max_parallel_strain"],
+                "radius_min": metrics["radius_min"],
+                "radius_max": metrics["radius_max"],
+            }
+        )
+
+    try:
+        with metrics_path.open("w", newline="", buffering=1) as metrics_file:
+            metrics_writer = csv.DictWriter(metrics_file, fieldnames=metric_fields)
+            metrics_writer.writeheader()
+            metrics0 = stability_metrics(0)
+            metrics_writer.writerow(metrics0)
+            write_energy_audit(0, metrics=metrics0, force_recompute=True)
+
+            for step in range(num_steps):
+                try:
+                    vpm.update_state()
+                except (RuntimeError, FloatingPointError) as exc:
+                    print(
+                        f"\n*** INSTABILITY ABORT at step {step + 1} "
+                        f"(t={vpm.flow_time:.2f} s) — {exc} ***"
+                    )
+                    vpm.save_state(str(output_dir / "pre_blowup"))
+                    break
+                metrics = stability_metrics(step + 1)
+                metrics_writer.writerow(metrics)
+                if (
+                    args.energy_audit_frequency > 0
+                    and (step + 1) % args.energy_audit_frequency == 0
+                ):
+                    logging_due = (
+                        args.logging_frequency > 0
+                        and (step + 1) % args.logging_frequency == 0
+                    )
+                    write_energy_audit(
+                        step + 1,
+                        metrics=metrics,
+                        force_recompute=not logging_due,
+                    )
+                max_norm = metrics["max_gamma"]
+                if not np.isfinite(max_norm) or max_norm > blowup_threshold:
+                    print(
+                        f"\n*** BLOWUP DETECTED at step {step + 1} (t={vpm.flow_time:.2f} s) "
+                        f"— max|Γ|={max_norm:.4f} > {blowup_threshold:.4f} ***"
+                    )
+                    vpm.save_state(str(output_dir / "pre_blowup"))
+                    break
+            else:
+                print(f"Simulation completed {num_steps} steps without blowup.")
+    finally:
+        if energy_audit_file is not None:
+            energy_audit_file.close()
 
 
 if __name__ == "__main__":
