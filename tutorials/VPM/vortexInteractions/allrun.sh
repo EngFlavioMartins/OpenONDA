@@ -31,7 +31,7 @@ GAMMA_PI="3.14159265358979"
 
 RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
-PARTICLE_SPACING="${PARTICLE_SPACING:-0.025}"
+PARTICLE_SPACING="${PARTICLE_SPACING:-0.030}"
 
 # Leapfrog uses CS/RVPM with a smaller step than the DVH-pinned collision cases.
 LF_DT="${LF_DT:-0.02}"
@@ -93,7 +93,7 @@ run_case "1/6 leapfrog_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode dns \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm \
+    --viscous cs --stretching transposed \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
@@ -103,7 +103,7 @@ run_case "2/6 leapfrog_les — LES" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm \
+    --viscous cs --stretching transposed \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
@@ -113,7 +113,7 @@ run_case "3/6 leapfrog_les_isr — LES + ISR" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching rvpm \
+    --viscous cs --stretching transposed \
     --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$BACKUP_FREQUENCY" \
@@ -129,7 +129,7 @@ run_case "4/6 collide_dns — DNS baseline" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode dns \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching gradu \
+    --viscous dvh --stretching transposed \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
@@ -139,7 +139,7 @@ run_case "5/6 collide_les — LES" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching gradu \
+    --viscous dvh --stretching transposed \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
@@ -149,7 +149,7 @@ run_case "6/6 collide_les_isr — LES + ISR" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching gradu \
+    --viscous dvh --stretching transposed \
     --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$BACKUP_FREQUENCY" \

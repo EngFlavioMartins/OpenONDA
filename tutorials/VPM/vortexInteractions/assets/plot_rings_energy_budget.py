@@ -263,12 +263,12 @@ def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Pa
     ax_rate.set_ylabel(r"$E_0^{-1}\,dE/dt$")
     ax_rate.set_title("Energy budget")
     ax_rate.legend(fontsize=10, ncol=2)
-    ax_rate.set_ylim([-0.5,0.5])
+    ax_rate.set_ylim([-0.5,0.1])
 
     ax_resid.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
     ax_resid.set_xlabel(r"Normalized time, $t\Gamma_0/R_0^2$")
     ax_resid.set_ylabel(r"$E_0^{-1}\{dE/dt-(-\nu\Omega)\}$")
-    ax_resid.set_ylim([-1,1])
+    ax_resid.set_ylim([-0.5,0.1])
 
     save_fig(fig, figures_dir / "rings_energy_budget.png", dpi=dpi)
 

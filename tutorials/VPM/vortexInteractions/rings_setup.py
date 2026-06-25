@@ -149,7 +149,7 @@ def main():
         choices=["transposed", "gradu", "rvpm"],
         default="transposed",
         help="Stretching scheme: transposed (direct O(N²)), gradu (local O(N)), "
-        "or rvpm (Alvarez & Ning reformulation, local O(N), conserves σ²|Γ|).",
+        "or rvpm (Alvarez & Ning reformulation, local O(N)).",
     )
     parser.add_argument("--rvpm-f", type=float, default=0.0)
     parser.add_argument("--rvpm-g", type=float, default=0.2)

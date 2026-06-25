@@ -36,11 +36,11 @@ from source.solvers.VPM.config.types import StretchingConfig, ViscousConfig
 TUTORIAL_DIR = Path(__file__).resolve().parent
 DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
-_DEFAULT_RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
-_RC = 0.125  # initial core radius a0 [m]
-_B0 = 1.0  # center-to-center separation b0 [m]  (a0/b0 = 0.125)
-_TOTAL_TIME = 20.0
-_LENGTH = 50
+RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
+RC = 0.125  # initial core radius a0 [m]
+B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
+TOTAL_TIME = 20.0
+LENGTH = 50
 
 
 # ---------------------------------------------------------------------------
@@ -76,21 +76,21 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     """Run one viscous scheme for the case given by --gamma1/--gamma2."""
     gamma1, gamma2 = args.gamma1, args.gamma2
     nu = 1.0 / args.re
-    t0 = _RC**2 / (4.0 * nu)
-    spacing = args.spacing_factor * _RC
+    t0 = RC**2 / (4.0 * nu)
+    spacing = args.spacing_factor * RC
 
     # Determine case label for folder naming
     case_type = "vortex" if gamma2 == 0 else ("dipole" if gamma1 * gamma2 < 0 else "merging")
     output_dir = solution_dir / f"{case_type}_{scheme}{args.tag}"
 
     # Grid bounds:
-    margin = 7.0 * _RC  # clearance beyond vortex cores
-    y_offset = 0.5 * _B0 if gamma2 != 0 else 0.0  # half-separation for pairs
+    margin = 7.0 * RC  # clearance beyond vortex cores
+    y_offset = 0.5 * B0 if gamma2 != 0 else 0.0  # half-separation for pairs
     domain_half = y_offset + margin  # single: 1.5*rc, pair: b0/2 + 1.5*rc
 
     if gamma1 * gamma2 < 0:
         # Dipole: extra room in +x for self-propulsion
-        bounds_x_max = domain_half + 3.0 * _B0
+        bounds_x_max = domain_half + 3.0 * B0
     else:
         bounds_x_max = domain_half
 
@@ -99,8 +99,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         bounds_x_max,
         -domain_half,
         domain_half,
-        -_LENGTH * _RC / 2,
-        _LENGTH * _RC / 2,
+        -LENGTH * RC / 2,
+        LENGTH * RC / 2,
     ]
 
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(domain_bounds, spacing)
@@ -150,7 +150,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     config = SolverConfig.dns_simulation(
         time_step_size=args.dt,
         viscous=build_viscous_config(scheme, nu, args, spacing),
-        stretching=StretchingConfig.disabled(),
+        stretching=StretchingConfig.transposed(),
         processing_unit="GPU_VULKAN",
         backup_frequency=10,
         logging_frequency=10,
@@ -169,16 +169,14 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     total_vel = v1_vel + v2_vel
     circ_mag = np.linalg.norm(total_circ, axis=1)
     max_circ = float(circ_mag.max()) if len(circ_mag) > 0 else 0.0
-    if max_circ > 1e-30:
-        mask = circ_mag >= 0.01 * max_circ
-        positions_add = positions[mask]
-        vel_add = total_vel[mask]
-        circ_add = total_circ[mask]
-        radii_add = radii[mask]
-        volumes_add = volumes[mask]
-    else:
-        positions_add, vel_add, circ_add = positions, total_vel, total_circ
-        radii_add, volumes_add = radii, volumes
+
+    mask = circ_mag >= 0.01 * max_circ
+    positions_add = positions[mask]
+    vel_add = total_vel[mask]
+    circ_add = total_circ[mask]
+    radii_add = radii[mask]
+    volumes_add = volumes[mask]
+
 
     solver.add_vortex_particles(positions_add, vel_add, circ_add, radii_add, volumes_add)
 
@@ -228,7 +226,7 @@ def parse_args() -> argparse.Namespace:
         "--clean", action="store_true", help="Delete existing output sub-folder before running."
     )
     parser.add_argument(
-        "--total-time", type=float, default=_TOTAL_TIME, help="Total simulation time [s]."
+        "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s]."
     )
     parser.add_argument("--dt", type=float, default=0.05, help="Time step size [s].")
     parser.add_argument(
@@ -240,7 +238,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--re",
         type=float,
-        default=_DEFAULT_RE,
+        default=RE,
         help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
     )
     # ── Viscous-scheme sweep parameters (defaults = historical tutorial values) ──

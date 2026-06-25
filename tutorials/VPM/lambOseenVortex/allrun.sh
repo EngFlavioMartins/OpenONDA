@@ -1,23 +1,7 @@
 #!/usr/bin/env bash
-# Lamb-Oseen vortex tutorial — explicit run and plot script.
-#
-# Each block runs ONE scheme for one test case.  Each invocation is
-# a separate Python process so Taichi GPU memory is fully released
-# between schemes (prevents OOM on the DVH grid allocation).
-#
-# No loops, no conditionals, no helper functions.
-# Every Python call is fully self-contained and explicit.
-#
-# All three cases share the same Reynolds number and particle
-# resolution to enable a fair comparison of viscous schemes:
-#   Gamma = 1.0,  Re = Gamma/nu = 530  =>  nu = 1/530 ~ 1.887e-3
-#   a0/b0 = 0.125, b0 = 1.0   =>  a0 = 0.125
-#   t0 = a0^2 / (4*nu) ~ 2.071 s   (initial core-radius age)
-#   particle spacing h = 0.03375 m  (= 0.27 * a0)
-#   rc_ref = √(4 nu t0)   = 0.125 m          (initial core radius)
-#   b0     = 1.0 m                           (pair separation)
-#   Uc_ref = 1/(2π·0.125) ≃ 1.2732 m s⁻¹
-#   ωc_ref = (Γ/(π r_{c}^{2})) = 1/(π·0.125²) ≃ 20.37 s⁻¹
+# Lamb-Oseen vortex — viscous-scheme benchmark (CS, RWM, DVH, GBD).
+# Runs three cases (single vortex, dipole, co-rotating merger) at Re=530
+# to compare diffusion accuracy against the C&W 2003 reference solution.
 
 set -euo pipefail
 

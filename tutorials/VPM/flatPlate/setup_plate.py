@@ -318,7 +318,9 @@ def main():
     else:
         geom_aoa = args.aoa
 
-    surface_file = str(_CASE_DIR / "assets" / "flat_plate_surface.json")
+    surface_dir = _CASE_DIR / "assets" / "surfaces"
+    surface_dir.mkdir(parents=True, exist_ok=True)
+    surface_file = str(surface_dir / f"{args.name}.json")
     surface = create_flat_plate(
         chord=args.chord,
         span=args.span,
@@ -414,7 +416,7 @@ def main():
         backup_file_name=args.name,
         backup_directory=backup_dir,
         solution_name=backup_dir,
-        max_particles=50_000,
+        max_particles=150_000,
         # Field planes are certification snapshots, not transient probes.  They
         # are sampled once after the final steady step below.
         samplers=None,

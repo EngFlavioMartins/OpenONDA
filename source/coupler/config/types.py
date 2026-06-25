@@ -111,8 +111,7 @@ class CouplerConfig:
     ] = "transposed"
     """VPM vortex-stretching formulation (Γ-stretching term).
 
-    ``"transposed"`` (default) is the conservative direct O(N²) scheme and
-    reproduces the legacy coupler behaviour.  ``"rvpm"`` is the reformulated-VPM
+    ``"transposed"`` is the conservative direct O(N²) scheme. ``"rvpm"`` is the reformulated-VPM
     operator (Alvarez & Ning): a local O(N) scheme that conserves the element
     volume measure σ²·|Γ| and is the most stable option for high-strain wakes —
     it is the stretching used by the stable interactingVortices rungs.  Note that
@@ -189,8 +188,8 @@ class CouplerConfig:
     donor BC (held at the cycle start) and the freshly-advanced VPM's donor BC
     (the "future" value at the cycle end), re-projected solenoidal each sub-step.
 
-    ``1`` (default) = synchronous FVM/VPM stepping (no sub-cycling), byte-identical
-    to the legacy single-rate path.  Use ``>1`` when the coupling/VPM step gives
+    ``1`` = synchronous FVM/VPM stepping (no sub-cycling). Use ``>1`` when the
+    coupling/VPM step gives
     the FVM an inaccurate Courant number (e.g. cube: dt=0.01, period_multiplier=10
     → dt_vpm=0.1, FVM Co≈0.8 like the reference instead of Co≈11)."""
 
@@ -201,7 +200,7 @@ class CouplerConfig:
     The Biot–Savart donor BC is non-locally coupled to the pressure: the pressure
     field generated inside the FVM box during the solve changes the interior
     vorticity, which changes the BS velocity the box boundary should see.  A
-    single one-shot donor BC (the default, =1, the validated legacy path) ignores
+    single one-shot donor BC ignores
     this and leaves the boundary inconsistent with the interior — which damps the
     global shedding feedback for sustained bluff-body wakes.
 
@@ -216,9 +215,9 @@ class CouplerConfig:
     """Type of donor velocity BC imposed on the FVM coupling patch
     (Billuart et al., JCP 2023, §3.1, Eqs. 11–14).
 
-    ``"dirichlet"`` (default, the validated legacy path) imposes the full
+    ``"dirichlet"`` imposes the full
     donor velocity vector as a Dirichlet condition
-    (``set_dirichlet_velocity_boundary_condition``).  Any velocity mismatch
+    (``set_dirichlet_velocity_boundary_condition_vec``).  Any velocity mismatch
     between the VPM donor and the FVM interior is converted into spurious
     vorticity at the boundary that advects into the wake — the cubeFlow
     interface-noise defect (onset t > 14 s).
@@ -242,7 +241,7 @@ class CouplerConfig:
     """How the FVM target circulation is computed for the hand-off blend
     (Billuart et al., JCP 2023, §3.3).
 
-    ``"vorticity"`` (default, legacy) scatters ``ω_FVM · V_cell`` directly onto
+    ``"vorticity"`` scatters ``ω_FVM · V_cell`` directly onto
     the VPM lattice via M4′.  Fast, but interpolating ω (a derivative) is
     inaccurate in high-gradient regions (boundary layers, shear layers) and
     non-conservative.
@@ -261,15 +260,15 @@ class CouplerConfig:
     ``Σ_node Γ = ∮_∂data (n̂ × u_lat) dS ≈ ∫_box ω_FVM dV``.  The vorticity path
     is exactly conservative (M4′ partition of unity); the velocity path is
     conservative to the ~2h data-extent smear, converging as the lattice
-    refines.  Default stays ``"vorticity"`` (the validated cubeFlow path); the
+    refines.  The default is ``"vorticity"``; the
     velocity path is exercised by ``tests/coupler/test_continuous_overlap.py``."""
 
     body_panel_enabled: bool = False
     """Add a boundary-element (Hess-Smith panel) body model to the VPM so its
     induced field carries the body's IRROTATIONAL blockage — the no-penetration
     completion that free vortex particles structurally cannot represent (the
-    diagnosed root cause of the wall-origin near-body error).  Opt-in; default
-    off keeps the legacy path.  Requires ``panel_mesh`` (a coarse closed STL)."""
+    diagnosed root cause of the wall-origin near-body error). Requires
+    ``panel_mesh`` (a coarse closed STL)."""
 
     panel_bc_type: str = "DIRICHLET"
     """Panel boundary condition: ``"DIRICHLET"`` (Morino, validated for closed

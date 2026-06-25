@@ -65,9 +65,10 @@ def finite_column_velocity(
 ) -> np.ndarray:
     """Velocity for the finite straight vortex column used in the tutorial setup.
 
-    The solver initializes a vortex column of finite span (z in [-4 rc0, 4 rc0]),
-    not an infinite 2D vortex. The center-plane velocity is therefore weaker than
-    the infinite Lamb-Oseen expression by the usual straight-segment factor.
+    The solver initializes a vortex column of finite span (z in [-25 rc0, 25 rc0],
+    see LENGTH = 50 in vortex_setup.py), not an infinite 2D vortex. The
+    center-plane velocity is therefore weaker than the infinite Lamb-Oseen expression
+    by the usual straight-segment factor.
     """
     r = np.abs(x)
     vel, _, _ = lamb_oseen_profile(r, t, gamma, nu)
@@ -126,7 +127,8 @@ def plot_vortex_case(args) -> int:
     uc_ref = args.gamma / (2.0 * np.pi * rc_ref)
     wc_ref = args.gamma / (np.pi * rc_ref**2)
     gc_ref = uc_ref / rc_ref
-    half_length = 4.0 * rc_ref
+    # The vortex column spans z ∈ [-25 rc0, 25 rc0] (LENGTH = 50 in vortex_setup.py)
+    half_length = 25.0 * rc_ref
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
     fig.subplots_adjust(hspace=0.25, top=0.95, bottom=0.19, left=0.15, right=0.85)
@@ -140,7 +142,7 @@ def plot_vortex_case(args) -> int:
         x = df["x"].to_numpy()
         uy = df["Uy"].to_numpy()
         oz = df["omega_z"].to_numpy()
-        dvx = 2.0 * df["Sxy"].to_numpy()  # Sxy = 0.5*(dvdx + dudy); for 2D vortex dudy = -dvdx
+        dvx = df["dvdx"].to_numpy()  # direct from the velocity gradient tensor
         st = style_map[scheme]
         plot_kw = {
             "color": st["color"],

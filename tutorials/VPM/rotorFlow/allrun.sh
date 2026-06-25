@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# RotorFlow VLM-VPM — full certification run
-#
-# Runs 3500 steps (17.5 s at dt=0.005 s), long enough for the wake to
-# convect through the 3D/6D/9D validation planes.
-#
-# Output redirect: /tmp/rotor_run.log  (outside case dir, safe from allclean.sh)
+# RotorFlow — VLM-VPM rotor-wake certification (3500 steps).
+# Convects the wake through 3D, 6D, and 9D validation planes.
+# Output logged to /tmp/rotor_run.log (safe from allclean.sh).
 set -euo pipefail
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -121,6 +121,7 @@ class FVMVPMCoupler:
         self._u_bc_prev: np.ndarray | None = None  # donor BC carried between sub-cycles
         self._omega_bc_prev: np.ndarray | None = None  # donor ω BC carried between sub-cycles
         self._last_omega_donor: np.ndarray | None = None  # ω at faces from last _donor_velocity call
+        self._omega_global_buffer: np.ndarray | None = None
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
         # The user configures ``config.dt`` = dt_fvm (the small, accurate FVM
@@ -472,9 +473,7 @@ class FVMVPMCoupler:
             t3 = time.time()
             # get_vorticity_field is collective; calling on all ranks avoids
             # deadlock when inject() is rank-0-gated below.
-            omega_global = np.asarray(
-                self.ofw.get_vorticity_field(), dtype=np.float64
-            ).reshape(-1, 3)
+            omega_global = self._get_vorticity_field_buffer()
 
             if self._is_master:
                 eta_fn = self._build_eta_fn()
@@ -692,6 +691,16 @@ class FVMVPMCoupler:
         )
         return ~inside
 
+    def _get_vorticity_field_buffer(self) -> np.ndarray:
+        assert self.ofw is not None
+        if self._omega_global_buffer is None:
+            self._omega_global_buffer = np.ascontiguousarray(
+                self.ofw.get_vorticity_field(), dtype=np.float64
+            ).reshape(-1, 3)
+        else:
+            self.ofw.get_vorticity_field_into(self._omega_global_buffer)
+        return self._omega_global_buffer
+
     def _fvm_interior_induced_velocity(self, targets: np.ndarray) -> np.ndarray:
         """Biot–Savart velocity at ``targets`` induced by the FVM interior vorticity.
 
@@ -708,7 +717,7 @@ class FVMVPMCoupler:
         assert self.ofw is not None
         targets = np.ascontiguousarray(targets, dtype=np.float64).reshape(-1, 3)
 
-        omega = np.asarray(self.ofw.get_vorticity_field(), dtype=np.float64).reshape(-1, 3)
+        omega = self._get_vorticity_field_buffer()
         centers = np.asarray(
             self.ofw.get_cell_center_coordinates(), dtype=np.float64
         ).reshape(-1, 3)

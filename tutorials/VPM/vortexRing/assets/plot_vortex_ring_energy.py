@@ -34,21 +34,20 @@ def main() -> None:
 
     load_theme()
 
-    dns_st = VARIANT_STYLE["DNS_transposed"]
-    les_st = VARIANT_STYLE["LES_rvpm"]
-
-    dns_log = sol / "DNS_transposed" / "DNS_transposed.log"
-    les_log = sol / "LES_rvpm" / "LES_rvpm.log"
-
     fig, ax = plt.subplots(figsize=(12 * CM, 7 * CM))
 
-    for log, st, ls, label in [
-        (dns_log, dns_st, "--", "DNS"),
-        (les_log, les_st, "-", "In-house LES"),
-    ]:
+    # ── Energy diagnostics — all available variants ─────────────────────────
+    for variant, st in VARIANT_STYLE.items():
+        log = sol / variant / f"{variant}.log"
+        if not log.exists():
+            continue
         times, nuEns, dedt = parse_log(log)
         if times.size == 0:
+            print(f"  (no energy data for {variant})")
             continue
+        ls = "--" if variant.startswith("DNS") else "-"
+        label = variant.replace("_", " ")
+        print(f"  {variant}: {log}")
         t = times / T_REF
         ax.plot(t, dedt / P_REF, ls, color=st["color"], lw=1.1, label=f"{label}, $dE/dt$")
         ax.plot(

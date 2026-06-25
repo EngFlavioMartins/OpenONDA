@@ -37,24 +37,20 @@ def main() -> None:
 
     load_theme()
 
-    dns_st = VARIANT_STYLE["DNS_transposed"]
-    les_st = VARIANT_STYLE["LES_rvpm"]
-
-    dns_files = sorted(glob.glob(str(sol / "DNS_transposed" / "vpm_DNS_transposed_*.h5")))
-    les_files = sorted(glob.glob(str(sol / "LES_rvpm" / "vpm_LES_rvpm_*.h5")))
-    print(f"DNS: {len(dns_files)} files,  LES (rVPM): {len(les_files)} files")
-
     fig, ax = plt.subplots(figsize=(12 * CM, 7 * CM))
 
-    # ── Numerical results ────────────────────────────────────────────────────
-    for h5_files, st, ls, label in [
-        (dns_files, dns_st, "--", "DNS"),
-        (les_files, les_st, "-", "In-house LES"),
-    ]:
+    # ── Ring speed — all available variants ─────────────────────────────────
+    for variant, st in VARIANT_STYLE.items():
+        h5_files = sorted(glob.glob(str(sol / variant / f"vpm_{variant}_*.h5")))
+        if not h5_files:
+            continue
         t_star, U_norm = load_ring_speed(h5_files)
         if t_star.size == 0:
-            print(f"  (no data for {label})")
+            print(f"  (no ring speed data for {variant})")
             continue
+        ls = "--" if variant.startswith("DNS") else "-"
+        label = variant.replace("_", " ")
+        print(f"  {variant}: {len(h5_files)} files")
         ax.plot(
             t_star,
             U_norm,

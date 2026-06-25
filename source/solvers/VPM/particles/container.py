@@ -1,15 +1,4 @@
-"""
-Container module for VPM solver.
-==================
-Container module for VPM solver. module.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
-
-# Particles.py
+"""Particle storage for the VPM solver."""
 
 import numpy as np
 

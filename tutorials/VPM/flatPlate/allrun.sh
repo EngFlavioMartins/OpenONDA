@@ -39,27 +39,25 @@ cd "$SCRIPT_DIR"
 ./allclean.sh
 
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
-JOBS="${FP_JOBS:-4}"
-PIDS=()
 FAILED=0
 
 run_case() {
-    "$PYTHON" setup_plate.py "$@" &
-    PIDS+=("$!")
-    if [ "${#PIDS[@]}" -ge "$JOBS" ]; then
-        wait "${PIDS[0]}" || FAILED=1
-        PIDS=("${PIDS[@]:1}")
-    fi
-}
-
-wait_cases() {
-    for pid in "${PIDS[@]}"; do
-        wait "$pid" || FAILED=1
+    local name=""
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "--name" && $((i+1)) -le $# ]]; then
+            j=$((i+1))
+            name="${!j}"
+            break
+        fi
     done
-    PIDS=()
-    if [ "$FAILED" -ne 0 ]; then
-        echo "One or more flat-plate simulations failed." >&2
-        exit 1
+    local log_dir="solution/${name}"
+    mkdir -p "$log_dir"
+    echo "  Log: ${log_dir}/${name}.log"
+    local rc=0
+    "$PYTHON" setup_plate.py "$@" > "${log_dir}/${name}.log" 2>&1 || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "  *** ${name} exited with code ${rc}" >&2
+        FAILED=1
     fi
 }
 
@@ -173,7 +171,11 @@ echo ""
 # =============================================================================
 # Post-processing
 # =============================================================================
-wait_cases
+echo ""
+if [[ "$FAILED" -ne 0 ]]; then
+    echo "One or more flat-plate simulations failed." >&2
+    exit 1
+fi
 echo "========================================================"
 echo "  All experiments complete.  Generating figures..."
 echo "========================================================"

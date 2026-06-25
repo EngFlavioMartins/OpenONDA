@@ -44,11 +44,18 @@ class AdvectionConfig:
     Configuration for the advection term (dx/dt = u).
     """
 
-    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK4"
-    """Time integration scheme for advection step.
-    'NONE' freezes particle positions (useful for stationary-flow viscous tests).
-    Advection advances in a single step of the configured scheme over the macro
-    time-step set by the solver (the DVH-pinned dt for DVH runs)."""
+    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK2"
+    """Time integration scheme for the advection substep (dx/dt = u).
+
+    Options:
+      - 'NONE':  freeze particle positions (useful for stationary-flow viscous tests)
+      - 'EULER': forward Euler (1st order)
+      - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+      - 'RK4':   classical 4th-order Runge–Kutta
+
+    Advection advances the configured scheme over the macro time-step set by the
+    solver (the DVH-pinned dt for DVH runs)."""
 
 
 # =====================================================================================
@@ -517,8 +524,15 @@ class StretchingConfig:
     mode: Literal["CLASSICAL", "TRANSPOSED", "MIXED", "GRADU", "RVPM"] = "TRANSPOSED"
     """Stretching formulation mode: CLASSICAL, TRANSPOSED, MIXED, GRADU, or RVPM."""
 
-    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK4"
-    """Time integration scheme for stretching step."""
+    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK2"
+    """Time integration scheme for the stretching substep (dΓ/dt).
+
+    Options:
+      - 'EULER': forward Euler (1st order)
+      - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+      - 'RK4':   classical 4th-order Runge–Kutta
+    """
 
     enabled: bool = True
     """Whether vortex stretching is enabled."""
@@ -537,22 +551,22 @@ class StretchingConfig:
     parallel growth (maximum stability)."""
 
     @staticmethod
-    def classical(scheme: str = "RK4"):
+    def classical(scheme: str = "RK2"):
         """Classical scheme: dΓ/dt = (Γ·∇)u"""
         return StretchingConfig(mode="CLASSICAL", scheme=scheme)
 
     @staticmethod
-    def transposed(scheme: str = "RK4"):
+    def transposed(scheme: str = "RK2"):
         """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ"""
         return StretchingConfig(mode="TRANSPOSED", scheme=scheme)
 
     @staticmethod
-    def mixed(scheme: str = "RK4"):
+    def mixed(scheme: str = "RK2"):
         """Mixed/strain scheme: symmetric formulation"""
         return StretchingConfig(mode="MIXED", scheme=scheme)
 
     @staticmethod
-    def gradu(scheme: str = "RK4"):
+    def gradu(scheme: str = "RK2"):
         """GradU-based stretching: dΓ/dt = (∇u)ᵀ·Γ using pre-computed velocity gradients.
 
         O(N) per sub-step (vs O(N²) for direct modes).  Requires that
@@ -566,7 +580,7 @@ class StretchingConfig:
         return StretchingConfig(mode="GRADU", scheme=scheme)
 
     @staticmethod
-    def rvpm(scheme: str = "RK4", f: float = 0.0, g: float = 0.2):
+    def rvpm(scheme: str = "RK2", f: float = 0.0, g: float = 0.2):
         """Reformulated-VPM stretching (Alvarez & Ning):
 
             dΓ/dt = (∇u)ᵀΓ − c_r·(Γ̂·(∇u)ᵀΓ)·Γ̂,    c_r = (g+f)/(1/3+f)
@@ -1307,7 +1321,7 @@ class SolverConfig:
             object.__setattr__(self, "force", ForceConfig.kutta_joukowski())
 
         if self.velocity is None:
-            object.__setattr__(self, "velocity", VelocityConfig.treecode(theta=0.3))
+            object.__setattr__(self, "velocity", VelocityConfig.treecode(theta=0.5))
 
         # Validate precision
         if self.precision not in ("f32", "f64"):
@@ -1426,8 +1440,13 @@ class SolverConfig:
     ) -> "SolverConfig":
         """
         Create a standard viscous flow simulation configuration.
-        Defaults to Core Spreading (CS) if no scheme is provided.
-        Stretching is disabled for viscous flows.
+
+        **Default physics:**
+          - Stretching: disabled
+          - Viscous:    Core Spreading (CS)
+          - Turbulence: DNS (no subgrid model)
+          - Advection:  RK2 (Heun's method)
+          - Velocity:   Treecode (θ = 0.5)
 
         Args:
               time_step_size: Simulation time step [s]
@@ -1455,7 +1474,14 @@ class SolverConfig:
     def dns_simulation(time_step_size: float = 0.01, **kwargs) -> "SolverConfig":
         """
         Create a Direct Numerical Simulation (DNS) configuration.
-        Includes stretching (RK4) and Core Spreading (CS) viscous diffusion by default.
+
+        **Default physics:**
+          - Advection:  RK2 (Heun's method)
+          - Stretching: TRANSPOSED mode, RK2 (Heun's method)
+          - Viscous:    Core Spreading (CS)
+          - Turbulence: DNS (molecular viscosity only, no SGS model)
+          - Velocity:   Treecode (θ = 0.5)
+          - Stabilization: disabled
 
         Args:
               time_step_size: Simulation time step [s]
@@ -1480,8 +1506,16 @@ class SolverConfig:
     @staticmethod
     def les_simulation(time_step_size: float = 0.01, cs: float = 0.17, **kwargs) -> "SolverConfig":
         """
-        Create a Large Eddy Simulation (LES) configuration.
-        Includes stretching (RK4) and Core Spreading (CS) viscous diffusion by default.
+        Create a Large Eddy Simulation (LES) configuration with the static
+        Smagorinsky SGS model (k-equilibrium formulation).
+
+        **Default physics:**
+          - Advection:  RK2 (Heun's method)
+          - Stretching: TRANSPOSED mode, RK2 (Heun's method)
+          - Viscous:    Core Spreading (CS)
+          - Turbulence: LES_SMAGORINSKY with C_s = 0.17, C_e = 1.048
+          - Velocity:   Treecode (θ = 0.5)
+          - Stabilization: disabled
 
         Args:
               time_step_size: Simulation time step [s]
@@ -1599,8 +1633,8 @@ class SolverState(BaseModel):
     # Method and model configuration
     # Method and model configuration
     # time_integration_scheme: removed in favor of specific schemes
-    advection_scheme: str = Field(default="RK4", description="Advection time integration scheme")
-    stretching_scheme: str = Field(default="RK4", description="Stretching time integration scheme")
+    advection_scheme: str = Field(default="RK2", description="Advection time integration scheme")
+    stretching_scheme: str = Field(default="RK2", description="Stretching time integration scheme")
 
     processing_unit: str = Field(default="GPU_VULKAN", description="Computation backend")
     flow_model: str = Field(default="DNS", description="Flow physics model")

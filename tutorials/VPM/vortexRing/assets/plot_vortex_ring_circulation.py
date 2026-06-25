@@ -62,7 +62,7 @@ def main() -> None:
     )
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
     ax.set_ylabel(r"Total circulation, $\Sigma\,|\boldsymbol{\Gamma}_i|\,/\,\Gamma_0$")
-    ax.set_ylim(0.8, 3.8)
+    ax.set_ylim(0.8, 1.2)
     ax.set_xlim(0, 38)
     ax.legend(fontsize=10, ncol=1)
     save_fig(fig, figs / "vortex_ring_circulation.png", dpi=args.dpi)

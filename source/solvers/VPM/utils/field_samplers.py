@@ -33,6 +33,7 @@ SAMPLER_CSV_COLUMNS = [
     "Ux", "Uy", "Uz",
     "omega_x", "omega_y", "omega_z",
     "Sxx", "Sxy", "Sxz", "Syy", "Syz", "Szz",
+    "dudx", "dudy", "dudz", "dvdx", "dvdy", "dvdz", "dwdx", "dwdy", "dwdz",
 ]
 
 
@@ -281,6 +282,7 @@ class SurfaceSampler:
                 - 'Ux', 'Uy', 'Uz': Velocity components
                 - 'omega_x', 'omega_y', 'omega_z': Vorticity components
                 - 'Sxx', 'Sxy', 'Sxz', 'Syy', 'Syz', 'Szz': Strain rate tensor components [1/s]
+                - 'dudx', 'dudy', 'dudz', 'dvdx', 'dvdy', 'dvdz', 'dwdx', 'dwdy', 'dwdz': Velocity gradient tensor components [1/s]
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
         n_particles = solver.particles.number_of_particles
@@ -288,6 +290,7 @@ class SurfaceSampler:
             n_pts = len(self.grid_points)
             zeros_vec = np.zeros((n_pts, 3), dtype=np.float64)
             zeros_s = np.zeros((n_pts, 6), dtype=np.float64)
+            zeros_g = np.zeros((n_pts, 9), dtype=np.float64)
             return {
                 "x": self.grid_points[:, 0],
                 "y": self.grid_points[:, 1],
@@ -304,6 +307,15 @@ class SurfaceSampler:
                 "Syy": zeros_s[:, 3].copy(),
                 "Syz": zeros_s[:, 4].copy(),
                 "Szz": zeros_s[:, 5].copy(),
+                "dudx": zeros_g[:, 0].copy(),
+                "dudy": zeros_g[:, 1].copy(),
+                "dudz": zeros_g[:, 2].copy(),
+                "dvdx": zeros_g[:, 3].copy(),
+                "dvdy": zeros_g[:, 4].copy(),
+                "dvdz": zeros_g[:, 5].copy(),
+                "dwdx": zeros_g[:, 6].copy(),
+                "dwdy": zeros_g[:, 7].copy(),
+                "dwdz": zeros_g[:, 8].copy(),
             }
 
         # Compute induced fields using solver methods (for all points)
@@ -318,6 +330,16 @@ class SurfaceSampler:
         Syy = grad_u_flat[:, 4]
         Syz = 0.5 * (grad_u_flat[:, 5] + grad_u_flat[:, 7])
         Szz = grad_u_flat[:, 8]
+
+        dudx = grad_u_flat[:, 0]
+        dudy = grad_u_flat[:, 1]
+        dudz = grad_u_flat[:, 2]
+        dvdx = grad_u_flat[:, 3]
+        dvdy = grad_u_flat[:, 4]
+        dvdz = grad_u_flat[:, 5]
+        dwdx = grad_u_flat[:, 6]
+        dwdy = grad_u_flat[:, 7]
+        dwdz = grad_u_flat[:, 8]
 
         return {
             "x": self.grid_points[:, 0],
@@ -335,6 +357,15 @@ class SurfaceSampler:
             "Syy": Syy,
             "Syz": Syz,
             "Szz": Szz,
+            "dudx": dudx,
+            "dudy": dudy,
+            "dudz": dudz,
+            "dvdx": dvdx,
+            "dvdy": dvdy,
+            "dvdz": dvdz,
+            "dwdx": dwdx,
+            "dwdy": dwdy,
+            "dwdz": dwdz,
         }
 
     def save_csv(
@@ -370,27 +401,9 @@ class SurfaceSampler:
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
             writer.writerow(SAMPLER_CSV_COLUMNS)
 
-            # Data rows — built from the same column list so they always align
+            # Data rows — built from SAMPLER_CSV_COLUMNS so they always align
             for i in range(self._n_points):
-                writer.writerow(
-                    [
-                        data["x"][i],
-                        data["y"][i],
-                        data["z"][i],
-                        data["Ux"][i],
-                        data["Uy"][i],
-                        data["Uz"][i],
-                        data["omega_x"][i],
-                        data["omega_y"][i],
-                        data["omega_z"][i],
-                        data["Sxx"][i],
-                        data["Sxy"][i],
-                        data["Sxz"][i],
-                        data["Syy"][i],
-                        data["Syz"][i],
-                        data["Szz"][i],
-                    ]
-                )
+                writer.writerow([data[col][i] for col in SAMPLER_CSV_COLUMNS])
 
         return filepath
 
@@ -498,6 +511,22 @@ class SurfaceSampler:
 
         # Add strain rate tensor (6 components)
         grid.point_data["StrainRate"] = strain_rate
+
+        # Add velocity gradient tensor (9 components)
+        grad_u = np.column_stack(
+            [
+                _reshape_scalar("dudx"),
+                _reshape_scalar("dudy"),
+                _reshape_scalar("dudz"),
+                _reshape_scalar("dvdx"),
+                _reshape_scalar("dvdy"),
+                _reshape_scalar("dvdz"),
+                _reshape_scalar("dwdx"),
+                _reshape_scalar("dwdy"),
+                _reshape_scalar("dwdz"),
+            ]
+        )
+        grid.point_data["VelocityGradient"] = grad_u
 
         # Save as VTS (binary by default for efficiency)
         grid.save(str(filepath), binary=True)
@@ -686,6 +715,7 @@ class LineSampler:
                 - 'Ux', 'Uy', 'Uz': Velocity components
                 - 'omega_x', 'omega_y', 'omega_z': Vorticity components
                 - 'Sxx', 'Sxy', 'Sxz', 'Syy', 'Syz', 'Szz': Strain rate tensor components [1/s]
+                - 'dudx', 'dudy', 'dudz', 'dvdx', 'dvdy', 'dvdz', 'dwdx', 'dwdy', 'dwdz': Velocity gradient tensor components [1/s]
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
         n_particles = solver.particles.number_of_particles
@@ -693,6 +723,7 @@ class LineSampler:
             n_pts = self.n_points
             zeros_vec = np.zeros((n_pts, 3), dtype=np.float64)
             zeros_s = np.zeros((n_pts, 6), dtype=np.float64)
+            zeros_g = np.zeros((n_pts, 9), dtype=np.float64)
             return {
                 "x": self.line_points[:, 0],
                 "y": self.line_points[:, 1],
@@ -710,6 +741,15 @@ class LineSampler:
                 "Syy": zeros_s[:, 3].copy(),
                 "Syz": zeros_s[:, 4].copy(),
                 "Szz": zeros_s[:, 5].copy(),
+                "dudx": zeros_g[:, 0].copy(),
+                "dudy": zeros_g[:, 1].copy(),
+                "dudz": zeros_g[:, 2].copy(),
+                "dvdx": zeros_g[:, 3].copy(),
+                "dvdy": zeros_g[:, 4].copy(),
+                "dvdz": zeros_g[:, 5].copy(),
+                "dwdx": zeros_g[:, 6].copy(),
+                "dwdy": zeros_g[:, 7].copy(),
+                "dwdz": zeros_g[:, 8].copy(),
             }
 
         # Compute induced fields (for all points)
@@ -724,6 +764,16 @@ class LineSampler:
         Syy = grad_u_flat[:, 4]
         Syz = 0.5 * (grad_u_flat[:, 5] + grad_u_flat[:, 7])
         Szz = grad_u_flat[:, 8]
+
+        dudx = grad_u_flat[:, 0]
+        dudy = grad_u_flat[:, 1]
+        dudz = grad_u_flat[:, 2]
+        dvdx = grad_u_flat[:, 3]
+        dvdy = grad_u_flat[:, 4]
+        dvdz = grad_u_flat[:, 5]
+        dwdx = grad_u_flat[:, 6]
+        dwdy = grad_u_flat[:, 7]
+        dwdz = grad_u_flat[:, 8]
 
         return {
             "x": self.line_points[:, 0],
@@ -742,6 +792,15 @@ class LineSampler:
             "Syy": Syy,
             "Syz": Syz,
             "Szz": Szz,
+            "dudx": dudx,
+            "dudy": dudy,
+            "dudz": dudz,
+            "dvdx": dvdx,
+            "dvdy": dvdy,
+            "dvdz": dvdz,
+            "dwdx": dwdx,
+            "dwdy": dwdy,
+            "dwdz": dwdz,
         }
 
     def save_csv(
@@ -777,26 +836,8 @@ class LineSampler:
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
             writer.writerow(SAMPLER_CSV_COLUMNS)
 
-            # Data rows — built from the same column list so they always align
+            # Data rows — built from SAMPLER_CSV_COLUMNS so they always align
             for i in range(self.n_points):
-                writer.writerow(
-                    [
-                        data["x"][i],
-                        data["y"][i],
-                        data["z"][i],
-                        data["Ux"][i],
-                        data["Uy"][i],
-                        data["Uz"][i],
-                        data["omega_x"][i],
-                        data["omega_y"][i],
-                        data["omega_z"][i],
-                        data["Sxx"][i],
-                        data["Sxy"][i],
-                        data["Sxz"][i],
-                        data["Syy"][i],
-                        data["Syz"][i],
-                        data["Szz"][i],
-                    ]
-                )
+                writer.writerow([data[col][i] for col in SAMPLER_CSV_COLUMNS])
 
         return filepath

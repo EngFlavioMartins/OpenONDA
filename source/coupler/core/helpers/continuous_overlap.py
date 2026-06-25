@@ -785,6 +785,7 @@ class ContinuousOverlapInjector:
         self._cell_tree = None
         self._cell_centers: np.ndarray | None = None
         self._cell_volumes: np.ndarray | None = None
+        self._velocity_buffer: np.ndarray | None = None
         self.step = 0
 
     # ── setup ────────────────────────────────────────────────────────────────
@@ -871,9 +872,14 @@ class ContinuousOverlapInjector:
         handoff_mode = getattr(self.config, "handoff_target_mode", "vorticity")
         kw_target = {}
         if handoff_mode == "velocity":
-            u_fvm = np.asarray(fvm.get_velocity_field(), dtype=np.float64).reshape(-1, 3)
+            if self._velocity_buffer is None:
+                self._velocity_buffer = np.ascontiguousarray(
+                    fvm.get_velocity_field(), dtype=np.float64
+                ).reshape(-1, 3)
+            else:
+                fvm.get_velocity_field_into(self._velocity_buffer)
             kw_target = {
-                "fvm_cell_vel": u_fvm[in_bbox],
+                "fvm_cell_vel": self._velocity_buffer[in_bbox],
                 "fvm_cell_vol": self._cell_volumes[in_bbox],
                 "u_inf": self.config.U_inf,
             }

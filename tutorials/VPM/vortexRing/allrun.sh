@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# Single vortex ring — DNS/LES simulation and plotting script.
-#
-# Runs five configurations:
-# 1. DNS  (no model,            direct/classical stretching)
-# 2. DNS  (no model,            transposed stretching)
-# 3. DNS  (no model,            mixed stretching)
-# 4. LES  (Smagorinsky + CS,    transposed stretching, Pedrizzetti ISR α=0.95)
-# 5. LES  (Smagorinsky + CS,    fully stabilised rVPM + strain-gated blend ISR)
+# Vortex ring — stretching-formulation benchmark (direct, transposed, mixed)
+# and LES comparison (Pedrizzetti ISR vs rVPM + blend ISR).
+# Runs five configurations with Smagorinsky LES on the transposed cases.
 
 set -euo pipefail
 

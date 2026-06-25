@@ -2,7 +2,7 @@
 
 Drives the *integrated* PIMPLE solver (momentum + pressure + Rhie–Chow + BDF2) on
 the 2-D decaying Taylor–Green vortex with time-varying Dirichlet-from-exact
-boundaries (via the Phase-3 ``set_dirichlet_velocity_boundary_condition``).  The
+boundaries (via ``set_dirichlet_velocity_boundary_condition_vec``).  The
 analytic solution on ``[0, 2π]²`` is
 
     u = e^{-2νt}( sin x cos y, −cos x sin y, 0 ),
@@ -81,7 +81,7 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
                 b = next(bb for bb in mesh["boundary"] if bb["name"] == name)
                 sl = slice(b["startFace"], b["startFace"] + b["nFaces"])
                 ue = _tgv_U(fc[sl, 0], fc[sl, 1], t, nu)
-                s.set_dirichlet_velocity_boundary_condition(ue[:, 0], ue[:, 1], ue[:, 2], name)
+                s.set_dirichlet_velocity_boundary_condition_vec(ue, name)
             s.solve_pimple(dt)
             s.advance_time()
 
