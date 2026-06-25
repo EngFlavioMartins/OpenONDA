@@ -1790,6 +1790,7 @@ class Solver:
         group_id: np.ndarray | None = None,
         zone_id: np.ndarray | None = None,
         velocity_gradient: np.ndarray | None = None,
+        strain_rate: np.ndarray | None = None,
     ) -> None:
         """Replace the active particle cloud in one field-upload operation."""
         p_circ = self.particles_circulation
@@ -1821,6 +1822,7 @@ class Solver:
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
+            strain_rate=strain_rate,
         )
 
     def update_particle_circulations(

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Run coaxial vortex-ring interactions: leapfrogging or head-on collision.
-======================================================================
+Run LES coaxial vortex-ring interactions: leapfrogging or head-on collision.
+============================================================================
 Two vortex rings are initialised coaxially.  Their relative circulation
 signs determine the interaction type:
   gamma1 * gamma2 > 0   →  leapfrogging (same sign)
   gamma1 * gamma2 < 0   →  head-on collision (opposite sign)
+
+All cases use LES Smagorinsky turbulence and transposed vortex stretching. The
+comparison knob is strength relaxation off/on.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: May 2026
@@ -40,7 +43,10 @@ from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run coaxial vortex-ring interaction: leapfrog or collision."
+        description=(
+            "Run LES transposed coaxial vortex-ring interaction: "
+            "leapfrog or collision, with optional strength relaxation."
+        )
     )
     parser.add_argument(
         "--gamma1", type=float, default=np.pi, help="Circulation of ring 1 [m²/s] (default: π)."
@@ -51,12 +57,6 @@ def main():
         default=np.pi,
         help="Circulation of ring 2 [m²/s] (default: π). "
         "Same sign → leapfrog; opposite sign → head-on collision.",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["dns", "les"],
-        default="les",
-        help="Simulation mode: dns | les",
     )
     parser.add_argument(
         "--name",
@@ -145,27 +145,6 @@ def main():
         "(0 = raw mollified field; default 1).",
     )
     parser.add_argument(
-        "--stretching",
-        choices=["transposed", "gradu", "rvpm"],
-        default="transposed",
-        help="Stretching scheme: transposed (direct O(N²)), gradu (local O(N)), "
-        "or rvpm (Alvarez & Ning reformulation, local O(N)).",
-    )
-    parser.add_argument("--rvpm-f", type=float, default=0.0)
-    parser.add_argument("--rvpm-g", type=float, default=0.2)
-    parser.add_argument(
-        "--smagorinsky-cs",
-        type=float,
-        default=0.16,
-        help="Smagorinsky Cs used when --mode les.",
-    )
-    parser.add_argument(
-        "--smagorinsky-ce",
-        type=float,
-        default=1.048,
-        help="Smagorinsky Ce used when --mode les.",
-    )
-    parser.add_argument(
         "--viscous",
         choices=["dvh", "cs"],
         default="dvh",
@@ -236,20 +215,8 @@ def main():
     # ================================================
     # 4. Configure Solver
     # ================================================
-    if args.mode == "dns":
-        turbulence = TurbulenceConfig.dns()
-    else:
-        turbulence = TurbulenceConfig.les_smagorinsky(
-            cs=args.smagorinsky_cs,
-            ce=args.smagorinsky_ce,
-        )
-
-    if args.stretching == "rvpm":
-        stretching = StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g)
-    elif args.stretching == "gradu":
-        stretching = StretchingConfig.gradu()
-    else:
-        stretching = StretchingConfig.transposed()
+    turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+    stretching = StretchingConfig.transposed()
 
     output_dir = Path(args.output_root) / args.name
     if output_dir.exists() and any(output_dir.iterdir()):

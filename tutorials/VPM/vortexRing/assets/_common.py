@@ -52,7 +52,13 @@ VARIANT_STYLE: dict[str, dict[str, str]] = {
     "LES_direct": {"color": "#0E8A85", "marker": "D"},
     "LES_transposed": {"color": "#1A8C88", "marker": "v"},
     "LES_mixed": {"color": "#2B7A4E", "marker": "p"},
-    "LES_rvpm": {"color": "#0E8A85", "marker": "v"},
+    "LES_rvpm": {"color": "#7B2969", "marker": "v"},
+}
+
+# Display labels (override underscore-substitution for special cases).
+VARIANT_LABEL: dict[str, str] = {
+    **{k: k.replace("_", " ") for k in VARIANT_STYLE},
+    "LES_rvpm": "LES rVPM",
 }
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
@@ -99,11 +105,13 @@ def build_arg_parser(description: str):
 # ── H5 helpers ────────────────────────────────────────────────────────────────
 
 
-def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (t_star, circ_norm) from H5 backups.
+def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
+    """Return (t_star, strength_norm) from H5 backups.
 
-    Computes Σ|Γᵢ| at each snapshot and normalises by the initial value
-    (first snapshot), so the curve starts at exactly 1.
+    Computes Σ|alpha_i| at each snapshot and normalises by the initial value.
+    For a vortex ring this is a length-integrated strength measure, not the
+    scalar tube circulation: changes in ring radius or strength direction can
+    change this quantity even when the tube circulation is nearly unchanged.
     """
     times, circs = [], []
     for path in sorted(h5_files):
@@ -133,6 +141,43 @@ def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
         c_arr = c_arr[:idx]
 
     return t_arr, c_arr / Gamma0
+
+
+def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
+    """Return (t_star, Gamma_tube/Gamma_tube0) for a single vortex ring.
+
+    The ring's physically relevant scalar circulation is inferred from the
+    length-integrated particle strength and impulse-derived ring radius:
+
+        Gamma_tube = Σ|alpha_i| / (2*pi*R)
+
+    This is the quantity used by the Saffman ring-speed model.  It avoids
+    mistaking a change in ring length or strength-vector alignment for a
+    change in tube circulation.
+    """
+    raw = load_ring_data(h5_files)
+    if not raw:
+        return np.array([]), np.array([])
+
+    rid = min(raw.keys())
+    entries = raw[rid]
+    if not entries:
+        return np.array([]), np.array([])
+
+    t_arr = np.array([d["time"] for d in entries]) / T_REF
+    gamma = np.array([d["gamma"] for d in entries])
+    valid = np.isfinite(gamma) & (gamma > 0.0)
+    if not valid.any():
+        return np.array([]), np.array([])
+
+    t_arr = t_arr[valid]
+    gamma = gamma[valid]
+    return t_arr, gamma / gamma[0]
+
+
+def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
+    """Backward-compatible alias for the ring tube-circulation diagnostic."""
+    return load_ring_circulation(h5_files)
 
 
 def _ring_props_from_h5(path) -> dict | None:

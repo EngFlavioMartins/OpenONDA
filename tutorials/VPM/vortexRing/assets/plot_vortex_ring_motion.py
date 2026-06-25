@@ -24,6 +24,7 @@ from _common import (
     save_fig,
     T_REF,
     U_REF,
+    VARIANT_LABEL,
     VARIANT_STYLE,
     CM,
 )
@@ -37,7 +38,7 @@ def main() -> None:
 
     load_theme()
 
-    fig, ax = plt.subplots(figsize=(12 * CM, 7 * CM))
+    fig, ax = plt.subplots(figsize=(12.8 * CM, 8 * CM))
 
     # ── Ring speed — all available variants ─────────────────────────────────
     for variant, st in VARIANT_STYLE.items():
@@ -49,7 +50,7 @@ def main() -> None:
             print(f"  (no ring speed data for {variant})")
             continue
         ls = "--" if variant.startswith("DNS") else "-"
-        label = variant.replace("_", " ")
+        label = VARIANT_LABEL[variant]
         print(f"  {variant}: {len(h5_files)} files")
         ax.plot(
             t_star,
@@ -78,10 +79,10 @@ def main() -> None:
     )
 
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
-    ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\Gamma,0}$")
-    ax.set_ylim(0.5, 1.05)
+    ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
+    ax.set_ylim(0.6, 1.)
     ax.set_xlim(0, 38)
-    ax.legend(fontsize=10, ncol=1)
+    ax.legend(fontsize=10, ncol=1, loc='lower left')
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi)
 
 

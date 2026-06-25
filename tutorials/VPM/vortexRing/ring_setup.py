@@ -65,9 +65,14 @@ def main():
         help="Optional Widnall perturbation amplitude (zero for Saffman validation).",
     )
     parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0)
-    parser.add_argument("--relaxation", choices=["off", "blend", "pedrizzetti"], default="off")
+    parser.add_argument(
+        "--relaxation",
+        choices=["off", "blend", "pedrizzetti"],
+        default="off",
+        help="Experimental strength relaxation; not used by the certified Saffman benchmark.",
+    )
     parser.add_argument("--relaxation-rate", type=float, default=1.0)
-    parser.add_argument("--relaxation-factor", type=float, default=0.95)
+    parser.add_argument("--relaxation-factor", type=float, default=0.3)
     args = parser.parse_args()
 
     # ================================================
@@ -113,6 +118,11 @@ def main():
     output_dir = Path(args.solution_dir) / args.name
 
     if args.relaxation != "off":
+        print(
+            "WARNING: strength relaxation is experimental for the single-ring "
+            "Saffman benchmark; validate Gamma_tube and U/U0 before using it "
+            "for conclusions."
+        )
         stabilization_cfg = StabilizationConfig.strength_relaxation(
             mode=args.relaxation,
             gate="constant" if args.relaxation == "pedrizzetti" else "strain",

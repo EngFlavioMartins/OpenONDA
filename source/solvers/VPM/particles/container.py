@@ -351,7 +351,7 @@ class Particles:
         viscosities_t: ti.template(),
         viscosities_eff: ti.template(),
         group_ids: ti.template(),
-        zone_ids: ti.template(),  # Moved here
+        zone_ids: ti.template(),
         gradU: ti.template(),
         Sij: ti.template(),
         tags: ti.template(),
@@ -378,7 +378,7 @@ class Particles:
                     viscosities_t[write_idx] = viscosities_t[i]
                     viscosities_eff[write_idx] = viscosities_eff[i]
                     group_ids[write_idx] = group_ids[i]
-                    zone_ids[write_idx] = zone_ids[i]  # Added to body
+                    zone_ids[write_idx] = zone_ids[i]
                     for j in ti.static(range(3)):
                         for k in ti.static(range(3)):
                             gradU[write_idx][j, k] = gradU[i][j, k]
@@ -444,41 +444,31 @@ class Particles:
         if n_remove == 0:
             return 0
 
-        # CPU-based safe compaction using numpy slicing
-        # This avoids the data race in the GPU compact kernel
         new_position = self._extract_vector(self.position, n)[keep_mask]
         new_velocity = self._extract_vector(self.velocity, n)[keep_mask]
         new_circulation = self._extract_vector(self.circulation, n)[keep_mask]
-        new_vorticity = self._extract_vector(self.vorticity, n)[keep_mask]
         new_radius = self._extract_scalar(self.radius, n)[keep_mask]
         new_volume = self._extract_scalar(self.volume, n)[keep_mask]
         new_viscosity = self._extract_scalar(self.viscosity, n)[keep_mask]
         new_viscosity_turbulent = self._extract_scalar(self.viscosity_turbulent, n)[keep_mask]
-        new_viscosity_effective = self._extract_scalar(self.viscosity_effective, n)[keep_mask]
         new_group_id = self._extract_int(self.group_id, n)[keep_mask]
-        new_zone_id = self._extract_int(self.zone_id, n)[keep_mask]  # Added
+        new_zone_id = self._extract_int(self.zone_id, n)[keep_mask]
         new_velocity_gradient = self._extract_matrix(self.velocity_gradient, n)[keep_mask]
         new_strain_rate = self._extract_matrix(self.strain_rate, n)[keep_mask]
 
-        # Upload compacted data back to GPU
-        n_keep = len(new_position)
-        self._copy_to_taichi_vectors(new_position, self.position, 0, n_keep)
-        self._copy_to_taichi_vectors(new_velocity, self.velocity, 0, n_keep)
-        self._copy_to_taichi_vectors(new_circulation, self.circulation, 0, n_keep)
-        self._copy_to_taichi_vectors(new_vorticity, self.vorticity, 0, n_keep)
-        self._copy_to_taichi_scalars(new_radius, self.radius, 0, n_keep)
-        self._copy_to_taichi_scalars(new_volume, self.volume, 0, n_keep)
-        self._copy_to_taichi_scalars(new_viscosity, self.viscosity, 0, n_keep)
-        self._copy_to_taichi_scalars(new_viscosity_turbulent, self.viscosity_turbulent, 0, n_keep)
-        self._copy_to_taichi_scalars(new_viscosity_effective, self.viscosity_effective, 0, n_keep)
-        self._copy_to_taichi_ints(new_group_id, self.group_id, 0, n_keep)
-        self._copy_to_taichi_ints(new_zone_id, self.zone_id, 0, n_keep)  # Added
-        self._copy_to_taichi_matrices(new_velocity_gradient, self.velocity_gradient, 0, n_keep)
-        self._copy_to_taichi_matrices(new_strain_rate, self.strain_rate, 0, n_keep)
-
-        # Update particle count
-        self.number_of_particles = n_keep
-        self.sync_device_counter()
+        self.replace_from_numpy(
+            position=new_position,
+            velocity=new_velocity,
+            circulation=new_circulation,
+            radius=new_radius,
+            volume=new_volume,
+            viscosity=new_viscosity,
+            viscosity_turbulent=new_viscosity_turbulent,
+            group_id=new_group_id,
+            zone_id=new_zone_id,
+            velocity_gradient=new_velocity_gradient,
+            strain_rate=new_strain_rate,
+        )
 
         return n_remove
 
@@ -569,7 +559,7 @@ class Particles:
         strain_rate,
         vorticity,
         zone_id,
-    ):  # Added zone_id
+    ):
         """Populate Taichi fields from NumPy arrays."""
         count = position.shape[0]
 
@@ -588,7 +578,7 @@ class Particles:
             viscosity_effective, (), "viscosity_effective"
         )
         group_id = self._validate_numpy_input(group_id, (), "group_id")
-        zone_id = self._validate_numpy_input(zone_id, (), "zone_id")  # Added
+        zone_id = self._validate_numpy_input(zone_id, (), "zone_id")
         velocity_gradient = self._validate_numpy_input(
             velocity_gradient, (3, 3), "velocity_gradient"
         )
@@ -609,7 +599,7 @@ class Particles:
 
         # Copy integer data
         self._copy_to_taichi_ints(group_id, self.group_id, 0, count)
-        self._copy_to_taichi_ints(zone_id, self.zone_id, 0, count)  # Added
+        self._copy_to_taichi_ints(zone_id, self.zone_id, 0, count)
 
         # Copy matrix data
         self._copy_to_taichi_matrices(velocity_gradient, self.velocity_gradient, 0, count)
@@ -790,7 +780,7 @@ class Particles:
             "velocity_gradient": self.velocity_gradient_cpu()[index],
             "strain_rate": self.strain_rate_cpu()[index],
             "vorticity": self.vorticity_cpu()[index],
-            "zone_id": self.zone_id_cpu()[index],  # Added
+            "zone_id": self.zone_id_cpu()[index],
         }
 
     def add_vortex_particle(
@@ -1001,6 +991,7 @@ class Particles:
         group_id: np.ndarray = None,
         zone_id: np.ndarray = None,
         velocity_gradient: np.ndarray = None,
+        strain_rate: np.ndarray = None,
     ) -> None:
         """Replace the active particle cloud with NumPy arrays."""
         _validate_finite_array(position, "position")
@@ -1014,6 +1005,8 @@ class Particles:
             _validate_finite_array(viscosity_turbulent, "viscosity_turbulent")
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
+        if strain_rate is not None:
+            _validate_finite_array(strain_rate, "strain_rate")
 
         dt = self._np_float_dtype
         position = np.ascontiguousarray(position, dtype=dt)
@@ -1026,6 +1019,7 @@ class Particles:
         N = position.shape[0]
         if N == 0:
             self.number_of_particles = 0
+            self.sync_device_counter()
             self._cached_step = -1
             return
         if position.shape != (N, 3) or velocity.shape != (N, 3) or circulation.shape != (N, 3):
@@ -1037,16 +1031,25 @@ class Particles:
             viscosity_turbulent = np.zeros(N, dtype=dt)
         else:
             viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=dt)
+            if viscosity_turbulent.shape != (N,):
+                raise ValueError("Turbulent viscosity must have shape (N,).")
         viscosity_effective = viscosity + viscosity_turbulent
 
         group_id = _coerce_int_id_array(group_id, N)
         zone_id = _coerce_int_id_array(zone_id, N)
+        if group_id.shape != (N,) or zone_id.shape != (N,):
+            raise ValueError("Group and zone IDs must have shape (N,).")
 
         if velocity_gradient is None:
             velocity_gradient = np.zeros((N, 3, 3), dtype=dt)
         else:
             velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=dt)
-        strain_rate = np.zeros((N, 3, 3), dtype=dt)
+        if strain_rate is None:
+            strain_rate = np.zeros((N, 3, 3), dtype=dt)
+        else:
+            strain_rate = np.ascontiguousarray(strain_rate, dtype=dt)
+        if velocity_gradient.shape != (N, 3, 3) or strain_rate.shape != (N, 3, 3):
+            raise ValueError("Velocity gradient and strain rate must have shape (N, 3, 3).")
         vorticity = (circulation / volume[:, None]).astype(dt)
 
         if N > self._max_particles:
@@ -1067,6 +1070,7 @@ class Particles:
             vorticity,
             zone_id,
         )
+        self.sync_device_counter()
         self._cached_step = -1
 
     # =================================================================================

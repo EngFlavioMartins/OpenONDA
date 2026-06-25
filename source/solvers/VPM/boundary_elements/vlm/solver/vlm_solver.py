@@ -22,7 +22,6 @@ import taichi as ti
 # Import VLM constants from centralized config
 from ....config.constants import VLM_SMALL_VELOCITY
 
-# Backward compatibility alias
 EPSILON = VLM_SMALL_VELOCITY
 
 from ..coupling import kinematics as kin_module
@@ -702,7 +701,7 @@ class VLMSolver:
         translation: np.ndarray | None = None,
         rotation_deg: np.ndarray | None = None,
         rotation_center: np.ndarray | None = None,
-        group_id: int = 0,  # Added group_id
+        group_id: int = 0,
         sample_surface_forces: bool | None = None,
     ) -> str:
         """
@@ -1836,59 +1835,42 @@ class VLMSolver:
         n_hits = int(np.sum(tags))
 
         if n_hits > 0:
-            # Remove tagged particles using bounds removal logic
-            # (which already handles _removal_tags correctly)
-
-            # Get particle positions and find which ones to keep
             keep_mask = tags == 0
             n_keep = int(keep_mask.sum())
 
             if n_keep == 0:
-                # All particles removed - reset counter
                 particles.number_of_particles = 0
+                particles.sync_device_counter()
+                particles._cached_step = -1
                 return n_hits
 
-            # CPU-based safe compaction
             new_position = particles.position.to_numpy()[:n_particles][keep_mask]
             new_velocity = particles.velocity.to_numpy()[:n_particles][keep_mask]
             new_circulation = particles.circulation.to_numpy()[:n_particles][keep_mask]
-            new_vorticity = particles.vorticity.to_numpy()[:n_particles][keep_mask]
             new_radius = particles.radius.to_numpy()[:n_particles][keep_mask]
             new_volume = particles.volume.to_numpy()[:n_particles][keep_mask]
             new_viscosity = particles.viscosity.to_numpy()[:n_particles][keep_mask]
             new_viscosity_turbulent = particles.viscosity_turbulent.to_numpy()[:n_particles][
                 keep_mask
             ]
-            new_viscosity_effective = particles.viscosity_effective.to_numpy()[:n_particles][
-                keep_mask
-            ]
             new_group_id = particles.group_id.to_numpy()[:n_particles][keep_mask]
+            new_zone_id = particles.zone_id.to_numpy()[:n_particles][keep_mask]
             new_velocity_gradient = particles.velocity_gradient.to_numpy()[:n_particles][keep_mask]
             new_strain_rate = particles.strain_rate.to_numpy()[:n_particles][keep_mask]
 
-            # Upload compacted data back to GPU
-            particles._copy_to_taichi_vectors(new_position, particles.position, 0, n_keep)
-            particles._copy_to_taichi_vectors(new_velocity, particles.velocity, 0, n_keep)
-            particles._copy_to_taichi_vectors(new_circulation, particles.circulation, 0, n_keep)
-            particles._copy_to_taichi_vectors(new_vorticity, particles.vorticity, 0, n_keep)
-            particles._copy_to_taichi_scalars(new_radius, particles.radius, 0, n_keep)
-            particles._copy_to_taichi_scalars(new_volume, particles.volume, 0, n_keep)
-            particles._copy_to_taichi_scalars(new_viscosity, particles.viscosity, 0, n_keep)
-            particles._copy_to_taichi_scalars(
-                new_viscosity_turbulent, particles.viscosity_turbulent, 0, n_keep
+            particles.replace_from_numpy(
+                position=new_position,
+                velocity=new_velocity,
+                circulation=new_circulation,
+                radius=new_radius,
+                volume=new_volume,
+                viscosity=new_viscosity,
+                viscosity_turbulent=new_viscosity_turbulent,
+                group_id=new_group_id,
+                zone_id=new_zone_id,
+                velocity_gradient=new_velocity_gradient,
+                strain_rate=new_strain_rate,
             )
-            particles._copy_to_taichi_scalars(
-                new_viscosity_effective, particles.viscosity_effective, 0, n_keep
-            )
-            particles._copy_to_taichi_scalars(new_group_id, particles.group_id, 0, n_keep)
-            particles._copy_to_taichi_matrices(
-                new_velocity_gradient, particles.velocity_gradient, 0, n_keep
-            )
-            particles._copy_to_taichi_matrices(new_strain_rate, particles.strain_rate, 0, n_keep)
-
-            # Update particle count
-            particles.number_of_particles = n_keep
-            particles.sync_device_counter()
 
             print(f"   (VLM) Absorbed {n_hits} particles impinging on surface.")
 
@@ -2291,13 +2273,13 @@ class VLMSolver:
         if use_local_convection:
             # Per-panel convection: pass external_velocity and normals so the kernel
             # can compute V_conv = V_external - V_kinematic (includes downwash)
-            V_fallback = V_dir * V_mag
+            V_conv_ref = V_dir * V_mag
             shed_wake_particles_kernel(
                 self.lattice.num_panels,
                 dt,
-                ti.Vector([V_fallback[0], V_fallback[1], V_fallback[2]]),  # Fallback V_convection
-                ti.Vector([V_particle[0], V_particle[1], V_particle[2]]),  # V_particle
-                self.sigma_factor,  # sigma_factor — overlap ratio for rotor wake stability
+                ti.Vector([V_conv_ref[0], V_conv_ref[1], V_conv_ref[2]]),
+                ti.Vector([V_particle[0], V_particle[1], V_particle[2]]),
+                self.sigma_factor,
                 float(shedding_threshold),
                 self.lattice.cumulative_circulation,
                 self.lattice.cumulative_circulation_old,
@@ -2306,9 +2288,9 @@ class VLMSolver:
                 self.lattice.is_TE_panel,
                 self.lattice.panel_is_mirrored,
                 self.lattice.panel_group_id,
-                self.lattice.kinematic_velocity,  # Per-panel kinematic V
-                self.lattice.external_velocity,  # VPM-induced velocity at panels
-                self.lattice.normals,  # Panel normals for axial kick
+                self.lattice.kinematic_velocity,
+                self.lattice.external_velocity,
+                self.lattice.normals,
                 1,  # use_local_velocity = True
                 self.lattice.wake_positions,
                 self.lattice.wake_velocities,
@@ -2320,11 +2302,11 @@ class VLMSolver:
             )
         else:
             # Global convection (forward flight mode): single V_convection for all panels
-            V_fallback = V_dir * V_mag
+            V_conv_ref = V_dir * V_mag
             shed_wake_particles_kernel(
                 self.lattice.num_panels,
                 dt,
-                ti.Vector([V_fallback[0], V_fallback[1], V_fallback[2]]),
+                ti.Vector([V_conv_ref[0], V_conv_ref[1], V_conv_ref[2]]),
                 ti.Vector([V_particle[0], V_particle[1], V_particle[2]]),
                 self.sigma_factor,
                 float(shedding_threshold),
@@ -2531,7 +2513,7 @@ class VLMSolver:
         self._apply_sv_augmentation(K, strip_of, te_indices)
 
     def _resolve_coupling_uref(self, config) -> np.ndarray:
-        """Resolve reference velocity with 3-priority fallback for coupled advance."""
+        """Resolve the reference velocity used by coupled advance."""
         if hasattr(self, "U_inf") and self.U_inf is not None and np.linalg.norm(self.U_inf) > 1e-10:
             return self.U_inf
         if hasattr(config, "background_velocity") and config.background_velocity is not None:

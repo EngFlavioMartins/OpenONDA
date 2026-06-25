@@ -21,6 +21,7 @@ from _common import (
     save_fig,
     T_REF,
     P_REF,
+    VARIANT_LABEL,
     VARIANT_STYLE,
     CM,
 )
@@ -34,7 +35,7 @@ def main() -> None:
 
     load_theme()
 
-    fig, ax = plt.subplots(figsize=(12 * CM, 7 * CM))
+    fig, ax = plt.subplots(figsize=(12.8 * CM, 8 * CM))
 
     # ── Energy diagnostics — all available variants ─────────────────────────
     for variant, st in VARIANT_STYLE.items():
@@ -46,7 +47,7 @@ def main() -> None:
             print(f"  (no energy data for {variant})")
             continue
         ls = "--" if variant.startswith("DNS") else "-"
-        label = variant.replace("_", " ")
+        label = VARIANT_LABEL[variant]
         print(f"  {variant}: {log}")
         t = times / T_REF
         ax.plot(t, dedt / P_REF, ls, color=st["color"], lw=1.1, label=f"{label}, $dE/dt$")
@@ -62,10 +63,10 @@ def main() -> None:
             label=rf"{label}, $-\nu\,\varepsilon$",
         )
 
-    ax.axhline(0, color="black", lw=0.5, ls=":", alpha=0.4)
+    ax.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
     ax.set_ylabel(r"Dissipation rate, $(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
-    ax.set_ylim(-0.06, 0.02)
+    ax.set_ylim(-0.05, 0.01)
     ax.set_xlim(0, 38)
     ax.legend(fontsize=10, ncol=2)
     save_fig(fig, figs / "vortex_ring_energy.png", dpi=args.dpi)

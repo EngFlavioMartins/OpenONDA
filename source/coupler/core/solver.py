@@ -316,9 +316,8 @@ class FVMVPMCoupler:
             self.vel_blend = FVMVelocityBlend(cfg, self.ofw)
             self.vel_blend.update()  # collective: snapshot initial 0/U field
             if self._is_master:
-                # Body-panel advection term left OFF: the panel induction runs on
-                # the numpy fallback (Vulkan rejects the f64 GPU kernel), too slow
-                # per RK stage over the whole cloud.
+                # Body-panel advection term is CPU/NumPy and too slow per RK
+                # stage over the whole cloud.
                 self.vpm.set_velocity_override(self.vel_blend)
             if self._is_master:
                 logger.info("[VelBlend] velocity forcing ENABLED (overlap_velocity_forcing=True)")
@@ -348,7 +347,7 @@ class FVMVPMCoupler:
         # deadlock or corrupt memory under mpirun -n>1 (see audit notes):
         #   * donor_bc_mode="mixed": set_robin_velocity_boundary_condition does not
         #     scatter and uses the GLOBAL face count to index a LOCAL-sized patch
-        #     field (out-of-bounds write on master); the Python fallback also makes
+        #     field (out-of-bounds write on master); the Python path also makes
         #     master/non-master call different collectives.
         #   * bc_coupling_iterations>1 (Weymouth–Lauber): _run_fvm_substeps calls
         #     _donor_velocity (VPM + interior-vorticity gather) on ALL ranks, but
@@ -531,7 +530,7 @@ class FVMVPMCoupler:
     ) -> np.ndarray:
         """Donor velocity at boundary face centres (overset/Chimera-style).
 
-        Legacy (default) path — ``exterior_mask=None, add_fvm_interior=False``:
+        Standard donor path — ``exterior_mask=None, add_fvm_interior=False``:
         U_donor = U_inf + BiotSavart(**all** particles) at face centres.  The
         full VPM cloud acts as the background donor mesh (no exterior masking).
 
@@ -575,7 +574,7 @@ class FVMVPMCoupler:
             u_donor = self.vpm.compute_target_velocities(
                 face_centers,
                 include_freestream=True,
-                zone_mask=exterior_mask,  # None → all particles (legacy)
+                zone_mask=exterior_mask,  # None means all particles.
             )
             # VPM vorticity at the boundary faces — the Neumann target for the
             # mixed/Robin donor BC (Billuart 2023 Eq. 12: ∂u_t/∂n = ω_VPM × n̂).
@@ -895,8 +894,7 @@ class FVMVPMCoupler:
 
         The final sub-step (α=1) runs the Weymouth–Lauber donor↔pressure Picard
         when ``bc_coupling_iterations > 1``; otherwise each sub-step is a single
-        ``solve_pimple`` + ``advance_time``.  ``period_multiplier == 1`` reduces
-        to exactly the legacy single-rate solve.
+        ``solve_pimple`` + ``advance_time``.
         """
         N = max(1, int(self.period_multiplier))
         n_bc = max(1, int(self.config.bc_coupling_iterations))

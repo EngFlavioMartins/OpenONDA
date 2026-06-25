@@ -101,12 +101,10 @@ _RUNG_COLOR = {
 _RUNG_MARKER = {"dns": "o", "les": "s", "les_isr": "^", "les_pedr": "D", "fine": "v"}
 _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
 _INTENDED_CASE_ORDER = {
-    "leapfrog_dns": 0,
-    "leapfrog_les": 1,
-    "leapfrog_les_isr": 2,
-    "collide_dns": 3,
-    "collide_les": 4,
-    "collide_les_isr": 5,
+    "leapfrog_les": 0,
+    "leapfrog_les_isr": 1,
+    "collide_les": 2,
+    "collide_les_isr": 3,
 }
 
 

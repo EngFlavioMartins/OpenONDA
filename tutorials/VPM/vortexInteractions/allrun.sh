@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — fair stabilization comparison.
+# Vortex-ring interactions — strength-relaxation comparison.
 #
-# This script reruns the intended six-case matrix at the same initial particle
-# concentration:
+# This script reruns the intended four-case matrix at the same initial particle
+# concentration. Every run is LES with transposed vortex stretching; the only
+# stabilization difference is strength relaxation on/off:
 #
 #   LEAPFROG, Γ1 = Γ2 = +π:
-#     1. leapfrog_dns      2. leapfrog_les      3. leapfrog_les_isr
+#     1. leapfrog_les      2. leapfrog_les_isr
 #
 #   HEAD-ON COLLISION, Γ1 = +π, Γ2 = -π:
-#     4. collide_dns       5. collide_les       6. collide_les_isr
+#     3. collide_les       4. collide_les_isr
 #
 # Every case writes:
 #   - stability_metrics.csv at every step
 #   - flow_integrals.csv at LOGGING_FREQUENCY
 #   - energy_budget.csv at ENERGY_AUDIT_FREQUENCY
 #
-# Existing result directories for these six case names are deleted before their
+# Existing result directories for these four case names are deleted before their
 # rerun so each directory contains one clean, comparable realization.
 
 set -uo pipefail
@@ -33,7 +34,7 @@ RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
 PARTICLE_SPACING="${PARTICLE_SPACING:-0.030}"
 
-# Leapfrog uses CS/RVPM with a smaller step than the DVH-pinned collision cases.
+# Leapfrog uses CS with a smaller step than the DVH-pinned collision cases.
 LF_DT="${LF_DT:-0.02}"
 LF_STEPS="${LF_STEPS:-600}"
 
@@ -89,31 +90,21 @@ run_case() {
 # LEAPFROGGING: Γ1 = Γ2 = +π
 # ---------------------------------------------------------------------------
 
-run_case "1/6 leapfrog_dns — DNS baseline" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode dns \
+run_case "1/4 leapfrog_les — LES transposed" \
+    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching transposed \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name leapfrog_dns
-
-run_case "2/6 leapfrog_les — LES" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching transposed \
+    --viscous cs \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name leapfrog_les
 
-run_case "3/6 leapfrog_les_isr — LES + ISR" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" --mode les \
+run_case "2/4 leapfrog_les_isr — LES transposed + strength relaxation" \
+    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs --stretching transposed \
+    --viscous cs \
     --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$BACKUP_FREQUENCY" \
@@ -125,31 +116,21 @@ run_case "3/6 leapfrog_les_isr — LES + ISR" \
 # HEAD-ON COLLISION: Γ1 = +π, Γ2 = -π
 # ---------------------------------------------------------------------------
 
-run_case "4/6 collide_dns — DNS baseline" \
-    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode dns \
+run_case "3/4 collide_les — LES transposed" \
+    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching transposed \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name collide_dns
-
-run_case "5/6 collide_les — LES" \
-    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching transposed \
+    --viscous dvh \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name collide_les
 
-run_case "6/6 collide_les_isr — LES + ISR" \
-    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" --mode les \
+run_case "4/4 collide_les_isr — LES transposed + strength relaxation" \
+    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh --stretching transposed \
+    --viscous dvh \
     --relaxation blend --relaxation-rate 1.5 --deconv 1 \
     --device vulkan \
     --backup-frequency "$BACKUP_FREQUENCY" \
