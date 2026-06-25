@@ -58,10 +58,11 @@ def main() -> None:
         )
         plotted = True
 
-    ax.axhline(BLOWUP_FACTOR, color="0.4", ls="--", lw=0.8)
     ax.set_yscale("log")
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax.set_ylabel(r"Peak circulation, $\max_i|\Gamma_i| / \max_i|\Gamma_i|_0$")
+    ax.axhspan(50, 100, facecolor="gray", alpha=0.25, zorder=0)
+    ax.set_ylim([0,100])
     if plotted:
         ax.legend(fontsize=10, ncol=2, loc="upper left")
 

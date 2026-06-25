@@ -90,6 +90,7 @@ def build_arg_parser(description: str):
 #   • MARKER     → stabilization rung (redundant cue for black-and-white print)
 # Both rings of a given case therefore share one colour + linestyle + marker.
 _FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
+_FAMILY_LABEL = {"leapfrog": "Leapfrogging", "collide": "Merging"}
 _RUNG_COLOR = {
     "dns": "#2E3D46",       # DarkText  — neutral baseline
     "les": "#0E8A85",       # TUDcyan
@@ -117,7 +118,7 @@ def case_style(name: str) -> dict:
         "color": _RUNG_COLOR.get(rung, "#6E8898"),
         "linestyle": _FAMILY_LINESTYLE.get(family, "-"),
         "marker": _RUNG_MARKER.get(rung, "o"),
-        "label": name.replace("_", " "),
+        "label": f"{_FAMILY_LABEL.get(family, family)} {' '.join(p.upper() for p in rung.split('_'))}",
         "family": family,
         "rung": rung,
     }

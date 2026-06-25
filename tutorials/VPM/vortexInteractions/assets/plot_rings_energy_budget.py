@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Energy-budget audit for vortex-ring stabilization tests.
+
+The target identity for an unbounded viscous incompressible flow is
+
+    dE/dt = -nu * integral(|omega|^2 dV)
+
+for the energy and enstrophy conventions used by the VPM diagnostics.  Some
+texts define enstrophy as 0.5*integral(|omega|^2), which is the same statement
+written as dE/dt = -2*nu*Enstrophy.  This script reports both the code-native
+``neg_nu_enstrophy`` balance and the literal ``-2*enstrophy`` balance so a
+normalization mismatch is impossible to miss.
+
+It reads ``samples/energy_budget.csv`` when available; otherwise it falls back
+to ``samples/flow_integrals.csv``.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+ASSETS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ASSETS_DIR))
+from _common import CM, T_REF, build_arg_parser, case_style, discover_cases, load_theme, save_fig
+
+
+def read_budget(case_dir: Path) -> tuple[pd.DataFrame | None, str]:
+    """Return a monotone time series and the source filename used."""
+    for name in ("energy_budget.csv", "flow_integrals.csv"):
+        path = case_dir / "samples" / name
+        if not path.exists():
+            continue
+        df = pd.read_csv(path)
+        if "time" not in df.columns or "kinetic_energy" not in df.columns:
+            continue
+        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["time", "kinetic_energy"])
+        if len(df) < 3:
+            continue
+        times = df["time"].to_numpy(float)
+        keep_from = 0
+        for i in range(1, len(times)):
+            if times[i] <= times[i - 1]:
+                keep_from = i
+        df = df.iloc[keep_from:].reset_index(drop=True)
+        if len(df) >= 3:
+            return df, name
+    return None, ""
+
+
+def local_poly_derivative(t: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
+    """Derivative from a moving polynomial fit using the actual timestamps."""
+    n = len(t)
+    if n < 2:
+        return np.full_like(y, np.nan, dtype=float)
+    if window < 3:
+        window = 3
+    if window % 2 == 0:
+        window += 1
+    window = min(window, n if n % 2 == 1 else n - 1)
+    if window < 3:
+        return np.gradient(y, t, edge_order=1)
+
+    half = window // 2
+    dydt = np.empty(n, dtype=float)
+    for i in range(n):
+        lo = max(0, i - half)
+        hi = min(n, i + half + 1)
+        if hi - lo < 3:
+            if lo == 0:
+                hi = min(n, 3)
+            else:
+                lo = max(0, n - 3)
+        tt = t[lo:hi]
+        yy = y[lo:hi]
+        deg = min(3, len(tt) - 1)
+        tau = tt - t[i]
+        coeff = np.polyfit(tau, yy, deg)
+        dcoeff = np.polyder(coeff)
+        dydt[i] = np.polyval(dcoeff, 0.0)
+    return dydt
+
+
+def trapz(y: np.ndarray, x: np.ndarray) -> float:
+    return float(np.trapezoid(y, x))
+
+
+def rms(x: np.ndarray) -> float:
+    return float(np.sqrt(np.mean(np.square(x)))) if len(x) else np.nan
+
+
+def balance_metrics(
+    t: np.ndarray,
+    energy: np.ndarray,
+    dE_dt: np.ndarray,
+    sink: np.ndarray,
+) -> dict[str, float]:
+    """Compare dE/dt against a target sink time series."""
+    valid = np.isfinite(dE_dt) & np.isfinite(sink)
+    if valid.sum() < 2:
+        return {
+            "point_rel_l2": np.nan,
+            "point_bias": np.nan,
+            "integrated_ratio": np.nan,
+            "integrated_residual_E0": np.nan,
+            "fit_slope": np.nan,
+            "fit_r2": np.nan,
+        }
+
+    tv = t[valid]
+    ev = energy[valid]
+    dv = dE_dt[valid]
+    sv = sink[valid]
+    diff = dv - sv
+    denom = rms(sv)
+    point_rel_l2 = rms(diff) / denom if denom > 0.0 else np.nan
+    point_bias = float(np.mean(diff) / (np.mean(np.abs(sv)) + 1e-30))
+
+    dE_total = float(ev[-1] - ev[0])
+    sink_int = trapz(sv, tv)
+    residual_int = dE_total - sink_int
+    integrated_ratio = dE_total / sink_int if abs(sink_int) > 1e-30 else np.nan
+
+    cumulative = np.zeros_like(tv)
+    if len(tv) > 1:
+        increments = 0.5 * (sv[1:] + sv[:-1]) * (tv[1:] - tv[:-1])
+        cumulative[1:] = np.cumsum(increments)
+    delta_e = ev - ev[0]
+    if np.std(cumulative) > 0.0:
+        slope, intercept = np.polyfit(cumulative, delta_e, 1)
+        pred = slope * cumulative + intercept
+        ss_res = float(np.sum((delta_e - pred) ** 2))
+        ss_tot = float(np.sum((delta_e - np.mean(delta_e)) ** 2))
+        fit_r2 = 1.0 - ss_res / ss_tot if ss_tot > 0.0 else np.nan
+    else:
+        slope, fit_r2 = np.nan, np.nan
+
+    e0 = float(energy[0])
+    return {
+        "point_rel_l2": point_rel_l2,
+        "point_bias": point_bias,
+        "integrated_ratio": integrated_ratio,
+        "integrated_residual_E0": residual_int / e0 if abs(e0) > 1e-30 else np.nan,
+        "fit_slope": float(slope),
+        "fit_r2": fit_r2,
+    }
+
+
+def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, dict | None]:
+    df, source = read_budget(case_dir)
+    if df is None:
+        return None, None
+
+    t = df["time"].to_numpy(float)
+    energy = df["kinetic_energy"].to_numpy(float)
+    dE_poly = local_poly_derivative(t, energy, window)
+    dE_grad = np.gradient(energy, t, edge_order=2 if len(t) > 2 else 1)
+
+    sink_nu = (
+        df["neg_nu_enstrophy"].to_numpy(float)
+        if "neg_nu_enstrophy" in df.columns
+        else np.full_like(t, np.nan)
+    )
+    sink_minus2 = (
+        -2.0 * df["enstrophy"].to_numpy(float)
+        if "enstrophy" in df.columns
+        else np.full_like(t, np.nan)
+    )
+    enstrophy = (
+        df["enstrophy"].to_numpy(float)
+        if "enstrophy" in df.columns
+        else np.full_like(t, np.nan)
+    )
+
+    out = df.copy()
+    out.insert(0, "case", case_dir.name)
+    out["source"] = source
+    out["t_star"] = t / T_REF
+    out["dE_dt_poly"] = dE_poly
+    out["dE_dt_gradient"] = dE_grad
+    out["sink_minus2_enstrophy"] = sink_minus2
+    out["residual_vs_neg_nu_enstrophy"] = dE_poly - sink_nu
+    out["residual_vs_minus2_enstrophy"] = dE_poly - sink_minus2
+
+    m_nu = balance_metrics(t, energy, dE_poly, sink_nu)
+    m_m2 = balance_metrics(t, energy, dE_poly, sink_minus2)
+
+    valid = np.isfinite(dE_poly) & np.isfinite(enstrophy) & (enstrophy > 0.0)
+    fitted_c = np.nan
+    if valid.sum() >= 2:
+        # Best positive factor c in dE/dt ~= -c * enstrophy.
+        fitted_c = -float(np.dot(dE_poly[valid], enstrophy[valid])) / float(
+            np.dot(enstrophy[valid], enstrophy[valid])
+        )
+
+    e0 = float(energy[0])
+    summary = {
+        "case": case_dir.name,
+        "source": source,
+        "n_samples": len(df),
+        "dt_sample_mean": float(np.mean(np.diff(t))) if len(t) > 1 else np.nan,
+        "t_final": float(t[-1]),
+        "E_ratio": float(energy[-1] / e0) if abs(e0) > 1e-30 else np.nan,
+        "dE_total_E0": float((energy[-1] - energy[0]) / e0) if abs(e0) > 1e-30 else np.nan,
+        "best_c_for_minus_c_enstrophy": fitted_c,
+    }
+    for prefix, metrics in (("nu", m_nu), ("minus2", m_m2)):
+        for key, value in metrics.items():
+            summary[f"{prefix}_{key}"] = value
+    if "strength_magnitude" in df.columns and df["strength_magnitude"].iloc[0] != 0.0:
+        summary["strength_ratio"] = float(
+            df["strength_magnitude"].iloc[-1] / df["strength_magnitude"].iloc[0]
+        )
+    elif "sum_gamma_magnitude" in df.columns and df["sum_gamma_magnitude"].iloc[0] != 0.0:
+        summary["strength_ratio"] = float(
+            df["sum_gamma_magnitude"].iloc[-1] / df["sum_gamma_magnitude"].iloc[0]
+        )
+    else:
+        summary["strength_ratio"] = np.nan
+
+    return out, summary
+
+
+def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Path, dpi: int) -> None:
+    load_theme()
+    fig, (ax_rate, ax_resid) = plt.subplots(
+        2, 1, figsize=(12.8 * CM, 11.0 * CM), sharex=True
+    )
+
+    for case, df in timeseries.groupby("case", sort=True):
+        st = case_style(case)
+        t = df["t_star"].to_numpy(float)
+        e0 = float(df["kinetic_energy"].iloc[0])
+        scale = abs(e0) if abs(e0) > 1e-30 else 1.0
+        common = dict(
+            color=st["color"],
+            linestyle=st["linestyle"],
+            lw=1.1,
+            marker=st["marker"],
+            ms=3,
+            markevery=4,
+            mew=0.4,
+        )
+
+        ax_rate.plot(t, df["dE_dt_poly"] / scale, label=st["label"], **common)
+        if "neg_nu_enstrophy" in df:
+            ax_rate.plot(
+                t,
+                df["neg_nu_enstrophy"] / scale,
+                color=st["color"],
+                linestyle=":",
+                lw=1.0,
+            )
+
+        resid = df["residual_vs_neg_nu_enstrophy"].to_numpy(float)
+        ax_resid.plot(t, resid / scale, **common)
+
+    ax_rate.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
+    ax_rate.set_ylabel(r"$E_0^{-1}\,dE/dt$")
+    ax_rate.set_title("Energy budget")
+    ax_rate.legend(fontsize=10, ncol=2)
+    ax_rate.set_ylim([-0.5,0.5])
+
+    ax_resid.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
+    ax_resid.set_xlabel(r"Normalized time, $t\Gamma_0/R_0^2$")
+    ax_resid.set_ylabel(r"$E_0^{-1}\{dE/dt-(-\nu\Omega)\}$")
+    ax_resid.set_ylim([-1,1])
+
+    save_fig(fig, figures_dir / "rings_energy_budget.png", dpi=dpi)
+
+
+def main() -> None:
+    parser = build_arg_parser("Audit dE/dt against viscous enstrophy dissipation.")
+    parser.add_argument(
+        "--window",
+        type=int,
+        default=5,
+        help="Odd moving polynomial window for dE/dt. Use 3 for minimal smoothing.",
+    )
+    args = parser.parse_args()
+
+    solution_dir = Path(args.solution_dir)
+    figures_dir = Path(args.figures_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    all_series: list[pd.DataFrame] = []
+    rows: list[dict] = []
+    for case_dir in discover_cases(solution_dir):
+        ts, summary = summarize_case(case_dir, args.window)
+        if ts is None or summary is None:
+            continue
+        all_series.append(ts)
+        rows.append(summary)
+
+    if not rows:
+        raise SystemExit(f"No energy diagnostics found under {solution_dir}")
+
+    timeseries = pd.concat(all_series, ignore_index=True)
+    summary = pd.DataFrame(rows).sort_values("case")
+
+    ts_path = figures_dir / "energy_budget_timeseries.csv"
+    summary_path = figures_dir / "energy_budget_summary.csv"
+    timeseries.to_csv(ts_path, index=False, float_format="%.8e")
+    summary.to_csv(summary_path, index=False, float_format="%.8e")
+
+    make_figure(timeseries, summary, figures_dir, args.dpi)
+
+    cols = [
+        "case",
+        "source",
+        "n_samples",
+        "dt_sample_mean",
+        "E_ratio",
+        "strength_ratio",
+        "nu_point_rel_l2",
+        "nu_integrated_ratio",
+        "nu_integrated_residual_E0",
+        "minus2_point_rel_l2",
+        "best_c_for_minus_c_enstrophy",
+    ]
+    print(summary[cols].to_string(index=False, float_format=lambda x: f"{x:.4g}"))
+    print(f"\nWritten: {summary_path}")
+    print(f"Written: {ts_path}")
+
+
+if __name__ == "__main__":
+    main()

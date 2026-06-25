@@ -796,9 +796,7 @@ class FVMVPMCoupler:
 
         Velocity BC type is selected by ``config.donor_bc_mode``:
 
-        * ``"dirichlet"`` (default, legacy) — full-velocity Dirichlet
-          (``set_dirichlet_velocity_boundary_condition``).  ``omega_target`` is
-          ignored.  Byte-identical to the pre-FIX-A path.
+        * ``"dirichlet"`` — full-velocity Dirichlet. ``omega_target`` is ignored.
 
         * ``"mixed"`` — Robin / mixed (Billuart 2023 Eq. 11–14): normal
           Dirichlet ``u·n̂ = u_VPM·n̂`` + tangential Neumann
@@ -824,22 +822,20 @@ class FVMVPMCoupler:
         assert self.ofw is not None
         u_inf_mag = float(np.linalg.norm(self.config.u_inf)) + 1e-30
 
-        ux = np.ascontiguousarray(u_target[:, 0], dtype=np.float64)
-        uy = np.ascontiguousarray(u_target[:, 1], dtype=np.float64)
-        uz = np.ascontiguousarray(u_target[:, 2], dtype=np.float64)
+        def _set_dirichlet_velocity(target: np.ndarray) -> None:
+            self.ofw.set_dirichlet_velocity_boundary_condition_vec(
+                np.ascontiguousarray(target, dtype=np.float64), patch
+            )
 
         mode = getattr(self.config, "donor_bc_mode", "dirichlet")
         if mode == "mixed":
             if omega_target is None:
-                # Defensive: no ω available (e.g. empty cloud) → fall back to
-                # Dirichlet so the step still runs (ω=0 Neumann = zero gradient
-                # is NOT the same as full-Dirichlet, but safer than crashing).
                 logger.warning(
                     "     [FVM] donor_bc_mode='mixed' but omega_target is None — "
-                    "falling back to Dirichlet for this step."
+                    "using Dirichlet for this step."
                 )
-                self.ofw.set_dirichlet_velocity_boundary_condition(ux, uy, uz, patch)
-                bc_label = "dirichlet (fallback)"
+                _set_dirichlet_velocity(u_target)
+                bc_label = "dirichlet"
             else:
                 self.ofw.set_robin_velocity_boundary_condition(
                     np.ascontiguousarray(u_target, dtype=np.float64),
@@ -848,7 +844,7 @@ class FVMVPMCoupler:
                 )
                 bc_label = "mixed (Robin: u_n Dirichlet + ω Neumann)"
         else:
-            self.ofw.set_dirichlet_velocity_boundary_condition(ux, uy, uz, patch)
+            _set_dirichlet_velocity(u_target)
             bc_label = "dirichlet"
 
         with self.ofw_redirector:

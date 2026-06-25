@@ -1000,6 +1000,86 @@ class Particles:
         # Invalidate cache since particle data has changed
         self._cached_step = -1
 
+    def replace_from_numpy(
+        self,
+        position: np.ndarray,
+        velocity: np.ndarray,
+        circulation: np.ndarray,
+        radius: np.ndarray,
+        volume: np.ndarray,
+        viscosity: np.ndarray,
+        viscosity_turbulent: np.ndarray = None,
+        group_id: np.ndarray = None,
+        zone_id: np.ndarray = None,
+        velocity_gradient: np.ndarray = None,
+    ) -> None:
+        """Replace the active particle cloud with NumPy arrays."""
+        _validate_finite_array(position, "position")
+        _validate_finite_array(velocity, "velocity")
+        _validate_finite_array(circulation, "circulation")
+        _validate_finite_array(radius, "radius")
+        _validate_finite_array(volume, "volume")
+        _validate_finite_array(viscosity, "viscosity")
+
+        if viscosity_turbulent is not None:
+            _validate_finite_array(viscosity_turbulent, "viscosity_turbulent")
+        if velocity_gradient is not None:
+            _validate_finite_array(velocity_gradient, "velocity_gradient")
+
+        dt = self._np_float_dtype
+        position = np.ascontiguousarray(position, dtype=dt)
+        velocity = np.ascontiguousarray(velocity, dtype=dt)
+        circulation = np.ascontiguousarray(circulation, dtype=dt)
+        radius = np.ascontiguousarray(radius, dtype=dt)
+        volume = np.ascontiguousarray(volume, dtype=dt)
+        viscosity = np.ascontiguousarray(viscosity, dtype=dt)
+
+        N = position.shape[0]
+        if N == 0:
+            self.number_of_particles = 0
+            self._cached_step = -1
+            return
+        if position.shape != (N, 3) or velocity.shape != (N, 3) or circulation.shape != (N, 3):
+            raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
+        if radius.shape != (N,) or volume.shape != (N,) or viscosity.shape != (N,):
+            raise ValueError("Radius, volume, and viscosity must have shape (N,).")
+
+        if viscosity_turbulent is None:
+            viscosity_turbulent = np.zeros(N, dtype=dt)
+        else:
+            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=dt)
+        viscosity_effective = viscosity + viscosity_turbulent
+
+        group_id = _coerce_int_id_array(group_id, N)
+        zone_id = _coerce_int_id_array(zone_id, N)
+
+        if velocity_gradient is None:
+            velocity_gradient = np.zeros((N, 3, 3), dtype=dt)
+        else:
+            velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=dt)
+        strain_rate = np.zeros((N, 3, 3), dtype=dt)
+        vorticity = (circulation / volume[:, None]).astype(dt)
+
+        if N > self._max_particles:
+            self._resize_fields(N)
+
+        self._populate_from_numpy(
+            position,
+            velocity,
+            circulation,
+            radius,
+            volume,
+            viscosity,
+            viscosity_turbulent,
+            viscosity_effective,
+            group_id,
+            velocity_gradient,
+            strain_rate,
+            vorticity,
+            zone_id,
+        )
+        self._cached_step = -1
+
     # =================================================================================
     # GPU-TO-GPU DATA TRANSFER
     # =================================================================================

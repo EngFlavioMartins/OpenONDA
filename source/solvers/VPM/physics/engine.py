@@ -232,7 +232,11 @@ class _AdvectionHandler:
         if self._parent.velocity_override is not None:
             pos_np = pos_field.to_numpy()
             vel_np = out_field.to_numpy()
-            vel_np[:N] = self._parent.velocity_override(pos_np[:N], vel_np[:N])
+            override = self._parent.velocity_override
+            if hasattr(override, "blend_into"):
+                override.blend_into(pos_np[:N], vel_np[:N], vel_np[:N])
+            else:
+                vel_np[:N] = override(pos_np[:N], vel_np[:N])
             out_field.from_numpy(vel_np)
 
     def _step(self, particles, dt, scheme, N):

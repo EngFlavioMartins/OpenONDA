@@ -20,7 +20,14 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
+
+try:
+    from numba import njit
+except ImportError:  # pragma: no cover - exercised only on minimal installs
+    njit = None
 
 
 def m4p(q: np.ndarray | float) -> np.ndarray:
@@ -55,6 +62,104 @@ def m4p(q: np.ndarray | float) -> np.ndarray:
     return w
 
 
+def _grid_positions(origin: np.ndarray, h: float, shape: tuple[int, int, int]) -> np.ndarray:
+    gx, gy, gz = np.meshgrid(
+        *[origin[d] + h * np.arange(shape[d]) for d in range(3)],
+        indexing="ij",
+    )
+    return np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+
+
+def _scatter_m4p_numpy(
+    rel: np.ndarray,
+    base: np.ndarray,
+    circ_f: np.ndarray,
+    shape: tuple[int, int, int],
+) -> np.ndarray:
+    G = np.zeros((*shape, 3))
+
+    for ox in range(4):
+        wx = m4p(rel[:, 0] - (base[:, 0] + ox))
+        ix = base[:, 0] + ox
+        for oy in range(4):
+            wy = m4p(rel[:, 1] - (base[:, 1] + oy))
+            iy = base[:, 1] + oy
+            for oz in range(4):
+                wz = m4p(rel[:, 2] - (base[:, 2] + oz))
+                iz = base[:, 2] + oz
+                w = (wx * wy * wz)[:, None]  # (N, 1)
+                ok = (
+                    (ix >= 0)
+                    & (ix < shape[0])
+                    & (iy >= 0)
+                    & (iy < shape[1])
+                    & (iz >= 0)
+                    & (iz < shape[2])
+                )
+                if ok.any():
+                    np.add.at(G, (ix[ok], iy[ok], iz[ok]), (w * circ_f)[ok])
+
+    return G
+
+
+if njit is not None:
+
+    @njit(fastmath=False)
+    def _m4p_scalar(q: float) -> float:
+        q = abs(q)
+        if q < 1.0:
+            return 1.0 - 2.5 * q * q + 1.5 * q * q * q
+        if q < 2.0:
+            return 0.5 * (1.0 - q) * (2.0 - q) * (2.0 - q)
+        return 0.0
+
+    @njit(fastmath=False)
+    def _scatter_m4p_numba_impl(
+        rel: np.ndarray,
+        base: np.ndarray,
+        circ_f: np.ndarray,
+        nx: int,
+        ny: int,
+        nz: int,
+    ) -> np.ndarray:
+        G = np.zeros((nx, ny, nz, 3), dtype=np.float64)
+        n = rel.shape[0]
+        for ox in range(4):
+            for oy in range(4):
+                for oz in range(4):
+                    for p in range(n):
+                        ix = base[p, 0] + ox
+                        iy = base[p, 1] + oy
+                        iz = base[p, 2] + oz
+                        if ix < 0 or ix >= nx or iy < 0 or iy >= ny or iz < 0 or iz >= nz:
+                            continue
+                        wx = _m4p_scalar(rel[p, 0] - ix)
+                        wy = _m4p_scalar(rel[p, 1] - iy)
+                        wz = _m4p_scalar(rel[p, 2] - iz)
+                        w = wx * wy * wz
+                        G[ix, iy, iz, 0] += w * circ_f[p, 0]
+                        G[ix, iy, iz, 1] += w * circ_f[p, 1]
+                        G[ix, iy, iz, 2] += w * circ_f[p, 2]
+        return G
+
+else:
+    _scatter_m4p_numba_impl = None
+
+
+def _scatter_m4p(
+    rel: np.ndarray,
+    base: np.ndarray,
+    circ_f: np.ndarray,
+    shape: tuple[int, int, int],
+) -> np.ndarray:
+    if (
+        _scatter_m4p_numba_impl is not None
+        and os.environ.get("OPENONDA_DISABLE_NUMBA_REMESH", "0") != "1"
+    ):
+        return _scatter_m4p_numba_impl(rel, base, circ_f, shape[0], shape[1], shape[2])
+    return _scatter_m4p_numpy(rel, base, circ_f, shape)
+
+
 def remesh_to_grid(
     pos: np.ndarray,
     circ: np.ndarray,
@@ -82,46 +187,16 @@ def remesh_to_grid(
     grid_circ : (Nx*Ny*Nz, 3)  accumulated circulations Σ W_ip Γ_p
     """
     if len(pos) == 0:
-        gx, gy, gz = np.meshgrid(
-            *[origin[d] + h * np.arange(shape[d]) for d in range(3)],
-            indexing="ij",
-        )
-        grid_pos = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+        grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
         return grid_pos, np.zeros((len(grid_pos), 3))
 
-    G = np.zeros((*shape, 3))
     rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(h)
     # Leftmost node index in the 4-node stencil: floor(q) - 1 → nodes at offsets 0..3
     base = np.floor(rel).astype(int) - 1  # (N, 3)
 
     circ_f = np.asarray(circ, dtype=float)
-
-    for ox in range(4):
-        wx = m4p(rel[:, 0] - (base[:, 0] + ox))
-        ix = base[:, 0] + ox
-        for oy in range(4):
-            wy = m4p(rel[:, 1] - (base[:, 1] + oy))
-            iy = base[:, 1] + oy
-            for oz in range(4):
-                wz = m4p(rel[:, 2] - (base[:, 2] + oz))
-                iz = base[:, 2] + oz
-                w = (wx * wy * wz)[:, None]  # (N, 1)
-                ok = (
-                    (ix >= 0)
-                    & (ix < shape[0])
-                    & (iy >= 0)
-                    & (iy < shape[1])
-                    & (iz >= 0)
-                    & (iz < shape[2])
-                )
-                if ok.any():
-                    np.add.at(G, (ix[ok], iy[ok], iz[ok]), (w * circ_f)[ok])
-
-    gx, gy, gz = np.meshgrid(
-        *[origin[d] + h * np.arange(shape[d]) for d in range(3)],
-        indexing="ij",
-    )
-    grid_pos = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+    G = _scatter_m4p(rel, base, circ_f, shape)
+    grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
     return grid_pos, G.reshape(-1, 3)
 
 

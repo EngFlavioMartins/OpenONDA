@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Delete one named case directory.
+# Clean up solution files and figures.
 set -euo pipefail
 
-if [[ $# -ne 1 || ! "$1" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "Usage: $0 CASE_NAME" >&2
+if [[ $# -eq 0 ]]; then
+    rm -rf -- "solution"/* "figures"
+    echo "Removed: solution/ figures/"
+elif [[ $# -eq 1 && "$1" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    rm -rf -- "solution/${1}"
+    echo "Removed: solution/${1}"
+else
+    echo "Usage: $0 [CASE_NAME]" >&2
     exit 2
 fi
-
-name="$1"
-rm -rf -- "solution/${name}"
-echo "Removed: solution/${name}"

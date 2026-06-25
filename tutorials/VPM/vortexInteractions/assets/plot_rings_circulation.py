@@ -53,7 +53,7 @@ def main() -> None:
         )
         plotted = True
 
-    ax.axhspan(1.0, 10.0, facecolor="gray", alpha=0.15, zorder=0)
+    ax.axhspan(1.0, 10.0, facecolor="gray", alpha=0.25, zorder=0)
     ax.set_ylim(0.0, 1.5)
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax.set_ylabel(r"Total circulation, $\Sigma|\Gamma_i| / \Sigma|\Gamma_i|_0$")

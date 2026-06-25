@@ -911,10 +911,9 @@ class ContinuousOverlapInjector:
         # coupled run stays end-to-end double-precision.  ``particles._np_float_dtype``
         # is the ground-truth dtype of the Taichi fields we write into.
         vpm_dt = getattr(vpm.particles, "_np_float_dtype", np.float32)
-        vpm.remove_particles(remove_all=True)
-        if res.n_total > 0:
-            k = res.n_total
-            vpm.add_vortex_particles(
+        k = res.n_total
+        if hasattr(vpm, "replace_vortex_particles"):
+            vpm.replace_vortex_particles(
                 position=res.pos.astype(vpm_dt),
                 velocity=np.zeros((k, 3), dtype=vpm_dt),
                 circulation=res.circ.astype(vpm_dt),
@@ -927,6 +926,19 @@ class ContinuousOverlapInjector:
                 viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
                 zone_id=np.zeros(k, dtype=np.int32),
             )
+        else:
+            vpm.remove_particles(remove_all=True)
+            if k > 0:
+                vpm.add_vortex_particles(
+                    position=res.pos.astype(vpm_dt),
+                    velocity=np.zeros((k, 3), dtype=vpm_dt),
+                    circulation=res.circ.astype(vpm_dt),
+                    radius=res.rad.astype(vpm_dt),
+                    volume=res.vol.astype(vpm_dt),
+                    viscosity=np.full(k, self.nu, dtype=vpm_dt),
+                    viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
+                    zone_id=np.zeros(k, dtype=np.int32),
+                )
 
         logger.info(
             "[Handoff step=%d] in=%d → out=%d  free=%d  CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",

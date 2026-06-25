@@ -1778,6 +1778,51 @@ class Solver:
             velocity_gradient=velocity_gradient,
         )
 
+    def replace_vortex_particles(
+        self,
+        position: np.ndarray,
+        velocity: np.ndarray,
+        circulation: np.ndarray,
+        radius: np.ndarray,
+        volume: np.ndarray,
+        viscosity: np.ndarray | None = None,
+        viscosity_turbulent: np.ndarray | None = None,
+        group_id: np.ndarray | None = None,
+        zone_id: np.ndarray | None = None,
+        velocity_gradient: np.ndarray | None = None,
+    ) -> None:
+        """Replace the active particle cloud in one field-upload operation."""
+        p_circ = self.particles_circulation
+        circ_removed = p_circ.sum(axis=0) if len(p_circ) > 0 else np.zeros(3)
+        self._particles_removed_this_step = len(self.particles)
+        self._circulation_removed_this_step = circ_removed
+        self._impulse_state["history"] = []
+        self._impulse_state["time_history"] = []
+        self._impulse_state["removed_accumulated"] = np.zeros(3)
+
+        if viscosity is None:
+            nu = getattr(self._viscous_config, "viscosity", None)
+            if nu is not None and nu > 0:
+                viscosity = np.full(len(position), nu, dtype=self.np_dtype)
+            else:
+                raise ValueError(
+                    "viscosity parameter is required.  Either set "
+                    "ViscousConfig.viscosity or pass an explicit array."
+                )
+
+        self.particles.replace_from_numpy(
+            position=position,
+            velocity=velocity,
+            circulation=circulation,
+            radius=radius,
+            volume=volume,
+            viscosity=viscosity,
+            viscosity_turbulent=viscosity_turbulent,
+            group_id=group_id,
+            zone_id=zone_id,
+            velocity_gradient=velocity_gradient,
+        )
+
     def update_particle_circulations(
         self,
         mask: np.ndarray,

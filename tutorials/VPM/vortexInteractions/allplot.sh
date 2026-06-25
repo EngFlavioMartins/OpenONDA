@@ -28,24 +28,19 @@ done
 
 mkdir -p "$FIGURES_DIR"
 
-echo "[1/5] Ring trajectory vs LBM reference  ->  compare_trajectory.png"
-"$PYTHON" assets/plot_compare_trajectory.py \
-    --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
-
-echo "[2/5] Total circulation conservation    ->  rings_circulation.png"
 "$PYTHON" assets/plot_rings_circulation.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
-echo "[3/5] Energy and enstrophy evolution     ->  rings_energy.png"
+"$PYTHON" assets/plot_rings_energy_budget.py \
+    --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
+
 "$PYTHON" assets/plot_rings_energy.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
-echo "[4/5] Stability ladder (max|Γ| blow-up)  ->  rings_stability.png"
 "$PYTHON" assets/plot_rings_stability.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
-echo "[5/5] Energy-budget identity audit       ->  energy_budget_audit.png"
-"$PYTHON" assets/analyze_energy_budget.py \
+"$PYTHON" assets/plot_rings_trajectory.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
 echo "Figures written to: $FIGURES_DIR"
