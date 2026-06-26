@@ -544,6 +544,12 @@ class Logging:
                 lines.append(f"  Strength Relaxation      : {cfg.relaxation_mode}")
                 lines.append(f"  Relaxation Gate          : {cfg.relaxation_gate}")
                 lines.append(f"  Relaxation CFL           : {cfg.relaxation_cfl:.3g}")
+            if cfg.stretching_limiter_enabled:
+                lines.append("  Stretching Limiter       : Positive parallel rate")
+                lines.append(f"  Limiter CFL              : {cfg.stretching_limiter_cfl:.3g}")
+                lines.append(
+                    f"  Limiter Conservation     : {'Enabled' if cfg.stretching_limiter_conserve else 'Disabled'}"
+                )
         else:
             lines.append("  Status                   : Not configured")
         return lines

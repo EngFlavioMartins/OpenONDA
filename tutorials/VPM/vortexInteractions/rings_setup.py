@@ -8,7 +8,7 @@ signs determine the interaction type:
   gamma1 * gamma2 < 0   →  head-on collision (opposite sign)
 
 All cases use LES Smagorinsky turbulence and transposed vortex stretching. The
-comparison knob is strength relaxation off/on.
+comparison is made with the scheme-preserving stretching-rate limiter off/on.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: May 2026
@@ -45,7 +45,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Run LES transposed coaxial vortex-ring interaction: "
-            "leapfrog or collision, with optional strength relaxation."
+            "leapfrog or collision, with optional stretching-rate limiting."
         )
     )
     parser.add_argument(
@@ -113,36 +113,15 @@ def main():
     )
     parser.add_argument("--max-physics-substeps", type=int, default=64)
     parser.add_argument(
-        "--relaxation",
-        choices=["none", "blend", "pedrizzetti"],
-        default="none",
-        help="Strength relaxation stabilizer: blend (conservative ADM residual "
-        "filter) or pedrizzetti (|Γ|-preserving realignment).",
+        "--strength-stabilizer",
+        action="store_true",
+        help="Enable the scheme-preserving positive-parallel stretching-rate limiter.",
     )
     parser.add_argument(
-        "--relaxation-rate",
-        type=float,
-        default=1.0,
-        help="Strain-gate rate constant C for the relaxation (default 1.0).",
-    )
-    parser.add_argument(
-        "--relaxation-cfl",
+        "--stabilizer-cfl",
         type=float,
         default=0.2,
-        help="Target sigma_eff*dt_sub for strength-relaxation substepping.",
-    )
-    parser.add_argument(
-        "--relaxation-max-substeps",
-        type=int,
-        default=8,
-        help="Maximum strength-relaxation substeps per VPM step.",
-    )
-    parser.add_argument(
-        "--deconv",
-        type=int,
-        default=1,
-        help="Van Cittert deconvolution iterations for the relaxation target "
-        "(0 = raw mollified field; default 1).",
+        help="Maximum positive parallel stretching increment per step.",
     )
     parser.add_argument(
         "--viscous",
@@ -171,9 +150,7 @@ def main():
         "--device",
         choices=["gpu", "vulkan", "cpu"],
         default="gpu",
-        help="Compute backend (default: gpu = CUDA). Use 'vulkan' for the "
-        "LES+relaxation cases: Taichi 1.7.4's CUDA backend corrupts its "
-        "docs/vpm_stabilization_audit.md.",
+        help="Compute backend (default: gpu = CUDA).",
     )
     args = parser.parse_args()
 
@@ -201,8 +178,7 @@ def main():
     time_step = args.dt  # [s]
     num_steps = args.num_steps  # Simulation steps
 
-    relaxation_mode = args.relaxation
-    relaxation_enabled = relaxation_mode != "none"
+    stabilizer_enabled = args.strength_stabilizer
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -263,15 +239,11 @@ def main():
 
     advection_cfg = AdvectionConfig(scheme="RK2")
     stabilization_cfg = (
-        StabilizationConfig.strength_relaxation(
-            mode=relaxation_mode,
-            rate=args.relaxation_rate,
-            deconv=args.deconv,
-            conserve=True,
-            cfl=args.relaxation_cfl,
-            max_substeps=args.relaxation_max_substeps,
+        StabilizationConfig.stretching_rate_limiter(
+            cfl=args.stabilizer_cfl,
+            conserve=False,
         )
-        if relaxation_enabled
+        if stabilizer_enabled
         else StabilizationConfig.disabled()
     )
 

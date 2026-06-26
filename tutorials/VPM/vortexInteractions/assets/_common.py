@@ -84,9 +84,9 @@ def build_arg_parser(description: str):
 
 
 # ── Case styling (shared across every comparison figure) ──────────────────────
-# Encoding (kept identical in all four figures so the legend reads the same):
+# Encoding (kept identical in all figures so the legend reads the same):
 #   • LINESTYLE  → physics family   (leapfrog = solid, collide = dashed)
-#   • COLOUR     → stabilization rung (dns / les / les_isr / les_pedr / fine)
+#   • COLOUR     → stabilization rung (dns / les / les_limiter / les_pedr / fine)
 #   • MARKER     → stabilization rung (redundant cue for black-and-white print)
 # Both rings of a given case therefore share one colour + linestyle + marker.
 _FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
@@ -94,17 +94,23 @@ _FAMILY_LABEL = {"leapfrog": "Leapfrogging", "collide": "Merging"}
 _RUNG_COLOR = {
     "dns": "#2E3D46",       # DarkText  — neutral baseline
     "les": "#0E8A85",       # TUDcyan
-    "les_isr": "#5C3D9B",   # VPMpurple
+    "les_limiter": "#5C3D9B",  # VPMpurple
     "les_pedr": "#772953",  # FVMorange
     "fine": "#2B7A4E",      # AccentGreen
 }
-_RUNG_MARKER = {"dns": "o", "les": "s", "les_isr": "^", "les_pedr": "D", "fine": "v"}
+_RUNG_MARKER = {
+    "dns": "o",
+    "les": "s",
+    "les_limiter": "^",
+    "les_pedr": "D",
+    "fine": "v",
+}
 _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
 _INTENDED_CASE_ORDER = {
-    "leapfrog_les": 0,
-    "leapfrog_les_isr": 1,
-    "collide_les": 2,
-    "collide_les_isr": 3,
+    "leapfrog_les_limiter": 0,
+    "leapfrog_les": 1,
+    "collide_les_limiter": 2,
+    "collide_les": 3,
 }
 
 

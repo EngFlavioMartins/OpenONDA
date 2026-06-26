@@ -171,8 +171,8 @@ def plot_vortex_case(args) -> int:
     axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
     axes[0].set_xlim([-7.5, 7.5])
 
-    axes[1].set_title(r"Vorticity, $\omega_z / \omega_c$")
-    axes[1].set_ylabel(r"$\omega_z / \omega_c$")
+    axes[1].set_title(r"Vorticity, $\omega_z / \omega_{c,0}$")
+    axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
     axes[1].set_xlim([-7.5, 7.5])
     axes[1].set_ylim(bottom=-0.01)
 

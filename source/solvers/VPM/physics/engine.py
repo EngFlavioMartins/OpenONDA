@@ -50,6 +50,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self._advection = _AdvectionHandler(self)
         self._diffusion = _DiffusionHandler(self)
         self._stretching = _StretchingHandler(self)
+        self.stretching_rate_limiter = None
 
     def __str__(self):
         return (
@@ -414,6 +415,7 @@ class _StretchingHandler:
                 mode_int,
                 N,
             )
+            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(
                 particles.circulation, p.dstr_dt_temp, particles.circulation, dt, N
             )
@@ -436,10 +438,12 @@ class _StretchingHandler:
         p.compute_stretching_rate_kernel(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
+        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
 
     def _stretching_rk3(self, particles, dt, mode_int, N):
@@ -448,10 +452,12 @@ class _StretchingHandler:
         p.compute_stretching_rate_kernel(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
+        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.linear_combination_kernel(
             p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
         )
@@ -459,6 +465,7 @@ class _StretchingHandler:
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
         p.step_rk3_ssp_combine_kernel(
             particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
         )
@@ -469,18 +476,22 @@ class _StretchingHandler:
         p.compute_stretching_rate_kernel(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
+        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
         p.compute_stretching_rate_kernel(
             particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N
         )
+        self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)
         p.step_rk4_combine_kernel(
             particles.circulation,
             p.dstr_dt_temp,
@@ -516,6 +527,11 @@ class _StretchingHandler:
 
     # ----- GradU-based stretching (O(N) per sub-step) -----
 
+    def _limit_rate(self, positions, strengths, rates, dt: float, N: int) -> None:
+        limiter = getattr(self._parent, "stretching_rate_limiter", None)
+        if limiter is not None:
+            limiter.apply_to_rate(positions, strengths, rates, dt, N)
+
     def _gradu_rate(self, strengths, gradU, out, N, c_r: float = 0.0):
         """Compute dα/dt = (∇u)ᵀ·α (c_r=0) or the rVPM rate Jᵀα − c_r(α̂·Jᵀα)α̂."""
         if c_r != 0.0:
@@ -530,6 +546,7 @@ class _StretchingHandler:
 
         if scheme == "EULER":
             self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
+            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(
                 particles.circulation, p.dstr_dt_temp, particles.circulation, dt, N
             )
@@ -537,23 +554,28 @@ class _StretchingHandler:
         elif scheme == "RK2":
             # k1
             self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
+            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
             # k2
             self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
+            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
             p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
 
         elif scheme == "RK3":
             # k1
             self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
+            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
             # k2
             self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
+            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
             p.linear_combination_kernel(
                 p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
             )
             p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
             # k3
             self._gradu_rate(p.str_temp2, gradU, p.dstr_dt_temp3, N, c_r)
+            self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
             p.step_rk3_ssp_combine_kernel(
                 particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
             )
@@ -561,19 +583,23 @@ class _StretchingHandler:
         elif scheme == "RK4":
             # k1
             self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
+            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(
                 particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N
             )
             # k2
             self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
+            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
             p.step_euler_forward_kernel(
                 particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N
             )
             # k3
             self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp3, N, c_r)
+            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
             p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
             # k4
             self._gradu_rate(p.str_temp, gradU, p.vel_temp, N, c_r)
+            self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)
             p.step_rk4_combine_kernel(
                 particles.circulation,
                 p.dstr_dt_temp,

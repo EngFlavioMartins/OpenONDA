@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — strength-relaxation comparison.
+# Vortex-ring interactions — strength-stabilizer comparison.
 #
 # This script reruns the intended four-case matrix at the same initial particle
-# concentration. Every run is LES with transposed vortex stretching; the only
-# stabilization difference is strength relaxation on/off:
+# concentration. Stabilized cases run first so failures are visible early.
 #
 #   LEAPFROG, Γ1 = Γ2 = +π:
-#     1. leapfrog_les      2. leapfrog_les_isr
+#     1. leapfrog_les_limiter      2. leapfrog_les
 #
 #   HEAD-ON COLLISION, Γ1 = +π, Γ2 = -π:
-#     3. collide_les       4. collide_les_isr
+#     3. collide_les_limiter       4. collide_les
 #
 # Every case writes:
 #   - stability_metrics.csv at every step
 #   - flow_integrals.csv at LOGGING_FREQUENCY
 #   - energy_budget.csv at ENERGY_AUDIT_FREQUENCY
 #
-# Existing result directories for these four case names are deleted before their
-# rerun so each directory contains one clean, comparable realization.
+# Existing result directories for these four case names are deleted before rerun
+# so each directory contains one clean, comparable realization.
 
 set -uo pipefail
 
@@ -46,12 +45,14 @@ COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-120}}"
 BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
 LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
 ENERGY_AUDIT_FREQUENCY="${ENERGY_AUDIT_FREQUENCY:-1}"
+DEVICE="${DEVICE:-vulkan}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
 echo "Results root: $RUN_ROOT"
 echo "Figures root: $FIGURES_ROOT"
 echo "Particle spacing: $PARTICLE_SPACING"
 echo "Energy-audit frequency: every $ENERGY_AUDIT_FREQUENCY step(s)"
+echo "Backend: $DEVICE"
 
 RESULTS=()
 
@@ -90,53 +91,55 @@ run_case() {
 # LEAPFROGGING: Γ1 = Γ2 = +π
 # ---------------------------------------------------------------------------
 
-run_case "1/4 leapfrog_les — LES transposed" \
+run_case "1/4 leapfrog_les_limiter — LES transposed + stretching-rate limiter" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
     --viscous cs \
+    --device "$DEVICE" \
+    --strength-stabilizer --stabilizer-cfl 0.2 \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
+    --name leapfrog_les_limiter
+
+run_case "2/4 leapfrog_les — LES transposed" \
+    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
+    --particle-spacing "$PARTICLE_SPACING" \
+    --dt "$LF_DT" --num-steps "$LF_STEPS" \
+    --viscous cs \
+    --device "$DEVICE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name leapfrog_les
 
-run_case "2/4 leapfrog_les_isr — LES transposed + strength relaxation" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs \
-    --relaxation blend --relaxation-rate 1.5 --deconv 1 \
-    --device vulkan \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name leapfrog_les_isr
-
 # ---------------------------------------------------------------------------
 # HEAD-ON COLLISION: Γ1 = +π, Γ2 = -π
 # ---------------------------------------------------------------------------
 
-run_case "3/4 collide_les — LES transposed" \
+run_case "3/4 collide_les_limiter — LES transposed + stretching-rate limiter" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
     --viscous dvh \
+    --device "$DEVICE" \
+    --strength-stabilizer --stabilizer-cfl 0.2 \
+    --backup-frequency "$BACKUP_FREQUENCY" \
+    --logging-frequency "$LOGGING_FREQUENCY" \
+    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
+    --name collide_les_limiter
+
+run_case "4/4 collide_les — LES transposed" \
+    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
+    --particle-spacing "$PARTICLE_SPACING" \
+    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
+    --viscous dvh \
+    --device "$DEVICE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
     --name collide_les
-
-run_case "4/4 collide_les_isr — LES transposed + strength relaxation" \
-    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh \
-    --relaxation blend --relaxation-rate 1.5 --deconv 1 \
-    --device vulkan \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name collide_les_isr
 
 echo ""
 echo "========================================================================"

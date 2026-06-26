@@ -17,21 +17,33 @@ from source.solvers.VPM.utils import LambOseenVPM, LineSampler, SurfaceSampler
 from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import StretchingConfig, ViscousConfig
 
-# ── Shared physics (all cases use the same Re/b₀/a₀) ──────────────────────────
-# Physical Parameters:
-#   Gamma       = 1.0 m²/s
-#   Re          = Gamma/nu = 530.0  =>  nu = 1/530 ≈ 1.887e-3 m²/s
-#   a0/b0       = 0.125, b0 = 1.0 m  =>  rc(0) = 0.125 m
-#   t0          = rc(0)² / (4*nu) ~ 2.07 s (initial vortex age)
-#   spacing h   = 0.27 * rc = 0.03375 m
-#   Uc_ref      = Gamma / (2*pi*rc) ~ 1.2732 m/s
-#   wc_ref      = Gamma / (pi*rc²) ~ 20.37 s⁻¹
+# ── Buckingham-Pi normalisation ──────────────────────────────────────────────
+# Dimensional parameters:
+#   $\Gamma$       = 1.0 m^2/s          circulation per vortex
+#   $\nu$          = 1/530 m^2/s        kinematic viscosity
+#   $b_0$          = 1.0 m              centre-to-centre separation
+#   $r_{c,0}$     = 0.125 m            initial core radius (= a_0)
+#   $a_0/b_0$     = 0.125              core-to-separation ratio
 #
-# Buckingham-Pi Normalization (used in plots):
-#   r* = r / rc
-#   u* = u / Uc_ref
-#   w* = w / wc_ref
-#   G* = (dv/dx) * (rc / Uc_ref)
+# Derived reference quantities:
+#   $Re = \Gamma/\nu$                    = 530        Reynolds number
+#   $U_{c,0} = \Gamma/(2\pi r_{c,0})$   = 1.273 m/s  reference velocity
+#   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
+#   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference velocity gradient
+#   $t_0 = r_{c,0}^2/(4\nu)$           = 2.07 s     initial vortex age
+#   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
+#
+# Buckingham-Pi groups used in figures:
+#   $\tau = \nu t / b_0^2$                              time
+#   $r^* = r / r_{c,0}$                                 radius
+#   $u^* = u_\theta / U_{c,0}$                          azimuthal velocity
+#   $\omega^* = \omega_z / \omega_{c,0}$                vorticity
+#   $G^* = (\partial u_y/\partial x)\,r_{c,0}/U_{c,0}$  velocity gradient
+#   $x_c^* = x_c / b_0$                                 dipole trajectory
+#   $r_c^* = r_c / r_{c,0}$                             core radius (dipole)
+#   $\sigma^2 / b_0^2$                                  core area (merging)
+#   $b^* = b / b_0$                                     separation (merging)
+#   $P^* = (dE/dt) / (\nu\Gamma^2/b_0^2)$               energy dissipation
 #
 TUTORIAL_DIR = Path(__file__).resolve().parent
 DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
@@ -52,20 +64,17 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
     if scheme == "gbd":
         return ViscousConfig.gbd(
             h=spacing,
-            padding=5.0,
-            threshold=args.viscous_threshold,
-            threshold_mode=args.viscous_threshold_mode,
+            threshold=1e-3,
+            threshold_mode='budget',
             viscosity=nu,
         )
     elif scheme == "dvh":
         return ViscousConfig.dvh(
             h=spacing,
-            padding=5.0,
-            threshold=args.viscous_threshold,
-            threshold_mode=args.viscous_threshold_mode,
-            dvh_rd_ratio=args.dvh_rd_ratio,
-            viscosity=nu,
-            max_nodes=args.dvh_max_nodes,
+            threshold=1e-3,
+            threshold_mode='budget',
+            dvh_rd_ratio=3,
+            viscosity=nu
         )
 
 
@@ -90,7 +99,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
 
     if gamma1 * gamma2 < 0:
         # Dipole: extra room in +x for self-propulsion
-        bounds_x_max = domain_half + 3.0 * B0
+        # After 40 s at U ≈ Γ/(2πb₀) ≈ 0.16 m/s the pair travels ≈ 6.4 m.
+        bounds_x_max = domain_half + 8.0 * B0
     else:
         bounds_x_max = domain_half
 

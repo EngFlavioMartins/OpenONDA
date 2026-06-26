@@ -764,8 +764,9 @@ class TurbulenceConfig:
         - Running inviscid validation sweeps.
         - Comparing damping/regularisation methods without LES or CS.
 
-        **Note:** Pass ``StabilizationConfig.strength_relaxation()`` to
-        ``SolverConfig.stabilization`` to stabilize long inviscid runs.
+        **Note:** Pass ``StabilizationConfig.stretching_rate_limiter()`` to
+        ``SolverConfig.stabilization`` to cap unresolved positive stretching
+        growth without changing the selected stretching scheme.
 
         Returns:
             TurbulenceConfig: INVISCID configuration instance
@@ -867,6 +868,22 @@ class StabilizationConfig:
     remeshing_projection_padding: int = 4
     """Zero-padding cells used by the isolated-domain FFT projection."""
 
+    # ── Stretching-rate limiter ─────────────────────────────────────────────
+    stretching_limiter_enabled: bool = False
+    """Limit only the positive parallel component of the selected stretching rate."""
+
+    stretching_limiter_cfl: float = 0.2
+    """Maximum allowed positive parallel stretching increment s_parallel * dt."""
+
+    stretching_limiter_conserve: bool = True
+    """Restore raw rate-level circulation and linear-impulse rates after limiting."""
+
+    stretching_limiter_constraint: Literal["both", "sum", "linear"] = "both"
+    """Rate invariants restored when limiter conservation is enabled."""
+
+    stretching_limiter_verbose: bool = False
+    """Collect per-step stretching-limiter diagnostics."""
+
     # ── Strength relaxation ──────────────────────────────────────────────
     relaxation_enabled: bool = False
     """Enable strength-relaxation stabilization of vortex stretching."""
@@ -927,6 +944,12 @@ class StabilizationConfig:
             raise ValueError("remeshing_radius must be positive")
         if self.remeshing_projection_padding < 0:
             raise ValueError("remeshing_projection_padding must be non-negative")
+        if self.stretching_limiter_cfl <= 0:
+            raise ValueError("stretching_limiter_cfl must be positive")
+        if self.stretching_limiter_constraint not in ("both", "sum", "linear"):
+            raise ValueError(
+                "stretching_limiter_constraint must be 'both', 'sum', or 'linear'"
+            )
         if self.relaxation_mode not in ("blend", "pedrizzetti"):
             raise ValueError("relaxation_mode must be 'blend' or 'pedrizzetti'")
         if self.relaxation_gate not in ("strain", "constant"):
@@ -1037,6 +1060,23 @@ class StabilizationConfig:
             relaxation_verbose=verbose,
             relaxation_cfl=cfl,
             relaxation_max_substeps=max_substeps,
+        )
+
+    @staticmethod
+    def stretching_rate_limiter(
+        *,
+        cfl: float = 0.2,
+        conserve: bool = True,
+        constraint: Literal["both", "sum", "linear"] = "both",
+        verbose: bool = False,
+    ) -> "StabilizationConfig":
+        """Enable scheme-preserving positive-parallel stretching-rate limiting."""
+        return StabilizationConfig(
+            stretching_limiter_enabled=True,
+            stretching_limiter_cfl=cfl,
+            stretching_limiter_conserve=conserve,
+            stretching_limiter_constraint=constraint,
+            stretching_limiter_verbose=verbose,
         )
 
 

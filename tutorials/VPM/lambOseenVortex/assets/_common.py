@@ -95,7 +95,6 @@ def add_physics_args(parser) -> None:
     parser.add_argument("--nu", type=float, default=_NU)
     parser.add_argument("--t0", type=float, default=_RC**2 / (4.0 * _NU))
     parser.add_argument("--dt", type=float, default=0.02)
-    parser.add_argument("--separation", type=float, default=1.0)
     parser.add_argument("--re", type=float, default=_RE)
     parser.add_argument("--circulation", type=float, default=1.0)
     parser.add_argument("--b0", type=float, default=1.0)
@@ -179,3 +178,72 @@ def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, floa
         if m:
             result[int(m.group(1))] = float(ds.attrib.get("timestep", 0.0))
     return result
+
+
+# ── Gaussian core-radius utilities ────────────────────────────────────────────
+
+
+def gaussian_model(r, omega0, a):
+    """Lamb-Oseen vorticity using C&W convention: ω = ω0 · exp(-r² / (2a²))."""
+    return omega0 * np.exp(-(r**2) / (2.0 * a**2))
+
+
+def azimuthal_profile(xy, values, center, n_bins=50, r_max=None):
+    """Azimuthally averaged |values| profile around *center*."""
+    dxy = xy - center
+    r = np.linalg.norm(dxy, axis=1)
+    if r_max is None:
+        r_max = float(r.max())
+    mask = r < r_max
+    r_m, v_m = r[mask], np.abs(values[mask])
+    r_edges = np.linspace(0, r_max, n_bins + 1)
+    r_centers = 0.5 * (r_edges[:-1] + r_edges[1:])
+    profile = np.zeros(n_bins)
+    for i in range(n_bins):
+        in_bin = (r_m >= r_edges[i]) & (r_m < r_edges[i + 1])
+        if in_bin.any():
+            profile[i] = v_m[in_bin].mean()
+    return r_centers, profile
+
+
+def fit_gaussian_core(r_profile, omega_profile):
+    """Return a² (sigma²) from a Gaussian fit (C&W convention)."""
+    from scipy.optimize import curve_fit
+
+    mask = omega_profile > 0.05 * omega_profile.max()
+    if mask.sum() < 3:
+        return np.nan
+    r_fit, w_fit = r_profile[mask], omega_profile[mask]
+    omega0_g = omega_profile.max()
+    above = omega_profile > omega0_g / 2.0
+    sigma_g = r_profile[above][-1] / np.sqrt(2.0 * np.log(2.0)) if above.any() else 0.1
+    try:
+        popt, _ = curve_fit(
+            gaussian_model,
+            r_fit,
+            w_fit,
+            p0=[omega0_g, max(sigma_g, 0.01)],
+            bounds=([0, 0.001], [np.inf, 2.0]),
+            maxfev=5000,
+        )
+        return popt[1] ** 2
+    except (RuntimeError, ValueError):
+        return np.nan
+
+
+def core_radius_sigma(xy, values, center, n_bins=50, r_max=None):
+    """Core radius sigma from Gaussian fit on a scalar field."""
+    r_prof, w_prof = azimuthal_profile(xy, values, center, n_bins, r_max)
+    if w_prof.max() < 1e-10:
+        return np.nan
+    a2 = fit_gaussian_core(r_prof, w_prof)
+    return np.sqrt(a2) if not np.isnan(a2) else np.nan
+
+
+def centroid(xy, values):
+    """Scalar-weighted centroid of a 2-D point cloud."""
+    w = np.abs(values)
+    wt = w.sum()
+    if wt < 1e-30:
+        return np.full(2, np.nan)
+    return np.array([np.dot(w, xy[:, 0]) / wt, np.dot(w, xy[:, 1]) / wt])

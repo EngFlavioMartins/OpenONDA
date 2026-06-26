@@ -2,6 +2,35 @@
 # Lamb-Oseen vortex — viscous-scheme benchmark (CS, RWM, DVH, GBD).
 # Runs three cases (single vortex, dipole, co-rotating merger) at Re=530
 # to compare diffusion accuracy against the C&W 2003 reference solution.
+#
+# ── Buckingham-Pi normalisation ──────────────────────────────────────────────
+# Dimensional parameters:
+#   $\Gamma$       = 1.0 m^2/s          circulation per vortex
+#   $\nu$          = 1/530 m^2/s        kinematic viscosity
+#   $b_0$          = 1.0 m              centre-to-centre separation
+#   $r_{c,0}$     = 0.125 m            initial core radius (= a_0)
+#   $a_0/b_0$     = 0.125              core-to-separation ratio
+#
+# Derived reference quantities:
+#   $Re = \Gamma/\nu$                    = 530        Reynolds number
+#   $U_{c,0} = \Gamma/(2\pi r_{c,0})$   = 1.273 m/s  reference velocity
+#   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
+#   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference gradient
+#   $t_0 = r_{c,0}^2/(4\nu)$           = 2.07 s     initial vortex age
+#   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
+#
+# Buckingham-Pi groups used in figures:
+#   $\tau = \nu t / b_0^2$                              time
+#   $r^* = r / r_{c,0}$                                 radius
+#   $u^* = u_\theta / U_{c,0}$                          azimuthal velocity
+#   $\omega^* = \omega_z / \omega_{c,0}$                vorticity
+#   $G^* = (\partial u_y/\partial x)\,r_{c,0}/U_{c,0}$  velocity gradient
+#   $x_c^* = x_c / b_0$                                 dipole trajectory
+#   $r_c^* = r_c / r_{c,0}$                             core radius (dipole)
+#   $\sigma^2 / b_0^2$                                  core area (merging)
+#   $b^* = b / b_0$                                     separation (merging)
+#   $P^* = (dE/dt) / (\nu\Gamma^2/b_0^2)$               energy dissipation
+# ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
@@ -72,8 +101,6 @@ echo 'DONE WITH SINGLE VORTEX'
 
 echo 'DONE WITH DIPOLE'
 
-"$PYTHON" assets/validate_solution.py --solution-dir ./solution \
-    --case dipole --expected-time 40.0
 
 sleep 15
 
@@ -99,8 +126,3 @@ sleep 15
     --gamma1 1.0 --gamma2 1.0 --schemes gbd \
     --re 530 --dt 0.123 --total-time 40.0 \
     --solution-dir ./solution --clean
-
-./allplot.sh
-
-echo
-echo "All runs and plots complete."

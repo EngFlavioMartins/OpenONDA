@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — LES transposed strength-relaxation comparison.
+# Vortex-ring interactions — LES transposed strength-stabilizer comparison.
 #
 # Each script auto-discovers the intended four-case matrix under the solution
-# directory: leapfrog_{les,les_isr} and collide_{les,les_isr}.  The figures
+# directory: leapfrog_{les,les_limiter} and collide_{les,les_limiter}.  The figures
 # share one styling key: colour = stabilization rung, linestyle = physics
 # family (leapfrog solid, collide dashed).
 set -euo pipefail

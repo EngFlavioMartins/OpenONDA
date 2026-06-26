@@ -425,7 +425,20 @@ class Solver:
 
         # Strength relaxation (formerly ISR — Implicit Strain Relaxation)
         self._strength_relaxation = None
+        self._stretching_rate_limiter = None
         stabilization = final_config.stabilization
+        if stabilization.stretching_limiter_enabled:
+            from ..stabilization.stretching_limiter import StretchingRateLimiter
+
+            self._stretching_rate_limiter = StretchingRateLimiter(
+                cfl=stabilization.stretching_limiter_cfl,
+                conserve=stabilization.stretching_limiter_conserve,
+                constraint=stabilization.stretching_limiter_constraint,
+                verbose=stabilization.stretching_limiter_verbose,
+                max_particles=max_p,
+                precision=self.precision,
+            )
+            self.physics.stretching_rate_limiter = self._stretching_rate_limiter
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
@@ -2341,8 +2354,6 @@ class Solver:
         if self.flow_model == "POTENTIAL":
             return
 
-        # With strength relaxation active the sub-step loop uses a frozen-∇u
-        # local operator (GRADU, or RVPM if configured) — report what runs.
         effective_mode = self._effective_stretching_mode()
         mode_eq = {
             "CLASSICAL": "(ω·∇)u",
@@ -2351,9 +2362,8 @@ class Solver:
             "GRADU": "(∇u)ᵀ·ω",
             "RVPM": "(∇u)ᵀ·ω − c_r(ω̂·(∇u)ᵀω̂)ω (rVPM)",
         }.get(effective_mode, f"({effective_mode})")
-        suffix = " [GRADU forced by strength relaxation]" if effective_mode != self.stretching_mode else ""
         if announce:
-            print(f"Updating strengths via {mode_eq}{suffix}")
+            print(f"Updating strengths via {mode_eq}")
 
         dt = self.time_step_size if dt is None else dt
         self._apply_stretching_with_relaxation(dt)
@@ -2362,12 +2372,8 @@ class Solver:
     def _effective_stretching_mode(self) -> str:
         """Mode actually used by the stretching step.
 
-        Strength-relaxation sub-stepping requires a local frozen-∇u operator
-        (O(N) per sub-step): the configured mode is honored if it is already
-        local (GRADU/RVPM), otherwise it is replaced by GRADU.
+        Stabilizers must not change the user-selected stretching formulation.
         """
-        if self._strength_relaxation is not None and self.stretching_enabled:
-            return self.stretching_mode if self.stretching_mode in ("GRADU", "RVPM") else "GRADU"
         return self.stretching_mode
 
     def _rvpm_params(self) -> dict:

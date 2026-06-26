@@ -2,10 +2,10 @@
 """Co-rotating vortex merger — rotation angle, core radius, and separation.
 
 Reads VTS z=0 sample files (or HDF5 snapshots as fallback) and plots
-three diagnostics against nu t / d₀²:
+three diagnostics against nu t / b₀²:
   - rotation angle θ  [deg]
-  - normalised core area  a² / d₀²
-  - normalised separation  d / d₀
+  - normalised core area  a² / b₀²
+  - normalised separation  b / b₀
 
 Core detection uses peak |ω_z| with a bimodality (valley) check to
 distinguish two separate vortices from single merged core.
@@ -22,7 +22,6 @@ from pathlib import Path
 import h5py
 import matplotlib
 import numpy as np
-from scipy.optimize import curve_fit
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -34,6 +33,9 @@ from _common import (
     add_physics_args,
     build_arg_parser,
     build_style_map,
+    azimuthal_profile as _azimuthal_profile,
+    gaussian_model as _gaussian_model,
+    fit_gaussian_core as _fit_gaussian_core,
     load_theme,
     pvd_time_map,
     resolve_runtime_physics,
@@ -135,63 +137,6 @@ def _neighborhood_centroid(xy, w, seed, radius, max_iter=20, tol=1e-8):
             break
         c = c_new
     return c
-
-
-def _azimuthal_profile(xy, omega, center, n_bins=50, r_max=0.45):
-    """Azimuthally averaged |vorticity| profile around *center*."""
-    dxy = xy - center
-    r = np.linalg.norm(dxy, axis=1)
-    mask = r < r_max
-    r_m, w_m = r[mask], np.abs(omega[mask])
-    r_edges = np.linspace(0, r_max, n_bins + 1)
-    r_centers = 0.5 * (r_edges[:-1] + r_edges[1:])
-    omega_avg = np.zeros(n_bins)
-    for i in range(n_bins):
-        in_bin = (r_m >= r_edges[i]) & (r_m < r_edges[i + 1])
-        if in_bin.any():
-            omega_avg[i] = w_m[in_bin].mean()
-    return r_centers, omega_avg
-
-
-def _gaussian_model(r, omega0, a):
-    """Lamb-Oseen vorticity using Meunier-Leweke / C&W convention:
-
-        omega = omega0 * exp(-r^2 / (2*a^2))
-
-    so that a^2 = 2*nu*t (Gaussian sigma squared).  This gives a diffusive
-    growth slope d(a^2/b0^2)/dtau = 2, consistent with the experimental data
-    digitised from Cerretelli & Williamson (2003) Figure 4.
-    """
-    return omega0 * np.exp(-(r**2) / (2.0 * a**2))
-
-
-def _fit_gaussian_core(r_profile, omega_profile):
-    """Return a^2 (sigma^2, Meunier-Leweke convention) from a Gaussian fit.
-
-    Uses omega = omega0 * exp(-r^2 / (2*a^2)) so that the returned a^2
-    equals 2*nu*t for a pure Lamb-Oseen vortex, matching the normalisation
-    used in Cerretelli & Williamson (2003).
-    """
-    mask = omega_profile > 0.05 * omega_profile.max()
-    if mask.sum() < 3:
-        return np.nan
-    r_fit, w_fit = r_profile[mask], omega_profile[mask]
-    omega0_g = omega_profile.max()
-    # Initial guess for sigma: half-max radius / sqrt(2*ln2)
-    above = omega_profile > omega0_g / 2.0
-    sigma_g = r_profile[above][-1] / np.sqrt(2.0 * np.log(2.0)) if above.any() else 0.1
-    try:
-        popt, _ = curve_fit(
-            _gaussian_model,
-            r_fit,
-            w_fit,
-            p0=[omega0_g, max(sigma_g, 0.01)],
-            bounds=([0, 0.001], [np.inf, 2.0]),
-            maxfev=5000,
-        )
-        return popt[1] ** 2  # sigma^2 = 2*nu*t for pure diffusion
-    except (RuntimeError, ValueError):
-        return np.nan
 
 
 def _find_peaks(xy, w, b0):
