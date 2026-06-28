@@ -1,7 +1,6 @@
 """
-Kinematics module for VPM solver.
-==================
-Kinematics module for VPM solver. module.
+Rigid-body kinematics for VLM lattices: static, translating, rotating,
+manoeuvring, heaving, pitching, and periodic motion drivers.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

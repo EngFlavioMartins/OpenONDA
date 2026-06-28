@@ -8,7 +8,6 @@ def test_strength_relaxation_factory_builds_nested_config():
         mode="pedrizzetti",
         gate="constant",
         factor=0.9,
-        max_substeps=16,
     )
     config = SolverConfig(stabilization=stabilization)
 
@@ -16,7 +15,6 @@ def test_strength_relaxation_factory_builds_nested_config():
     assert stabilization.relaxation_enabled
     assert stabilization.relaxation_mode == "pedrizzetti"
     assert stabilization.relaxation_factor == 0.9
-    assert stabilization.relaxation_max_substeps == 16
 
 
 def test_stabilization_supports_combined_mechanisms():

@@ -1,7 +1,6 @@
 """
-Logging module for VPM solver.
-==================
-Logging module for VPM solver. module.
+Console/file logging for the solver: a line-buffered log stream, startup banner,
+and the Logging helper.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -543,13 +542,8 @@ class Logging:
             if cfg.relaxation_enabled:
                 lines.append(f"  Strength Relaxation      : {cfg.relaxation_mode}")
                 lines.append(f"  Relaxation Gate          : {cfg.relaxation_gate}")
-                lines.append(f"  Relaxation CFL           : {cfg.relaxation_cfl:.3g}")
-            if cfg.stretching_limiter_enabled:
-                lines.append("  Stretching Limiter       : Positive parallel rate")
-                lines.append(f"  Limiter CFL              : {cfg.stretching_limiter_cfl:.3g}")
-                lines.append(
-                    f"  Limiter Conservation     : {'Enabled' if cfg.stretching_limiter_conserve else 'Disabled'}"
-                )
+                if cfg.relaxation_gate == "constant":
+                    lines.append(f"  Relaxation Factor        : {cfg.relaxation_factor:.3g}")
         else:
             lines.append("  Status                   : Not configured")
         return lines

@@ -1,7 +1,6 @@
 """
-Evaluation module for VPM solver.
-==================
-Evaluation module for VPM solver. module.
+On-particle field evaluation (ParticleFieldEvaluation): caches Taichi fields and
+computes velocity/vorticity at particle and target points.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -465,7 +464,7 @@ class ParticleFieldEvaluation:
                     if r_mag <= cutoff_radius:
                         sigma = 0.5 * (radii_i + radii[j])
                         r_sigma = r_mag / sigma
-                        zeta_val = zeta_(r_sigma) / sigma ** 3
+                        zeta_val = zeta_(r_sigma) / sigma**3
                         acc += zeta_val * strengths[j]
                 out[i] = acc
 

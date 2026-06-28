@@ -27,7 +27,6 @@ from _common import (
     add_physics_args,
     build_arg_parser,
     build_style_map,
-    core_radius_sigma,
     centroid,
     load_theme,
     pvd_time_map,
@@ -65,33 +64,39 @@ def read_h5(path: Path):
         return None, None, None, None
 
 
-def _particle_vorticity_profile(pos, gz, center, n_bins=50, r_max=None):
-    """Radial |vorticity| profile from particles: sum|gz| / bin area per bin."""
-    if r_max is None:
-        r_max = 0.45
-    dxy = pos[:, :2] - center
-    r = np.linalg.norm(dxy, axis=1)
-    mask = r < r_max
-    if mask.sum() < 3:
-        return None, None
-    r_m, gz_m = r[mask], np.abs(gz[mask])
-    r_edges = np.linspace(0, r_max, n_bins + 1)
-    r_centers = 0.5 * (r_edges[:-1] + r_edges[1:])
-    vort = np.zeros(n_bins)
-    for i in range(n_bins):
-        in_bin = (r_m >= r_edges[i]) & (r_m < r_edges[i + 1])
-        if in_bin.any():
-            area = np.pi * (r_edges[i + 1]**2 - r_edges[i]**2)
-            if area > 0:
-                vort[i] = gz_m[in_bin].sum() / area
-    return r_centers, vort
+def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.ndarray) -> float:
+    r"""Kernel-consistent core radius from the vorticity 2nd moment.
+
+    Returns ``a = sqrt(Σ ω r² / Σ ω)`` — the exact core radius of a Lamb-Oseen
+    profile ``ω = ω₀·exp(-r²/a²)`` (for which ⟨r²⟩ = a²), measured directly from
+    the ``ω``-weighted spatial spread about *center*.
+
+    Why this and not a Gaussian fit of the reconstructed field?  Each viscous
+    scheme stores its diffusion differently: CS widens the *reconstruction
+    kernel* (particle radius grows to ~4.4 r_c0) while keeping particles
+    frozen, whereas DVH/GBD keep the kernel pinned at 2.5h and carry the
+    spread in the *particle positions*.  A Gaussian fit of the reconstructed
+    field therefore measures kernel width for CS but particle spread for
+    DVH/GBD — an apples-to-oranges comparison, and the (truncated) fit further
+    clips the wide CS kernel.  The raw 2nd moment applies the *same* operator
+    to every scheme's field; self-normalising each curve by its t=0 value (in
+    the plot) divides out the residual reconstruction offset, leaving the
+    physical relative growth r_c(t)/r_c(0).
+    """
+    w = np.asarray(weights, dtype=np.float64)
+    wt = float(w.sum())
+    if wt <= 1e-30:
+        return np.nan
+    r2 = ((points - center) ** 2).sum(axis=1)
+    return float(np.sqrt((w * r2).sum() / wt))
 
 
 def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dict | None:
-    """Extract core trajectory and Gaussian-fit core radius for the dipole.
+    """Extract core trajectory and kernel-consistent core radius for the dipole.
 
-    Prefers VTS z=0 grid data (actual vorticity field) with Gaussian fit
-    for the core radius, falls back to HDF5 particle data.
+    Prefers VTS z=0 grid data (actual reconstructed vorticity field) and
+    measures the core radius via the ω-weighted 2nd moment
+    (see ``_weighted_core_radius``); falls back to HDF5 particle data.
     """
     import pyvista as pv
 
@@ -129,8 +134,9 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             c = centroid(xy[mask], omega_z[mask])
             if np.any(np.isnan(c)):
                 continue
-            r_max = min(0.45 * b0, 0.45)
-            rc = core_radius_sigma(xy, omega_z, c, r_max=r_max)
+            # Kernel-consistent 2nd moment over the full positive-ω region
+            # (no r_max truncation — that would clip CS's wide kernel).
+            rc = _weighted_core_radius(xy[mask], w, c)
             rows.append((t, float(c[0]), float(c[1]), rc, float(w.sum())))
     else:
         # ── Fallback: HDF5 particle data ──
@@ -153,12 +159,13 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             c = centroid(pos2d[mask_pos], gz2d[mask_pos])
             if np.any(np.isnan(c)):
                 continue
-            r_prof, v_prof = _particle_vorticity_profile(pos2d, gz2d, c, r_max=min(0.45 * b0, 0.45))
-            if r_prof is None or v_prof.max() < 1e-10:
-                continue
-            from _common import fit_gaussian_core
-            a2 = fit_gaussian_core(r_prof, v_prof)
-            rc = np.sqrt(a2) if not np.isnan(a2) else np.nan
+            # Kernel-consistent 2nd moment of the positive-Γ particle cloud.
+            # NOTE: from particle data this measures the *position* spread only
+            # (it excludes the reconstruction-kernel width that the VTS-field
+            # path captures), so it is self-consistent for relative growth but
+            # not directly comparable to the VTS numbers across schemes.  VTS
+            # data exists for every scheme here, so this branch is a safety net.
+            rc = _weighted_core_radius(pos2d[mask_pos], gz2d[mask_pos], c)
             rows.append((t, float(c[0]), float(c[1]), rc, float(np.abs(gz2d[mask_pos]).sum())))
 
     if not rows:
@@ -207,8 +214,13 @@ def plot_dipole_case(args) -> int:
             "linewidth": 1.0,
             "marker": st["marker"],
         }
+        # Self-normalise each scheme by its own t=0 core radius so the y-axis
+        # is the physical relative growth r_c(t)/r_c(0).  This divides out the
+        # per-scheme reconstruction-kernel offset (see _weighted_core_radius),
+        # making the four schemes' core-growth directly comparable.
+        rc_norm = rc / rc[0] if rc[0] > 0 else rc
         axes[0].plot(tau, xc / args.b0, **kw)
-        axes[1].plot(tau, rc / a0, **kw)
+        axes[1].plot(tau, rc_norm, **kw)
 
     axes[0].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
     axes[0].set_ylabel(r"Normalized core trajectory, $x_c / b_0$")
@@ -217,7 +229,7 @@ def plot_dipole_case(args) -> int:
     axes[1].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
     axes[1].set_ylabel(r"Normalized core radius, $r_c / r_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_ylim([0.7, 3.5])
+    axes[1].set_ylim([0.9, 4.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:

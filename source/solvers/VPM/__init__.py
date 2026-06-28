@@ -1,7 +1,8 @@
 """
-Initialization module for VPM.
-==================
-Initialization module for VPM. module.
+OpenONDA Vortex Particle Method (VPM) solver package.
+
+Public API: Solver, SolverConfig, StabilizationConfig, VelocityConfig,
+ForceConfig, ParticleDistributor, and PanelSolver.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

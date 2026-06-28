@@ -51,22 +51,22 @@ cd "$SCRIPT_DIR"
 # ============================================================
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes cs \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 10.0 --length 20 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes rwm \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 10.0 --length 20 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes dvh \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 10.0 --length 20 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes gbd \
-    --re 530 --dt 0.123 --total-time 20.0 \
+    --re 530 --dt 0.123 --total-time 10.0 --length 20 \
     --solution-dir ./solution --clean
 
 sleep 15

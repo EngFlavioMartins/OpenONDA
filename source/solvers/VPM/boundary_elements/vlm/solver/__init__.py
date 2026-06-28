@@ -1,7 +1,6 @@
 """
-Initialization module for solver.
-==================
-Initialization module for solver. module.
+VLM solver subpackage: lattice, force evaluator, loading distribution,
+diagnostics, and VLMSolver.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

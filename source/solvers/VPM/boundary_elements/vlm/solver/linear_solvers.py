@@ -1,7 +1,6 @@
 """
-Linear Solvers module for VPM solver.
-==================
-Linear Solvers module for VPM solver. module.
+Linear-solver strategies for the VLM circulation system: SciPy dense, Taichi CG,
+and Taichi BiCGSTAB backends.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -27,7 +26,7 @@ from ....config.constants import (
 
 
 def _lazy_import_taichi():
-    """Lazy import Taichi (noop now as we import at top)."""
+    """Return the Taichi module (imported at module load; kept as a single hook)."""
     return ti
 
 

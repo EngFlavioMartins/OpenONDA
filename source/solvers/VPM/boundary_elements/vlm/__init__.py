@@ -1,7 +1,6 @@
 """
-Initialization module for vlm.
-==================
-Initialization module for vlm. module.
+Vortex-lattice-method (VLM) subpackage: geometry, solver, kinematics, and VPM
+coupling.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

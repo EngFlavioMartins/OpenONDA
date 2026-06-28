@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — strength-stabilizer comparison.
+# Vortex-ring interactions — Winckelmans/Pedrizzetti strength-relaxation study.
 #
-# This script reruns the intended four-case matrix at the same initial particle
-# concentration. Stabilized cases run first so failures are visible early.
+# The relaxation realigns each particle's vector strength Γ with the local
+# representable vorticity direction, preserving |Γ| exactly:
+#     Γ ← |Γ| · normalize((1−r)·Γ̂ + r·ω̂_local).
+# r = RELAX_FACTOR is the tuning knob.  This is the only stabilizer kept; the
+# split/router, ISR limiter and solenoidal-projection experiments were removed.
 #
-#   LEAPFROG, Γ1 = Γ2 = +π:
-#     1. leapfrog_les_limiter      2. leapfrog_les
+# Four cases — bare LES vs relaxation, for each flow type:
+#   LEAPFROG          Γ1 = Γ2 = +π  (CS diffusion):
+#     leapfrog_relax, leapfrog_les
+#   HEAD-ON COLLISION Γ1 = +π, Γ2 = -π  (GBD diffusion; the bare run blows up):
+#     collide_relax, collide_les
 #
-#   HEAD-ON COLLISION, Γ1 = +π, Γ2 = -π:
-#     3. collide_les_limiter       4. collide_les
+# Tune by re-running with a different factor, e.g.  RELAX_FACTOR=0.2 ./allrun.sh
 #
-# Every case writes:
-#   - stability_metrics.csv at every step
-#   - flow_integrals.csv at LOGGING_FREQUENCY
-#   - energy_budget.csv at ENERGY_AUDIT_FREQUENCY
-#
-# Existing result directories for these four case names are deleted before rerun
-# so each directory contains one clean, comparable realization.
+# Figures: rings_stability.png (max|Γ|) and rings_energy_budget.png (Σ|Γ|, energy,
+# enstrophy).  Each case writes stability_metrics.csv (per step), flow_integrals.csv
+# and energy_budget.csv.  Existing result directories are deleted before rerun.
 
 set -uo pipefail
 
@@ -33,14 +34,28 @@ RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
 PARTICLE_SPACING="${PARTICLE_SPACING:-0.030}"
 
-# Leapfrog uses CS with a smaller step than the DVH-pinned collision cases.
-LF_DT="${LF_DT:-0.02}"
-LF_STEPS="${LF_STEPS:-600}"
+# Resolution / time-step rationale (ring R=1, core a=0.1, Γ=π, Re=Γ/ν=3000,
+# particle core σ_p = 2h):
+#   • h=0.030 → 2a/h ≈ 6.7 particles across the core diameter (LES minimum),
+#     σ_p = 0.6a, N ≈ 90 k.  h=0.025 is higher fidelity (~1.7× cost).
+#   • dt is bound by the vortex-stretching CFL  dt·S_max ≲ 0.2  (S_max ≈ 3 s⁻¹),
+#     not diffusion — GBD only needs dt ≤ h²/6ν_eff ≈ 0.087 s at h=0.030.
 
-# Collision uses DVH; rings_setup.py pins the actual step to the DVH diffusion
-# time when DVH is selected. 120 steps covers t≈12.4 s at h=0.025.
-COLLIDE_DT="${COLLIDE_DT:-0.103}"
-COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-120}}"
+# Leapfrog (CS): milder strain; dt = 0.020.
+LF_DT="${LF_DT:-0.020}"
+LF_STEPS="${LF_STEPS:-450}"
+
+# Collision (GBD): dt = 0.06 meets the stretching CFL and is under GBD's bound.
+COLLIDE_DT="${COLLIDE_DT:-0.060}"
+COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-210}}"
+
+# Strength-relaxation tuning knob r ∈ [0,1] and gate.
+RELAX_FACTOR="${RELAX_FACTOR:-0.1}"
+RELAX_GATE="${RELAX_GATE:-constant}"
+
+# Viscous scheme per flow type (gbd / cs / dvh).
+LF_VISCOUS="${LF_VISCOUS:-cs}"
+COLLIDE_VISCOUS="${COLLIDE_VISCOUS:-gbd}"
 
 BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
 LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
@@ -49,9 +64,9 @@ DEVICE="${DEVICE:-vulkan}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
 echo "Results root: $RUN_ROOT"
-echo "Figures root: $FIGURES_ROOT"
 echo "Particle spacing: $PARTICLE_SPACING"
-echo "Energy-audit frequency: every $ENERGY_AUDIT_FREQUENCY step(s)"
+echo "Relaxation: factor r=$RELAX_FACTOR, gate=$RELAX_GATE"
+echo "Viscous (leapfrog / collide): $LF_VISCOUS / $COLLIDE_VISCOUS"
 echo "Backend: $DEVICE"
 
 RESULTS=()
@@ -88,26 +103,26 @@ run_case() {
 }
 
 # ---------------------------------------------------------------------------
-# LEAPFROGGING: Γ1 = Γ2 = +π
+# LEAPFROGGING: Γ1 = Γ2 = +π  (CS diffusion)
 # ---------------------------------------------------------------------------
 
-run_case "1/4 leapfrog_les_limiter — LES transposed + stretching-rate limiter" \
+run_case "1/4 leapfrog_relax — Winckelmans/Pedrizzetti relaxation (r=$RELAX_FACTOR)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs \
+    --viscous "$LF_VISCOUS" \
     --device "$DEVICE" \
-    --strength-stabilizer --stabilizer-cfl 0.2 \
+    --relaxation --relaxation-factor "$RELAX_FACTOR" --relaxation-gate "$RELAX_GATE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name leapfrog_les_limiter
+    --name leapfrog_relax
 
-run_case "2/4 leapfrog_les — LES transposed" \
+run_case "2/4 leapfrog_les — bare LES (reference)" \
     --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous cs \
+    --viscous "$LF_VISCOUS" \
     --device "$DEVICE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
@@ -115,26 +130,26 @@ run_case "2/4 leapfrog_les — LES transposed" \
     --name leapfrog_les
 
 # ---------------------------------------------------------------------------
-# HEAD-ON COLLISION: Γ1 = +π, Γ2 = -π
+# HEAD-ON COLLISION: Γ1 = +π, Γ2 = -π  (GBD diffusion — bare run blows up)
 # ---------------------------------------------------------------------------
 
-run_case "3/4 collide_les_limiter — LES transposed + stretching-rate limiter" \
+run_case "3/4 collide_relax — Winckelmans/Pedrizzetti relaxation (r=$RELAX_FACTOR)" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh \
+    --viscous "$COLLIDE_VISCOUS" \
     --device "$DEVICE" \
-    --strength-stabilizer --stabilizer-cfl 0.2 \
+    --relaxation --relaxation-factor "$RELAX_FACTOR" --relaxation-gate "$RELAX_GATE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \
     --energy-audit-frequency "$ENERGY_AUDIT_FREQUENCY" \
-    --name collide_les_limiter
+    --name collide_relax
 
-run_case "4/4 collide_les — LES transposed" \
+run_case "4/4 collide_les — bare LES (the disease / reference)" \
     --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
     --particle-spacing "$PARTICLE_SPACING" \
     --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous dvh \
+    --viscous "$COLLIDE_VISCOUS" \
     --device "$DEVICE" \
     --backup-frequency "$BACKUP_FREQUENCY" \
     --logging-frequency "$LOGGING_FREQUENCY" \

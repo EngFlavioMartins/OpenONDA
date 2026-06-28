@@ -1,7 +1,6 @@
 """
-Biot Savart module for VPM solver.
-==================
-Biot Savart module for VPM solver. module.
+Biot-Savart @ti.func kernels for the VLM: bound, semi-infinite, horseshoe, and
+vortex-ring induced velocities.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

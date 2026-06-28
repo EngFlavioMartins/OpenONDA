@@ -1,7 +1,6 @@
 """
-Geometry Utils module for VPM solver.
-==================
-Geometry Utils module for VPM solver. module.
+Geometry helpers for the panel solver: point-in-STL-body tests (ray casting)
+and filtering of vortex particles that fall inside solid bodies.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

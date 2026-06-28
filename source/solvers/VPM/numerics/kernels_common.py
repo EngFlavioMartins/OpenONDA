@@ -1,7 +1,6 @@
 """
-Kernels Common module for VPM solver.
-==================
-Kernels Common module for VPM solver. module.
+Factories for shared Taichi compute kernels: induced velocity, vorticity,
+kinetic energy, enstrophy, time integration, and target-point evaluation.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

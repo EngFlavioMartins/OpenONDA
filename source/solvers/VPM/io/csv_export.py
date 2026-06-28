@@ -1,7 +1,5 @@
 """
-Csv Export module for VPM solver.
-==================
-Csv Export module for VPM solver. module.
+Append aerodynamic load time-series to CSV files.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

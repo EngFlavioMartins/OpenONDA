@@ -1,7 +1,5 @@
 """
-Initialization module for config.
-==================
-Initialization module for config. module.
+Configuration subpackage: solver config dataclasses, constants, and backend setup.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

@@ -1,7 +1,6 @@
 """
-Offline Diagnostics module for VPM solver.
-==================
-Offline Diagnostics module for VPM solver. module.
+Offline post-processing diagnostics: flow integrals (energy, enstrophy,
+circulation, impulse) computed from saved particle states.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

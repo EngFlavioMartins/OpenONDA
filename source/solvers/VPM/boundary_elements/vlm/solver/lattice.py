@@ -1,7 +1,6 @@
 """
-Lattice module for VPM solver.
-==================
-Lattice module for VPM solver. module.
+GPU-resident VLM lattice data structure (VLMLattice): panel geometry,
+circulations, and topology.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

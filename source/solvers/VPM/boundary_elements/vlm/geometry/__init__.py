@@ -1,7 +1,5 @@
 """
-Initialization module for geometry.
-==================
-Initialization module for geometry. module.
+VLM geometry subpackage: Aircraft, Wing, and WingSegment primitives.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

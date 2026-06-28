@@ -1,7 +1,6 @@
 """
-Initialization module for kernels.
-==================
-Initialization module for kernels. module.
+Regularization-kernel subpackage: Gaussian, high-order Gaussian, super-Gaussian,
+and Winckelmans vortex-blob kernels.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

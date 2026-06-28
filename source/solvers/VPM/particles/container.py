@@ -1052,7 +1052,7 @@ class Particles:
             raise ValueError("Velocity gradient and strain rate must have shape (N, 3, 3).")
         vorticity = (circulation / volume[:, None]).astype(dt)
 
-        if N > self._max_particles:
+        if self._max_particles < N:
             self._resize_fields(N)
 
         self._populate_from_numpy(

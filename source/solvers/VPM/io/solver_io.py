@@ -1,7 +1,5 @@
 """
-Solver Io module for VPM solver.
-==================
-Solver Io module for VPM solver. module.
+Solver I/O (SolverIO): writes particle/field state and results to disk.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -17,7 +15,6 @@ from typing import TYPE_CHECKING
 import h5py
 
 from .backup import BackupSystem
-from .csv_export import append_loads_to_csv
 from .vtk_export import export_panels_vtk
 
 if TYPE_CHECKING:
@@ -223,8 +220,9 @@ class SolverIO:
             U_ref=panel_solver.U_inf,
         )
 
-        import pandas as pd
         from pathlib import Path
+
+        import pandas as pd
 
         samples_dir = Path(self.export_dir) / "samples"
         samples_dir.mkdir(parents=True, exist_ok=True)

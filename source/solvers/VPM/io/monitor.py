@@ -1,7 +1,6 @@
 """
-Monitor module for VPM solver.
-==================
-Monitor module for VPM solver. module.
+Runtime simulation monitor (SimulationMonitor): tracks and reports per-step
+diagnostics.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

@@ -1,7 +1,5 @@
 """
-Initialization module for physics.
-==================
-Initialization module for physics. module.
+Physics subpackage: the PhysicsEngine driving advection, diffusion, and stretching.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

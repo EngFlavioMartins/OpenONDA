@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys as _sys; _sys.tracebacklimit = 200  # override config/types.py's tracebacklimit=0
 """
 Run LES coaxial vortex-ring interactions: leapfrogging or head-on collision.
 ============================================================================
@@ -66,10 +67,8 @@ def main():
     parser.add_argument(
         "--dt",
         type=float,
-        default=0.103,
-        help="Time step size [s]. DVH pins dt to Δt_d = β·R_d²/(4nu) "
-        "(≈ 0.103 s here) — the diffusion operator fires once per step. "
-        "A user dt differing from Δt_d is overridden to Δt_d.",
+        default=1.5e-2,
+        help="Time step size [s]."
     )
     parser.add_argument(
         "--num-steps",
@@ -99,35 +98,55 @@ def main():
         "runs that need a fine dE/dt audit; 0 disables the extra audit.",
     )
     parser.add_argument("--max-particles", type=int, default=500_000)
+    # ── Strength relaxation: Winckelmans/Pedrizzetti direction projection ──
+    # Periodically realigns each particle's vector strength Γ with the local
+    # representable vorticity direction, preserving |Γ| exactly:
+    #     Γ ← |Γ| · normalize((1−r)·Γ̂ + r·ω̂_local).
+    # r is the tuning knob (0 = off, 1 = full realignment each application).
     parser.add_argument(
-        "--physics-substeps",
-        type=int,
-        default=1,
-        help="Minimum complete VPM physics microsteps per output step.",
-    )
-    parser.add_argument(
-        "--deformation-cfl",
-        type=float,
-        default=None,
-        help="Optional adaptive limit max(||S||_F)*dt_sub.",
-    )
-    parser.add_argument("--max-physics-substeps", type=int, default=64)
-    parser.add_argument(
-        "--strength-stabilizer",
+        "--relaxation",
         action="store_true",
-        help="Enable the scheme-preserving positive-parallel stretching-rate limiter.",
+        help="Enable the Winckelmans/Pedrizzetti strength-relaxation stabilizer "
+        "(realign Γ toward the local vorticity direction, |Γ| preserved).",
     )
     parser.add_argument(
-        "--stabilizer-cfl",
+        "--relaxation-factor",
         type=float,
-        default=0.2,
-        help="Maximum positive parallel stretching increment per step.",
+        default=0.1,
+        help="Relaxation factor r ∈ [0,1] for the constant gate (default 0.1). "
+        "The main tuning knob: larger r realigns more aggressively per step.",
+    )
+    parser.add_argument(
+        "--relaxation-gate",
+        choices=["constant", "strain"],
+        default="constant",
+        help="'constant' applies r every step; 'strain' sets r = 1−exp(−C·σ_eff·dt) "
+        "so relaxation only acts where the strain is actively misaligning Γ.",
+    )
+    parser.add_argument(
+        "--relaxation-rate",
+        type=float,
+        default=1.0,
+        help="Strain-gate rate constant C (only used with --relaxation-gate strain).",
+    )
+    parser.add_argument(
+        "--relaxation-deconv",
+        type=int,
+        default=0,
+        help="Van Cittert ADM deconvolution iterations for the target vorticity "
+        "(0 = pure Pedrizzetti/Winckelmans target; >0 sharpens it).",
+    )
+    parser.add_argument(
+        "--relaxation-verbose",
+        action="store_true",
+        help="Log per-step relaxation diagnostics.",
     )
     parser.add_argument(
         "--viscous",
-        choices=["dvh", "cs"],
-        default="dvh",
-        help="Viscous scheme: dvh (default) or cs (Core Spreading).",
+        choices=["gbd", "dvh", "cs"],
+        default="gbd",
+        help="Viscous scheme: gbd (default, Gaussian Blob Diffusion — does not "
+        "pin dt as finely as DVH), dvh, or cs (Core Spreading).",
     )
     parser.add_argument(
         "--dvh-threshold-mode",
@@ -178,7 +197,7 @@ def main():
     time_step = args.dt  # [s]
     num_steps = args.num_steps  # Simulation steps
 
-    stabilizer_enabled = args.strength_stabilizer
+    relaxation_enabled = args.relaxation
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -227,6 +246,15 @@ def main():
             viscosity=kinematic_viscosity,
             characteristic_distance=particle_spacing,
         )
+    elif args.viscous == "gbd":
+        # Gaussian Blob Diffusion: grid-based like DVH but only bounds dt ≤ h²/6ν
+        # (no per-step heat-kernel pinning), so it tolerates a far coarser step.
+        viscous_cfg = ViscousConfig.gbd(
+            h=particle_spacing,
+            viscosity=kinematic_viscosity,
+            threshold_mode=args.dvh_threshold_mode,
+            threshold=args.dvh_threshold,
+        )
     else:
         viscous_cfg = ViscousConfig.dvh(
             h=particle_spacing,
@@ -238,14 +266,21 @@ def main():
         )
 
     advection_cfg = AdvectionConfig(scheme="RK2")
-    stabilization_cfg = (
-        StabilizationConfig.stretching_rate_limiter(
-            cfl=args.stabilizer_cfl,
-            conserve=False,
+    if relaxation_enabled:
+        # Winckelmans/Pedrizzetti strength relaxation: realign Γ toward the local
+        # representable vorticity direction, preserving |Γ| exactly.  Conservation
+        # of ΣΓ and impulse is restored by a minimum-norm correction.
+        stabilization_cfg = StabilizationConfig.strength_relaxation(
+            mode="pedrizzetti",
+            gate=args.relaxation_gate,
+            factor=args.relaxation_factor,
+            rate=args.relaxation_rate,
+            deconv=args.relaxation_deconv,
+            conserve=True,
+            verbose=args.relaxation_verbose,
         )
-        if stabilizer_enabled
-        else StabilizationConfig.disabled()
-    )
+    else:
+        stabilization_cfg = StabilizationConfig.disabled()
 
     solver_config = SolverConfig(
         time_step_size=time_step,
@@ -263,9 +298,6 @@ def main():
         backup_directory=str(output_dir),
         max_particles=args.max_particles,
         samplers=[(xz_sampler, "xz_slice")],
-        physics_substeps=args.physics_substeps,
-        deformation_cfl=args.deformation_cfl,
-        max_physics_substeps=args.max_physics_substeps,
     )
 
     def _jsonable(value):
@@ -357,8 +389,6 @@ def main():
         "max_parallel_strain",
         "radius_min",
         "radius_max",
-        "physics_substeps",
-        "physics_dt_sub",
     ]
 
     def stability_metrics(step):
@@ -378,7 +408,6 @@ def main():
             )
 
         radii = vpm.particles_radii
-        microstep_info = getattr(vpm, "last_physics_substeps", {})
         return {
             "step": step,
             "time": vpm.flow_time,
@@ -390,8 +419,6 @@ def main():
             "max_parallel_strain": float(parallel_strain.max()),
             "radius_min": float(radii.min()),
             "radius_max": float(radii.max()),
-            "physics_substeps": int(microstep_info.get("count", 1)),
-            "physics_dt_sub": float(microstep_info.get("dt_sub", time_step)),
         }
 
     metrics_path = output_dir / "stability_metrics.csv"

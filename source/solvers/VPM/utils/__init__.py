@@ -1,7 +1,5 @@
 """
-Initialization module for utils.
-==================
-Initialization module for utils. module.
+Utility subpackage: field samplers, analytic flow models, and offline diagnostics.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

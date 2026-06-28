@@ -52,7 +52,7 @@ RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
 RC = 0.125  # initial core radius a0 [m]
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 TOTAL_TIME = 20.0
-LENGTH = 50
+LENGTH = 50  # vortex column span in z, in units of RC (default; override with --length)
 
 
 # ---------------------------------------------------------------------------
@@ -61,20 +61,27 @@ LENGTH = 50
 def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spacing: float):
     if scheme in {"cs", "rwm"}:
         return ViscousConfig(scheme=scheme.upper(), viscosity=nu)
+    # GBD/DVH regenerate particles from a grid each step and prune weak nodes.
+    # The prune MUST keep the diffusing vorticity tail, otherwise the scheme
+    # truncates the spreading Gaussian every step and badly under-diffuses:
+    # measured nu_eff/nu for a budget threshold of 1e-2 → 0.15, 3e-3 → 0.47,
+    # 1e-4 → 0.95, 1e-5 → 0.99.  We therefore honour --viscous-threshold
+    # (default 1e-5) instead of a hard-coded aggressive value.  Gamma stays
+    # conserved at any threshold via conserve_pruned_moments.
     if scheme == "gbd":
         return ViscousConfig.gbd(
             h=spacing,
-            threshold=1e-3,
-            threshold_mode='budget',
+            threshold=args.viscous_threshold,
+            threshold_mode=args.viscous_threshold_mode,
             viscosity=nu,
         )
     elif scheme == "dvh":
         return ViscousConfig.dvh(
             h=spacing,
-            threshold=1e-3,
-            threshold_mode='budget',
-            dvh_rd_ratio=3,
-            viscosity=nu
+            threshold=args.viscous_threshold,
+            threshold_mode=args.viscous_threshold_mode,
+            dvh_rd_ratio=args.dvh_rd_ratio,
+            viscosity=nu,
         )
 
 
@@ -109,8 +116,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         bounds_x_max,
         -domain_half,
         domain_half,
-        -LENGTH * RC / 2,
-        LENGTH * RC / 2,
+        -args.length * RC / 2,
+        args.length * RC / 2,
     ]
 
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(domain_bounds, spacing)
@@ -246,6 +253,13 @@ def parse_args() -> argparse.Namespace:
         help="Exact number of time steps (overrides --total-time when given).",
     )
     parser.add_argument(
+        "--length",
+        type=float,
+        default=LENGTH,
+        help="Vortex column span in z, in units of RC (default 50). Longer columns "
+        "approach the 2D (infinite-column) induction limit.",
+    )
+    parser.add_argument(
         "--re",
         type=float,
         default=RE,
@@ -262,8 +276,12 @@ def parse_args() -> argparse.Namespace:
         "--viscous-threshold",
         type=float,
         default=1e-4,
-        help="Threshold value: budget → fractional Σ|Γ| loss allowed per firing; "
-        "absolute → node |Γ| floor [m³/s] (default: 1e-4).",
+        help="DVH/GBD regen prune threshold. In 'budget' mode this is the "
+        "fractional Σ|Γ| allowed to drop per regen step; it must stay small or "
+        "the diffusing vorticity tail is truncated and the scheme under-diffuses "
+        "(measured nu_eff/nu: 1e-2→0.15, 3e-3→0.47, 1e-4→0.95, 1e-5→0.99). "
+        "Default 1e-4 balances ~5% diffusion error against particle count "
+        "(smaller thresholds keep more tail particles).",
     )
     parser.add_argument(
         "--dvh-rd-ratio", type=int, default=3, choices=[3, 4, 5], help="DVH R_d/h ratio."
@@ -277,8 +295,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--spacing-factor",
         type=float,
-        default=0.33,
-        help="Particle/grid spacing as a fraction of the core radius rc (default 0.33).",
+        default=0.4,
+        help="Particle/grid spacing as a fraction of the core radius rc (default 0.4, "
+        "i.e. a0/h=2.5). Spacing sets cost (particles ~1/h^3, DVH steps ~1/h^2 since "
+        "Dt_d~h^2) but NOT diffusion accuracy (that is the prune threshold); coarser "
+        "spacing keeps DVH tractable without changing nu_eff. Must stay < 0.5: the "
+        "anti-diffusion init needs avg_particle_radius(=2h) < rc, else a_sq -> 0.",
     )
     parser.add_argument(
         "--tag",

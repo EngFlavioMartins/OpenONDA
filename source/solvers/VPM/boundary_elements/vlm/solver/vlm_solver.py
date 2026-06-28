@@ -1,7 +1,6 @@
 """
-Vlm Solver module for VPM solver.
-==================
-Vlm Solver module for VPM solver. module.
+Vortex-lattice-method solver (VLMSolver): assembles and solves the panel
+circulation system and evaluates forces.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -1632,8 +1631,9 @@ class VLMSolver:
         gamma = self.lattice.circulation.to_numpy()[:n_panels]
         vortex_pts = self.lattice.vortex_points.to_numpy()[:n_panels]
 
-        # Bound leg vector: V3 - V2 (spanwise, at 25% chord)
-        # Note: corners[:, 2] - corners[:, 1] is the chordwise R-Q vector (wrong!)
+        # Bound leg vector: the spanwise vortex segment at the quarter chord,
+        # vortex_pts[:, 2] - vortex_pts[:, 1].  (Using panel corners instead would
+        # give the chordwise vector, which is not the bound leg.)
         l_vec = vortex_pts[:, 2] - vortex_pts[:, 1]
 
         # Total circulation: sum(Γ_i * l_i)

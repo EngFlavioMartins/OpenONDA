@@ -33,9 +33,6 @@ from _common import (
     add_physics_args,
     build_arg_parser,
     build_style_map,
-    azimuthal_profile as _azimuthal_profile,
-    gaussian_model as _gaussian_model,
-    fit_gaussian_core as _fit_gaussian_core,
     load_theme,
     pvd_time_map,
     resolve_runtime_physics,
@@ -139,18 +136,6 @@ def _neighborhood_centroid(xy, w, seed, radius, max_iter=20, tol=1e-8):
     return c
 
 
-def _find_peaks(xy, w, b0):
-    """Return (peak1, peak2, merged_flag) from |omega| field."""
-    i1 = np.argmax(w)
-    p1 = xy[i1]
-    d1 = np.linalg.norm(xy - p1, axis=1)
-    w2 = w.copy()
-    w2[d1 < 0.25 * b0] = 0.0
-    if w2.max() < 0.1 * w[i1]:
-        return p1, p1, True
-    return p1, xy[np.argmax(w2)], False
-
-
 def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     if xy is None or gz is None:
         return np.nan, np.nan, np.nan, 0.0, None, None
@@ -210,18 +195,24 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     mid = 0.5 * (cores[0] + cores[1])
     ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
 
-    # --- Core radius via Gaussian fit (C&W 2003 definition) ---
-    # Use peak-based centers and peak separation for r_max to match
-    # the experimentalist's approach of fitting each vortex profile.
-    pk1, pk2, _ = _find_peaks(xy, w, b0)
-    sep_pk = np.linalg.norm(pk1 - pk2)
-    r_max_fit = min(sep_pk / 2.0, R)
-    a2v = np.full(2, np.nan)
-    for k, pk in enumerate([pk1, pk2]):
-        r_prof, w_prof = _azimuthal_profile(xy, gz, pk, n_bins=50, r_max=r_max_fit)
-        if w_prof.max() > 1e-10:
-            a2v[k] = _fit_gaussian_core(r_prof, w_prof)
-    a2 = float(np.nanmean(a2v)) if not np.all(np.isnan(a2v)) else np.nan
+    # --- Core area σ² via system-moment decomposition (kernel-consistent) ---
+    # For two equal cores at ±sep/2 from the system centroid, the parallel-axis
+    # theorem gives  ⟨r²⟩_sys = ⟨r²⟩_core + (sep/2)²,  so
+    #     a²_core = ⟨r²⟩_sys − (sep/2)²,   σ² = a²_core / 2   (C&W convention).
+    # The same operator (ω-weighted 2nd moment about the system centroid over
+    # the ω>5%·max core region) is applied to every scheme's field — unlike a
+    # per-core Gaussian fit, which is biased by the scheme-dependent
+    # reconstruction-kernel width and whose r_max window collapses as the pair
+    # merges.  Robust through merger: as sep→0, σ² → ⟨r²⟩_sys/2 (merged core).
+    core_mask = w > 0.05 * w.max()
+    if core_mask.sum() >= 5:
+        pts_c, w_c = xy[core_mask], w[core_mask]
+        wt_c = w_c.sum()
+        c_sys = np.array([(w_c * pts_c[:, 0]).sum() / wt_c, (w_c * pts_c[:, 1]).sum() / wt_c])
+        r2_sys = (w_c * ((pts_c - c_sys) ** 2).sum(axis=1)).sum() / wt_c
+        a2 = 0.5 * max(r2_sys - (sep / 2.0) ** 2, 0.0)
+    else:
+        a2 = np.nan
 
     return sep, a2, ang, float(w.sum()), cores.copy(), cores[0].copy()
 

@@ -28,6 +28,7 @@ from _common import (
     build_arg_parser,
     build_style_map,
     load_theme,
+    read_column_half_length,
     read_flow_time,
     resolve_runtime_physics,
 )
@@ -127,8 +128,9 @@ def plot_vortex_case(args) -> int:
     uc_ref = args.gamma / (2.0 * np.pi * rc_ref)
     wc_ref = args.gamma / (np.pi * rc_ref**2)
     gc_ref = uc_ref / rc_ref
-    # The vortex column spans z ∈ [-25 rc0, 25 rc0] (LENGTH = 50 in vortex_setup.py)
-    half_length = 25.0 * rc_ref
+    # Finite straight-column half-span, read from the data so the analytic
+    # reference is correct for any --length (falls back to the legacy 25·rc0).
+    half_length = read_column_half_length(solution_dir) or 25.0 * rc_ref
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
     fig.subplots_adjust(hspace=0.25, top=0.95, bottom=0.19, left=0.15, right=0.85)
@@ -142,7 +144,7 @@ def plot_vortex_case(args) -> int:
         x = df["x"].to_numpy()
         uy = df["Uy"].to_numpy()
         oz = df["omega_z"].to_numpy()
-        dvx = df["dvdx"].to_numpy()  # direct from the velocity gradient tensor
+        dvx = np.gradient(uy, x)  # numerical gradient of sampled Uy profile
         st = style_map[scheme]
         plot_kw = {
             "color": st["color"],
@@ -159,7 +161,12 @@ def plot_vortex_case(args) -> int:
 
     r_line = np.linspace(-10.0 * rc_ref, 10.0 * rc_ref, 400)
     kw_theory = {"color": "black", "lw": 1.0, "zorder": 0, "linestyle": "--"}
-    theory_t = run_t0 + args.total_time
+    # Evaluate the analytic Lamb-Oseen at the data's ACTUAL flow time
+    # (vortex age = t0 + elapsed), read from the plotted snapshots — not a
+    # re-derived run_t0 + total_time.  This keeps the reference pinned to the
+    # data even if a run stopped early or --total-time is mis-passed.
+    data_t = float(np.median([row[1] for row in scheme_data])) if scheme_data else args.total_time
+    theory_t = run_t0 + data_t
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
     tg = np.gradient(tv, r_line)

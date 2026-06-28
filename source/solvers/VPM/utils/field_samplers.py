@@ -29,11 +29,30 @@ except Exception:
 # so the written header always matches the data (no magic column indices on the
 # reader side — see ``_read_sampler_csv`` in the tutorials' post-processing).
 SAMPLER_CSV_COLUMNS = [
-    "x", "y", "z",
-    "Ux", "Uy", "Uz",
-    "omega_x", "omega_y", "omega_z",
-    "Sxx", "Sxy", "Sxz", "Syy", "Syz", "Szz",
-    "dudx", "dudy", "dudz", "dvdx", "dvdy", "dvdz", "dwdx", "dwdy", "dwdz",
+    "x",
+    "y",
+    "z",
+    "Ux",
+    "Uy",
+    "Uz",
+    "omega_x",
+    "omega_y",
+    "omega_z",
+    "Sxx",
+    "Sxy",
+    "Sxz",
+    "Syy",
+    "Syz",
+    "Szz",
+    "dudx",
+    "dudy",
+    "dudz",
+    "dvdx",
+    "dvdy",
+    "dvdz",
+    "dwdx",
+    "dwdy",
+    "dwdz",
 ]
 
 

@@ -1,7 +1,6 @@
 """
-Aircraft module for VPM solver.
-==================
-Aircraft module for VPM solver. module.
+Aircraft geometry primitives for the VLM: WingSegment, Wing, and Aircraft
+containers that generate lattice panels.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

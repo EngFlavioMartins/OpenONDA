@@ -1,7 +1,5 @@
 """
-Winckelmans module for VPM solver.
-==================
-Winckelmans module for VPM solver. module.
+Factory for the Winckelmans-Leonard algebraic regularization kernel set.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

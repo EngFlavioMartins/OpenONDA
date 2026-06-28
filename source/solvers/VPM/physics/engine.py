@@ -154,33 +154,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._stretching.save_strength_magnitudes(particles)
 
-    def split_strong_particles(
-        self,
-        particles,
-        growth_threshold: float = 2.0,
-        max_strength_factor: float = 10.0,
-        separation_factor: float = 0.4,
-        split_mode: str = "2-symmetric",
-    ) -> int:
-        """
-        Split particles exceeding strength threshold.
-
-        Delegates to stretching handler.
-
-        Args:
-            particles: Particle system
-            growth_threshold: Per-step growth trigger factor
-            max_strength_factor: Absolute trigger factor
-            separation_factor: Daughter separation fraction
-            split_mode: '2-symmetric' or '3-linear'
-
-        Returns:
-            int: Number of particles split
-        """
-        return self._stretching.split_strong_particles(
-            particles, growth_threshold, max_strength_factor, separation_factor, split_mode
-        )
-
 
 # =============================================================================
 # INTERNAL HANDLER CLASSES (share parent's temp fields and kernels)
@@ -511,19 +484,6 @@ class _StretchingHandler:
         p._resize_temp_fields(N)
         p.compute_strength_magnitudes_kernel(particles.circulation, p.str_mag_before, N)
         ti.sync()
-
-    def split_strong_particles(
-        self,
-        particles,
-        growth_threshold: float = 2.0,
-        max_strength_factor: float = 10.0,
-        separation_factor: float = 0.4,
-        split_mode: str = "2-symmetric",
-    ) -> int:
-        """Split strong particles."""
-        # TODO: Implement splitting
-        # For now, return 0 (no particles split)
-        return 0
 
     # ----- GradU-based stretching (O(N) per sub-step) -----
 

@@ -1,7 +1,6 @@
 """
-Types module for VPM solver.
-==================
-Types module for VPM solver. module.
+Configuration dataclasses for the VPM solver: advection, viscous, stretching,
+turbulence, stabilization, velocity, and the top-level SolverConfig.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -490,9 +489,9 @@ class StretchingConfig:
     """
     Configuration for vortex stretching schemes.
 
-    Uses direct pair-wise computation (O(N²)) for guaranteed circulation conservation,
-    or a local gradU-based approach (O(N)) that reuses the pre-computed velocity
-    gradient tensor.
+    Uses direct pair-wise computation (O(N²)), which conserves total circulation by
+    construction, or a local gradU-based approach (O(N)) that reuses the pre-computed
+    velocity gradient tensor.
 
     Modes:
         - TRANSPOSED: dΓ/dt = (Γ·∇')u - direct O(N²), conserves ΣΓ
@@ -626,7 +625,7 @@ class TurbulenceConfig:
           # Static Smagorinsky LES
           config = SolverConfig(turbulence=TurbulenceConfig.les_smagorinsky(cs=0.17))
 
-          # Inviscid — pure stretching, stabilised with ISR
+          # Inviscid — pure stretching, stabilised with strength relaxation
           config = SolverConfig(
               turbulence=TurbulenceConfig.inviscid(),
               viscous=ViscousConfig.inviscid(),
@@ -764,9 +763,10 @@ class TurbulenceConfig:
         - Running inviscid validation sweeps.
         - Comparing damping/regularisation methods without LES or CS.
 
-        **Note:** Pass ``StabilizationConfig.stretching_rate_limiter()`` to
-        ``SolverConfig.stabilization`` to cap unresolved positive stretching
-        growth without changing the selected stretching scheme.
+        **Note:** Pass ``StabilizationConfig.strength_relaxation()`` to
+        ``SolverConfig.stabilization`` to control unresolved strength build-up
+        (Winckelmans/Pedrizzetti direction projection) without changing the
+        selected stretching scheme.
 
         Returns:
             TurbulenceConfig: INVISCID configuration instance
@@ -868,23 +868,7 @@ class StabilizationConfig:
     remeshing_projection_padding: int = 4
     """Zero-padding cells used by the isolated-domain FFT projection."""
 
-    # ── Stretching-rate limiter ─────────────────────────────────────────────
-    stretching_limiter_enabled: bool = False
-    """Limit only the positive parallel component of the selected stretching rate."""
-
-    stretching_limiter_cfl: float = 0.2
-    """Maximum allowed positive parallel stretching increment s_parallel * dt."""
-
-    stretching_limiter_conserve: bool = True
-    """Restore raw rate-level circulation and linear-impulse rates after limiting."""
-
-    stretching_limiter_constraint: Literal["both", "sum", "linear"] = "both"
-    """Rate invariants restored when limiter conservation is enabled."""
-
-    stretching_limiter_verbose: bool = False
-    """Collect per-step stretching-limiter diagnostics."""
-
-    # ── Strength relaxation ──────────────────────────────────────────────
+    # ── Strength relaxation (Winckelmans/Pedrizzetti direction projection) ──
     relaxation_enabled: bool = False
     """Enable strength-relaxation stabilization of vortex stretching."""
 
@@ -916,17 +900,14 @@ class StabilizationConfig:
     relaxation_verbose: bool = False
     """Collect per-step strength-relaxation diagnostics."""
 
-    relaxation_cfl: float = 0.2
-    """Target effective-strain increment per relaxation sub-step."""
-
-    relaxation_max_substeps: int = 8
-    """Maximum number of relaxation sub-steps per VPM step."""
-
     def __post_init__(self) -> None:
         """Validate direct construction as well as factory-created configs."""
         if self.max_core_radius is not None and self.max_core_radius <= 0:
             raise ValueError("max_core_radius must be positive")
-        if self.remove_particles_by_bounds is not None and len(self.remove_particles_by_bounds) != 6:
+        if (
+            self.remove_particles_by_bounds is not None
+            and len(self.remove_particles_by_bounds) != 6
+        ):
             raise ValueError("remove_particles_by_bounds must have 6 elements")
         if self.weak_threshold_percent is not None and not 0 <= self.weak_threshold_percent <= 100:
             raise ValueError("weak_threshold_percent must be between 0 and 100")
@@ -944,12 +925,6 @@ class StabilizationConfig:
             raise ValueError("remeshing_radius must be positive")
         if self.remeshing_projection_padding < 0:
             raise ValueError("remeshing_projection_padding must be non-negative")
-        if self.stretching_limiter_cfl <= 0:
-            raise ValueError("stretching_limiter_cfl must be positive")
-        if self.stretching_limiter_constraint not in ("both", "sum", "linear"):
-            raise ValueError(
-                "stretching_limiter_constraint must be 'both', 'sum', or 'linear'"
-            )
         if self.relaxation_mode not in ("blend", "pedrizzetti"):
             raise ValueError("relaxation_mode must be 'blend' or 'pedrizzetti'")
         if self.relaxation_gate not in ("strain", "constant"):
@@ -964,10 +939,6 @@ class StabilizationConfig:
             raise ValueError("relaxation_rate must be non-negative")
         if self.relaxation_seff_min < 0:
             raise ValueError("relaxation_seff_min must be non-negative")
-        if self.relaxation_cfl <= 0:
-            raise ValueError("relaxation_cfl must be positive")
-        if self.relaxation_max_substeps < 1:
-            raise ValueError("relaxation_max_substeps must be at least 1")
 
     # ── Factory methods ───────────────────────────────────────────────────────
     @staticmethod
@@ -1043,8 +1014,6 @@ class StabilizationConfig:
         rate: float = 1.0,
         seff_min: float = 1e-4,
         verbose: bool = False,
-        cfl: float = 0.2,
-        max_substeps: int = 8,
     ) -> "StabilizationConfig":
         """Enable strength relaxation with its complete set of controls."""
         return StabilizationConfig(
@@ -1058,25 +1027,6 @@ class StabilizationConfig:
             relaxation_rate=rate,
             relaxation_seff_min=seff_min,
             relaxation_verbose=verbose,
-            relaxation_cfl=cfl,
-            relaxation_max_substeps=max_substeps,
-        )
-
-    @staticmethod
-    def stretching_rate_limiter(
-        *,
-        cfl: float = 0.2,
-        conserve: bool = True,
-        constraint: Literal["both", "sum", "linear"] = "both",
-        verbose: bool = False,
-    ) -> "StabilizationConfig":
-        """Enable scheme-preserving positive-parallel stretching-rate limiting."""
-        return StabilizationConfig(
-            stretching_limiter_enabled=True,
-            stretching_limiter_cfl=cfl,
-            stretching_limiter_conserve=conserve,
-            stretching_limiter_constraint=constraint,
-            stretching_limiter_verbose=verbose,
         )
 
 
@@ -1181,27 +1131,6 @@ class SolverConfig:
 
     time_step: int = 0
     """Initial time step number"""
-
-    physics_substeps: int = 1
-    """Minimum number of complete VPM physics microsteps per output step.
-
-    Unlike ISR substeps, a physics microstep advances positions, recomputes
-    velocity gradients and LES state, then advances stretching and diffusion.
-    The default of one preserves the legacy update path exactly.
-    """
-
-    deformation_cfl: float | None = None
-    """Optional adaptive deformation limit ``max(||S||_F) * dt_sub``.
-
-    When set, the solver increases ``physics_substeps`` so the limit is met.
-    This controls the complete VPM update rather than repeatedly integrating a
-    frozen velocity-gradient tensor.
-    """
-
-    max_physics_substeps: int = 64
-    """Safety ceiling for complete physics microsteps. Exceeding it aborts the
-    step instead of silently violating ``deformation_cfl``.
-    """
 
     # ===== PHYSICS CONFIGURATION =====
     advection: AdvectionConfig | None = None
@@ -1375,12 +1304,6 @@ class SolverConfig:
         # Time step validation
         if self.time_step_size <= 0:
             raise ValueError("time_step_size must be positive")
-        if self.physics_substeps < 1:
-            raise ValueError("physics_substeps must be at least 1")
-        if self.deformation_cfl is not None and self.deformation_cfl <= 0.0:
-            raise ValueError("deformation_cfl must be positive when provided")
-        if self.max_physics_substeps < self.physics_substeps:
-            raise ValueError("max_physics_substeps must be >= physics_substeps")
 
         # Frequency validation
         if self.logging_frequency < 0:
@@ -1430,9 +1353,6 @@ class SolverConfig:
             "time_step_size": self.time_step_size,
             "flow_time": self.flow_time,
             "time_step": self.time_step,
-            "physics_substeps": self.physics_substeps,
-            "deformation_cfl": self.deformation_cfl,
-            "max_physics_substeps": self.max_physics_substeps,
             "advection": _as_dict(self.advection) if self.advection else None,
             "stretching": _as_dict(self.stretching) if self.stretching else None,
             "viscous": _as_dict(self.viscous) if self.viscous else None,

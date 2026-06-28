@@ -1,7 +1,5 @@
 """
-Initialization module for coupling.
-==================
-Initialization module for coupling. module.
+VLM coupling subpackage: the VPM coupler, kinematics drivers, and wake shedding.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

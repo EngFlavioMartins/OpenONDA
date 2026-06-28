@@ -1,7 +1,6 @@
 """
-Mesh module for VPM solver.
-==================
-Mesh module for VPM solver. module.
+VLM mesh generation: builds panel lattices from wing geometry and computes panel
+corners, topology, and bilinear coefficients.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

@@ -111,39 +111,62 @@ def read_flow_time(csv_path: Path) -> float | None:
     return None
 
 
-def infer_run_nu(
-    solution_dir: Path,
-    gamma: float,
-    fallback_nu: float,
-    rc0: float,
-) -> float:
-    """Infer the run viscosity from the sampled single-vortex profile data.
+def read_run_viscosity(solution_dir: Path) -> float | None:
+    """Read the TRUE run viscosity ν directly from the solver backups.
 
-    This keeps the plot scripts consistent with whatever data is already in
-    ``solution/``, even if it was generated before the current defaults changed.
+    Every VPM backup stores the per-particle molecular viscosity, so the ν the
+    simulation actually ran with can be read straight from disk — no inference.
+
+    This is essential for a *verification* benchmark: the analytic reference
+    must use the real ν, independent of what the schemes produced.  The old
+    ``infer_run_nu`` fitted ν to the schemes' own median ω_peak, which silently
+    bent the "Theory" curve down onto the under-diffused schemes (RE_eff≈690
+    instead of 530) and mislabelled the *accurate* scheme (CS) as the outlier.
+    Never derive the reference from the results it is meant to judge.
+
+    Returns the median positive particle viscosity from the first readable
+    backup, or ``None`` if no backup is available.
     """
-    nu_candidates: list[float] = []
-    for scheme in ("cs", "dvh", "gbd", "rwm"):
-        samples_dir = solution_dir / f"vortex_{scheme}" / "samples"
-        csv_files = sorted(samples_dir.glob(f"vortex_{scheme}_x_*.csv"))
-        if not csv_files:
+    import h5py
+
+    for h5 in sorted(solution_dir.glob("*/vpm_*.h5")):
+        try:
+            with h5py.File(h5, "r") as f:
+                if "particles" not in f or "viscosity" not in f["particles"]:
+                    continue
+                n = int(f["solver"].attrs.get("number_of_particles", 0))
+                v = f["particles"]["viscosity"][:n] if n else f["particles"]["viscosity"][:]
+        except (OSError, KeyError):
             continue
-        flow_time = read_flow_time(csv_files[-1])
-        if flow_time is None or flow_time <= 0.0:
+        v = np.asarray(v, dtype=np.float64)
+        v = v[v > 0.0]
+        if v.size:
+            return float(np.median(v))
+    return None
+
+
+def read_column_half_length(solution_dir: Path, prefix: str = "vortex") -> float | None:
+    """Read the vortex-column half-span (max |z|) from a backup.
+
+    The finite straight column spans z ∈ [-Lh, Lh]; the centre-plane velocity is
+    weaker than the infinite 2D vortex by Lh/√(Lh²+r²).  Reading Lh from the data
+    keeps the analytic reference correct for ANY --length, instead of hard-coding
+    the column span (which silently breaks the theory curve when --length changes).
+    """
+    import h5py
+
+    for h5 in sorted(solution_dir.glob(f"{prefix}_*/vpm_*.h5")):
+        try:
+            with h5py.File(h5, "r") as f:
+                n = int(f["solver"].attrs.get("number_of_particles", 0))
+                if n == 0:
+                    continue
+                z = f["particles"]["position"][:n, 2]
+        except (OSError, KeyError):
             continue
-        df = pd.read_csv(csv_files[-1], comment="#")
-        if df.empty or "omega_z" not in df.columns:
-            continue
-        omega_peak = float(df["omega_z"].max())
-        if omega_peak <= 0.0:
-            continue
-        rc_sq = gamma / (np.pi * omega_peak)
-        nu = (rc_sq - rc0**2) / (4.0 * flow_time)
-        if nu > 0.0:
-            nu_candidates.append(nu)
-    if not nu_candidates:
-        return fallback_nu
-    return float(np.median(nu_candidates))
+        if z.size:
+            return float(np.abs(z).max())
+    return None
 
 
 def resolve_runtime_physics(
@@ -153,9 +176,17 @@ def resolve_runtime_physics(
     b0: float,
     a0_over_b0: float,
 ) -> dict[str, float]:
-    """Return the physical constants that match the data already on disk."""
+    """Return the physical constants for the analytic reference.
+
+    ``nu`` is the TRUE run viscosity read from the backups
+    (:func:`read_run_viscosity`); if no backup is found it falls back to
+    ``fallback_nu`` (= 1/RE from the CLI).  It is *never* inferred from the
+    schemes' own output, so the analytic curve stays an independent reference.
+    """
     rc0 = a0_over_b0 * b0
-    nu = infer_run_nu(solution_dir, gamma, fallback_nu, rc0)
+    nu = read_run_viscosity(solution_dir)
+    if nu is None or nu <= 0.0:
+        nu = fallback_nu
     return {"nu": nu, "t0": rc0**2 / (4.0 * nu), "rc0": rc0}
 
 

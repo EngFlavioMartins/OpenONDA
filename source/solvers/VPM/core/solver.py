@@ -179,10 +179,6 @@ class Solver:
         # exactly one grid-based diffusion + regeneration.  The DVH heat-kernel
         # width is fixed at β·R_d², so each firing advances viscous time by
         # EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
-        # Consistency therefore requires dt = Δt_d with DVH fired once per
-        # step.  A user/coupler dt differing from Δt_d is overridden to Δt_d
-        # (in either direction) so the diffusion operator acts on every step
-        # with the correct increment.
         import math as _math
 
         self._dvh_dt_info: str | None = None
@@ -360,20 +356,13 @@ class Solver:
         # syncs ViscousConfig.regen_radius_ratio with overlap_radius_ratio).
         _visc_cfg = getattr(final_config, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "regen_radius_ratio"):
-            self.physics.regen_radius_ratio = float(
-                getattr(_visc_cfg, "regen_radius_ratio", 2.5)
-            )
+            self.physics.regen_radius_ratio = float(getattr(_visc_cfg, "regen_radius_ratio", 2.5))
         if hasattr(self.physics, "configure_body_mask"):
             try:
                 self.physics.configure_body_mask(getattr(final_config, "body_stl", None))
             except Exception as exc:
                 print(f"(Warning) Failed to configure DVH body mask: {exc}")
         # Pre-allocate grid to VPM domain size for grid-based diffusion schemes
-        # (DVH and GBD).  This eliminates all mid-simulation grid reallocations:
-        # each reallocation abandons the old Taichi fields on the GPU (they
-        # cannot be freed), eventually exhausting the CUDA async memory pool and
-        # causing CUDA_ERROR_ILLEGAL_ADDRESS.  Pre-allocating once at startup
-        # keeps total GPU memory bounded and constant throughout the run.
         vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
         if vpm_bounds is not None and hasattr(self.physics, "configure_max_grid_extent"):
             vc = getattr(final_config, "viscous", None)
@@ -423,22 +412,9 @@ class Solver:
         )
         self._flow_integrals: dict = {}
 
-        # Strength relaxation (formerly ISR — Implicit Strain Relaxation)
+        # Strength relaxation — Winckelmans/Pedrizzetti direction projection.
         self._strength_relaxation = None
-        self._stretching_rate_limiter = None
         stabilization = final_config.stabilization
-        if stabilization.stretching_limiter_enabled:
-            from ..stabilization.stretching_limiter import StretchingRateLimiter
-
-            self._stretching_rate_limiter = StretchingRateLimiter(
-                cfl=stabilization.stretching_limiter_cfl,
-                conserve=stabilization.stretching_limiter_conserve,
-                constraint=stabilization.stretching_limiter_constraint,
-                verbose=stabilization.stretching_limiter_verbose,
-                max_particles=max_p,
-                precision=self.precision,
-            )
-            self.physics.stretching_rate_limiter = self._stretching_rate_limiter
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
@@ -706,40 +682,31 @@ class Solver:
             with self._measure_time(timing, "panel"):
                 self._advance_panel()
 
-        if self._full_state_substepping_enabled():
-            # Complete VPM microsteps: advance positions, refresh ∇u/S at the
-            # new positions, then advance strengths and diffusion.  This avoids
-            # repeatedly integrating strengths against the macro-step's frozen
-            # velocity gradient (the failure mode targeted by this path).
-            with self._measure_time(timing, "physics_microsteps"):
-                self._advance_physics_microsteps(self.time_step_size)
-        else:
-            # Legacy one-pass ordering, retained byte-for-byte by default.
-            # ------------------------------------------------------------------
-            # 1. VELOCITY & GRADIENTS (At t_n)
-            # ------------------------------------------------------------------
-            _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
-            if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
-                with self._measure_time(timing, "velocities"):
-                    self._update_velocities()
+        # ----------------------------------------------------------------------
+        # 1. VELOCITY & GRADIENTS (At t_n)
+        # ----------------------------------------------------------------------
+        _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
+        if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
+            with self._measure_time(timing, "velocities"):
+                self._update_velocities()
 
-            with self._measure_time(timing, "velocity_gradients"):
-                self._update_velocity_gradients()
+        with self._measure_time(timing, "velocity_gradients"):
+            self._update_velocity_gradients()
 
-            with self._measure_time(timing, "les"):
-                self._update_LES_state()
+        with self._measure_time(timing, "les"):
+            self._update_LES_state()
 
-            # ------------------------------------------------------------------
-            # 2. CONVECTION (Advection x_n -> x_n+1)
-            # ------------------------------------------------------------------
-            with self._measure_time(timing, "positions"):
-                self._update_positions()
+        # ----------------------------------------------------------------------
+        # 2. CONVECTION (Advection x_n -> x_n+1)
+        # ----------------------------------------------------------------------
+        with self._measure_time(timing, "positions"):
+            self._update_positions()
 
-            # ------------------------------------------------------------------
-            # 3. STRENGTH & DIFFUSION (Update alpha)
-            # ------------------------------------------------------------------
-            with self._measure_time(timing, "strengths"):
-                self._update_strength()
+        # ----------------------------------------------------------------------
+        # 3. STRENGTH & DIFFUSION (Update alpha)
+        # ----------------------------------------------------------------------
+        with self._measure_time(timing, "strengths"):
+            self._update_strength()
 
         # ----------------------------------------------------------------------
         # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
@@ -2225,82 +2192,6 @@ class Solver:
                 self.num_sources,
             )
 
-    def _full_state_substepping_enabled(self) -> bool:
-        """Whether the opt-in complete-physics microstep path is active."""
-        return bool(
-            getattr(self.config, "physics_substeps", 1) > 1
-            or getattr(self.config, "deformation_cfl", None) is not None
-        )
-
-    def _max_deformation_rate(self) -> float:
-        """Maximum Frobenius norm of the current strain tensor [1/s]."""
-        n = self.particles.number_of_particles
-        if n == 0:
-            return 0.0
-        strain = self.particles.strain_rate_cpu()[:n]
-        if strain.size == 0:
-            return 0.0
-        norms = np.linalg.norm(strain.reshape(n, 9), axis=1)
-        finite = norms[np.isfinite(norms)]
-        return float(finite.max()) if finite.size else float("inf")
-
-    def _select_physics_substeps(self, macro_dt: float) -> tuple[int, float]:
-        """Choose complete VPM microsteps from fixed and deformation limits."""
-        requested = max(1, int(getattr(self.config, "physics_substeps", 1)))
-        deformation_rate = 0.0
-        cfl = getattr(self.config, "deformation_cfl", None)
-        if cfl is not None and self.particles.number_of_particles > 0:
-            # This sizing gradient is deliberately fresh. The first microstep
-            # advects before refreshing it again at the new positions.
-            self._update_velocity_gradients()
-            ti.sync()
-            deformation_rate = self._max_deformation_rate()
-            if not np.isfinite(deformation_rate):
-                raise FloatingPointError("Non-finite strain encountered while sizing VPM microsteps")
-            requested = max(requested, int(math.ceil(deformation_rate * macro_dt / cfl)))
-
-        limit = int(getattr(self.config, "max_physics_substeps", 64))
-        if requested > limit:
-            raise RuntimeError(
-                "Complete VPM substepping requires "
-                f"{requested} microsteps (max ||S||_F={deformation_rate:.3e} 1/s, "
-                f"dt={macro_dt:.3e} s), exceeding max_physics_substeps={limit}. "
-                "Reduce the macro timestep or raise the explicit safety ceiling."
-            )
-        if requested > 1 and self.viscous_scheme == "DVH":
-            raise RuntimeError(
-                "Complete physics substepping is incompatible with DVH: each DVH firing "
-                "advances its fixed diffusion time regardless of dt_sub. Use CS/GBD/RWM, "
-                "or keep physics_substeps=1 and deformation_cfl=None."
-            )
-        return requested, deformation_rate
-
-    def _advance_physics_microsteps(self, macro_dt: float) -> None:
-        """Advance advection, fresh-gradient stretching and diffusion in microsteps."""
-        count, deformation_rate = self._select_physics_substeps(macro_dt)
-        dt_sub = macro_dt / count
-        self.last_physics_substeps = {
-            "count": count,
-            "dt_sub": dt_sub,
-            "max_deformation_rate": deformation_rate,
-        }
-        print(
-            f"Complete VPM substepping: k={count}, dt_sub={dt_sub:.4e} s"
-            + (
-                f", max ||S||_F={deformation_rate:.3e} s⁻¹"
-                if getattr(self.config, "deformation_cfl", None) is not None
-                else ""
-            )
-        )
-
-        for substep in range(count):
-            # Lie-split at the microstep scale. Crucially, stretching uses the
-            # strain at the advected positions, not the macro-step's stale S.
-            self._update_positions(dt=dt_sub)
-            self._update_velocity_gradients(announce=substep == 0)
-            self._update_LES_state(dt=dt_sub)
-            self._update_strength(dt=dt_sub, announce=substep == 0)
-
     def _update_velocity_gradients(self, announce: bool = True) -> None:
         """
         Update velocity gradient tensors for all particles.
@@ -2348,7 +2239,7 @@ class Solver:
         Update particle vortex strengths via stretching and diffusion.
 
         Order of operations:
-          1. Vortex stretching + optional strength-relaxation sub-stepping
+          1. Vortex stretching + strength-relaxation projection
           2. Viscous diffusion
         """
         if self.flow_model == "POTENTIAL":
@@ -2385,69 +2276,32 @@ class Solver:
         }
 
     def _apply_stretching_with_relaxation(self, dt: float) -> None:
-        """Vortex stretching with optional strength-relaxation sub-stepping (frozen ∇u, O(N) per sub-step)."""
-        if self._strength_relaxation is not None and self.stretching_enabled:
-            import math
+        """Vortex stretching followed by the strength-relaxation projection, once per dt."""
+        if self.stretching_enabled:
+            # Advisory only: warn once if dt exceeds the strain-set stability limit
+            # dt_rec = C/σ_max (C = 0.2 stretching-CFL target), the usual source of an
+            # explicit-stretching blow-up.  An explicit solver integrates exactly the
+            # adopted dt — this never sub-divides or overrides it.
+            if not getattr(self, "_stretch_dt_warned", False):
+                from ..stabilization.strength_relaxation import max_seff_from_particles
 
-            stabilization = self.stabilization_config
-            relaxation_cfl = stabilization.relaxation_cfl
-            max_substeps = stabilization.relaxation_max_substeps
-            max_seff = self._strength_relaxation.compute_max_seff(self.particles)
-            k = max(1, math.ceil(max_seff * dt / relaxation_cfl))
-            if k > max_substeps:
-                print(
-                    f"  WARNING: strength-relaxation needs k={k} sub-steps to keep "
-                    f"σ_eff·dt_sub ≤ {relaxation_cfl} but "
-                    f"relaxation_max_substeps={max_substeps} caps it — "
-                    f"σ_eff·dt_sub={max_seff * dt / max_substeps:.2f} exceeds the target; "
-                    f"reduce dt or raise the cap."
-                )
-                k = max_substeps
-            dt_sub = dt / k
-            if k > 1:
-                print(
-                    f"  strength-relaxation sub-stepping: k={k}, dt_sub={dt_sub:.4f} s "
-                    f"(max σ_eff={max_seff:.2f} s⁻¹, σdt={max_seff * dt:.2f})"
-                )
-            sub_mode = self._effective_stretching_mode()
-            for _sub in range(k):
-                self.physics.vortex_stretching(
-                    self.particles,
-                    dt=dt_sub,
-                    scheme=self.stretching_scheme,
-                    mode=sub_mode,
-                    **self._rvpm_params(),
-                )
-                ti.sync()
-                self._strength_relaxation.apply(self.particles, dt_sub)
-                ti.sync()
-        else:
-            if self.stretching_enabled:
-                # Stretching is integrated in a single full-dt step here (no
-                # strength-relaxation sub-stepping). Warn once if dt exceeds the
-                # strain-set stability limit dt_rec = C/σ_max — the usual source
-                # of a stretching blow-up.
-                if not getattr(self, "_stretch_dt_warned", False):
-                    from ..stabilization.strength_relaxation import max_seff_from_particles
-
-                    sigma_max = max_seff_from_particles(self.particles)
-                    c_stab = self.stabilization_config.relaxation_cfl
-                    if sigma_max > 0.0:
-                        dt_rec = c_stab / sigma_max
-                        if dt > dt_rec:
-                            Logging.stretching_dt_warning(dt, dt_rec, sigma_max)
-                            self._stretch_dt_warned = True
-                self.physics.vortex_stretching(
-                    self.particles,
-                    dt=dt,
-                    scheme=self.stretching_scheme,
-                    mode=self.stretching_mode,
-                    **self._rvpm_params(),
-                )
-                ti.sync()
-            if self._strength_relaxation is not None:
-                self._strength_relaxation.apply(self.particles, dt)
-                ti.sync()
+                sigma_max = max_seff_from_particles(self.particles)
+                if sigma_max > 0.0:
+                    dt_rec = 0.2 / sigma_max
+                    if dt > dt_rec:
+                        Logging.stretching_dt_warning(dt, dt_rec, sigma_max)
+                        self._stretch_dt_warned = True
+            self.physics.vortex_stretching(
+                self.particles,
+                dt=dt,
+                scheme=self.stretching_scheme,
+                mode=self.stretching_mode,
+                **self._rvpm_params(),
+            )
+            ti.sync()
+        if self._strength_relaxation is not None:
+            self._strength_relaxation.apply(self.particles, dt)
+            ti.sync()
 
     def _apply_viscous_diffusion(self, dt: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
@@ -2464,7 +2318,7 @@ class Solver:
             # Both schemes fire exactly once per step: DVH applies the fixed
             # Δt_d heat-kernel increment (dt is pinned to Δt_d), GBD scales
             # with dt directly (α = nu·dt/h²).
-            new_p = self._apply_grid_diffusion_regen(self._viscous_config, dt)
+            new_p = self._apply_grid_diffusion(self._viscous_config, dt)
             if new_p is not None:
                 M = len(new_p["position"])
                 self.remove_particles(remove_all=True)
@@ -2482,8 +2336,8 @@ class Solver:
                 self._update_velocities()
         ti.sync()
 
-    def _apply_grid_diffusion_regen(self, vc, dt: float):
-        """Run DVH or GBD grid-based diffusion + particle regeneration; return new particle dict."""
+    def _apply_grid_diffusion(self, vc, dt: float):
+        """Run DVH or GBD grid-based diffusion; return new particle dict."""
         if self.viscous_scheme == "DVH":
             # In LES mode the per-particle effective viscosity (nu + nu_t) sets
             # each particle's heat-kernel width — otherwise the SGS model would
@@ -2497,10 +2351,14 @@ class Solver:
                 f"\tPerforming DVH particle regeneration "
                 f"(h={vc.dvh_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
                 f"threshold={vc.dvh_threshold:.2e}"
-                + (f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}" if nu_eff is not None else "")
+                + (
+                    f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}"
+                    if nu_eff is not None
+                    else ""
+                )
                 + ")."
             )
-            return self.physics.grid_based_diffusion_regen(
+            return self.physics.grid_based_diffusion(
                 self.particles,
                 dt=dt,
                 h=vc.dvh_grid_spacing,
@@ -2523,13 +2381,17 @@ class Solver:
                 if N > 0:
                     nu_eff = self.particles.viscosity_effective.to_numpy()[:N]
             print(
-                f"\tPerforming GBD diffusion + regen "
+                f"\tPerforming GBD diffusion"
                 f"(h={vc.gbd_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
                 f"threshold={vc.gbd_threshold:.2e}"
-                + (f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}" if nu_eff is not None else "")
+                + (
+                    f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}"
+                    if nu_eff is not None
+                    else ""
+                )
                 + ")."
             )
-            return self.physics.gbd_diffusion_regen(
+            return self.physics.gbd_diffusion(
                 self.particles,
                 dt=dt,
                 h=vc.gbd_grid_spacing,

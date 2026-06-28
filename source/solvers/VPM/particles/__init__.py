@@ -1,7 +1,5 @@
 """
-Initialization module for particles.
-==================
-Initialization module for particles. module.
+Particle subpackage: the Particles container and ParticleDistributor seeding.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

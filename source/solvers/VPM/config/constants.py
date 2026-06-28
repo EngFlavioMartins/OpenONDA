@@ -1,7 +1,6 @@
 """
-Constants module for VPM solver.
-==================
-Constants module for VPM solver. module.
+Physical and numerical constants for the VPM solver (e.g. MAX_PARTICLES,
+MAX_SOURCES), with helpers to list and print them.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

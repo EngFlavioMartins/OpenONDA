@@ -1,7 +1,5 @@
 """
-Gaussian module for VPM solver.
-==================
-Gaussian module for VPM solver. module.
+Factory for the Gaussian vortex-blob regularization kernel set.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -58,9 +56,8 @@ def create_gaussian_kernels(dtype=ti.f32):
         # Multiplied by 1/4pi for Biot-Savart normalization
         res = 0.0
         if density < 1e-4:
-            # Taylor expansion for small density to avoid 0/0 precision loss
-            # q(density)/density^3 approx (1/4pi) * (4/(3*sqrt(pi)))
-            # actually we compute q(density) directly
+            # Taylor expansion for small density to avoid 0/0 precision loss:
+            # q(density) → (1/4pi) * (4/(3*sqrt(pi))) * density^3
             res = (4.0 / (3.0 * ti.sqrt(ti.acos(-1.0) ** 3))) * (density**3) * ONE_OVER_FOUR_PI
         else:
             erf_term = err_func(density)
@@ -70,10 +67,7 @@ def create_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
-        # Energy kernel (integral of self-energy)
-        # For exp(-density^2), it involves erf(density*sqrt(2)/2)? No, let's keep it simple.
-        # Actually g is integral of q(r)/r^2.
-        # Approximation: erf(density) / density * (1/4pi)
+        # Energy kernel g = ∫ q(r)/r² dr, approximated by erf(density)/density · (1/4pi).
         erf_term = err_func(density) / (density + 1e-12)
         return ti.cast(erf_term * ONE_OVER_FOUR_PI, dtype)
 

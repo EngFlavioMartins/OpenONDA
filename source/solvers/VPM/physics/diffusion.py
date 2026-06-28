@@ -623,10 +623,8 @@ class _GridDiffusionMixin:
         M = np.einsum("i,jk->jk", w * r2, np.eye(3)) - np.einsum("i,ij,ik->jk", w, r, r)
         rhs = dL - np.cross(xbar, a)
         try:
-            if np.linalg.cond(M) < 1e12:
-                b = np.linalg.solve(M, rhs)
-            else:
-                b = np.zeros(3)  # degenerate survivor geometry → 0th-moment only
+            # zeros for degenerate survivor geometry → 0th-moment correction only
+            b = np.linalg.solve(M, rhs) if np.linalg.cond(M) < 1e12 else np.zeros(3)
         except np.linalg.LinAlgError:
             b = np.zeros(3)
         dGamma = w[:, None] * (a[None, :] + np.cross(np.broadcast_to(b, r.shape), r))
@@ -785,6 +783,13 @@ class _GridDiffusionMixin:
                     float(nu_eff_grid_np.max()) / nu if nu > 0 else 0.0,
                     dt / (h * h),
                 )
+            # The field is allocated with headroom (_grid_shape ≥ (nx,ny,nz)); pad
+            # the scattered array to the full shape before upload, exactly as the
+            # regen scatter does (the Laplacian kernel only reads [:nx,:ny,:nz]).
+            if nu_eff_grid_np.shape != self._grid_shape:
+                _full = np.zeros(self._grid_shape, dtype=nu_eff_grid_np.dtype)
+                _full[:nx, :ny, :nz] = nu_eff_grid_np
+                nu_eff_grid_np = _full
             self._nu_eff_grid.from_numpy(nu_eff_grid_np)
             self._laplacian_step_variable_gpu_kernel(
                 self._current_grid,

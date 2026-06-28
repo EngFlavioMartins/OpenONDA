@@ -1,7 +1,5 @@
 """
-Surface Io module for VPM solver.
-==================
-Surface Io module for VPM solver. module.
+Read/write VLM surface geometry to and from disk.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

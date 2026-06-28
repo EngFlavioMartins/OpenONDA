@@ -1,7 +1,6 @@
 """
-Simulation Checks module for VPM solver.
-==================
-Simulation Checks module for VPM solver. module.
+Pre-run sanity checks: particle statistics, per-scheme time-step estimates, and
+time-step validation.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

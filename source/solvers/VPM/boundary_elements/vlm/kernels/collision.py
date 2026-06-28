@@ -1,7 +1,5 @@
 """
-Collision module for VPM solver.
-==================
-Collision module for VPM solver. module.
+Particle-surface collision detection for the VLM (point-in-quad tests).
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

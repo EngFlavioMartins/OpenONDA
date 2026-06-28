@@ -1,7 +1,6 @@
 """
-Initialization module for kernels.
-==================
-Initialization module for kernels. module.
+VLM kernel subpackage: Biot-Savart induced-velocity, collision, and wake-shedding
+kernels.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

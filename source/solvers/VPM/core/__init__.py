@@ -1,7 +1,5 @@
 """
-Initialization module for core.
-==================
-Initialization module for core. module.
+Core subpackage: the top-level VPM Solver and its time-integration loop.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

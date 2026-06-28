@@ -106,6 +106,8 @@ def compute_source_potential(
     edge_contrib2 = m2 * ln_term2
 
     # Total potential
-    phi = -(1.0 / (4.0 * 3.141592653589793)) * (h * omega + edge_contrib0 + edge_contrib1 + edge_contrib2)
+    phi = -(1.0 / (4.0 * 3.141592653589793)) * (
+        h * omega + edge_contrib0 + edge_contrib1 + edge_contrib2
+    )
 
     return phi

@@ -1,7 +1,5 @@
 """
-Super Gaussian module for VPM solver.
-==================
-Super Gaussian module for VPM solver. module.
+Factory for the super-Gaussian (high-order) regularization kernel set.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

@@ -1,7 +1,5 @@
 """
-Distribution module for VPM solver.
-==================
-Distribution module for VPM solver. module.
+Seeds vortex particles over flow fields and regions (ParticleDistributor).
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

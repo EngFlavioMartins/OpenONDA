@@ -1,7 +1,5 @@
 """
-Vtk Export module for VPM solver.
-==================
-Vtk Export module for VPM solver. module.
+Export panel geometry and fields to VTK PolyData files.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

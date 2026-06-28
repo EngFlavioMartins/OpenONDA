@@ -1,7 +1,6 @@
 """
-Influence module for VPM solver.
-==================
-Influence module for VPM solver. module.
+VLM influence kernels: AIC assembly, RHS construction, and induced-velocity and
+pressure-coefficient evaluation.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -293,7 +292,7 @@ def compute_induced_velocities_at_bound(
 
     This is used for Kutta-Joukowski force calculation: F = density * Gamma * (V x l)
 
-    CRITICAL PHYSICS:
+    Physics notes:
     - Excludes self-induced velocity from the bound leg itself (singular).
     - In standalone mode: includes induction from others + local horseshoe side-legs.
     - In coupled_mode: includes induction from others (bound-only) + VPM wake.

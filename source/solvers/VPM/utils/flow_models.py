@@ -1,7 +1,6 @@
 """
-Flow Models module for VPM solver.
-==================
-Flow Models module for VPM solver. module.
+Analytic flow-field generators for VPM initialization and validation: Lamb-Oseen,
+vortex ring, doublet, Taylor-Green, and isotropic turbulence.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

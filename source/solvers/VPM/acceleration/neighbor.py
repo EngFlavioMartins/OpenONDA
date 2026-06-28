@@ -1,7 +1,6 @@
 """
-Neighbor module for VPM solver.
-==================
-Neighbor module for VPM solver. module.
+GPU spatial hash-grid neighbour search (TaichiNeighborSearch): bins particles
+into cells and builds fixed-count neighbour lists for short-range interactions.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -219,8 +218,6 @@ class TaichiNeighborSearch:
                 raise RuntimeError(
                     f"Cannot resize neighbor storage from {self.neighbors.shape[0]} to {target_size} particles: {e}"
                 ) from e
-
-    # Remove the copy method since we're not using it anymore
 
     # ===================== + ===================== #
 

@@ -422,8 +422,17 @@ def initialize_taichi_backend(
     chain = _build_backend_chain(preferred_backend)
 
     # Clamp to a safe range.  Values above ~0.7 almost always trigger
-    # 'Failed to allocate ext arr buffer' on Vulkan/CUDA.
-    device_memory_fraction = max(0.1, min(device_memory_fraction, 0.7))
+    # 'Failed to allocate ext arr buffer' on Vulkan/CUDA.  This is a hardware
+    # guard, so it warns (rather than silently honouring) when it bites.
+    clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
+    if clamped_fraction != device_memory_fraction:
+        print(
+            f"[OpenONDA] device_memory_fraction={device_memory_fraction:.3g} is outside the "
+            f"safe GPU range [0.1, 0.7]; using {clamped_fraction:.3g} to avoid allocation "
+            f"failures.",
+            file=sys.stderr,
+        )
+    device_memory_fraction = clamped_fraction
 
     default_fp, default_ip = _PRECISION_MAP[precision]
 

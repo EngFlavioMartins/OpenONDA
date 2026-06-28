@@ -92,24 +92,22 @@ def build_arg_parser(description: str):
 _FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 _FAMILY_LABEL = {"leapfrog": "Leapfrogging", "collide": "Merging"}
 _RUNG_COLOR = {
-    "dns": "#2E3D46",       # DarkText  — neutral baseline
-    "les": "#0E8A85",       # TUDcyan
-    "les_limiter": "#5C3D9B",  # VPMpurple
-    "les_pedr": "#772953",  # FVMorange
-    "fine": "#2B7A4E",      # AccentGreen
+    "dns": "#2E3D46",      # DarkText  — neutral baseline
+    "les": "#0E8A85",      # TUDcyan       — bare LES (reference)
+    "relax": "#C8102E",    # TUDred        — Winckelmans/Pedrizzetti relaxation
+    "fine": "#2B7A4E",     # AccentGreen
 }
 _RUNG_MARKER = {
     "dns": "o",
     "les": "s",
-    "les_limiter": "^",
-    "les_pedr": "D",
+    "relax": "o",
     "fine": "v",
 }
 _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
 _INTENDED_CASE_ORDER = {
-    "leapfrog_les_limiter": 0,
+    "leapfrog_relax": 0,
     "leapfrog_les": 1,
-    "collide_les_limiter": 2,
+    "collide_relax": 2,
     "collide_les": 3,
 }
 

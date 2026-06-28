@@ -1,7 +1,5 @@
 """
-Initialization module for turbulence.
-==================
-Initialization module for turbulence. module.
+Turbulence subpackage: the ParticlesLES large-eddy closure.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026

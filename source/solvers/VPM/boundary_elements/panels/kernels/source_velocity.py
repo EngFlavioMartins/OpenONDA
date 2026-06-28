@@ -54,10 +54,10 @@ def compute_source_velocity(
     # Check if point is on the panel plane
     r_p0 = p - v0
     h = r_p0.dot(normal)
-    
+
     # Initialize velocity
     vel = ti.Vector([0.0, 0.0, 0.0])
-    
+
     # For a point on the panel, return self-induced velocity
     # Use a more relaxed tolerance (1e-6) to handle floating-point precision issues
     if ti.abs(h) < 1e-6:
