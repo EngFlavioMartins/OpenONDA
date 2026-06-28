@@ -8,6 +8,8 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
+#TODO: Move all printing scripts to logging.py -- always degelate the printing to it.
+#TODO: de default precision in this entire solver (VPM/) should be f32. In the source/coupler/, if needed, the vpm solver class can be passed an argument to change from f32 to f64 if necessary.
 # =====================================================================================
 # IMPORTS AND DEPENDENCIES
 # =====================================================================================
@@ -175,10 +177,8 @@ class Solver:
         self.flow_time = final_config.flow_time
         self.time_step = final_config.time_step
 
-        # DVH: pin dt = Δt_d (the DVH-required time-step) so that every step is
-        # exactly one grid-based diffusion + regeneration.  The DVH heat-kernel
-        # width is fixed at β·R_d², so each firing advances viscous time by
-        # EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
+        # The DVH heat-kernel width is fixed at β·R_d², so each firing advances 
+        # viscous time by EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
         import math as _math
 
         self._dvh_dt_info: str | None = None
@@ -209,9 +209,7 @@ class Solver:
                 f"nu = {vc.viscosity:.3e} m²/s)."
             )
 
-        # RWM: warn if dt exceeds the accuracy bound h²/(4nu).
-        # The RWM is always stable, but random displacements grow as √(2nuΔt);
-        # once √(2nuΔt) > h the diffused vorticity exceeds the particle spacing.
+        # RWM: warn if dt exceeds the accuracy bound h²/(4nu)
         if (
             vc.scheme == "RWM"
             and vc.characteristic_distance is not None
@@ -233,8 +231,7 @@ class Solver:
                 f"nu = {vc.viscosity:.3e} m²/s)."
             )
 
-        # GBD: warn if dt exceeds CFL upper bound h²/(6nu).  GBD scales with
-        # dt directly (α = nu·dt/h²) and fires once per step.
+        # GBD: warn if dt exceeds CFL upper bound h²/(6nu)
         if vc.scheme == "GBD" and vc.viscosity is not None and vc.viscosity > 0:
             dt_max = vc.gbd_max_dt()
             if self.time_step_size > dt_max * (1.0 + 1e-6):
@@ -260,10 +257,6 @@ class Solver:
             dt_d = round(dt_d_raw, -magnitude + 2)
             # Each DVH application advances viscous time by EXACTLY Δt_d
             # (the heat-kernel width is fixed at β·R_d², independent of dt).
-            # Consistency therefore requires dt = Δt_d, with DVH fired once
-            # per step.  A user/coupler dt differing from Δt_d is overridden
-            # to Δt_d so the diffusion operator acts on every step with the
-            # correct increment.
             if abs(self.time_step_size - dt_d) > 1e-6 * max(self.time_step_size, dt_d):
                 print(
                     f"[DVH] INFO: time step overridden — "
@@ -330,10 +323,6 @@ class Solver:
         SetFlowModel(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
-        # NumPy dtype matching the configured Taichi float precision, so any
-        # numpy→field transfer (from_numpy / ndarray kernels) is exact and
-        # warning-free.  Used by the coupler hand-off and the source-field
-        # uploads below; mirrors particles._np_float_dtype.
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
     def _init_particles_and_physics(self, final_config: SolverConfig) -> None:
@@ -344,16 +333,12 @@ class Solver:
             particles_kernel=self.particles_kernel,
             accumulator_dtype=self.accumulator_dtype,
         )
-        # Single source of truth for how self-induced velocity is evaluated
-        # (direct O(N²) vs treecode O(N log N)).  Used by _update_velocities and
-        # by every advection integrator stage.
+
         _vel_cfg = getattr(final_config, "velocity", None)
         _vel_method = "TREECODE" if (_vel_cfg and _vel_cfg.method == "TREECODE") else "DIRECT"
         _vel_theta = _vel_cfg.theta if _vel_cfg else 0.5
         self.physics.configure_velocity(_vel_method, _vel_theta)
-        # Regenerated-particle core radius (DVH/GBD): σ = ratio·h_grid.  Must
-        # match the strength-assignment assumption in coupled runs (the coupler
-        # syncs ViscousConfig.regen_radius_ratio with overlap_radius_ratio).
+
         _visc_cfg = getattr(final_config, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "regen_radius_ratio"):
             self.physics.regen_radius_ratio = float(getattr(_visc_cfg, "regen_radius_ratio", 2.5))
@@ -362,6 +347,7 @@ class Solver:
                 self.physics.configure_body_mask(getattr(final_config, "body_stl", None))
             except Exception as exc:
                 print(f"(Warning) Failed to configure DVH body mask: {exc}")
+
         # Pre-allocate grid to VPM domain size for grid-based diffusion schemes
         vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
         if vpm_bounds is not None and hasattr(self.physics, "configure_max_grid_extent"):
@@ -711,12 +697,6 @@ class Solver:
         # ----------------------------------------------------------------------
         # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
         # ----------------------------------------------------------------------
-        # The regularised energy/enstrophy kernel is O(N^2).  Computing it on
-        # every step made ``logging_frequency`` cosmetic and dominated large
-        # tutorial runs.  Sample it at the requested diagnostic cadence; its
-        # finite-difference dE/dt uses the actual flow timestamps, so skipped
-        # intermediate steps do not bias the reported rate.  VLM force
-        # bookkeeping remains per-step (its own exporter applies its cadence).
         _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
         if _diag_due:
             with self._measure_time(timing, "flow_integrals"):
@@ -865,7 +845,6 @@ class Solver:
     # ================================================================================
     # PARTICLE PROPERTY ACCESSORS
     # ================================================================================
-
     def _get_particle_field(self, method_name: str) -> np.ndarray:
         """Generic helper to get particle field data via cpu() methods."""
         return getattr(self.particles, f"{method_name}_cpu")()
@@ -1065,7 +1044,6 @@ class Solver:
     # ================================================================================
     # FLOW INTEGRALS AND DIAGNOSTIC PROPERTIES
     # ================================================================================
-
     def _update_all_flow_integrals(self) -> None:
         """
         Update all flow integral quantities using the field diagnostics module.
@@ -1337,7 +1315,6 @@ class Solver:
     # ================================================================================
     # PARTICLE PHYSICS COMPUTATIONS (PER-PARTICLE ANALYSIS)
     # ================================================================================
-
     def compute_kinetic_energies(self) -> np.ndarray:
         """
         Compute kinetic energy for each particle.
@@ -1384,7 +1361,6 @@ class Solver:
     # ================================================================================
     # FIELD COMPUTATION AT ARBITRARY POINTS
     # ================================================================================
-
     def compute_target_vorticities(self, grid_positions: np.ndarray) -> np.ndarray:
         """
         Compute vorticity field at arbitrary spatial points.
@@ -1461,7 +1437,6 @@ class Solver:
         if self.num_sources > 0:
             n_targets = len(grid_positions)
             # Reuse pre-allocated target fields from physics layer to avoid frequent memory allocations
-            # Resize as needed (handles memory efficiency and caching internally)
             self.physics._resize_target_fields(n_targets)
             target_pos_ti = self.physics.target_positions
             target_vel_ti = self.physics.target_velocities
@@ -1482,11 +1457,7 @@ class Solver:
             # Copy results back to NumPy, respecting the actual number of points
             velocities = self.physics.extract_target_velocities(n_targets)
 
-        # Add boundary-element (panel) body induction: the irrotational blockage
-        # that free vortex particles cannot represent.  Set by the FVM-VPM
-        # coupler (BodyPanelModel).  `include_body=False` bypasses it — used when
-        # evaluating the wake-only velocity that drives the panel solve itself
-        # (otherwise the panel RHS would include its own induced field).
+        # Add boundary-element (panel) body induction
         body_fn = getattr(self, "_body_induced_fn", None)
         if include_body and body_fn is not None:
             velocities = velocities + np.asarray(
@@ -1630,7 +1601,6 @@ class Solver:
     # ================================================================================
     # DIAGNOSTICS AND MONITORING
     # ================================================================================
-
     def info(self):
         """
         Print comprehensive information about the solver and all submodels.
@@ -1679,9 +1649,8 @@ class Solver:
             self._particles_removed_this_step = len(particle_indices)
             self._circulation_removed_this_step = circ_removed
 
+            #TODO: why are we using a python method for this? This is too expensive! Solution/data/computation should stay in the GPU (device) at all times possible, besides for data-backup! Look up any other similar situations where device to host are taking place that could be easily avoided.
             # Store impulse of removed particles for history correction
-            # I_removed = (1/2) * Σ(r_i × Γ_i)  [non-dimensional]
-            # This will be applied with density factor in compute_forces_impulse()
             impulse_removed = 0.5 * np.sum(np.cross(p_pos, p_circ), axis=0)
 
             # Accumulate all removals (in case of multiple remove calls between force evaluations)
