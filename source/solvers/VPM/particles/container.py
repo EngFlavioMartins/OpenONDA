@@ -107,6 +107,12 @@ class Particles:
         # Removal tag field for GPU-based particle filtering (1 = remove, 0 = keep)
         self._removal_tags = ti.field(dtype=ti.i32, shape=self._max_particles)
 
+        # Device-side accumulators for subset moment reductions (e.g. circulation
+        # and linear impulse of removed particles) — kept on device to avoid a
+        # full position/circulation download just to sum a handful of indices.
+        self._subset_circulation = ti.Vector.field(3, dtype=dtype, shape=())
+        self._subset_impulse = ti.Vector.field(3, dtype=dtype, shape=())
+
         # Global background velocity (single 3D vector shared by all particles)
         self.velocity_background = ti.Vector.field(3, dtype=dtype, shape=())
         self.velocity_background[None] = [0.0, 0.0, 0.0]
@@ -297,6 +303,55 @@ class Particles:
         """Copy first n integer entries from Taichi field to NumPy array."""
         for i in range(n):
             dst[i] = src[i]
+
+    @ti.kernel
+    def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):  # type: ignore
+        """Sum circulation ΣΓ and linear impulse 0.5·Σ(r×Γ) over a subset of indices (device-side)."""
+        self._subset_circulation[None] = ti.Vector.zero(self._taichi_dtype, 3)
+        self._subset_impulse[None] = ti.Vector.zero(self._taichi_dtype, 3)
+        for m in range(n_idx):
+            i = indices[m]
+            p = self.position[i]
+            c = self.circulation[i]
+            self._subset_circulation[None] += c
+            self._subset_impulse[None] += 0.5 * p.cross(c)
+
+    def subset_moments(self, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute (ΣΓ, 0.5·Σ r×Γ) over a subset of particles entirely on device.
+
+        Only the index list is uploaded and two 3-vectors are downloaded, avoiding
+        a full download of every particle's position and circulation.
+
+        Args:
+            indices: Particle indices to reduce over [k].
+
+        Returns:
+            (circulation_sum, linear_impulse): two NumPy arrays of shape (3,).
+        """
+        idx = np.ascontiguousarray(indices, dtype=np.int32)
+        if idx.size == 0:
+            zero = np.zeros(3, dtype=self._np_float_dtype)
+            return zero, zero.copy()
+        self._accumulate_subset_moments(idx, idx.size)
+        circ = self._subset_circulation[None].to_numpy()
+        impulse = self._subset_impulse[None].to_numpy()
+        return circ, impulse
+
+    @ti.kernel
+    def _accumulate_prefix_circulation(self, n: ti.i32):  # type: ignore
+        """Sum ΣΓ over the first n live particles (device-side)."""
+        self._subset_circulation[None] = ti.Vector.zero(self._taichi_dtype, 3)
+        for i in range(n):
+            self._subset_circulation[None] += self.circulation[i]
+
+    def total_circulation(self) -> np.ndarray:
+        """Sum ΣΓ over all live particles on device, returning a shape-(3,) array."""
+        n = self.number_of_particles
+        if n == 0:
+            return np.zeros(3, dtype=self._np_float_dtype)
+        self._accumulate_prefix_circulation(n)
+        return self._subset_circulation[None].to_numpy()
 
     @ti.kernel
     def _tag_particles_in_bounds_kernel(

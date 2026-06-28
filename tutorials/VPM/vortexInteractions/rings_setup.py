@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import sys as _sys; _sys.tracebacklimit = 200  # override config/types.py's tracebacklimit=0
+import sys as _sys
+
+_sys.tracebacklimit = 200  # override config/types.py's tracebacklimit=0
 """
 Run LES coaxial vortex-ring interactions: leapfrogging or head-on collision.
 ============================================================================
@@ -64,12 +66,7 @@ def main():
         default="leapfrog_LES",
         help="Output sub-directory / file-name prefix (default: leapfrog_LES)",
     )
-    parser.add_argument(
-        "--dt",
-        type=float,
-        default=1.5e-2,
-        help="Time step size [s]."
-    )
+    parser.add_argument("--dt", type=float, default=1.5e-2, help="Time step size [s].")
     parser.add_argument(
         "--num-steps",
         type=int,
@@ -524,8 +521,7 @@ def main():
                     and (step + 1) % args.energy_audit_frequency == 0
                 ):
                     logging_due = (
-                        args.logging_frequency > 0
-                        and (step + 1) % args.logging_frequency == 0
+                        args.logging_frequency > 0 and (step + 1) % args.logging_frequency == 0
                     )
                     write_energy_audit(
                         step + 1,

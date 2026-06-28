@@ -148,6 +148,31 @@ class Logging:
     """
 
     @staticmethod
+    def message(text: str = "", *, flush: bool = False) -> None:
+        """
+        Emit a raw message to the solver console.
+
+        Single choke-point for all free-form solver output so that the
+        backing sink (stdout today, the stdlib ``logging`` module later)
+        can be swapped in one place.
+
+        Args:
+            text: The message to print.
+            flush: Force a flush of the underlying stream.
+        """
+        print(text, flush=flush)
+
+    @staticmethod
+    def info(text: str, *, flush: bool = False) -> None:
+        """Emit an informational message (prefixed with ``[INFO]``)."""
+        print(f"[INFO] {text}", flush=flush)
+
+    @staticmethod
+    def warning(text: str, *, flush: bool = False) -> None:
+        """Emit a warning message (prefixed with ``(Warning)``)."""
+        print(f"(Warning) {text}", flush=flush)
+
+    @staticmethod
     def flow_diagnostics(system):
         """
         Log flow diagnostics to console.

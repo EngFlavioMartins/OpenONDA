@@ -8,8 +8,6 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
-#TODO: Move all printing scripts to logging.py -- always degelate the printing to it.
-#TODO: de default precision in this entire solver (VPM/) should be f32. In the source/coupler/, if needed, the vpm solver class can be passed an argument to change from f32 to f64 if necessary.
 # =====================================================================================
 # IMPORTS AND DEPENDENCIES
 # =====================================================================================
@@ -17,7 +15,6 @@ License: GPL-3.0-or-later
 # Standard library imports
 from contextlib import contextmanager
 from dataclasses import replace
-import math
 import os
 from pathlib import Path
 import time
@@ -138,7 +135,7 @@ class Solver:
         self._init_particles_and_physics(final_config)
         self._init_turbulence_and_adaptation(final_config)
         self._init_diagnostics_and_solvers(final_config)
-        print(Logging.solver_info(self))
+        Logging.message(Logging.solver_info(self))
 
     @staticmethod
     def reset_gpu() -> None:
@@ -177,7 +174,7 @@ class Solver:
         self.flow_time = final_config.flow_time
         self.time_step = final_config.time_step
 
-        # The DVH heat-kernel width is fixed at β·R_d², so each firing advances 
+        # The DVH heat-kernel width is fixed at β·R_d², so each firing advances
         # viscous time by EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
         import math as _math
 
@@ -198,7 +195,7 @@ class Solver:
         ):
             dt_max_cs = vc.cs_max_dt()
             if self.time_step_size > dt_max_cs * (1.0 + 1e-6):
-                print(
+                Logging.message(
                     f"[CS] WARNING: user dt = {self.time_step_size:.4e} s "
                     f"> stability limit h²/(4nu) = {dt_max_cs:.4e} s — "
                     f"Core Spreading diffusion step may over-diffuse vortex cores."
@@ -219,7 +216,7 @@ class Solver:
         ):
             dt_max_rwm = vc.rwm_accuracy_dt()
             if self.time_step_size > dt_max_rwm * (1.0 + 1e-6):
-                print(
+                Logging.message(
                     f"[RWM] WARNING: user dt = {self.time_step_size:.4e} s "
                     f"> accuracy limit h²/(4nu) = {dt_max_rwm:.4e} s — "
                     f"random displacement √(2nuΔt) exceeds inter-particle spacing h; "
@@ -235,7 +232,7 @@ class Solver:
         if vc.scheme == "GBD" and vc.viscosity is not None and vc.viscosity > 0:
             dt_max = vc.gbd_max_dt()
             if self.time_step_size > dt_max * (1.0 + 1e-6):
-                print(
+                Logging.message(
                     f"[GBD] WARNING: user dt = {self.time_step_size:.4e} s "
                     f"> CFL limit h²/(6nu) = {dt_max:.4e} s — "
                     f"explicit Laplacian may be UNSTABLE."
@@ -258,7 +255,7 @@ class Solver:
             # Each DVH application advances viscous time by EXACTLY Δt_d
             # (the heat-kernel width is fixed at β·R_d², independent of dt).
             if abs(self.time_step_size - dt_d) > 1e-6 * max(self.time_step_size, dt_d):
-                print(
+                Logging.message(
                     f"[DVH] INFO: time step overridden — "
                     f"user dt = {self.time_step_size:.4e} s → Δt_d = {dt_d:.4e} s "
                     f"(β·R_d²/(4nu), β={_DVH_BETA}, "
@@ -346,7 +343,7 @@ class Solver:
             try:
                 self.physics.configure_body_mask(getattr(final_config, "body_stl", None))
             except Exception as exc:
-                print(f"(Warning) Failed to configure DVH body mask: {exc}")
+                Logging.warning(f"Failed to configure DVH body mask: {exc}")
 
         # Pre-allocate grid to VPM domain size for grid-based diffusion schemes
         vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
@@ -367,7 +364,7 @@ class Solver:
                     try:
                         self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
                     except Exception as exc:
-                        print(f"(Warning) Failed to configure grid max extent: {exc}")
+                        Logging.warning(f"Failed to configure grid max extent: {exc}")
         self.particles.register_resize_callback(self.physics._resize_temp_fields)
         self.source_positions = ti.Vector.field(3, dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
@@ -451,7 +448,7 @@ class Solver:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
-            print(f"[INFO] VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
+            Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
             if (
                 self.config.force.method != "KUTTA_JOUKOWSKI"
                 or self.vlm_solver.force.method == "KUTTA_JOUKOWSKI"
@@ -468,7 +465,7 @@ class Solver:
             try:
                 self.panel_solver.initialize(force=True)
             except Exception as e:
-                print(f"(Warning) Failed to initialize panel solver: {e}")
+                Logging.warning(f"Failed to initialize panel solver: {e}")
 
         self.vlm_solver = getattr(final_config, "vlm_solver", None)
         if self.vlm_solver is not None:
@@ -477,7 +474,7 @@ class Solver:
             try:
                 self._setup_vlm_solver()
             except Exception as e:
-                print(f"(Warning) Failed to initialize VLM solver: {e}")
+                Logging.warning(f"Failed to initialize VLM solver: {e}")
 
     def export_diagnostics_csv(self, filename: str) -> None:
         """Export diagnostics history to CSV for offline analysis."""
@@ -570,7 +567,7 @@ class Solver:
                 self.particles_kernel,
             )
 
-        print(f"Configuration updated: {list(kwargs.keys())}")
+        Logging.message(f"Configuration updated: {list(kwargs.keys())}")
 
     # ================================================================================
     # MAGIC METHODS AND BASIC OPERATIONS
@@ -743,7 +740,7 @@ class Solver:
 
         self.flow_time = round(self.time_step * self.time_step_size, 6)
 
-        print(
+        Logging.message(
             f"\nTime-step: {self.time_step:d}   Flow time: {self.flow_time:0.2E} s",
             flush=True,
         )
@@ -1490,7 +1487,7 @@ class Solver:
         """
         self.num_sources = len(positions)
         if self.num_sources > MAX_SOURCES:
-            print(f"(Warning) Clipping {self.num_sources} sources to {MAX_SOURCES}")
+            Logging.warning(f"Clipping {self.num_sources} sources to {MAX_SOURCES}")
             self.num_sources = MAX_SOURCES
 
         n = self.num_sources
@@ -1620,7 +1617,7 @@ class Solver:
               >>> solver.info()  # Print comprehensive solver information
         """
         info_str = Logging.solver_info(self)
-        print(info_str)
+        Logging.message(info_str)
 
     # ================================================================================
     # PARTICLE MANAGEMENT
@@ -1641,25 +1638,20 @@ class Solver:
         """
         # Track circulation before removal (for conservation diagnostics)
         if particle_indices is not None and len(particle_indices) > 0:
-            p_pos = self.particles_positions[particle_indices]
-            p_circ = self.particles_circulation[particle_indices]
-
-            # Circulation removal (vector sum)
-            circ_removed = p_circ.sum(axis=0)
+            # Reduce circulation ΣΓ and impulse 0.5·Σ(r×Γ) of the removed subset
+            # entirely on device — only the index list goes up and two 3-vectors
+            # come back, instead of downloading every particle's position/strength.
+            circ_removed, impulse_removed = self.particles.subset_moments(particle_indices)
             self._particles_removed_this_step = len(particle_indices)
             self._circulation_removed_this_step = circ_removed
-
-            #TODO: why are we using a python method for this? This is too expensive! Solution/data/computation should stay in the GPU (device) at all times possible, besides for data-backup! Look up any other similar situations where device to host are taking place that could be easily avoided.
-            # Store impulse of removed particles for history correction
-            impulse_removed = 0.5 * np.sum(np.cross(p_pos, p_circ), axis=0)
 
             # Accumulate all removals (in case of multiple remove calls between force evaluations)
             self._impulse_state["removed_accumulated"] += impulse_removed
 
         elif remove_all:
-            # Removal calculation for ALL particles
-            p_circ = self.particles_circulation
-            circ_removed = p_circ.sum(axis=0) if len(p_circ) > 0 else np.zeros(3)
+            # Removal calculation for ALL particles — summed on device (ΣΓ) so we
+            # don't download every circulation just to reduce it.
+            circ_removed = self.particles.total_circulation()
 
             self._particles_removed_this_step = len(self.particles)
             self._circulation_removed_this_step = circ_removed
@@ -1936,10 +1928,10 @@ class Solver:
         # Print confirmation
         property_names = list(properties.keys())
         if len(property_names) == 1:
-            print(f"[INFO] Updated particle property: {property_names[0]}")
+            Logging.info(f"Updated particle property: {property_names[0]}")
         else:
-            print(
-                f"[INFO] Updated {len(property_names)} particle properties: {', '.join(property_names)}"
+            Logging.info(
+                f"Updated {len(property_names)} particle properties: {', '.join(property_names)}"
             )
 
     # ================================================================================
@@ -1982,10 +1974,10 @@ class Solver:
         config_file = f"{filename}_config.json"
         BackupSystem._save_configuration(self, config_file)
 
-        print(f"[INFO] Complete state saved to: {filename}")
-        print(f"       - {filename}.h5 (numerical data)")
-        print(f"       - {filename}.xdmf (ParaView visualization)")
-        print(f"       - {config_file} (configuration)")
+        Logging.info(f"Complete state saved to: {filename}")
+        Logging.message(f"       - {filename}.h5 (numerical data)")
+        Logging.message(f"       - {filename}.xdmf (ParaView visualization)")
+        Logging.message(f"       - {config_file} (configuration)")
 
     def backup_solution(self, backup_file_name: str = "backup") -> None:
         """Back up the solver state to a specified file."""
@@ -2040,10 +2032,10 @@ class Solver:
         if not BackupSystem.validate_backup(backup_file_name):
             raise ValueError(f"Backup validation failed for: {backup_file_name}")
 
-        print(f"\n{'-' * 60}")
-        print("[INFO] Resuming simulation from robust backup:")
-        print(f"       Base filename: {backup_file_name}")
-        print(f"{'-' * 60}\n")
+        Logging.message(f"\n{'-' * 60}")
+        Logging.info("Resuming simulation from robust backup:")
+        Logging.message(f"       Base filename: {backup_file_name}")
+        Logging.message(f"{'-' * 60}\n")
 
         # Restore solver with full precision and exact configuration
         restored_solver = BackupSystem.restore_solver(backup_file_name)
@@ -2054,11 +2046,11 @@ class Solver:
         # Refresh flow integrals after restore
         restored_solver._update_all_flow_integrals()
 
-        print("Simulation successfully restored!")
-        print(f"Flow time: {restored_solver.flow_time:.6f}")
-        print(f"Time step: {restored_solver.time_step}")
-        print(f"Particles: {restored_solver.particles.number_of_particles}")
-        print(f"Backend: {restored_solver.config.processing_unit}")
+        Logging.message("Simulation successfully restored!")
+        Logging.message(f"Flow time: {restored_solver.flow_time:.6f}")
+        Logging.message(f"Time step: {restored_solver.time_step}")
+        Logging.message(f"Particles: {restored_solver.particles.number_of_particles}")
+        Logging.message(f"Backend: {restored_solver.config.processing_unit}")
 
         return restored_solver
 
@@ -2131,7 +2123,7 @@ class Solver:
         The direct-vs-treecode choice is owned by physics.velocity_self
         (configured once at startup), so there is no method branching here.
         """
-        print(f"Updating particles' velocities, u ({self.physics.velocity_method.lower()})")
+        Logging.message(f"Updating particles' velocities, u ({self.physics.velocity_method.lower()})")
         self.physics.velocity_self(
             self.particles.position,
             self.particles.circulation,
@@ -2180,11 +2172,11 @@ class Solver:
 
         if use_treecode:
             if announce:
-                print(f"Updating velocity gradient tensor, ∇u (treecode, θ={theta})")
+                Logging.message(f"Updating velocity gradient tensor, ∇u (treecode, θ={theta})")
             self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
         else:
             if announce:
-                print("Updating velocity gradient tensor, ∇u")
+                Logging.message("Updating velocity gradient tensor, ∇u")
             self.physics.compute_velocity_gradients(self.particles)
 
     def _update_LES_state(self, dt: float | None = None) -> None:
@@ -2223,7 +2215,7 @@ class Solver:
             "RVPM": "(∇u)ᵀ·ω − c_r(ω̂·(∇u)ᵀω̂)ω (rVPM)",
         }.get(effective_mode, f"({effective_mode})")
         if announce:
-            print(f"Updating strengths via {mode_eq}")
+            Logging.message(f"Updating strengths via {mode_eq}")
 
         dt = self.time_step_size if dt is None else dt
         self._apply_stretching_with_relaxation(dt)
@@ -2278,10 +2270,10 @@ class Solver:
             return
 
         if self.viscous_scheme == "CS":
-            print("Performing viscous diffusion via Core Spreading.")
+            Logging.message("Performing viscous diffusion via Core Spreading.")
             self.physics.core_spreading_diffusion(self.particles, dt=dt)
         elif self.viscous_scheme == "RWM":
-            print("Performing viscous diffusion via Random Walk Method.")
+            Logging.message("Performing viscous diffusion via Random Walk Method.")
             self.physics.random_walk_method_diffusion(self.particles, dt=dt)
         elif self.viscous_scheme in ("DVH", "GBD"):
             # Both schemes fire exactly once per step: DVH applies the fixed
@@ -2293,7 +2285,7 @@ class Solver:
                 self.remove_particles(remove_all=True)
                 self.add_vortex_particles(
                     position=new_p["position"],
-                    velocity=new_p.get("velocity", np.zeros((M, 3), dtype=np.float32)),
+                    velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
                     circulation=new_p["circulation"],
                     radius=new_p["radius"],
                     volume=new_p["volume"],
@@ -2316,7 +2308,7 @@ class Solver:
                 N = self.particles.number_of_particles
                 if N > 0:
                     nu_eff = self.particles.viscosity_effective.to_numpy()[:N]
-            print(
+            Logging.message(
                 f"\tPerforming DVH particle regeneration "
                 f"(h={vc.dvh_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
                 f"threshold={vc.dvh_threshold:.2e}"
@@ -2349,7 +2341,7 @@ class Solver:
                 N = self.particles.number_of_particles
                 if N > 0:
                     nu_eff = self.particles.viscosity_effective.to_numpy()[:N]
-            print(
+            Logging.message(
                 f"\tPerforming GBD diffusion"
                 f"(h={vc.gbd_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
                 f"threshold={vc.gbd_threshold:.2e}"
@@ -2405,7 +2397,7 @@ class Solver:
                 _mask_split = _rad_pre > max_radius
 
                 stats = self._splitter.split(self.particles, max_radius)
-                print(
+                Logging.message(
                     f"(Stabilization) Splitting: {stats.particles_split} particles -> {stats.particles_created} children "
                     f"({stats.particles_total_after} total, {stats.split_time:.2f}s)"
                 )
@@ -2505,20 +2497,20 @@ class Solver:
                 nu = getattr(visc_cfg, "viscosity", None) if visc_cfg is not None else None
                 if nu is None or nu <= 0:
                     nu = 1e-2  # default viscosity
-                viscosity = np.full(n, nu, dtype=np.float32)
+                viscosity = np.full(n, nu, dtype=self.np_dtype)
 
-                # Convert all arrays to f32 explicitly to avoid precision mismatch
-                pos_f32 = new_particles["points"].astype(np.float32)
-                str_f32 = new_particles["strengths"].astype(np.float32)
-                rad_f32 = new_particles["radii"].astype(np.float32)
-                vol_f32 = new_particles["volumes"].astype(np.float32)
+                # Convert all arrays to the solver precision to avoid mismatch
+                pos = new_particles["points"].astype(self.np_dtype)
+                strength = new_particles["strengths"].astype(self.np_dtype)
+                rad = new_particles["radii"].astype(self.np_dtype)
+                vol = new_particles["volumes"].astype(self.np_dtype)
 
                 self.add_vortex_particles(
-                    position=pos_f32,
-                    velocity=np.zeros((n, 3), dtype=np.float32),  # shed particles start at rest
-                    circulation=str_f32,
-                    radius=rad_f32,
-                    volume=vol_f32,
+                    position=pos,
+                    velocity=np.zeros((n, 3), dtype=self.np_dtype),  # shed particles start at rest
+                    circulation=strength,
+                    radius=rad,
+                    volume=vol,
                     viscosity=viscosity,
                 )
 
@@ -2591,8 +2583,8 @@ class Solver:
 
         if n_removed > 0:
             action = "outside" if invert_selection else "inside"
-            print(
-                f"   [INFO] Removed {n_removed} particles {action} "
+            Logging.info(
+                f"Removed {n_removed} particles {action} "
                 f"box [{xmin:.2f}, {xmax:.2f}] × [{ymin:.2f}, {ymax:.2f}] × [{zmin:.2f}, {zmax:.2f}]"
             )
 

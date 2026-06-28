@@ -48,23 +48,44 @@ def main():
     parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
     parser.add_argument("--dt", type=float, default=0.005, help="Time-step size [s].")
     # --- Stabiliser knobs (in-house LES + stretching stabiliser) -------------
-    parser.add_argument("--cs", type=float, default=0.16, help="Smagorinsky constant (in-house LES).")
-    parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0,
-                        help="rVPM g: 0.2 (partial) … 1/3 (default; full parallel-growth suppression).")
+    parser.add_argument(
+        "--cs", type=float, default=0.16, help="Smagorinsky constant (in-house LES)."
+    )
+    parser.add_argument(
+        "--rvpm-g",
+        type=float,
+        default=1.0 / 3.0,
+        help="rVPM g: 0.2 (partial) … 1/3 (default; full parallel-growth suppression).",
+    )
     parser.add_argument("--rvpm-f", type=float, default=0.0, help="rVPM f parameter.")
-    parser.add_argument("--relaxation", choices=["pedrizzetti", "blend"], default="blend",
-                        help="Strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
-                        "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).")
-    parser.add_argument("--relaxation-factor", type=float, default=0.95,
-                        help="Pedrizzetti relaxation coeff (lower = stronger).")
-    parser.add_argument("--relaxation-rate", type=float, default=1.0,
-                        help="Strain-gate rate constant (blend mode).")
-    parser.add_argument("--relaxation-max-substeps", type=int, default=64,
-                        help="Maximum stretching/relaxation substeps for high-strain particles.")
-    parser.add_argument("--ramp-rotations", type=float, default=1.0,
-                        help="Smooth sin-squared spin-up duration [rotor rotations].")
-    parser.add_argument("--max-strength", type=float, default=1.0e3,
-                        help="Abort cleanly if any particle strength exceeds this value.")
+    parser.add_argument(
+        "--relaxation",
+        choices=["pedrizzetti", "blend"],
+        default="blend",
+        help="Strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
+        "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).",
+    )
+    parser.add_argument(
+        "--relaxation-factor",
+        type=float,
+        default=0.95,
+        help="Pedrizzetti relaxation coeff (lower = stronger).",
+    )
+    parser.add_argument(
+        "--relaxation-rate", type=float, default=1.0, help="Strain-gate rate constant (blend mode)."
+    )
+    parser.add_argument(
+        "--ramp-rotations",
+        type=float,
+        default=1.0,
+        help="Smooth sin-squared spin-up duration [rotor rotations].",
+    )
+    parser.add_argument(
+        "--max-strength",
+        type=float,
+        default=1.0e3,
+        help="Abort cleanly if any particle strength exceeds this value.",
+    )
     parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
     args = parser.parse_args()
 
@@ -215,8 +236,6 @@ def main():
             relaxation_factor=args.relaxation_factor,
             relaxation_rate=args.relaxation_rate,
             relaxation_conserve=True,
-            relaxation_cfl=0.2,
-            relaxation_max_substeps=args.relaxation_max_substeps,
         ),
         processing_unit="GPU_VULKAN",
         # These far-wake planes are expensive (3 × ~21k targets).  Sampling
@@ -234,7 +253,7 @@ def main():
     for step in range(num_steps):
         vpm.update_state()
         if (step + 1) % 25 == 0 and vpm.particles.number_of_particles:
-            strengths = vpm.particles.circulation.to_numpy()[:vpm.particles.number_of_particles]
+            strengths = vpm.particles.circulation.to_numpy()[: vpm.particles.number_of_particles]
             max_strength = float(np.linalg.norm(strengths, axis=1).max())
             if not np.isfinite(max_strength) or max_strength > args.max_strength:
                 raise RuntimeError(
