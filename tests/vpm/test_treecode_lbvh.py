@@ -234,6 +234,105 @@ def test_gpu_only_paths_match_numpy_returning_paths():
     assert np.allclose(s_field, s_np, atol=1e-6)
 
 
+def test_fused_velocity_gradient_matches_two_kernel_path():
+    """A1: the fused single-traversal u/∇u/S must match the two separate
+    traversals (bit-comparable — identical branches, one walk) and keep ∇u
+    traceless."""
+    N = 1500
+    pos, circ, rad = _cloud(N, seed=15)
+    bg = np.array([0.2, -0.4, 0.1], dtype=np.float32)
+    tree = _make_tree(N, theta=0.4)
+    tree.build(pos, circ, rad, force=True)
+
+    # Reference: two separate traversals.
+    v_ref = tree.compute_velocities(bg).copy()
+    g_ref, s_ref = tree.compute_velocity_gradients()
+    g_ref, s_ref = g_ref.copy(), s_ref.copy()
+
+    # Fused: one traversal.
+    v_f, g_f, s_f = tree.compute_velocity_and_gradient(bg)
+
+    assert _rel_l2(v_f, v_ref) < 1e-6
+    assert _rel_l2(g_f.reshape(N, 9), g_ref.reshape(N, 9)) < 1e-6
+    assert _rel_l2(s_f.reshape(N, 9), s_ref.reshape(N, 9)) < 1e-6
+    tr = g_f[:, 0, 0] + g_f[:, 1, 1] + g_f[:, 2, 2]
+    scale = np.linalg.norm(g_f.reshape(N, 9), axis=1).mean() + 1e-12
+    assert np.abs(tr).max() / scale < 1e-4
+
+
+def test_fused_direct_kernel_matches_separate_direct_kernels():
+    """A1 (direct path): the fused single-j-loop u/∇u/S kernel must match the two
+    separate direct kernels bit-for-bit."""
+    from source.solvers.VPM.kernels.winckelmans import create_winckelmans_kernels
+    from source.solvers.VPM.numerics.kernels_common import (
+        _create_basic_kernels,
+        _create_gradient_kernels,
+    )
+
+    kf = create_winckelmans_kernels(ti.f32)
+    basic = _create_basic_kernels(kf)
+    grad = _create_gradient_kernels(kf)
+    k_vel = basic["compute_velocities_kernel"]
+    k_grad = grad["compute_velocity_gradients_kernel"]
+    k_fused = grad["compute_velocity_and_gradient_kernel"]
+
+    N = 800
+    pos, circ, rad = _cloud(N, seed=21)
+    P = ti.Vector.field(3, ti.f32, shape=N)
+    C = ti.Vector.field(3, ti.f32, shape=N)
+    R = ti.field(ti.f32, shape=N)
+    V = ti.Vector.field(3, ti.f32, shape=N)
+    G = ti.Matrix.field(3, 3, ti.f32, shape=N)
+    S = ti.Matrix.field(3, 3, ti.f32, shape=N)
+    Vf = ti.Vector.field(3, ti.f32, shape=N)
+    Gf = ti.Matrix.field(3, 3, ti.f32, shape=N)
+    Sf = ti.Matrix.field(3, 3, ti.f32, shape=N)
+    BG = ti.Vector.field(3, ti.f32, shape=())
+    P.from_numpy(pos); C.from_numpy(circ); R.from_numpy(rad)
+    BG[None] = ti.Vector([0.5, -0.2, 0.3])
+
+    k_vel(P, C, R, V, BG, N)
+    k_grad(P, C, R, G, S, N)
+    k_fused(P, C, R, Vf, Gf, Sf, BG, N)
+
+    assert _rel_l2(Vf.to_numpy(), V.to_numpy()) < 1e-6
+    assert _rel_l2(Gf.to_numpy().reshape(N, 9), G.to_numpy().reshape(N, 9)) < 1e-6
+    assert _rel_l2(Sf.to_numpy().reshape(N, 9), S.to_numpy().reshape(N, 9)) < 1e-6
+
+
+def test_per_stage_single_build_feeds_fused_pass():
+    """A4: within a stage, one build feeds the fused u/∇u pass — a single build
+    call serves both outputs, identical to rebuilding for each."""
+    N = 1200
+    pos, circ, rad = _cloud(N, seed=23)
+    bg = np.zeros(3, dtype=np.float32)
+    tree = _make_tree(N, theta=0.4)
+
+    # Reference = rebuild-every-call (the old two-build behaviour).
+    tree.build(pos, circ, rad, force=True)
+    v_ref = tree.compute_velocities(bg).copy()
+    tree.build(pos, circ, rad, force=True)
+    g_ref, s_ref = tree.compute_velocity_gradients()
+    g_ref, s_ref = g_ref.copy(), s_ref.copy()
+
+    # Per-stage: count builds across one build + fused evaluation.
+    calls = {"n": 0}
+    orig_build = tree.build
+
+    def counting_build(*a, **k):
+        calls["n"] += 1
+        return orig_build(*a, **k)
+
+    tree.build = counting_build
+    tree.build(pos, circ, rad, force=True)  # exactly one build for the stage
+    v, g, s = tree.compute_velocity_and_gradient(bg)
+
+    assert calls["n"] == 1, f"expected one build per stage, got {calls['n']}"
+    assert _rel_l2(v, v_ref) < 1e-6
+    assert _rel_l2(g.reshape(N, 9), g_ref.reshape(N, 9)) < 1e-6
+    assert _rel_l2(s.reshape(N, 9), s_ref.reshape(N, 9)) < 1e-6
+
+
 def test_velocity_gradient_is_traceless():
     """trace(grad u) = 0 by construction (div-free regularised field)."""
     N = 800

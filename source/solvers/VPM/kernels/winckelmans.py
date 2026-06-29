@@ -22,22 +22,28 @@ def create_winckelmans_kernels(dtype=ti.f32):
         Dictionary with keys: 'q_', 'zeta_', 'g_',  'diffusivity_constant_', 'energy_equivalence_constant_'
     """
 
+    # Half-integer powers of (ρ²+1) are written as muls + one sqrt instead of the
+    # generic ``pow`` (≈ exp+log): (ρ²+1) > 0 always, so x**2.5 = x²·√x etc.  This
+    # is algebraically exact (and slightly *more* accurate than pow) and drops two
+    # transcendentals to one sqrt on the velocity/gradient hot path.
     @ti.func
     def zeta_(density: ti.template()) -> ti.template():  # type: ignore
-        return ti.cast(7.5 / ((density * density + 1.0) ** 3.5) * ONE_OVER_FOUR_PI, dtype)
+        base = density * density + 1.0
+        return ti.cast(7.5 / (base * base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI, dtype)
 
     @ti.func
     def q_(density: ti.template()) -> ti.template():  # type: ignore
+        d2 = density * density
+        base = d2 + 1.0
         return ti.cast(
-            density**3 * (density**2 + 2.5) / (density * density + 1.0) ** 2.5 * ONE_OVER_FOUR_PI,
+            density * d2 * (d2 + 2.5) / (base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI,
             dtype,
         )
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
-        return ti.cast(
-            (density * density + 1.5) / ((density * density + 1) ** 1.5) * ONE_OVER_FOUR_PI, dtype
-        )
+        base = density * density + 1.0
+        return ti.cast((base + 0.5) / (base * ti.sqrt(base)) * ONE_OVER_FOUR_PI, dtype)
 
     @ti.func
     def diffusivity_constant_():

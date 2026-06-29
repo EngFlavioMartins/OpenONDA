@@ -88,8 +88,8 @@ class TaichiTreecode:
         self.node_right = ti.field(dtype=ti.i32, shape=max_nodes)
         # Parent pointer (root = -1); derived from the child links after build.
         self.node_parent = ti.field(dtype=ti.i32, shape=max_nodes)
-        # Atomic arrival counter for the parallel bottom-up multipole pass.
-        self._visit = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Depth from the root, used by the level-synchronous multipole pass.
+        self.node_depth = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_is_leaf = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_particle_start = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_particle_count = ti.field(dtype=ti.i32, shape=max_nodes)
@@ -150,6 +150,7 @@ class TaichiTreecode:
         self.n_particles = ti.field(dtype=ti.i32, shape=())
         self.n_nodes = ti.field(dtype=ti.i32, shape=())
         self._root = ti.field(dtype=ti.i32, shape=())
+        self._max_depth = ti.field(dtype=ti.i32, shape=())
 
         # Background velocity
         self.u_inf = ti.Vector.field(3, dtype=ti.f32, shape=())
@@ -419,37 +420,44 @@ class TaichiTreecode:
                 self.node_parent[0] = -1
             return
 
-        # Step 1: Compute AABB (parallel min/max reduction)
+        # No defensive ``ti.sync()`` between build kernels: Taichi submits them to
+        # one device queue in order, and each kernel-launch boundary is itself the
+        # ordering guarantee (data-dependent kernels see their predecessor's
+        # writes).  The multipole pass is *level-synchronous* (one kernel per tree
+        # level, deepest→root) precisely so the bottom-up has no cross-thread
+        # read-after-write hazard — the previous design's atomic-climb walk did,
+        # and the inter-kernel barriers only masked it by timing.
+
+        # Step 1: AABB (parallel min/max reduction)
         self._compute_aabb_kernel(N)
-        ti.sync()
 
-        # Step 2: Compute Morton codes (30-bit)
+        # Step 2: Morton codes (30-bit) — reads the AABB written above
         self._compute_morton_codes_kernel(N, self._aabb_min, self._aabb_max)
-        ti.sync()
 
-        # Step 3: Sort on CPU (Phase 1 — np.argsort; Phase 2 → GPU radix sort)
-        ti.sync()
+        # Step 3: sort keys (Phase 1 — CPU argsort; Phase 2 → GPU radix sort).
+        # ``to_numpy``/``from_numpy`` are the build's only host↔device barrier.
         morton_np = self.morton_codes.to_numpy()[:N]
         sorted_idx = np.argsort(morton_np, kind='mergesort')
         padded = np.full(self.max_particles, -1, dtype=np.int32)
         padded[:N] = sorted_idx.astype(np.int32)
         self.sorted_indices.from_numpy(padded)
 
-        # Step 4: Build binary tree — GPU Karras (O(N), fully parallel)
+        # Step 4: GPU Karras tree (LCP → NSL/NSR → topology), queue-ordered
         self._compute_lcp_kernel(N)
-        ti.sync()
         self._compute_nsl_kernel(N)
         self._compute_nsr_kernel(N)
         self._build_karras_tree_kernel(N)
-        ti.sync()
 
-        # Step 5: Parents, then a single correct parallel bottom-up pass.
+        # Step 5: parents + depths, then the level-synchronous bottom-up.
         self._compute_parents_kernel(N)
-        ti.sync()
         self._leaf_multipole_init_kernel(N)
-        ti.sync()
-        self._bottom_up_walk_kernel(N)
-        ti.sync()
+        self._compute_depths_kernel(N)
+        # One combine kernel per level, deepest → root.  Each level reads only the
+        # already-finalised level below it; the kernel boundary orders them, so the
+        # result is identical on CPU / Vulkan / CUDA with no fence and no race.
+        max_depth = int(self._max_depth[None])
+        for level in range(max_depth, -1, -1):
+            self._combine_level_kernel(N, level)
 
         self.n_nodes[None] = 2 * N - 1
 
@@ -529,7 +537,7 @@ class TaichiTreecode:
 
     @ti.kernel
     def _leaf_multipole_init_kernel(self, N: ti.i32):
-        """Seed leaf multipoles/AABB from particles and clear visit counters.
+        """Seed leaf multipoles/AABB directly from particles.
 
         Leaves carry a single particle, so their multipole (COM = position,
         total_circ = circulation, avg_radius = radius) is exact and their
@@ -547,30 +555,37 @@ class TaichiTreecode:
             self.node_half_size[j] = 0.0
             self._node_aabb_min[j] = self.positions[p]
             self._node_aabb_max[j] = self.positions[p]
-            self._visit[j] = 0
-        for idx in range(N, 2 * N - 1):
-            self._visit[idx] = 0
 
     @ti.kernel
-    def _bottom_up_walk_kernel(self, N: ti.i32):
-        """Correct parallel bottom-up multipole accumulation (Karras 2012).
+    def _compute_depths_kernel(self, N: ti.i32):
+        """Depth (distance to root) of every node, and the max over the tree.
 
-        One thread per leaf climbs toward the root.  At each parent it atomically
-        increments an arrival counter: the *first* child to arrive stops (its
-        sibling's subtree is not finished), the *second* combines both children
-        into the parent and continues upward.  Each internal node is therefore
-        combined exactly once, only after both subtrees are complete — correct
-        for any tree depth, unlike the previous fixed 3-pass scheme.
+        One thread per node climbs ``node_parent`` to the root counting hops, so
+        no ordering is required.  ``_max_depth`` bounds the level-synchronous
+        combine loop; it is the only host read in the multipole pass.
         """
-        for j in range(N):
-            node = self.node_parent[j]
+        self._max_depth[None] = 0
+        for idx in range(2 * N - 1):
+            d = 0
+            node = self.node_parent[idx]
             while node >= 0:
-                arrived = ti.atomic_add(self._visit[node], 1)
-                if arrived == 0:
-                    node = -1  # first child here; the sibling will finish it
-                else:
-                    self._combine_node(node)
-                    node = self.node_parent[node]
+                node = self.node_parent[node]
+                d += 1
+            self.node_depth[idx] = d
+            ti.atomic_max(self._max_depth[None], d)
+
+    @ti.kernel
+    def _combine_level_kernel(self, N: ti.i32, level: ti.i32):
+        """Combine every internal node at ``level`` from its two children.
+
+        Called once per level, deepest first.  A node at ``level`` has children at
+        ``level + 1`` that the previous launch already finalised, so this is a
+        pure read of the level below — no cross-thread hazard, correct on every
+        backend without a fence.  Leaves (idx < N) are seeded separately.
+        """
+        for idx in range(N, 2 * N - 1):
+            if self.node_depth[idx] == level:
+                self._combine_node(idx)
 
     @ti.func
     def _combine_node(self, idx: ti.i32):
@@ -656,8 +671,9 @@ class TaichiTreecode:
                 result = (erf_term - exp_term) * ONE_OVER_FOUR_PI
         else:
             r2 = r_sigma * r_sigma
+            base = r2 + 1.0  # > 0: x**2.5 = x²·√x (no transcendental pow)
             result = (
-                r_sigma * r_sigma * r_sigma * (r2 + 2.5) / ti.pow(r2 + 1.0, 2.5) * ONE_OVER_FOUR_PI
+                r_sigma * r2 * (r2 + 2.5) / (base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI
             )
         return result
 
@@ -670,7 +686,8 @@ class TaichiTreecode:
             result = one_over_pi_15 * ti.exp(-r_sigma * r_sigma)
         else:
             r2 = r_sigma * r_sigma
-            result = 7.5 / ti.pow(r2 + 1.0, 3.5) * ONE_OVER_FOUR_PI
+            base = r2 + 1.0  # > 0: x**3.5 = x³·√x (no transcendental pow)
+            result = 7.5 / (base * base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI
         return result
 
     @ti.func
@@ -958,6 +975,72 @@ class TaichiTreecode:
                     strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
             self.strain_rates[i] = strain
 
+    @ti.kernel
+    def compute_velocity_and_gradient_kernel(self, theta_sq: ti.f32):
+        """Fused single-traversal evaluation of u, ∇u and S.
+
+        The solver needs **both** u (advection) and ∇u (stretching) at the same
+        configuration every RK stage.  Walking the tree once and sharing the
+        MAC/open decision, node geometry, and the leaf direct sums is strictly
+        cheaper than two traversals.  Every per-branch term here is identical to
+        ``_traverse_particle_vel`` + ``_traverse_particle_grad`` — velocity is
+        ungated, the gradient keeps the MIN<r/σ<MAX gate — so the output is
+        bit-identical to the two separate kernels.
+        """
+        N = self.n_particles[None]
+        n_nodes = self.n_nodes[None]
+        MIN_R_SIGMA = ti.cast(0.5, ti.f32)
+        MAX_R_SIGMA = ti.cast(15.0, ti.f32)
+        u_inf = self.u_inf[None]
+        root = self._root[None]
+        for i in range(N):
+            vel = ti.Vector([0.0, 0.0, 0.0])
+            gradu = ti.Matrix.zero(ti.f32, 3, 3)
+            target_pos = self.positions[i]
+            target_rad = self.radii[i]
+            self.traversal_stack[i, 0] = root
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.traversal_stack[i, stack_ptr]
+                if node < 0 or node >= n_nodes:
+                    continue
+                com = self.node_com[node]
+                r_vec = target_pos - com
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                node_size = 2.0 * self.node_half_size[node]
+                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                    # Far field: one node, both fields share sigma / r_sigma / q.
+                    sigma = 0.5 * (target_rad + self.node_avg_radius[node])
+                    r_sigma = r_mag / sigma
+                    total_circ = self.node_total_circ[node]
+                    q_val = self.q_kernel(r_sigma)
+                    vel -= q_val * r_vec.cross(total_circ) / (r_mag * r_mag * r_mag)
+                    if r_sigma > MIN_R_SIGMA and r_sigma < MAX_R_SIGMA:
+                        zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
+                        term1 = q_val / (r_mag * r_mag * r_mag)
+                        term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
+                            r_mag * r_mag
+                        )
+                        gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
+                            total_circ
+                        ).outer_product(r_vec)
+                elif self.node_is_leaf[node] == 1:
+                    vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
+                    gradu += self._leaf_gradient_sum(
+                        node, target_pos, target_rad, i, MIN_R_SIGMA, MAX_R_SIGMA
+                    )
+                else:
+                    stack_ptr = self._push_children_particle(i, node, stack_ptr)
+            self.velocities[i] = vel + u_inf
+            self.velocity_gradients[i] = gradu
+            strain = ti.Matrix.zero(ti.f32, 3, 3)
+            for p in ti.static(range(3)):
+                for q in ti.static(range(3)):
+                    strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
+            self.strain_rates[i] = strain
+
     def compute_velocities_gpu(self, background_velocity: np.ndarray | None = None) -> None:
         """Run the velocity traversal on-device; the result stays in
         ``self.velocities`` (a Taichi field).  No ``to_numpy`` download — callers
@@ -991,6 +1074,31 @@ class TaichiTreecode:
         grads = self.velocity_gradients.to_numpy()[:N]
         strains = self.strain_rates.to_numpy()[:N]
         return grads, strains
+
+    def compute_velocity_and_gradient_gpu(self, background_velocity: np.ndarray | None = None) -> None:
+        """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
+
+        Results stay in ``self.velocities`` / ``self.velocity_gradients`` /
+        ``self.strain_rates`` (Taichi fields).  Use this from the solver when both
+        the advection velocity and the stretching gradient are needed at the same
+        configuration in an RK stage — one build, one traversal, no download."""
+        t_start = time.perf_counter()
+        if background_velocity is not None:
+            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+        else:
+            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+        self.compute_velocity_and_gradient_kernel(self.theta * self.theta)
+        ti.sync()
+        self.eval_time = time.perf_counter() - t_start
+
+    def compute_velocity_and_gradient(self, background_velocity: np.ndarray | None = None) -> tuple:
+        self.compute_velocity_and_gradient_gpu(background_velocity)
+        N = self.n_particles[None]
+        return (
+            self.velocities.to_numpy()[:N],
+            self.velocity_gradients.to_numpy()[:N],
+            self.strain_rates.to_numpy()[:N],
+        )
 
     # =========================================================================
     # TARGET POINT EVALUATIONS

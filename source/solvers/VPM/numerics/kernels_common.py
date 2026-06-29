@@ -732,8 +732,56 @@ def _create_gradient_kernels(kernel_functions):
             # Symmetric strain tensor for Mixed Scheme
             Sij[i] = 0.5 * (gradu + gradu.transpose())
 
+    @ti.kernel
+    def compute_velocity_and_gradient_kernel(
+        positions: ti.template(),
+        strengths: ti.template(),
+        radii: ti.template(),
+        velocities: ti.template(),
+        gradU: ti.template(),
+        Sij: ti.template(),
+        background_velocity: ti.template(),
+        num_particles: ti.i32,
+    ):  # type: ignore
+        """Fused direct evaluation: u, ∇u and S in a single j-loop.
+
+        The solver needs both u (advection) and ∇u (stretching) each RK stage;
+        sharing the one j-loop reuses r_ij / r_mag / sigma / q per pair instead of
+        recomputing them in a second O(N²) sweep.  Velocity is ungated; the
+        gradient keeps the MIN<r/σ<cutoff gate — branches identical to the two
+        separate kernels, so the result is bit-identical."""
+        N = num_particles
+        U_inf = background_velocity[None]
+        for i in range(N):
+            vel = ti.Vector([0.0, 0.0, 0.0])
+            gradu = ti.Matrix.zero(ti.f32, 3, 3)
+            pos_i = positions[i]
+            radii_i = radii[i]
+            for j in range(N):
+                str_j = strengths[j]
+                r_ij = pos_i - positions[j]
+                r_sq = r_ij.dot(r_ij)
+                r_mag = ti.sqrt(r_sq)
+                if r_mag > EPSILON:
+                    sigma = 0.5 * (radii_i + radii[j])
+                    r_sigma = r_mag / sigma
+                    q_val = q_(r_sigma)
+                    vel += q_val * (r_ij.cross(str_j)) / (r_sq * r_mag)
+                    if r_sigma > MIN_R_SIGMA_GRADIENT and r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                        zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
+                        r_cb = r_sq * r_mag
+                        term1 = q_val / r_cb
+                        term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
+                        gradu += term1 * skew(str_j) + term2 * (
+                            (r_ij.cross(str_j)).outer_product(r_ij)
+                        )
+            velocities[i] = -vel + U_inf
+            gradU[i] = gradu
+            Sij[i] = 0.5 * (gradu + gradu.transpose())
+
     return {
         "compute_velocity_gradients_kernel": compute_velocity_gradients_kernel,
+        "compute_velocity_and_gradient_kernel": compute_velocity_and_gradient_kernel,
     }
 
 

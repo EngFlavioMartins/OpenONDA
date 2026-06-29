@@ -607,7 +607,7 @@ class _GridDiffusionMixin:
         out_flat[nz_mask] = (accum_flat[nz_mask] / weight_flat[nz_mask]).astype(np.float32)
         return out
 
-    def _select_regen_threshold(
+    def _select_diffusion_threshold(
         self,
         circ_mag: np.ndarray,
         regen_threshold_mode: str,
@@ -714,7 +714,7 @@ class _GridDiffusionMixin:
         dGamma = w[:, None] * (a[None, :] + np.cross(np.broadcast_to(b, r.shape), r))
         return (Gk + dGamma).astype(np.float32)
 
-    def _build_regen_particle_arrays(
+    def _build_diffusion_particle_arrays(
         self,
         ix: np.ndarray,
         iy: np.ndarray,
@@ -763,7 +763,7 @@ class _GridDiffusionMixin:
             "group_id": group_winner_grid[ix, iy, iz].astype(np.int32),
         }
 
-    def _gbd_diffusion_regen_impl(
+    def _gbd_diffusion_impl(
         self,
         particles,
         dt: float,
@@ -924,7 +924,7 @@ class _GridDiffusionMixin:
             return None
 
         gamma_total = float(circ_mag.sum())
-        threshold = self._select_regen_threshold(
+        threshold = self._select_diffusion_threshold(
             circ_mag, regen_threshold_mode, regen_threshold, max_circ, gamma_total
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
@@ -967,7 +967,7 @@ class _GridDiffusionMixin:
                 grid_np, circ_mag, ix, iy, iz, grid_min_np, h
             )
 
-        return self._build_regen_particle_arrays(
+        return self._build_diffusion_particle_arrays(
             ix,
             iy,
             iz,
@@ -983,7 +983,7 @@ class _GridDiffusionMixin:
             nu_t_grid=nu_t_grid,
         )
 
-    def gbd_diffusion_regen(
+    def gbd_diffusion(
         self,
         particles,
         dt: float,
@@ -1003,7 +1003,7 @@ class _GridDiffusionMixin:
         the molecular ν is used.  Regenerated particles carry the pre-regen ν_t
         forward (Bug B).
         """
-        return self._gbd_diffusion_regen_impl(
+        return self._gbd_diffusion_impl(
             particles,
             dt,
             h,
@@ -1130,7 +1130,7 @@ class _GridDiffusionMixin:
         buf[:nx, :ny, :nz, :] = grid_out.astype(np.float32)
         self._current_grid.from_numpy(buf)
 
-    def _grid_based_diffusion_regen_impl(
+    def _grid_based_diffusion_impl(
         self,
         particles,
         dt: float,
@@ -1217,7 +1217,7 @@ class _GridDiffusionMixin:
             return None
 
         gamma_total = float(circ_mag.sum())
-        threshold = self._select_regen_threshold(
+        threshold = self._select_diffusion_threshold(
             circ_mag, regen_threshold_mode, regen_threshold, max_circ, gamma_total
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
@@ -1261,7 +1261,7 @@ class _GridDiffusionMixin:
                 grid_np, circ_mag, ix, iy, iz, grid_min_np, h
             )
 
-        return self._build_regen_particle_arrays(
+        return self._build_diffusion_particle_arrays(
             ix,
             iy,
             iz,
@@ -1277,7 +1277,7 @@ class _GridDiffusionMixin:
             nu_t_grid=nu_t_grid,
         )
 
-    def grid_based_diffusion_regen(
+    def grid_based_diffusion(
         self,
         particles,
         dt: float,
@@ -1300,7 +1300,7 @@ class _GridDiffusionMixin:
         an LES model), each particle's heat-kernel width is scaled by
         nu_eff/nu — the exact per-particle split-step Green's function.
         """
-        return self._grid_based_diffusion_regen_impl(
+        return self._grid_based_diffusion_impl(
             particles,
             dt,
             h,

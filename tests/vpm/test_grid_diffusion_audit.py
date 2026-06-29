@@ -299,7 +299,7 @@ def test_regen_radius_respects_configured_ratio(physics):
     try:
         for ratio in (2.5, 1.5, 1.2):
             physics.regen_radius_ratio = ratio
-            out = physics._build_regen_particle_arrays(
+            out = physics._build_diffusion_particle_arrays(
                 ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 3, zone, group
             )
             np.testing.assert_allclose(out["radius"], ratio * H, rtol=1e-6)
@@ -319,7 +319,7 @@ def test_viscous_config_carries_regen_radius_ratio():
 # Turbulent-viscosity carry through regen (Bug B) + per-node α (Bug A)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_regen_carries_viscosity_turbulent(physics):
-    """``_build_regen_particle_arrays`` must emit and carry ν_t (Bug B).
+    """``_build_diffusion_particle_arrays`` must emit and carry ν_t (Bug B).
 
     Without ``nu_t_grid`` the regenerated particles get ν_t = 0 (molecular
     fallback).  With a ``nu_t_grid`` the new particles inherit the |Γ|-weighted
@@ -335,7 +335,7 @@ def test_regen_carries_viscosity_turbulent(physics):
     group = np.zeros((8, 8, 8), dtype=np.int32)
 
     # Without nu_t_grid → ν_t = 0 (backward-compatible default)
-    out_no_nut = physics._build_regen_particle_arrays(
+    out_no_nut = physics._build_diffusion_particle_arrays(
         ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 4, zone, group
     )
     assert "viscosity_turbulent" in out_no_nut
@@ -345,7 +345,7 @@ def test_regen_carries_viscosity_turbulent(physics):
     nu_t_grid = np.zeros((8, 8, 8), dtype=np.float32)
     expected_nu_t = np.array([1e-4, 2e-4, 3e-4, 5e-4], dtype=np.float32)
     nu_t_grid[ix, iy, iz] = expected_nu_t
-    out_nut = physics._build_regen_particle_arrays(
+    out_nut = physics._build_diffusion_particle_arrays(
         ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 4, zone, group,
         nu_t_grid=nu_t_grid,
     )
