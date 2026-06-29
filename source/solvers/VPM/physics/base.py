@@ -381,6 +381,12 @@ class PhysicsBase:
         for i in range(N):
             dst[i] = src[i]
 
+    @ti.kernel
+    def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
+        """Copy the first N entries of one 3×3 matrix field into another."""
+        for i in range(N):
+            dst[i] = src[i]
+
     def velocity_self(self, pos, strg, rad, out, bg, N: int) -> None:
         """Self-induced velocity of a particle set, evaluated at its own positions.
 
@@ -406,12 +412,13 @@ class PhysicsBase:
             return
         if self.velocity_method == "TREECODE":
             tree = self._get_or_create_treecode(N, self.velocity_theta)
-            tree.build(
-                pos.to_numpy()[:N],
-                strg.to_numpy()[:N],
-                rad.to_numpy()[:N],
-            )
-            tree.compute_velocities(bg.to_numpy())  # fills tree.velocities (GPU, input order)
+            # Build from fields directly — no CPU round-trip for particle data.
+            tree.build(pos, strg, rad, N)
+            # Background velocity: extract single 3-vector (cheap, 3 floats).
+            bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+            # On-device traversal + field-to-field copy: the velocities never
+            # leave the GPU (no per-step N×3 to_numpy round-trip).
+            tree.compute_velocities_gpu(bg_arr)
             self._copy_vec3(tree.velocities, out, N)
         else:
             self.compute_velocities_kernel(pos, strg, rad, out, bg, N)
@@ -843,9 +850,6 @@ class PhysicsBase:
         """
         Compute velocities using Barnes-Hut treecode for O(N log N) complexity.
 
-        This method builds an octree and uses the Multipole Acceptance Criterion
-        (MAC) to approximate distant particle interactions.
-
         Args:
             particles: Particle container
             theta: Opening angle parameter for MAC (smaller = more accurate)
@@ -855,18 +859,13 @@ class PhysicsBase:
         if N == 0:
             return
 
-        # Get particle data
-        positions = particles.position_cpu()
-        circulations = particles.circulation_cpu()
-        radii = particles.radius_cpu()
-        background_vel = particles.velocity_background_cpu()
-
-        # Get or create cached treecode (reuse to avoid memory leak)
         tree = self._get_or_create_treecode(N, theta)
-        tree.build(positions, circulations, radii)
-        velocities = tree.compute_velocities(background_vel)
+        # Build from GPU fields directly — no CPU download.
+        tree.build(particles.position, particles.circulation, particles.radius, N)
+        bg = particles.velocity_background
+        bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+        velocities = tree.compute_velocities(bg_arr)
 
-        # Write back to particles
         particles.set_field("velocity", velocities)
 
     def compute_target_velocities_hierarchical(
@@ -894,18 +893,16 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
-        # Get particle data
-        positions = particles.position_cpu()
-        circulations = particles.circulation_cpu()
-        radii = particles.radius_cpu()
-        background_vel = particles.velocity_background_cpu() if include_freestream else None
-
-        # Get or create cached treecode (reuse to avoid memory leak)
         max_size = max(N, M)
         tree = self._get_or_create_treecode(max_size, theta)
-        tree.build(positions, circulations, radii)
+        # Build from GPU fields directly.
+        tree.build(particles.position, particles.circulation, particles.radius, N)
 
-        # Compute at target positions
+        background_vel = None
+        if include_freestream:
+            bg = particles.velocity_background
+            background_vel = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+
         return tree.compute_target_velocities(target_positions, background_vel)
 
     def compute_target_velocity_gradients_hierarchical(
@@ -928,32 +925,16 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 9), dtype=self.np_dtype)
 
-        # Get particle data
-        positions = particles.position_cpu()
-        circulations = particles.circulation_cpu()
-        radii = particles.radius_cpu()
-
-        # Get or create cached treecode (reuse to avoid memory leak)
         max_size = max(N, M)
         tree = self._get_or_create_treecode(max_size, theta)
-        tree.build(positions, circulations, radii)
+        tree.build(particles.position, particles.circulation, particles.radius, N)
 
-        # Compute at target positions (returns [M, 3, 3])
         grads = tree.compute_target_velocity_gradients(target_positions)
-
-        # Flatten to [M, 9] for consistency with direct method
         return grads.reshape(M, 9)
 
     def compute_velocity_gradients_hierarchical(self, particles, theta: float = 0.5):
         """
         Compute velocity gradients using Barnes-Hut treecode for O(N log N) complexity.
-
-        This method builds an octree and uses the Multipole Acceptance Criterion
-        (MAC) to approximate distant particle interactions for gradient computation.
-
-        The velocity gradient tensor ∇u and strain rate tensor S_ij are computed
-        using the same tree structure as velocity computation, but with the
-        gradient kernel applied.
 
         Args:
             particles: Particle container
@@ -964,21 +945,14 @@ class PhysicsBase:
         if N == 0:
             return
 
-        # Get particle data
-        positions = particles.position_cpu()
-        circulations = particles.circulation_cpu()
-        radii = particles.radius_cpu()
-
-        # Get or create cached treecode (reuse to avoid memory leak)
         tree = self._get_or_create_treecode(N, theta)
-        tree.build(positions, circulations, radii)
+        tree.build(particles.position, particles.circulation, particles.radius, N)
 
-        # Compute velocity gradients and strain rates
-        grads, strains = tree.compute_velocity_gradients()
-
-        # Write back to particles
-        particles.set_field("velocity_gradient", grads)
-        particles.set_field("strain_rate", strains)
+        # On-device traversal + field-to-field copy: ∇u and S stay on the GPU
+        # (no per-step N×3×3 to_numpy + re-upload round-trip).
+        tree.compute_velocity_gradients_gpu()
+        self._copy_mat3(tree.velocity_gradients, particles.velocity_gradient, N)
+        self._copy_mat3(tree.strain_rates, particles.strain_rate, N)
 
     # =========================================================================
     # DIAGNOSTICS METHODS

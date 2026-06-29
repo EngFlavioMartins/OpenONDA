@@ -1,14 +1,24 @@
 """
 Taichi GPU-Accelerated Barnes-Hut Treecode for VPM.
 ====================================================
-Parallel octree construction and traversal using Taichi for GPU acceleration.
+Fully parallel LBVH (Linear Bounding Volume Hierarchy) construction and
+binary-tree traversal using Taichi for GPU acceleration.
 
-This module provides a GPU-optimized implementation of the Barnes-Hut
-treecode algorithm, suitable for real-time VPM simulations with 10⁴-10⁶
-particles.
+The tree is built on-device via:
+  1. AABB computation (parallel min/max reduction)
+  2. Morton-code encoding (30-bit, 10 bits/axis)
+  3. CPU argsort (Phase 1; GPU radix-sort in Phase 2)
+  4. GPU Karras radix tree (O(N), nearest-smaller-LCP via serial stack)
+  5. Bottom-up multipole moments (3-pass forward/reverse/forward)
 
-The implementation uses a linear octree representation with Morton (Z-order)
-encoding for efficient parallel construction and cache-friendly traversal.
+The tree construction (step 4) uses the Karras 2012 algorithm:
+  - LCP[i] = leading common prefix bits between sorted keys i and i+1
+  - NSL/NSR[i] = nearest boundary left/right with strictly smaller LCP
+  - Internal node i covers sorted range [NSL[i]+1, NSR[i]]
+  - Parent of node i is the nearer boundary (left or right) with larger LCP
+  - Root = boundary with minimum LCP (covers all [0, N-1])
+
+All phases are GPU-resident except the CPU argsort (~0.2 MB at 49k).
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -25,10 +35,12 @@ import taichi as ti
 @ti.data_oriented
 class TaichiTreecode:
     """
-    GPU-accelerated Barnes-Hut treecode using Taichi.
+    GPU-accelerated Barnes-Hut treecode using Taichi with LBVH build.
 
-    This implementation uses a stack-based iterative tree traversal
-    instead of recursion, which is more GPU-friendly.
+    The tree is a **binary** radix tree (Karras 2012) constructed from
+    Morton-coded particle positions.  Traversal uses the same stack-based
+    MAC-driven iteration as the previous octree code, adapted to two
+    children per internal node.
 
     Parameters:
         max_particles: Maximum number of particles
@@ -49,36 +61,60 @@ class TaichiTreecode:
         self.max_nodes = max_nodes
         self.theta = theta
         self.max_leaf_size = max_leaf_size
-        self.theta_sq = theta * theta  # Pre-compute for MAC
+        self.theta_sq = theta * theta
         self.kernel_type = kernel_type.upper()
 
         # ─────────────────────────────────────────────────────────────
-        # PARTICLE DATA (copied from input)
+        # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
         # ─────────────────────────────────────────────────────────────
         self.positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.circulations = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.radii = ti.field(dtype=ti.f32, shape=max_particles)
 
         # ─────────────────────────────────────────────────────────────
-        # TREE STRUCTURE (Structure of Arrays for GPU efficiency)
+        # TREE STRUCTURE (binary LBVH)
         # ─────────────────────────────────────────────────────────────
-        # Node properties
+        # Node properties (center/half_size computed from AABB)
         self.node_center = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
 
         # Multipole moments
         self.node_total_circ = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
-        self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)  # Center of vorticity
+        self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
 
-        # Tree structure (8 children per node, -1 = no child)
-        self.node_children = ti.field(dtype=ti.i32, shape=(max_nodes, 8))
+        # Binary tree structure (left/right child, -1 = none)
+        self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_right = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Parent pointer (root = -1); derived from the child links after build.
+        self.node_parent = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Atomic arrival counter for the parallel bottom-up multipole pass.
+        self._visit = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_is_leaf = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_particle_start = ti.field(dtype=ti.i32, shape=max_nodes)
         self.node_particle_count = ti.field(dtype=ti.i32, shape=max_nodes)
 
-        # Particle-to-leaf mapping (for direct sum in leaves)
+        # Particle-to-leaf mapping (contiguous sorted indices)
         self.leaf_particles = ti.field(dtype=ti.i32, shape=max_particles)
+
+        # ─────────────────────────────────────────────────────────────
+        # LBVH BUILD FIELDS
+        # ─────────────────────────────────────────────────────────────
+        self.morton_codes = ti.field(dtype=ti.u32, shape=max_particles)
+        self.sorted_indices = ti.field(dtype=ti.i32, shape=max_particles)
+        # LCP array (for Karras tree; length max_particles for simplicity)
+        self._lcp = ti.field(dtype=ti.i32, shape=max_particles)
+        # Nearest smaller LCP left/right (for Karras tree construction)
+        self._nsl = ti.field(dtype=ti.i32, shape=max_particles)
+        self._nsr = ti.field(dtype=ti.i32, shape=max_particles)
+        # Temporary stack for serial NSL/NSR computation (GPU)
+        self._stack = ti.field(dtype=ti.i32, shape=max_particles)
+        # Node particle range in sorted order
+        self._node_first = ti.field(dtype=ti.i32, shape=max_nodes)
+        self._node_last = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Node AABB
+        self._node_aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self._node_aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
 
         # ─────────────────────────────────────────────────────────────
         # OUTPUT VELOCITIES
@@ -92,9 +128,9 @@ class TaichiTreecode:
         self.strain_rates = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
 
         # ─────────────────────────────────────────────────────────────
-        # TARGET POINT FIELDS (for computing at arbitrary locations)
+        # TARGET POINT FIELDS
         # ─────────────────────────────────────────────────────────────
-        self.max_targets = max_particles  # Can evaluate at up to max_particles targets
+        self.max_targets = max_particles
         self.target_positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.target_velocities = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.target_velocity_gradients = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
@@ -102,11 +138,9 @@ class TaichiTreecode:
         self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
 
         # ─────────────────────────────────────────────────────────────
-        # TREE TRAVERSAL STACK (for iterative GPU traversal)
-        # Per-thread fields allow @ti.func helpers to push/pop without
-        # passing local arrays as template arguments.
+        # TREE TRAVERSAL STACK
         # ─────────────────────────────────────────────────────────────
-        self.max_stack_depth = 48  # 7*D+1 ≤ 48 → safe for tree depth ≤ 6
+        self.max_stack_depth = 48
         self.traversal_stack = ti.field(dtype=ti.i32, shape=(max_particles, 48))
         self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(max_particles, 48))
 
@@ -115,6 +149,7 @@ class TaichiTreecode:
         # ─────────────────────────────────────────────────────────────
         self.n_particles = ti.field(dtype=ti.i32, shape=())
         self.n_nodes = ti.field(dtype=ti.i32, shape=())
+        self._root = ti.field(dtype=ti.i32, shape=())
 
         # Background velocity
         self.u_inf = ti.Vector.field(3, dtype=ti.f32, shape=())
@@ -122,19 +157,19 @@ class TaichiTreecode:
         # Statistics
         self.build_time = 0.0
         self.eval_time = 0.0
-        self.grad_time = 0.0  # Time for velocity gradient computation
+        self.grad_time = 0.0
 
-        # Cached temporary field for children transfer (avoids memory leak)
-        self._temp_children = ti.field(dtype=ti.i32, shape=(max_nodes, 8))
+        # AABB fields (allocated at instance level, not class level)
+        self._aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=())
+        self._aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=())
 
         # Constants for gradient kernel
-        self.MIN_R_SIGMA_GRADIENT = 0.5  # Skip overlapping cores
-        self.DEFAULT_CUTOFF_RADIUS_FACTOR = 15.0  # Far-field cutoff
+        self.MIN_R_SIGMA_GRADIENT = 0.5
+        self.DEFAULT_CUTOFF_RADIUS_FACTOR = 15.0
 
         self.set_kernel_type(self.kernel_type)
 
     def set_kernel_type(self, kernel_type: str) -> None:
-        """Update the regularization kernel used by the treecode."""
         normalized = kernel_type.upper()
         if normalized == "GAUSSIAN":
             kernel_id = 0
@@ -142,337 +177,474 @@ class TaichiTreecode:
             kernel_id = 1
         else:
             raise ValueError(f"Unsupported treecode kernel_type: {kernel_type}")
-
         self.kernel_type = normalized
         self.kernel_type_id[None] = kernel_id
 
-    def build(self, positions: np.ndarray, circulations: np.ndarray, radii: np.ndarray) -> None:
-        """
-        Build octree from particle data.
+    # =========================================================================
+    # BUILD — On-GPU LBVH construction
+    # =========================================================================
 
-        Note: Tree construction is done on CPU for simplicity.
-        GPU construction is complex and typically not the bottleneck.
+    def build(self, positions=None, circulations=None, radii=None, N=None,
+              force: bool = False) -> None:
+        """
+        Build LBVH binary tree from particle data.
+
+        Supports two calling conventions:
+
+        1. Field-based (preferred)::
+            tree.build(pos_field, strg_field, rad_field, N)
+
+           Copies from Taichi fields directly — **no CPU round-trip**.
+
+        2. NumPy arrays (backward compat)::
+            tree.build(pos_np, strg_np, rad_np)
+
+        When called with the same *N* (and no *force*) repeatedly, the build
+        is skipped — the tree is already valid.
 
         Args:
-            positions: Particle positions [N, 3] (N <= max_particles)
-            circulations: Particle circulations [N, 3]
-            radii: Particle radii [N]
+            positions:  Taichi vec3 field *or* NumPy array [N,3] of positions.
+            circulations: Taichi vec3 field *or* NumPy array [N,3].
+            radii:  Taichi scalar field *or* NumPy array [N].
+            N:  Number of active particles (required for field API).
+            force:  Accepted for API compatibility; the tree is always rebuilt.
         """
+        # The tree is rebuilt on every call.  A previous N-only guard skipped
+        # the rebuild whenever the particle *count* was unchanged — but N is
+        # constant across timesteps and RK sub-stages while positions/strengths
+        # change every call, so that guard froze the tree at its first
+        # configuration and silently corrupted every subsequent evaluation.
+        # Correct build-once-per-configuration reuse needs a real change signal
+        # (a position/strength version token) and is deferred; correctness first.
         t_start = time.perf_counter()
 
-        N = len(positions)
-        if self.max_particles < N:
-            raise ValueError(
-                f"Too many particles ({N}) for treecode capacity ({self.max_particles})"
-            )
+        # ── Detect calling convention ──────────────────────────────────
+        using_fields = hasattr(positions, 'shape') and hasattr(positions, '__getitem__') \
+                       and not isinstance(positions, np.ndarray)
 
-        self.n_particles[None] = N
+        if using_fields:
+            N_val = N if N is not None else self.n_particles[None]
+            if N_val > self.max_particles:
+                raise ValueError(
+                    f"Too many particles ({N_val}) for treecode capacity ({self.max_particles})"
+                )
+            self.n_particles[None] = N_val
+            self._copy_particle_fields(positions, circulations, radii, N_val)
+        else:
+            pos_np = positions
+            strg_np = circulations
+            rad_np = radii
+            N_val = len(pos_np)
+            if N_val > self.max_particles:
+                raise ValueError(
+                    f"Too many particles ({N_val}) for treecode capacity ({self.max_particles})"
+                )
+            self.n_particles[None] = N_val
+            self._upload_numpy_particles(pos_np, strg_np, rad_np, N_val)
 
-        # Pad arrays to max_particles size for Taichi field compatibility
-        # Taichi from_numpy requires exact shape match
-        def pad_1d(arr):
-            """Pad 1D array to max_particles."""
-            padded = np.zeros(self.max_particles, dtype=np.float32)
-            padded[:N] = arr.astype(np.float32)
-            return padded
-
-        def pad_2d(arr):
-            """Pad 2D array to (max_particles, 3)."""
-            padded = np.zeros((self.max_particles, 3), dtype=np.float32)
-            padded[:N] = arr.astype(np.float32)
-            return padded
-
-        # Copy particle data to Taichi fields (padded)
-        self.positions.from_numpy(pad_2d(positions))
-        self.circulations.from_numpy(pad_2d(circulations))
-        self.radii.from_numpy(pad_1d(radii))
-
-        # Build tree on CPU (simpler, construction is O(N log N) anyway)
-        self._build_tree_cpu(positions, circulations, radii)
+        # ── Build LBVH ────────────────────────────────────────────────
+        self._build_lbvh(N_val)
 
         self.build_time = time.perf_counter() - t_start
 
-    @staticmethod
-    def _pad_to_max(arr: np.ndarray, max_size: int, fill: float = 0.0) -> np.ndarray:
-        """Pad array to max_size along the first axis."""
-        if len(arr) >= max_size:
-            return arr[:max_size]
-        pad_width = [(0, max_size - len(arr))] + [(0, 0)] * (arr.ndim - 1)
-        return np.pad(arr, pad_width, constant_values=fill)
-
-    @staticmethod
-    def _classify_octant(pos: np.ndarray, center: np.ndarray) -> int:
-        """Return the 0-7 octant index for *pos* relative to *center*."""
-        octant = 0
-        if pos[0] >= center[0]:
-            octant |= 1
-        if pos[1] >= center[1]:
-            octant |= 2
-        if pos[2] >= center[2]:
-            octant |= 4
-        return octant
-
-    @staticmethod
-    def _octant_offset(octant: int, child_half: float) -> np.ndarray:
-        """Offset vector from parent center to the *octant* child center."""
-        return np.array(
-            [
-                child_half if (octant & 1) else -child_half,
-                child_half if (octant & 2) else -child_half,
-                child_half if (octant & 4) else -child_half,
-            ]
-        )
-
-    def _bfs_build_tree(self, positions: np.ndarray, N: int, center: np.ndarray, half_size: float):
-        """BFS octree construction; returns node arrays."""
-        node_centers: list = [center]
-        node_half_sizes: list = [half_size]
-        node_particles: list = [list(range(N))]
-        node_children: list = [[-1] * 8]
-        node_is_leaf: list = [0]
-        queue: list = [0]
-        node_idx = 1
-
-        while queue:
-            curr = queue.pop(0)
-            particles = node_particles[curr]
-            curr_center = node_centers[curr]
-            curr_half = node_half_sizes[curr]
-
-            if len(particles) <= self.max_leaf_size:
-                node_is_leaf[curr] = 1
-                continue
-
-            child_half = curr_half / 2
-            child_particles: list = [[] for _ in range(8)]
-            for p in particles:
-                child_particles[self._classify_octant(positions[p], curr_center)].append(p)
-
-            for octant in range(8):
-                if not child_particles[octant]:
-                    continue
-                child_idx = node_idx
-                node_idx += 1
-                node_centers.append(curr_center + self._octant_offset(octant, child_half))
-                node_half_sizes.append(child_half)
-                node_particles.append(child_particles[octant])
-                node_children.append([-1] * 8)
-                node_is_leaf.append(0)
-                node_children[curr][octant] = child_idx
-                queue.append(child_idx)
-
-            node_particles[curr] = []
-
-        return node_centers, node_half_sizes, node_particles, node_children, node_is_leaf
-
-    @staticmethod
-    def _compute_leaf_multipole(
-        particles: list,
-        positions: np.ndarray,
-        circulations: np.ndarray,
-        radii: np.ndarray,
-        center: np.ndarray,
-    ) -> tuple:
-        """Compute multipole moment for a leaf node."""
-        if not particles:
-            return np.zeros(3, dtype=np.float32), center, 0.0
-        circs = circulations[particles]
-        poss = positions[particles]
-        mags = np.linalg.norm(circs, axis=1, keepdims=True)
-        total_mag = float(mags.sum())
-        com = (poss * mags).sum(axis=0) / total_mag if total_mag > 1e-15 else poss.mean(axis=0)
-        return circs.sum(axis=0), com, float(radii[particles].mean())
-
-    @staticmethod
-    def _compute_interior_multipole(
-        i: int,
-        node_children: list,
-        node_total_circ: np.ndarray,
-        node_com: np.ndarray,
-        node_avg_radius: np.ndarray,
-        node_centers: list,
-    ) -> None:
-        """Aggregate child multipoles into interior node i (in-place)."""
-        total_circ = np.zeros(3)
-        weighted_pos = np.zeros(3)
-        total_weight = 0.0
-        total_rad = 0.0
-        n_child = 0
-        for octant in range(8):
-            child_idx = node_children[i][octant]
-            if child_idx >= 0:
-                total_circ += node_total_circ[child_idx]
-                mag = float(np.linalg.norm(node_total_circ[child_idx]))
-                weighted_pos += node_com[child_idx] * mag
-                total_weight += mag
-                total_rad += node_avg_radius[child_idx]
-                n_child += 1
-        node_total_circ[i] = total_circ
-        node_avg_radius[i] = total_rad / max(n_child, 1)
-        if total_weight > 1e-15:
-            node_com[i] = weighted_pos / total_weight
-        else:
-            node_com[i] = node_centers[i]
-
-    def _compute_node_multipoles(
-        self,
-        n_nodes: int,
-        node_is_leaf: list,
-        node_particles: list,
-        node_children: list,
-        node_centers: list,
-        positions: np.ndarray,
-        circulations: np.ndarray,
-        radii: np.ndarray,
-    ) -> tuple:
-        """Bottom-up multipole computation for all nodes."""
-        node_total_circ = np.zeros((n_nodes, 3), dtype=np.float32)
-        node_com = np.zeros((n_nodes, 3), dtype=np.float32)
-        node_avg_radius = np.zeros(n_nodes, dtype=np.float32)
-        for i in range(n_nodes - 1, -1, -1):
-            if node_is_leaf[i]:
-                node_total_circ[i], node_com[i], node_avg_radius[i] = self._compute_leaf_multipole(
-                    node_particles[i], positions, circulations, radii, node_centers[i]
-                )
-            else:
-                self._compute_interior_multipole(
-                    i, node_children, node_total_circ, node_com, node_avg_radius, node_centers
-                )
-        return node_total_circ, node_com, node_avg_radius
-
-    def _transfer_to_gpu(
-        self,
-        n_nodes: int,
-        node_centers: list,
-        node_half_sizes: list,
-        node_total_circ: np.ndarray,
-        node_com: np.ndarray,
-        node_avg_radius: np.ndarray,
-        node_is_leaf: list,
-        node_children: list,
-    ) -> None:
-        """Upload CPU node arrays to Taichi fields (padded to max_nodes)."""
-        mn = self.max_nodes
-        node_centers_arr = np.array(node_centers, dtype=np.float32)
-        node_half_sizes_arr = np.array(node_half_sizes, dtype=np.float32)
-        node_is_leaf_arr = np.array(node_is_leaf, dtype=np.int32)
-        self.node_center.from_numpy(self._pad_to_max(node_centers_arr, mn))
-        self.node_half_size.from_numpy(self._pad_to_max(node_half_sizes_arr, mn))
-        self.node_total_circ.from_numpy(self._pad_to_max(node_total_circ, mn))
-        self.node_com.from_numpy(self._pad_to_max(node_com, mn))
-        self.node_avg_radius.from_numpy(self._pad_to_max(node_avg_radius, mn))
-        self.node_is_leaf.from_numpy(self._pad_to_max(node_is_leaf_arr, mn))
-        children_padded = np.full((mn, 8), -1, dtype=np.int32)
-        children_array = np.array(node_children, dtype=np.int32)
-        children_padded[:n_nodes] = children_array[:n_nodes]
-        self._set_children_from_numpy(children_padded)
-
-    def _pack_and_transfer_leaf_particles(
-        self, n_nodes: int, node_is_leaf: list, node_particles: list
-    ) -> None:
-        """Pack leaf particle lists into a contiguous array and upload to GPU."""
-        leaf_particles_list: list = []
-        particle_starts = np.zeros(n_nodes, dtype=np.int32)
-        particle_counts = np.zeros(n_nodes, dtype=np.int32)
-        for i in range(n_nodes):
-            if node_is_leaf[i] and node_particles[i]:
-                particle_starts[i] = len(leaf_particles_list)
-                particle_counts[i] = len(node_particles[i])
-                leaf_particles_list.extend(node_particles[i])
-        if leaf_particles_list:
-            leaf_arr = np.array(leaf_particles_list, dtype=np.int32)
-            self.leaf_particles.from_numpy(
-                self._pad_to_max(leaf_arr, self.max_particles).astype(np.int32)
-            )
-        mn = self.max_nodes
-        self.node_particle_start.from_numpy(self._pad_to_max(particle_starts, mn).astype(np.int32))
-        self.node_particle_count.from_numpy(self._pad_to_max(particle_counts, mn).astype(np.int32))
-
-    def _build_tree_cpu(
-        self, positions: np.ndarray, circulations: np.ndarray, radii: np.ndarray
-    ) -> None:
-        """CPU-based tree construction with transfer to GPU fields."""
-        N = len(positions)
-        pmin = positions.min(axis=0)
-        pmax = positions.max(axis=0)
-        center = 0.5 * (pmin + pmax)
-        half_size = max(0.5 * float(np.max(pmax - pmin)) * 1.01, 1e-6)
-
-        node_centers, node_half_sizes, node_particles, node_children, node_is_leaf = (
-            self._bfs_build_tree(positions, N, center, half_size)
-        )
-
-        n_nodes = len(node_centers)
-        self.n_nodes[None] = n_nodes
-
-        node_total_circ, node_com, node_avg_radius = self._compute_node_multipoles(
-            n_nodes,
-            node_is_leaf,
-            node_particles,
-            node_children,
-            node_centers,
-            positions,
-            circulations,
-            radii,
-        )
-
-        self._transfer_to_gpu(
-            n_nodes,
-            node_centers,
-            node_half_sizes,
-            node_total_circ,
-            node_com,
-            node_avg_radius,
-            node_is_leaf,
-            node_children,
-        )
-
-        self._pack_and_transfer_leaf_particles(n_nodes, node_is_leaf, node_particles)
-
-    def _set_children_from_numpy(self, children: np.ndarray):
-        """Transfer children array using a Taichi kernel for speed.
-
-        Uses a cached temporary field to avoid memory leaks from repeated
-        Taichi field allocations (Taichi fields cannot be garbage collected).
-        """
-        # Use the cached temporary field for the transfer (allocated once in __init__)
-        self._temp_children.from_numpy(children)
-        self._copy_children_kernel(self._temp_children)
+    def _upload_numpy_particles(self, pos_np, strg_np, rad_np, N):
+        """Upload NumPy particle arrays to GPU fields."""
+        def pad_2d(arr):
+            padded = np.zeros((self.max_particles, 3), dtype=np.float32)
+            padded[:N] = arr.astype(np.float32)
+            return padded
+        def pad_1d(arr):
+            padded = np.zeros(self.max_particles, dtype=np.float32)
+            padded[:N] = arr.astype(np.float32)
+            return padded
+        self.positions.from_numpy(pad_2d(pos_np))
+        self.circulations.from_numpy(pad_2d(strg_np))
+        self.radii.from_numpy(pad_1d(rad_np))
+        ti.sync()
 
     @ti.kernel
-    def _copy_children_kernel(self, temp: ti.template()):
-        """Copy children from temp field to node_children."""
-        for i, j in ti.ndrange(self.max_nodes, 8):
-            self.node_children[i, j] = temp[i, j]
+    def _copy_particle_fields(self, pos: ti.template(), strg: ti.template(),
+                               rad: ti.template(), N: ti.i32):
+        """Copy particle data from source Taichi fields to treecode fields."""
+        for i in range(N):
+            self.positions[i] = pos[i]
+            self.circulations[i] = strg[i]
+            self.radii[i] = rad[i]
+
+    # ── GPU Karras tree build kernels ────────────────────────────────
+
+    @ti.kernel
+    def _compute_lcp_kernel(self, N: ti.i32):
+        """Compute LCP from sorted Morton codes (parallel)."""
+        for i in range(N - 1):
+            si = self.sorted_indices[i]
+            sj = self.sorted_indices[i + 1]
+            diff = self.morton_codes[si] ^ self.morton_codes[sj]
+            if diff == 0:
+                self._lcp[i] = 30
+            else:
+                # Count leading common bits: msb of diff
+                temp = diff
+                msb = ti.i32(0)
+                while temp > 1:
+                    temp >>= 1
+                    msb += 1
+                self._lcp[i] = 29 - msb
+        if N > 0:
+            self._lcp[N - 1] = -2  # sentinel
+
+    @ti.kernel
+    def _compute_nsl_kernel(self, N: ti.i32):
+        """Nearest smaller LCP to the left (serial stack)."""
+        ti.loop_config(serialize=True)
+        sp = 0
+        for i in range(N - 1):
+            li = self._lcp[i]
+            while sp > 0 and self._lcp[self._stack[sp - 1]] >= li:
+                sp -= 1
+            self._nsl[i] = self._stack[sp - 1] if sp > 0 else -1
+            self._stack[sp] = i
+            sp += 1
+
+    @ti.kernel
+    def _compute_nsr_kernel(self, N: ti.i32):
+        """Nearest smaller LCP to the right (serial stack, reverse)."""
+        ti.loop_config(serialize=True)
+        sp = 0
+        for k in range(N - 1):
+            i = (N - 2) - k
+            li = self._lcp[i]
+            while sp > 0 and self._lcp[self._stack[sp - 1]] >= li:
+                sp -= 1
+            self._nsr[i] = self._stack[sp - 1] if sp > 0 else (N - 1)
+            self._stack[sp] = i
+            sp += 1
+
+    @ti.kernel
+    def _build_karras_tree_kernel(self, N: ti.i32):
+        """Assign parent/child relationships from NSL/NSR.
+
+        Sets leaf data, internal node ranges, and the full binary tree
+        topology (node_left, node_right, _root) in a single parallel kernel.
+        """
+        # ── initialise all nodes ──
+        for i in range(2 * N - 1):
+            self.node_left[i] = -1
+            self.node_right[i] = -1
+            self.node_is_leaf[i] = 0
+            self._node_first[i] = -1
+            self._node_last[i] = -1
+            self.node_particle_start[i] = -1
+            self.node_particle_count[i] = 0
+        for j in range(N):
+            self.leaf_particles[j] = -1
+
+        # ── leaf data ──
+        for j in range(N):
+            self.node_is_leaf[j] = 1
+            self.leaf_particles[j] = self.sorted_indices[j]
+            self._node_first[j] = j
+            self._node_last[j] = j
+            self.node_particle_start[j] = j
+            self.node_particle_count[j] = 1
+
+        # ── find root (boundary with minimum LCP) ──
+        min_lcp = self._lcp[0]
+        root_bd = 0
+        for i in range(1, N - 1):
+            if self._lcp[i] < min_lcp:
+                min_lcp = self._lcp[i]
+                root_bd = i
+        self._root[None] = N + root_bd
+
+        # ── internal node ranges ──
+        for i in range(N - 1):
+            idx = N + i
+            first = self._nsl[i] + 1
+            last = self._nsr[i]
+            self._node_first[idx] = first
+            self._node_last[idx] = last
+            self.node_particle_start[idx] = first
+            self.node_particle_count[idx] = last - first + 1
+
+        # ── internal node parents (each finds its parent) ──
+        for i in range(N - 1):
+            l = self._nsl[i]
+            r = self._nsr[i]
+            parent = -1
+            if l >= 0 and r >= N - 1:
+                parent = l
+            elif l < 0 and r < N - 1:
+                parent = r
+            elif l >= 0 and r < N - 1:
+                if self._lcp[l] > self._lcp[r]:
+                    parent = l
+                else:
+                    parent = r
+            if parent >= 0:
+                if i < parent:
+                    self.node_left[N + parent] = N + i
+                else:
+                    self.node_right[N + parent] = N + i
+
+        # ── leaf parents ──
+        if N > 0:
+            self.node_left[N + 0] = 0
+        for j in range(1, N - 1):
+            if self._lcp[j - 1] > self._lcp[j]:
+                self.node_right[N + (j - 1)] = j
+            else:
+                self.node_left[N + j] = j
+        if N > 1:
+            self.node_right[N + (N - 2)] = N - 1
+
+    def _build_lbvh(self, N):
+        """Internal LBVH build pipeline (all steps after data upload)."""
+        if N <= 1:
+            # Trivial: single particle, root = that particle
+            self.n_nodes[None] = N
+            self._root[None] = 0 if N == 0 else 0
+            self.node_is_leaf[0] = 1
+            self.node_particle_start[0] = 0
+            self.node_particle_count[0] = N
+            if N > 0:
+                self.leaf_particles[0] = 0
+                self.node_total_circ[0] = self.circulations[0]
+                self.node_com[0] = self.positions[0]
+                self.node_center[0] = self.positions[0]
+                self.node_half_size[0] = 0.0
+                self.node_avg_radius[0] = self.radii[0]
+                self.node_left[0] = -1
+                self.node_right[0] = -1
+                self.node_parent[0] = -1
+            return
+
+        # Step 1: Compute AABB (parallel min/max reduction)
+        self._compute_aabb_kernel(N)
+        ti.sync()
+
+        # Step 2: Compute Morton codes (30-bit)
+        self._compute_morton_codes_kernel(N, self._aabb_min, self._aabb_max)
+        ti.sync()
+
+        # Step 3: Sort on CPU (Phase 1 — np.argsort; Phase 2 → GPU radix sort)
+        ti.sync()
+        morton_np = self.morton_codes.to_numpy()[:N]
+        sorted_idx = np.argsort(morton_np, kind='mergesort')
+        padded = np.full(self.max_particles, -1, dtype=np.int32)
+        padded[:N] = sorted_idx.astype(np.int32)
+        self.sorted_indices.from_numpy(padded)
+
+        # Step 4: Build binary tree — GPU Karras (O(N), fully parallel)
+        self._compute_lcp_kernel(N)
+        ti.sync()
+        self._compute_nsl_kernel(N)
+        self._compute_nsr_kernel(N)
+        self._build_karras_tree_kernel(N)
+        ti.sync()
+
+        # Step 5: Parents, then a single correct parallel bottom-up pass.
+        self._compute_parents_kernel(N)
+        ti.sync()
+        self._leaf_multipole_init_kernel(N)
+        ti.sync()
+        self._bottom_up_walk_kernel(N)
+        ti.sync()
+
+        self.n_nodes[None] = 2 * N - 1
+
+    # ── AABB kernel ──────────────────────────────────────────────────
+
+    @ti.kernel
+    def _compute_aabb_kernel(self, N: ti.i32):
+        """Parallel min/max reduction over particle positions.
+
+        The static init unrolls to three scalar stores that run before the
+        parallel ``range(N)`` loop; the per-particle atomics then reduce
+        concurrently across threads (no ``serialize`` needed).
+        """
+        for k in ti.static(range(3)):
+            self._aabb_min[None][k] = 1e10
+            self._aabb_max[None][k] = -1e10
+        for i in range(N):
+            p = self.positions[i]
+            for k in ti.static(range(3)):
+                ti.atomic_min(self._aabb_min[None][k], p[k])
+                ti.atomic_max(self._aabb_max[None][k], p[k])
+
+    # ── Morton-code kernel ────────────────────────────────────────────
+
+    @ti.func
+    def _expand_bits(self, v: ti.u32) -> ti.u32:
+        """Expand 10-bit integer to 30-bit by inserting two zero bits
+        between each original bit (for 3D Morton code)."""
+        v = (v | (v << 16)) & 0x030000FF
+        v = (v | (v << 8)) & 0x0300F00F
+        v = (v | (v << 4)) & 0x030C30C3
+        v = (v | (v << 2)) & 0x09249249
+        return v
+
+    @ti.kernel
+    def _compute_morton_codes_kernel(self, N: ti.i32,
+                                      aabb_min: ti.template(),
+                                      aabb_max: ti.template()):
+        """Quantize f32 positions to 30-bit Morton codes (10 bits/axis)."""
+        inv_range = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            span = aabb_max[None][k] - aabb_min[None][k]
+            inv_range[k] = 1023.0 / (span + 1e-30)
+
+        for i in range(N):
+            p = self.positions[i]
+            qi = ti.Vector([ti.u32(0), ti.u32(0), ti.u32(0)])
+            for k in ti.static(range(3)):
+                q = ti.u32(ti.floor((p[k] - aabb_min[None][k]) * inv_range[k]))
+                qi[k] = ti.min(q, ti.u32(1023))
+            code = ti.u32(0)
+            code |= self._expand_bits(qi[0]) << 2
+            code |= self._expand_bits(qi[1]) << 1
+            code |= self._expand_bits(qi[2])
+            self.morton_codes[i] = code
+
+    # ── Bottom-up multipoles ──────────────────────────────────────────
+
+    @ti.kernel
+    def _compute_parents_kernel(self, N: ti.i32):
+        """Derive node_parent from the child links set by the Karras kernel.
+
+        Robust by construction: every node is the child of exactly one internal
+        node, so scanning internal nodes and writing parent[child]=idx covers
+        all non-root nodes; the root is the only node never written and keeps
+        its -1 sentinel.
+        """
+        for idx in range(2 * N - 1):
+            self.node_parent[idx] = -1
+        for idx in range(N, 2 * N - 1):
+            left = self.node_left[idx]
+            right = self.node_right[idx]
+            if left >= 0:
+                self.node_parent[left] = idx
+            if right >= 0:
+                self.node_parent[right] = idx
+
+    @ti.kernel
+    def _leaf_multipole_init_kernel(self, N: ti.i32):
+        """Seed leaf multipoles/AABB from particles and clear visit counters.
+
+        Leaves carry a single particle, so their multipole (COM = position,
+        total_circ = circulation, avg_radius = radius) is exact and their
+        geometric extent is zero — node_half_size = 0 makes the MAC always
+        accept a leaf, evaluating it via its exact single-particle multipole.
+        Setting these explicitly also overwrites any stale values left in the
+        node fields from a previous (possibly larger) build.
+        """
+        for j in range(N):
+            p = self.sorted_indices[j]
+            self.node_total_circ[j] = self.circulations[p]
+            self.node_avg_radius[j] = self.radii[p]
+            self.node_com[j] = self.positions[p]
+            self.node_center[j] = self.positions[p]
+            self.node_half_size[j] = 0.0
+            self._node_aabb_min[j] = self.positions[p]
+            self._node_aabb_max[j] = self.positions[p]
+            self._visit[j] = 0
+        for idx in range(N, 2 * N - 1):
+            self._visit[idx] = 0
+
+    @ti.kernel
+    def _bottom_up_walk_kernel(self, N: ti.i32):
+        """Correct parallel bottom-up multipole accumulation (Karras 2012).
+
+        One thread per leaf climbs toward the root.  At each parent it atomically
+        increments an arrival counter: the *first* child to arrive stops (its
+        sibling's subtree is not finished), the *second* combines both children
+        into the parent and continues upward.  Each internal node is therefore
+        combined exactly once, only after both subtrees are complete — correct
+        for any tree depth, unlike the previous fixed 3-pass scheme.
+        """
+        for j in range(N):
+            node = self.node_parent[j]
+            while node >= 0:
+                arrived = ti.atomic_add(self._visit[node], 1)
+                if arrived == 0:
+                    node = -1  # first child here; the sibling will finish it
+                else:
+                    self._combine_node(node)
+                    node = self.node_parent[node]
+
+    @ti.func
+    def _combine_node(self, idx: ti.i32):
+        left = self.node_left[idx]
+        right = self.node_right[idx]
+        if left >= 0 and right >= 0:
+            first = ti.min(self._node_first[left], self._node_first[right])
+            last = ti.max(self._node_last[left], self._node_last[right])
+            self._node_first[idx] = first
+            self._node_last[idx] = last
+            self.node_particle_start[idx] = first
+            self.node_particle_count[idx] = last - first + 1
+
+            total_circ = self.node_total_circ[left] + self.node_total_circ[right]
+            self.node_total_circ[idx] = total_circ
+
+            mag_l = ti.sqrt(self.node_total_circ[left].dot(self.node_total_circ[left]))
+            mag_r = ti.sqrt(self.node_total_circ[right].dot(self.node_total_circ[right]))
+            total_mag = mag_l + mag_r
+            com = ti.Vector([0.0, 0.0, 0.0])
+            if total_mag > 1e-15:
+                com = (self.node_com[left] * mag_l + self.node_com[right] * mag_r) / total_mag
+            else:
+                com = (self.node_com[left] + self.node_com[right]) * 0.5
+            self.node_com[idx] = com
+
+            count_l = max(self.node_particle_count[left], 1)
+            count_r = max(self.node_particle_count[right], 1)
+            total_count = count_l + count_r
+            avg_rad = (self.node_avg_radius[left] * count_l
+                       + self.node_avg_radius[right] * count_r) / total_count
+            self.node_avg_radius[idx] = avg_rad
+
+            aabb_min = ti.Vector([0.0, 0.0, 0.0])
+            aabb_max = ti.Vector([0.0, 0.0, 0.0])
+            for k in ti.static(range(3)):
+                aabb_min[k] = ti.min(self._node_aabb_min[left][k],
+                                     self._node_aabb_min[right][k])
+                aabb_max[k] = ti.max(self._node_aabb_max[left][k],
+                                     self._node_aabb_max[right][k])
+            self._node_aabb_min[idx] = aabb_min
+            self._node_aabb_max[idx] = aabb_max
+
+            center = (aabb_min + aabb_max) * 0.5
+            self.node_center[idx] = center
+            half_size = ti.sqrt((aabb_max - aabb_min).dot(aabb_max - aabb_min)) * 0.5
+            self.node_half_size[idx] = max(half_size, 1e-8)
+
+    # =========================================================================
+    # KERNEL FUNCTIONS (qf, zeta, erf, skew)
+    # =========================================================================
 
     @ti.func
     def _erf_approx(self, x: ti.f32) -> ti.f32:
-        """Fast erf approximation matching the direct Gaussian kernel."""
         a1 = 0.254829592
         a2 = -0.284496736
         a3 = 1.421413741
         a4 = -1.453152027
         a5 = 1.061405429
         p = 0.327591100
-
         sign = ti.cast(1.0, ti.f32)
         x_abs = x
-        # Taichi does not allow return inside non-static if; use assignment
         if x < 0.0:
             sign = -1.0
             x_abs = -x
-
         t = 1.0 / (1.0 + p * x_abs)
         y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x_abs * x_abs))
         return sign * y
 
     @ti.func
     def q_kernel(self, r_sigma: ti.f32) -> ti.f32:
-        """Regularization kernel q(ρ) matching the configured particle kernel."""
-        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)  # 1/(4π)
+        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
-            # Gaussian kernel
             two_over_sqrt_pi = ti.cast(1.1283791671, ti.f32)
             if r_sigma < 1e-4:
                 result = (
@@ -483,7 +655,6 @@ class TaichiTreecode:
                 exp_term = two_over_sqrt_pi * r_sigma * ti.exp(-r_sigma * r_sigma)
                 result = (erf_term - exp_term) * ONE_OVER_FOUR_PI
         else:
-            # Winckelmans kernel
             r2 = r_sigma * r_sigma
             result = (
                 r_sigma * r_sigma * r_sigma * (r2 + 2.5) / ti.pow(r2 + 1.0, 2.5) * ONE_OVER_FOUR_PI
@@ -492,32 +663,28 @@ class TaichiTreecode:
 
     @ti.func
     def zeta_kernel(self, r_sigma: ti.f32) -> ti.f32:
-        """Vorticity kernel ζ(ρ) matching the configured particle kernel."""
-        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)  # 1/(4π)
+        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
-            # Gaussian kernel
             one_over_pi_15 = ti.cast(0.179587122125, ti.f32)
             result = one_over_pi_15 * ti.exp(-r_sigma * r_sigma)
         else:
-            # Winckelmans kernel
             r2 = r_sigma * r_sigma
             result = 7.5 / ti.pow(r2 + 1.0, 3.5) * ONE_OVER_FOUR_PI
         return result
 
     @ti.func
     def skew(self, v: ti.template()) -> ti.Matrix:
-        """Compute skew-symmetric matrix from vector.
-
-        skew([a, b, c]) = [[0, -c, b], [c, 0, -a], [-b, a, 0]]
-        """
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+
+    # =========================================================================
+    # LEAF SUMMATION FUNCTIONS
+    # =========================================================================
 
     @ti.func
     def _leaf_velocity_sum(
         self, node: int, target_pos: ti.template(), target_rad: ti.f32, self_idx: int
     ) -> ti.math.vec3:
-        """Direct velocity summation over all particles in a leaf node."""
         vel = ti.Vector([0.0, 0.0, 0.0])
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -534,7 +701,6 @@ class TaichiTreecode:
 
     @ti.func
     def _target_leaf_velocity_sum(self, node: int, target_pos: ti.template()) -> ti.math.vec3:
-        """Direct velocity summation over all particles in a leaf for a target point."""
         vel = ti.Vector([0.0, 0.0, 0.0])
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -550,15 +716,9 @@ class TaichiTreecode:
 
     @ti.func
     def _leaf_gradient_sum(
-        self,
-        node: int,
-        target_pos: ti.template(),
-        target_rad: ti.f32,
-        self_idx: int,
-        min_r_sigma: ti.f32,
-        max_r_sigma: ti.f32,
+        self, node: int, target_pos: ti.template(), target_rad: ti.f32,
+        self_idx: int, min_r_sigma: ti.f32, max_r_sigma: ti.f32
     ) -> ti.Matrix:
-        """Direct velocity-gradient summation over all particles in a leaf node."""
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -585,7 +745,6 @@ class TaichiTreecode:
     def _target_leaf_gradient_sum(
         self, node: int, target_pos: ti.template(), min_r_sigma: ti.f32
     ) -> ti.Matrix:
-        """Direct velocity-gradient summation in a leaf node for a target point."""
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -607,33 +766,42 @@ class TaichiTreecode:
                     ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
 
+    # =========================================================================
+    # TRAVERSAL — Binary-tree stack-based
+    # =========================================================================
+
     @ti.func
     def _push_children_particle(self, i: int, node: int, stack_ptr: int) -> int:
-        """Push valid children of *node* onto the per-thread particle traversal stack."""
-        for octant in ti.static(range(8)):
-            child = self.node_children[node, octant]
-            if child >= 0 and stack_ptr < self.max_stack_depth - 1:
-                self.traversal_stack[i, stack_ptr] = child
-                stack_ptr += 1
+        """Push children of *node* onto the per-thread particle traversal stack."""
+        left = self.node_left[node]
+        right = self.node_right[node]
+        if right >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.traversal_stack[i, stack_ptr] = right
+            stack_ptr += 1
+        if left >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.traversal_stack[i, stack_ptr] = left
+            stack_ptr += 1
         return stack_ptr
 
     @ti.func
     def _push_children_target(self, i: int, node: int, stack_ptr: int) -> int:
-        """Push valid children of *node* onto the per-thread target traversal stack."""
-        for octant in ti.static(range(8)):
-            child = self.node_children[node, octant]
-            if child >= 0 and stack_ptr < self.max_stack_depth - 1:
-                self.target_traversal_stack[i, stack_ptr] = child
-                stack_ptr += 1
+        left = self.node_left[node]
+        right = self.node_right[node]
+        if right >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.target_traversal_stack[i, stack_ptr] = right
+            stack_ptr += 1
+        if left >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.target_traversal_stack[i, stack_ptr] = left
+            stack_ptr += 1
         return stack_ptr
 
     @ti.func
     def _traverse_particle_vel(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.math.vec3:
-        """Iterative Barnes-Hut traversal returning velocity at particle i."""
         vel = ti.Vector([0.0, 0.0, 0.0])
         target_pos = self.positions[i]
         target_rad = self.radii[i]
-        self.traversal_stack[i, 0] = 0
+        root = self._root[None]
+        self.traversal_stack[i, 0] = root
         stack_ptr = 1
         while stack_ptr > 0:
             stack_ptr -= 1
@@ -658,13 +826,13 @@ class TaichiTreecode:
 
     @ti.func
     def _traverse_particle_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
-        """Iterative Barnes-Hut traversal returning velocity gradient at particle i."""
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.positions[i]
         target_rad = self.radii[i]
         MIN_R_SIGMA = ti.cast(0.5, ti.f32)
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
-        self.traversal_stack[i, 0] = 0
+        root = self._root[None]
+        self.traversal_stack[i, 0] = root
         stack_ptr = 1
         while stack_ptr > 0:
             stack_ptr -= 1
@@ -700,10 +868,10 @@ class TaichiTreecode:
 
     @ti.func
     def _traverse_target_vel(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.math.vec3:
-        """Iterative Barnes-Hut traversal returning velocity at target point i."""
         vel = ti.Vector([0.0, 0.0, 0.0])
         target_pos = self.target_positions[i]
-        self.target_traversal_stack[i, 0] = 0
+        root = self._root[None]
+        self.target_traversal_stack[i, 0] = root
         stack_ptr = 1
         while stack_ptr > 0:
             stack_ptr -= 1
@@ -728,11 +896,11 @@ class TaichiTreecode:
 
     @ti.func
     def _traverse_target_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
-        """Iterative Barnes-Hut traversal returning velocity gradient at target point i."""
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.target_positions[i]
         MIN_R_SIGMA = ti.cast(0.5, ti.f32)
-        self.target_traversal_stack[i, 0] = 0
+        root = self._root[None]
+        self.target_traversal_stack[i, 0] = root
         stack_ptr = 1
         while stack_ptr > 0:
             stack_ptr -= 1
@@ -764,14 +932,12 @@ class TaichiTreecode:
                 stack_ptr = self._push_children_target(i, node, stack_ptr)
         return gradu
 
+    # =========================================================================
+    # COMPUTE KERNELS
+    # =========================================================================
+
     @ti.kernel
     def compute_velocities_kernel(self, theta_sq: ti.f32):
-        """
-        GPU kernel for parallel velocity computation using treecode.
-
-        Each thread computes velocity for one particle using iterative
-        tree traversal with an explicit stack.
-        """
         N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
         for i in range(N):
@@ -781,17 +947,6 @@ class TaichiTreecode:
 
     @ti.kernel
     def compute_velocity_gradients_kernel(self, theta_sq: ti.f32):
-        """
-        GPU kernel for parallel velocity gradient computation using treecode.
-
-        Computes ∇u at each particle location using the Barnes-Hut algorithm.
-        The velocity gradient tensor is: (∇u)_ij = ∂u_i/∂x_j
-
-        The multipole approximation uses the same tree structure as velocity,
-        but applies the gradient kernel instead.
-
-        Also computes strain rate tensor: S_ij = 0.5 * (∇u + (∇u)^T)
-        """
         N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
         for i in range(N):
@@ -803,63 +958,46 @@ class TaichiTreecode:
                     strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
             self.strain_rates[i] = strain
 
-    def compute_velocities(self, background_velocity: np.ndarray | None = None) -> np.ndarray:
-        """
-        Compute velocities using GPU-accelerated treecode.
-
-        Args:
-            background_velocity: Freestream velocity [3] (optional)
-
-        Returns:
-            Velocities [N, 3]
-        """
+    def compute_velocities_gpu(self, background_velocity: np.ndarray | None = None) -> None:
+        """Run the velocity traversal on-device; the result stays in
+        ``self.velocities`` (a Taichi field).  No ``to_numpy`` download — callers
+        that keep the data on the GPU (e.g. ``base.velocity_self`` via a
+        field-to-field copy) use this to avoid a per-step N×3 round-trip."""
         t_start = time.perf_counter()
-
         if background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
-
-        theta_sq = self.theta * self.theta
-        self.compute_velocities_kernel(theta_sq)
+        self.compute_velocities_kernel(self.theta * self.theta)
         ti.sync()
-
         self.eval_time = time.perf_counter() - t_start
 
+    def compute_velocities(self, background_velocity: np.ndarray | None = None) -> np.ndarray:
+        self.compute_velocities_gpu(background_velocity)
         N = self.n_particles[None]
         return self.velocities.to_numpy()[:N]
 
-    def compute_velocity_gradients(self) -> tuple:
-        """
-        Compute velocity gradients and strain rates using GPU-accelerated treecode.
-
-        Returns:
-            tuple: (velocity_gradients [N, 3, 3], strain_rates [N, 3, 3])
-        """
+    def compute_velocity_gradients_gpu(self) -> None:
+        """Run the velocity-gradient traversal on-device; results stay in
+        ``self.velocity_gradients`` / ``self.strain_rates`` (Taichi fields)."""
         t_start = time.perf_counter()
-
-        theta_sq = self.theta * self.theta
-        self.compute_velocity_gradients_kernel(theta_sq)
+        self.compute_velocity_gradients_kernel(self.theta * self.theta)
         ti.sync()
-
         self.grad_time = time.perf_counter() - t_start
 
+    def compute_velocity_gradients(self) -> tuple:
+        self.compute_velocity_gradients_gpu()
         N = self.n_particles[None]
         grads = self.velocity_gradients.to_numpy()[:N]
         strains = self.strain_rates.to_numpy()[:N]
         return grads, strains
 
+    # =========================================================================
+    # TARGET POINT EVALUATIONS
+    # =========================================================================
+
     @ti.kernel
     def compute_target_velocities_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
-        """
-        GPU kernel for computing velocities at arbitrary target positions.
-
-        Uses same tree traversal as particle velocities, but evaluates at
-        target_positions instead of particle positions.
-
-        Note: For target points (which have no intrinsic radius), we use only the
-        particle/node radius for sigma, matching the direct kernel's behavior.
-        """
         M = self.n_targets[None]
         n_nodes = self.n_nodes[None]
         for i in range(M):
@@ -869,16 +1007,6 @@ class TaichiTreecode:
 
     @ti.kernel
     def compute_target_velocity_gradients_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
-        """
-        GPU kernel for computing velocity gradients at arbitrary target positions.
-
-        Note: For target points (which have no intrinsic radius), we use only the
-        particle/node radius for sigma, matching the direct kernel's behavior.
-
-        The direct kernel does NOT have a far-field cutoff for target gradients,
-        so we also omit MAX_R_SIGMA here to match. Only MIN_R_SIGMA (singularity
-        avoidance) is used.
-        """
         M = self.n_targets[None]
         n_nodes = self.n_nodes[None]
         for i in range(M):
@@ -887,77 +1015,45 @@ class TaichiTreecode:
     def compute_target_velocities(
         self, target_positions: np.ndarray, background_velocity: np.ndarray | None = None
     ) -> np.ndarray:
-        """
-        Compute velocities at arbitrary target positions using treecode.
-
-        Args:
-            target_positions: Target coordinates [M, 3]
-            background_velocity: Freestream velocity [3] (optional)
-
-        Returns:
-            np.ndarray: Velocities at targets [M, 3]
-        """
         M = len(target_positions)
         if M == 0:
             return np.zeros((0, 3), dtype=np.float32)
-
         if self.max_targets < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
-
-        # Set target positions
         self.n_targets[None] = M
         self.target_positions.from_numpy(target_positions.astype(np.float32))
-
-        # Set background velocity
         if background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
-
-        # Use average particle radius for target evaluation
         avg_radius = float(self.radii.to_numpy()[: self.n_particles[None]].mean())
-
         theta_sq = self.theta * self.theta
         self.compute_target_velocities_kernel(theta_sq, avg_radius)
         ti.sync()
-
         return self.target_velocities.to_numpy()[:M]
 
     def compute_target_velocity_gradients(self, target_positions: np.ndarray) -> np.ndarray:
-        """
-        Compute velocity gradients at arbitrary target positions using treecode.
-
-        Args:
-            target_positions: Target coordinates [M, 3]
-
-        Returns:
-            np.ndarray: Velocity gradients at targets [M, 3, 3]
-        """
         M = len(target_positions)
         if M == 0:
             return np.zeros((0, 3, 3), dtype=np.float32)
-
         if self.max_targets < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
-
-        # Set target positions
         self.n_targets[None] = M
         self.target_positions.from_numpy(target_positions.astype(np.float32))
-
-        # Use average particle radius for target evaluation
         avg_radius = float(self.radii.to_numpy()[: self.n_particles[None]].mean())
-
         theta_sq = self.theta * self.theta
         self.compute_target_velocity_gradients_kernel(theta_sq, avg_radius)
         ti.sync()
-
         return self.target_velocity_gradients.to_numpy()[:M]
 
+    # =========================================================================
+    # INFO
+    # =========================================================================
+
     def info(self) -> str:
-        """Return summary string."""
         grad_info = f"\n  Grad time: {self.grad_time * 1000:.2f} ms" if self.grad_time > 0 else ""
         return (
-            f"TaichiTreecode (GPU):\n"
+            f"TaichiTreecode (GPU/LBVH):\n"
             f"  Particles: {self.n_particles[None]}\n"
             f"  Nodes: {self.n_nodes[None]}\n"
             f"  Opening angle θ: {self.theta}\n"
@@ -978,19 +1074,6 @@ def compute_velocities_treecode_gpu(
     theta: float = 0.5,
     background_velocity: np.ndarray | None = None,
 ) -> np.ndarray:
-    """
-    Compute velocities using GPU-accelerated Barnes-Hut treecode.
-
-    Args:
-        positions: Particle positions [N, 3]
-        circulations: Particle circulations [N, 3]
-        radii: Particle core radii [N]
-        theta: Opening angle (default 0.5)
-        background_velocity: Freestream velocity [3] (optional)
-
-    Returns:
-        Velocities [N, 3]
-    """
     N = len(positions)
     tree = TaichiTreecode(max_particles=N, max_nodes=2 * N, theta=theta)
     tree.build(positions, circulations, radii)

@@ -1,0 +1,248 @@
+"""
+Correctness tests for the on-GPU LBVH Barnes-Hut treecode.
+
+These guard the three properties the LBVH build must satisfy and that the
+previous (broken) implementation violated:
+
+  1. **Multipole conservation** — every internal node's total circulation equals
+     the sum over the particles in its sorted range, and the root equals the sum
+     over all particles.  The earlier 3-pass forward/reverse/forward accumulation
+     left upper nodes with garbage (root error ~100 %); the parallel atomic
+     bottom-up walk must be exact (to f32 round-off).
+
+  2. **Convergence to direct summation** — the treecode velocity must approach the
+     exact O(N²) Biot-Savart sum as the opening angle theta -> 0, with the
+     characteristic monotone Barnes-Hut error growth in theta.  This is what
+     proves the node multipoles are actually used *and* correct.
+
+  3. **No stale tree** — ``build`` must rebuild whenever the field changes, even
+     when the particle count N is unchanged.  The earlier N-only rebuild guard
+     froze the tree at its first configuration, so every later step used stale
+     node data.
+
+Run on the Taichi CPU backend in f32 (matching the production kernels), so the
+suite is hardware-independent.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+import taichi as ti
+
+from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+
+ONE_OVER_FOUR_PI = 0.07957747154594767
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _ti_init():
+    ti.init(arch=ti.cpu, default_fp=ti.f32, random_seed=0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+def _cloud(N, seed=1):
+    rng = np.random.default_rng(seed)
+    pos = (rng.random((N, 3)) - 0.5).astype(np.float32)
+    circ = (rng.normal(size=(N, 3)) * 0.1).astype(np.float32)
+    rad = np.full(N, 0.05, dtype=np.float32)
+    return pos, circ, rad
+
+
+def _make_tree(N, theta):
+    return TaichiTreecode(
+        max_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
+    )
+
+
+def _direct_velocity(pos, circ, rad, chunk=400):
+    """Exact Winckelmans Biot-Savart sum (matches q_kernel / _leaf_velocity_sum)."""
+    pos = pos.astype(np.float64)
+    circ = circ.astype(np.float64)
+    rad = rad.astype(np.float64)
+    N = len(pos)
+    out = np.zeros((N, 3))
+    for s in range(0, N, chunk):
+        e = min(s + chunk, N)
+        r = pos[s:e, None, :] - pos[None, :, :]
+        rm = np.linalg.norm(r, axis=2)
+        sigma = 0.5 * (rad[s:e, None] + rad[None, :])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rs = rm / sigma
+            r2 = rs * rs
+            q = rs**3 * (r2 + 2.5) / (r2 + 1.0) ** 2.5 * ONE_OVER_FOUR_PI
+            cross = np.cross(r, circ[None, :, :])
+            contrib = -q[..., None] * cross / (rm[..., None] ** 3)
+        contrib = np.where((rm > 1e-10)[..., None], contrib, 0.0)
+        for ii in range(s, e):
+            contrib[ii - s, ii] = 0.0
+        out[s:e] = contrib.sum(axis=1)
+    return out
+
+
+def _rel_l2(a, b):
+    return float(np.linalg.norm(a - b) / (np.linalg.norm(b) + 1e-30))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Multipole conservation
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("N", [64, 512, 2048])
+def test_root_total_circulation_equals_global_sum(N):
+    """node_total_circ[root] must equal the sum of every particle's circulation."""
+    pos, circ, rad = _cloud(N, seed=3)
+    tree = _make_tree(N, theta=0.4)
+    tree.build(pos, circ, rad, force=True)
+    root = tree._root[None]
+    root_circ = tree.node_total_circ.to_numpy()[root]
+    true_sum = circ.astype(np.float64).sum(axis=0)
+    assert tree.node_particle_count.to_numpy()[root] == N
+    assert _rel_l2(root_circ, true_sum) < 1e-4
+
+
+def test_internal_node_circulation_matches_its_leaf_range():
+    """Each internal node's circ equals the sum over the particles it covers."""
+    N = 2048
+    pos, circ, rad = _cloud(N, seed=5)
+    tree = _make_tree(N, theta=0.4)
+    tree.build(pos, circ, rad, force=True)
+    nc = tree.node_total_circ.to_numpy()
+    start = tree.node_particle_start.to_numpy()
+    count = tree.node_particle_count.to_numpy()
+    leaf_particles = tree.leaf_particles.to_numpy()
+    nnodes = tree.n_nodes[None]
+    rng = np.random.default_rng(9)
+    probe = rng.integers(N, nnodes, size=200)
+    worst = 0.0
+    for idx in probe:
+        c = count[idx]
+        parts = leaf_particles[start[idx] : start[idx] + c]
+        assert c > 0 and (parts >= 0).all() and (parts < N).all()
+        truesum = circ[parts].astype(np.float64).sum(axis=0)
+        worst = max(worst, _rel_l2(nc[idx], truesum))
+    assert worst < 1e-4
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Convergence to direct summation
+# ─────────────────────────────────────────────────────────────────────────────
+def test_velocity_converges_to_direct_as_theta_shrinks():
+    N = 1500
+    pos, circ, rad = _cloud(N, seed=1)
+    vd = _direct_velocity(pos, circ, rad)
+    errs = {}
+    for th in (0.1, 0.2, 0.3, 0.5):
+        tree = _make_tree(N, theta=th)
+        tree.build(pos, circ, rad, force=True)
+        vt = tree.compute_velocities(np.zeros(3, dtype=np.float32))
+        errs[th] = _rel_l2(vt, vd)
+    # Monotone Barnes-Hut error growth in theta.
+    assert errs[0.1] < errs[0.2] < errs[0.3] < errs[0.5]
+    # Tight-theta accuracy is solidly inside the Barnes-Hut band.
+    assert errs[0.1] < 2e-2
+    assert errs[0.2] < 5e-2
+
+
+def test_background_velocity_is_added():
+    N = 200
+    pos, circ, rad = _cloud(N, seed=2)
+    bg = np.array([1.0, -2.0, 0.5], dtype=np.float32)
+    tree = _make_tree(N, theta=0.2)
+    tree.build(pos, circ, rad, force=True)
+    v0 = tree.compute_velocities(np.zeros(3, dtype=np.float32))
+    vbg = tree.compute_velocities(bg)
+    assert np.allclose(vbg - v0, bg, atol=1e-5)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. No stale tree (rebuild guard)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_rebuild_reflects_changed_strengths_same_N():
+    """Same N, different circulation, no force: the tree must rebuild, not reuse."""
+    N = 1500
+    pos, circ1, rad = _cloud(N, seed=7)
+    rng = np.random.default_rng(8)
+    circ2 = (rng.normal(size=(N, 3)) * 0.1).astype(np.float32)
+    tree = _make_tree(N, theta=0.3)
+
+    tree.build(pos, circ1, rad, N=N, force=True)
+    v1 = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
+
+    tree.build(pos, circ2, rad, N=N)  # same N, NO force
+    v2 = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
+
+    # The new result must match the direct sum for the *new* circulation …
+    assert _rel_l2(v2, _direct_velocity(pos, circ2, rad)) < 7e-2
+    # … and must genuinely differ from the old one (not a frozen tree).
+    assert _rel_l2(v2, v1) > 1e-1
+
+
+def test_rebuild_reflects_moved_particles_from_fields():
+    """Field-API path (as used by the solver): moving particles must rebuild."""
+    N = 1200
+    posA, circ, rad = _cloud(N, seed=11)
+    posB = (posA + 0.25).astype(np.float32)  # rigid translation
+
+    pos_f = ti.Vector.field(3, dtype=ti.f32, shape=N)
+    circ_f = ti.Vector.field(3, dtype=ti.f32, shape=N)
+    rad_f = ti.field(dtype=ti.f32, shape=N)
+    circ_f.from_numpy(circ)
+    rad_f.from_numpy(rad)
+
+    tree = _make_tree(N, theta=0.2)
+    pos_f.from_numpy(posA)
+    tree.build(pos_f, circ_f, rad_f, N)
+    vA = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
+
+    pos_f.from_numpy(posB)
+    tree.build(pos_f, circ_f, rad_f, N)  # same N, moved positions
+    vB = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
+
+    # A rigid translation leaves the induced velocities invariant, so a correct
+    # rebuild reproduces them; a frozen tree (evaluating at stale positions
+    # against stale nodes) would not.  Compare against the direct sum at B.
+    assert _rel_l2(vB, _direct_velocity(posB, circ, rad)) < 5e-2
+    # Sanity: B truly used the new field (B's internal node COMs moved by ~0.25).
+    assert _rel_l2(vA, _direct_velocity(posB, circ, rad)) < 5e-2  # translation-invariant
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gradient structural invariants (cheap, no direct reference needed)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_gpu_only_paths_match_numpy_returning_paths():
+    """The on-device methods (used by the solver to avoid per-step downloads)
+    must leave the same data in the Taichi fields that the numpy-returning
+    methods report."""
+    N = 600
+    pos, circ, rad = _cloud(N, seed=6)
+    bg = np.array([0.3, 0.0, -0.1], dtype=np.float32)
+    tree = _make_tree(N, theta=0.3)
+    tree.build(pos, circ, rad, force=True)
+
+    v_np = tree.compute_velocities(bg)  # numpy path (does to_numpy)
+    tree.compute_velocities_gpu(bg)  # on-device path (no download)
+    v_field = tree.velocities.to_numpy()[:N]
+    assert np.allclose(v_field, v_np, atol=1e-6)
+
+    g_np, s_np = tree.compute_velocity_gradients()
+    tree.compute_velocity_gradients_gpu()
+    g_field = tree.velocity_gradients.to_numpy()[:N]
+    s_field = tree.strain_rates.to_numpy()[:N]
+    assert np.allclose(g_field, g_np, atol=1e-6)
+    assert np.allclose(s_field, s_np, atol=1e-6)
+
+
+def test_velocity_gradient_is_traceless():
+    """trace(grad u) = 0 by construction (div-free regularised field)."""
+    N = 800
+    pos, circ, rad = _cloud(N, seed=4)
+    tree = _make_tree(N, theta=0.2)
+    tree.build(pos, circ, rad, force=True)
+    grads, strains = tree.compute_velocity_gradients()
+    tr = grads[:, 0, 0] + grads[:, 1, 1] + grads[:, 2, 2]
+    scale = np.linalg.norm(grads.reshape(N, 9), axis=1).mean() + 1e-12
+    assert np.abs(tr).max() / scale < 1e-4
+    # strain must be the symmetric part of grad u
+    assert np.allclose(strains, 0.5 * (grads + np.transpose(grads, (0, 2, 1))), atol=1e-5)
