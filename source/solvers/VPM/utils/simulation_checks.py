@@ -12,7 +12,6 @@ import numpy as np
 
 from ..config.constants import EPSILON
 
-
 def _compute_particle_statistics(system):
     """Extract particle statistics for time step validation."""
     positions = system.particles.position_cpu()
@@ -65,7 +64,6 @@ def _compute_particle_statistics(system):
         "grad_u_max": grad_u_max,
     }
 
-
 def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_mean_spacing=False):
     """Compute time step limits for a specific viscous scheme."""
     CFL_advection = 0.5
@@ -111,7 +109,7 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
 
     return result
 
-
+#TODO: is this method even in use anywhere? Haven't we moved this to the viscous schemes initialization? If so, delete this. Check if its used. If its still used, make sure its plugged and adopted by all viscous methods.
 def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     """
     Check and recommend time-step sizing constraints for all viscous schemes.
@@ -182,7 +180,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
             "NONE", stats, safety_factor, system.time_step_size, use_mean_spacing=True
         ),
     }
-    # ========== Check for issues ==========
+    # ---- Check for issues ----
 
     if system.time_step_size > schemes_info[system.viscous_scheme]["dt_limit"]:
         issues.append(
@@ -202,7 +200,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
             "Consider more uniform distribution."
         )
 
-    # ========== Assemble results ==========
+    # ---- Assemble results ----
 
     results = {
         "h_min": h_min,
@@ -223,7 +221,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
         "reynolds_number": (u_max * h_mean / nu_molecular) if nu_molecular > 0 else float("inf"),
     }
 
-    # ========== Print summary if verbose ==========
+    # ---- Print summary if verbose ----
 
     if verbose:
         system._print_timestep_validation_summary(results)

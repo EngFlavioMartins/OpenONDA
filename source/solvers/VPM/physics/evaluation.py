@@ -18,7 +18,6 @@ from ..config.constants import (
     MAX_PARTICLES,
 )
 
-
 @ti.data_oriented
 class ParticleFieldEvaluation:
     """
@@ -124,9 +123,7 @@ class ParticleFieldEvaluation:
         )
         return "\n".join(lines)
 
-    # =====================================================================================
     # TAICHI KERNEL DEFINITIONS
-    # =====================================================================================
 
     def _define_taichi_kernels(self):
         """Define Taichi kernels based on the selected kernel type."""
@@ -557,9 +554,7 @@ class ParticleFieldEvaluation:
         self._define_group_centroid_kernel()
         self._define_global_centroid_kernel()
 
-    # =====================================================================================
     # PUBLIC API METHODS
-    # =====================================================================================
 
     @staticmethod
     def record_centroid_history(
@@ -817,9 +812,7 @@ class ParticleFieldEvaluation:
 
         return centroids
 
-    # =====================================================================================
     # ENERGY DISSIPATION RATE COMPUTATION
-    # =====================================================================================
 
     def _update_energy_history(self, flow_time: float, kinetic_energy: float):
         """
@@ -902,9 +895,8 @@ class ParticleFieldEvaluation:
         """Reset the energy time history (useful when restarting simulation)."""
         self._flow_time_history.clear()
 
-
-# =====================================================================================
+# =========================================================
 # PUBLIC API EXPORTS
-# =====================================================================================
+# =========================================================
 
 __all__ = ["ParticleFieldEvaluation"]

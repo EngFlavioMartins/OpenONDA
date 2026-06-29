@@ -8,9 +8,9 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
-# =====================================================================================
+# =========================================================
 # IMPORTS AND DEPENDENCIES
-# =====================================================================================
+# =========================================================
 
 # Standard library imports
 from contextlib import contextmanager
@@ -40,7 +40,6 @@ from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
 from ..physics.evaluation import ParticleFieldEvaluation
 
-
 class FilteredParticles:
     """Helper class to pass filtered particles to physics kernels."""
 
@@ -53,11 +52,9 @@ class FilteredParticles:
     def __len__(self):
         return self.count
 
-
-# =====================================================================================
+# =========================================================
 # MAIN VPM SOLVER CLASS
-# =====================================================================================
-
+# =========================================================
 
 @ti.data_oriented
 class Solver:
@@ -121,9 +118,7 @@ class Solver:
           >>> particle_energies = solver.compute_kinetic_energies()  # For detailed analysis
     """
 
-    # ================================================================================
     # INITIALIZATION AND CONFIGURATION
-    # ================================================================================
 
     # NOTE: Taichi initialization is handled by initialize_taichi_backend() which
     # safely handles re-initialization attempts (catches exceptions if already initialized).
@@ -569,9 +564,7 @@ class Solver:
 
         Logging.message(f"Configuration updated: {list(kwargs.keys())}")
 
-    # ================================================================================
     # MAGIC METHODS AND BASIC OPERATIONS
-    # ================================================================================
 
     def __len__(self) -> int:
         """Return the number of particles in the system."""
@@ -590,9 +583,7 @@ class Solver:
         """Return a formatted string summarizing the solver state."""
         return Logging.solver_summary(self)
 
-    # ================================================================================
     # CORE SIMULATION AND TIME STEPPING
-    # ================================================================================
 
     @contextmanager
     def _measure_time(self, timer_dict: dict, key: str):
@@ -651,49 +642,52 @@ class Solver:
         # Dictionary to store synchronized timing for each stage
         timing = {}
 
-        # ----------------------------------------------------------------------
         # 0. VLM COUPLING (Shed wake particles from lifting surfaces)
-        # ----------------------------------------------------------------------
         if self.vlm_solver is not None:
             with self._measure_time(timing, "vlm"):
                 self._advance_vlm(self.time_step_size)
 
-        # ----------------------------------------------------------------------
         # 0.5 PANEL SOLVER COUPLING
-        # ----------------------------------------------------------------------
         if self.panel_solver is not None:
             with self._measure_time(timing, "panel"):
                 self._advance_panel()
 
-        # ----------------------------------------------------------------------
         # 1. VELOCITY & GRADIENTS (At t_n)
-        # ----------------------------------------------------------------------
         _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
-        if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
-            with self._measure_time(timing, "velocities"):
-                self._update_velocities()
-
-        with self._measure_time(timing, "velocity_gradients"):
-            self._update_velocity_gradients()
+        # Fuse u + ∇u into one tree build + one traversal when both are needed at
+        # the same t_n configuration and the velocity carries no contribution the
+        # fused kernel does not model (sources/panel) nor post-processing
+        # (velocity_override).  The fused pass writes particles.velocity = v(x_n),
+        # which the advection integrator then reuses as its first RK stage (k1).
+        _fuse_vel_grad = (
+            self.flow_model != "POTENTIAL"
+            and _adv != "NONE"
+            and self.num_sources == 0
+            and self.panel_solver is None
+            and getattr(self.physics, "velocity_override", None) is None
+        )
+        if _fuse_vel_grad:
+            with self._measure_time(timing, "velocity_gradients"):
+                self._update_velocity_and_gradients()
+        else:
+            if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
+                with self._measure_time(timing, "velocities"):
+                    self._update_velocities()
+            with self._measure_time(timing, "velocity_gradients"):
+                self._update_velocity_gradients()
 
         with self._measure_time(timing, "les"):
             self._update_LES_state()
 
-        # ----------------------------------------------------------------------
         # 2. CONVECTION (Advection x_n -> x_n+1)
-        # ----------------------------------------------------------------------
         with self._measure_time(timing, "positions"):
-            self._update_positions()
+            self._update_positions(precomputed_k1=_fuse_vel_grad)
 
-        # ----------------------------------------------------------------------
         # 3. STRENGTH & DIFFUSION (Update alpha)
-        # ----------------------------------------------------------------------
         with self._measure_time(timing, "strengths"):
             self._update_strength()
 
-        # ----------------------------------------------------------------------
         # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
-        # ----------------------------------------------------------------------
         _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
         if _diag_due:
             with self._measure_time(timing, "flow_integrals"):
@@ -702,15 +696,11 @@ class Solver:
             with self._measure_time(timing, "vlm_diagnostics"):
                 self._record_vlm_diagnostics()
 
-        # ----------------------------------------------------------------------
         # 4. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
-        # ----------------------------------------------------------------------
         with self._measure_time(timing, "adaptation"):
             self._update_adaptation()
 
-        # ----------------------------------------------------------------------
         # 5. DIAGNOSTICS & IO
-        # ----------------------------------------------------------------------
         with self._measure_time(timing, "backup"):
             self._backup_solution()
 
@@ -839,9 +829,7 @@ class Solver:
         """Delegate to SamplerExecutor."""
         SamplerExecutor._write_pvd(output_dir, name_prefix, entries)
 
-    # ================================================================================
     # PARTICLE PROPERTY ACCESSORS
-    # ================================================================================
     def _get_particle_field(self, method_name: str) -> np.ndarray:
         """Generic helper to get particle field data via cpu() methods."""
         return getattr(self.particles, f"{method_name}_cpu")()
@@ -1038,9 +1026,7 @@ class Solver:
         """
         return self._get_particle_field("circulation")
 
-    # ================================================================================
     # FLOW INTEGRALS AND DIAGNOSTIC PROPERTIES
-    # ================================================================================
     def _update_all_flow_integrals(self) -> None:
         """
         Update all flow integral quantities using the field diagnostics module.
@@ -1309,9 +1295,7 @@ class Solver:
             V_ref_mag,
         )
 
-    # ================================================================================
     # PARTICLE PHYSICS COMPUTATIONS (PER-PARTICLE ANALYSIS)
-    # ================================================================================
     def compute_kinetic_energies(self) -> np.ndarray:
         """
         Compute kinetic energy for each particle.
@@ -1355,9 +1339,7 @@ class Solver:
         """
         return self.field_diagnostics.compute_particles_enstrophy(self.particles)
 
-    # ================================================================================
     # FIELD COMPUTATION AT ARBITRARY POINTS
-    # ================================================================================
     def compute_target_vorticities(self, grid_positions: np.ndarray) -> np.ndarray:
         """
         Compute vorticity field at arbitrary spatial points.
@@ -1595,9 +1577,7 @@ class Solver:
             return_velocity=return_velocity,
         )
 
-    # ================================================================================
     # DIAGNOSTICS AND MONITORING
-    # ================================================================================
     def info(self):
         """
         Print comprehensive information about the solver and all submodels.
@@ -1619,9 +1599,7 @@ class Solver:
         info_str = Logging.solver_info(self)
         Logging.message(info_str)
 
-    # ================================================================================
     # PARTICLE MANAGEMENT
-    # ================================================================================
     def remove_particles(
         self, particle_indices: list[int] | None = None, remove_all: bool = False
     ) -> None:
@@ -1934,9 +1912,7 @@ class Solver:
                 f"Updated {len(property_names)} particle properties: {', '.join(property_names)}"
             )
 
-    # ================================================================================
     # STATE MANAGEMENT AND BACKUP/RESTORE
-    # ================================================================================
 
     def save_state(self, filename: str = "solution/solver_state") -> None:
         """
@@ -2003,6 +1979,16 @@ class Solver:
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh particle fields that are expected to be available in backups."""
+        N = self.particles.number_of_particles
+        if N > 0:
+            self.physics.velocity_self(
+                self.particles.position,
+                self.particles.circulation,
+                self.particles.radius,
+                self.particles.velocity,
+                self.particles.velocity_background,
+                N,
+            )
         self.physics.compute_vorticities(self.particles)
         if self.flow_model != "POTENTIAL":
             self._update_velocity_gradients()
@@ -2058,9 +2044,7 @@ class Solver:
         """Export solver state for visualization and post-processing."""
         self.io.export_state(filename, **kwargs)
 
-    # ================================================================================
     # PARTICLE PHYSICS UPDATE METHODS
-    # ================================================================================
 
     def set_background_velocity(self, velocity: list[float] | np.ndarray) -> None:
         """
@@ -2178,6 +2162,24 @@ class Solver:
             if announce:
                 Logging.message("Updating velocity gradient tensor, ∇u")
             self.physics.compute_velocity_gradients(self.particles)
+
+    def _update_velocity_and_gradients(self, announce: bool = True) -> None:
+        """Fused u + ∇u at t_n in a single tree build + traversal.
+
+        Writes ``particles.velocity`` (= v(x_n), reused as the advection k1) plus
+        ``velocity_gradient`` / ``strain_rate``.  Used in place of a separate
+        velocity pass and gradient pass when both are needed at the same
+        configuration (the common DNS/LES advection step)."""
+        use_treecode = bool(self.config.velocity and self.config.velocity.method == "TREECODE")
+        theta = self.config.velocity.theta if self.config.velocity else 0.5
+        if use_treecode:
+            if announce:
+                Logging.message(f"Updating fused u + ∇u (treecode, θ={theta})")
+            self.physics.compute_velocity_and_gradient_hierarchical(self.particles, theta=theta)
+        else:
+            if announce:
+                Logging.message("Updating fused u + ∇u (direct)")
+            self.physics.compute_velocity_and_gradient(self.particles)
 
     def _update_LES_state(self, dt: float | None = None) -> None:
         """
@@ -2449,7 +2451,7 @@ class Solver:
             self.physics, self.particles, pos_pre, str_pre, rad_pre, vort_pre, mask_split, stats
         )
 
-    def _update_positions(self, dt: float | None = None) -> None:
+    def _update_positions(self, dt: float | None = None, precomputed_k1: bool = False) -> None:
         """
         Update particle positions through advection.
 
@@ -2457,6 +2459,10 @@ class Solver:
         step over the macro time-step.  Every velocity evaluation inside the
         integrator uses the configured velocity method (direct or treecode) via
         physics.velocity_self — no method logic is duplicated here.
+
+        ``precomputed_k1=True`` means ``particles.velocity`` already holds v(x_n)
+        (a fused velocity+gradient pass ran at t_n), so the integrator's first
+        stage reuses it rather than recomputing it.
         """
         if self.advection_scheme == "NONE":
             return
@@ -2464,11 +2470,10 @@ class Solver:
             self.particles,
             self.time_step_size if dt is None else dt,
             scheme=self.advection_scheme,
+            precomputed_k1=precomputed_k1,
         )
 
-    # ================================================================================
     # PANEL-VPM COUPLING
-    # ================================================================================
 
     def _advance_panel(self):
         """
@@ -2514,9 +2519,7 @@ class Solver:
                     viscosity=viscosity,
                 )
 
-    # ================================================================================
     # VLM-VPM COUPLING
-    # ================================================================================
 
     # Pattern: similar to _advance_panel above, delegate to VLM solver's advance_coupled method
     def _advance_vlm(self, dt: float) -> None:
@@ -2543,9 +2546,7 @@ class Solver:
         if wake_particles is not None:
             self.add_vortex_particles(**wake_particles)
 
-    # ================================================================================
     # PARTICLES CONTROL
-    # ================================================================================
 
     def remove_particles_by_bounds(self, bounds: list, invert_selection: bool = False) -> int:
         """

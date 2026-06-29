@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-
 @dataclass
 class WingSegment:
     """
@@ -88,7 +87,6 @@ class WingSegment:
         n_mag = np.linalg.norm(n)
         return n / n_mag if n_mag > 1e-10 else np.array([0.0, 0.0, 1.0])
 
-
 @dataclass
 class Wing:
     """
@@ -137,7 +135,6 @@ class Wing:
         if segment.uid in self.segments:
             raise ValueError(f"Segment {segment.uid} already exists in wing {self.uid}")
         self.segments[segment.uid] = segment
-
 
 @dataclass
 class Aircraft:

@@ -33,7 +33,6 @@ _REGEN_RADIUS_RATIO = 2.5
 # Controls the Gaussian width: 4nu·Δt_d = β·R_d².
 _DVH_BETA = 0.077
 
-
 def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
 
@@ -51,7 +50,6 @@ def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     w[m1] = 1.0 - 2.5 * q[m1] ** 2 + 1.5 * q[m1] ** 3
     w[m2] = 0.5 * (2.0 - q[m2]) ** 2 * (1.0 - q[m2])
     return w
-
 
 @njit(cache=True, fastmath=False)
 def _dvh_scatter_numba(
@@ -135,7 +133,6 @@ def _dvh_scatter_numba(
                         grid_out[ii, jj, kk, 1] += w * cy
                         grid_out[ii, jj, kk, 2] += w * cz
 
-
 @ti.func
 def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
     """Taichi 1D M4' kernel (Monaghan 1985).  Mirrors _m4_prime_1d."""
@@ -146,7 +143,6 @@ def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
     elif r <= 2.0:
         w = 0.5 * (2.0 - r) * (2.0 - r) * (1.0 - r)
     return w
-
 
 @ti.data_oriented
 class _GridDiffusionMixin:
@@ -234,9 +230,7 @@ class _GridDiffusionMixin:
         """Field that will receive the updated vorticity (destination)."""
         return self._grid_b if self._ping else self._grid_a
 
-    # ------------------------------------------------------------------ #
-    #  Internal: grid management                                          #
-    # ------------------------------------------------------------------ #
+    # ---- Internal: grid management ----
 
     def _compute_grid_bounds(
         self,
@@ -474,9 +468,7 @@ class _GridDiffusionMixin:
         """
         self._body_mask_active = False
 
-    # ------------------------------------------------------------------ #
-    #  DVH: DVH orchestration                                             #
-    # ------------------------------------------------------------------ #
+    # ---- DVH: DVH orchestration ----
 
     def _apply_body_mask_current_grid(self, nx: int, ny: int, nz: int) -> None:
         """Zero vorticity inside masked (solid) cells on the active grid."""
@@ -1313,9 +1305,7 @@ class _GridDiffusionMixin:
             max_nodes=max_nodes,
         )
 
-    # ------------------------------------------------------------------ #
-    #  Taichi Kernels                                                     #
-    # ------------------------------------------------------------------ #
+    # ---- Taichi Kernels ----
 
     @ti.kernel
     def _m4_scatter_gpu_kernel(
@@ -1486,7 +1476,6 @@ class _GridDiffusionMixin:
             if i < nx and j < ny and k < nz and body_mask[i, j, k] != 0:
                 grid[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
 
-
 @ti.data_oriented
 class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
     """
@@ -1506,9 +1495,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         super().__init__(particles_kernel, max_particles, accumulator_dtype)
         self._init_grid_diffusion()
 
-    # =========================================================================
     # CORE SPREADING METHOD (CSM)
-    # =========================================================================
 
     def core_spreading_diffusion(self, particles, dt: float):
         """
@@ -1542,9 +1529,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         # Update radii: σ_new = sqrt(σ² + 2nu_eff*dt)
         self.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
 
-    # =========================================================================
     # RANDOM WALK METHOD (RWM)
-    # =========================================================================
 
     def random_walk_method_diffusion(self, particles, dt: float):
         """
@@ -1581,9 +1566,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         # Add random displacement: x_new = x + η*sqrt(2nu*dt)
         self.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
 
-    # =========================================================================
     # VOLUME UPDATE FROM DIVERGENCE
-    # =========================================================================
 
     def update_volumes(self, particles, dt: float):
         """

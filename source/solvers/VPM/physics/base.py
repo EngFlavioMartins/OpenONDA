@@ -20,18 +20,17 @@ import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
 
-# ===========================================================================
+# =========================================================
 # NUMERICAL STABILITY CONSTANTS
-# ===========================================================================
+# =========================================================
 
 # Regularization guard for velocity gradient kernel
 # Prevents singularity when r/σ < MIN_R_SIGMA_GRADIENT
 MIN_R_SIGMA_GRADIENT = 0.5
 
-# ===========================================================================
+# =========================================================
 # PHYSICS BASE CLASS
-# ===========================================================================
-
+# =========================================================
 
 @ti.data_oriented
 class PhysicsBase:
@@ -105,9 +104,7 @@ class PhysicsBase:
         # Bind kernel functions based on particle kernel type
         self._define_taichi_kernels()
 
-    # =========================================================================
     # TEMPORARY FIELD MANAGEMENT
-    # =========================================================================
 
     def _initialize_temp_fields(self):
         """
@@ -185,9 +182,7 @@ class PhysicsBase:
         self._initialize_temp_fields()
         self._temp_field_size = new_size
 
-    # =========================================================================
     # TARGET FIELD MANAGEMENT (for at-point evaluations)
-    # =========================================================================
 
     def _initialize_target_fields(self, size: int = 50000):
         """
@@ -271,9 +266,7 @@ class PhysicsBase:
 
         print(f"[INFO] Resized filtered particle fields to {new_size}")
 
-    # =========================================================================
     # TREECODE MANAGEMENT (for hierarchical methods)
-    # =========================================================================
 
     def _get_or_create_treecode(self, required_size: int, theta: float = 0.5):
         """
@@ -320,9 +313,7 @@ class PhysicsBase:
 
         return self._treecode
 
-    # =========================================================================
     # KERNEL INITIALIZATION
-    # =========================================================================
 
     def _define_taichi_kernels(self):
         """
@@ -361,9 +352,7 @@ class PhysicsBase:
         for name, fn in self.kernels.items():
             setattr(self, name, fn)
 
-    # =========================================================================
     # UNIFIED SELF-INDUCED VELOCITY OPERATOR
-    # =========================================================================
 
     def configure_velocity(self, method: str, theta: float = 0.5) -> None:
         """Set how the self-induced velocity is evaluated (single source of truth).
@@ -423,9 +412,7 @@ class PhysicsBase:
         else:
             self.compute_velocities_kernel(pos, strg, rad, out, bg, N)
 
-    # =========================================================================
     # FIELD EVALUATION METHODS
-    # =========================================================================
 
     def compute_velocities(self, particles):
         """
@@ -954,9 +941,46 @@ class PhysicsBase:
         self._copy_mat3(tree.velocity_gradients, particles.velocity_gradient, N)
         self._copy_mat3(tree.strain_rates, particles.strain_rate, N)
 
-    # =========================================================================
+    def compute_velocity_and_gradient_hierarchical(self, particles, theta: float = 0.5) -> None:
+        """Fused treecode evaluation of u, ∇u and S in **one** build + **one**
+        traversal (the MAC decision and geometry are shared).
+
+        Writes ``velocity`` (= v(x_n), reusable as the advection k1), plus
+        ``velocity_gradient`` and ``strain_rate`` — replacing a separate velocity
+        pass and a separate gradient pass at the same t_n configuration."""
+        N = len(particles)
+        if N == 0:
+            return
+        tree = self._get_or_create_treecode(N, theta)
+        tree.build(particles.position, particles.circulation, particles.radius, N)
+        bg = particles.velocity_background
+        bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+        tree.compute_velocity_and_gradient_gpu(bg_arr)
+        self._copy_vec3(tree.velocities, particles.velocity, N)
+        self._copy_mat3(tree.velocity_gradients, particles.velocity_gradient, N)
+        self._copy_mat3(tree.strain_rates, particles.strain_rate, N)
+
+    def compute_velocity_and_gradient(self, particles) -> None:
+        """Fused direct (O(N²)) evaluation of u, ∇u and S in a single j-loop.
+
+        DIRECT counterpart of :meth:`compute_velocity_and_gradient_hierarchical`;
+        writes ``velocity``, ``velocity_gradient`` and ``strain_rate`` together."""
+        N = len(particles)
+        if N == 0:
+            return
+        self._resize_temp_fields(N)
+        self.compute_velocity_and_gradient_kernel(
+            particles.position,
+            particles.circulation,
+            particles.radius,
+            particles.velocity,
+            particles.velocity_gradient,
+            particles.strain_rate,
+            particles.velocity_background,
+            N,
+        )
+
     # DIAGNOSTICS METHODS
-    # =========================================================================
 
     def compute_kinetic_energy(self, particles):
         """Compute kinetic energy at each particle."""

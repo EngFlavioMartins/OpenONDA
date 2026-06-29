@@ -27,13 +27,10 @@ import warnings
 
 import numpy as np
 
-
 class VLMLoadingDistribution:
     """Static helpers for extracting and exporting chord/span loading distributions."""
 
-    # ------------------------------------------------------------------
     # TOP-LEVEL RECORD HOOK (called from core/solver.py)
-    # ------------------------------------------------------------------
 
     @staticmethod
     def record_loading_distributions(
@@ -74,9 +71,7 @@ class VLMLoadingDistribution:
                     f"(Warning) Failed to record loading distribution for '{surface_name}': {exc}"
                 )
 
-    # ------------------------------------------------------------------
     # GRID INDEX
-    # ------------------------------------------------------------------
 
     @staticmethod
     def build_surface_grid_index(vlm_solver, surface_name: str) -> list[dict]:
@@ -159,9 +154,7 @@ class VLMLoadingDistribution:
 
         return blocks
 
-    # ------------------------------------------------------------------
     # EXTRACT
-    # ------------------------------------------------------------------
 
     @staticmethod
     def extract_distributions(
@@ -179,7 +172,7 @@ class VLMLoadingDistribution:
         if not vlm_solver._solved:
             return {"spanwise": pd.DataFrame(), "chordwise": pd.DataFrame()}
 
-        # --- per-panel data (no recompute) ---
+        # ---- per-panel data (no recompute) ----
         forces_np = vlm_solver.lattice.get_forces()  # (N,3)
         gamma_np = vlm_solver.lattice.get_circulation()  # (N,)
         corners_np = vlm_solver.lattice.corners.to_numpy()[
@@ -351,9 +344,7 @@ class VLMLoadingDistribution:
 
         return {"spanwise": df_span, "chordwise": df_chord}
 
-    # ------------------------------------------------------------------
     # EXPORT
-    # ------------------------------------------------------------------
 
     @staticmethod
     def export_distribution_csv(

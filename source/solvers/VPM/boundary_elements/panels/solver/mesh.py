@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("vpm")
 
-
 def add_body_from_mesh_stl(
     lattice: PanelLattice,
     uid: str,

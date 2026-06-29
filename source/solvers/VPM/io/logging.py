@@ -29,7 +29,7 @@ from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR
 
 logger = _stdio_logging.getLogger("vpm")
 logger.addHandler(_stdio_logging.NullHandler())
-
+# =========================================================
 
 class _LineBufferedLogStream:
     """Minimal stream adapter so print() writes are flushed to a log file in real time."""
@@ -56,7 +56,6 @@ class _LineBufferedLogStream:
 
     def fileno(self) -> int:
         return self._file_obj.fileno()  # type: ignore[return-value]
-
 
 def print_openonda_header(precision="f32"):
     """
@@ -135,7 +134,6 @@ def print_openonda_header(precision="f32"):
     s += "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /\n"
 
     print(s)
-
 
 class Logging:
     """

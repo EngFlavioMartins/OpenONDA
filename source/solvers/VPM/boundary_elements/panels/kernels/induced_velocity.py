@@ -14,7 +14,6 @@ import taichi as ti
 
 from ....config.constants import PANEL_EPSILON
 
-
 @ti.func
 def _segment_velocity(
     p: ti.types.vector(3, ti.f64),
@@ -33,7 +32,6 @@ def _segment_velocity(
         * (1.0 / denom)
     )
     return coeff * r1xr2
-
 
 @ti.kernel
 def compute_induced_velocity_kernel(

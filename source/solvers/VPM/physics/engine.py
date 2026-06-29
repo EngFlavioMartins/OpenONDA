@@ -19,7 +19,6 @@ from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
 from .diffusion import _GridDiffusionMixin
 
-
 @ti.data_oriented
 class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
     """
@@ -58,11 +57,10 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             f"  Max Particles            : {self.max_particles}"
         )
 
-    # =========================================================================
     # ADVECTION INTERFACE
-    # =========================================================================
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK4"):
+    def update_positions(self, particles, dt: float, scheme: str = "RK4",
+                         precomputed_k1: bool = False):
         """
         Update particle positions using specified time integration scheme.
 
@@ -72,12 +70,13 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             dt: Time step size [s]
             scheme: 'NONE', 'EULER', 'RK2', 'RK3', or 'RK4'
+            precomputed_k1: when True, ``particles.velocity`` already holds
+                v(x_n) (e.g. from a fused velocity+gradient pass at t_n), so the
+                integrator's first stage reuses it instead of recomputing.
         """
-        self._advection.update_positions(particles, dt, scheme)
+        self._advection.update_positions(particles, dt, scheme, precomputed_k1)
 
-    # =========================================================================
     # DIFFUSION INTERFACE
-    # =========================================================================
 
     def core_spreading_diffusion(self, particles, dt: float):
         """
@@ -115,9 +114,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._diffusion.update_volumes(particles, dt)
 
-    # =========================================================================
     # STRETCHING INTERFACE
-    # =========================================================================
 
     def vortex_stretching(
         self,
@@ -154,11 +151,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._stretching.save_strength_magnitudes(particles)
 
-
-# =============================================================================
+# =========================================================
 # INTERNAL HANDLER CLASSES (share parent's temp fields and kernels)
-# =============================================================================
-
+# =========================================================
 
 class _AdvectionHandler:
     """
@@ -171,19 +166,22 @@ class _AdvectionHandler:
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK4"):
+    def update_positions(self, particles, dt: float, scheme: str = "RK4",
+                         precomputed_k1: bool = False):
         """Advance particle positions by dt with a single step of the given scheme.
 
         The advance is one full step of the chosen scheme (EULER/RK2/RK3/RK4) over
         the macro time-step.  Every velocity evaluation routes through
         ``parent.velocity_self`` so the configured velocity method (direct or
-        treecode) is applied consistently at every stage.  Self-contained: does
-        not depend on a pre-populated ``particles.velocity`` (k1 is computed fresh).
+        treecode) is applied consistently at every stage.
 
         Args:
             particles:  particle container.
             dt:         macro time-step [s].
             scheme:     "NONE" | "EULER" | "RK2" | "RK3" | "RK4".
+            precomputed_k1: when True the first stage reuses ``particles.velocity``
+                (already holds v(x_n)) instead of recomputing it — set by the
+                solver when a fused velocity+gradient pass populated it at t_n.
         """
         N = len(particles)
         scheme = scheme.upper()
@@ -191,7 +189,7 @@ class _AdvectionHandler:
             return
 
         self._parent._resize_temp_fields(N)
-        self._step(particles, dt, scheme, N)
+        self._step(particles, dt, scheme, N, precomputed_k1)
 
     def _vel(self, particles, pos_field, out_field, N):
         """Self-induced velocity at ``pos_field`` → ``out_field`` (honors method)."""
@@ -213,42 +211,47 @@ class _AdvectionHandler:
                 vel_np[:N] = override(pos_np[:N], vel_np[:N])
             out_field.from_numpy(vel_np)
 
-    def _step(self, particles, dt, scheme, N):
+    def _step(self, particles, dt, scheme, N, precomputed_k1=False):
         """One full step of the chosen scheme over dt."""
         if scheme == "EULER":
-            self._euler(particles, dt, N)
+            self._euler(particles, dt, N, precomputed_k1)
         elif scheme == "RK2":
-            self._rk2(particles, dt, N)
+            self._rk2(particles, dt, N, precomputed_k1)
         elif scheme == "RK3":
-            self._rk3(particles, dt, N)
+            self._rk3(particles, dt, N, precomputed_k1)
         elif scheme == "RK4":
-            self._rk4(particles, dt, N)
+            self._rk4(particles, dt, N, precomputed_k1)
         else:
             raise ValueError(
                 f"Unknown advection scheme: {scheme}. Use NONE, EULER, RK2, RK3, or RK4."
             )
 
-    def _euler(self, particles, dt, N):
+    def _k1(self, particles, N, precomputed_k1):
+        """Stage-1 velocity v(x_n) → particles.velocity (reused if precomputed)."""
+        if not precomputed_k1:
+            self._vel(particles, particles.position, particles.velocity, N)
+
+    def _euler(self, particles, dt, N, precomputed_k1=False):
         """x_{n+1} = x_n + dt·v(x_n)."""
         p = self._parent
-        self._vel(particles, particles.position, particles.velocity, N)  # k1
+        self._k1(particles, N, precomputed_k1)
         p.step_euler_forward_kernel(
             particles.position, particles.velocity, particles.position, dt, N
         )
 
-    def _rk2(self, particles, dt, N):
+    def _rk2(self, particles, dt, N, precomputed_k1=False):
         """Heun's method: x_{n+1} = x_n + dt/2·(k1 + k2)."""
         p = self._parent
-        self._vel(particles, particles.position, particles.velocity, N)  # k1
+        self._k1(particles, N, precomputed_k1)
         # x_pred = x_n + dt·k1
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
         self._vel(particles, p.pos_temp, p.vel_temp, N)  # k2 = v(x_pred)
         p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
 
-    def _rk3(self, particles, dt, N):
+    def _rk3(self, particles, dt, N, precomputed_k1=False):
         """SSP-RK3: x_{n+1} = x_n + dt/6·(k1 + k2 + 4·k3)."""
         p = self._parent
-        self._vel(particles, particles.position, particles.velocity, N)  # k1
+        self._k1(particles, N, precomputed_k1)
         # x1 = x_n + dt·k1
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
         self._vel(particles, p.pos_temp, p.vel_temp, N)  # k2 = v(x1)
@@ -262,10 +265,10 @@ class _AdvectionHandler:
             particles.position, particles.velocity, p.vel_temp, p.vel_temp2, dt, N
         )
 
-    def _rk4(self, particles, dt, N):
+    def _rk4(self, particles, dt, N, precomputed_k1=False):
         """Classic RK4: x_{n+1} = x_n + dt/6·(k1 + 2·k2 + 2·k3 + k4)."""
         p = self._parent
-        self._vel(particles, particles.position, particles.velocity, N)  # k1 → particles.velocity
+        self._k1(particles, N, precomputed_k1)  # k1 → particles.velocity
         # k2 = v(x_n + 0.5·dt·k1)
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, 0.5 * dt, N)
         self._vel(particles, p.pos_temp, p.vel_temp, N)
@@ -278,7 +281,6 @@ class _AdvectionHandler:
         p.step_rk4_combine_kernel(
             particles.position, particles.velocity, p.vel_temp, p.vel_temp2, p.pos_temp2, dt, N
         )
-
 
 class _DiffusionHandler:
     """
@@ -316,7 +318,6 @@ class _DiffusionHandler:
         p.update_volume_divergence_kernel(
             particles.volume, particles.radius, particles.velocity_gradient, dt, N
         )
-
 
 class _StretchingHandler:
     """
@@ -485,7 +486,7 @@ class _StretchingHandler:
         p.compute_strength_magnitudes_kernel(particles.circulation, p.str_mag_before, N)
         ti.sync()
 
-    # ----- GradU-based stretching (O(N) per sub-step) -----
+    # ---- GradU-based stretching (O(N) per sub-step) ----
 
     def _limit_rate(self, positions, strengths, rates, dt: float, N: int) -> None:
         limiter = getattr(self._parent, "stretching_rate_limiter", None)

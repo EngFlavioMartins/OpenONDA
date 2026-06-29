@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..core.solver import Solver
 
+# =========================================================
 
 class SimulationMonitor:
     """

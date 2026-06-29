@@ -13,7 +13,6 @@ import numpy as np
 
 from .aircraft import Aircraft, Wing, WingSegment
 
-
 def save_surface(aircraft: "Aircraft", filepath: str) -> str:
     """
     Save aircraft surface geometry to JSON file.
@@ -61,7 +60,6 @@ def save_surface(aircraft: "Aircraft", filepath: str) -> str:
         json.dump(data, f, indent=2)
 
     return output_path
-
 
 def load_surface(filepath: str) -> "Aircraft":
     """

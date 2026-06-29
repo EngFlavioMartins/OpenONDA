@@ -18,7 +18,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 def save_surface_metadata(
     uid: str,
     stl_path: str,
@@ -42,11 +41,9 @@ def save_surface_metadata(
         return str(path)
     return json.dumps(metadata, indent=2)
 
-
 def load_surface_metadata(filepath: str | Path) -> dict[str, Any]:
     with open(filepath) as f:
         return json.load(f)
-
 
 def save_scene(
     bodies: list[dict[str, Any]],
@@ -62,7 +59,6 @@ def save_scene(
     with open(path, "w") as f:
         json.dump(scene, f, indent=2)
     return str(path)
-
 
 def load_scene(filepath: str | Path) -> list[dict[str, Any]]:
     with open(filepath) as f:

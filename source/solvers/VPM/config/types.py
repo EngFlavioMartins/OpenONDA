@@ -8,9 +8,9 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-# =============================
+# =========================================================
 # PRECISION CONFIGURATION
-# =============================
+# =========================================================
 from dataclasses import dataclass, field
 import json
 
@@ -33,10 +33,9 @@ from .constants import (
     MAX_PARTICLES,
 )
 
-
-# =====================================================================================
+# =========================================================
 # ADVECTION CONFIGURATION
-# =====================================================================================
+# =========================================================
 @dataclass
 class AdvectionConfig:
     """
@@ -56,11 +55,9 @@ class AdvectionConfig:
     Advection advances the configured scheme over the macro time-step set by the
     solver (the DVH-pinned dt for DVH runs)."""
 
-
-# =====================================================================================
+# =========================================================
 # VISCOUS CONFIGURATION
-# =====================================================================================
-
+# =========================================================
 
 @dataclass
 class ViscousConfig:
@@ -118,7 +115,7 @@ class ViscousConfig:
     corrected-for 1.5h costs ~4× in-box velocity error).  The coupler syncs
     this automatically.  Default 2.5 preserves legacy standalone behaviour."""
 
-    # ---- Grid-Based Diffusion (DVH) parameters --------------------------------
+    # ---- Grid-Based Diffusion (DVH) parameters ----
     dvh_grid_spacing: float | None = None
     """Grid spacing h [m] for the DVH (DVH) scheme. Falls back to characteristic_distance
     if None."""
@@ -127,7 +124,7 @@ class ViscousConfig:
     """Grid extends this many grid-spacings beyond the particle bounding box on each
     side, so that vorticity decays to ~0 before reaching the Dirichlet boundary."""
 
-    # ---- Grid-Based Diffusion / DVH (DVH) parameters -------
+    # ---- Grid-Based Diffusion / DVH (DVH) parameters ----
     dvh_threshold: float = 0.01
     """Circulation threshold for particle regeneration (DVH only).
 
@@ -157,7 +154,7 @@ class ViscousConfig:
     ``'absolute'``     — keep nodes above the absolute circulation value
                          ``dvh_threshold`` [m³/s]."""
 
-    # ---- Grid-Based Diffusion (GBD) parameters --------------------------------
+    # ---- Grid-Based Diffusion (GBD) parameters ----
     gbd_grid_spacing: float | None = None
     """Grid spacing h [m] for GBD.  Falls back to characteristic_distance if None."""
 
@@ -212,7 +209,6 @@ class ViscousConfig:
 
     For GBD, the CFL upper bound is dt ≤ h²/(6nu).  The solver warns
     if the user-supplied dt exceeds this limit."""
-    # ---------------------------------------------------------------------------
 
     characteristic_distance: float | None = None
     """Average inter-particle spacing h [m].
@@ -483,7 +479,6 @@ class ViscousConfig:
             viscosity=viscosity,
         )
 
-
 @dataclass
 class StretchingConfig:
     """
@@ -597,15 +592,13 @@ class StretchingConfig:
     def disabled():
         return StretchingConfig(enabled=False)
 
-
 # ForceConfig is imported from vlm_solver to ensure consistency and avoid duplication
 # as it is primarily a property of the VLM-VPM interaction.
 from ..boundary_elements.vlm.solver.vlm_solver import ForceConfig
 
-
-# =====================================================================================
+# =========================================================
 # TURBULENCE CONFIGURATION
-# =====================================================================================
+# =========================================================
 @dataclass
 class TurbulenceConfig:
     """
@@ -773,11 +766,9 @@ class TurbulenceConfig:
         """
         return TurbulenceConfig(model="INVISCID", flow_model="INVISCID")
 
-
-# =====================================================================================
+# =========================================================
 # STABILIZATION CONFIGURATION
-# =====================================================================================
-
+# =========================================================
 
 @dataclass
 class StabilizationConfig:
@@ -1029,10 +1020,9 @@ class StabilizationConfig:
             relaxation_verbose=verbose,
         )
 
-
-# =====================================================================================
+# =========================================================
 # VELOCITY CONFIGURATION
-# =====================================================================================
+# =========================================================
 @dataclass
 class VelocityConfig:
     """
@@ -1079,10 +1069,9 @@ class VelocityConfig:
         """
         return VelocityConfig(method="TREECODE", theta=theta)
 
-
-# =====================================================================================
+# =========================================================
 # VLM SOLVER CONFIGURATION
-# =====================================================================================
+# =========================================================
 @dataclass
 class VLMSolverConfig:
     """Configuration for VLM coupling."""
@@ -1099,11 +1088,9 @@ class VLMSolverConfig:
     def disabled():
         return VLMSolverConfig(enabled=False)
 
-
-# =====================================================================================
+# =========================================================
 # SOLVER CONFIGURATION DATACLASS
-# =====================================================================================
-
+# =========================================================
 
 @dataclass
 class SolverConfig:
@@ -1122,7 +1109,7 @@ class SolverConfig:
     - IDE autocompletion support
     """
 
-    # ===== TIME CONTROL =====
+    # ---- TIME CONTROL ----
     time_step_size: float = DEFAULT_TIME_STEP
     """Time increment per simulation step [s]"""
 
@@ -1132,7 +1119,7 @@ class SolverConfig:
     time_step: int = 0
     """Initial time step number"""
 
-    # ===== PHYSICS CONFIGURATION =====
+    # ---- PHYSICS CONFIGURATION ----
     advection: AdvectionConfig | None = None
     """Configuration for advection term (scheme, etc.)."""
 
@@ -1167,7 +1154,7 @@ class SolverConfig:
     max_particles: int = MAX_PARTICLES
     """Maximum number of particles allowed in the simulation. Default: 500000"""
 
-    # ===== COMPUTATIONAL SETTINGS =====
+    # ---- COMPUTATIONAL SETTINGS ----
     processing_unit: Literal["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"] = (
         "GPU"
     )
@@ -1187,14 +1174,14 @@ class SolverConfig:
     * ``'CPU'``        — software rendering (no GPU required)
     """
 
-    # ===== MONITORING AND DIAGNOSTICS  =====
+    # ---- MONITORING AND DIAGNOSTICS ----
     logging_frequency: int = 0
     """Log flow diagnostics every N time steps (0 = disabled)."""
 
     solution_name: str = "solution"
     """Name of the solution directory where output files will be saved."""
 
-    # ===== BACKUP AND OUTPUT =====
+    # ---- BACKUP AND OUTPUT ----
     backup_frequency: int = 0
     """Save simulation state every N time steps (0 = disabled)."""
 
@@ -1207,7 +1194,7 @@ class SolverConfig:
     clean: bool = False
     """If True, delete the backup_directory before starting the simulation."""
 
-    # ===== PHYSICS PARAMETERS =====
+    # ---- PHYSICS PARAMETERS ----
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     """Cutoff radius multiplier for particle interactions (performance optimization)"""
 
@@ -1238,18 +1225,18 @@ class SolverConfig:
     verbose: bool = True
     """Enable verbose output (print particle shedding info, etc.)."""
 
-    # ===== VELOCITY COMPUTATION =====
+    # ---- VELOCITY COMPUTATION ----
     velocity: VelocityConfig | None = None
     """Configuration for velocity field computation (direct vs treecode)."""
 
-    # ===== SOLVER INSTANCES (Dependency Injection) =====
+    # ---- SOLVER INSTANCES (Dependency Injection) ----
     panel_solver: Any | None = None
     """Panel solver instance for hybrid simulations."""
 
     vlm_solver: Any | None = None
     """VLM solver instance for VLM-VPM coupling."""
 
-    # ===== FIELD SAMPLERS =====
+    # ---- FIELD SAMPLERS ----
     samplers: list[Any] | None = None
     """List of field samplers (SurfaceSampler, LineSampler) called at logging_frequency intervals."""
 
@@ -1534,10 +1521,9 @@ class SolverConfig:
         lines.append(f"  Background Velocity: {self.background_velocity} m/s")
         return "\n".join(lines)
 
-
-# =====================================================================================
+# =========================================================
 # UTILITY DECORATORS AND HELPERS
-# =====================================================================================
+# =========================================================
 def CachedParticleProperty(func):
     """
     Decorator for caching expensive particle property calculations.
@@ -1570,10 +1556,9 @@ def CachedParticleProperty(func):
 
     return wrapper
 
-
-# =====================================================================================
+# =========================================================
 # PYDANTIC MODELS FOR SERIALIZATION AND STATE MANAGEMENT
-# =====================================================================================
+# =========================================================
 class SolverState(BaseModel):
     """
     Pydantic model for serializing and deserializing solver state.
@@ -1741,7 +1726,6 @@ class SolverState(BaseModel):
 
         except Exception as e:
             raise ValueError(f"Failed to create solver from state: {e}") from e
-
 
 class ParticlesState(BaseModel):
     """
@@ -1927,10 +1911,9 @@ class ParticlesState(BaseModel):
         except Exception as e:
             raise ValueError(f"Failed to create particles from state: {e}") from e
 
-
-# =====================================================================================
+# =========================================================
 # UTILITY FUNCTIONS FOR FLOW MODEL SETTING
-# =====================================================================================
+# =========================================================
 def SetFlowModel(psys, flow_model: str):
     """
     Set flow model and configure associated parameters.
@@ -1947,7 +1930,6 @@ def SetFlowModel(psys, flow_model: str):
         psys.flow_model_description = "INV ::: (ω.∇)u (stretching only)"
 
     psys.flow_model = flow_model
-
 
 __all__ = [
     "SolverConfig",

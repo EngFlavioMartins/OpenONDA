@@ -51,7 +51,6 @@ from .mesh import (
 if TYPE_CHECKING:
     from ..coupling.kinematics import VLMKinematics
 
-
 @dataclass
 class ForceConfig:
     """
@@ -212,7 +211,6 @@ class ForceConfig:
             impulse_differentiation=differentiation,
         )
 
-
 class VLMSolver:
     """
     Vortex Lattice Method solver with VPM coupling support.
@@ -362,7 +360,7 @@ class VLMSolver:
         self.alpha_rad = 0.0
         self.beta_rad = 0.0
 
-        # --- Transverse shedding threshold ---
+        # ---- Transverse shedding threshold ----
         # Minimum |ΔΓ| for emitting a transverse (closure) wake particle.
         # Default 0.0 means always emit, which prevents binary wake-topology
         # changes near steady state.  Set to a finite value (e.g. 1e-3) to
@@ -1666,9 +1664,7 @@ class VLMSolver:
         vortex_pts = self.lattice.vortex_points.to_numpy()[:n_panels]
         corners = self.lattice.corners.to_numpy()[:n_panels]
 
-        # ---------------------------------------------------------
         # 1. Bound Vortex Segment (V2 -> V3 at 1/4 chord)
-        # ---------------------------------------------------------
         v2 = vortex_pts[:, 1]
         v3 = vortex_pts[:, 2]
 
@@ -1676,9 +1672,7 @@ class VLMSolver:
         x_b = 0.5 * (v2 + v3)
         l_b = v3 - v2
 
-        # ---------------------------------------------------------
         # 2. Trailing Leg Segments (Connect Bound Vortex to TE)
-        # ---------------------------------------------------------
         # We must account for the impulse of the vortex filaments
         # connecting the bound vortex (1/4 chord) to the TE.
 
@@ -1696,9 +1690,7 @@ class VLMSolver:
         x_r = 0.5 * (v3 + r_pts)
         l_r = r_pts - v3
 
-        # ---------------------------------------------------------
         # 3. Vectorized Impulse Calculation
-        # ---------------------------------------------------------
         # I = 0.5 * density * sum( x_i x (Gamma_i * l_i) )
         g_vec = gamma[:, None]  # Shape (N, 1) for broadcasting
 
@@ -2345,9 +2337,7 @@ class VLMSolver:
         # We return a specific marker to indicate GPU data is ready
         return {"_gpu_transfer_ready": True}
 
-    # ------------------------------------------------------------------
     # Near-wake correction  (bypass VPM regularisation for shed particles)
-    # ------------------------------------------------------------------
     @staticmethod
     def _near_wake_biot_savart(
         targets: np.ndarray,
@@ -2388,9 +2378,7 @@ class VLMSolver:
         inv_4pi = 1.0 / (4.0 * np.pi)
         return -inv_4pi * np.einsum("ijk,ij->ik", cross, 1.0 / denom)
 
-    # ------------------------------------------------------------------
     # Implicit starting-vortex AIC augmentation
-    # ------------------------------------------------------------------
     @staticmethod
     def _fill_te_strip_segment(
         te_indices: list[int],

@@ -53,6 +53,7 @@ import numpy as np
 if TYPE_CHECKING:
     from ..core.solver import Solver
 
+# =========================================================
 
 @dataclass
 class ConservationState:
@@ -113,7 +114,6 @@ class ConservationState:
 
     circulation_removed: float = 0.0
     """Magnitude of circulation lost to particle removal [m²/s]"""
-
 
 class ConservationTracker:
     """
@@ -420,7 +420,6 @@ class ConservationTracker:
             "particles_removed": n_remove,
             "particles_kept": n_keep,
         }
-
 
 class ImpulseForceEvaluator:
     """

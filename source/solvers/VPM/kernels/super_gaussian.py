@@ -16,7 +16,6 @@ from ..config.constants import (
     ONE_OVER_TWO_PI_POW_1p05,
 )
 
-
 def create_super_gaussian_kernels(dtype=ti.f32):
     """Create Super-Gaussian kernel functions with specified precision.
 

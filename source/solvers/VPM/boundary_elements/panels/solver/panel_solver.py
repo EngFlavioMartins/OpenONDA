@@ -42,7 +42,6 @@ from .vtk_export import panel_mesh_to_vtp
 
 logger = logging.getLogger("vpm")
 
-
 @dataclass
 class ForceConfig:
     method: Literal["BERNOULLI", "KUTTA_JOUKOWSKI", "IMPULSE"] = "BERNOULLI"
@@ -64,7 +63,6 @@ class ForceConfig:
         window: int = 3,
     ):
         return cls(method="IMPULSE", impulse_order=order, smoothing_window=window)
-
 
 class PanelSolver:
     def __init__(

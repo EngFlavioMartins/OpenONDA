@@ -25,7 +25,6 @@ import taichi as ti
 
 from ..config.constants import ONE_OVER_FOUR_PI
 
-
 def create_high_order_gaussian_kernels(dtype=ti.f32):
     """Create High-Order Gaussian kernel functions with specified precision.
 

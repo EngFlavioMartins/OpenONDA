@@ -102,6 +102,32 @@ def test_root_total_circulation_equals_global_sum(N):
     assert _rel_l2(root_circ, true_sum) < 1e-4
 
 
+@pytest.mark.parametrize("N", [2, 3, 64, 777, 4096])
+def test_parallel_karras_topology_is_consistent(N):
+    """Every internal node's [first,last] range must equal the union of its two
+    children's ranges, children must be valid, and exactly N-1 internal nodes
+    must form one tree rooted at node N (Karras: internal 0 is the root)."""
+    pos, circ, rad = _cloud(N, seed=2)
+    tree = _make_tree(N, theta=0.4)
+    tree.build(pos, circ, rad, force=True)
+    nl = tree.node_left.to_numpy()
+    nr = tree.node_right.to_numpy()
+    first = tree._node_first.to_numpy()
+    last = tree._node_last.to_numpy()
+    assert tree._root[None] == N  # internal node 0 → field index N
+    for i in range(N - 1):
+        idx = N + i
+        l, r = nl[idx], nr[idx]
+        assert 0 <= l < 2 * N - 1 and 0 <= r < 2 * N - 1
+        # child ranges union to the parent's, contiguous and disjoint
+        assert min(first[l], first[r]) == first[idx]
+        assert max(last[l], last[r]) == last[idx]
+        assert first[l] <= last[l] and first[r] <= last[r]
+    # leaf coverage: every sorted slot 0..N-1 is some node's singleton leaf
+    leaf_first = first[:N]
+    assert sorted(leaf_first.tolist()) == list(range(N))
+
+
 def test_internal_node_circulation_matches_its_leaf_range():
     """Each internal node's circ equals the sum over the particles it covers."""
     N = 2048

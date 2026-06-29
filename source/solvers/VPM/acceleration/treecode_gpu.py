@@ -8,17 +8,18 @@ The tree is built on-device via:
   1. AABB computation (parallel min/max reduction)
   2. Morton-code encoding (30-bit, 10 bits/axis)
   3. CPU argsort (Phase 1; GPU radix-sort in Phase 2)
-  4. GPU Karras radix tree (O(N), nearest-smaller-LCP via serial stack)
-  5. Bottom-up multipole moments (3-pass forward/reverse/forward)
+  4. GPU Karras radix tree (O(N), fully parallel — one thread per internal node)
+  5. Level-synchronous bottom-up multipole moments (one kernel per tree level)
 
-The tree construction (step 4) uses the Karras 2012 algorithm:
-  - LCP[i] = leading common prefix bits between sorted keys i and i+1
-  - NSL/NSR[i] = nearest boundary left/right with strictly smaller LCP
-  - Internal node i covers sorted range [NSL[i]+1, NSR[i]]
-  - Parent of node i is the nearer boundary (left or right) with larger LCP
-  - Root = boundary with minimum LCP (covers all [0, N-1])
+The tree construction (step 4) uses the Karras 2012 algorithm with each internal
+node solved independently (no serial stack, no shared scratch, Vulkan-portable):
+  - δ(i, j) = common-prefix length of sorted Morton keys (index tie-break on ties)
+  - each internal node determines its [first, last] range and split via δ +
+    exponential/binary search
+  - internal node 0 is the root (covers [0, N-1])
 
-All phases are GPU-resident except the CPU argsort (~0.2 MB at 49k).
+All phases are GPU-resident except the CPU argsort (~0.2 MB at 49k) and a single
+device→host read of N is avoided (the multipole level bound is derived from N).
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -30,7 +31,6 @@ import time
 
 import numpy as np
 import taichi as ti
-
 
 @ti.data_oriented
 class TaichiTreecode:
@@ -181,9 +181,7 @@ class TaichiTreecode:
         self.kernel_type = normalized
         self.kernel_type_id[None] = kernel_id
 
-    # =========================================================================
     # BUILD — On-GPU LBVH construction
-    # =========================================================================
 
     def build(self, positions=None, circulations=None, radii=None, N=None,
               force: bool = False) -> None:
@@ -272,75 +270,66 @@ class TaichiTreecode:
             self.circulations[i] = strg[i]
             self.radii[i] = rad[i]
 
-    # ── GPU Karras tree build kernels ────────────────────────────────
+    # ── GPU Karras tree build (fully parallel, Vulkan-portable) ──────────
+    #
+    # Replaces the former LCP + serial-stack NSL/NSR Cartesian-tree build.
+    # That build used ``ti.loop_config(serialize=True)`` over a shared ``_stack``
+    # field, which Vulkan does not reliably serialize (the monotonic stack then
+    # races → degenerate tree → ~0 velocities).  The Karras 2012 construction
+    # below assigns each internal node's range and split *independently* — one
+    # thread per node, no shared scratch, no serialize — so it is correct on
+    # CPU, Vulkan, and CUDA alike.
 
-    @ti.kernel
-    def _compute_lcp_kernel(self, N: ti.i32):
-        """Compute LCP from sorted Morton codes (parallel)."""
-        for i in range(N - 1):
-            si = self.sorted_indices[i]
-            sj = self.sorted_indices[i + 1]
-            diff = self.morton_codes[si] ^ self.morton_codes[sj]
-            if diff == 0:
-                self._lcp[i] = 30
-            else:
-                # Count leading common bits: msb of diff
-                temp = diff
-                msb = ti.i32(0)
-                while temp > 1:
-                    temp >>= 1
-                    msb += 1
-                self._lcp[i] = 29 - msb
-        if N > 0:
-            self._lcp[N - 1] = -2  # sentinel
+    @ti.func
+    def _clz32(self, x: ti.u32) -> ti.i32:
+        """Count leading zeros of a 32-bit word (x may be 0 → 32)."""
+        n = 0
+        if x == ti.u32(0):
+            n = 32
+        else:
+            v = x
+            while (v & ti.u32(0x80000000)) == ti.u32(0):
+                v = v << ti.u32(1)
+                n += 1
+        return n
 
-    @ti.kernel
-    def _compute_nsl_kernel(self, N: ti.i32):
-        """Nearest smaller LCP to the left (serial stack)."""
-        ti.loop_config(serialize=True)
-        sp = 0
-        for i in range(N - 1):
-            li = self._lcp[i]
-            while sp > 0 and self._lcp[self._stack[sp - 1]] >= li:
-                sp -= 1
-            self._nsl[i] = self._stack[sp - 1] if sp > 0 else -1
-            self._stack[sp] = i
-            sp += 1
+    @ti.func
+    def _delta(self, i: ti.i32, j: ti.i32, N: ti.i32) -> ti.i32:
+        """Karras δ: common-prefix length of sorted Morton keys i and j.
 
-    @ti.kernel
-    def _compute_nsr_kernel(self, N: ti.i32):
-        """Nearest smaller LCP to the right (serial stack, reverse)."""
-        ti.loop_config(serialize=True)
-        sp = 0
-        for k in range(N - 1):
-            i = (N - 2) - k
-            li = self._lcp[i]
-            while sp > 0 and self._lcp[self._stack[sp - 1]] >= li:
-                sp -= 1
-            self._nsr[i] = self._stack[sp - 1] if sp > 0 else (N - 1)
-            self._stack[sp] = i
-            sp += 1
-
-    @ti.kernel
-    def _build_karras_tree_kernel(self, N: ti.i32):
-        """Assign parent/child relationships from NSL/NSR.
-
-        Sets leaf data, internal node ranges, and the full binary tree
-        topology (node_left, node_right, _root) in a single parallel kernel.
+        Out-of-range j → -1.  Equal keys fall back to the index tie-break
+        (32 + clz(i^j)), which makes the effective keys distinct and bounds the
+        tree depth (so duplicate Morton cells cannot create an unbounded chain).
         """
-        # ── initialise all nodes ──
-        for i in range(2 * N - 1):
-            self.node_left[i] = -1
-            self.node_right[i] = -1
-            self.node_is_leaf[i] = 0
-            self._node_first[i] = -1
-            self._node_last[i] = -1
-            self.node_particle_start[i] = -1
-            self.node_particle_count[i] = 0
-        for j in range(N):
-            self.leaf_particles[j] = -1
+        res = -1
+        if j >= 0 and j < N:
+            ki = self.morton_codes[self.sorted_indices[i]]
+            kj = self.morton_codes[self.sorted_indices[j]]
+            x = ki ^ kj
+            if x == ti.u32(0):
+                res = 32 + self._clz32(ti.u32(i) ^ ti.u32(j))
+            else:
+                res = self._clz32(x)
+        return res
 
-        # ── leaf data ──
+    @ti.kernel
+    def _build_karras_parallel_kernel(self, N: ti.i32):
+        """Parallel Karras 2012 radix-tree build.
+
+        Internal node ``i`` is stored at field index ``N + i`` and covers a
+        contiguous sorted range; leaf ``j`` is stored at field index ``j``.
+        Internal node 0 is always the root (covers [0, N-1]).
+        """
+        # ── init all nodes (parallel) ──
+        for idx in range(2 * N - 1):
+            self.node_left[idx] = -1
+            self.node_right[idx] = -1
+            self.node_is_leaf[idx] = 0
+            self._node_first[idx] = -1
+            self._node_last[idx] = -1
+            self.node_particle_start[idx] = -1
+            self.node_particle_count[idx] = 0
+        # ── leaves (parallel) ──
         for j in range(N):
             self.node_is_leaf[j] = 1
             self.leaf_particles[j] = self.sorted_indices[j]
@@ -348,56 +337,54 @@ class TaichiTreecode:
             self._node_last[j] = j
             self.node_particle_start[j] = j
             self.node_particle_count[j] = 1
-
-        # ── find root (boundary with minimum LCP) ──
-        min_lcp = self._lcp[0]
-        root_bd = 0
-        for i in range(1, N - 1):
-            if self._lcp[i] < min_lcp:
-                min_lcp = self._lcp[i]
-                root_bd = i
-        self._root[None] = N + root_bd
-
-        # ── internal node ranges ──
+        # ── internal nodes: one independent thread per node ──
         for i in range(N - 1):
+            # Direction of the range (toward the neighbour with longer prefix).
+            dl = self._delta(i, i - 1, N)
+            dr = self._delta(i, i + 1, N)
+            d = 1
+            if dr <= dl:
+                d = -1
+            delta_min = self._delta(i, i - d, N)
+            # Exponential search for a far end of the range.
+            l_max = 2
+            while self._delta(i, i + l_max * d, N) > delta_min:
+                l_max *= 2
+            # Binary search for the precise other end.
+            l = 0
+            t = l_max >> 1
+            while t >= 1:
+                if self._delta(i, i + (l + t) * d, N) > delta_min:
+                    l += t
+                t = t >> 1
+            j = i + l * d
+            first = ti.min(i, j)
+            last = ti.max(i, j)
+            # Find split: last index of the left subrange.
+            node_delta = self._delta(first, last, N)
+            split = first
+            stride = last - first
+            cont = 1
+            while cont == 1:
+                stride = (stride + 1) >> 1
+                newsplit = split + stride
+                if newsplit < last:
+                    if self._delta(first, newsplit, N) > node_delta:
+                        split = newsplit
+                if stride <= 1:
+                    cont = 0
+            # Children: leaf if the sub-range is a single element, else internal.
+            left = split if split == first else (N + split)
+            right = (split + 1) if (split + 1) == last else (N + split + 1)
             idx = N + i
-            first = self._nsl[i] + 1
-            last = self._nsr[i]
+            self.node_left[idx] = left
+            self.node_right[idx] = right
             self._node_first[idx] = first
             self._node_last[idx] = last
             self.node_particle_start[idx] = first
             self.node_particle_count[idx] = last - first + 1
-
-        # ── internal node parents (each finds its parent) ──
-        for i in range(N - 1):
-            l = self._nsl[i]
-            r = self._nsr[i]
-            parent = -1
-            if l >= 0 and r >= N - 1:
-                parent = l
-            elif l < 0 and r < N - 1:
-                parent = r
-            elif l >= 0 and r < N - 1:
-                if self._lcp[l] > self._lcp[r]:
-                    parent = l
-                else:
-                    parent = r
-            if parent >= 0:
-                if i < parent:
-                    self.node_left[N + parent] = N + i
-                else:
-                    self.node_right[N + parent] = N + i
-
-        # ── leaf parents ──
-        if N > 0:
-            self.node_left[N + 0] = 0
-        for j in range(1, N - 1):
-            if self._lcp[j - 1] > self._lcp[j]:
-                self.node_right[N + (j - 1)] = j
-            else:
-                self.node_left[N + j] = j
-        if N > 1:
-            self.node_right[N + (N - 2)] = N - 1
+            if i == 0:
+                self._root[None] = N  # internal node 0 is the root
 
     def _build_lbvh(self, N):
         """Internal LBVH build pipeline (all steps after data upload)."""
@@ -442,21 +429,23 @@ class TaichiTreecode:
         padded[:N] = sorted_idx.astype(np.int32)
         self.sorted_indices.from_numpy(padded)
 
-        # Step 4: GPU Karras tree (LCP → NSL/NSR → topology), queue-ordered
-        self._compute_lcp_kernel(N)
-        self._compute_nsl_kernel(N)
-        self._compute_nsr_kernel(N)
-        self._build_karras_tree_kernel(N)
+        # Step 4: GPU Karras tree — fully parallel, one thread per internal node
+        # (no serialize, no shared scratch → Vulkan-correct).
+        self._build_karras_parallel_kernel(N)
 
         # Step 5: parents + depths, then the level-synchronous bottom-up.
         self._compute_parents_kernel(N)
         self._leaf_multipole_init_kernel(N)
         self._compute_depths_kernel(N)
         # One combine kernel per level, deepest → root.  Each level reads only the
-        # already-finalised level below it; the kernel boundary orders them, so the
-        # result is identical on CPU / Vulkan / CUDA with no fence and no race.
-        max_depth = int(self._max_depth[None])
-        for level in range(max_depth, -1, -1):
+        # already-finalised level below it; the kernel-launch boundary orders them,
+        # so the result is identical on CPU / Vulkan / CUDA with no fence and no
+        # race.  The loop bound is computed from N alone (no mid-build device→host
+        # read of a scalar, which is unreliable on Vulkan): the Karras tree depth
+        # is at most ~30 Morton bits + the index tie-break ≈ 2·ceil(log2 N), and
+        # combine kernels past the real depth are no-ops.
+        max_levels = 2 * int(np.ceil(np.log2(max(N, 2)))) + 34
+        for level in range(max_levels, -1, -1):
             self._combine_level_kernel(N, level)
 
         self.n_nodes[None] = 2 * N - 1
@@ -634,9 +623,7 @@ class TaichiTreecode:
             half_size = ti.sqrt((aabb_max - aabb_min).dot(aabb_max - aabb_min)) * 0.5
             self.node_half_size[idx] = max(half_size, 1e-8)
 
-    # =========================================================================
     # KERNEL FUNCTIONS (qf, zeta, erf, skew)
-    # =========================================================================
 
     @ti.func
     def _erf_approx(self, x: ti.f32) -> ti.f32:
@@ -694,9 +681,7 @@ class TaichiTreecode:
     def skew(self, v: ti.template()) -> ti.Matrix:
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
 
-    # =========================================================================
     # LEAF SUMMATION FUNCTIONS
-    # =========================================================================
 
     @ti.func
     def _leaf_velocity_sum(
@@ -783,9 +768,7 @@ class TaichiTreecode:
                     ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
 
-    # =========================================================================
     # TRAVERSAL — Binary-tree stack-based
-    # =========================================================================
 
     @ti.func
     def _push_children_particle(self, i: int, node: int, stack_ptr: int) -> int:
@@ -949,9 +932,7 @@ class TaichiTreecode:
                 stack_ptr = self._push_children_target(i, node, stack_ptr)
         return gradu
 
-    # =========================================================================
     # COMPUTE KERNELS
-    # =========================================================================
 
     @ti.kernel
     def compute_velocities_kernel(self, theta_sq: ti.f32):
@@ -1100,9 +1081,7 @@ class TaichiTreecode:
             self.strain_rates.to_numpy()[:N],
         )
 
-    # =========================================================================
     # TARGET POINT EVALUATIONS
-    # =========================================================================
 
     @ti.kernel
     def compute_target_velocities_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
@@ -1154,9 +1133,7 @@ class TaichiTreecode:
         ti.sync()
         return self.target_velocity_gradients.to_numpy()[:M]
 
-    # =========================================================================
     # INFO
-    # =========================================================================
 
     def info(self) -> str:
         grad_info = f"\n  Grad time: {self.grad_time * 1000:.2f} ms" if self.grad_time > 0 else ""
@@ -1169,11 +1146,9 @@ class TaichiTreecode:
             f"  Eval time: {self.eval_time * 1000:.2f} ms{grad_info}"
         )
 
-
-# =============================================================================
+# =========================================================
 # Convenience function
-# =============================================================================
-
+# =========================================================
 
 def compute_velocities_treecode_gpu(
     positions: np.ndarray,

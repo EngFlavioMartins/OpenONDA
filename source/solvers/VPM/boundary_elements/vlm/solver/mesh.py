@@ -14,7 +14,6 @@ import taichi as ti
 from ....config.constants import VLM_SMALL_VELOCITY
 from ..geometry.aircraft import Aircraft, WingSegment
 
-
 def _stitch_symmetry_neighbors(aircraft: Aircraft, neigh_np: np.ndarray) -> None:
     """Connect wing root panels across the symmetry plane by updating neigh_np in-place."""
     current_idx = 0
@@ -36,7 +35,6 @@ def _stitch_symmetry_neighbors(aircraft: Aircraft, neigh_np: np.ndarray) -> None
         else:
             for seg in wing.segments.values():
                 current_idx += seg.panels_chord * seg.panels_span
-
 
 def generate_vlm_mesh(
     aircraft: Aircraft,
@@ -183,7 +181,6 @@ def generate_vlm_mesh(
 
     print(f"Generated VLM mesh: {lattice.num_panels} panels from {wing_id} wings", flush=True)
 
-
 def _fill_panel_geometry(
     alpha,
     s_min,
@@ -232,7 +229,6 @@ def _fill_panel_geometry(
     vortex[idx, 2], vortex[idx, 3] = V3, V4
     bound[idx] = 0.5 * (V2 + V3)
 
-
 def _set_panel_topology(idx, i, j, nc, ns, te_flags, neighbors, te_idx):
     """Set trailing-edge flag and structured connectivity for one panel."""
     te_flags[idx] = 1 if i == nc - 1 else 0
@@ -247,7 +243,6 @@ def _set_panel_topology(idx, i, j, nc, ns, te_flags, neighbors, te_idx):
         neighbors[idx, 0] = idx - nc
     if j < ns - 1:
         neighbors[idx, 1] = idx + nc
-
 
 def _generate_segment_to_numpy(
     segment: WingSegment,
@@ -318,7 +313,6 @@ def _generate_segment_to_numpy(
             idx += 1
     return idx
 
-
 def _compute_bilinear_coefficients(a, b, c, d):
     """Compute bilinear interpolation coefficients for segment vertices."""
     alpha = np.zeros((3, 4))  # [x,y,z] x [1, s, c, s*c]
@@ -329,7 +323,6 @@ def _compute_bilinear_coefficients(a, b, c, d):
         alpha[dim, 3] = a[dim] - b[dim] + c[dim] - d[dim]  # s*c
     return alpha
 
-
 def _compute_panel_corners(alpha, s_min, s_max, c_min, c_max):
     """Compute panel corner positions using bilinear interpolation."""
     P = _bilinear_interp(alpha, s_min, c_min)
@@ -337,7 +330,6 @@ def _compute_panel_corners(alpha, s_min, s_max, c_min, c_max):
     R = _bilinear_interp(alpha, s_max, c_max)
     S = _bilinear_interp(alpha, s_min, c_max)
     return P, Q, R, S
-
 
 def _compute_panel_geometry(P, Q, R, S, is_mirrored, symmetry_plane):
     """Compute panel normal, area, and geometric properties."""
@@ -360,7 +352,6 @@ def _compute_panel_geometry(P, Q, R, S, is_mirrored, symmetry_plane):
 
     return V2, V3, collocation, normal, area
 
-
 def _compute_trailing_geometry(V2, V3, trailing_edge_infty):
     """Compute trailing edge vortex points."""
     trail_dir = np.array([1.0, 0.0, 0.0])
@@ -368,7 +359,6 @@ def _compute_trailing_geometry(V2, V3, trailing_edge_infty):
     V4 = V3 + trail_dir * trailing_edge_infty
     bound_midpoint = 0.5 * (V2 + V3)
     return V1, V2, V3, V4, bound_midpoint, trail_dir
-
 
 def _store_panel_data(
     lattice,
@@ -424,7 +414,6 @@ def _store_panel_data(
     lattice.panel_wing_id[panel_idx] = wing_id
     lattice.panel_segment_id[panel_idx] = segment_id
     lattice.panel_is_mirrored[panel_idx] = 1 if is_mirrored else 0
-
 
 def _generate_segment_mesh(
     segment: WingSegment,
@@ -523,7 +512,6 @@ def _generate_segment_mesh(
             panel_idx += 1
 
     return panel_idx
-
 
 def _generate_segment_mesh_with_edges(
     segment: WingSegment,
@@ -636,7 +624,6 @@ def _generate_segment_mesh_with_edges(
 
     return panel_idx
 
-
 def _bilinear_interp(alpha: np.ndarray, s: float, c: float) -> np.ndarray:
     """
     Bilinear interpolation within unit square.
@@ -655,7 +642,6 @@ def _bilinear_interp(alpha: np.ndarray, s: float, c: float) -> np.ndarray:
     for dim in range(3):
         pos[dim] = alpha[dim, 0] + alpha[dim, 1] * s + alpha[dim, 2] * c + alpha[dim, 3] * s * c
     return pos
-
 
 def _mirror_vertices(a, b, c, d, symmetry_plane: int) -> tuple[np.ndarray, ...]:
     """
@@ -702,11 +688,9 @@ def _mirror_vertices(a, b, c, d, symmetry_plane: int) -> tuple[np.ndarray, ...]:
 
     return a, b, c, d
 
-
-# =====================================================================================
+# =========================================================
 # TAICHI KERNELS FOR TRAILING DIRECTION UPDATES
-# =====================================================================================
-
+# =========================================================
 
 @ti.kernel
 def _update_trailing_uniform_kernel(
@@ -732,7 +716,6 @@ def _update_trailing_uniform_kernel(
 
         vortex_points[i, 0] = V2 + trail_dir * trailing_infty
         vortex_points[i, 3] = V3 + trail_dir * trailing_infty
-
 
 @ti.kernel
 def _update_trailing_local_kernel(
@@ -765,7 +748,6 @@ def _update_trailing_local_kernel(
         vortex_points[i, ti.i32(0)] = V2 + trail_dir * trailing_infty
         vortex_points[i, ti.i32(3)] = V3 + trail_dir * trailing_infty
 
-
 def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
     """
     Update trailing edge direction vectors based on freestream.
@@ -790,7 +772,6 @@ def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
         float(trail_dir[2]),
         10000.0,
     )
-
 
 def _prepare_trailing_temp(lattice, V_inf: np.ndarray):
     """Allocate/reuse Taichi temp field and upload V_inf for trailing direction update."""
@@ -821,7 +802,6 @@ def _prepare_trailing_temp(lattice, V_inf: np.ndarray):
     V_full[: lattice.num_panels] = V_inf
     temp_field.from_numpy(V_full)
     return temp_field
-
 
 def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty: float = 10000.0):
     """
@@ -871,7 +851,6 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
     else:
         raise ValueError(f"V_inf must be (3,) vector or (N, 3) field, got shape {V_inf.shape}")
 
-
 def _geometric_spacing_single_end(n: int, ratio: float, refine_start: bool) -> np.ndarray:
     """
     Compute geometric spacing refined at one end.
@@ -902,7 +881,6 @@ def _geometric_spacing_single_end(n: int, ratio: float, refine_start: bool) -> n
     for i in range(n):
         edges[i + 1] = edges[i] + d[i]
     return edges
-
 
 def _geometric_spacing_both_ends(n: int, ratio: float) -> np.ndarray:
     """
@@ -951,7 +929,6 @@ def _geometric_spacing_both_ends(n: int, ratio: float) -> np.ndarray:
         edges2 = np.linspace(0.5, 1.0, n2 + 1)
 
     return np.concatenate([edges1, edges2[1:]])
-
 
 def _compute_spanwise_edges(
     n: int, spacing_type: str = "uniform", ratio: float = 1.0, region: str = "both"

@@ -24,16 +24,13 @@ from ....config.constants import (
     TI_FLOAT,
 )
 
-
 def _lazy_import_taichi():
     """Return the Taichi module (imported at module load; kept as a single hook)."""
     return ti
 
-
-# ================================================================================
+# =========================================================
 # Linear Solver Base Class
-# ================================================================================
-
+# =========================================================
 
 class VLMLinearSolver(ABC):
     """Abstract base class for VLM linear solvers."""
@@ -76,11 +73,9 @@ class VLMLinearSolver(ABC):
         """Whether this solver operates on GPU."""
         pass
 
-
-# ================================================================================
+# =========================================================
 # Scipy Solver (CPU, Direct)
-# ================================================================================
-
+# =========================================================
 
 class ScipySolver(VLMLinearSolver):
     """
@@ -150,11 +145,9 @@ class ScipySolver(VLMLinearSolver):
 
         return 0  # Direct solver, no iterations
 
-
-# ================================================================================
+# =========================================================
 # Taichi Conjugate Gradient Solver (GPU, Iterative)
-# ================================================================================
-
+# =========================================================
 
 class TaichiCGSolver(VLMLinearSolver):
     """
@@ -248,11 +241,9 @@ class TaichiCGSolver(VLMLinearSolver):
             "VLM AIC matrices are non-symmetric — use TaichiBiCGSTABSolver instead."
         )
 
-
-# ================================================================================
+# =========================================================
 # Taichi BiCGSTAB Solver (GPU, Iterative, Non-Symmetric)
-# ================================================================================
-
+# =========================================================
 
 class TaichiBiCGSTABSolver(VLMLinearSolver):
     """
@@ -468,11 +459,9 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
 
         return iterations
 
-
-# ================================================================================
+# =========================================================
 # Taichi Kernels for CG Solver
-# ================================================================================
-
+# =========================================================
 
 @ti.kernel
 def _cg_init_kernel(
@@ -483,12 +472,10 @@ def _cg_init_kernel(
         r[i] = b[i]
         p[i] = b[i]
 
-
 def _cg_init(x, b, r, p, n: int):
     """Initialize CG: x=0, r=b, p=b."""
     _lazy_import_taichi()
     _cg_init_kernel(x, b, r, p, n)
-
 
 @ti.kernel
 def _matvec_kernel(A: ti.template(), x: ti.template(), y: ti.template(), n: ti.i32):
@@ -498,12 +485,10 @@ def _matvec_kernel(A: ti.template(), x: ti.template(), y: ti.template(), n: ti.i
             acc += A[i, j] * x[j]
         y[i] = acc
 
-
 def _matvec(A, x, y, n: int):
     """Compute y = A @ x (matrix-vector product on GPU)."""
     _lazy_import_taichi()
     _matvec_kernel(A, x, y, n)
-
 
 # Note: Taichi parallel loops require explicit reduction to avoid race conditions.
 # We use ti.atomic_add for thread-safe accumulation into a scalar field.
@@ -511,12 +496,10 @@ def _matvec(A, x, y, n: int):
 # Persistent result field to avoid repeated allocation
 _dot_result = None
 
-
 @ti.kernel
 def _dot_product_reset_kernel(out: ti.template()):
     """Reset the output scalar field to zero."""
     out[None] = 0.0
-
 
 @ti.kernel
 def _dot_product_kernel(a: ti.template(), b: ti.template(), n: ti.i32, out: ti.template()):
@@ -529,7 +512,6 @@ def _dot_product_kernel(a: ti.template(), b: ti.template(), n: ti.i32, out: ti.t
     # Parallel accumulation with atomic adds
     for i in range(n):
         ti.atomic_add(out[None], a[i] * b[i])
-
 
 def _dot_product(a, b, n: int, dtype=TI_FLOAT) -> float:
     """
@@ -558,7 +540,6 @@ def _dot_product(a, b, n: int, dtype=TI_FLOAT) -> float:
     _dot_product_kernel(a, b, n, _dot_result)
     return _dot_result[None]
 
-
 @ti.kernel
 def _cg_update_xr_kernel(
     x: ti.template(),
@@ -572,29 +553,24 @@ def _cg_update_xr_kernel(
         x[i] += alpha * p[i]
         r[i] -= alpha * Ap[i]
 
-
 def _cg_update_xr(x, r, p, Ap, alpha: float, n: int):
     """Update x and r in CG: x += alpha*p, r -= alpha*Ap."""
     _lazy_import_taichi()
     _cg_update_xr_kernel(x, r, p, Ap, alpha, n)
-
 
 @ti.kernel
 def _cg_update_p_kernel(p: ti.template(), r: ti.template(), beta: ti.template(), n: ti.i32):
     for i in range(n):
         p[i] = r[i] + beta * p[i]
 
-
 def _cg_update_p(p, r, beta: float, n: int):
     """Update p in CG: p = r + beta*p."""
     _lazy_import_taichi()
     _cg_update_p_kernel(p, r, beta, n)
 
-
-# ================================================================================
+# =========================================================
 # Taichi Kernels for BiCGSTAB Solver
-# ================================================================================
-
+# =========================================================
 
 @ti.kernel
 def _build_jacobi_precond_kernel(A: ti.template(), M_inv: ti.template(), n: ti.i32):
@@ -605,12 +581,10 @@ def _build_jacobi_precond_kernel(A: ti.template(), M_inv: ti.template(), n: ti.i
         else:
             M_inv[i] = 1.0  # Fallback for zero diagonal
 
-
 def _build_jacobi_precond(A, M_inv, n: int):
     """Build Jacobi preconditioner: M_inv[i] = 1/A[i,i]."""
     _lazy_import_taichi()
     _build_jacobi_precond_kernel(A, M_inv, n)
-
 
 @ti.kernel
 def _apply_precond_kernel(x: ti.template(), y: ti.template(), M_inv: ti.template(), n: ti.i32):
@@ -618,12 +592,10 @@ def _apply_precond_kernel(x: ti.template(), y: ti.template(), M_inv: ti.template
     for i in range(n):
         y[i] = M_inv[i] * x[i]
 
-
 def _apply_precond(x, y, M_inv, n: int):
     """Apply preconditioner: y = M^-1 @ x (element-wise for Jacobi)."""
     _lazy_import_taichi()
     _apply_precond_kernel(x, y, M_inv, n)
-
 
 @ti.kernel
 def _matvec_precond_kernel(
@@ -635,12 +607,10 @@ def _matvec_precond_kernel(
             acc += A[i, j] * x[j]
         y[i] = M_inv[i] * acc  # Apply preconditioner
 
-
 def _matvec_precond(A, x, y, M_inv, n: int):
     """Compute y = M^-1 @ (A @ x) with Jacobi preconditioning."""
     _lazy_import_taichi()
     _matvec_precond_kernel(A, x, y, M_inv, n)
-
 
 @ti.kernel
 def _bicgstab_init_kernel(
@@ -657,12 +627,10 @@ def _bicgstab_init_kernel(
         r0[i] = b[i]
         p[i] = b[i]
 
-
 def _bicgstab_init(x, b, r, r0, p, n: int):
     """Initialize BiCGSTAB: x=0, r=b, r0=r, p=r."""
     _lazy_import_taichi()
     _bicgstab_init_kernel(x, b, r, r0, p, n)
-
 
 @ti.kernel
 def _bicgstab_update_s_kernel(
@@ -671,24 +639,20 @@ def _bicgstab_update_s_kernel(
     for i in range(n):
         s[i] = r[i] - alpha * v[i]
 
-
 def _bicgstab_update_s(s, r, v, alpha: float, n: int):
     """Compute s = r - alpha * v."""
     _lazy_import_taichi()
     _bicgstab_update_s_kernel(s, r, v, alpha, n)
-
 
 @ti.kernel
 def _axpy_kernel(y: ti.template(), x: ti.template(), alpha: ti.template(), n: ti.i32):
     for i in range(n):
         y[i] += alpha * x[i]
 
-
 def _axpy(y, x, alpha: float, n: int):
     """Compute y = y + alpha * x."""
     _lazy_import_taichi()
     _axpy_kernel(y, x, alpha, n)
-
 
 @ti.kernel
 def _bicgstab_update_x_kernel(
@@ -702,12 +666,10 @@ def _bicgstab_update_x_kernel(
     for i in range(n):
         x[i] += alpha * p[i] + omega * s[i]
 
-
 def _bicgstab_update_x(x, p, s, alpha: float, omega: float, n: int):
     """Compute x = x + alpha * p + omega * s."""
     _lazy_import_taichi()
     _bicgstab_update_x_kernel(x, p, s, alpha, omega, n)
-
 
 @ti.kernel
 def _bicgstab_update_r_kernel(
@@ -716,12 +678,10 @@ def _bicgstab_update_r_kernel(
     for i in range(n):
         r[i] = s[i] - omega * t[i]
 
-
 def _bicgstab_update_r(r, s, t, omega: float, n: int):
     """Compute r = s - omega * t."""
     _lazy_import_taichi()
     _bicgstab_update_r_kernel(r, s, t, omega, n)
-
 
 @ti.kernel
 def _bicgstab_update_p_kernel(
@@ -735,23 +695,20 @@ def _bicgstab_update_p_kernel(
     for i in range(n):
         p[i] = r[i] + beta * (p[i] - omega * v[i])
 
-
 def _bicgstab_update_p(p, r, v, beta: float, omega: float, n: int):
     """Compute p = r + beta * (p - omega * v)."""
     _lazy_import_taichi()
     _bicgstab_update_p_kernel(p, r, v, beta, omega, n)
 
-
-# ================================================================================
+# =========================================================
 # Solver Factory
-# ================================================================================
+# =========================================================
 
 _SOLVER_REGISTRY = {
     "SCIPY": ScipySolver,
     "CG_GPU": TaichiCGSolver,
     "BICGSTAB_GPU": TaichiBiCGSTABSolver,
 }
-
 
 def get_linear_solver(
     solver_type: Literal["SCIPY", "CG_GPU", "BICGSTAB_GPU"] = "SCIPY",
@@ -798,7 +755,6 @@ def get_linear_solver(
         )
     else:
         return solver_class()
-
 
 def list_available_solvers() -> list:
     """Return list of available solver types."""

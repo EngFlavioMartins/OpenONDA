@@ -47,7 +47,6 @@ MIN_R_SIGMA_PRESSURE = 0.5
 ONE_OVER_FOUR_PI = 0.0795774715459
 TWO_OVER_SQRT_PI = 1.1283791671
 
-
 def _q_kernel(rho: np.ndarray) -> np.ndarray:
     """Velocity kernel q(r/σ) - Gaussian regularized Biot-Savart.
 
@@ -72,7 +71,6 @@ def _q_kernel(rho: np.ndarray) -> np.ndarray:
 
     return result
 
-
 def _zeta_kernel(rho: np.ndarray) -> np.ndarray:
     """Vorticity kernel ζ(r/σ) - Gaussian distribution.
 
@@ -84,7 +82,6 @@ def _zeta_kernel(rho: np.ndarray) -> np.ndarray:
     """
     ONE_OVER_PI_15 = 0.179587122125
     return ONE_OVER_PI_15 * np.exp(-(rho**2))
-
 
 @ti.data_oriented
 class PressurePhysics(PhysicsBase):
@@ -159,9 +156,7 @@ class PressurePhysics(PhysicsBase):
         self._initialize_pressure_fields(new_size)
         self._pressure_field_size = new_size
 
-    # =========================================================================
     # PRESSURE GRADIENT AT TARGET POSITIONS (Main Interface)
-    # =========================================================================
 
     def compute_target_pressure_gradients(
         self,
@@ -223,29 +218,21 @@ class PressurePhysics(PhysicsBase):
         if h_laplacian is None:
             h_laplacian = float(np.mean(particles.radius_cpu()))
 
-        # =====================================================================
         # STEP 1: Compute velocity at target points
-        # =====================================================================
         u_target = self.compute_target_velocities(
             particles, target_positions, include_freestream=include_freestream
         )
 
-        # =====================================================================
         # STEP 2: Compute velocity gradient at target points
-        # =====================================================================
         grad_u_target = self.compute_target_velocity_gradients(particles, target_positions).reshape(
             M, 3, 3
         )
 
-        # =====================================================================
         # STEP 3: Compute advective term (u·∇)u at target
-        # =====================================================================
         # (u·∇)u_a = u_b * ∂u_a/∂x_b = u_b * grad_u[a,b]
         advective = np.einsum("mb,mab->ma", u_target, grad_u_target)
 
-        # =====================================================================
         # STEP 4: Compute temporal term ∂u/∂t
-        # =====================================================================
         temporal = self._resolve_temporal_term(
             particles,
             target_positions,
@@ -258,9 +245,7 @@ class PressurePhysics(PhysicsBase):
             include_freestream,
         )
 
-        # =====================================================================
         # STEP 5: Compute viscous term nu∇²u (finite differences)
-        # =====================================================================
         if include_viscous and nu > 0:
             viscous = self._compute_viscous_term(
                 particles, target_positions, nu, h_laplacian, include_freestream
@@ -268,9 +253,7 @@ class PressurePhysics(PhysicsBase):
         else:
             viscous = np.zeros((M, 3), dtype=np.float64)
 
-        # =====================================================================
         # STEP 6: Combine: ∇p = -ρ [ ∂u/∂t + (u·∇)u - nu∇²u ]
-        # =====================================================================
         grad_p = -density * (temporal + advective - viscous)
 
         if return_velocity:
@@ -429,9 +412,7 @@ class PressurePhysics(PhysicsBase):
             include_freestream=True,
         )
 
-    # =========================================================================
     # TEMPORAL TERM COMPUTATION (Analytical VPM formulation)
-    # =========================================================================
 
     def _resolve_temporal_term(
         self,
@@ -656,9 +637,7 @@ class PressurePhysics(PhysicsBase):
         y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x_abs * x_abs))
         return sign * y
 
-    # =========================================================================
     # VISCOUS TERM COMPUTATION (via finite differences)
-    # =========================================================================
 
     def _compute_viscous_term(
         self,

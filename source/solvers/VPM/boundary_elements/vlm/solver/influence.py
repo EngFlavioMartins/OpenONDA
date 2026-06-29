@@ -13,7 +13,6 @@ import taichi as ti
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
 from ..kernels.biot_savart import bound_vortex_velocity, horseshoe_velocity, vortex_ring_velocity
 
-
 @ti.kernel
 def compute_AIC_matrix(
     collocation: ti.template(),
@@ -111,7 +110,6 @@ def compute_AIC_matrix(
         # Normal component (downwash factor)
         AIC[i, j] = vel.dot(normals[i])
 
-
 @ti.kernel
 def compute_RHS(
     collocation: ti.template(),
@@ -142,7 +140,6 @@ def compute_RHS(
     for i in range(num_panels):
         # Negative because we move V_inf term to RHS
         rhs[i] = -normals[i].dot(V_inf)
-
 
 @ti.kernel
 def compute_RHS_coupled(
@@ -176,7 +173,6 @@ def compute_RHS_coupled(
         )
         V_rel_inflow = V_external[i] - V_kin
         rhs[i] = -normals[i].dot(V_rel_inflow)
-
 
 @ti.kernel
 def compute_induced_velocities(
@@ -215,7 +211,6 @@ def compute_induced_velocities(
 
         # Total velocity
         velocity[i] = V_external[i] + vel_induced
-
 
 @ti.func
 def _bound_panel_pair_velocity(
@@ -263,7 +258,6 @@ def _bound_panel_pair_velocity(
             )
     return vel
 
-
 @ti.kernel
 def apply_gamma_smooth(
     gamma: ti.template(),
@@ -273,7 +267,6 @@ def apply_gamma_smooth(
 ):
     for i in range(n):
         gamma_smooth[i] = 0.5 * (gamma[i] + gamma_old[i])
-
 
 @ti.kernel
 def compute_induced_velocities_at_bound(
@@ -318,7 +311,6 @@ def compute_induced_velocities_at_bound(
         # Total velocity = External + Induced
         velocity[i] = V_external[i] + vel_induced
 
-
 @ti.kernel
 def compute_pressure_coefficients(
     velocity: ti.template(), Cp: ti.template(), num_panels: ti.i32, V_inf_mag_sq: float
@@ -341,7 +333,6 @@ def compute_pressure_coefficients(
             Cp[i] = 1.0 - v_mag_sq / V_inf_mag_sq
         else:
             Cp[i] = 0.0
-
 
 @ti.kernel
 def compute_panel_forces_coupled(
@@ -398,7 +389,6 @@ def compute_panel_forces_coupled(
             force = density * g * V_rel.cross(bound_leg)
 
         forces[i] = force
-
 
 @ti.kernel
 def compute_panel_forces_impulse_coupled(

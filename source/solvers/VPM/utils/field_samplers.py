@@ -23,7 +23,6 @@ try:
 except Exception:
     cKDTree = None  # noqa: N816
 
-
 # Canonical CSV column order for SurfaceSampler / LineSampler output.  Single
 # source of truth: the header row and every data row are built from this list,
 # so the written header always matches the data (no magic column indices on the
@@ -54,7 +53,7 @@ SAMPLER_CSV_COLUMNS = [
     "dwdy",
     "dwdz",
 ]
-
+# =========================================================
 
 def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     """Extract body_stl path and case_dir from solver config (priority: FVM > VPM > direct)."""
@@ -72,7 +71,6 @@ def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     except Exception:
         body_stl = None
     return body_stl, case_dir
-
 
 class SurfaceSampler:
     """
@@ -551,7 +549,6 @@ class SurfaceSampler:
         grid.save(str(filepath), binary=True)
 
         return filepath
-
 
 class LineSampler:
     """

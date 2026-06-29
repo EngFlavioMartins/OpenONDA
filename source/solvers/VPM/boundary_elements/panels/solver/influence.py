@@ -15,7 +15,6 @@ from ....config.constants import PANEL_EPSILON, TI_FLOAT
 from ..kernels.biot_savart import compute_doublet_potential, compute_vortex_ring_velocity
 from ..kernels.source_velocity import compute_source_velocity
 
-
 @ti.kernel
 def build_AIC_matrix(
     vertices: ti.template(),
@@ -41,7 +40,6 @@ def build_AIC_matrix(
             # Project onto normal at panel i
             AIC[i, j] = v_induced.dot(normals[i])
 
-
 @ti.kernel
 def build_AIC_matrix_dirichlet(
     vertices: ti.template(),
@@ -64,7 +62,6 @@ def build_AIC_matrix_dirichlet(
             v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]
             AIC[i, j] = compute_doublet_potential(centers[i], v0, v1, v2)
 
-
 @ti.kernel
 def compute_RHS(
     centers: ti.template(),
@@ -84,7 +81,6 @@ def compute_RHS(
     for i in range(n):
         v_total = V_inf + V_wake[i]
         rhs[i] = -v_total.dot(normals[i])
-
 
 @ti.kernel
 def compute_RHS_neumann_with_sources(
@@ -121,7 +117,6 @@ def compute_RHS_neumann_with_sources(
             # Add contribution: (V_source_j · n_i) * σ_j
             rhs[i] -= v_source_j.dot(normals[i]) * sigma_j
 
-
 @ti.kernel
 def compute_RHS_dirichlet(
     centers: ti.template(),
@@ -143,7 +138,6 @@ def compute_RHS_dirichlet(
     for i in range(n):
         v_total = V_inf + V_wake[i]
         rhs[i] = -v_total.dot(centers[i])
-
 
 @ti.kernel
 def compute_RHS_dirichlet_with_sources(
@@ -177,7 +171,6 @@ def compute_RHS_dirichlet_with_sources(
         # Pure doublet formulation (no source contributions)
         rhs[i] = phi_inf
 
-
 @ti.kernel
 def compute_surface_velocities(
     vertices: ti.template(),
@@ -203,7 +196,6 @@ def compute_surface_velocities(
                 v_induced += strengths[j] * compute_vortex_ring_velocity(p_target, v0, v1, v2)
 
         V_surface[i] = V_inf + V_wake[i] + v_induced
-
 
 @ti.kernel
 def compute_surface_velocities_with_sources(
@@ -250,7 +242,6 @@ def compute_surface_velocities_with_sources(
 
         V_surface[i] = V_inf + V_wake[i] + v_doublet + v_source
 
-
 @ti.kernel
 def compute_pressure_bernoulli(
     V_surface: ti.template(), V_inf_mag: TI_FLOAT, Cp: ti.template(), n: int
@@ -261,7 +252,6 @@ def compute_pressure_bernoulli(
     for i in range(n):
         v_mag_sq = V_surface[i].norm_sqr()
         Cp[i] = 1.0 - v_mag_sq / (V_inf_mag * V_inf_mag + PANEL_EPSILON)
-
 
 @ti.kernel
 def compute_forces_bernoulli(
@@ -280,7 +270,6 @@ def compute_forces_bernoulli(
         v_mag_sq = V_surface[i].norm_sqr()
         p_diff = 0.5 * rho * (V_inf_mag * V_inf_mag - v_mag_sq)
         forces[i] = p_diff * areas[i] * normals[i]
-
 
 @ti.kernel
 def compute_forces_impulse(
@@ -311,7 +300,6 @@ def compute_forces_impulse(
             dmu_dt = (3.0 * strengths[i] - 4.0 * strengths_old[i] + strengths_old2[i]) / (2.0 * dt)
 
         forces[i] = -rho * dmu_dt * areas[i] * normals[i]
-
 
 @ti.kernel
 def compute_forces_kutta_joukowski(

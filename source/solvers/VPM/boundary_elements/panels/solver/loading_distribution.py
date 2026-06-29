@@ -22,7 +22,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 class PanelLoadingDistribution:
     """Static helpers for exporting per-panel loading distributions."""
 

@@ -27,7 +27,6 @@ import numpy as np
 if TYPE_CHECKING:
     from .vlm_solver import ForceConfig, VLMSolver
 
-
 class VLMForceEvaluator:
     """Static helpers for aerodynamic force evaluation in VLM-VPM coupling.
 
@@ -35,9 +34,7 @@ class VLMForceEvaluator:
     the solver (no solver reference is held here).
     """
 
-    # -------------------------------------------------------------------------
     # STATE FACTORY
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def make_impulse_state() -> dict[str, Any]:
@@ -49,9 +46,7 @@ class VLMForceEvaluator:
             "removed_accumulated": np.zeros(3),
         }
 
-    # -------------------------------------------------------------------------
     # KUTTA-JOUKOWSKI METHOD
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def compute_kutta_joukowski(
@@ -98,9 +93,7 @@ class VLMForceEvaluator:
                 "error": str(exc),
             }
 
-    # -------------------------------------------------------------------------
     # IMPULSE METHOD — helpers
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def apply_history_shift(impulse_state: dict[str, Any], density: float) -> None:
@@ -148,9 +141,7 @@ class VLMForceEvaluator:
             + a2 * impulse_state["history"][-3]
         )
 
-    # -------------------------------------------------------------------------
     # IMPULSE METHOD — main
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def compute_impulse(
@@ -227,9 +218,7 @@ class VLMForceEvaluator:
             "status": "OK",
         }
 
-    # -------------------------------------------------------------------------
     # COMPARISON
-    # -------------------------------------------------------------------------
 
     @staticmethod
     def compare_methods(

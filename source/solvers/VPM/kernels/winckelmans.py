@@ -11,7 +11,6 @@ import taichi as ti
 
 from ..config.constants import ONE_OVER_FOUR_PI
 
-
 def create_winckelmans_kernels(dtype=ti.f32):
     """Create Winckelmans kernel functions with specified precision.
 

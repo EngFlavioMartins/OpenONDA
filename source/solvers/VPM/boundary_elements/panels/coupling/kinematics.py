@@ -11,21 +11,17 @@ VectorLike = Sequence[float] | np.ndarray
 ScalarOrCallable = float | Callable[[float], float]
 VectorOrCallable = VectorLike | Callable[[float], VectorLike]
 
-
 def _to_vec3(value: VectorLike, *, name: str) -> np.ndarray:
     vec = np.asarray(value, dtype=float).reshape(-1)
     if vec.size != 3:
         raise ValueError(f"{name} must contain exactly 3 values, got {vec.size}.")
     return vec
 
-
 def _eval_scalar(value: ScalarOrCallable, t: float) -> float:
     return float(value(t) if callable(value) else value)
 
-
 def _eval_vec3(value: VectorOrCallable, t: float, *, name: str) -> np.ndarray:
     return _to_vec3(value(t) if callable(value) else value, name=name)
-
 
 def _rotation_matrix_from_axis_angle(axis: np.ndarray, theta: float) -> np.ndarray:
     ax = _to_vec3(axis, name="axis")
@@ -46,7 +42,6 @@ def _rotation_matrix_from_axis_angle(axis: np.ndarray, theta: float) -> np.ndarr
         dtype=float,
     )
 
-
 def _call_translation_update(
     panel_solver,
     *,
@@ -61,7 +56,6 @@ def _call_translation_update(
         panel_solver.apply_translation_update(displacement, linear_velocity, body_range)
     """
     panel_solver.apply_translation_update(displacement, linear_velocity, body_range)
-
 
 def _call_rotation_update(
     panel_solver,
@@ -83,14 +77,12 @@ def _call_rotation_update(
         rotation_matrix, angular_velocity, rotation_center, body_range
     )
 
-
 class PanelKinematics(abc.ABC):
     """Abstract base class for panel body kinematics updates."""
 
     @abc.abstractmethod
     def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
         """Advance body kinematics and apply the motion update on ``panel_solver``."""
-
 
 class StaticPanel(PanelKinematics):
     """No-motion model."""
@@ -111,7 +103,6 @@ class StaticPanel(PanelKinematics):
             rotation_center=zero,
         )
 
-
 class TranslatingPanel(PanelKinematics):
     """Rigid translation with time-varying linear velocity."""
 
@@ -131,7 +122,6 @@ class TranslatingPanel(PanelKinematics):
             displacement=self.displacement,
             linear_velocity=v1,
         )
-
 
 class RotatingPanel(PanelKinematics):
     """Rigid rotation around a fixed axis and center.
@@ -171,7 +161,6 @@ class RotatingPanel(PanelKinematics):
             rotation_center=self.center,
         )
 
-
 class PitchingPanel(RotatingPanel):
     """Sinusoidal pitching around a fixed axis/center."""
 
@@ -194,7 +183,6 @@ class PitchingPanel(RotatingPanel):
 
         initial_angle = self.bias + self.amplitude * np.sin(self.phase)
         super().__init__(axis=axis, omega=omega_fn, center=center, initial_angle=initial_angle)
-
 
 class HeavingPanel(TranslatingPanel):
     """Sinusoidal heaving translation along a specified direction."""
@@ -225,7 +213,6 @@ class HeavingPanel(TranslatingPanel):
 
         super().__init__(velocity=velocity_fn, initial_displacement=(0.0, 0.0, 0.0))
 
-
 class ManeuverPanel(PanelKinematics):
     """Combined translation and rotation for generic maneuvers."""
 
@@ -243,7 +230,6 @@ class ManeuverPanel(PanelKinematics):
         if self.rotation is not None:
             self.rotation.update(panel_solver, t, dt, body_range)
 
-
 class CompositePanel(PanelKinematics):
     """Apply a sequence of kinematics updates in order."""
 
@@ -254,10 +240,8 @@ class CompositePanel(PanelKinematics):
         for component in self.components:
             component.update(panel_solver, t, dt, body_range)
 
-
 class Static(StaticPanel):
     """Backward-compatible alias for `StaticPanel`."""
-
 
 class Plunging(HeavingPanel):
     """Backward-compatible alias for `HeavingPanel`."""
@@ -272,7 +256,6 @@ class Plunging(HeavingPanel):
         super().__init__(
             amplitude=amplitude, frequency=2.0 * np.pi * frequency, phase=phase, direction=axis
         )
-
 
 class RampedRotation(RotatingPanel):
     """Backward-compatible ramped angular-speed model."""

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 class PanelDiagnostics:
     """Static helpers for recording panel diagnostics and writing CSV output."""
 

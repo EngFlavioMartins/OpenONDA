@@ -11,7 +11,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
-
 @ti.data_oriented
 class VLMLattice:
     """
@@ -177,9 +176,7 @@ class VLMLattice:
         # Shedding triggers when LESP > lesp_crit (Ramesh et al. 2014)
         self.lesp = ti.field(dtype=dtype, shape=(max_panels,))
 
-        # =====================================================================
         # WAKE PARTICLE BUFFER (for direct Taichi-to-VPM transfer)
-        # =====================================================================
         # Pre-allocated buffer for wake particles shed per time step.
         # Avoids numpy intermediate for GPU-to-GPU transfer.
         # Factor 3×: longitudinal (left+right) + transverse per TE panel,

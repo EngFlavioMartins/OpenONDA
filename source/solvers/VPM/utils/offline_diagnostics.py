@@ -27,15 +27,14 @@ from ..config.constants import EPSILON
 from ..io.logging import logger
 from ..physics.evaluation import ParticleFieldEvaluation
 
-# =============================================================================
+# =========================================================
 # Taichi Kernel Functions (copied from physics module for standalone operation)
-# =============================================================================
+# =========================================================
 
 # Constants for Abramowitz and Stegun approximation of erf
-# =============================================================================
+# =========================================================
 # Helper Classes
-# =============================================================================
-
+# =========================================================
 
 @dataclass
 class FlowIntegrals:
@@ -51,7 +50,6 @@ class FlowIntegrals:
     linear_impulse: np.ndarray  # (3,)
     angular_impulse: np.ndarray  # (3,)
     n_particles: int
-
 
 class ParticleContainerWrapper:
     """
@@ -69,7 +67,6 @@ class ParticleContainerWrapper:
 
     def __len__(self):
         return self._count
-
 
 class OfflineFlowDiagnostics:
     """
@@ -212,10 +209,6 @@ class OfflineFlowDiagnostics:
                 n_particles=0,
             )
 
-        # Create Taichi fields (re-allocate only if needed, or rely on evaluator's internal fields?)
-        # Evaluator needs inputs as fields. We must allocate them.
-        # We can define them as part of the class to avoid reallocation if size is similar.
-
         # Allocate fields for this step
         pos_field = ti.Vector.field(3, ti.f32, shape=n)
         str_field = ti.Vector.field(3, ti.f32, shape=n)
@@ -237,9 +230,6 @@ class OfflineFlowDiagnostics:
             count=n,
         )
 
-        # Run evaluator
-        # Note: ParticleFieldEvaluation.compute_flow_integrals handles resizing of its OWN result fields based on 'len(particles)'
-
         results_dict = self.evaluator.compute_flow_integrals(particles_wrapper, data["time"])
 
         return FlowIntegrals(
@@ -255,6 +245,7 @@ class OfflineFlowDiagnostics:
             n_particles=n,
         )
 
+    #TODO: be areful with using f64 as default. Everywhere in this code, f32 should be the default. Moreover, the default everywhere should be set at the solver class object initialiation, such that f32 or f64 are consistently selected everwhere. Make sure that no other code in this repository uses f64 as default. And make sure that the selection of precision is safe and governened by one constructor only.
     def compute_all(self, verbose: bool = True) -> None:
         """
         Compute flow integrals for all timesteps.
@@ -263,11 +254,10 @@ class OfflineFlowDiagnostics:
             verbose: If True, print progress to console.
         """
         # Initialize evaluator (reuse across steps to maintain energy history for dE/dt)
-        # We start with a reasonable size, it will auto-resize if needed
         self.evaluator = ParticleFieldEvaluation(
-            particles_kernel="GAUSSIAN",  # Default to Gaussian, or could infer from file if saved
+            particles_kernel="GAUSSIAN", 
             max_particles=self._estimate_max_particles(),
-            accumulator_dtype=ti.f64,  # Always use high precision for accumulation if possible, or match file
+            accumulator_dtype=ti.f64,
         )
         self.results = []
         n_files = len(self.h5_files)
@@ -400,7 +390,6 @@ class OfflineFlowDiagnostics:
             else "  Energy ratio:        N/A"
         )
         print("=" * 70 + "\n")
-
 
 def ComputeOfflineDiagnostics(
     backup_pattern: str | None = None,

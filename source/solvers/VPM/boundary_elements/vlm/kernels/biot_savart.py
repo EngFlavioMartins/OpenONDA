@@ -17,7 +17,6 @@ from ....config.constants import VLM_CUTOFF, VLM_EPSILON
 EPSILON = VLM_EPSILON
 CUTOFF = VLM_CUTOFF
 
-
 @ti.func
 def bound_vortex_velocity(target, pa, pb, gamma: float, epsilon: float):
     """
@@ -71,7 +70,6 @@ def bound_vortex_velocity(target, pa, pb, gamma: float, epsilon: float):
 
     return vel
 
-
 @ti.func
 def semi_infinite_vortex_velocity(target, p, d, gamma: float, epsilon: float):
     """
@@ -101,12 +99,12 @@ def semi_infinite_vortex_velocity(target, p, d, gamma: float, epsilon: float):
     xmpdotd = xmp.dot(d)
     p0 = p + xmpdotd * d
 
-    # ------- Bound Vortex Section (from p to p0) -------
+    # ---- Bound Vortex Section (from p to p0) ----
     p0mp = p0 - p
     if p0mp.dot(p0mp) > epsilon * epsilon:  # Check there is a bound section
         vel = vel + bound_vortex_velocity(target, p, p0, gamma, epsilon)
 
-    # ------- Semi-Infinite Vortex Section (from p0 to infinity) -------
+    # ---- Semi-Infinite Vortex Section (from p0 to infinity) ----
     # Velocity = (Γ/4π) * (d × h) / (|h|² + ε²)
     # where h = target - p0
     h = target - p0
@@ -120,7 +118,6 @@ def semi_infinite_vortex_velocity(target, p, d, gamma: float, epsilon: float):
         vel = vel + factor * n
 
     return vel
-
 
 @ti.func
 def horseshoe_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
@@ -141,7 +138,6 @@ def horseshoe_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
 
     return vel
 
-
 @ti.func
 def vortex_ring_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     """
@@ -159,7 +155,6 @@ def vortex_ring_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     v41 = bound_vortex_velocity(target, v4, v1, gamma, epsilon)
 
     return v12 + v23 + v34 + v41
-
 
 @ti.func
 def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, gamma: float, epsilon: float):
@@ -193,7 +188,6 @@ def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, gamma: float, epsil
     vel = vel_left + vel_bound + vel_right
 
     return vel
-
 
 @ti.func
 def vortex_ring_tri_velocity(

@@ -15,7 +15,6 @@ import taichi as ti
 # Import VPM constants
 from ..config.constants import MAX_PARTICLES
 
-
 @ti.data_oriented
 class TaichiNeighborSearch:
     def __init__(
@@ -198,7 +197,7 @@ class TaichiNeighborSearch:
                     i, pos_i, cell_i, positions, search_radius, True
                 )
 
-    # ===================== + ===================== #
+    # ---- + ----
 
     def resize_if_needed(self, N):
         """Dynamically resize neighbor storage if needed. Over-allocate by 10% for safety."""
@@ -219,7 +218,7 @@ class TaichiNeighborSearch:
                     f"Cannot resize neighbor storage from {self.neighbors.shape[0]} to {target_size} particles: {e}"
                 ) from e
 
-    # ===================== + ===================== #
+    # ---- + ----
 
     def find_neighbors_fixed_count(self, positions, target_neighbors):
         """

@@ -20,6 +20,7 @@ from .vtk_export import export_panels_vtk
 if TYPE_CHECKING:
     from ..core.solver import Solver
 
+# =========================================================
 
 class SolverIO:
     """
@@ -394,6 +395,5 @@ class SolverIO:
 
         except Exception as e:
             print(f"   (Warning) Could not write XDMF series file: {e}")
-
 
 __all__ = ["SolverIO"]

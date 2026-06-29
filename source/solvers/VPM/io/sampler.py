@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 class SamplerExecutor:
     """Orchestrates field-sampler execution for one solver log step.
 
@@ -68,9 +67,7 @@ class SamplerExecutor:
                 sampler, solver, name_prefix, solution_dir, seq_num, solver.flow_time
             )
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    # ---- Helpers ----
 
     @staticmethod
     def _prepare_context(sampler_entry, samples_dir: Path):

@@ -9,7 +9,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import taichi as ti
 
-
 @ti.func
 def is_point_in_quad(
     p: ti.types.vector(3, ti.f32),
@@ -53,7 +52,6 @@ def is_point_in_quad(
     c4 = da.cross(dp).dot(normal)
 
     return c1 >= 0.0 and c2 >= 0.0 and c3 >= 0.0 and c4 >= 0.0
-
 
 @ti.kernel
 def detect_surface_collisions_kernel(

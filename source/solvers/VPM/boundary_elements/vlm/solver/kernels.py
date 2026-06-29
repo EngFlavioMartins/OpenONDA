@@ -17,7 +17,6 @@ WAKE_WEAK_FREESTREAM_RATIO = 0.3  # |V_ext| < ratio·|V_kin| ⇒ freestream too 
 WAKE_NORMAL_KICK_FRACTION = 0.5  # normal kick magnitude = fraction·|V_kin|
 WAKE_MIN_AXIAL_RATIO = 0.15  # ensure axial convection ≥ ratio·|V_kin|
 
-
 @ti.kernel
 def update_geometry_translating_kernel(
     dX: ti.types.vector(3, ti.f32),
@@ -51,7 +50,6 @@ def update_geometry_translating_kernel(
         # Update centers
         collocation[i] += dX
         bound_midpoints[i] += dX
-
 
 @ti.kernel
 def update_geometry_rotating_kernel(
@@ -103,13 +101,11 @@ def update_geometry_rotating_kernel(
         n = normals[i]
         normals[i] = R @ n
 
-
 @ti.func
 def compute_shedding_velocity(
     X: ti.types.vector(3, float), V_inf: ti.types.vector(3, float)
 ) -> ti.types.vector(3, float):
     return V_inf
-
 
 @ti.func
 def _v_conv_compute(
@@ -134,7 +130,6 @@ def _v_conv_compute(
                     V_conv = V_conv + n * (WAKE_MIN_AXIAL_RATIO * V_kin_mag)
     return V_conv
 
-
 @ti.func
 def _v_kin_for_sizing(
     V_conv: ti.types.vector(3, float),
@@ -148,7 +143,6 @@ def _v_kin_for_sizing(
         if kin_speed > speed:
             speed = kin_speed
     return speed
-
 
 @ti.func
 def _shed_left_particle(
@@ -196,7 +190,6 @@ def _shed_left_particle(
                 wake_volumes[idx] = vol
                 wake_group_ids[idx] = panel_group_id[i]
 
-
 @ti.func
 def _shed_right_particle(
     right_idx: ti.i32,
@@ -226,7 +219,6 @@ def _shed_right_particle(
             wake_radii[idx] = sigma
             wake_volumes[idx] = vol
             wake_group_ids[idx] = group_id
-
 
 @ti.kernel
 def shed_wake_particles_kernel(

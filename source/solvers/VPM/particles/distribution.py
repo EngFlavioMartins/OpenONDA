@@ -9,7 +9,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 from scipy.spatial import cKDTree
-
+# =========================================================
 
 class ParticleDistributor:
     """

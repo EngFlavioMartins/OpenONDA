@@ -16,7 +16,6 @@ import taichi as ti
 from ..config.constants import MAX_PARTICLES
 from ..config.types import CachedParticleProperty
 
-
 def _validate_finite_array(arr, name: str) -> None:
     if not np.all(np.isfinite(arr)):
         nan_count = np.sum(np.isnan(arr))
@@ -27,14 +26,12 @@ def _validate_finite_array(arr, name: str) -> None:
             f"Cannot add particles with non-finite values."
         )
 
-
 def _coerce_int_id_array(arr, N: int) -> np.ndarray:
     if arr is None:
         return np.zeros(N, dtype=np.int32)
     if isinstance(arr, int):
         return np.full(N, arr, dtype=np.int32)
     return np.ascontiguousarray(arr, dtype=np.int32)
-
 
 @ti.data_oriented
 class Particles:
@@ -175,9 +172,7 @@ class Particles:
         """
         self._resize_callbacks.append(callback)
 
-    # ------------------------------------------------------------------
-    # Prefix-extraction helpers (GPU → CPU, only active prefix)
-    # ------------------------------------------------------------------
+    # ---- Prefix-extraction helpers (GPU → CPU, only active prefix) ----
 
     def _extract_scalar(self, field, n):
         """Return first n scalar entries as a NumPy array (no full alloc transfer)."""
@@ -273,9 +268,7 @@ class Particles:
         for i in range(count):
             dest[start_idx + i] = src[i]
 
-    # ------------------------------------------------------------------
-    # Prefix extraction kernels (avoid full MAX_PARTICLES to_numpy())
-    # ------------------------------------------------------------------
+    # ---- Prefix extraction kernels (avoid full MAX_PARTICLES to_numpy()) ----
 
     @ti.kernel
     def _extract_scalar_prefix(self, src: ti.template(), dst: ti.types.ndarray(), n: ti.i32):  # type: ignore
@@ -928,7 +921,7 @@ class Particles:
             ValueError: If array shapes are inconsistent
         """
 
-        # ===== INPUT VALIDATION: NaN/Inf CHECKS =====
+        # ---- INPUT VALIDATION: NaN/Inf CHECKS ----
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
         _validate_finite_array(circulation, "circulation")
@@ -941,7 +934,7 @@ class Particles:
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
 
-        # ===== CONTINUE WITH NORMAL PROCESSING =====
+        # ---- CONTINUE WITH NORMAL PROCESSING ----
         # Honor the configured float precision: the Taichi fields are created
         # with self._taichi_dtype, so feeding them self._np_float_dtype arrays
         # keeps the transfer exact (no f32←f64 / f64←f32 precision warnings)
@@ -1128,9 +1121,7 @@ class Particles:
         self.sync_device_counter()
         self._cached_step = -1
 
-    # =================================================================================
-    # GPU-TO-GPU DATA TRANSFER
-    # =================================================================================
+    # ---- GPU-TO-GPU DATA TRANSFER ----
 
     def add_vortex_particles_from_fields(
         self,
@@ -1571,9 +1562,7 @@ class Particles:
         else:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
 
-    # ===================== + ===================== #
-    #                 Backup methods                #
-    # ===================== + ===================== #
+    # ---- Backup methods ----
     def backup_solution(self, backup_file_name, time_step):
         """
         Export particle data to an HDF5 file (.h5).

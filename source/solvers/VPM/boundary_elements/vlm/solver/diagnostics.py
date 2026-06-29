@@ -22,7 +22,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 class VLMDiagnostics:
     """Static helpers for recording VLM diagnostics and writing CSV output."""
 
@@ -126,9 +125,7 @@ class VLMDiagnostics:
         except Exception as exc:
             print(f"(Warning) Failed to record VLM diagnostics: {exc}")
 
-    # ------------------------------------------------------------------
     # CSV export
-    # ------------------------------------------------------------------
 
     @staticmethod
     def export_forces_csv(
@@ -211,9 +208,7 @@ class VLMDiagnostics:
         else:
             df.to_csv(csv_path, mode="a", header=False, index=False)
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _decompose_impulse_cl(vlm_solver, forces: dict) -> tuple[float, float]:

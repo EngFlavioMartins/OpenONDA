@@ -15,7 +15,6 @@ from ..config.constants import (
     EPSILON,
 )
 
-
 def _make_compute_velocities_kernel(q_):
     """Mini-factory: creates compute_velocities_kernel capturing q_."""
 
@@ -52,7 +51,6 @@ def _make_compute_velocities_kernel(q_):
 
     return compute_velocities_kernel
 
-
 def _make_compute_vorticities_kernel(zeta_):
     """Mini-factory: creates compute_vorticities_kernel capturing zeta_."""
 
@@ -86,7 +84,6 @@ def _make_compute_vorticities_kernel(zeta_):
 
     return compute_vorticities_kernel
 
-
 def _make_kinetic_energy_kernel(g_):
     """Mini-factory: creates compute_kinetic_energy_kernel capturing g_."""
 
@@ -118,7 +115,6 @@ def _make_kinetic_energy_kernel(g_):
             kinetic_energy[i] = energy_sum
 
     return compute_kinetic_energy_kernel
-
 
 def _make_enstrophy_kernel(zeta_):
     """Mini-factory: creates compute_enstrophy_kernel capturing zeta_."""
@@ -152,7 +148,6 @@ def _make_enstrophy_kernel(zeta_):
 
     return compute_enstrophy_kernel
 
-
 def _make_update_position_euler_kernel():
     """Mini-factory: creates update_position_euler_kernel (no captures)."""
 
@@ -165,7 +160,6 @@ def _make_update_position_euler_kernel():
             positions[i] += dt * velocities[i]
 
     return update_position_euler_kernel
-
 
 def _make_step_euler_forward_strengths_kernel():
     """Mini-factory: creates step_euler_forward_strengths_kernel (no captures)."""
@@ -191,7 +185,6 @@ def _make_step_euler_forward_strengths_kernel():
             str_out[i] = gamma + delta * scale
 
     return step_euler_forward_strengths_kernel
-
 
 def _make_target_velocity_kernel(q_):
     """Mini-factory: creates compute_target_velocity_kernel capturing q_."""
@@ -228,7 +221,6 @@ def _make_target_velocity_kernel(q_):
 
     return compute_target_velocity_kernel
 
-
 def _make_target_source_velocity_kernel(q_):
     """Mini-factory: creates compute_target_source_velocity_kernel capturing q_."""
 
@@ -263,7 +255,6 @@ def _make_target_source_velocity_kernel(q_):
 
     return compute_target_source_velocity_kernel
 
-
 def _make_target_vorticity_kernel(zeta_):
     """Mini-factory: creates compute_target_vorticity_kernel capturing zeta_."""
 
@@ -295,7 +286,6 @@ def _make_target_vorticity_kernel(zeta_):
 
     return compute_target_vorticity_kernel
 
-
 def _make_csm_kernel(diffusivity_constant_):
     """Mini-factory: creates update_radius_csm_kernel capturing diffusivity_constant_."""
 
@@ -314,7 +304,6 @@ def _make_csm_kernel(diffusivity_constant_):
             radii[i] = ti.sqrt(new_rad_sq)
 
     return update_radius_csm_kernel
-
 
 def _make_rwm_kernel():
     """Mini-factory: creates update_position_rwm_kernel (no captures)."""
@@ -347,7 +336,6 @@ def _make_rwm_kernel():
 
     return update_position_rwm_kernel
 
-
 def _make_volume_divergence_kernel():
     """Mini-factory: creates update_volume_divergence_kernel (no captures)."""
 
@@ -370,7 +358,6 @@ def _make_volume_divergence_kernel():
 
     return update_volume_divergence_kernel
 
-
 def _make_strength_magnitudes_kernel():
     """Mini-factory: creates compute_strength_magnitudes_kernel (no captures)."""
 
@@ -384,7 +371,6 @@ def _make_strength_magnitudes_kernel():
             magnitudes[i] = mag
 
     return compute_strength_magnitudes_kernel
-
 
 def _make_flag_strong_particles_kernel():
     """Mini-factory: creates flag_strong_particles_kernel (no captures)."""
@@ -413,7 +399,6 @@ def _make_flag_strong_particles_kernel():
 
     return flag_strong_particles_kernel
 
-
 def _make_count_flagged_kernel():
     """Mini-factory: creates count_flagged_particles_kernel (no captures)."""
 
@@ -427,7 +412,6 @@ def _make_count_flagged_kernel():
         return count
 
     return count_flagged_particles_kernel
-
 
 def _make_apply_merger_dissipation_kernel():
     """Mini-factory: creates apply_merger_dissipation_kernel (no captures)."""
@@ -457,7 +441,6 @@ def _make_apply_merger_dissipation_kernel():
             strengths[i] *= scale
 
     return apply_merger_dissipation_kernel
-
 
 @ti.func
 def _stretching_contribution(
@@ -501,7 +484,6 @@ def _stretching_contribution(
         dstr = 0.5 * coeff2 * (Gi_dot_r * r_cross_Gj + Gi_dot_rCrossGj * r_ij)
 
     return dstr
-
 
 def _make_stretching_rate_kernel(q_, zeta_):
     """Mini-factory: creates compute_stretching_rate_kernel capturing q_ and zeta_."""
@@ -549,7 +531,6 @@ def _make_stretching_rate_kernel(q_, zeta_):
 
     return compute_stretching_rate_kernel
 
-
 def _make_gradu_stretching_rate_kernel():
     """Mini-factory: creates a local O(N) stretching rate kernel using pre-computed gradU.
 
@@ -578,7 +559,6 @@ def _make_gradu_stretching_rate_kernel():
             )
 
     return compute_gradu_stretching_rate_kernel
-
 
 def _make_rvpm_stretching_rate_kernel():
     """Mini-factory: reformulated-VPM stretching rate (Alvarez & Ning).
@@ -620,7 +600,6 @@ def _make_rvpm_stretching_rate_kernel():
 
     return compute_rvpm_stretching_rate_kernel
 
-
 def _make_rvpm_radius_update_kernel():
     """Mini-factory: rVPM core-size update.
 
@@ -654,7 +633,6 @@ def _make_rvpm_radius_update_kernel():
 
     return update_radius_rvpm_kernel
 
-
 def _create_basic_kernels(kernel_functions):
     """Create basic velocity and vorticity computation kernels."""
     q_ = kernel_functions["q_"]
@@ -675,7 +653,6 @@ def _create_basic_kernels(kernel_functions):
         "add_background_velocity_kernel": add_background_velocity_kernel,
         "compute_vorticities_kernel": _make_compute_vorticities_kernel(zeta_),
     }
-
 
 def _create_gradient_kernels(kernel_functions):
     """Create velocity gradient and strain tensor computation kernels."""
@@ -784,7 +761,6 @@ def _create_gradient_kernels(kernel_functions):
         "compute_velocity_and_gradient_kernel": compute_velocity_and_gradient_kernel,
     }
 
-
 def _create_energy_kernels(kernel_functions):
     """Create kinetic energy, enstrophy, and helicity computation kernels."""
     q_ = kernel_functions["q_"]
@@ -823,7 +799,6 @@ def _create_energy_kernels(kernel_functions):
         "compute_enstrophy_kernel": _make_enstrophy_kernel(zeta_),
         "compute_helicity_kernel": compute_helicity_kernel,
     }
-
 
 def _create_position_update_kernels(kernel_functions):
     """Create time integration kernels for position and strength updates."""
@@ -915,7 +890,6 @@ def _create_position_update_kernels(kernel_functions):
         "step_rk4_combine_kernel": step_rk4_combine_kernel,
     }
 
-
 def _create_target_eval_kernels(kernel_functions):
     """Create kernels for evaluating flow fields at arbitrary target positions."""
     q_ = kernel_functions["q_"]
@@ -976,7 +950,6 @@ def _create_target_eval_kernels(kernel_functions):
         "compute_target_velocity_gradient_kernel": compute_target_velocity_gradient_kernel,
     }
 
-
 def _create_diffusion_kernels(kernel_functions):
     """Create kernels for viscous diffusion (CSM, RWM)."""
     diffusivity_constant_ = kernel_functions["diffusivity_constant_"]
@@ -986,7 +959,6 @@ def _create_diffusion_kernels(kernel_functions):
         "update_position_rwm_kernel": _make_rwm_kernel(),
         "update_volume_divergence_kernel": _make_volume_divergence_kernel(),
     }
-
 
 def _create_splitting_kernels(kernel_functions):
     """Create kernels for particle splitting and merging operations."""
@@ -999,7 +971,6 @@ def _create_splitting_kernels(kernel_functions):
         "apply_merger_dissipation_kernel": _make_apply_merger_dissipation_kernel(),
     }
 
-
 def _create_stretching_kernels(kernel_functions):
     """Create kernels for vortex stretching computations."""
     q_ = kernel_functions["q_"]
@@ -1011,7 +982,6 @@ def _create_stretching_kernels(kernel_functions):
         "compute_rvpm_stretching_rate_kernel": _make_rvpm_stretching_rate_kernel(),
         "update_radius_rvpm_kernel": _make_rvpm_radius_update_kernel(),
     }
-
 
 def _create_utility_kernels(kernel_functions):
     """Create utility kernels for circulation centroids."""
@@ -1041,7 +1011,6 @@ def _create_utility_kernels(kernel_functions):
     return {
         "compute_circulation_centroids_kernel": compute_circulation_centroids_kernel,
     }
-
 
 def create_kernels(kernel_functions):
     """Create all Taichi kernels for VPM physics.

@@ -10,8 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 
-# ===================== + ===================== #
-
+# =========================================================
 
 def LambOseenVPM(
     viscosity: float,
@@ -93,9 +92,7 @@ def LambOseenVPM(
 
     return velocities, viscosities, strengths
 
-
-# ===================== + ===================== #
-
+# =========================================================
 
 def VortexRingVPM(
     viscosity: float,
@@ -161,9 +158,7 @@ def VortexRingVPM(
 
     return velocities, viscosities, strengths
 
-
-# ===================== + ===================== #
-
+# =========================================================
 
 def DoubletFlowVPM(
     viscosity: float,
@@ -216,9 +211,7 @@ def DoubletFlowVPM(
 
     return velocities, viscosities, strengths
 
-
-# ===================== + ===================== #
-
+# =========================================================
 
 def TaylorGreenVortexVPM(
     viscosity: float,
@@ -280,9 +273,7 @@ def TaylorGreenVortexVPM(
 
     return velocities, viscosities, strengths
 
-
-# ===================== + ===================== #
-
+# =========================================================
 
 def IsotropicTurbulenceVPM(
     viscosity: float,
