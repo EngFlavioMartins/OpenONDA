@@ -88,7 +88,7 @@ class PhysicsBase:
         # the solver via configure_velocity(); defaults to direct O(N²) summation.
         # DIRECT: exact O(N²); use VelocityConfig.treecode(theta=0.5) for N ≳ 5 000 (~5% error)
         self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
-        self.velocity_theta = 0.5  # Barnes-Hut opening angle (treecode only)
+        self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
 
         # Cached filtered particle fields for zone-aware BC computation
         # Avoids memory leak in _compute_target_velocities_filtered

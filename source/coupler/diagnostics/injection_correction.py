@@ -66,10 +66,9 @@ except ImportError:
     TAICHI_AVAILABLE = False
     logger.debug("Taichi not available - using NumPy backend only")
 
-
-# ---------------------------------------------------------------------------
+# =========================================================
 # FPE guard: temporarily disable hardware FPE traps installed by OpenFOAM
-# ---------------------------------------------------------------------------
+# =========================================================
 # OpenFOAM calls feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW)
 # which makes the CPU raise SIGFPE on any such exception.  LAPACK's ieeeck
 # routine intentionally divides by zero to test IEEE-754 compliance, so it
@@ -79,7 +78,7 @@ except ImportError:
 # traps around LAPACK calls (np.linalg.cond, np.linalg.lstsq, etc.), then
 # restore them.  This is done via ctypes to call the glibc functions
 # directly, which is the same mechanism OpenFOAM itself uses.
-# ---------------------------------------------------------------------------
+# =========================================================
 
 # FE_* constants from <fenv.h> on Linux/glibc
 _FE_INVALID = 0x01
@@ -96,7 +95,6 @@ try:
 except Exception:
     pass
 
-
 @contextmanager
 def _suspend_fpe_traps():
     """Context manager to disable hardware FPE traps around LAPACK calls.
@@ -110,7 +108,7 @@ def _suspend_fpe_traps():
     block.
     """
     if _libm is not None and hasattr(_libm, "fedisableexcept"):
-        # --- glibc path (preferred) ---
+# =========================================================
         # fedisableexcept returns the old set of enabled traps
         old_traps = _libm.fedisableexcept(_FE_ALL_EXCEPT)
         try:
@@ -120,7 +118,7 @@ def _suspend_fpe_traps():
             if old_traps & _FE_ALL_EXCEPT:
                 _libm.feenableexcept(old_traps & _FE_ALL_EXCEPT)
     else:
-        # --- Fallback: Python signal handler swap ---
+# =========================================================
         old_handler = signal.getsignal(signal.SIGFPE)
         signal.signal(signal.SIGFPE, signal.SIG_DFL)
         try:
@@ -129,7 +127,6 @@ def _suspend_fpe_traps():
             if callable(old_handler) or old_handler in (signal.SIG_DFL, signal.SIG_IGN):
                 with contextlib.suppress(OSError, ValueError):
                     signal.signal(signal.SIGFPE, old_handler)
-
 
 @dataclass
 class CorrectionStats:
@@ -141,7 +138,6 @@ class CorrectionStats:
     residual_error: float  # Post-correction conservation error
     condition_number: float  # Condition number of system matrix
     num_particles: int  # Number of particles corrected
-
 
 def recover_invariants(
     pos: np.ndarray,
@@ -235,7 +231,6 @@ def recover_invariants(
     if return_stats:
         return circ_corrected, stats
     return circ_corrected
-
 
 def _recover_invariants_numpy(
     pos: np.ndarray,
@@ -469,7 +464,6 @@ def _recover_invariants_numpy(
 
     return circ_corrected, stats
 
-
 def _recover_invariants_taichi(
     pos: np.ndarray,
     circ: np.ndarray,
@@ -497,7 +491,6 @@ def _recover_invariants_taichi(
         return _recover_invariants_numpy(
             pos, circ, target_invariants, reference_point, tolerance_ratio
         )
-
 
 def validate_conservation(
     pos: np.ndarray,
@@ -542,7 +535,6 @@ def validate_conservation(
     errors["passed"] = all(err < tolerance for err in errors.values())
 
     return errors
-
 
 def compute_correction_quality(
     pos_original: np.ndarray,

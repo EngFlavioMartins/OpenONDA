@@ -94,8 +94,16 @@ def _time(fn, repeats):
 
 
 def run(arch_str, sizes, theta, repeats):
-    arch = {"cpu": ti.cpu, "cuda": ti.cuda, "vulkan": ti.vulkan, "gpu": ti.gpu}[arch_str]
-    ti.init(arch=arch, default_fp=ti.f32, random_seed=0)
+    # Initialise via the project backend (config/backend.py), exactly as the
+    # solver does — a raw ``ti.init(arch=ti.vulkan)`` triggers Taichi's adaptive
+    # arch probe, which can hang on some Vulkan setups.
+    import sys
+    sys.path.insert(0, ".")
+    from source.solvers.VPM.config.backend import initialize_taichi_backend
+
+    backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[arch_str]
+    chosen = initialize_taichi_backend(preferred_backend=backend, debug_mode=False, precision="f32")
+    print(f"[backend] requested={backend} → using {chosen}")
     from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
 
     sizes = sorted(sizes)

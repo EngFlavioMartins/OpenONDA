@@ -59,11 +59,9 @@ from source.solvers.VPM.io.logging import Logging
 
 logger = logging.getLogger("coupler")
 
-
 def flush_log():
     for handler in logger.handlers:
         handler.flush()
-
 
 class _DisableSIGFPE:
     """Context manager that disables OpenFOAM's SIGFPE handler."""
@@ -75,7 +73,6 @@ class _DisableSIGFPE:
     def __exit__(self, exc_type, exc_val, exc_tb):
         signal.signal(signal.SIGFPE, self._old_handler)
         return False
-
 
 class FVMVPMCoupler:
     """
@@ -516,9 +513,9 @@ class FVMVPMCoupler:
         if self._is_master:
             flush_log()
 
-    # =====================================================================
+# =========================================================
     # STEP 1 — Donor velocity BC (overset-style, full particle cloud)
-    # =====================================================================
+# =========================================================
 
     def _donor_velocity(
         self,
@@ -588,7 +585,7 @@ class FVMVPMCoupler:
             if add_fvm_interior:
                 u_donor = u_donor + self._fvm_interior_induced_velocity(face_centers)
 
-        # --- Discrete solenoidal projection -----------------------------------
+# =========================================================
         # The Biot-Savart donor is analytically solenoidal (∮u·n dA = 0), but
         # treecode quadrature, finite face-point sampling, and Gaussian core
         # truncation leave a small residual ε = Σ_f u_f·S_f ≠ 0.  With all
@@ -789,9 +786,9 @@ class FVMVPMCoupler:
         )
         self._bs_sign_ok = True
 
-    # =====================================================================
+# =========================================================
     # STEP 2 — FVM advance with the donor BC pair
-    # =====================================================================
+# =========================================================
 
     def _fvm_step(
         self,
@@ -941,9 +938,9 @@ class FVMVPMCoupler:
                     omega_target=omega_bc if mixed else None,
                 )
 
-    # =====================================================================
+# =========================================================
     # ETA (authority weight)
-    # =====================================================================
+# =========================================================
 
     def _build_eta_fn(self):
         """Return a callable eta(x) for the continuous hand-off."""
@@ -956,9 +953,9 @@ class FVMVPMCoupler:
 
         return eta_fn
 
-    # =====================================================================
+# =========================================================
     # Restart support
-    # =====================================================================
+# =========================================================
 
     def load_vpm_from_backup(self, backup_h5_path: str) -> int:
         """Load VPM state from an H5 backup."""

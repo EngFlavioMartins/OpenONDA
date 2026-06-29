@@ -72,13 +72,12 @@ RADIUS_RATIO = 1.5
 # the guard band and the CFL buffer margin.
 _M4P_SUPPORT = 2.0
 
-
-# =============================================================================
+# =========================================================
 # FIX B: velocity-based target circulation (Billuart 2023 §3.3)
 # Conservative via the discrete Stokes theorem on the data-extent sub-grid
 # (NOT the full lattice — see _velocity_based_target docstring for the
 # zero-circulation defect that motivated the sub-grid + axis-wise hole fill).
-# =============================================================================
+# =========================================================
 def _fill_holes_axiswise(u_sub: np.ndarray, mask_sub: np.ndarray) -> np.ndarray:
     """Fill ``mask=False`` nodes in a 3-D sub-grid by axis-wise edge padding.
 
@@ -107,7 +106,6 @@ def _fill_holes_axiswise(u_sub: np.ndarray, mask_sub: np.ndarray) -> np.ndarray:
                 m[i, empty] = m[i + 1, empty]
         u = np.swapaxes(u, 0, ax)
     return u
-
 
 def _curl_on_regular_grid(u_grid: np.ndarray, shape: tuple[int, int, int], h: float) -> np.ndarray:
     """Compute ω = ∇×u on a regular h-lattice via 2nd-order central differences.
@@ -138,7 +136,6 @@ def _curl_on_regular_grid(u_grid: np.ndarray, shape: tuple[int, int, int], h: fl
         axis=-1,
     )
     return omega.reshape(-1, 3)
-
 
 def _velocity_based_target(
     fvm_cell_pos: np.ndarray,
@@ -246,10 +243,9 @@ def _velocity_based_target(
     # Target circulation = ω · h³
     return omega_lat * (h**3)
 
-
-# =============================================================================
+# =========================================================
 # Integral invariants
-# =============================================================================
+# =========================================================
 def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
     """Total circulation, linear impulse and (raw) angular impulse
     (Winckelmans 1993).  Kernel-correction-free: the prune redistribution
@@ -264,15 +260,13 @@ def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
         "angular_impulse": (1.0 / 3.0) * np.sum(np.cross(pos, r_x_g), axis=0),
     }
 
-
-# =============================================================================
+# =========================================================
 # Geometry / CFL helpers
-# =============================================================================
+# =========================================================
 def required_buffer_length(u_max: float, dt: float, h: float, safety: float = 1.5) -> float:
     """Minimum downstream buffer length for a dt-robust hand-off:
     ``L_buf ≥ safety · u_max · dt + 2h`` (M4′ stencil must stay interior)."""
     return float(safety * abs(u_max) * abs(dt) + _M4P_SUPPORT * h)
-
 
 def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> float:
     """Largest ``dt`` for which the given buffer keeps the hand-off exact
@@ -281,7 +275,6 @@ def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> 
     if u < 1e-30:
         return float("inf")
     return float(max(l_buf - _M4P_SUPPORT * h, 0.0) / (safety * u))
-
 
 def cosine_eta(
     grid_pos: np.ndarray,
@@ -320,10 +313,9 @@ def cosine_eta(
         eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * (dist[ramp] - lo) / width))
     return eta
 
-
-# =============================================================================
+# =========================================================
 # Beale/Picard iterated strength assignment (regularized deconvolution)
-# =============================================================================
+# =========================================================
 def beale_strength_correction(
     circ_grid: np.ndarray,
     target_circ: np.ndarray,
@@ -411,10 +403,9 @@ def beale_strength_correction(
 
     return g.reshape(-1, 3), res_pre, res_post
 
-
-# =============================================================================
+# =========================================================
 # Result container
-# =============================================================================
+# =========================================================
 @dataclass
 class HandoffResult:
     """New particle field + per-step diagnostics from one hand-off."""
@@ -440,10 +431,9 @@ class HandoffResult:
     def n_total(self) -> int:
         return self.n_remesh_out + self.n_free
 
-
-# =============================================================================
+# =========================================================
 # Pure-NumPy numerical core
-# =============================================================================
+# =========================================================
 def continuous_handoff(
     pos: np.ndarray,
     circ: np.ndarray,
@@ -728,10 +718,9 @@ def continuous_handoff(
         strength_corr_residual_post=corr_post,
     )
 
-
-# =============================================================================
+# =========================================================
 # Solver-facing wrapper (reads OpenFOAM, writes the VPM field)
-# =============================================================================
+# =========================================================
 class ContinuousOverlapInjector:
     """Thin FVM/VPM wrapper around :func:`continuous_handoff`."""
 

@@ -1048,7 +1048,7 @@ class VelocityConfig:
     method: Literal["DIRECT", "TREECODE"] = "DIRECT"
     """Velocity computation method: 'DIRECT' (O(N²)) or 'TREECODE' (O(N log N))."""
 
-    theta: float = 0.5
+    theta: float = 0.3
     """Opening angle for Barnes-Hut treecode. Only used when method='TREECODE'.
       Smaller = more accurate but slower.
       - θ = 0.3: ~2% error, slower
@@ -1061,7 +1061,7 @@ class VelocityConfig:
         return VelocityConfig(method="DIRECT")
 
     @staticmethod
-    def treecode(theta: float = 0.5) -> "VelocityConfig":
+    def treecode(theta: float = 0.3) -> "VelocityConfig":
         """Barnes-Hut treecode O(N log N) velocity computation (approximate).
 
         Args:
@@ -1277,7 +1277,7 @@ class SolverConfig:
             object.__setattr__(self, "force", ForceConfig.kutta_joukowski())
 
         if self.velocity is None:
-            object.__setattr__(self, "velocity", VelocityConfig.treecode(theta=0.5))
+            object.__setattr__(self, "velocity", VelocityConfig.treecode(theta=0.3))
 
         # Validate precision
         if self.precision not in ("f32", "f64"):

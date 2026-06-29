@@ -144,9 +144,7 @@ def _safe_device_memory_for_init(
     if platform.system() == "Darwin" or backend in {"GPU_METAL", "METAL"}:
         if _is_apple_silicon():
             # Apple Silicon: GPU shares system RAM (unified memory).
-            # Metal backend does NOT accept device_memory_GB / device_memory_fraction
-            # kwargs — it manages its own memory pool automatically.
-            # Return an empty dict so no memory kwargs are passed to ti.init().
+            # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
             print(
                 "[OpenONDA] Apple Silicon (Metal) detected — "
                 "Taichi memory pool managed automatically.",

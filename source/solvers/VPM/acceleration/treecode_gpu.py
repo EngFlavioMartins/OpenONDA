@@ -7,7 +7,7 @@ binary-tree traversal using Taichi for GPU acceleration.
 The tree is built on-device via:
   1. AABB computation (parallel min/max reduction)
   2. Morton-code encoding (30-bit, 10 bits/axis)
-  3. CPU argsort (Phase 1; GPU radix-sort in Phase 2)
+  3. On-device Morton sort (ti.algorithms.parallel_sort; CPU argsort fallback)
   4. GPU Karras radix tree (O(N), fully parallel — one thread per internal node)
   5. Level-synchronous bottom-up multipole moments (one kernel per tree level)
 
@@ -18,8 +18,10 @@ node solved independently (no serial stack, no shared scratch, Vulkan-portable):
     exponential/binary search
   - internal node 0 is the root (covers [0, N-1])
 
-All phases are GPU-resident except the CPU argsort (~0.2 MB at 49k) and a single
-device→host read of N is avoided (the multipole level bound is derived from N).
+All phases are GPU-resident: the sort runs on-device (parallel_sort), the level
+bound is derived from N (no device→host scalar read), and results stay on the GPU
+(field→field copies).  The CPU argsort remains only as a one-time-validated
+fallback for any backend whose parallel_sort misbehaves.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -31,6 +33,8 @@ import time
 
 import numpy as np
 import taichi as ti
+import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
+
 
 @ti.data_oriented
 class TaichiTreecode:
@@ -102,6 +106,13 @@ class TaichiTreecode:
         # ─────────────────────────────────────────────────────────────
         self.morton_codes = ti.field(dtype=ti.u32, shape=max_particles)
         self.sorted_indices = ti.field(dtype=ti.i32, shape=max_particles)
+        # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
+        # run on-device, removing the per-build CPU argsort host round-trip.
+        self._sort_keys = ti.field(dtype=ti.u32, shape=max_particles)
+        # On-device sort by default; validated once and falls back to CPU argsort
+        # if a backend's parallel_sort misbehaves (keeps the build correct anywhere).
+        self._gpu_sort = True
+        self._sort_validated = False
         # LCP array (for Karras tree; length max_particles for simplicity)
         self._lcp = ti.field(dtype=ti.i32, shape=max_particles)
         # Nearest smaller LCP left/right (for Karras tree construction)
@@ -208,13 +219,7 @@ class TaichiTreecode:
             N:  Number of active particles (required for field API).
             force:  Accepted for API compatibility; the tree is always rebuilt.
         """
-        # The tree is rebuilt on every call.  A previous N-only guard skipped
-        # the rebuild whenever the particle *count* was unchanged — but N is
-        # constant across timesteps and RK sub-stages while positions/strengths
-        # change every call, so that guard froze the tree at its first
-        # configuration and silently corrupted every subsequent evaluation.
-        # Correct build-once-per-configuration reuse needs a real change signal
-        # (a position/strength version token) and is deferred; correctness first.
+        # The tree is rebuilt on every call. 
         t_start = time.perf_counter()
 
         # ── Detect calling convention ──────────────────────────────────
@@ -271,14 +276,6 @@ class TaichiTreecode:
             self.radii[i] = rad[i]
 
     # ── GPU Karras tree build (fully parallel, Vulkan-portable) ──────────
-    #
-    # Replaces the former LCP + serial-stack NSL/NSR Cartesian-tree build.
-    # That build used ``ti.loop_config(serialize=True)`` over a shared ``_stack``
-    # field, which Vulkan does not reliably serialize (the monotonic stack then
-    # races → degenerate tree → ~0 velocities).  The Karras 2012 construction
-    # below assigns each internal node's range and split *independently* — one
-    # thread per node, no shared scratch, no serialize — so it is correct on
-    # CPU, Vulkan, and CUDA alike.
 
     @ti.func
     def _clz32(self, x: ti.u32) -> ti.i32:
@@ -386,6 +383,49 @@ class TaichiTreecode:
             if i == 0:
                 self._root[None] = N  # internal node 0 is the root
 
+    @ti.kernel
+    def _init_sort_pairs_kernel(self, N: ti.i32):
+        """Seed (key, payload) pairs for the on-device Morton sort.
+
+        Real particles get their Morton key + their own index; the unused tail is
+        keyed 0xFFFFFFFF so it sorts after all 30-bit real keys, leaving the first
+        N slots as the Morton-ordered permutation."""
+        for i in range(self.max_particles):
+            if i < N:
+                self._sort_keys[i] = self.morton_codes[i]
+                self.sorted_indices[i] = i
+            else:
+                self._sort_keys[i] = ti.u32(0xFFFFFFFF)
+                self.sorted_indices[i] = i
+
+    def _cpu_argsort(self, N):
+        """CPU fallback: argsort Morton keys → sorted_indices (host round-trip)."""
+        morton_np = self.morton_codes.to_numpy()[:N]
+        sorted_idx = np.argsort(morton_np, kind="mergesort")
+        padded = np.full(self.max_particles, -1, dtype=np.int32)
+        padded[:N] = sorted_idx.astype(np.int32)
+        self.sorted_indices.from_numpy(padded)
+
+    def _sort_morton(self, N):
+        """Morton sort → sorted_indices, on-device when the backend supports it."""
+        if self._gpu_sort:
+            try:
+                self._init_sort_pairs_kernel(N)
+                ti.algorithms.parallel_sort(keys=self._sort_keys, values=self.sorted_indices)
+            except Exception:
+                self._gpu_sort = False
+            else:
+                if not self._sort_validated:
+                    # One-time correctness gate: catch a backend whose
+                    # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
+                    # back permanently to the proven CPU argsort.
+                    keys = self._sort_keys.to_numpy()[:N]
+                    if N > 1 and bool(np.any(np.diff(keys.astype(np.int64)) < 0)):
+                        self._gpu_sort = False
+                    self._sort_validated = True
+        if not self._gpu_sort:
+            self._cpu_argsort(N)
+
     def _build_lbvh(self, N):
         """Internal LBVH build pipeline (all steps after data upload)."""
         if N <= 1:
@@ -421,13 +461,10 @@ class TaichiTreecode:
         # Step 2: Morton codes (30-bit) — reads the AABB written above
         self._compute_morton_codes_kernel(N, self._aabb_min, self._aabb_max)
 
-        # Step 3: sort keys (Phase 1 — CPU argsort; Phase 2 → GPU radix sort).
-        # ``to_numpy``/``from_numpy`` are the build's only host↔device barrier.
-        morton_np = self.morton_codes.to_numpy()[:N]
-        sorted_idx = np.argsort(morton_np, kind='mergesort')
-        padded = np.full(self.max_particles, -1, dtype=np.int32)
-        padded[:N] = sorted_idx.astype(np.int32)
-        self.sorted_indices.from_numpy(padded)
+        # Step 3: sort particle indices by Morton key.  On-device by default
+        # (no host round-trip); validated once and falling back to a CPU argsort
+        # if a backend's parallel_sort misbehaves, so the build is correct anywhere.
+        self._sort_morton(N)
 
         # Step 4: GPU Karras tree — fully parallel, one thread per internal node
         # (no serialize, no shared scratch → Vulkan-correct).
@@ -438,12 +475,7 @@ class TaichiTreecode:
         self._leaf_multipole_init_kernel(N)
         self._compute_depths_kernel(N)
         # One combine kernel per level, deepest → root.  Each level reads only the
-        # already-finalised level below it; the kernel-launch boundary orders them,
-        # so the result is identical on CPU / Vulkan / CUDA with no fence and no
-        # race.  The loop bound is computed from N alone (no mid-build device→host
-        # read of a scalar, which is unreliable on Vulkan): the Karras tree depth
-        # is at most ~30 Morton bits + the index tie-break ≈ 2·ceil(log2 N), and
-        # combine kernels past the real depth are no-ops.
+        # already-finalised level below it.
         max_levels = 2 * int(np.ceil(np.log2(max(N, 2)))) + 34
         for level in range(max_levels, -1, -1):
             self._combine_level_kernel(N, level)
