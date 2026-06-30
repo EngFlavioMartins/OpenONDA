@@ -83,7 +83,7 @@ echo "[4/5] z=0 surface fields ..."
 
 # ── Figure 5: Energy balance — dE/dt vs -nuΩ ──────────────────────────────
 echo "[5/5] Energy balance ..."
-"$PYTHON" assets/plot_lambossen_energy.py \
+"$PYTHON" assets/plot_lamboseen_energy.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \

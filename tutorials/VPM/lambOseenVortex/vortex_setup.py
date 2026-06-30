@@ -17,7 +17,6 @@ from source.solvers.VPM.utils import LambOseenVPM, LineSampler, SurfaceSampler
 from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
-    StabilizationConfig,
     StretchingConfig,
     ViscousConfig,
 )
@@ -134,17 +133,18 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         anti_diffuse_flag=True,
     )
 
-    # Vortex 2 initialization
-    v2_vel, _, v2_circ = LambOseenVPM(
-        viscosity=nu,
-        avg_particle_radius=mean_particle_radius,
-        positions=positions,
-        volumes=volumes,
-        vortex_center=np.array([0.0, -y_offset, 0.0]),
-        vortex_strength=gamma2,
-        vortex_time=t0,
-        anti_diffuse_flag=True,
-    )
+    # Vortex 2 initialization (only when a second vortex is present)
+    if gamma2 != 0.0:
+        v2_vel, _, v2_circ = LambOseenVPM(
+            viscosity=nu,
+            avg_particle_radius=mean_particle_radius,
+            positions=positions,
+            volumes=volumes,
+            vortex_center=np.array([0.0, -y_offset, 0.0]),
+            vortex_strength=gamma2,
+            vortex_time=t0,
+            anti_diffuse_flag=True,
+        )
 
     # All-case samplers: output defaults to backup_directory/samples/ (solver default)
     samplers = [
@@ -172,23 +172,11 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     # ================================================
     # Core-size control (CS only)
     # ================================================
-    stabilization = (
-        StabilizationConfig.conservative_remeshing(
-            frequency=args.cs_remesh_frequency,
-            spacing=spacing,
-            radius=2.5 * spacing,
-            conserve_impulse=True,
-        )
-        if scheme == "cs" and args.cs_remesh_frequency > 0
-        else None
-    )
-
     config = SolverConfig.dns_simulation(
         time_step_size=args.dt,
         viscous=build_viscous_config(scheme, nu, args, spacing),
         advection=advection,
         stretching=stretching,
-        stabilization=stabilization,
         processing_unit="GPU_VULKAN",
         backup_frequency=10,
         logging_frequency=10,
@@ -204,23 +192,26 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     solver = Solver(config=config)
     solver.physics._resize_temp_fields(500_000)
 
-    total_circ = v1_circ + v2_circ
-    total_vel = v1_vel + v2_vel
-    circ_mag = np.linalg.norm(total_circ, axis=1)
-    max_circ = float(circ_mag.max()) if len(circ_mag) > 0 else 0.0
+    n = len(positions)
+    solver.add_vortex_particles(
+        positions, v1_vel, v1_circ, radii, volumes,
+        group_id=np.zeros(n, dtype=np.int32),
+    )
+    if gamma2 != 0.0:
+        solver.add_vortex_particles(
+            positions, v2_vel, v2_circ, radii, volumes,
+            group_id=np.ones(n, dtype=np.int32),
+        )
+    solver.remove_weak_particles(percent=1.0, per_group=True)
 
-    mask = circ_mag >= 0.01 * max_circ
-    positions_add = positions[mask]
-    vel_add = total_vel[mask]
-    circ_add = total_circ[mask]
-    radii_add = radii[mask]
-    volumes_add = volumes[mask]
-
-
-    solver.add_vortex_particles(positions_add, vel_add, circ_add, radii_add, volumes_add)
-
-    # We need to get the time-step size due the DVH scheme changing it:
+    # DVH overrides the user-set time step, so we query the actual dt used.
     dt_actual = solver.get_time_step_size()
+
+    # Keep a consistent physical backup interval (~0.3s matching CS/RWM at
+    # args.dt=0.03, backup_frequency=10) regardless of which scheme is used.
+    fixed_interval = max(1, round(10.0 * args.dt / dt_actual))
+    solver.update_config(backup_frequency=fixed_interval)
+    solver.update_config(logging_frequency=fixed_interval)
 
     # Determine number of steps: explicit --num-steps overrides --total-time
     num_steps = int(np.ceil(args.total_time / dt_actual))
@@ -288,12 +279,6 @@ def parse_args() -> argparse.Namespace:
         help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
     )
     parser.add_argument(
-        "--cs-remesh-frequency",
-        type=int,
-        default=40,
-        help="CS only: steps between conservative remeshes that bound core growth ",
-    )
-    parser.add_argument(
         "--viscous-threshold-mode",
         choices=["budget", "relative_max", "absolute"],
         default="budget",
@@ -302,7 +287,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--viscous-threshold",
         type=float,
-        default=2e-4,
+        default=1.0e-4,
         help="DVH/GBD regen prune threshold. In 'budget' mode this is the "
         "fractional Σ|Γ| allowed to drop per regen step;"
         "(measured nu_eff/nu: 1e-2→0.15, 3e-3→0.47, 1e-4→0.95, 1e-5→0.99).",

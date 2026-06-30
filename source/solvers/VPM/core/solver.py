@@ -253,8 +253,7 @@ class Solver:
                     f"[DVH] INFO: time step overridden — "
                     f"user dt = {self.time_step_size:.4e} s → Δt_d = {dt_d:.4e} s "
                     f"(β·R_d²/(4nu), β={_DVH_BETA}, "
-                    f"R_d = {vc.dvh_rd_ratio}·h = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m). "
-                    f"In coupled runs the coupler adopts this dt for the FVM too."
+                    f"R_d = {vc.dvh_rd_ratio}·h = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m)."
                 )
                 self.time_step_size = dt_d
             self._dvh_dt_info = (
@@ -1949,6 +1948,9 @@ class Solver:
 
         All output files are saved to 'solution/' subdirectory.
         """
+        if not self.io.should_backup():
+            return
+
         # Ensure particle attributes for visualization/restart are up-to-date.
         self._refresh_backup_particle_fields()
 

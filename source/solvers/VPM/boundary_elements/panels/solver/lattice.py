@@ -62,9 +62,6 @@ class PanelLattice:
         # Metadata
         self.bodies: list[PanelBody] = []
 
-        # Max neighbors for topology (arbitrary for unstructured mesh, usually 3-6)
-        self.max_neighbors = 8
-
         self._init_fields()
 
     def _init_fields(self):
@@ -96,20 +93,8 @@ class PanelLattice:
         self.phi_dot = ti.field(dtype=dtype, shape=N)
         self.Cp = ti.field(dtype=dtype, shape=N)
 
-        # Topology
-        self.neighbor_indices = ti.field(ti.i32, shape=(N, self.max_neighbors))
-        self.is_TE_panel = ti.field(ti.i32, shape=N)
-        self.is_LE_panel = ti.field(ti.i32, shape=N)
+        # Panel identity
         self.panel_group_id = ti.field(ti.i32, shape=N)
-        self.lesp = ti.field(dtype, shape=N)
-
-        # Pre-allocated GPU wake buffer (decoupled interface for shedding)
-        max_wake = N // 2  # Heuristic
-        self.wake_positions = ti.Vector.field(3, dtype=dtype, shape=max_wake)
-        self.wake_strengths = ti.Vector.field(3, dtype=dtype, shape=max_wake)
-        self.wake_radii = ti.field(dtype=dtype, shape=max_wake)
-        self.wake_volumes = ti.field(dtype=dtype, shape=max_wake)
-        self.num_wake_panels_to_shed = ti.field(ti.i32, shape=())
 
     @ti.kernel
     def save_old_strengths(self):

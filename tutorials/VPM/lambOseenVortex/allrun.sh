@@ -46,23 +46,12 @@ cd "$SCRIPT_DIR"
 # Clean up old data and figures:
 ./allclean.sh
 
-# ── Time step ────────────────────────────────────────────────────────────────
-# dt=0.03 (was 0.123).  The binding constraint here is the ORBITAL one, not the
-# advective/diffusive CFL: a particle near the core turns θ = Ω·dt per step with
-# Ω(0) ≈ Γ/(2π r_c²) ≈ 10 rad/s.  At the old dt=0.123, θ ≈ 1.2 rad (~5 steps per
-# revolution) — so under-resolved that RK2 spirals the core OUT by +450 % and
-# even RK4 collapses it IN by −96 % over 20 s.  dt=0.03 gives θ ≈ 0.29
-# (~21 steps/rev), where RK4 holds the core to −0.3 %.  Combined with the RK4
-# advection/stretching set in vortex_setup.py this removes the spurious
-# "centrifugal" drift.  (DVH overrides dt internally from its diffusive step.)
-
 # ============================================================
 # TEST CASE 1: Single Lamb-Oseen vortex diffusion
 # ============================================================
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes cs \
     --re 530 --dt 0.03 --total-time 20.0 --length 20 \
-    --cs-remesh-frequency 40 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
@@ -87,12 +76,9 @@ echo 'DONE WITH SINGLE VORTEX'
 # ============================================================
 # TEST CASE 2: Vortex dipole (counter-rotating pair)
 # ============================================================
-# NOTE: the dipole runs 2x longer than the single-vortex case (40 s vs 20 s) so
-# the counter-rotating pair convects far enough to study its mutual induction.
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes cs \
     --re 530 --dt 0.03 --total-time 40.0 \
-    --cs-remesh-frequency 40 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \
@@ -122,7 +108,6 @@ sleep 15
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes cs \
     --re 530 --dt 0.03 --total-time 40.0 \
-    --cs-remesh-frequency 40 \
     --solution-dir ./solution --clean
 
 "$PYTHON" vortex_setup.py \

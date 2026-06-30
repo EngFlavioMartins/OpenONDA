@@ -19,8 +19,6 @@ import numpy as np
 import taichi as ti
 
 from ..coupling import kinematics as kin_module
-from ..coupling.separation import SeparationModel
-from ..coupling.shedding import CouplingConfig, VortexShedder
 from ..kernels.induced_velocity import compute_induced_velocity_kernel
 from .influence import (
     build_AIC_matrix,
@@ -71,9 +69,6 @@ class PanelSolver:
         float_dtype: str = "f32",
         linear_solver: Literal["SCIPY", "BICGSTAB_GPU"] = "SCIPY",
         force_config: ForceConfig | None = None,
-        coupling_config: CouplingConfig | None = None,
-        LESP_crit: float = 0.11,
-        separation_enabled: bool = False,
         bc_type: Literal["DIRICHLET", "NEUMANN"] = "DIRICHLET",
         density: float = 1.225,
         U_inf: np.ndarray | None = None,
@@ -82,12 +77,7 @@ class PanelSolver:
         self.max_panels = max_panels
         self.float_dtype = float_dtype
         self.linear_solver_name = linear_solver
-        self._coupling_config = coupling_config or CouplingConfig(
-            lesp_crit=LESP_crit,
-            separation_enabled=separation_enabled,
-        )
         self.force_config = force_config or ForceConfig.bernoulli()
-        self.lesp_crit = self._coupling_config.lesp_crit
         self.bc_type = bc_type
         self.density = density
         self.U_inf = None if U_inf is None else np.array(U_inf, dtype=np.float64)
@@ -100,9 +90,6 @@ class PanelSolver:
 
         # Lazy initialization state
         self.lattice: PanelLattice | None = None
-        self.shadow_lattice: PanelLattice | None = None  # For double-buffering if needed
-        self.shedder: VortexShedder | None = None
-        self.separation: SeparationModel | None = None
         self.solver_strategy = None
 
         # Fields (initialized lazily)
@@ -123,25 +110,13 @@ class PanelSolver:
         self.lattice = PanelLattice(self.max_panels, self.float_dtype)
         ti_dtype = self.lattice.ti_dtype
 
-        # 2. Create helper objects
-        self.shedder = VortexShedder(
-            LESP_crit=self.lesp_crit,
-            max_panels=self.max_panels,
-            float_dtype=self.float_dtype,
-        )
-        self.separation = SeparationModel(
-            max_panels=self.max_panels,
-            enabled=self._coupling_config.separation_enabled,
-            float_dtype=self.float_dtype,
-        )
-
-        # 3. Create GPU fields
+        # 2. Create GPU fields
         self.AIC = ti.field(ti_dtype, shape=(self.max_panels, self.max_panels))
         self.rhs = ti.field(ti_dtype, shape=self.max_panels)
         self.panel_forces = ti.Vector.field(3, dtype=ti_dtype, shape=self.max_panels)
         self.V_surface = ti.Vector.field(3, dtype=ti_dtype, shape=self.max_panels)
 
-        # 4. Strategy pattern for linear solver
+        # 3. Strategy pattern for linear solver
         if self.linear_solver_name == "SCIPY":
             self.solver_strategy = PanelScipySolver()
         else:
@@ -239,9 +214,6 @@ class PanelSolver:
         strengths = self.lattice.strengths.to_numpy()[:n]
         areas = self.lattice.areas.to_numpy()[:n]
         cp = self.lattice.Cp.to_numpy()[:n]
-        lesp = self.lattice.lesp.to_numpy()[:n]
-        is_te = self.lattice.is_TE_panel.to_numpy()[:n]
-        is_le = self.lattice.is_LE_panel.to_numpy()[:n]
         group_ids = self.lattice.panel_group_id.to_numpy()[:n]
         panel_forces = (
             self.panel_forces.to_numpy()[:n] if self.panel_forces is not None else np.zeros((n, 3))
@@ -255,9 +227,6 @@ class PanelSolver:
             areas=areas,
             cp=cp,
             panel_forces=panel_forces,
-            lesp=lesp,
-            is_te=is_te,
-            is_le=is_le,
             group_ids=group_ids,
             flow_time=flow_time,
             filepath=f"{filename}.vtp",
@@ -593,24 +562,13 @@ class PanelSolver:
             except Exception as e:
                 print(f"   (Warning) Could not compute panel forces: {e}")
 
-        # 8. Shed vorticity into decoupled wake buffer (TE/LE)
-        if self.shedder is not None:
-            self.shedder.shed(self.lattice, V_inf, dt, t, self.step)
-
-        # 9. Optional: General surface separation (APG onset)
-        if self.separation is not None:
-            self.separation.detect_and_shed(self.lattice, dt)
-
-        # 10. Extract buffered particles for external VPM injection
-        new_particles = self._extract_wake_particles()
-
         self.results["times"].append(float(t))
         self._current_time = float(t)
         self._last_V_inf = V_inf
         self._last_V_wake = V_wake
 
         self.step += 1
-        return new_particles
+        return None
 
     def advance_time(self, dt: float, current_time: float) -> None:
         """Advance kinematics state and geometry for all surfaces (VLM-compatible API)."""
@@ -628,24 +586,6 @@ class PanelSolver:
                     self, current_time, dt, (body.start_idx, body.start_idx + body.count)
                 )
         self.solve(V_inf, V_wake, current_time)
-
-    def reset_wake_buffer(self) -> None:
-        """Reset wake panel buffer for new time step."""
-        if self.lattice is not None:
-            self.lattice.num_wake_panels_to_shed[None] = 0
-
-    def _extract_wake_particles(self) -> dict[str, np.ndarray] | None:
-        """Extracts newly shed particles from GPU buffer to NumPy for the VPM coupler."""
-        n_shed = self.lattice.num_wake_panels_to_shed[None]
-        if n_shed == 0:
-            return None
-
-        return {
-            "points": self.lattice.wake_positions.to_numpy()[:n_shed],
-            "strengths": self.lattice.wake_strengths.to_numpy()[:n_shed],
-            "radii": self.lattice.wake_radii.to_numpy()[:n_shed],
-            "volumes": self.lattice.wake_volumes.to_numpy()[:n_shed],
-        }
 
     def compute_induced_velocity_direct(self, particles) -> None:
         """

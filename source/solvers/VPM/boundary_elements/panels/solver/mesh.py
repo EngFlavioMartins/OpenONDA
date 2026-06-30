@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..geometry.stl_io import build_mesh_topology, load_stl
+from ..geometry.stl_io import load_stl
 from .lattice import PanelLattice
 
 if TYPE_CHECKING:
@@ -37,28 +37,7 @@ def add_body_from_mesh_stl(
     """
     vertices, _ = load_stl(filepath)
 
-    # Pre-calculate topology on CPU before upload
-    neighbors, te, le = build_mesh_topology(vertices, max_neighbors=lattice.max_neighbors)
-
-    # Add body to lattice (uploads vertices, group_id)
     lattice.add_body(uid, vertices, motion=motion, group_id=group_id)
-
-    # Store start index for adding topology data
-    start = lattice.bodies[-1].start_idx
-    count = lattice.bodies[-1].count
-
-    # Upload topology fields
-    neighbor_np = lattice.neighbor_indices.to_numpy()
-    neighbor_np[start : start + count, :] = neighbors
-    lattice.neighbor_indices.from_numpy(neighbor_np)
-
-    te_np = lattice.is_TE_panel.to_numpy()
-    te_np[start : start + count] = te
-    lattice.is_TE_panel.from_numpy(te_np)
-
-    le_np = lattice.is_LE_panel.to_numpy()
-    le_np[start : start + count] = le
-    lattice.is_LE_panel.from_numpy(le_np)
 
     # Initial geometry update at t=0
     lattice.update_geometry(0.0)

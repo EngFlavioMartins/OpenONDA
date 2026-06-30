@@ -6,11 +6,12 @@ The blade is built with its leading edge on the −Z side (chord points +Z from
 LE→TE).  For the blade to advance LEADING-EDGE first — so the bound circulation
 develops with a positive angle of attack and vorticity is shed from the
 TRAILING edge — the rotor must spin so the +Y blade moves toward −Z, i.e.
-``RotatingVLM(axis=[-1, 0, 0])``.
+``ManeuverVLM(axis=[-1, 0, 0])``.
 
-This check rebuilds the exact blade geometry used by ``rotor_setup.py`` and, for
-each radial station, forms the local relative wind ``U∞ − ω×r`` and tests its
-projection on the chord (LE→TE):
+This check uses the OpenVSP blade design schedule from ``generate_openvsp_blade``
+(the same geometry used in ``rotor_setup.py``) and, for each radial station,
+forms the local relative wind ``U∞ − ω×r`` and tests its projection on the
+chord direction (from LE→TE, i.e. toward +Z at zero-twist):
 
     relwind · chord  > 0   → LE faces the wind  (correct: TE shedding)
     relwind · chord  < 0   → TE faces the wind  (reversed: LE shedding)
@@ -18,98 +19,92 @@ projection on the chord (LE→TE):
 It also prints the local angle of attack.  Exits non-zero if the configured
 rotation does not shed from the TE, so it can gate the tutorial.
 
-Usage:
-    python assets/verify_shedding.py            # checks the corrected config
+Usage::
+
+    python assets/verify_shedding.py            # checks the corrected config (axis_x=-1)
     python assets/verify_shedding.py --axis 1   # show the (wrong) +x case
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
-from generate_blade import create_blade, save_surface  # noqa: E402
-
-
-# Physical parameters — must match rotor_setup.py
-U_INF = 7.0
-TSR = 7.0
-ROTOR_RADIUS = 6.0
-HUB_RADIUS = 1.0
-OMEGA = TSR * U_INF / ROTOR_RADIUS
-ALPHA_DES = np.radians(5.0)
-A_BETZ = 1.0 / 3.0
-
-
-def build_blade():
-    """Reproduce rotor_setup.py's Betz-twisted blade and return its segments."""
-    n_sched = 11
-    r = np.linspace(HUB_RADIUS, ROTOR_RADIUS, n_sched)
-    phi = np.arctan2(U_INF * (1.0 - A_BETZ), OMEGA * r)
-    beta = 90.0 - np.degrees(phi - ALPHA_DES)
-    aircraft = create_blade(
-        radius=ROTOR_RADIUS,
-        hub_radius=HUB_RADIUS,
-        root_chord=0.6,
-        tip_chord=0.35,
-        n_span=20,
-        n_chord=6,
-        r_schedule=r,
-        beta_schedule=beta,
-        pitch_schedule=np.zeros(n_sched),
-    )
-    # Serialise to the canonical JSON (list-structured) and read it back, so we
-    # don't depend on the in-memory Aircraft container layout.
-    tmp = Path(tempfile.gettempdir()) / "_verify_blade.json"
-    save_surface(aircraft, str(tmp))
-    data = json.loads(tmp.read_text())
-    return [seg["vertices"] for w in data["wings"] for seg in w["segments"]]
+from generate_openvsp_blade import RotorBladeDesign, design_schedule
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Verify rotor TE shedding.")
-    ap.add_argument("--axis", type=float, default=-1.0,
-                    help="x-component of the rotation axis (rotor_setup uses -1).")
+    ap.add_argument(
+        "--axis",
+        type=float,
+        default=-1.0,
+        help="x-component of the rotation axis (rotor_setup uses -1).",
+    )
     args = ap.parse_args()
 
-    wvec = np.array([args.axis, 0.0, 0.0]) * OMEGA
-    freestream = np.array([U_INF, 0.0, 0.0])
-    segs = build_blade()
+    design = RotorBladeDesign()
+    sched = design_schedule(design)
+    r_stations = sched["r"]
+    theta_deg = sched["theta_deg"]
+    chord = sched["chord"]
 
-    print(f"Rotor TE-shedding check  (axis=[{args.axis:+.0f},0,0], "
-          f"omega={OMEGA:.3f} rad/s, U_inf={U_INF} m/s)")
-    print(f"{'r [m]':>6} {'AoA [deg]':>10} {'relwind.chord':>14}  verdict")
+    omega_vec = np.array([args.axis, 0.0, 0.0]) * design.omega
+    freestream = np.array([design.freestream_velocity, 0.0, 0.0])
+
+    print(
+        f"Rotor TE-shedding check  (axis=[{args.axis:+.0f},0,0], "
+        f"omega={design.omega:.3f} rad/s, U_inf={design.freestream_velocity} m/s)"
+    )
+    print(f"{'r [m]':>7} {'c [m]':>6} {'theta [deg]':>12} {'AoA [deg]':>10} "
+          f"{'relwind·chord':>14}  verdict")
+
     all_ok = True
-    for v in segs:
-        LE = np.asarray(v["b"], float)   # tip leading edge
-        TE = np.asarray(v["c"], float)   # tip trailing edge
-        r = 0.5 * (LE[1] + TE[1])
-        chord = TE - LE
-        chord /= np.linalg.norm(chord)
-        mid = 0.5 * (LE + TE)
-        relwind = freestream - np.cross(wvec, mid)
-        rw = relwind / np.linalg.norm(relwind)
-        dot = float(np.dot(rw, chord))
-        aoa = np.degrees(np.arccos(np.clip(dot, -1.0, 1.0)))
+    for r, theta, c in zip(r_stations, theta_deg, chord):
+        theta_rad = np.radians(theta)
+        # Chord direction for blade at azimuth=0 (pointing in +Y):
+        # At twist θ = arctan(Vax / Vtan) - α, the chord lies in the XZ plane.
+        # The LE→TE unit vector (after twist about Y-axis from the +Z direction):
+        # chord_dir = [sin(theta), 0, cos(theta)]  (in XZ plane)
+        chord_dir = np.array([np.sin(theta_rad), 0.0, np.cos(theta_rad)])
+
+        # A blade section at radius r: position mid-chord ~ [0, r, 0] at azimuth=0
+        mid = np.array([0.0, r, 0.0])
+        relwind = freestream - np.cross(omega_vec, mid)
+        rw_norm = relwind / (np.linalg.norm(relwind) + 1e-20)
+        dot = float(np.dot(rw_norm, chord_dir))
+
+        # Angle of attack = angle between relwind and chord_dir
+        aoa = np.degrees(np.arccos(np.clip(abs(dot), 0.0, 1.0)))
+        # sign: positive AoA when LE faces wind (dot > 0)
+        if dot < 0.0:
+            aoa = -aoa
+
         ok = dot > 0.0
         all_ok &= ok
-        print(f"{r:6.1f} {aoa:10.1f} {dot:14.3f}  "
-              f"{'LE faces wind (TE shedding) OK' if ok else 'TE faces wind (LE shedding) REVERSED'}")
+        verdict = (
+            "LE faces wind (TE shedding) OK"
+            if ok
+            else "TE faces wind (LE shedding) REVERSED"
+        )
+        print(f"{r:7.2f} {c:6.3f} {theta:12.2f} {aoa:10.2f} {dot:14.3f}  {verdict}")
 
     print()
     if all_ok:
-        print("PASS: leading edge faces the relative wind at every station — "
-              "vorticity is shed from the trailing edge.")
+        print(
+            "PASS: leading edge faces the relative wind at every station — "
+            "vorticity is shed from the trailing edge."
+        )
         return 0
-    print("FAIL: the blade advances trailing-edge first — vorticity is shed from "
-          "the LEADING edge. Flip the rotation: RotatingVLM(axis=[-1,0,0]).")
+    print(
+        "FAIL: the blade advances trailing-edge first — vorticity is shed from "
+        "the LEADING edge. Flip the rotation axis x-component to -1."
+    )
     return 1
 
 

@@ -173,82 +173,116 @@ class Logging:
     @staticmethod
     def flow_diagnostics(system):
         """
-        Log flow diagnostics to console.
+        Log flow diagnostics to console in a structured, section-based layout.
 
         Args:
             system: Solver instance with cached flow quantities
         """
-        print("\n" + "-" * 60)
-        print("FLOW DIAGNOSTICS")
-        print("-" * 60)
+        lines = []
+        step = getattr(system, "time_step", None)
+        flow_time = getattr(system, "flow_time", None)
 
-        # Log all diagnostics using cached properties for optimal performance
-        # Total strength magnitude = Σ|α_i| (sum of magnitudes, physically meaningful)
-        total_strength_magnitude = system.total_strength_magnitude
-        print(f"  Total Circulation (Σ|Γ|)    : {total_strength_magnitude:.3e} m³/s")
+        if step is not None and flow_time is not None:
+            title = f" FLOW DIAGNOSTICS  (step {step}, t = {flow_time:.3e} s)"
+        else:
+            title = " FLOW DIAGNOSTICS"
 
-        # Total circulation vector = Σα_i (should be conserved in unbounded flow)
-        total_Gamma = system.total_strength
-        print(
-            f"  Total Circulation (ΣΓ)   : ({total_Gamma[0]:.3e}, {total_Gamma[1]:.3e}, {total_Gamma[2]:.3e}) m³/s"
-        )
+        bar = "=" * max(len(title), 62)
+        sep = "-" * len(bar)
 
-        total_I = system.total_linear_impulse
-        print(
-            f"  Linear Impulse           : ({total_I[0]:.3e}, {total_I[1]:.3e}, {total_I[2]:.3e}) m⁴/s"
-        )
+        lines.append("")
+        lines.append(bar)
+        lines.append(title)
+        lines.append(bar)
 
-        total_A = system.total_angular_impulse
-        print(
-            f"  Angular Impulse          : ({total_A[0]:.3e}, {total_A[1]:.3e}, {total_A[2]:.3e}) m⁵/s"
-        )
+        # ── Collect all sections ──────────────────────────────────────────
+        sections = []
+        label_w = 0
 
-        total_Ens = system.total_enstrophy
-        print(f"  Total Enstrophy          : {total_Ens:.3e} m³/s²")
+        # Integral Quantities
+        int_items = [
+            ("Total Circulation (\u03a3|\u0393|)",
+             f"{system.total_strength_magnitude:.3e} m\u00b3/s"),
+            ("Total Circulation (\u03a3\u0393)",
+             f"({system.total_strength[0]:.3e}, {system.total_strength[1]:.3e}, {system.total_strength[2]:.3e}) m\u00b3/s"),
+            ("Linear Impulse",
+             f"({system.total_linear_impulse[0]:.3e}, {system.total_linear_impulse[1]:.3e}, {system.total_linear_impulse[2]:.3e}) m\u2074/s"),
+            ("Angular Impulse",
+             f"({system.total_angular_impulse[0]:.3e}, {system.total_angular_impulse[1]:.3e}, {system.total_angular_impulse[2]:.3e}) m\u2075/s"),
+            ("Total Enstrophy",
+             f"{system.total_enstrophy:.3e} m\u00b3/s\u00b2"),
+            ("Total Helicity",
+             f"{system.total_helicity:.3e} m\u00b2/s\u00b2"),
+        ]
+        for label, _ in int_items:
+            label_w = max(label_w, len(label))
+        sections.append(("Integral Quantities", int_items))
 
-        total_H = system.total_helicity
-        print(f"  Total Helicity           : {total_H:.3e} m²/s²")
-
+        # Energy Budget
         E_current = system.total_kinetic_energy
         nu_enstrophy = system.vorticity_dissipation_rate
         dE_dt = system.kinetic_energy_dissipation_rate
 
-        print(f"  Viscous dissipation, -nuΩ : {nu_enstrophy:.3e} J/s")
-        print(f"  Energy decay rate, dE/dt : {dE_dt:.3e} J/s")
-        print(f"  Total Energy, E          : {E_current:.3e} J")
+        energy_items = [
+            ("Total Energy, E",
+             f"{E_current:.3e} J"),
+            ("Viscous dissipation, -\u03bd\u03a9",
+             f"{nu_enstrophy:.3e} J/s"),
+            ("Energy decay rate, dE/dt",
+             f"{dE_dt:.3e} J/s"),
+        ]
+        for label, _ in energy_items:
+            label_w = max(label_w, len(label))
+        sections.append(("Energy Budget", energy_items))
 
-        centroids = system.centroids_of_circulation
-        for g, center_g in centroids.items():
-            print(
-                f"  Group {g} centroid        : ({center_g[0]:.3e}, {center_g[1]:.3e}, {center_g[2]:.3e})"
-            )
-
-        # Global centroid (center of vorticity) weighted by |Γ|
+        # Vortex Geometry
         try:
             center = getattr(system, "centroid_of_circulation", None)
+            centroids = system.centroids_of_circulation
+            geo_items = []
             if center is not None:
-                print(
-                    f"  Center of Vorticity       : ({center[0]:.3e}, {center[1]:.3e}, {center[2]:.3e})"
-                )
+                geo_items.append(("Center of Vorticity",
+                                  f"({center[0]:.3e}, {center[1]:.3e}, {center[2]:.3e})"))
+            for g, cg in centroids.items():
+                geo_items.append((f"Group {g} centroid",
+                                  f"({cg[0]:.3e}, {cg[1]:.3e}, {cg[2]:.3e})"))
+            if geo_items:
+                for label, _ in geo_items:
+                    label_w = max(label_w, len(label))
+                sections.append(("Vortex Geometry", geo_items))
         except Exception:
             pass
 
-        # Observed VPM dt statistics (from diagnostics history)
+        # Time Step Diagnostics
         try:
             hist = getattr(system, "_diagnostics_history", None)
+            dt_items = []
             if hist is not None and len(hist.get("observed_dt", [])) > 0:
                 dts = np.array(hist["observed_dt"])
-                # Exclude zeros (first entries)
                 dts_nz = dts[dts > 0]
                 if dts_nz.size > 0:
-                    print(
-                        f"  VPM observed dt (mean, median) : ({dts_nz.mean():.3e}, {np.median(dts_nz):.3e}) s"
-                    )
-                    print(f"  VPM configured dt (time_step_size): {system.time_step_size:.3e} s")
+                    dt_items.append(("VPM observed dt (mean, median)",
+                                     f"({dts_nz.mean():.3e}, {np.median(dts_nz):.3e}) s"))
+                    dt_items.append(("VPM configured dt",
+                                     f"{system.time_step_size:.3e} s"))
+            if dt_items:
+                for label, _ in dt_items:
+                    label_w = max(label_w, len(label))
+                sections.append(("Time Step Diagnostics", dt_items))
         except Exception:
             pass
 
-        print("-" * 60, flush=True)
+        # ── Render sections ──────────────────────────────────────────────
+        for sec_idx, (sec_name, items) in enumerate(sections):
+            if sec_idx > 0:
+                lines.append(sep)
+            lines.append(f"  {sec_name}")
+            lines.append(sep)
+            for label, value in items:
+                lines.append(f"  {label:<{label_w}}  : {value}")
+
+        lines.append(bar)
+        print("\n".join(lines), flush=True)
 
         # Log VLM forces if VLM solver is present
         if hasattr(system, "vlm_solver") and system.vlm_solver is not None:

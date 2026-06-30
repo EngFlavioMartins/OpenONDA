@@ -2,11 +2,11 @@
 """Lamb-Oseen single vortex — radial profile comparison.
 
 Reads the last x-line CSV sample from each viscous scheme and plots:
-  - azimuthal velocity u_θ / U_{c,0}
-  - z-vorticity  ω_z / ω_c
-  - velocity gradient (∂u_y/∂x) · r_{c,0} / U_{c,0}
+  - azimuthal velocity uθ / Uc,0
+  - z-vorticity  ωz / ωc
+  - velocity gradient (∂uy/∂x) · rc,0 / Uc,0
 
-Saves: figures/lamb_oseen_comparison.png
+Saves: figures/vortex_comparison.png
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import matplotlib
+import numpy as np
+import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
@@ -34,7 +34,9 @@ from _common import (
 )
 
 
-# ── Theory ───────────────────────────────────────────────────────────────────
+# =============================================================
+# Theory
+# =============================================================
 
 
 def lamb_oseen_profile(r: np.ndarray, t: float, gamma: float, nu: float):
@@ -64,28 +66,18 @@ def finite_column_velocity(
     nu: float,
     half_length: float,
 ) -> np.ndarray:
-    """Velocity for the finite straight vortex column used in the tutorial setup.
-
-    The solver initializes a vortex column of finite span (z in [-25 rc0, 25 rc0],
-    see LENGTH = 50 in vortex_setup.py), not an infinite 2D vortex. The
-    center-plane velocity is therefore weaker than the infinite Lamb-Oseen expression
-    by the usual straight-segment factor.
-    """
     r = np.abs(x)
     vel, _, _ = lamb_oseen_profile(r, t, gamma, nu)
     span_factor = half_length / np.sqrt(half_length**2 + r**2)
     return vel * span_factor * np.sign(x)
 
 
-# ── Data loader ───────────────────────────────────────────────────────────────
-def last_csv(solution_dir: Path, scheme: str, step: int | None, dt: float):
-    """Return (path, flow_time) for the last stable x-profile CSV.
+# =============================================================
+# Data loader
+# =============================================================
 
-    Reads flow_time from the CSV header comment if available,
-    falling back to step * dt reconstruction otherwise.
-    For schemes that go unstable, picks the last file whose velocity
-    data is non-trivial (max |Uy| > 1e-10).
-    """
+
+def last_csv(solution_dir: Path, scheme: str, step: int | None, dt: float):
     folder = solution_dir / f"vortex_{scheme}" / "samples"
     if step is not None:
         c = folder / f"vortex_{scheme}_x_{step:06d}.csv"
@@ -95,7 +87,6 @@ def last_csv(solution_dir: Path, scheme: str, step: int | None, dt: float):
     candidates = sorted(folder.glob(f"vortex_{scheme}_x_*.csv"))
     if not candidates:
         return None, None
-    # Walk backwards to find the last file with non-trivial data
     for last in reversed(candidates):
         df_check = pd.read_csv(last, comment="#")
         if df_check["Uy"].abs().max() > 1e-10:
@@ -109,7 +100,9 @@ def last_csv(solution_dir: Path, scheme: str, step: int | None, dt: float):
     return last, s * dt
 
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
+# =============================================================
+# Plot
+# =============================================================
 
 
 def plot_vortex_case(args) -> int:
@@ -123,17 +116,15 @@ def plot_vortex_case(args) -> int:
     runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     run_t0 = runtime["t0"]
-    rc_ref = runtime["rc0"]
+    ac0 = runtime["ac0"]
 
-    uc_ref = args.gamma / (2.0 * np.pi * rc_ref)
-    wc_ref = args.gamma / (np.pi * rc_ref**2)
-    gc_ref = uc_ref / rc_ref
-    # Finite straight-column half-span, read from the data so the analytic
-    # reference is correct for any --length (falls back to the legacy 25·rc0).
-    half_length = read_column_half_length(solution_dir) or 25.0 * rc_ref
+    uc_ref = args.gamma / (2.0 * np.pi * ac0)
+    wc_ref = args.gamma / (np.pi * ac0**2)
+    gc_ref = uc_ref / ac0
+    half_length = read_column_half_length(solution_dir) or 25.0 * ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
-    fig.subplots_adjust(hspace=0.25, top=0.95, bottom=0.19, left=0.15, right=0.85)
+    fig.subplots_adjust(hspace=0.1, top=0.95, bottom=0.19, left=0.15, right=0.85)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
@@ -144,47 +135,41 @@ def plot_vortex_case(args) -> int:
         x = df["x"].to_numpy()
         uy = df["Uy"].to_numpy()
         oz = df["omega_z"].to_numpy()
-        dvx = np.gradient(uy, x)  # numerical gradient of sampled Uy profile
+        dvx = np.gradient(uy, x)
         st = style_map[scheme]
         plot_kw = {
             "color": st["color"],
+            "label": st["label"],
             "marker": st["marker"],
             "markersize": 2.2,
-            "linewidth": 1.0,
             "linestyle": "None",
-            "label": st["label"],
+            "linewidth": 1.0,
         }
-        axes[0].plot(x / rc_ref, uy / uc_ref, **plot_kw)
-        axes[1].plot(x / rc_ref, oz / wc_ref, **plot_kw)
-        axes[2].plot(x / rc_ref, dvx / gc_ref, **plot_kw)
+        axes[0].plot(x / ac0, uy / uc_ref, **plot_kw)
+        axes[1].plot(x / ac0, oz / wc_ref, **plot_kw)
+        axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
-    r_line = np.linspace(-10.0 * rc_ref, 10.0 * rc_ref, 400)
-    kw_theory = {"color": "black", "lw": 1.0, "zorder": 0, "linestyle": "--"}
-    # Evaluate the analytic Lamb-Oseen at the data's ACTUAL flow time
-    # (vortex age = t0 + elapsed), read from the plotted snapshots — not a
-    # re-derived run_t0 + total_time.  This keeps the reference pinned to the
-    # data even if a run stopped early or --total-time is mis-passed.
+    r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
+    ref_kw = {"color": "gray", "lw": 1.0, "zorder": 0, "linestyle": "--"}
     data_t = float(np.median([row[1] for row in scheme_data])) if scheme_data else args.total_time
     theory_t = run_t0 + data_t
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
     tg = np.gradient(tv, r_line)
-    axes[0].plot(r_line / rc_ref, tv / uc_ref, label="Theory", **kw_theory)
-    axes[1].plot(r_line / rc_ref, to / wc_ref, **kw_theory)
-    axes[2].plot(r_line / rc_ref, tg / gc_ref, **kw_theory)
+    axes[0].plot(r_line / ac0, tv / uc_ref, label="Theory", **ref_kw)
+    axes[1].plot(r_line / ac0, to / wc_ref, **ref_kw)
+    axes[2].plot(r_line / ac0, tg / gc_ref, **ref_kw)
 
-    axes[0].set_title(r"Azimuthal velocity, $u_\theta / U_{c,0}$")
+    axes[0].set_title(r"Single vortex characteristics")
     axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
     axes[0].set_xlim([-7.5, 7.5])
 
-    axes[1].set_title(r"Vorticity, $\omega_z / \omega_{c,0}$")
     axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
     axes[1].set_xlim([-7.5, 7.5])
     axes[1].set_ylim(bottom=-0.01)
 
-    axes[2].set_title(r"Velocity gradient, $(\partial u_y / \partial x)\,r_{c,0} / U_{c,0}$")
-    axes[2].set_xlabel(r"Normalized radius, $r / r_{c,0}$")
+    axes[2].set_xlabel(r"$r / r_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,r_{c,0} / U_{c,0}$")
     axes[2].set_xlim([-7.5, 7.5])
 

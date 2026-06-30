@@ -90,10 +90,10 @@ def add_physics_args(parser) -> None:
     """Add physical-parameter arguments with defaults matching vortex_setup.py."""
     _RE = 530.0  # Re_Γ = Γ/nu — matches allrun.sh and the C&W 2003 reference
     _NU = 1.0 / _RE
-    _RC = 0.125
+    _AC0 = 0.125
     parser.add_argument("--gamma", type=float, default=1.0)
     parser.add_argument("--nu", type=float, default=_NU)
-    parser.add_argument("--t0", type=float, default=_RC**2 / (4.0 * _NU))
+    parser.add_argument("--t0", type=float, default=_AC0**2 / (4.0 * _NU))
     parser.add_argument("--dt", type=float, default=0.02)
     parser.add_argument("--re", type=float, default=_RE)
     parser.add_argument("--circulation", type=float, default=1.0)
@@ -183,11 +183,11 @@ def resolve_runtime_physics(
     ``fallback_nu`` (= 1/RE from the CLI).  It is *never* inferred from the
     schemes' own output, so the analytic curve stays an independent reference.
     """
-    rc0 = a0_over_b0 * b0
+    ac0 = a0_over_b0 * b0
     nu = read_run_viscosity(solution_dir)
     if nu is None or nu <= 0.0:
         nu = fallback_nu
-    return {"nu": nu, "t0": rc0**2 / (4.0 * nu), "rc0": rc0}
+    return {"nu": nu, "t0": ac0**2 / (4.0 * nu), "ac0": ac0}
 
 
 def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
@@ -211,7 +211,7 @@ def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, floa
     return result
 
 
-# ── Gaussian core-radius utilities ────────────────────────────────────────────
+# ── Gaussian core-radius utilities (C&W a convention) ─────────────────────────
 
 
 def gaussian_model(r, omega0, a):
@@ -263,7 +263,7 @@ def fit_gaussian_core(r_profile, omega_profile):
 
 
 def core_radius_sigma(xy, values, center, n_bins=50, r_max=None):
-    """Core radius sigma from Gaussian fit on a scalar field."""
+    """Core radius a from Gaussian fit on a scalar field."""
     r_prof, w_prof = azimuthal_profile(xy, values, center, n_bins, r_max)
     if w_prof.max() < 1e-10:
         return np.nan

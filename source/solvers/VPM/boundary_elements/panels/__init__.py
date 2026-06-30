@@ -2,7 +2,8 @@
 OpenONDA 3D Panel Solver Package.
 ==================
 GPU-accelerated potential flow solver for arbitrary 3D triangular meshes.
-Features Taichi-lang kernels, BiCGSTAB linear solvers, and decoupled wake shedding.
+Provides the irrotational body-blockage boundary condition for the VPM via a
+Morino DIRICHLET doublet-panel BEM on coarse closed STL surfaces.
 
 Mirrors ``vlm/`` package conventions: same module layout, naming patterns,
 and API design.  See ``solver/``, ``coupling/``, ``kernels/``, ``geometry/``.
@@ -26,8 +27,6 @@ from .coupling.kinematics import (
     StaticPanel,
     TranslatingPanel,
 )
-from .coupling.separation import SeparationModel
-from .coupling.shedding import CouplingConfig, VortexShedder
 from .geometry.stl_io import load_stl, save_stl
 from .geometry.surface_io import (
     load_scene,
@@ -46,7 +45,6 @@ __all__ = [
     "PanelSolver",
     "ForceConfig",
     "PanelLattice",
-    "CouplingConfig",
     "PanelKinematics",
     "StaticPanel",
     "TranslatingPanel",
@@ -64,8 +62,6 @@ __all__ = [
     "load_surface_metadata",
     "save_scene",
     "load_scene",
-    "VortexShedder",
-    "SeparationModel",
     "PanelDiagnostics",
     "PanelForceEvaluator",
     "PanelLoadingDistribution",

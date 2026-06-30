@@ -27,29 +27,30 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-import vtk
-import vtk.util.numpy_support as ns
-import numpy as np
+
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import load_theme, FIGURES_DIR, SOLUTION_DIR
+from _common import FIGURES_DIR, SOLUTION_DIR, load_theme
 
-# ── Physical reference constants (matching vortex_setup.py) ─────────────────
+
+# =============================================================
+# Physical reference constants (matching vortex_setup.py)
+# =============================================================
+
 _NU = 1.0 / 530.0
-_RC0 = 0.125  # m  — initial core radius
-_T0 = _RC0**2 / (4.0 * _NU)  # s  ≈ 2.071 s
-_UC0 = 1.0 / (2.0 * np.pi * _RC0)  # m/s ≈ 1.273
-_WC0 = 1.0 / (np.pi * _RC0**2)  # /s  ≈ 20.37
-_DT = 0.03  # s — default time-step
+_AC0 = 0.125
+_T0 = _AC0**2 / (4.0 * _NU)
+_UC0 = 1.0 / (2.0 * np.pi * _AC0)
+_WC0 = 1.0 / (np.pi * _AC0**2)
+_DT = 0.03
 
-# Quadrant layout: (folder_suffix, quadrant_id, LaTeX label, text xy, ha, va)
-# quadrant_id: 'TL', 'TR', 'BL', 'BR'
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
     ("cs", "TR", r"$\mathrm{CS}$", (4.5, 4.5), "right", "top"),
@@ -57,32 +58,27 @@ _LAYOUT = [
     ("dvh", "BR", r"$\mathrm{DVH}$", (4.5, -4.5), "right", "bottom"),
 ]
 
-# Grid mid-index — derived dynamically from each VTS grid in _read_vts().
+
+# =============================================================
+# Grid helpers
+# =============================================================
 
 
 def _quad(arr: np.ndarray, qid: str, mid: int) -> np.ndarray:
-    """Slice a (ny, nx) array to the requested quadrant.
-
-    VTK structured-grid ordering: i (x) varies fastest → arr[j, i].
-    """
     if qid == "TL":
-        return arr[mid:, : mid + 1]  # x ≤ 0, y ≥ 0
+        return arr[mid:, : mid + 1]
     if qid == "TR":
-        return arr[mid:, mid:]  # x ≥ 0, y ≥ 0
+        return arr[mid:, mid:]
     if qid == "BL":
-        return arr[: mid + 1, : mid + 1]  # x ≤ 0, y ≤ 0
+        return arr[: mid + 1, : mid + 1]
     if qid == "BR":
-        return arr[: mid + 1, mid:]  # x ≥ 0, y ≤ 0
+        return arr[: mid + 1, mid:]
     raise ValueError(f"Unknown quadrant id: {qid!r}")
 
 
 def _read_vts(path: Path):
-    """Return (X, Y, vel_mag, vort_z, mid) as (ny, nx) float64 numpy arrays.
-
-    Uses the VTK structured-grid reader.  Expects fields 'VelocityMagnitude'
-    and 'Vorticity' to be present in the point-data.
-    ``mid`` is the index of the grid centre (x=0, y=0).
-    """
+    import vtk
+    import vtk.util.numpy_support as ns
 
     reader = vtk.vtkXMLStructuredGridReader()
     reader.SetFileName(str(path))
@@ -106,20 +102,19 @@ def _read_vts(path: Path):
     return X, Y, np.clip(vel_mag, 0.0, None), np.clip(vort_z, 0.0, None), mid
 
 
-def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float | None]:
-    """Return (path, flow_time) for the last stable z0 VTS file.
+# =============================================================
+# Data loading
+# =============================================================
 
-    Walks backwards from the last file to find one with non-trivial velocity
-    data (max > 1e-10), so schemes that went unstable are clipped.
-    flow_time is obtained from the matching H5 snapshot (same step number).
-    """
+
+def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float | None]:
+    import re as _re
+
     folder = solution_dir / f"vortex_{scheme}" / "samples"
     files = sorted(folder.glob(f"vortex_{scheme}_z0_*.vts"))
     if not files:
         return None, None
-    import re as _re
 
-    # Walk backwards to find last file with non-trivial data
     last = files[-1]
     for candidate in reversed(files):
         try:
@@ -143,12 +138,17 @@ def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float 
     return last, flow_time
 
 
+# =============================================================
+# Plot
+# =============================================================
+
+
 def plot_surface_fields(
     solution_dir: Path, figures_dir: Path, dpi: int = 300, fmt: str = "png", dt: float = _DT
 ) -> int:
-    load_theme()  # applies rcParams (LaTeX, fonts, etc.)
+    load_theme()
 
-    # ── Load each scheme's surface data ──────────────────────────────────────
+    # ── Load each scheme's surface data ──────────────────────────────────
     datasets: dict[str, dict] = {}
     for scheme, qid, *_ in _LAYOUT:
         vts, flow_time = _find_last_vts(solution_dir, scheme)
@@ -169,7 +169,7 @@ def plot_surface_fields(
         print("  [surface] no data found — nothing to plot.")
         return 1
 
-    # ── Shared normalisation limits ───────────────────────────────────────────
+    # ── Shared normalisation limits ────────────────────────────────────
     v_max = max(d["vel_mag"].max() for d in datasets.values()) / _UC0
     w_max = max(d["vort_z"].max() for d in datasets.values()) / _WC0
     v_norm = mcolors.Normalize(vmin=0.0, vmax=v_max)
@@ -177,13 +177,11 @@ def plot_surface_fields(
     v_cmap = "plasma"
     w_cmap = "inferno"
 
-    # Derive axis extent from data (normalised by rc0)
-    x_ext = max(abs(d["X"]).max() for d in datasets.values()) / _RC0
-    y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / _RC0
+    x_ext = max(abs(d["X"]).max() for d in datasets.values()) / _AC0
+    y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / _AC0
     ext = max(x_ext, y_ext)
     ax_lim = ext
 
-    # Representative time — prefer actual flow_time from H5, fall back to step*dt
     first_data = next(iter(datasets.values()))
     ft = first_data.get("flow_time")
     if ft is not None:
@@ -191,7 +189,7 @@ def plot_surface_fields(
     else:
         t_total = _T0 + first_data["step"] * dt
 
-    # ── Figure ────────────────────────────────────────────────────────────────
+    # ── Figure ─────────────────────────────────────────────────────────
     fig, (ax_v, ax_w) = plt.subplots(
         1, 2, figsize=(12.8 / 2.54, 5.97 / 2.54), constrained_layout=True
     )
@@ -201,8 +199,8 @@ def plot_surface_fields(
             continue
         d = datasets[scheme]
         mid = d["mid"]
-        Xn = d["X"] / _RC0
-        Yn = d["Y"] / _RC0
+        Xn = d["X"] / _AC0
+        Yn = d["Y"] / _AC0
         Xs = _quad(Xn, qid, mid)
         Ys = _quad(Yn, qid, mid)
         vms = _quad(d["vel_mag"] / _UC0, qid, mid)
@@ -212,7 +210,6 @@ def plot_surface_fields(
         ax_v.pcolormesh(Xs, Ys, vms, cmap=v_cmap, norm=v_norm, **pcm_kw)
         ax_w.pcolormesh(Xs, Ys, wzs, cmap=w_cmap, norm=w_norm, **pcm_kw)
 
-        # Place labels at 85 % of axis extent in the appropriate corner
         tx = -0.85 * ax_lim if ha == "left" else 0.85 * ax_lim
         ty = 0.85 * ax_lim if va == "top" else -0.85 * ax_lim
         txt_kw = dict(
@@ -224,7 +221,6 @@ def plot_surface_fields(
         ax_v.text(tx, ty, label, **txt_kw)
         ax_w.text(tx, ty, label, **txt_kw)
 
-    # Quadrant dividers
     divider_kw = dict(color="white", linewidth=1.0, alpha=0.9)
     for ax in (ax_v, ax_w):
         ax.axhline(0, **divider_kw)
@@ -232,13 +228,12 @@ def plot_surface_fields(
         ax.set_aspect("equal", adjustable="box")
         ax.set_xlim(-ax_lim, ax_lim)
         ax.set_ylim(-ax_lim, ax_lim)
-        ax.set_xlabel(r"$x\,/\,r_{c,0}$")
-        ax.set_ylabel(r"$y\,/\,r_{c,0}$")
+        ax.set_xlabel(r"$x\,/\,a_{c,0}$")
+        ax.set_ylabel(r"$y\,/\,a_{c,0}$")
 
     ax_v.set_title(r"Velocity magnitude, $|\mathbf{u}|\,/\,U_{c,0}$")
     ax_w.set_title(r"Vorticity, $\omega_z\,/\,\omega_{c,0}$")
 
-    # Shared colorbars (one per panel)
     sm_v = ScalarMappable(cmap=v_cmap, norm=v_norm)
     sm_v.set_array([])
     sm_w = ScalarMappable(cmap=w_cmap, norm=w_norm)

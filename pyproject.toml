@@ -243,6 +243,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests as requiring GPU (deselect with '-m \"not gpu\"')",
     "openfoam: marks tests as requiring OpenFOAM (deselect with '-m \"not openfoam\"')",
+    "openvsp: marks tests as requiring OpenVSP (deselect with '-m \"not openvsp\"')",
     "benchmark: marks tests as performance benchmarks",
     "regression: marks tests as regression / snapshot tests",
     "fast: CPU-only tests for fast CI (deselect with '-m \"not fast\"')",

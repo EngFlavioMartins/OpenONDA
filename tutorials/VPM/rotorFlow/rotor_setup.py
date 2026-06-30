@@ -37,7 +37,7 @@ from source.solvers.VPM.config.types import (
 from source.solvers.VPM.boundary_elements.vlm import VLMSolver
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
-from generate_blade import create_blade, save_surface
+from generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
 
 def main():
@@ -110,30 +110,29 @@ def main():
     wake_cutoff_distance = 20 * rotor_radius
 
     # ================================================
-    # 3. Create VLM Blade Geometry
+    # 3. Create VLM Blade Geometry From OpenVSP
     # ================================================
     blade_file = "./assets/blade.json"
-    # Compute design-optimal twist: theta(r) = phi(r) - alpha_des,
-    # where phi = atan(U*(1-a_Betz) / (omega*r)) and beta = 90 - theta.
-    # Using a multi-segment blade so the nonlinear profile is captured exactly.
-    _a_betz = 1.0 / 3.0
-    _alpha_des = np.radians(5.0)
-    _n_sched = 11  # 11 breakpoints → 10 segments, 2 span panels each
-    _r_sched = np.linspace(hub_radius, rotor_radius, _n_sched)
-    _phi_sched = np.arctan2(freestream_velocity * (1.0 - _a_betz), angular_velocity * _r_sched)
-    _beta_sched = 90.0 - np.degrees(_phi_sched - _alpha_des)
-    blade_surface = create_blade(
+    # The OpenVSP blade keeps the original rotorFlow aerodynamic design:
+    # theta(r) = atan(U*(1-a_Betz)/(omega*r)) - alpha_design with alpha=5 deg,
+    # chord taper 0.60 -> 0.35 m, and 20 radial OpenVSP sections from hub to tip.
+    blade_design = RotorBladeDesign(
         radius=rotor_radius,
         hub_radius=hub_radius,
         root_chord=0.6,
         tip_chord=0.35,
-        n_span=20,
-        n_chord=6,
-        r_schedule=_r_sched,
-        beta_schedule=_beta_sched,
-        pitch_schedule=np.zeros(_n_sched),
+        freestream_velocity=freestream_velocity,
+        tip_speed_ratio=tip_speed_ratio,
+        axial_induction_design=1.0 / 3.0,
+        alpha_design_deg=5.0,
+        n_stations=21,
+        chord_stations=7,
     )
-    save_surface(blade_surface, blade_file)
+    generate_rotorflow_openvsp_blade(
+        output_dir="./assets/openvsp",
+        json_path=blade_file,
+        design=blade_design,
+    )
 
     # ================================================
     # 4. Configure VLM Solver

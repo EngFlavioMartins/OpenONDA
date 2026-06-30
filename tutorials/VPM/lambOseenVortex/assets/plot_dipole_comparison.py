@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Counter-rotating vortex dipole — core trajectory and radius comparison.
 
-Reads HDF5 backup snapshots from each viscous scheme and plots:
-  - core x-position  $x_c / b_0$  vs  $\nu t / b_0^2$
-  - core radius       $r_c / r_{c,0}$  vs  $\nu t / b_0^2$
+Reads HDF5 backup snapshots (or VTS z=0 samples) from each viscous scheme
+and plots:
+  - core x-position  xc / b0  vs  ν t / b0²
+  - core radius       a_c / a_{c,0}  vs  ν t / b0²
 
 Saves: figures/dipole_comparison.png
 """
@@ -14,12 +15,11 @@ import re
 import sys
 from pathlib import Path
 
-import numpy as np
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import h5py
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
@@ -34,7 +34,9 @@ from _common import (
 )
 
 
-# ── Particle helpers ──────────────────────────────────────────────────────────
+# =============================================================
+# Particle helpers
+# =============================================================
 
 
 def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
@@ -46,9 +48,13 @@ def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
 
 
 def read_h5(path: Path):
+    import h5py
+
     if not path.is_file() or path.stat().st_size < 4096:
-        print(f"  [warn] skipping truncated backup {path.name} "
-              f"({path.stat().st_size if path.is_file() else 0} bytes)")
+        print(
+            f"  [warn] skipping truncated backup {path.name} "
+            f"({path.stat().st_size if path.is_file() else 0} bytes)"
+        )
         return None, None, None, None
     try:
         with h5py.File(path, "r") as f:
@@ -65,12 +71,6 @@ def read_h5(path: Path):
 
 
 def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.ndarray) -> float:
-    r"""Kernel-consistent core radius from the vorticity 2nd moment.
-
-    Returns ``a = sqrt(Σ ω r² / Σ ω)`` — the exact core radius of a Lamb-Oseen
-    profile ``ω = ω₀·exp(-r²/a²)`` (for which ⟨r²⟩ = a²), measured directly from
-    the ``ω``-weighted spatial spread about *center*.
-    """
     w = np.asarray(weights, dtype=np.float64)
     wt = float(w.sum())
     if wt <= 1e-30:
@@ -79,25 +79,28 @@ def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.nd
     return float(np.sqrt((w * r2).sum() / wt))
 
 
-def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dict | None:
-    """Extract core trajectory and kernel-consistent core radius for the dipole.
+# =============================================================
+# Data extraction
+# =============================================================
 
-    Prefers VTS z=0 grid data (actual reconstructed vorticity field) and
-    measures the core radius via the ω-weighted 2nd moment
-    (see ``_weighted_core_radius``); falls back to HDF5 particle data.
-    """
+
+def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dict | None:
     import pyvista as pv
 
     # ── Primary: VTS grid data (z=0 plane) ──
     samples_dir = solution_dir / f"dipole_{scheme}" / "samples"
-    vts_list = sorted(
-        [
-            (int(m.group(1)), p)
-            for p in samples_dir.glob(f"dipole_{scheme}_z0_*.vts")
-            if (m := re.search(r"_(\d+)\.vts$", p.name))
-        ],
-        key=lambda x: x[0],
-    ) if samples_dir.exists() else []
+    vts_list = (
+        sorted(
+            [
+                (int(m.group(1)), p)
+                for p in samples_dir.glob(f"dipole_{scheme}_z0_*.vts")
+                if (m := re.search(r"_(\d+)\.vts$", p.name))
+            ],
+            key=lambda x: x[0],
+        )
+        if samples_dir.exists()
+        else []
+    )
 
     time_map = pvd_time_map(solution_dir, "dipole", scheme)
     rows = []
@@ -112,7 +115,6 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
                 omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
             except Exception:
                 continue
-            # Positive-circulation vortex core
             mask = omega_z > 0.0
             if np.count_nonzero(mask) < 2:
                 continue
@@ -122,10 +124,8 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             c = centroid(xy[mask], omega_z[mask])
             if np.any(np.isnan(c)):
                 continue
-            # Kernel-consistent 2nd moment over the full positive-ω region
-            # (no r_max truncation — that would clip CS's wide kernel).
-            rc = _weighted_core_radius(xy[mask], w, c)
-            rows.append((t, float(c[0]), float(c[1]), rc, float(w.sum())))
+            a_c = _weighted_core_radius(xy[mask], w, c)
+            rows.append((t, float(c[0]), float(c[1]), a_c, float(w.sum())))
     else:
         # ── Fallback: HDF5 particle data ──
         files = h5_files(solution_dir, "dipole", scheme)
@@ -133,7 +133,6 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             t, pos, gz = read_h5(p)
             if pos is None:
                 continue
-            # Select particles near z=0 (central third of the column)
             z = pos[:, 2]
             z_lo, z_hi = z.min(), z.max()
             z_rng = z_hi - z_lo
@@ -147,16 +146,18 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             c = centroid(pos2d[mask_pos], gz2d[mask_pos])
             if np.any(np.isnan(c)):
                 continue
-            rc = _weighted_core_radius(pos2d[mask_pos], gz2d[mask_pos], c)
-            rows.append((t, float(c[0]), float(c[1]), rc, float(np.abs(gz2d[mask_pos]).sum())))
+            a_c = _weighted_core_radius(pos2d[mask_pos], gz2d[mask_pos], c)
+            rows.append((t, float(c[0]), float(c[1]), a_c, float(np.abs(gz2d[mask_pos]).sum())))
 
     if not rows:
         return None
     d = np.array(rows, dtype=float)
-    return {"t": d[:, 0], "x_core": d[:, 1], "r_core": d[:, 3], "total_gamma": d[:, 4]}
+    return {"t": d[:, 0], "x_core": d[:, 1], "a_c": d[:, 3], "total_gamma": d[:, 4]}
 
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
+# =============================================================
+# Plot
+# =============================================================
 
 
 def plot_dipole_case(args) -> int:
@@ -167,7 +168,7 @@ def plot_dipole_case(args) -> int:
 
     runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
-    a0 = runtime["rc0"]
+    a0 = runtime["ac0"]
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
@@ -181,34 +182,34 @@ def plot_dipole_case(args) -> int:
             continue
         t = ts["t"]
         xc = ts["x_core"]
-        rc = ts["r_core"]
-        mask = np.isfinite(xc) & np.isfinite(rc)
-        t, xc, rc = t[mask], xc[mask], rc[mask]
+        a_c = ts["a_c"]
+        mask = np.isfinite(xc) & np.isfinite(a_c)
+        t, xc, a_c = t[mask], xc[mask], a_c[mask]
         if len(t) == 0:
             continue
-        tau = run_nu * t / (args.b0**2)
+        tau = run_nu * t / (a0**2)
         st = style_map[scheme]
-        kw = {
+        plot_kw = {
             "color": st["color"],
             "label": st["label"],
+            "marker": st["marker"],
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
-            "marker": st["marker"],
+            "markevery": 4,
         }
-        # Self-normalise each scheme by its own t=0 core radius so the y-axis
-        rc_norm = rc / rc[0] if rc[0] > 0 else rc
-        axes[0].plot(tau, xc / args.b0, **kw)
-        axes[1].plot(tau, rc_norm, **kw)
+        a_c_norm = a_c / a_c[0] if a_c[0] > 0 else a_c
+        axes[0].plot(tau, xc / args.b0, **plot_kw)
+        axes[1].plot(tau, a_c_norm, **plot_kw)
 
-    axes[0].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
+    axes[0].set_xlabel(r"Normalized time, $\nu t / a_0^2$")
     axes[0].set_ylabel(r"Normalized core trajectory, $x_c / b_0$")
     axes[0].set_title("Core trajectory over time")
     axes[0].set_ylim([0.0, 5.5])
-    axes[1].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
-    axes[1].set_ylabel(r"Normalized core radius, $r_c / r_{c,0}$")
+    axes[1].set_xlabel(r"Normalized time, $\nu t / a_0^2$")
+    axes[1].set_ylabel(r"Normalized core radius, $a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_ylim([0.9, 4.0])
+    axes[1].set_ylim([0.9, 5.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
@@ -217,7 +218,7 @@ def plot_dipole_case(args) -> int:
             labels,
             loc="lower center",
             ncol=len(handles),
-            bbox_to_anchor=(0.5, 0.05),
+            bbox_to_anchor=(0.5, 0.06),
             fontsize=10,
         )
     save_kw: dict = {"bbox_inches": "tight"}

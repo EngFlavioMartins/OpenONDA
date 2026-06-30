@@ -20,12 +20,16 @@ done
 
 mkdir -p figures
 
-echo "[1/2] Rotor performance"
+echo "[1/3] Rotor performance"
 "$PYTHON" assets/plot_rotor_performance.py \
     --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
 
-echo "[2/2] Rotor wake planes"
+echo "[2/3] Rotor wake planes"
 "$PYTHON" assets/plot_rotor_wake_planes.py \
+    --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
+
+echo "[3/3] Spanwise loading vs BEM"
+"$PYTHON" assets/plot_rotor_loading_validation.py \
     --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
 
 echo "Figures written to: $SCRIPT_DIR/figures"

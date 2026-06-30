@@ -2,13 +2,13 @@
 """Co-rotating vortex merger — rotation angle, core radius, and separation.
 
 Reads VTS z=0 sample files (or HDF5 snapshots as fallback) and plots
-three diagnostics against nu t / b₀²:
+three diagnostics against nu t / a₀²:
   - rotation angle θ  [deg]
-  - normalised core area  a² / b₀²
-  - normalised separation  b / b₀
+  - normalised core area  a_c² / b0²
+  - normalised separation  b / b0
 
-Core detection uses peak |ω_z| with a bimodality (valley) check to
-distinguish two separate vortices from single merged core.
+Core detection uses peak |ωz| with a bimodality (valley) check to
+distinguish two separate vortices from the single merged core.
 
 Reference data from Cerretelli & Williamson (2003) is overlaid when available.
 """
@@ -19,7 +19,6 @@ import re
 import sys
 from pathlib import Path
 
-import h5py
 import matplotlib
 import numpy as np
 
@@ -42,6 +41,10 @@ THETA_REF = REF_DIR / "theta_vs_tau.csv"
 A2_REF = REF_DIR / "a2_over_b02.csv"
 B_REF = REF_DIR / "b_over_b0_tau.csv"
 
+# =============================================================
+# File helpers
+# =============================================================
+
 
 def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
     folder = solution_dir / f"{prefix}_{scheme}"
@@ -52,11 +55,15 @@ def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
 
 
 def h5_time(path: Path) -> float:
+    import h5py
+
     with h5py.File(path, "r") as f:
         return float(f["solver"].attrs["flow_time"])
 
 
 def read_h5(path: Path):
+    import h5py
+
     with h5py.File(path, "r") as f:
         t = float(f["solver"].attrs["flow_time"])
         n = int(f["solver"].attrs["number_of_particles"])
@@ -64,14 +71,12 @@ def read_h5(path: Path):
             return t, None, None
         pos = f["particles"]["position"][:n].astype(np.float64)
         circ = f["particles"]["circulation"][:n].astype(np.float64)
-
         z = pos[:, 2]
         z_lo, z_hi = z.min(), z.max()
         z_rng = z_hi - z_lo
         mask = (z >= z_lo + z_rng / 3.0) & (z <= z_hi - z_rng / 3.0)
         pos = pos[mask]
         circ = circ[mask]
-
     return t, pos, circ[:, 2]
 
 
@@ -94,6 +99,11 @@ def read_vts(path: Path):
     xy = grid.points[:, :2].astype(np.float64)
     omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
     return xy, omega_z
+
+
+# =============================================================
+# Tracking diagnostics
+# =============================================================
 
 
 def _kmeans2(pts, w, init, max_iter=50, tol=1e-6):
@@ -146,20 +156,15 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
 
     R = 0.45 * b0
 
-    # Always use centroid-based logic for smoother tracking,
-    # but use peaks for initial guesses if not provided.
     if prev_c is not None:
         init = prev_c.copy()
     else:
-        # Robust peak finding
         i1 = np.argmax(w)
         p1 = xy[i1]
-
-        # Mask neighborhood to find second peak
         d1 = np.linalg.norm(xy - p1, axis=1)
         w2 = w.copy()
         w2[d1 < 0.25 * b0] = 0.0
-        if w2.max() < 0.1 * w[i1]:  # Likely merged
+        if w2.max() < 0.1 * w[i1]:
             init = np.array([p1, p1])
         else:
             i2 = np.argmax(w2)
@@ -169,12 +174,10 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     c0 = _neighborhood_centroid(xy, w, kmeans_centers[0], R)
     c1 = _neighborhood_centroid(xy, w, kmeans_centers[1], R)
 
-    # Bimodality/Valley check between centroids
     mid_test = 0.5 * (c0 + c1)
     d_mid = np.linalg.norm(xy - mid_test, axis=1)
     w_mid = w[np.argmin(d_mid)]
 
-    # Values at centroids
     d_c0 = np.linalg.norm(xy - c0, axis=1)
     d_c1 = np.linalg.norm(xy - c1, axis=1)
     w_c0 = w[np.argmin(d_c0)]
@@ -186,7 +189,6 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     else:
         cores = np.array([c0, c1])
 
-    # Consistency with previous frame or symmetry
     ref = prev_c1 if prev_c1 is not None else np.array([0.0, 0.5 * b0])
     if np.linalg.norm(cores[1] - ref) < np.linalg.norm(cores[0] - ref):
         cores = cores[::-1]
@@ -195,22 +197,26 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     mid = 0.5 * (cores[0] + cores[1])
     ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
 
-    # --- Core area σ² via system-moment decomposition (kernel-consistent) ---
     core_mask = w > 0.05 * w.max()
     if core_mask.sum() >= 5:
         pts_c, w_c = xy[core_mask], w[core_mask]
         wt_c = w_c.sum()
         c_sys = np.array([(w_c * pts_c[:, 0]).sum() / wt_c, (w_c * pts_c[:, 1]).sum() / wt_c])
         r2_sys = (w_c * ((pts_c - c_sys) ** 2).sum(axis=1)).sum() / wt_c
-        a2 = 0.5 * max(r2_sys - (sep / 2.0) ** 2, 0.0)
+        a_c2 = 0.5 * max(r2_sys - (sep / 2.0) ** 2, 0.0)
     else:
-        a2 = np.nan
+        a_c2 = np.nan
 
-    return sep, a2, ang, float(w.sum()), cores.copy(), cores[0].copy()
+    return sep, a_c2, ang, float(w.sum()), cores.copy(), cores[0].copy()
+
+
+# =============================================================
+# Data extraction
+# =============================================================
 
 
 def extract_merging_timeseries(
-    solution_dir: Path, scheme: str, nu: float, b0: float
+    solution_dir: Path, scheme: str, nu: float, b0: float, a0: float
 ) -> dict | None:
     rows = []
     prev_c = None
@@ -246,10 +252,10 @@ def extract_merging_timeseries(
                 )
                 break
 
-            sep, a2, ang, gam, prev_c, prev_c1 = step_diagnostics(
+            sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
                 xy, omega_z, b0, prev_c, prev_c1, use_peaks=True
             )
-            rows.append((t, sep, a2, ang, gam))
+            rows.append((t, sep, a_c2, ang, gam))
     else:
         files = h5_files(solution_dir, "merging", scheme)
         if not files:
@@ -257,15 +263,15 @@ def extract_merging_timeseries(
         for p in files:
             t, pos, gz = read_h5(p)
             xy = pos[:, :2] if pos is not None else None
-            sep, a2, ang, gam, prev_c, prev_c1 = step_diagnostics(
+            sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
                 xy, gz, b0, prev_c, prev_c1, use_peaks=False
             )
-            rows.append((t, sep, a2, ang, gam))
+            rows.append((t, sep, a_c2, ang, gam))
 
     if not rows:
         return None
     d = np.array(rows, dtype=float)
-    tau = nu * d[:, 0] / (b0**2)
+    tau = nu * d[:, 0] / (a0**2)
     raw_ang = d[:, 3]
     finite = np.isfinite(raw_ang)
     if finite.sum() > 1:
@@ -279,10 +285,15 @@ def extract_merging_timeseries(
     return {
         "tau": tau,
         "theta_deg": th,
-        "a2_over_b02": d[:, 2] / b0**2,
+        "a_c2_over_b02": d[:, 2] / b0**2,
         "b_over_b0": b_over_b0,
         "total_gamma": d[:, 4],
     }
+
+
+# =============================================================
+# Plot
+# =============================================================
 
 
 def plot_merging_case(args) -> int:
@@ -292,90 +303,79 @@ def plot_merging_case(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     colors, theme = load_theme()
-
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
-    tau_max = 0.05 #run_nu * args.total_time / (args.b0**2)
+    a0 = runtime["ac0"]
+    tau_max = 0.07
 
-    fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.68 / 2.54))
-    fig.subplots_adjust(wspace=0.6, top=0.93, bottom=0.37, left=0.09, right=0.91)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
+    fig.subplots_adjust(hspace=0.15, top=0.93, bottom=0.18, left=0.09, right=0.91)
 
     for scheme in SCHEMES:
-        ts = extract_merging_timeseries(solution_dir, scheme, run_nu, args.b0)
+        ts = extract_merging_timeseries(solution_dir, scheme, run_nu, args.b0, a0)
         if ts is None:
             print(f"  [merging] skipping {scheme!r} — no data")
             continue
         st = style_map[scheme]
         plot_kw = {
             "color": st["color"],
+            "label": st["label"],
             "marker": st["marker"],
             "markersize": 2.2,
-            "linewidth": 1.0,
             "linestyle": "None",
-            "label": st["label"],
+            "linewidth": 1.0,
+            "markevery": 2,
         }
-        theta_mask = np.isfinite(ts["theta_deg"])
-        a2_mask = np.isfinite(ts["a2_over_b02"])
-        sep_mask = np.isfinite(ts["b_over_b0"])
-        axes[0].plot(ts["tau"][theta_mask], ts["theta_deg"][theta_mask], **plot_kw)
-        axes[1].plot(ts["tau"][a2_mask], ts["a2_over_b02"][a2_mask], **plot_kw)
-        axes[2].plot(ts["tau"][sep_mask], ts["b_over_b0"][sep_mask], **plot_kw)
+        axes[0].plot(ts["tau"], ts["theta_deg"], **plot_kw)
+        axes[1].plot(ts["tau"], ts["a_c2_over_b02"], **plot_kw)
+        axes[2].plot(ts["tau"], ts["b_over_b0"], **plot_kw)
+
+    # -- Reference curves -------------------------------
+
+    run_a0_over_b0 = args.a0_over_b0
+    tau_limit = 3.5 #tau_max / (run_a0_over_b0**2)
+    a0_sigma = run_a0_over_b0 / np.sqrt(2.0)
 
     ref_kw = dict(
-        color="black",
-        linestyle="-",
+        color="gray",
+        linestyle="--",
         linewidth=1.0,
-        zorder=0,
+        zorder=100,
         label=r"Cerretelli \& Williamson (2003)",
     )
     if THETA_REF.exists():
         r = np.loadtxt(THETA_REF, delimiter=",")
-        axes[0].plot(r[:, 0], r[:, 1], **ref_kw)
+        axes[0].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
     if A2_REF.exists():
         r = np.loadtxt(A2_REF, delimiter=",")
-        axes[1].plot(r[:, 0], r[:, 1], **ref_kw)
+        axes[1].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
     if B_REF.exists():
         r = np.loadtxt(B_REF, delimiter=",")
-        axes[2].plot(r[:, 0], r[:, 1], **ref_kw)
-
-    # ── Reference curves ─────────────────────────────────────────────────────
-    # Theta: finite-core-corrected rotation rate (Moore-Saffman, initial a0/b0).
-    # dθ/dt = (Γ/π b²) * [1 + 2*(a/b)² * (1 - 2*ln(a/b))]
-    # In normalised form: dθ/dτ = (Re/π) * correction  [rad/τ]
-    run_b0 = args.b0
-    run_a0_over_b0 = args.a0_over_b0
-    # Use ML convention: a0_ML = r_c0/sqrt(2), sigma²=2*nu*t
-    a0_sigma = run_a0_over_b0 / np.sqrt(2.0)  # a0_ML/b0
+        axes[2].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
 
     tau_fc = np.linspace(0.0, tau_max, 300)
-    eps2 = a0_sigma**2 + 2.0 * tau_fc  # sigma^2/b0^2  (grows as 2*tau)
+    eps2 = a0_sigma**2 + 2.0 * tau_fc
     eps = np.sqrt(eps2)
     corr = 1.0 + 2.0 * eps2 * (1.0 - 2.0 * np.log(np.maximum(eps, 1e-12)))
-    dtheta_dtau_rad = (runtime["nu"] / (np.pi * 1.0)) * corr  # placeholder
-    # Full expression: dθ/dτ [rad/τ] = Re/π * correction
     Re_run = args.gamma / runtime["nu"]
     dtheta_dtau_deg = Re_run / np.pi * corr * (180.0 / np.pi)
     theta_fc = np.cumsum(dtheta_dtau_deg * np.gradient(tau_fc))
     theta_fc -= theta_fc[0]
 
-    axes[0].set_xlabel(r"$\nu t / b_0^2$")
     axes[0].set_ylabel(r"$\theta$ [deg]")
-    axes[0].set_title(r"Rotation angle, $\theta$")
+    axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 520])
-    axes[0].set_xlim([0, tau_max])
+    axes[0].set_xlim([0, tau_limit])
 
-    axes[1].set_xlabel(r"$\nu t / b_0^2$")
-    axes[1].set_ylabel(r"$\sigma^2 / b_0^2$")
-    axes[1].set_title(r"Core radius, $\sigma^2 / b_0^2$")
-    axes[1].set_ylim([0, 0.35])
-    axes[1].set_xlim([0, tau_max])
+    axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
+    axes[1].set_ylim([0, 0.3])
+    axes[1].set_xlim([0, tau_limit])
 
-    axes[2].set_xlabel(r"$\nu t / b_0^2$")
+    axes[2].set_xlabel(r"$\nu t / a_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
-    axes[2].set_title(r"Separation, $b / b_0$")
-    axes[2].set_ylim([0, 1.5])
-    axes[2].set_xlim([0, tau_max])
+    axes[2].set_ylim([0, 1.6])
+    axes[2].set_xlim([0, tau_limit])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0), fontsize=10)

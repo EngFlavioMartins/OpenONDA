@@ -49,8 +49,6 @@ class PanelLoadingDistribution:
             strengths = panel_solver.lattice.strengths.to_numpy()[:n]
             areas = panel_solver.lattice.areas.to_numpy()[:n]
             group_ids = panel_solver.lattice.panel_group_id.to_numpy()[:n]
-            is_te = panel_solver.lattice.is_TE_panel.to_numpy()[:n]
-            is_le = panel_solver.lattice.is_LE_panel.to_numpy()[:n]
             cp = (
                 panel_solver.lattice.Cp.to_numpy()[:n]
                 if hasattr(panel_solver.lattice, "Cp")
@@ -68,7 +66,7 @@ class PanelLoadingDistribution:
 
             with open(csv_path, "w") as f:
                 f.write(
-                    "time,step,cx,cy,cz,nx,ny,nz,strength,area,Cp,Fx,Fy,Fz,group_id,is_TE,is_LE\n"
+                    "time,step,cx,cy,cz,nx,ny,nz,strength,area,Cp,Fx,Fy,Fz,group_id\n"
                 )
                 for i in range(n):
                     c = centers[i]
@@ -79,7 +77,7 @@ class PanelLoadingDistribution:
                         f"{nv[0]:.10e},{nv[1]:.10e},{nv[2]:.10e},"
                         f"{strengths[i]:.10e},{areas[i]:.10e},{cp[i]:.10e},"
                         f"{forces[i][0]:.10e},{forces[i][1]:.10e},{forces[i][2]:.10e},"
-                        f"{int(group_ids[i])},{int(is_te[i])},{int(is_le[i])}\n"
+                        f"{int(group_ids[i])}\n"
                     )
         except Exception as exc:
             print(f"(Warning) Failed to record panel loading distribution: {exc}")
