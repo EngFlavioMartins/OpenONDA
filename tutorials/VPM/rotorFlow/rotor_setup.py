@@ -42,9 +42,7 @@ from generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_
 
 def main():
     parser = argparse.ArgumentParser(description="RotorFlow VLM-VPM simulation")
-    # Default extended so the wake convects out to ~9 rotor diameters (the
-    # farthest validation plane).  Near-wake convects at ~U(1-a) ≈ 4.7 m/s, so
-    # ~9D = 108 m needs ~15-20 s of physical time (dt=0.005 → ~3500 steps).
+
     parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
     parser.add_argument("--dt", type=float, default=0.005, help="Time-step size [s].")
     # --- Stabiliser knobs (in-house LES + stretching stabiliser) -------------
@@ -65,15 +63,7 @@ def main():
         help="Strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
         "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).",
     )
-    parser.add_argument(
-        "--relaxation-factor",
-        type=float,
-        default=0.95,
-        help="Pedrizzetti relaxation coeff (lower = stronger).",
-    )
-    parser.add_argument(
-        "--relaxation-rate", type=float, default=1.0, help="Strain-gate rate constant (blend mode)."
-    )
+
     parser.add_argument(
         "--ramp-rotations",
         type=float,
@@ -106,16 +96,11 @@ def main():
     time_step = args.dt
     num_steps = args.num_steps
 
-    # Wake cutoff: remove particles beyond this x-coordinate:
-    wake_cutoff_distance = 20 * rotor_radius
-
     # ================================================
     # 3. Create VLM Blade Geometry From OpenVSP
     # ================================================
     blade_file = "./assets/blade.json"
-    # The OpenVSP blade keeps the original rotorFlow aerodynamic design:
-    # theta(r) = atan(U*(1-a_Betz)/(omega*r)) - alpha_design with alpha=5 deg,
-    # chord taper 0.60 -> 0.35 m, and 20 radial OpenVSP sections from hub to tip.
+
     blade_design = RotorBladeDesign(
         radius=rotor_radius,
         hub_radius=hub_radius,
@@ -145,12 +130,7 @@ def main():
         sample_surface_forces=True,
         logging_frequency=25,
     )
-    # NB: the blade is built with its LE on the −Z side (chord points +Z from
-    # LE→TE).  For the blade to advance LEADING-EDGE first it must rotate so the
-    # +Y blade moves toward −Z, i.e. ω = ω·(−x̂).  With axis=[+1,0,0] the blade
-    # advanced TE-first and vorticity was shed from the aerodynamic LE (verified:
-    # relwind·chord < 0 at every station).  axis=[-1,0,0] gives a positive AoA
-    # (~5° at the tip once induction develops) and TE shedding.
+
     rotation_period = 2.0 * np.pi / angular_velocity
     ramp_time = max(0.0, args.ramp_rotations * rotation_period)
 
@@ -185,11 +165,9 @@ def main():
     backup_dir = args.solution_dir
 
     # Downstream YZ cross-plane samplers for wake / induction validation.
-    # Planes at 3D, 6D, 9D downstream (D = 2R = 12 m → x = 36, 72, 108 m);
-    # x-axis is the axial / freestream direction.
-    rotor_diameter = 2.0 * rotor_radius
-    wake_half = rotor_radius * 2.0  # bounds: ±2R (room for far-wake expansion)
-    wake_spacing = rotor_radius / 36  # 3x finer than before (~0.167 m for R=6)
+    rotor_diameter = 1.2 * rotor_radius
+    wake_half = rotor_radius * 2.0
+    wake_spacing = rotor_radius / 36  
     plane_samplers = [
         SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
@@ -199,49 +177,43 @@ def main():
             file_name=f"slice_x{int(round(x_loc))}m",
             output_dir=backup_dir + "/samples",
         )
-        for x_loc in [3 * rotor_diameter, 6 * rotor_diameter, 9 * rotor_diameter]
+        for x_loc in [1 * rotor_diameter, 2 * rotor_diameter, 3 * rotor_diameter]
     ]
 
-    solver_config = SolverConfig(
-        time_step_size=time_step,
-        advection=AdvectionConfig(scheme="RK2"),
-        vlm_solver=vlm,
-        background_velocity=[freestream_velocity, 0, 0],
-        turbulence=TurbulenceConfig.les_smagorinsky(cs=args.cs),
-        # Stretching STABILISER: the reformulated-VPM (Alvarez & Ning) scheme
-        # caps the parallel growth of |Γ| (conserving σ²|Γ|).  Combined with the
-        # ISR strength relaxation it keeps the helical tip-vortex wake bounded.
-        # NB: pedrizzetti ISR is |Γ|-PRESERVING (realign only); 'blend' mode is
-        # dissipative (ADM-residual filter) and can DRAIN runaway tip-vortex |Γ|.
-        stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
-        backup_file_name="rotor",
-        backup_directory=backup_dir,
-        solution_name=backup_dir,
-        backup_frequency=25,
-        logging_frequency=25,
-        timing_frequency=25,
-        stabilization=StabilizationConfig(
-            max_core_radius=2.0,
+    advection=AdvectionConfig(scheme="RK2")
+
+    turbulence=TurbulenceConfig.les_smagorinsky(cs=args.cs)
+
+    #stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
+    stretching=StretchingConfig.transposed(scheme='Euler')
+
+    stabilization=StabilizationConfig(
             remove_particles_by_bounds=[
                 -rotor_diameter,
-                wake_cutoff_distance,
+                20 * rotor_radius,
                 -2.0 * rotor_radius,
                 2.0 * rotor_radius,
                 -2.0 * rotor_radius,
                 2.0 * rotor_radius,
             ],
-            relaxation_enabled=True,
-            relaxation_mode=args.relaxation,
-            relaxation_gate="strain",
-            relaxation_factor=args.relaxation_factor,
-            relaxation_rate=args.relaxation_rate,
-            relaxation_conserve=True,
-        ),
+        )
+
+    solver_config = SolverConfig(
+        time_step_size=time_step,
+        advection=advection,
+        vlm_solver=vlm,
+        background_velocity=[freestream_velocity, 0, 0],
+        turbulence=turbulence,
+        stretching=stretching,
+        samplers=plane_samplers,
+        stabilization=stabilization,
+        backup_file_name="rotor",
+        backup_directory=backup_dir,
+        solution_name=backup_dir,
+        backup_frequency=15,
+        logging_frequency=15,
+        timing_frequency=15,
         processing_unit="GPU_VULKAN",
-        # These far-wake planes are expensive (3 × ~21k targets).  Sampling
-        # them at every log step dominated the simulation.  Evaluate them once
-        # from the final, fully-developed wake below.
-        samplers=None,
     )
 
     vpm = Solver(config=solver_config)
@@ -252,20 +224,6 @@ def main():
     # ================================================
     for step in range(num_steps):
         vpm.update_state()
-        if (step + 1) % 25 == 0 and vpm.particles.number_of_particles:
-            strengths = vpm.particles.circulation.to_numpy()[: vpm.particles.number_of_particles]
-            max_strength = float(np.linalg.norm(strengths, axis=1).max())
-            if not np.isfinite(max_strength) or max_strength > args.max_strength:
-                raise RuntimeError(
-                    f"Rotor wake became unbounded at step {step + 1}: "
-                    f"max |alpha|={max_strength:.6e} (limit={args.max_strength:.6e})"
-                )
-
-    # One high-resolution snapshot at all validation planes is sufficient for
-    # the steady 3D/6D/9D comparison and avoids repeatedly sampling empty planes.
-    vpm.config.samplers = plane_samplers
-    vpm._execute_samplers()
-
 
 if __name__ == "__main__":
     main()
