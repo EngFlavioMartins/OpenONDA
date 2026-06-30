@@ -432,6 +432,8 @@ class Logging:
         lines.append(f"  Backup File Name         : {system.backup_file_name}")
         logging_freq = getattr(system.config, "logging_frequency", 0)
         lines.append(f"  Logging Frequency        : {logging_freq} steps")
+        timing_freq = getattr(system, "timing_frequency", 0)
+        lines.append(f"  Timing Report Frequency  : {timing_freq} steps")
         return lines
 
     @staticmethod
@@ -807,7 +809,7 @@ class Logging:
             print("  └─ Detailed breakdown:")
             for operation, duration in detailed_timing.items():
                 pct = 100.0 * duration / step_elapsed if step_elapsed > 0 else 0
-                print(f"     {operation:<15}: {duration:6.3f}s ({pct:5.1f}%)")
+                print(f"     {operation:<24}: {duration:6.3f}s ({pct:5.1f}%)")
             print()
 
     @staticmethod

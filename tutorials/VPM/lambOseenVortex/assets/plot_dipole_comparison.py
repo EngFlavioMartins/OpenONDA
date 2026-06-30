@@ -70,18 +70,6 @@ def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.nd
     Returns ``a = sqrt(Σ ω r² / Σ ω)`` — the exact core radius of a Lamb-Oseen
     profile ``ω = ω₀·exp(-r²/a²)`` (for which ⟨r²⟩ = a²), measured directly from
     the ``ω``-weighted spatial spread about *center*.
-
-    Why this and not a Gaussian fit of the reconstructed field?  Each viscous
-    scheme stores its diffusion differently: CS widens the *reconstruction
-    kernel* (particle radius grows to ~4.4 r_c0) while keeping particles
-    frozen, whereas DVH/GBD keep the kernel pinned at 2.5h and carry the
-    spread in the *particle positions*.  A Gaussian fit of the reconstructed
-    field therefore measures kernel width for CS but particle spread for
-    DVH/GBD — an apples-to-oranges comparison, and the (truncated) fit further
-    clips the wide CS kernel.  The raw 2nd moment applies the *same* operator
-    to every scheme's field; self-normalising each curve by its t=0 value (in
-    the plot) divides out the residual reconstruction offset, leaving the
-    physical relative growth r_c(t)/r_c(0).
     """
     w = np.asarray(weights, dtype=np.float64)
     wt = float(w.sum())
@@ -159,12 +147,6 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             c = centroid(pos2d[mask_pos], gz2d[mask_pos])
             if np.any(np.isnan(c)):
                 continue
-            # Kernel-consistent 2nd moment of the positive-Γ particle cloud.
-            # NOTE: from particle data this measures the *position* spread only
-            # (it excludes the reconstruction-kernel width that the VTS-field
-            # path captures), so it is self-consistent for relative growth but
-            # not directly comparable to the VTS numbers across schemes.  VTS
-            # data exists for every scheme here, so this branch is a safety net.
             rc = _weighted_core_radius(pos2d[mask_pos], gz2d[mask_pos], c)
             rows.append((t, float(c[0]), float(c[1]), rc, float(np.abs(gz2d[mask_pos]).sum())))
 
@@ -215,9 +197,6 @@ def plot_dipole_case(args) -> int:
             "marker": st["marker"],
         }
         # Self-normalise each scheme by its own t=0 core radius so the y-axis
-        # is the physical relative growth r_c(t)/r_c(0).  This divides out the
-        # per-scheme reconstruction-kernel offset (see _weighted_core_radius),
-        # making the four schemes' core-growth directly comparable.
         rc_norm = rc / rc[0] if rc[0] > 0 else rc
         axes[0].plot(tau, xc / args.b0, **kw)
         axes[1].plot(tau, rc_norm, **kw)
@@ -225,7 +204,7 @@ def plot_dipole_case(args) -> int:
     axes[0].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
     axes[0].set_ylabel(r"Normalized core trajectory, $x_c / b_0$")
     axes[0].set_title("Core trajectory over time")
-    axes[0].set_ylim([0.0, 4.5])
+    axes[0].set_ylim([0.0, 5.5])
     axes[1].set_xlabel(r"Normalized time, $\nu t / b_0^2$")
     axes[1].set_ylabel(r"Normalized core radius, $r_c / r_{c,0}$")
     axes[1].set_title(r"Core radius over time")

@@ -39,8 +39,8 @@ from _common import (
 )
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
-A2_REF = REF_DIR / "a2_over_b02_vs_tau.csv"
-B_REF = REF_DIR / "b_over_b0_vs_tau.csv"
+A2_REF = REF_DIR / "a2_over_b02.csv"
+B_REF = REF_DIR / "b_over_b0_tau.csv"
 
 
 def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
@@ -196,14 +196,6 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
     ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
 
     # --- Core area σ² via system-moment decomposition (kernel-consistent) ---
-    # For two equal cores at ±sep/2 from the system centroid, the parallel-axis
-    # theorem gives  ⟨r²⟩_sys = ⟨r²⟩_core + (sep/2)²,  so
-    #     a²_core = ⟨r²⟩_sys − (sep/2)²,   σ² = a²_core / 2   (C&W convention).
-    # The same operator (ω-weighted 2nd moment about the system centroid over
-    # the ω>5%·max core region) is applied to every scheme's field — unlike a
-    # per-core Gaussian fit, which is biased by the scheme-dependent
-    # reconstruction-kernel width and whose r_max window collapses as the pair
-    # merges.  Robust through merger: as sep→0, σ² → ⟨r²⟩_sys/2 (merged core).
     core_mask = w > 0.05 * w.max()
     if core_mask.sum() >= 5:
         pts_c, w_c = xy[core_mask], w[core_mask]
@@ -304,7 +296,7 @@ def plot_merging_case(args) -> int:
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
-    tau_max = run_nu * args.total_time / (args.b0**2)
+    tau_max = 0.05 #run_nu * args.total_time / (args.b0**2)
 
     fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.68 / 2.54))
     fig.subplots_adjust(wspace=0.6, top=0.93, bottom=0.37, left=0.09, right=0.91)
@@ -338,13 +330,13 @@ def plot_merging_case(args) -> int:
         label=r"Cerretelli \& Williamson (2003)",
     )
     if THETA_REF.exists():
-        r = np.loadtxt(THETA_REF, delimiter=",", skiprows=1)
+        r = np.loadtxt(THETA_REF, delimiter=",")
         axes[0].plot(r[:, 0], r[:, 1], **ref_kw)
     if A2_REF.exists():
-        r = np.loadtxt(A2_REF, delimiter=",", skiprows=1)
+        r = np.loadtxt(A2_REF, delimiter=",")
         axes[1].plot(r[:, 0], r[:, 1], **ref_kw)
     if B_REF.exists():
-        r = np.loadtxt(B_REF, delimiter=",", skiprows=1)
+        r = np.loadtxt(B_REF, delimiter=",")
         axes[2].plot(r[:, 0], r[:, 1], **ref_kw)
 
     # ── Reference curves ─────────────────────────────────────────────────────
@@ -366,43 +358,24 @@ def plot_merging_case(args) -> int:
     dtheta_dtau_deg = Re_run / np.pi * corr * (180.0 / np.pi)
     theta_fc = np.cumsum(dtheta_dtau_deg * np.gradient(tau_fc))
     theta_fc -= theta_fc[0]
-    axes[0].plot(
-        tau_fc,
-        theta_fc,
-        color="0.55",
-        linestyle="--",
-        linewidth=0.9,
-        zorder=-1,
-        label=r"Finite-core theory",
-    )
-
-    # a²/b₀² panel: pure-diffusion reference in ML convention (slope=2, a² = a₀²+2τ)
-    tau_pd = np.linspace(0.0, tau_max, 200)
-    a0_sigma_sq = a0_sigma**2
-    axes[1].plot(
-        tau_pd,
-        a0_sigma_sq + 2.0 * tau_pd,
-        color="0.55",
-        linestyle="--",
-        linewidth=0.9,
-        zorder=-1,
-        label=r"Pure diffusion ($\sigma^2 = 2\nu t$)",
-    )
 
     axes[0].set_xlabel(r"$\nu t / b_0^2$")
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Rotation angle, $\theta$")
     axes[0].set_ylim([-10, 520])
+    axes[0].set_xlim([0, tau_max])
 
     axes[1].set_xlabel(r"$\nu t / b_0^2$")
     axes[1].set_ylabel(r"$\sigma^2 / b_0^2$")
     axes[1].set_title(r"Core radius, $\sigma^2 / b_0^2$")
     axes[1].set_ylim([0, 0.35])
+    axes[1].set_xlim([0, tau_max])
 
     axes[2].set_xlabel(r"$\nu t / b_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_title(r"Separation, $b / b_0$")
     axes[2].set_ylim([0, 1.5])
+    axes[2].set_xlim([0, tau_max])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0), fontsize=10)

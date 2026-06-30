@@ -185,6 +185,7 @@ def main():
         vlm_solver=vlm,
         backup_frequency=3,  # Save every 6 steps (90 deg) to see rotation
         logging_frequency=3,
+        timing_frequency=40,
         stretching=StretchingConfig.disabled(),  # Required for hover stability
         viscous=ViscousConfig.cs(),  # Core-spreading diffusion
         turbulence=TurbulenceConfig.dns(),

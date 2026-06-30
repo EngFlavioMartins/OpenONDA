@@ -171,6 +171,7 @@ def main():
         backup_directory=backup_dir,
         backup_frequency=10,
         logging_frequency=10,
+        timing_frequency=40,
         # Keep the wake bounded (≥10 cycles would otherwise grow without limit).
         stabilization=StabilizationConfig(
             remove_particles_by_bounds=[-8.0, separation + 1.0, -2.0, 2.0, -1.5, 1.5],

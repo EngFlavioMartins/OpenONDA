@@ -22,9 +22,9 @@ from pathlib import Path
 
 import numpy as np
 
-# ------------------------------------------------------------------
+# =========================================================
 # Ensure assets/ is importable when run from the tutorial root
-# ------------------------------------------------------------------
+# =========================================================
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
 
@@ -220,6 +220,7 @@ def main():
         solution_name=backup_dir,
         backup_frequency=25,
         logging_frequency=25,
+        timing_frequency=25,
         stabilization=StabilizationConfig(
             max_core_radius=2.0,
             remove_particles_by_bounds=[

@@ -546,17 +546,38 @@ class StretchingConfig:
 
     @staticmethod
     def classical(scheme: str = "RK2"):
-        """Classical scheme: dΓ/dt = (Γ·∇)u"""
+        """Classical scheme: dΓ/dt = (Γ·∇)u
+
+        Options for `scheme`:
+          - 'EULER': forward Euler (1st order)
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK4':   classical 4th-order Runge–Kutta
+        """
         return StretchingConfig(mode="CLASSICAL", scheme=scheme)
 
     @staticmethod
     def transposed(scheme: str = "RK2"):
-        """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ"""
+        """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ
+
+        Options for `scheme`:
+          - 'EULER': forward Euler (1st order)
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK4':   classical 4th-order Runge–Kutta
+        """
         return StretchingConfig(mode="TRANSPOSED", scheme=scheme)
 
     @staticmethod
     def mixed(scheme: str = "RK2"):
-        """Mixed/strain scheme: symmetric formulation"""
+        """Mixed/strain scheme: symmetric formulation
+
+        Options for `scheme`:
+          - 'EULER': forward Euler (1st order)
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK4':   classical 4th-order Runge–Kutta
+        """
         return StretchingConfig(mode="MIXED", scheme=scheme)
 
     @staticmethod
@@ -570,6 +591,12 @@ class StretchingConfig:
             Experimental — can be less stable than direct modes when dt is large
             or when the flow has strong velocity gradients, because ∇u is frozen
             at the beginning of the time step during RK sub-stepping.
+
+        Options for `scheme`:
+          - 'EULER': forward Euler (1st order)
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="GRADU", scheme=scheme)
 
@@ -585,6 +612,12 @@ class StretchingConfig:
         element's volume measure σ²·|Γ| is conserved.  Defaults (f=0, g=1/5)
         give c_r = 3/5, c_σ = 1/5 — the Alvarez & Ning values.  Like GRADU,
         this is a local O(N) operator on the pre-computed velocity gradients.
+
+        Options for `scheme`:
+          - 'EULER': forward Euler (1st order)
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="RVPM", scheme=scheme, rvpm_f=f, rvpm_g=g)
 
@@ -1178,6 +1211,12 @@ class SolverConfig:
     logging_frequency: int = 0
     """Log flow diagnostics every N time steps (0 = disabled)."""
 
+    timing_frequency: int = 0
+    """Print the cumulative runtime-profiling report every N time steps
+    (0 = disabled). The per-step time line is always shown; this only controls
+    the periodic ``RuntimeProfiler`` summary. ``Solver.print_timing()`` can be
+    called manually at any time regardless of this setting."""
+
     solution_name: str = "solution"
     """Name of the solution directory where output files will be saved."""
 
@@ -1296,6 +1335,9 @@ class SolverConfig:
         if self.logging_frequency < 0:
             raise ValueError("logging_frequency must be non-negative")
 
+        if self.timing_frequency < 0:
+            raise ValueError("timing_frequency must be non-negative")
+
         # Backup frequency validation
         if self.backup_frequency < 0:
             raise ValueError("backup_frequency must be non-negative")
@@ -1348,6 +1390,7 @@ class SolverConfig:
             "vlm": _as_dict(self.vlm) if self.vlm else None,
             "particles_kernel": self.particles_kernel,
             "logging_frequency": self.logging_frequency,
+            "timing_frequency": self.timing_frequency,
             "backup_frequency": self.backup_frequency,
             "backup_file_name": self.backup_file_name,
             "backup_directory": self.backup_directory,
@@ -1594,6 +1637,7 @@ class SolverState(BaseModel):
     backup_file_name: str = Field(default="", description="Optional backup file name infix")
     backup_directory: str = Field(default="solution", description="Output directory for backups")
     logging_frequency: int = Field(default=0, description="Log frequency in steps")
+    timing_frequency: int = Field(default=0, description="Runtime-profile report frequency in steps")
     backup_frequency: int = Field(default=0, description="Backup frequency in steps")
 
     # Runtime state (optional, set during execution)
@@ -1707,6 +1751,7 @@ class SolverState(BaseModel):
                 turbulence=turbulence,
                 particles_kernel=self.particles_kernel,
                 logging_frequency=self.logging_frequency,
+                timing_frequency=self.timing_frequency,
                 backup_frequency=self.backup_frequency,
                 backup_file_name=self.backup_file_name,
                 backup_directory=self.backup_directory,

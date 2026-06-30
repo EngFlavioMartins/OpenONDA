@@ -15,9 +15,16 @@ from pathlib import Path
 
 from source.solvers.VPM.utils import LambOseenVPM, LineSampler, SurfaceSampler
 from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
-from source.solvers.VPM.config.types import StretchingConfig, ViscousConfig
+from source.solvers.VPM.config.types import (
+    AdvectionConfig,
+    StabilizationConfig,
+    StretchingConfig,
+    ViscousConfig,
+)
 
-# ── Buckingham-Pi normalisation ──────────────────────────────────────────────
+# =========================================================
+# Buckingham-Pi normalisation
+# =========================================================
 # Dimensional parameters:
 #   $\Gamma$       = 1.0 m^2/s          circulation per vortex
 #   $\nu$          = 1/530 m^2/s        kinematic viscosity
@@ -55,19 +62,12 @@ TOTAL_TIME = 20.0
 LENGTH = 50  # vortex column span in z, in units of RC (default; override with --length)
 
 
-# ---------------------------------------------------------------------------
+# =========================================================
 # Shared utilities
-# ---------------------------------------------------------------------------
+# =========================================================
 def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spacing: float):
     if scheme in {"cs", "rwm"}:
         return ViscousConfig(scheme=scheme.upper(), viscosity=nu)
-    # GBD/DVH regenerate particles from a grid each step and prune weak nodes.
-    # The prune MUST keep the diffusing vorticity tail, otherwise the scheme
-    # truncates the spreading Gaussian every step and badly under-diffuses:
-    # measured nu_eff/nu for a budget threshold of 1e-2 → 0.15, 3e-3 → 0.47,
-    # 1e-4 → 0.95, 1e-5 → 0.99.  We therefore honour --viscous-threshold
-    # (default 1e-5) instead of a hard-coded aggressive value.  Gamma stays
-    # conserved at any threshold via conserve_pruned_moments.
     if scheme == "gbd":
         return ViscousConfig.gbd(
             h=spacing,
@@ -85,9 +85,9 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
         )
 
 
-# ---------------------------------------------------------------------------
+# =========================================================
 # Unified case runner
-# ---------------------------------------------------------------------------
+# =========================================================
 def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     """Run one viscous scheme for the case given by --gamma1/--gamma2."""
     gamma1, gamma2 = args.gamma1, args.gamma2
@@ -106,7 +106,6 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
 
     if gamma1 * gamma2 < 0:
         # Dipole: extra room in +x for self-propulsion
-        # After 40 s at U ≈ Γ/(2πb₀) ≈ 0.16 m/s the pair travels ≈ 6.4 m.
         bounds_x_max = domain_half + 8.0 * B0
     else:
         bounds_x_max = domain_half
@@ -164,13 +163,36 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         ),
     ]
 
+    # ================================================
+    # Time integration
+    # ================================================
+    advection = AdvectionConfig(scheme="RK2")
+    stretching = StretchingConfig.transposed(scheme="Euler")
+
+    # ================================================
+    # Core-size control (CS only)
+    # ================================================
+    stabilization = (
+        StabilizationConfig.conservative_remeshing(
+            frequency=args.cs_remesh_frequency,
+            spacing=spacing,
+            radius=2.5 * spacing,
+            conserve_impulse=True,
+        )
+        if scheme == "cs" and args.cs_remesh_frequency > 0
+        else None
+    )
+
     config = SolverConfig.dns_simulation(
         time_step_size=args.dt,
         viscous=build_viscous_config(scheme, nu, args, spacing),
-        stretching=StretchingConfig.transposed(),
+        advection=advection,
+        stretching=stretching,
+        stabilization=stabilization,
         processing_unit="GPU_VULKAN",
         backup_frequency=10,
         logging_frequency=10,
+        timing_frequency=50,
         backup_file_name=f"{case_type}_{scheme}",
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
@@ -180,7 +202,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     )
 
     solver = Solver(config=config)
-    solver.physics._resize_temp_fields(250_000)
+    solver.physics._resize_temp_fields(500_000)
 
     total_circ = v1_circ + v2_circ
     total_vel = v1_vel + v2_vel
@@ -209,9 +231,9 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     solver.reset_gpu()  # This should clean up the GPU
 
 
-# ---------------------------------------------------------------------------
+# =========================================================
 # Argument parsing
-# ---------------------------------------------------------------------------
+# =========================================================
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -265,7 +287,12 @@ def parse_args() -> argparse.Namespace:
         default=RE,
         help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
     )
-    # ── Viscous-scheme sweep parameters (defaults = historical tutorial values) ──
+    parser.add_argument(
+        "--cs-remesh-frequency",
+        type=int,
+        default=40,
+        help="CS only: steps between conservative remeshes that bound core growth ",
+    )
     parser.add_argument(
         "--viscous-threshold-mode",
         choices=["budget", "relative_max", "absolute"],
@@ -275,13 +302,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--viscous-threshold",
         type=float,
-        default=1e-4,
+        default=2e-4,
         help="DVH/GBD regen prune threshold. In 'budget' mode this is the "
-        "fractional Σ|Γ| allowed to drop per regen step; it must stay small or "
-        "the diffusing vorticity tail is truncated and the scheme under-diffuses "
-        "(measured nu_eff/nu: 1e-2→0.15, 3e-3→0.47, 1e-4→0.95, 1e-5→0.99). "
-        "Default 1e-4 balances ~5% diffusion error against particle count "
-        "(smaller thresholds keep more tail particles).",
+        "fractional Σ|Γ| allowed to drop per regen step;"
+        "(measured nu_eff/nu: 1e-2→0.15, 3e-3→0.47, 1e-4→0.95, 1e-5→0.99).",
     )
     parser.add_argument(
         "--dvh-rd-ratio", type=int, default=3, choices=[3, 4, 5], help="DVH R_d/h ratio."
@@ -297,10 +321,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.4,
         help="Particle/grid spacing as a fraction of the core radius rc (default 0.4, "
-        "i.e. a0/h=2.5). Spacing sets cost (particles ~1/h^3, DVH steps ~1/h^2 since "
-        "Dt_d~h^2) but NOT diffusion accuracy (that is the prune threshold); coarser "
-        "spacing keeps DVH tractable without changing nu_eff. Must stay < 0.5: the "
-        "anti-diffusion init needs avg_particle_radius(=2h) < rc, else a_sq -> 0.",
+        "i.e. a0/h=2.5).",
     )
     parser.add_argument(
         "--tag",
@@ -310,9 +331,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
+# =========================================================
 # Entry point
-# ---------------------------------------------------------------------------
+# =========================================================
 def main(args: argparse.Namespace) -> int:
     schemes = [s.strip().lower() for s in args.schemes.split(",") if s.strip()]
 

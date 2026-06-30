@@ -290,6 +290,7 @@ def main():
         stabilization=stabilization_cfg,
         backup_frequency=args.backup_frequency,
         logging_frequency=args.logging_frequency,
+        timing_frequency=40,
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),

@@ -13,11 +13,9 @@ License: GPL-3.0-or-later
 # =========================================================
 
 # Standard library imports
-from contextlib import contextmanager
 from dataclasses import replace
 import os
 from pathlib import Path
-import time
 
 # Third-party imports
 import numpy as np
@@ -36,6 +34,7 @@ from ..config.constants import MAX_PARTICLES, MAX_SOURCES
 from ..config.types import SetFlowModel, SolverConfig, StabilizationConfig
 from ..io.backup import BackupSystem
 from ..io.logging import Logging, print_openonda_header
+from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
 from ..physics.evaluation import ParticleFieldEvaluation
@@ -272,6 +271,7 @@ class Solver:
         self.particles_kernel = final_config.particles_kernel.upper()
         self.backup_frequency = final_config._backup_frequency_internal
         self.logging_frequency = final_config.logging_frequency
+        self.timing_frequency = getattr(final_config, "timing_frequency", 0)
         self.backup_file_name = final_config.backup_file_name
         self.backup_directory = getattr(
             final_config,
@@ -435,9 +435,10 @@ class Solver:
         }
         self._impulse_state: dict = VLMForceEvaluator.make_impulse_state()
         self._init_optional_solvers(final_config)
+        # Runtime wall-clock profiler. ``ti.sync`` makes the timing GPU-correct
+        # (Taichi kernels are asynchronous); it is shared across all backends.
+        self.profiler = RuntimeProfiler(sync=ti.sync)
         self.simulation_time = 0.0
-        self._step_start_time: float | None = None
-        self._run_start_time = time.time()
 
     def _setup_vlm_solver(self) -> None:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
@@ -585,34 +586,19 @@ class Solver:
 
     # CORE SIMULATION AND TIME STEPPING
 
-    @contextmanager
-    def _measure_time(self, timer_dict: dict, key: str):
+    def print_timing(self) -> None:
+        """Print the cumulative runtime-profiling report.
+
+        Reports, per solver stage, the number of calls, cumulative time, average
+        time per call, and percent of total wall-clock time, plus the measured /
+        unprofiled split and the per-step average.  Safe to call at any time
+        (e.g. after a run, or between steps).  Output is routed through the
+        central :class:`Logging` sink, so it matches the rest of the solver.
+
+        See :attr:`profiler` (:class:`RuntimeProfiler`) for the underlying
+        statistics and ``profiler.reset()`` to clear them.
         """
-        Context manager for synchronized GPU timing using ti.sync().
-
-        Because Taichi kernels are asynchronous, using time.time() around
-        kernel calls reports near-zero time. This context manager forces
-        synchronization before and after the timed code block to ensure
-        accurate profiling.
-
-        Works across all backends: Metal, Vulkan, CUDA.
-
-        Args:
-              timer_dict: Dictionary to store timing result
-              key: Key name for this timing measurement
-
-        Example:
-              >>> timing = {}
-              >>> with self._measure_time(timing, 'velocities'):
-              ...     self._update_velocities()
-              >>> print(f"Velocities took {timing['velocities']:.3f}s")
-        """
-        ti.sync()  # Wait for previous GPU work to complete
-        t_start = time.time()
-        yield
-        ti.sync()  # Wait for current GPU work to complete
-        t_end = time.time()
-        timer_dict[key] = t_end - t_start
+        self.profiler.report()
 
     def update_state(self) -> None:
         """
@@ -633,82 +619,85 @@ class Solver:
               RuntimeError: If simulation update fails
         """
 
-        # Start timing and advance step counter
+        # Advance step counter and print the step header.
         self._advance_time_step()
 
         # Update particle time step for cache invalidation
         self.particles.time_step = self.time_step
 
-        # Dictionary to store synchronized timing for each stage
-        timing = {}
+        # The profiler times the whole step (denominator for the report) and each
+        # named stage below; ``section`` synchronises the backend around the block.
+        with self.profiler.step():
+            # 0. VLM COUPLING (Shed wake particles from lifting surfaces)
+            if self.vlm_solver is not None:
+                with self.profiler.section("VLM coupling"):
+                    self._advance_vlm(self.time_step_size)
 
-        # 0. VLM COUPLING (Shed wake particles from lifting surfaces)
-        if self.vlm_solver is not None:
-            with self._measure_time(timing, "vlm"):
-                self._advance_vlm(self.time_step_size)
+            # 0.5 PANEL SOLVER COUPLING
+            if self.panel_solver is not None:
+                with self.profiler.section("Panel coupling"):
+                    self._advance_panel()
 
-        # 0.5 PANEL SOLVER COUPLING
-        if self.panel_solver is not None:
-            with self._measure_time(timing, "panel"):
-                self._advance_panel()
+            # 1. VELOCITY & GRADIENTS (At t_n)
+            _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
+            # Fuse u + ∇u into one tree build + one traversal when both are needed at
+            # the same t_n configuration and the velocity carries no contribution the
+            # fused kernel does not model (sources/panel) nor post-processing
+            # (velocity_override).  The fused pass writes particles.velocity = v(x_n),
+            # which the advection integrator then reuses as its first RK stage (k1).
+            _fuse_vel_grad = (
+                self.flow_model != "POTENTIAL"
+                and _adv != "NONE"
+                and self.num_sources == 0
+                and self.panel_solver is None
+                and getattr(self.physics, "velocity_override", None) is None
+            )
+            if _fuse_vel_grad:
+                with self.profiler.section("Velocity + gradients"):
+                    self._update_velocity_and_gradients()
+            else:
+                if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
+                    with self.profiler.section("Velocity"):
+                        self._update_velocities()
+                with self.profiler.section("Velocity gradients"):
+                    self._update_velocity_gradients()
 
-        # 1. VELOCITY & GRADIENTS (At t_n)
-        _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
-        # Fuse u + ∇u into one tree build + one traversal when both are needed at
-        # the same t_n configuration and the velocity carries no contribution the
-        # fused kernel does not model (sources/panel) nor post-processing
-        # (velocity_override).  The fused pass writes particles.velocity = v(x_n),
-        # which the advection integrator then reuses as its first RK stage (k1).
-        _fuse_vel_grad = (
-            self.flow_model != "POTENTIAL"
-            and _adv != "NONE"
-            and self.num_sources == 0
-            and self.panel_solver is None
-            and getattr(self.physics, "velocity_override", None) is None
-        )
-        if _fuse_vel_grad:
-            with self._measure_time(timing, "velocity_gradients"):
-                self._update_velocity_and_gradients()
-        else:
-            if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
-                with self._measure_time(timing, "velocities"):
-                    self._update_velocities()
-            with self._measure_time(timing, "velocity_gradients"):
-                self._update_velocity_gradients()
+            with self.profiler.section("LES update"):
+                self._update_LES_state()
 
-        with self._measure_time(timing, "les"):
-            self._update_LES_state()
+            # 2. CONVECTION (Advection x_n -> x_n+1)
+            with self.profiler.section("Advection"):
+                self._update_positions(precomputed_k1=_fuse_vel_grad)
 
-        # 2. CONVECTION (Advection x_n -> x_n+1)
-        with self._measure_time(timing, "positions"):
-            self._update_positions(precomputed_k1=_fuse_vel_grad)
+            # 3. DIFFUSION & STRETCHING (Update alpha)
+            with self.profiler.section("Stretching + diffusion"):
+                self._update_strength()
 
-        # 3. STRENGTH & DIFFUSION (Update alpha)
-        with self._measure_time(timing, "strengths"):
-            self._update_strength()
+            # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
+            _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
+            if _diag_due:
+                with self.profiler.section("Flow integrals"):
+                    self._update_all_flow_integrals()
+            elif self.vlm_solver is not None:
+                with self.profiler.section("VLM diagnostics"):
+                    self._record_vlm_diagnostics()
 
-        # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
-        _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
-        if _diag_due:
-            with self._measure_time(timing, "flow_integrals"):
-                self._update_all_flow_integrals()
-        elif self.vlm_solver is not None:
-            with self._measure_time(timing, "vlm_diagnostics"):
-                self._record_vlm_diagnostics()
+            # 4. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
+            with self.profiler.section("Adaptation"):
+                self._update_adaptation()
 
-        # 4. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
-        with self._measure_time(timing, "adaptation"):
-            self._update_adaptation()
+            # 5. DIAGNOSTICS & IO
+            with self.profiler.section("Backup / IO"):
+                self._backup_solution()
 
-        # 5. DIAGNOSTICS & IO
-        with self._measure_time(timing, "backup"):
-            self._backup_solution()
+        # Print this step's wall time (+ optional breakdown) and keep the
+        # public ``simulation_time`` mirror in sync with the profiler.
+        self.profiler.report_step()
+        self.simulation_time = self.profiler.wall_time
 
-        # Store detailed timing for diagnostics
-        self._detailed_timing = timing
-
-        # Print timing information
-        self._print_step_timing()
+        # Periodic cumulative runtime-profiling report.
+        if self.timing_frequency > 0 and self.time_step % self.timing_frequency == 0:
+            self.profiler.report()
 
         # Log flow diagnostics at specified frequency
         if self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0:
@@ -718,7 +707,9 @@ class Solver:
         """
         Advance the simulation time step and print current state info.
 
-        Handles initialization tasks on the first time step and starts timing.
+        The full-step wall time is measured by ``self.profiler`` (see
+        :meth:`update_state`); this method only advances the counter and prints
+        the step header.
 
         Note: Flow time is calculated as (time_step * time_step_size) and then
         rounded to 12 decimal places to eliminate floating point accumulation errors.
@@ -734,20 +725,6 @@ class Solver:
             f"\nTime-step: {self.time_step:d}   Flow time: {self.flow_time:0.2E} s",
             flush=True,
         )
-
-        # Start timing for this step
-        self._step_start_time = time.time()
-
-    def _print_step_timing(self) -> None:
-        """Calculate and print timing information for the completed step."""
-        step_elapsed = time.time() - self._step_start_time
-        self.simulation_time += step_elapsed
-
-        detailed = None
-        if os.environ.get("VPM_DETAILED_TIMING", "0") == "1" and hasattr(self, "_detailed_timing"):
-            detailed = self._detailed_timing
-
-        Logging.step_timing(step_elapsed, self.simulation_time, detailed)
 
     # Update flow diagnostics and log if enabled
     def log_diagnostics(self) -> None:
@@ -2199,11 +2176,11 @@ class Solver:
 
     def _update_strength(self, dt: float | None = None, announce: bool = True) -> None:
         """
-        Update particle vortex strengths via stretching and diffusion.
+        Update particle vortex strengths via diffusion and stretching.
 
         Order of operations:
-          1. Vortex stretching + strength-relaxation projection
-          2. Viscous diffusion
+          1. Viscous diffusion
+          2. Vortex stretching + strength-relaxation projection
         """
         if self.flow_model == "POTENTIAL":
             return
@@ -2220,8 +2197,8 @@ class Solver:
             Logging.message(f"Updating strengths via {mode_eq}")
 
         dt = self.time_step_size if dt is None else dt
-        self._apply_stretching_with_relaxation(dt)
         self._apply_viscous_diffusion(dt)
+        self._apply_stretching_with_relaxation(dt)
 
     def _effective_stretching_mode(self) -> str:
         """Mode actually used by the stretching step.
@@ -2401,7 +2378,7 @@ class Solver:
                 stats = self._splitter.split(self.particles, max_radius)
                 Logging.message(
                     f"(Stabilization) Splitting: {stats.particles_split} particles -> {stats.particles_created} children "
-                    f"({stats.particles_total_after} total, {stats.split_time:.2f}s)"
+                    f"({stats.particles_total_after} total)"
                 )
                 adaptation_performed = True
                 if stats.particles_split > 0:
