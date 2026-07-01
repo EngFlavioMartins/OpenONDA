@@ -123,7 +123,7 @@ def plot_rotor_performance(args) -> int:
     ax1.set_ylabel(r"Coefficient")
     ax1.set_xlim([0, rotations[-1]])
     ax1.set_ylim([0, 1.1])
-    ax1.legend(loc="best", ncol=2)
+    ax1.legend(loc="lower center", ncol=2)
     ax1.set_title(r"Rotor performance coefficients")
 
     # -- Cp vs Ct with theory envelope -----------------------------------
@@ -133,7 +133,6 @@ def plot_rotor_performance(args) -> int:
 
     ax2.plot(
         ct_theory, cp_theory,
-        label=r"Actuator-disk theory",
         zorder=0,
         **styles["theory"],
     )
@@ -149,7 +148,6 @@ def plot_rotor_performance(args) -> int:
             colors=segment_colors,
             linewidths=1.0,
             zorder=1,
-            label="VLM-VPM time trajectory",
         )
         ax2.add_collection(trajectory)
     else:
@@ -173,14 +171,23 @@ def plot_rotor_performance(args) -> int:
     ax2.scatter(
         [ct_betz], [cp_betz],
         color=s_ref["color"],
-        marker="*", s=24, zorder=2, label="Betz limit",
+        marker="*", s=24, zorder=2,
     )
 
     ax2.set_xlabel(r"$C_T$")
     ax2.set_ylabel(r"$C_P$")
     ax2.set_xlim([0, 1.0])
     ax2.set_ylim([0, max(0.7, float(np.nanmax(cp)) * 1.08, cp_betz * 1.08)])
-    ax2.legend(loc="lower center")
+
+    from matplotlib.lines import Line2D
+    ax2.legend(handles=[
+        Line2D([0], [0], color=trajectory_color, lw=1.0, marker='s',
+               markersize=3, label="VLM-VPM time trajectory"),
+        Line2D([0], [0], color="gray", ls="--", lw=1.0,
+               label="Actuator-disk theory"),
+        Line2D([0], [0], color="gray", marker='*', ms=6, lw=0,
+               label="Betz limit"),
+    ], loc="lower center")
     ax2.set_title(r"Operating trajectory")
 
     save_kw: dict = {"bbox_inches": "tight"}

@@ -37,20 +37,13 @@ def _read_vlm_spanwise(
     samples_dir: Path,
     surface: str,
     tail_fraction: float,
-    averaging_rotations: float,
-    omega: float,
-    hub_r: float,
-    tip_r: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """Return (r, |Gamma|, chord, Cl, last_times) averaged over the tail.
 
-    The blade rotates, so signed span coordinates are not stable across
-    snapshots.  The sampler already exports one row per physical span station;
-    group by that station identity and use ``abs(y)`` as the radial coordinate.
-    This avoids row-order artifacts when the blade azimuth changes.  The CSV
-    ``cl`` column is a fixed wind-axis quantity and is not a sectional
-    rotor-blade coefficient, so the plot reconstructs an equivalent sectional
-    coefficient from bound circulation.
+    Reads the per-station CSV, filters to the last ``tail_fraction`` of the
+    simulation timeline, and averages ``Gamma_abs`` and ``cl_from_gamma`` over
+    that window per physical span station.  ``r`` and ``chord_local`` are taken
+    from the first occurrence of each station (they are constant in time).
     """
     csv_path = samples_dir / f"vlm_spanwise_{surface}.csv"
     if not csv_path.exists():
@@ -60,56 +53,29 @@ def _read_vlm_spanwise(
     if df.empty:
         return None
 
-    if "half" in df.columns:
-        df = df[df["half"] == "orig"]
-
     t_max = float(df["time"].max())
-    if averaging_rotations > 0.0 and omega > 0.0:
-        t_cut = max(float(df["time"].min()), t_max - averaging_rotations * 2.0 * np.pi / omega)
-    else:
-        t_cut = t_max * (1.0 - tail_fraction)
-    tail = df[df["time"] >= t_cut].copy()
-    if "span_coordinate_abs" in tail.columns:
-        tail["r_abs"] = tail["span_coordinate_abs"]
-    elif "r" in tail.columns:
-        tail["r_abs"] = tail["r"].abs()
-    else:
-        tail["r_abs"] = tail["y"].abs()
+    t_cut = t_max * (1.0 - tail_fraction)
+    steady = df[df["time"] >= t_cut].copy()
 
-    if "Gamma_abs" not in tail.columns:
-        tail["Gamma_abs"] = tail["Gamma"].abs()
-
-    station_cols = [col for col in ("station_id", "wing_uid", "segment_uid", "span_index") if col in tail.columns]
-    agg_spec = {
-        "r": ("r_abs", "mean"),
-        "Gamma_abs": ("Gamma_abs", "mean"),
-        "chord_local": ("chord_local", "mean"),
-    }
-    if "cl_from_gamma" in tail.columns:
-        agg_spec["cl_from_gamma"] = ("cl_from_gamma", "mean")
-
-    if station_cols:
-        gp = (
-            tail.groupby(station_cols, sort=False)
-            .agg(**agg_spec)
-            .sort_values("r")
-            .reset_index(drop=True)
+    gp = (
+        steady.groupby("station_id", sort=False)
+        .agg(
+            r=("span_coordinate_abs", "first"),
+            Gamma=("Gamma_abs", "mean"),
+            chord=("chord_local", "first"),
+            cl=("cl_from_gamma", "mean"),
         )
-    else:
-        tail = tail.sort_values(["time", "r_abs"], kind="mergesort").copy()
-        tail["station"] = tail.groupby("time").cumcount()
-        gp = (
-            tail.groupby("station")
-            .agg(**agg_spec)
-            .sort_values("r")
-            .reset_index(drop=True)
-        )
+        .sort_values("r")
+        .reset_index(drop=True)
+    )
 
-    r = gp["r"].clip(lower=hub_r, upper=tip_r).to_numpy()
-    gamma = gp["Gamma_abs"].to_numpy()
-    chord = gp["chord_local"].to_numpy()
-    cl = gp["cl_from_gamma"].to_numpy() if "cl_from_gamma" in gp.columns else None
-    return r, gamma, chord, cl, tail["time"].to_numpy()
+    return (
+        gp["r"].to_numpy(),
+        gp["Gamma"].to_numpy(),
+        gp["chord"].to_numpy(),
+        gp["cl"].to_numpy(),
+        steady["time"].to_numpy(),
+    )
 
 
 # ==============================================================================
@@ -148,10 +114,6 @@ def plot_loading_validation(args) -> int:
         samples,
         surface="blade_0",
         tail_fraction=args.tail_fraction,
-        averaging_rotations=args.averaging_rotations,
-        omega=design.omega,
-        hub_r=design.hub_radius,
-        tip_r=design.radius,
     )
     if result is None:
         print(
@@ -160,12 +122,7 @@ def plot_loading_validation(args) -> int:
         )
         return 0
 
-    r_vlm, gamma_vlm, chord_vlm, cl_vlm_csv, _ = result
-    if cl_vlm_csv is not None:
-        cl_vlm = cl_vlm_csv
-    else:
-        vrel_geom = np.sqrt(design.freestream_velocity**2 + (design.omega * r_vlm) ** 2)
-        cl_vlm = 2.0 * gamma_vlm / (chord_vlm * vrel_geom)
+    r_vlm, gamma_vlm, chord_vlm, cl_vlm, _ = result
 
     # Normalised circulation reference: Γ* = Γ / (U∞ R)
     gamma_ref = design.freestream_velocity * design.radius
@@ -176,12 +133,14 @@ def plot_loading_validation(args) -> int:
     styles = build_rotor_style_map(colors)
     s_vpm = styles["vpm"]
     s_bem = styles["bem"]
+    s_ref = styles["reference"]
 
     fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.4 / 2.54), sharex=True)
     fig.subplots_adjust(wspace=0.27, left=0.12, right=0.96, top=0.87, bottom=0.27)
 
     # -- Gamma*(r/R) -----------------------------------------------------
     ax = axes[0]
+    ax.axvspan(0, 0.17, color=s_ref["color"], linewidth=0)
     vpm_kw = {
         "color": s_vpm["color"],
         "marker": s_vpm["marker"],
@@ -206,6 +165,7 @@ def plot_loading_validation(args) -> int:
 
     # -- Cl(r/R) ---------------------------------------------------------
     ax2 = axes[1]
+    ax2.axvspan(0, 0.17, color=s_ref["color"], linewidth=0)
     ax2.plot(r_vlm / design.radius, cl_vlm, **vpm_kw)
     ax2.plot(bem["r_over_R"], bem["Cl"], **bem_kw)
     ax2.set_xlabel(r"$r/R$")
@@ -244,14 +204,8 @@ def main() -> int:
     p.add_argument(
         "--tail-fraction",
         type=float,
-        default=0.25,
-        help="Fraction of simulation tail used for time-averaging (default 0.25 = last 25%%).",
-    )
-    p.add_argument(
-        "--averaging-rotations",
-        type=float,
-        default=3.0,
-        help="Number of final rotor rotations to average (default: 3).",
+        default=0.30,
+        help="Fraction of simulation tail used for time-averaging (default 0.30 = last 30%%).",
     )
     return plot_loading_validation(p.parse_args())
 
