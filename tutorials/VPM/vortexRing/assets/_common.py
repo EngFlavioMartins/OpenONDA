@@ -147,13 +147,15 @@ def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     """Return (t_star, Gamma_tube/Gamma_tube0) for a single vortex ring.
 
     The ring's physically relevant scalar circulation is inferred from the
-    length-integrated particle strength and impulse-derived ring radius:
+    length-integrated particle strength and orientation-independent ring
+    radius:
 
-        Gamma_tube = Σ|alpha_i| / (2*pi*R)
+        Gamma_tube = Σ|alpha_i| / (2*pi*R_cov)
 
-    This is the quantity used by the Saffman ring-speed model.  It avoids
-    mistaking a change in ring length or strength-vector alignment for a
-    change in tube circulation.
+    ``R_cov`` is computed from the two dominant eigenvalues of the
+    strength-weighted position covariance.  Unlike an impulse-x radius, it does
+    not report a false circulation spike when the ring tilts away from the
+    initial x-axis.
     """
     raw = load_ring_data(h5_files)
     if not raw:
@@ -173,6 +175,32 @@ def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     t_arr = t_arr[valid]
     gamma = gamma[valid]
     return t_arr, gamma / gamma[0]
+
+
+def load_vector_circulation_error(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
+    """Return drift in the conserved vector sum, normalized by initial strength.
+
+    The direct transposed stretching operator conserves ``Σ alpha``.  For a
+    closed vortex ring this vector sum is close to zero, so the drift is scaled
+    by the initial length-integrated strength ``Σ|alpha|`` rather than by
+    ``|Σ alpha_0|``.
+    """
+    raw = load_ring_data(h5_files)
+    if not raw:
+        return np.array([]), np.array([])
+
+    rid = min(raw.keys())
+    entries = raw[rid]
+    if not entries:
+        return np.array([]), np.array([])
+
+    t_arr = np.array([d["time"] for d in entries]) / T_REF
+    sum_vec = np.array([d["vector_circulation"] for d in entries])
+    strength0 = float(entries[0]["length_strength"])
+    if strength0 <= 0.0:
+        return np.array([]), np.array([])
+    err = np.linalg.norm(sum_vec - sum_vec[0], axis=1) / strength0
+    return t_arr, err
 
 
 def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
@@ -201,9 +229,22 @@ def _ring_props_from_h5(path) -> dict | None:
         total_length_strength = float(amag.sum())
         if total_length_strength <= 1e-30:
             continue
-        xc = float(np.dot(amag, pc[:, 0]) / total_length_strength)
-        impulse_x = float(0.5 * np.sum(pc[:, 1] * alpha[:, 2] - pc[:, 2] * alpha[:, 1]))
-        major_R = abs(2.0 * impulse_x / total_length_strength)
+        vector_circulation = alpha.sum(axis=0)
+        centroid = np.einsum("i,ij->j", amag, pc) / total_length_strength
+        xc = float(centroid[0])
+
+        impulse = 0.5 * np.sum(np.cross(pc, alpha), axis=0)
+        impulse_x = float(impulse[0])
+        impulse_norm = float(np.linalg.norm(impulse))
+        impulse_radius = 2.0 * impulse_norm / total_length_strength
+
+        # A circular ring has covariance eigenvalues (R^2/2, R^2/2, 0).
+        # Summing the two dominant eigenvalues therefore recovers R^2, while
+        # remaining independent of the ring normal direction.
+        centered = pc - centroid
+        cov = (centered * amag[:, None]).T @ centered / total_length_strength
+        eig = np.linalg.eigvalsh(cov)
+        major_R = float(np.sqrt(max(eig[-1] + eig[-2], 0.0)))
         gamma = (
             total_length_strength / (2.0 * np.pi * major_R) if major_R > 1e-12 else np.nan
         )
@@ -213,6 +254,10 @@ def _ring_props_from_h5(path) -> dict | None:
             major_R=major_R,
             gamma=gamma,
             impulse_x=impulse_x,
+            impulse_norm=impulse_norm,
+            impulse_radius=impulse_radius,
+            length_strength=total_length_strength,
+            vector_circulation=vector_circulation,
             strength_max=float(amag.max()),
         )
     return out
@@ -314,10 +359,18 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 # -- Figure helpers ------------------------------------------------------------
 
 
-def save_fig(fig, path, dpi: int = 400) -> None:
+def save_fig(
+    fig,
+    path,
+    dpi: int = 400,
+    tight_rect: tuple[float, float, float, float] | None = None,
+) -> None:
     import matplotlib.pyplot as plt
 
-    fig.tight_layout()
+    if tight_rect is None:
+        fig.tight_layout()
+    else:
+        fig.tight_layout(rect=tight_rect)
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=dpi, bbox_inches="tight")

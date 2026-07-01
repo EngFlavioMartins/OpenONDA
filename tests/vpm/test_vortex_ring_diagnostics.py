@@ -12,7 +12,15 @@ sys.path.insert(0, str(_ASSETS))
 from _common import load_length_integrated_strength, load_ring_circulation  # noqa: E402
 
 
-def _write_ring_snapshot(path: Path, *, radius: float, gamma: float, time: float, n: int = 96) -> None:
+def _write_ring_snapshot(
+    path: Path,
+    *,
+    radius: float,
+    gamma: float,
+    time: float,
+    n: int = 96,
+    rotation: np.ndarray | None = None,
+) -> None:
     theta = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
     pos = np.zeros((n, 3), dtype=np.float64)
     pos[:, 1] = radius * np.cos(theta)
@@ -23,6 +31,9 @@ def _write_ring_snapshot(path: Path, *, radius: float, gamma: float, time: float
     tangent[:, 1] = -np.sin(theta)
     tangent[:, 2] = np.cos(theta)
     circ = gamma * ds * tangent
+    if rotation is not None:
+        pos = pos @ rotation.T
+        circ = circ @ rotation.T
 
     with h5py.File(path, "w") as f:
         particles = f.create_group("particles")
@@ -45,4 +56,24 @@ def test_ring_circulation_diagnostic_is_radius_independent(tmp_path):
     _, tube_circulation = load_ring_circulation(files)
 
     np.testing.assert_allclose(length_strength, [1.0, 1.2], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(tube_circulation, [1.0, 1.0], rtol=1e-12, atol=1e-12)
+
+
+def test_ring_circulation_diagnostic_is_orientation_independent(tmp_path):
+    """Tilting the same ring must not create a false circulation spike."""
+    angle = np.deg2rad(80.0)
+    rotation = np.array(
+        [
+            [np.cos(angle), 0.0, np.sin(angle)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(angle), 0.0, np.cos(angle)],
+        ]
+    )
+    f0 = tmp_path / "vpm_ring_000000.h5"
+    f1 = tmp_path / "vpm_ring_000001.h5"
+    _write_ring_snapshot(f0, radius=1.0, gamma=np.pi, time=0.0)
+    _write_ring_snapshot(f1, radius=1.0, gamma=np.pi, time=1.0, rotation=rotation)
+
+    _, tube_circulation = load_ring_circulation([str(f0), str(f1)])
+
     np.testing.assert_allclose(tube_circulation, [1.0, 1.0], rtol=1e-12, atol=1e-12)

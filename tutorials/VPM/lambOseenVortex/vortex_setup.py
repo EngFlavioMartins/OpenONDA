@@ -179,13 +179,10 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         viscous=build_viscous_config(scheme, nu, args, spacing),
         advection=advection,
         stretching=stretching,
-        # CUDA (not Vulkan) on this NVIDIA card: Taichi's Vulkan backend caches a
-        # device buffer per distinct ndarray/to_numpy size and never frees them, so
-        # the per-step DVH/GBD host↔device churn (N changes every regen step) leaks
-        # VRAM until "Failed to allocate ext arr buffer" — independent of the
-        # instantaneous particle count.  The CUDA backend uses a caching memory pool
-        # that reuses freed blocks, so the working set stays bounded.
-        processing_unit="CUDA",
+        # Use the portable GPU path.  Variable-size host/device transfers are
+        # handled inside the solver with fixed-shape staging buffers, so this
+        # case should not depend on CUDA-specific allocator behavior.
+        processing_unit="GPU_VULKAN",
         backup_frequency=10,
         logging_frequency=10,
         timing_frequency=50,

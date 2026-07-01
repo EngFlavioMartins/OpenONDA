@@ -155,7 +155,7 @@ def plot_energy_enstrophy(args) -> int:
         ax.set_xlabel(r"$\nu t / a_0^2$")
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_0^2)$")
-    axes[0].axvspan(0.038 / (args.a0_over_b0**2), tau_lim, color="gray", alpha=0.25, linewidth=0.0, zorder=-10)
+    axes[0].axvspan(0.038 / (args.a0_over_b0**2), tau_lim, color="gray", linewidth=0.0, zorder=-10)
 
     handles: list = []
     for scheme in SCHEMES:

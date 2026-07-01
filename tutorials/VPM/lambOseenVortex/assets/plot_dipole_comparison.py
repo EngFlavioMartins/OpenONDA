@@ -172,7 +172,7 @@ def plot_dipole_case(args) -> int:
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 8.5 / 2.54))
+    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 8.0 / 2.54))
     fig.subplots_adjust(wspace=0.25, bottom=0.30, top=0.92, left=0.08, right=0.92)
 
     for scheme in SCHEMES:
@@ -202,12 +202,12 @@ def plot_dipole_case(args) -> int:
         axes[0].plot(tau, xc / args.b0, **plot_kw)
         axes[1].plot(tau, a_c_norm, **plot_kw)
 
-    axes[0].set_xlabel(r"Normalized time, $\nu t / a_0^2$")
-    axes[0].set_ylabel(r"Normalized core trajectory, $x_c / b_0$")
+    axes[0].set_xlabel(r"$\nu t / a_0^2$")
+    axes[0].set_ylabel(r"$x_c / b_0$")
     axes[0].set_title("Core trajectory over time")
     axes[0].set_ylim([0.0, 5.5])
-    axes[1].set_xlabel(r"Normalized time, $\nu t / a_0^2$")
-    axes[1].set_ylabel(r"Normalized core radius, $a_c / a_{c,0}$")
+    axes[1].set_xlabel(r"$\nu t / a_0^2$")
+    axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
     axes[1].set_ylim([0.9, 5.5])
 

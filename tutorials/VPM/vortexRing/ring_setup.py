@@ -42,8 +42,8 @@ def main():
         "--stretching",
         choices=["direct", "transposed", "mixed", "rvpm"],
         default="transposed",
-        help="Vortex stretching scheme for LES (ignored for DNS). 'rvpm' is the "
-        "Alvarez & Ning reformulated-VPM scheme (circulation-corrected, conserves σ²|Γ|).",
+        help="Vortex stretching scheme. 'rvpm' is the Alvarez & Ning "
+        "reformulated-VPM scheme (g=1/5, conserves σ²|Γ| for f=0).",
     )
     parser.add_argument(
         "--solution-dir",
@@ -97,7 +97,7 @@ def main():
         "direct": StretchingConfig.classical(scheme='Euler'),
         "transposed": StretchingConfig.transposed(scheme='Euler'),
         "mixed": StretchingConfig.mixed(scheme='Euler'),
-        "rvpm": StretchingConfig.rvpm(g=1/3),
+        "rvpm": StretchingConfig.rvpm(scheme='Euler'),
     }
     stretching = _stretching_map[args.stretching]
 
@@ -112,7 +112,7 @@ def main():
         viscous=ViscousConfig.cs(),
         backup_frequency=6,
         logging_frequency=6,
-        timing_frequency=40,
+        timing_frequency=36,
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),

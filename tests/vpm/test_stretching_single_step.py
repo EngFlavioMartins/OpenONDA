@@ -107,11 +107,10 @@ def test_two_parallel_vortices_2d_invariance(
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
-@pytest.mark.parametrize("mode", ["CLASSICAL", "TRANSPOSE", "MIXED"])
-def test_circulation_conservation(kernel_name, mode, backend, solver_for_backend):
+def test_transposed_circulation_conservation(kernel_name, backend, solver_for_backend):
     """
-    Stretching is a kinematic redistribution of vorticity; total circulation
-    ΣΓ must be conserved.
+    The transposed pairwise stretching operator is antisymmetric, so the vector
+    sum ΣΓ must be conserved.
 
     Failure → stretching scheme introduces a source/sink term.
     """
@@ -122,10 +121,37 @@ def test_circulation_conservation(kernel_name, mode, backend, solver_for_backend
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode=mode)
+    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode="TRANSPOSE")
     sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
     assert np.allclose(sum_after, sum_before, atol=1e-5), (
-        f"{kernel_name}/{backend}/{mode}: circulation not conserved: "
+        f"{kernel_name}/{backend}/TRANSPOSE: circulation not conserved: "
+        f"before={sum_before}, after={sum_after}"
+    )
+
+
+@pytest.mark.parametrize(
+    "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
+)
+@pytest.mark.parametrize("mode", ["CLASSICAL", "MIXED"])
+def test_nonconservative_stretching_changes_circulation(
+    kernel_name, mode, backend, solver_for_backend
+):
+    """
+    Classical and mixed stretching are not antisymmetric pairwise operators, so
+    they need not conserve ΣΓ for a generic 3-D particle arrangement.
+    """
+    solver = _solver_with_particles(
+        solver_for_backend,
+        kernel_name,
+        positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    )
+    sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
+    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode=mode)
+    sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
+    delta = np.linalg.norm(sum_after - sum_before)
+    assert delta > 1e-5, (
+        f"{kernel_name}/{backend}/{mode}: expected generic circulation drift, "
         f"before={sum_before}, after={sum_after}"
     )
 

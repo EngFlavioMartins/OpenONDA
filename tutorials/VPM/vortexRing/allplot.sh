@@ -46,8 +46,8 @@ echo "[2/3] Energy dissipation ..."
     --figures-dir  "$FIGURES_DIR"  \
     --dpi "$DPI"
 
-# ── Figure 3: Total circulation  Σ|Γᵢ|/Γ₀ vs normalized time (all variants) ──
-echo "[3/3] Total circulation (DNS + LES, all stretching variants) ..."
+# ── Figure 3: Tube circulation Γ/Γ₀ vs normalized time (all variants) ───────
+echo "[3/3] Tube circulation (DNS + LES, all stretching variants) ..."
 "$PYTHON" assets/plot_vortex_ring_circulation.py \
     --solution-dir "$SOLUTION_DIR" \
     --figures-dir  "$FIGURES_DIR"  \
