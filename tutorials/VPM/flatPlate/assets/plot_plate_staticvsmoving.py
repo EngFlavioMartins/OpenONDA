@@ -27,7 +27,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------------
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
@@ -42,7 +42,7 @@ args, _ = parser.parse_known_args()
 SOL_DIR = Path(args.solution_dir).resolve()
 FIG_DIR = Path(args.figures_dir).resolve()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-# ── Theme ─────────────────────────────────────────────────────────────────────
+# -- Theme ---------------------------------------------------------------------
 m = None
 if THEME_PATH.exists():
     spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
@@ -64,12 +64,12 @@ def _c(key):
     return m.COLORS[key] if m and hasattr(m, "COLORS") else None
 
 
-# ── Colours ───────────────────────────────────────────────────────────────────
+# -- Colours -------------------------------------------------------------------
 C_MOVING = _c("TUDcyan")
 C_STATIC = _c("vpm")
 C_THEORY = _c("ref")
 
-# ── Physical constants ────────────────────────────────────────────────────────
+# -- Physical constants --------------------------------------------------------
 AR = 10.0
 CHORD = 1.0
 U_INF = 10.0
@@ -78,7 +78,7 @@ a_3D = prandtl_a3D(AR)
 cm = 1 / 2.54
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def load_csv(name: str) -> pd.DataFrame | None:
@@ -89,14 +89,14 @@ def load_csv(name: str) -> pd.DataFrame | None:
     return pd.read_csv(csv)
 
 
-# ── Data ──────────────────────────────────────────────────────────────────────
+# -- Data ----------------------------------------------------------------------
 
 df_static = load_csv("exp_static_aoa05")
 df_moving = load_csv("exp_moving_aoa05")
 
 CL_ss = a_3D * np.sin(np.radians(5.0))
 
-# ── Figure ────────────────────────────────────────────────────────────────────
+# -- Figure --------------------------------------------------------------------
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12 * cm, 12 * cm), sharex=True)
 fig.subplots_adjust(hspace=0.1, left=0.12, right=0.95, bottom=0.12, top=0.92)
@@ -122,8 +122,8 @@ if df_moving is not None:
     phi = 1.0 - _A1 * np.exp(-_b1 * tau_th) - _A2 * np.exp(-_b2 * tau_th)
     CL_wag = CL_ss * phi
     CDi_wag = CL_wag**2 / (np.pi * AR)
-    ax1.plot(tau_th, CL_wag, "--", color=C_THEORY, lw=1.2, label=rf"Wagner (AR = {AR:.0f})")
-    ax2.plot(tau_th, CDi_wag, "--", color=C_THEORY, lw=1.2, label="Wagner")
+    ax1.plot(tau_th, CL_wag, "--", color="gray", lw=1.0, label=rf"Wagner (AR = {AR:.0f})")
+    ax2.plot(tau_th, CDi_wag, "--", color="gray", lw=1.0, label="Wagner")
 
 ax1.set_ylabel(r"Lift coefficient, $C_L$")
 ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$", fontsize=10)

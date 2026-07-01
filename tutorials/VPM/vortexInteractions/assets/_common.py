@@ -17,7 +17,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-# ── Directory layout ─────────────────────────────────────────────────────────
+# -- Directory layout ---------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/vortexInteractions/
 FIGURES_DIR = SCRIPT_DIR / "figures"
@@ -27,7 +27,7 @@ FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 CM = 1 / 2.54  # cm → inch
 
-# ── Physical constants  (match rings_setup.py) ────────────────────────────────
+# -- Physical constants  (match rings_setup.py) --------------------------------
 R0 = 1.0  # ring major radius [m]
 GAMMA = np.pi  # circulation [m²/s]
 CORE_RADIUS = 0.1  # initial core radius [m]
@@ -42,7 +42,7 @@ E_REF = GAMMA**2 * R0  # [m⁵/s²]  kinetic energy scale for a ring
 P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
 
 
-# ── Theme ─────────────────────────────────────────────────────────────────────
+# -- Theme ---------------------------------------------------------------------
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
@@ -69,7 +69,7 @@ def load_theme() -> tuple[dict[str, str], object | None]:
     return {}, theme
 
 
-# ── Argument parser ───────────────────────────────────────────────────────────
+# -- Argument parser -----------------------------------------------------------
 
 
 def build_arg_parser(description: str):
@@ -83,7 +83,7 @@ def build_arg_parser(description: str):
     return p
 
 
-# ── Case styling (shared across every comparison figure) ──────────────────────
+# -- Case styling (shared across every comparison figure) ----------------------
 # Encoding (kept identical in all figures so the legend reads the same):
 #   • LINESTYLE  → physics family   (leapfrog = solid, collide = dashed)
 #   • COLOUR     → numerical variant (stretching scheme / legacy rung)
@@ -367,7 +367,7 @@ def read_integrals(case_dir):
     return df
 
 
-# ── H5 helpers ────────────────────────────────────────────────────────────────
+# -- H5 helpers ----------------------------------------------------------------
 
 
 def load_total_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
@@ -460,7 +460,7 @@ def normalise_ring_data(raw: dict) -> dict:
     return out
 
 
-# ── Log-file parser ───────────────────────────────────────────────────────────
+# -- Log-file parser -----------------------------------------------------------
 
 
 def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -494,7 +494,7 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return t[valid], nuEns[valid], de[valid]
 
 
-# ── Figure helpers ────────────────────────────────────────────────────────────
+# -- Figure helpers ------------------------------------------------------------
 
 
 def save_fig(fig, path, dpi: int = 400) -> None:

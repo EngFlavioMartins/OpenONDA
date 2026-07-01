@@ -55,9 +55,9 @@ def main() -> None:
 
     ax.axhline(
         1.0,
-        color="black",
-        lw=0.6,
-        ls=":",
+        color="gray",
+        ls="--",
+        lw=1.0,
         label=r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0} = 1$",
     )
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")

@@ -8,13 +8,13 @@ under-diffuses relative to the others.
 
 Quadrant layout
 ---------------
-  x ≤ 0, y ≥ 0  │  x ≥ 0, y ≥ 0
-  ───────────────┼───────────────
-        GBD      │      CS
-  ───────────────┼───────────────
-        RWM     │     DVH-R
-  ───────────────┼───────────────
-  x ≤ 0, y ≤ 0  │  x ≥ 0, y ≤ 0
+  x <= 0, y >= 0  |  x >= 0, y >= 0
+  ----------------------------------
+        GBD       |      CS
+  ----------------------------------
+        RWM      |     DVH-R
+  ----------------------------------
+  x <= 0, y <= 0  |  x >= 0, y <= 0
 
 A single, shared colour bar per panel (velocity magnitude and z-vorticity)
 enables direct quantitative comparison across schemes.
@@ -148,7 +148,7 @@ def plot_surface_fields(
 ) -> int:
     load_theme()
 
-    # ── Load each scheme's surface data ──────────────────────────────────
+    # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
     for scheme, qid, *_ in _LAYOUT:
         vts, flow_time = _find_last_vts(solution_dir, scheme)
@@ -169,7 +169,7 @@ def plot_surface_fields(
         print("  [surface] no data found — nothing to plot.")
         return 1
 
-    # ── Shared normalisation limits ────────────────────────────────────
+    # -- Shared normalisation limits ------------------------------------
     v_max = max(d["vel_mag"].max() for d in datasets.values()) / _UC0
     w_max = max(d["vort_z"].max() for d in datasets.values()) / _WC0
     v_norm = mcolors.Normalize(vmin=0.0, vmax=v_max)
@@ -189,7 +189,7 @@ def plot_surface_fields(
     else:
         t_total = _T0 + first_data["step"] * dt
 
-    # ── Figure ─────────────────────────────────────────────────────────
+    # -- Figure --------------------------------------------------------
     fig, (ax_v, ax_w) = plt.subplots(
         1, 2, figsize=(12.8 / 2.54, 5.97 / 2.54), constrained_layout=True
     )

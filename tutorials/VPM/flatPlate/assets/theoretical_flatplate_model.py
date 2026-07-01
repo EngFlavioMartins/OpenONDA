@@ -40,7 +40,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-# ── Jones (1940) Wagner approximation constants ──────────────────
+# -- Jones (1940) Wagner approximation constants ------------------
 _A1, _b1 = 0.165, 0.0455  # slow exponential
 _A2, _b2 = 0.335, 0.300  # fast exponential
 # phi(0) = 1 - 0.165 - 0.335 = 0.5  (non-circulatory origin of added mass)
@@ -118,17 +118,17 @@ def compute_theoretical_cl(
     alpha_rad = np.radians(alpha_deg)
     t_ramp = 2.0 * tau_ramp * chord / U_inf  # ramp duration [s]
 
-    # ── 3D steady-state lift slope (Prandtl/Helmbold finite-AR) ──
+    # -- 3D steady-state lift slope (Prandtl/Helmbold finite-AR) --
     a_3D = (2.0 * np.pi) / (1.0 + 2.0 / AR)
     CL_ss = a_3D * np.sin(alpha_rad)
 
-    # ── Evaluation grid (avoid tau=0 to prevent log(0) issues) ───
+    # -- Evaluation grid (avoid tau=0 to prevent log(0) issues) ---
     tau = np.linspace(1e-4, tau_max, n_points)
 
-    # ── Component 1: circulatory (Duhamel–Wagner) ─────────────────
+    # -- Component 1: circulatory (Duhamel–Wagner) -----------------
     cl_circ = _duhamel_ramp_analytical(tau, tau_ramp, CL_ss)
 
-    # ── Component 2: added mass (non-circulatory) ─────────────────
+    # -- Component 2: added mass (non-circulatory) -----------------
     # Constant during ramp, zero after
     cl_am_ramp = (np.pi * chord / (2.0 * U_inf * t_ramp)) * np.sin(alpha_rad) * np.cos(alpha_rad)
     cl_am = np.where(tau <= tau_ramp, cl_am_ramp, 0.0)

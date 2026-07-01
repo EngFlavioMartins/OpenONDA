@@ -20,6 +20,14 @@ import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
 
+# Fixed host-side transfer shape for NumPy <-> Taichi ndarray kernels.
+#
+# Vulkan and Metal both route ndarray arguments through backend staging buffers.
+# Passing a fresh external array shape for every sampler/particle count can make
+# those staging allocations accumulate on Taichi 1.7.x.  Keep all hot transfers
+# at this shape and pass the active count separately.
+_HOST_TRANSFER_CHUNK_SIZE = 65536
+
 # =========================================================
 # NUMERICAL STABILITY CONSTANTS
 # =========================================================
@@ -96,6 +104,10 @@ class PhysicsBase:
         self._filtered_pos = None
         self._filtered_circ = None
         self._filtered_rad = None
+
+        self._host_vector_chunk = None
+        self._host_scalar_chunk = None
+        self._host_matrix_chunk = None
 
         # Initialize Taichi fields
         self._initialize_temp_fields()
@@ -229,19 +241,110 @@ class PhysicsBase:
         self._initialize_target_fields(new_size)
 
     @ti.kernel
-    def _extract_target_velocities_prefix(self, dest: ti.types.ndarray(), n: ti.i32):  # type: ignore
-        """Copy first n target velocities into a NumPy array."""
+    def _copy_ndarray_to_vec3_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n vec3 entries from a fixed-size NumPy buffer to a Taichi field."""
         for i in range(n):
             for k in ti.static(range(3)):
-                dest[i, k] = self.target_velocities[i][k]
+                dst[start_idx + i][k] = src[i, k]
+
+    @ti.kernel
+    def _copy_ndarray_to_scalar_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n scalar entries from a fixed-size NumPy buffer to a Taichi field."""
+        for i in range(n):
+            dst[start_idx + i] = src[i]
+
+    @ti.kernel
+    def _extract_vec3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n vec3 entries from a Taichi field to a fixed-size NumPy buffer."""
+        for i in range(n):
+            for k in ti.static(range(3)):
+                dst[i, k] = src[start_idx + i][k]
+
+    @ti.kernel
+    def _extract_mat3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n mat3 entries from a Taichi field to a fixed-size NumPy buffer."""
+        for i in range(n):
+            for j in ti.static(range(3)):
+                for k in ti.static(range(3)):
+                    dst[i, j, k] = src[start_idx + i][j, k]
+
+    def _ensure_host_transfer_buffers(self):
+        """Allocate reusable fixed-shape buffers for ndarray kernel transfers."""
+        if self._host_vector_chunk is not None:
+            return
+        self._host_vector_chunk = np.empty(
+            (_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=self.np_dtype
+        )
+        self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=self.np_dtype)
+        self._host_matrix_chunk = np.empty(
+            (_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=self.np_dtype
+        )
+
+    def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
+        """Upload a vec3 array through fixed-size ndarray chunks."""
+        arr = np.ascontiguousarray(src, dtype=self.np_dtype)
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
+
+    def _upload_scalar_array(self, src: np.ndarray, dst, n: int | None = None):
+        """Upload a scalar array through fixed-size ndarray chunks."""
+        arr = np.ascontiguousarray(src, dtype=self.np_dtype)
+        if arr.ndim != 1:
+            raise ValueError(f"Expected scalar array with shape (N,), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        self._ensure_host_transfer_buffers()
+        buf = self._host_scalar_chunk
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
+
+    def _download_vector_field(self, src, n: int) -> np.ndarray:
+        """Download the active vec3 prefix without exposing variable ndarray shapes."""
+        if n == 0:
+            return np.empty((0, 3), dtype=self.np_dtype)
+        out = np.empty((n, 3), dtype=self.np_dtype)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_vec3_field_prefix(src, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_matrix_field(self, src, n: int) -> np.ndarray:
+        """Download the active mat3 prefix without exposing variable ndarray shapes."""
+        if n == 0:
+            return np.empty((0, 3, 3), dtype=self.np_dtype)
+        out = np.empty((n, 3, 3), dtype=self.np_dtype)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_matrix_chunk
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_mat3_field_prefix(src, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
+        return out
 
     def extract_target_velocities(self, n: int) -> np.ndarray:
         """Return first n target velocities as a NumPy array (no full alloc transfer)."""
-        if n == 0:
-            return np.empty((0, 3), dtype=np.float32)
-        out = np.empty((n, 3), dtype=np.float32)
-        self._extract_target_velocities_prefix(out, n)
-        return out
+        return self._download_vector_field(self.target_velocities, n)
 
     def _resize_filtered_fields(self, N: int):
         """
@@ -493,8 +596,8 @@ class PhysicsBase:
         # Resize target fields if needed
         self._resize_target_fields(M)
 
-        # Copy target positions to GPU
-        self.target_positions.from_numpy(target_positions.astype(self.np_dtype))
+        # Copy target positions to GPU through fixed-shape external buffers.
+        self._upload_vector_array(target_positions, self.target_positions, M)
 
         # Compute velocities at targets
         self.compute_target_velocity_kernel(
@@ -508,7 +611,7 @@ class PhysicsBase:
             N,
         )
 
-        return self.target_velocities.to_numpy()[:M]
+        return self.extract_target_velocities(M)
 
     def _compute_target_velocities_taichi(
         self,
@@ -556,7 +659,7 @@ class PhysicsBase:
         )
 
         if target_velocities is None:
-            return out_field.to_numpy()[:M]
+            return self._download_vector_field(out_field, M)
         return None
 
     def _compute_target_velocities_filtered(
@@ -609,18 +712,14 @@ class PhysicsBase:
         self._resize_target_fields(M)
         self._resize_filtered_fields(N_filtered)
 
-        # Copy filtered data to cached Taichi fields.
-        # Vector fields (ti.Vector.field) accept smaller numpy arrays, but
-        # scalar fields (ti.field) require exact shape match. Pad the scalar
-        # array to the allocated field size so from_numpy succeeds.
-        self._filtered_pos.from_numpy(filtered_pos.astype(self.np_dtype))
-        self._filtered_circ.from_numpy(filtered_circ.astype(self.np_dtype))
-        rad_padded = np.zeros(self._filtered_field_size, dtype=self.np_dtype)
-        rad_padded[:N_filtered] = filtered_rad.astype(self.np_dtype)
-        self._filtered_rad.from_numpy(rad_padded)
+        # Copy filtered data through fixed-shape external buffers.  This avoids
+        # creating one backend staging allocation for every changing filtered N.
+        self._upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
+        self._upload_vector_array(filtered_circ, self._filtered_circ, N_filtered)
+        self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)
 
         # Copy target positions to GPU
-        self.target_positions.from_numpy(target_positions.astype(self.np_dtype))
+        self._upload_vector_array(target_positions, self.target_positions, M)
 
         # Select background velocity
         bg_vel = particles.velocity_background if include_freestream else self._zero_velocity
@@ -637,7 +736,7 @@ class PhysicsBase:
             N_filtered,
         )
 
-        return self.target_velocities.to_numpy()[:M]
+        return self.extract_target_velocities(M)
 
     def compute_velocities_from_arrays(
         self,
@@ -686,16 +785,13 @@ class PhysicsBase:
         self._resize_target_fields(M)
         self._resize_filtered_fields(N)
 
-        # Upload source data to GPU
-        self._filtered_pos.from_numpy(source_pos.astype(self.np_dtype))
-        self._filtered_circ.from_numpy(source_circ.astype(self.np_dtype))
-        # Scalar fields require exact shape match → pad to allocated size
-        rad_padded = np.zeros(self._filtered_field_size, dtype=self.np_dtype)
-        rad_padded[:N] = source_rad.astype(self.np_dtype)
-        self._filtered_rad.from_numpy(rad_padded)
+        # Upload source data to GPU through fixed-shape external buffers.
+        self._upload_vector_array(source_pos, self._filtered_pos, N)
+        self._upload_vector_array(source_circ, self._filtered_circ, N)
+        self._upload_scalar_array(source_rad, self._filtered_rad, N)
 
         # Upload target positions
-        self.target_positions.from_numpy(target_pos.astype(self.np_dtype))
+        self._upload_vector_array(target_pos, self.target_positions, M)
 
         # Call Taichi kernel (no background velocity)
         self.compute_target_velocity_kernel(
@@ -709,7 +805,7 @@ class PhysicsBase:
             N,
         )
 
-        return self.target_velocities.to_numpy()[:M]
+        return self.extract_target_velocities(M)
 
     def compute_vorticities(self, particles):
         """
@@ -752,7 +848,7 @@ class PhysicsBase:
         self._resize_target_fields(M)
 
         # Copy target positions to GPU
-        self.target_positions.from_numpy(target_positions.astype(self.np_dtype))
+        self._upload_vector_array(target_positions, self.target_positions, M)
 
         # Compute vorticities at targets
         self.compute_target_vorticity_kernel(
@@ -765,7 +861,7 @@ class PhysicsBase:
             N,
         )
 
-        return self.target_vorticities.to_numpy()[:M]
+        return self._download_vector_field(self.target_vorticities, M)
 
     def compute_velocity_gradients(self, particles):
         """
@@ -816,7 +912,7 @@ class PhysicsBase:
         self._resize_target_fields(M)
 
         # Copy target positions to GPU
-        self.target_positions.from_numpy(target_positions.astype(self.np_dtype))
+        self._upload_vector_array(target_positions, self.target_positions, M)
 
         # Compute velocity gradients at targets
         self.compute_target_velocity_gradient_kernel(
@@ -830,7 +926,7 @@ class PhysicsBase:
         )
 
         # Return flattened gradients
-        grads = self.target_velocity_gradients.to_numpy()[:M]
+        grads = self._download_matrix_field(self.target_velocity_gradients, M)
         return grads.reshape(M, 9)
 
     def compute_velocities_hierarchical(self, particles, theta: float = 0.5):

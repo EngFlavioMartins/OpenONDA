@@ -41,7 +41,7 @@ import pandas as pd
 from pathlib import Path
 from scipy.special import hankel2
 
-# ─── Jones (1940) Wagner approximation constants ─────────────────────────────
+# --- Jones (1940) Wagner approximation constants -----------------------------
 _A1, _b1 = 0.165, 0.0455  # slow exponential
 _A2, _b2 = 0.335, 0.300  # fast exponential
 # phi(tau=0) = 1 - 0.165 - 0.335 = 0.5  (correct starting value)
@@ -141,7 +141,7 @@ def impulsive_cl(
     CL_ss = a_3D * np.sin(alpha)
     t_ramp = 2.0 * tau_ramp * chord / U_inf  # sin² ramp duration [s]
 
-    # ── Circulatory component: Duhamel superposition ──────────────────
+    # -- Circulatory component: Duhamel superposition ------------------
     cl_circ = np.zeros_like(tau)
     mask_ramp = tau <= tau_ramp
     if mask_ramp.any():
@@ -152,7 +152,7 @@ def impulsive_cl(
         # Post-ramp: upper limit fixed at tau_ramp
         cl_circ[mask_post] = (CL_ss / tau_ramp) * _int_phi(tau[mask_post], tau_ramp)
 
-    # ── Added-mass component: ρ·(π/4)·c²·dU/dt ───────────────────────
+    # -- Added-mass component: ρ·(π/4)·c²·dU/dt -----------------------
     # For a thin flat plate: CL_am = (π·c)/(2·U²) · (dU/dt) · sin(α)·cos(α)
     # sin²-ramp: dU/dt = (π/2)·U_inf/t_ramp · sin(π·t/t_ramp)
     # Mapping to τ: t = τ·c/U_inf  → dU/dt = (π·U_inf)/(2·t_ramp) · sin(π·τ/tau_ramp)

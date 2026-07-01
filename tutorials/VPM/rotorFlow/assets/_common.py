@@ -6,8 +6,7 @@ import argparse
 import importlib.util
 from pathlib import Path
 
-CM = 1.0 / 2.54
-
+# -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
@@ -50,37 +49,37 @@ def build_arg_parser(description: str) -> argparse.ArgumentParser:
     return p
 
 
-def rotor_styles(colors: dict[str, str]) -> dict[str, dict[str, object]]:
-    """Return consistent line styles for rotorFlow figures."""
+def build_rotor_style_map(colors: dict[str, str]) -> dict[str, dict[str, object]]:
+    """Map rotor-data sources to plot style dicts (color, marker, linestyle, label)."""
+    gray_kw = {"color": "gray", "linestyle": "--", "linewidth": 1.0}
     return {
         "vpm": {
             "color": colors.get("vpm", "#5C3D9B"),
             "marker": "o",
-            "markersize": 2.2,
+            "markersize": 1.5,
             "linewidth": 1.0,
+            "label": "VLM-VPM",
         },
-        "bem": {
-            "color": colors.get("hybrid", "#772953"),
-            "linestyle": "--",
+        "bem": dict(gray_kw, label="BEM"),
+        "theory": dict(gray_kw),
+        "reference": dict(gray_kw),
+        "ct": {
+            "color": colors.get("vpm", "#5C3D9B"),
+            "marker": "o",
+            "markersize": 1.5,
             "linewidth": 1.0,
+            "label": r"$C_T$",
         },
-        "theory": {
-            "color": colors.get("DarkText", "#2E3D46"),
-            "linestyle": "-",
+        "cp": {
+            "color": colors.get("vpm", "#5C3D9B"),
+            "marker": "s",
+            "markersize": 1.5,
             "linewidth": 1.0,
+            "label": r"$C_P$",
         },
-        "reference": {
-            "color": colors.get("RefGray", "#6E8898"),
-            "linestyle": ":",
-            "linewidth": 0.8,
-        },
+        "plane_0": {"color": colors.get("vpm", "#5C3D9B"), "linewidth": 1.0},
+        "plane_1": {"color": colors.get("vpm", "#5C3D9B"), "linewidth": 1.0},
+        "plane_2": {"color": colors.get("vpm", "#5C3D9B"), "linewidth": 1.0},
+        "plane_3": {"color": colors.get("vpm", "#5C3D9B"), "linewidth": 1.0},
+        "plane_4": {"color": colors.get("vpm", "#5C3D9B"), "linewidth": 1.0},
     }
-
-
-def save_figure(fig, path: Path, dpi: int, fmt: str) -> None:
-    """Save a matplotlib figure with repository-standard export settings."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    save_kw: dict[str, object] = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = dpi
-    fig.savefig(path, **save_kw)

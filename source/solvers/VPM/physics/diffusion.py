@@ -822,7 +822,7 @@ class _GridDiffusionMixin:
             return None
 
         try:
-            zone_id_np = particles.zone_id.to_numpy()[:N].copy()
+            zone_id_np = particles.zone_id_cpu().copy()
         except (AttributeError, Exception):
             zone_id_np = None
         group_id_np = particles.group_id_cpu()[:N].copy()
@@ -834,7 +834,7 @@ class _GridDiffusionMixin:
         # The scattered ν_t is inherited by regenerated particles so that ν_t
         # survives the rebuild and reaches backup (LES recomputes it next step
         # anyway, but carrying it keeps the backed-up field faithful).
-        nu_t_np = particles.viscosity_turbulent.to_numpy()[:N]
+        nu_t_np = particles.viscosity_turbulent_cpu()
 
         # ── Grid setup ────────────────────────────────────────────────────────
         # Use a fixed grid origin when the domain was pre-configured, to avoid
@@ -1186,7 +1186,7 @@ class _GridDiffusionMixin:
             return None
 
         try:
-            zone_id_np = particles.zone_id.to_numpy()[:N].copy()
+            zone_id_np = particles.zone_id_cpu().copy()
         except (AttributeError, Exception):
             zone_id_np = None
         group_id_np = particles.group_id_cpu()[:N].copy()
@@ -1195,7 +1195,7 @@ class _GridDiffusionMixin:
         circ_np = particles.circulation_cpu()
 
         # ── LES: per-particle ν_t to carry through regen (Bug B) ─────────────
-        nu_t_np = particles.viscosity_turbulent.to_numpy()[:N]
+        nu_t_np = particles.viscosity_turbulent_cpu()
 
         # ── Grid setup ────────────────────────────────────────────────────────
         # Use a fixed grid origin when the domain was pre-configured, to avoid

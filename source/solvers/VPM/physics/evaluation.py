@@ -18,6 +18,8 @@ from ..config.constants import (
     MAX_PARTICLES,
 )
 
+_HOST_TRANSFER_CHUNK_SIZE = 65536
+
 @ti.data_oriented
 class ParticleFieldEvaluation:
     """
@@ -53,6 +55,7 @@ class ParticleFieldEvaluation:
 
         # Initialize GPU fields for storing results
         self._initialize_result_fields()
+        self._host_scalar_chunk = None
 
         # Initialize time tracking for energy dissipation rate
         self._flow_time_history = []  # Store (time, energy) pairs
@@ -62,6 +65,25 @@ class ParticleFieldEvaluation:
 
         # Define Taichi kernels
         self._define_taichi_kernels()
+
+    @ti.kernel
+    def _extract_scalar_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[i] = src[start_idx + i]
+
+    def _download_scalar_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0,), dtype=np.float32)
+        if self._host_scalar_chunk is None:
+            self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
+        out = np.empty((n,), dtype=np.float32)
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_scalar_field_prefix(src, self._host_scalar_chunk, lo, count)
+            out[lo : lo + count] = self._host_scalar_chunk[:count]
+        return out
 
     def _initialize_result_fields(self):
         """Initialize Taichi fields for storing diagnostic results on GPU."""
@@ -702,7 +724,7 @@ class ParticleFieldEvaluation:
             self.particle_kinetic_energy,
         )
 
-        return self.particle_kinetic_energy.to_numpy()[:N]
+        return self._download_scalar_field(self.particle_kinetic_energy, N)
 
     def compute_particles_helicity(self, particles) -> np.ndarray:
         """
@@ -727,7 +749,7 @@ class ParticleFieldEvaluation:
             particles.position, particles.circulation, particles.radius, self.particle_helicity
         )
 
-        return self.particle_helicity.to_numpy()[:N]
+        return self._download_scalar_field(self.particle_helicity, N)
 
     def compute_particles_enstrophy(self, particles) -> np.ndarray:
         """
@@ -752,7 +774,7 @@ class ParticleFieldEvaluation:
             particles.position, particles.circulation, particles.radius, self.particle_enstrophy
         )
 
-        return self.particle_enstrophy.to_numpy()[:N]
+        return self._download_scalar_field(self.particle_enstrophy, N)
 
     def reconstruct_vorticity(self, particles, out_field) -> None:
         """Write the kernel-reconstructed vorticity ω_h into a Taichi Vector field.

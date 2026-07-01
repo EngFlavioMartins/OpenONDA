@@ -462,8 +462,10 @@ class PressurePhysics(PhysicsBase):
         # Ensure fields are sized correctly
         self._resize_pressure_fields(max(M, N))
 
-        # Copy target positions to GPU
-        self.pressure_target_positions.from_numpy(target_positions.astype(self.np_dtype))
+        # Copy target positions through fixed-shape external buffers so
+        # diagnostics with changing sample counts do not accumulate staging
+        # allocations on Vulkan/Metal.
+        self._upload_vector_array(target_positions, self.pressure_target_positions, M)
 
         # Compute stretching rate: dα/dt = (∇u)ᵀ · α on GPU
         self._compute_stretching_rate_kernel(
@@ -483,7 +485,7 @@ class PressurePhysics(PhysicsBase):
             N,
         )
 
-        return self.temporal_term_field.to_numpy()[:M].astype(np.float64)
+        return self._download_vector_field(self.temporal_term_field, M).astype(np.float64)
 
     @ti.kernel
     def _compute_stretching_rate_kernel(

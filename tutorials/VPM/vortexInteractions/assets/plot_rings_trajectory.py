@@ -27,7 +27,6 @@ sys.path.insert(0, str(ASSETS_DIR))
 from _common import CM, case_style, discover_cases, load_theme, save_fig  # noqa: E402
 
 REFERENCE = ASSETS_DIR / "references" / "leapfrogging_lbm_trajectory.csv"
-C_REF = "#505050"
 
 
 def _step(path: Path) -> int:
@@ -67,7 +66,7 @@ def plot_reference(ax) -> bool:
     reference = pd.read_csv(REFERENCE)
     for ring in sorted(reference["ring"].unique()):
         data = reference[reference["ring"] == ring]
-        ax.plot(data["x_over_R0"], data["R_over_R0"], color=C_REF, linestyle=":", lw=1.0)
+        ax.plot(data["x_over_R0"], data["R_over_R0"], color="gray", linestyle="--", lw=1.0)
     return True
 
 
@@ -102,7 +101,7 @@ def main() -> None:
 
     if has_ref:
         legend_handles.append(
-            Line2D([0], [0], color=C_REF, linestyle=":", lw=1.0, label="LBM reference")
+            Line2D([0], [0], color="gray", linestyle="--", lw=1.0, label="LBM reference")
         )
 
     ax.set_xlabel(r"Axial position, $x/R_0$")

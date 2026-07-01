@@ -77,14 +77,14 @@ def main():
     out_dir = Path(args.output_dir) if args.output_dir else Path(f"solution/{args.name}/samples")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Surface geometry (body frame: plate tilted at AoA) ────────────────────
+    # -- Surface geometry (body frame: plate tilted at AoA) --------------------
     surface_file = str(_CASE_DIR / "assets" / "flat_plate_surface.json")
     surface = create_flat_plate(
         chord=c, span=args.span, alpha=args.aoa, n_chord=args.panels_chord, n_span=args.panels_span
     )
     save_surface(surface, surface_file)
 
-    # ── VLM solver ────────────────────────────────────────────────────────────
+    # -- VLM solver ------------------------------------------------------------
     U_ref = np.array([U, 0.0, 0.0])
     t_ramp = 2.0 * args.tau_ramp * c / U
     kin = SmoothRampVLM(U_final=[-U, 0.0, 0.0], acceleration_time=t_ramp)
@@ -101,7 +101,7 @@ def main():
     )
     vlm.add_surface(surface_file, kinematics=kin)
 
-    # ── Minimal Solver (initialises ti.init + VPM physics) ───────────────────
+    # -- Minimal Solver (initialises ti.init + VPM physics) -------------------
     _tmp_dir = "/tmp/diag_downwash"
     Path(_tmp_dir).mkdir(parents=True, exist_ok=True)
     solver = Solver(
@@ -124,7 +124,7 @@ def main():
         spanwise_spacing_region="end",
     )
 
-    # ── Plate displacement at final step (pure translation, sin²-ramp) ────────
+    # -- Plate displacement at final step (pure translation, sin²-ramp) --------
     # v(t) = 0.5*U*(1 - cos(π*t/t_ramp)) for t ≤ t_ramp, then U constant.
     # integral → dist_ramp = 0.5*U*t_ramp; dist_cruise = U*(t_total - t_ramp).
     t_total = args.steps * dt
@@ -135,7 +135,7 @@ def main():
     displacement = np.array([-dist, 0.0, 0.0])
     print(f"\n  Plate displacement at step {args.steps}: dx={displacement[0]:.3f} m")
 
-    # ── Collocation points and normals at final plate position ────────────────
+    # -- Collocation points and normals at final plate position ----------------
     n_p = vlm.lattice.num_panels
     coll_init = vlm.lattice.collocation.to_numpy()[:n_p]  # (N, 3) — initial geometry
     coll_final = coll_init + displacement  # translated to step-306 position
@@ -146,17 +146,17 @@ def main():
         f"  Collocation x range at final step: [{coll_final[:, 0].min():.2f}, {coll_final[:, 0].max():.2f}]"
     )
 
-    # ── Load final particles ──────────────────────────────────────────────────
+    # -- Load final particles --------------------------------------------------
     BackupSystem._load_numerical_data(solver, h5_path)
     n_part = len(solver.particles)
     print(f"  Particles loaded: {n_part}")
 
-    # ── VPM-induced velocity at collocation points (no freestream) ───────────
+    # -- VPM-induced velocity at collocation points (no freestream) -----------
     v_vpm = solver.compute_target_velocities(coll_final, include_freestream=False)
     v_mag = np.linalg.norm(v_vpm, axis=1)
     print(f"  v_VPM: min={v_mag.min():.4f}  max={v_mag.max():.4f}  mean={v_mag.mean():.4f}")
 
-    # ── Per-station downwash w_j = V_VPM · n_hat ─────────────────────────────
+    # -- Per-station downwash w_j = V_VPM · n_hat -----------------------------
     blocks = VLMLoadingDistribution.build_surface_grid_index(vlm, "flat_plate")
     rows: list[dict] = []
     for blk in blocks:
@@ -182,7 +182,7 @@ def main():
     y_sta = orig["y"].to_numpy()
     w_VPM = orig["w_VPM"].to_numpy()
 
-    # ── Glauert reference ─────────────────────────────────────────────────────
+    # -- Glauert reference -----------------------------------------------------
     df_ll = liftingline_circulation(
         y_sta, b=args.span, c=c, alpha_rad=math.radians(args.aoa), U_inf=U
     )
@@ -194,9 +194,9 @@ def main():
     alpha_i_VPM = np.degrees(np.arctan2(-w_VPM, U))
     ratio = np.where(np.abs(alpha_i_req) > 0.01, alpha_i_VPM / alpha_i_req, float("nan"))
 
-    # ── Print table ───────────────────────────────────────────────────────────
+    # -- Print table -----------------------------------------------------------
     print(
-        f"\n  ─── D4: VPM→VLM induced downwash per station (step {args.steps}, τ={(args.steps * dt * U / c):.1f}c) ───"
+        f"\n  --- D4: VPM→VLM induced downwash per station (step {args.steps}, τ={(args.steps * dt * U / c):.1f}c) ---"
     )
     print(
         f"  {'j':>3}  {'y/b':>6}  {'w_VPM[m/s]':>11}  {'α_VPM[°]':>9}  {'α_req[°]':>9}  {'ratio':>6}"
@@ -208,7 +208,7 @@ def main():
             f"{alpha_i_VPM[k]:>9.3f}  {alpha_i_req[k]:>9.3f}  {ratio[k]:>6.3f}"
         )
 
-    # ── Save CSV ──────────────────────────────────────────────────────────────
+    # -- Save CSV --------------------------------------------------------------
     df_out = orig.copy()
     df_out["y_over_b"] = 2.0 * df_out["y"] / args.span
     df_out["alpha_i_VPM_deg"] = alpha_i_VPM
@@ -218,7 +218,7 @@ def main():
     df_out.to_csv(dw_csv, index=False)
     print(f"\n  Saved: {dw_csv}\n")
 
-    # ── Summary ───────────────────────────────────────────────────────────────
+    # -- Summary ---------------------------------------------------------------
     root_ratio = ratio[0]
     tip_ratio = ratio[-1]
     print(f"  delivery_ratio: root={root_ratio:.3f}  tip={tip_ratio:.3f}")

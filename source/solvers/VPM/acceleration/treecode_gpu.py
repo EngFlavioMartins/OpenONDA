@@ -35,6 +35,8 @@ import numpy as np
 import taichi as ti
 import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 
+_HOST_TRANSFER_CHUNK_SIZE = 65536
+
 
 @ti.data_oriented
 class TaichiTreecode:
@@ -179,6 +181,12 @@ class TaichiTreecode:
         self.MIN_R_SIGMA_GRADIENT = 0.5
         self.DEFAULT_CUTOFF_RADIUS_FACTOR = 15.0
 
+        self._host_vector_chunk = None
+        self._host_scalar_chunk = None
+        self._host_matrix_chunk = None
+        self._host_u32_chunk = None
+        self._host_i32_chunk = None
+
         self.set_kernel_type(self.kernel_type)
 
     def set_kernel_type(self, kernel_type: str) -> None:
@@ -251,19 +259,141 @@ class TaichiTreecode:
 
         self.build_time = time.perf_counter() - t_start
 
+    @ti.kernel
+    def _copy_ndarray_to_vec3_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for k in ti.static(range(3)):
+                dst[start_idx + i][k] = src[i, k]
+
+    @ti.kernel
+    def _copy_ndarray_to_scalar_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[start_idx + i] = src[i]
+
+    @ti.kernel
+    def _copy_ndarray_to_i32_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[start_idx + i] = src[i]
+
+    @ti.kernel
+    def _extract_vec3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for k in ti.static(range(3)):
+                dst[i, k] = src[start_idx + i][k]
+
+    @ti.kernel
+    def _extract_mat3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for j in ti.static(range(3)):
+                for k in ti.static(range(3)):
+                    dst[i, j, k] = src[start_idx + i][j, k]
+
+    @ti.kernel
+    def _extract_u32_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[i] = src[start_idx + i]
+
+    def _ensure_host_transfer_buffers(self):
+        if self._host_vector_chunk is not None:
+            return
+        self._host_vector_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=np.float32)
+        self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
+        self._host_matrix_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=np.float32)
+        self._host_u32_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.uint32)
+        self._host_i32_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.int32)
+
+    def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
+
+    def _upload_scalar_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.float32)
+        if arr.ndim != 1:
+            raise ValueError(f"Expected scalar array with shape (N,), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        self._ensure_host_transfer_buffers()
+        buf = self._host_scalar_chunk
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
+
+    def _upload_i32_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.int32)
+        if arr.ndim != 1:
+            raise ValueError(f"Expected int array with shape (N,), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        self._ensure_host_transfer_buffers()
+        buf = self._host_i32_chunk
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_i32_field(buf, dst, lo, n_chunk)
+
+    def _download_vector_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0, 3), dtype=np.float32)
+        out = np.empty((n, 3), dtype=np.float32)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_vec3_field_prefix(src, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_matrix_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0, 3, 3), dtype=np.float32)
+        out = np.empty((n, 3, 3), dtype=np.float32)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_matrix_chunk
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_mat3_field_prefix(src, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_u32_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0,), dtype=np.uint32)
+        out = np.empty((n,), dtype=np.uint32)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_u32_chunk
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_u32_field_prefix(src, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
+        return out
+
     def _upload_numpy_particles(self, pos_np, strg_np, rad_np, N):
         """Upload NumPy particle arrays to GPU fields."""
-        def pad_2d(arr):
-            padded = np.zeros((self.max_particles, 3), dtype=np.float32)
-            padded[:N] = arr.astype(np.float32)
-            return padded
-        def pad_1d(arr):
-            padded = np.zeros(self.max_particles, dtype=np.float32)
-            padded[:N] = arr.astype(np.float32)
-            return padded
-        self.positions.from_numpy(pad_2d(pos_np))
-        self.circulations.from_numpy(pad_2d(strg_np))
-        self.radii.from_numpy(pad_1d(rad_np))
+        self._upload_vector_array(pos_np, self.positions, N)
+        self._upload_vector_array(strg_np, self.circulations, N)
+        self._upload_scalar_array(rad_np, self.radii, N)
         ti.sync()
 
     @ti.kernel
@@ -400,11 +530,11 @@ class TaichiTreecode:
 
     def _cpu_argsort(self, N):
         """CPU fallback: argsort Morton keys → sorted_indices (host round-trip)."""
-        morton_np = self.morton_codes.to_numpy()[:N]
+        morton_np = self._download_u32_field(self.morton_codes, N)
         sorted_idx = np.argsort(morton_np, kind="mergesort")
         padded = np.full(self.max_particles, -1, dtype=np.int32)
         padded[:N] = sorted_idx.astype(np.int32)
-        self.sorted_indices.from_numpy(padded)
+        self._upload_i32_array(padded, self.sorted_indices, self.max_particles)
 
     def _sort_morton(self, N):
         """Morton sort → sorted_indices, on-device when the backend supports it."""
@@ -419,7 +549,7 @@ class TaichiTreecode:
                     # One-time correctness gate: catch a backend whose
                     # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
                     # back permanently to the proven CPU argsort.
-                    keys = self._sort_keys.to_numpy()[:N]
+                    keys = self._download_u32_field(self._sort_keys, N)
                     if N > 1 and bool(np.any(np.diff(keys.astype(np.int64)) < 0)):
                         self._gpu_sort = False
                     self._sort_validated = True
@@ -1071,7 +1201,7 @@ class TaichiTreecode:
     def compute_velocities(self, background_velocity: np.ndarray | None = None) -> np.ndarray:
         self.compute_velocities_gpu(background_velocity)
         N = self.n_particles[None]
-        return self.velocities.to_numpy()[:N]
+        return self._download_vector_field(self.velocities, N)
 
     def compute_velocity_gradients_gpu(self) -> None:
         """Run the velocity-gradient traversal on-device; results stay in
@@ -1084,8 +1214,8 @@ class TaichiTreecode:
     def compute_velocity_gradients(self) -> tuple:
         self.compute_velocity_gradients_gpu()
         N = self.n_particles[None]
-        grads = self.velocity_gradients.to_numpy()[:N]
-        strains = self.strain_rates.to_numpy()[:N]
+        grads = self._download_matrix_field(self.velocity_gradients, N)
+        strains = self._download_matrix_field(self.strain_rates, N)
         return grads, strains
 
     def compute_velocity_and_gradient_gpu(self, background_velocity: np.ndarray | None = None) -> None:
@@ -1108,9 +1238,9 @@ class TaichiTreecode:
         self.compute_velocity_and_gradient_gpu(background_velocity)
         N = self.n_particles[None]
         return (
-            self.velocities.to_numpy()[:N],
-            self.velocity_gradients.to_numpy()[:N],
-            self.strain_rates.to_numpy()[:N],
+            self._download_vector_field(self.velocities, N),
+            self._download_matrix_field(self.velocity_gradients, N),
+            self._download_matrix_field(self.strain_rates, N),
         )
 
     # TARGET POINT EVALUATIONS
@@ -1140,16 +1270,15 @@ class TaichiTreecode:
         if self.max_targets < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
-        self.target_positions.from_numpy(target_positions.astype(np.float32))
+        self._upload_vector_array(target_positions, self.target_positions, M)
         if background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
-        avg_radius = float(self.radii.to_numpy()[: self.n_particles[None]].mean())
         theta_sq = self.theta * self.theta
-        self.compute_target_velocities_kernel(theta_sq, avg_radius)
+        self.compute_target_velocities_kernel(theta_sq, 0.0)
         ti.sync()
-        return self.target_velocities.to_numpy()[:M]
+        return self._download_vector_field(self.target_velocities, M)
 
     def compute_target_velocity_gradients(self, target_positions: np.ndarray) -> np.ndarray:
         M = len(target_positions)
@@ -1158,12 +1287,11 @@ class TaichiTreecode:
         if self.max_targets < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
-        self.target_positions.from_numpy(target_positions.astype(np.float32))
-        avg_radius = float(self.radii.to_numpy()[: self.n_particles[None]].mean())
+        self._upload_vector_array(target_positions, self.target_positions, M)
         theta_sq = self.theta * self.theta
-        self.compute_target_velocity_gradients_kernel(theta_sq, avg_radius)
+        self.compute_target_velocity_gradients_kernel(theta_sq, 0.0)
         ti.sync()
-        return self.target_velocity_gradients.to_numpy()[:M]
+        return self._download_matrix_field(self.target_velocity_gradients, M)
 
     # INFO
 

@@ -152,10 +152,10 @@ def main():
     # ================================================
     # 6. Run Simulation
     # ================================================
-    max_circ0 = np.abs(vpm.particles.circulation_cpu).max()
+    max_circ0 = np.abs(vpm.particles.circulation_cpu()).max()
     for _ in range(num_steps):
         vpm.update_state()
-        if np.abs(vpm.particles.circulation_cpu).max() > 50 * max_circ0:
+        if np.abs(vpm.particles.circulation_cpu()).max() > 50 * max_circ0:
             print("Solution blew up — stopping.")
             break
 

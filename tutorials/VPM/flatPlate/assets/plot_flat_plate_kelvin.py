@@ -32,7 +32,7 @@ THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
 FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
 CM = 1.0 / 2.54
 
-# ── Theme (same pattern as the sibling flat-plate plotters) ──────────────────
+# -- Theme (same pattern as the sibling flat-plate plotters) ------------------
 _M = None
 if THEME_PATH.exists():
     _spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
@@ -103,7 +103,7 @@ def main() -> None:
     )
     ax.legend(fontsize=10, loc="lower right")
 
-    axr.axhline(0.0, color="0.5", lw=0.6)
+    axr.axhline(0.0, color="gray", ls="--", lw=1.0)
     axr.plot(t, rel / 1e-4, color=_c("DarkText", "#2E3D46"), lw=1.2)
     axr.set_xlabel("Time [s]")
     axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")

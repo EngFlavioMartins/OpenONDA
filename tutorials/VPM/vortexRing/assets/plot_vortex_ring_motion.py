@@ -40,7 +40,7 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(12.8 * CM, 8 * CM))
 
-    # ── Ring speed — all available variants ─────────────────────────────────
+    # -- Ring speed — all available variants ---------------------------------
     for variant, st in VARIANT_STYLE.items():
         h5_files = sorted(glob.glob(str(sol / variant / f"vpm_{variant}_*.h5")))
         if not h5_files:
@@ -65,15 +65,15 @@ def main() -> None:
             label=label,
         )
 
-    # ── Analytical Saffman solution ──────────────────────────────────────────
+    # -- Analytical Saffman solution ------------------------------------------
     t_phys = np.linspace(0.0, 38 * T_REF, 500)
     U_saffman = saffman_speed(t_phys) / U_REF
     ax.plot(
         t_phys / T_REF,
         U_saffman,
-        ":",
-        color="black",
-        lw=1.1,
+        "--",
+        color="gray",
+        lw=1.0,
         zorder=5,
         label="Saffman (analytical)",
     )

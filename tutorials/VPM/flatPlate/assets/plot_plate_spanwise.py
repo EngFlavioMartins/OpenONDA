@@ -37,7 +37,7 @@ from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
+# -- Paths ----------------------------------------------------------------------
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
@@ -46,7 +46,7 @@ FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
 sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import spanwise_reference
 
-# ── Argument parsing ───────────────────────────────────────────────────────────
+# -- Argument parsing -----------------------------------------------------------
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
 parser.add_argument("--case-moving", default="exp_moving_aoa05", help="Moving case folder")
 parser.add_argument("--case-static", default="exp_static_aoa05", help="Static case folder")
@@ -62,7 +62,7 @@ SOL_DIR = Path(args.solution_dir).resolve()
 FIG_DIR = Path(args.figures_dir).resolve()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Theme ──────────────────────────────────────────────────────────────────────
+# -- Theme ----------------------------------------------------------------------
 m = None
 if THEME_PATH.exists():
     spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
@@ -88,14 +88,14 @@ C_ELL = _c("literature")
 
 cm_inch = 1 / 2.54
 
-# ── Physical constants ─────────────────────────────────────────────────────────
+# -- Physical constants ---------------------------------------------------------
 AR = 10.0
 CHORD = 1.0
 SPAN = AR * CHORD
 U_INF = 10.0
 alpha_rad = np.radians(args.aoa)
 
-# ── Theory curves ──────────────────────────────────────────────────────────────
+# -- Theory curves --------------------------------------------------------------
 y_theory = np.linspace(-SPAN / 2, SPAN / 2, 400)
 
 df_ll = spanwise_reference("liftingline", y_theory, SPAN, CHORD, alpha_rad, U_INF, n_terms=120)
@@ -110,7 +110,7 @@ df_ell = spanwise_reference(
 cl_ell = df_ell["cl"].to_numpy()
 
 
-# ── Load simulation data ───────────────────────────────────────────────────────
+# -- Load simulation data -------------------------------------------------------
 def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     csv = SOL_DIR / name / "samples" / f"{name}_spanwise.csv"
     if not csv.exists():
@@ -122,7 +122,7 @@ def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | 
 moving_data = load_spanwise_csv(args.case_moving)
 static_data = load_spanwise_csv(args.case_static)
 
-# ── Figure ─────────────────────────────────────────────────────────────────────
+# -- Figure ---------------------------------------------------------------------
 fig, ax = plt.subplots(1, 1, figsize=(12 * cm_inch, 5.5 * cm_inch))
 fig.subplots_adjust(left=0.14, right=0.95, bottom=0.17, top=0.88)
 
@@ -151,8 +151,8 @@ if static_data is not None:
     )
 
 # Theory curves
-ax.plot(y_ll_over_b, cl_ll, "--", color=C_LL, lw=1.5, label="Lifting-line (Glauert)")
-ax.plot(y_ll_over_b, cl_ell, ":", color=C_ELL, lw=1.2, label="Elliptic")
+ax.plot(y_ll_over_b, cl_ll, "--", color="gray", lw=1.0, label="Lifting-line (Glauert)")
+ax.plot(y_ll_over_b, cl_ell, "--", color="gray", lw=1.0, label="Elliptic")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift coefficient, $c_\ell$")

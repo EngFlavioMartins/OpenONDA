@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""
-Spanwise loading validation — VLM bound circulation vs BEM prediction.
-======================================================================
+"""Spanwise loading validation — VLM bound circulation vs BEM prediction.
+
 Reads ``solution/rotor/samples/vlm_spanwise_blade_0.csv`` produced by the
 loading-distribution sampler and compares the time-averaged bound circulation
 Γ(r/R) against the BEM prediction for the same Betz-optimal blade geometry
@@ -20,14 +19,18 @@ import sys
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
-from _common import CM, build_arg_parser, load_theme, rotor_styles, save_figure
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _common import build_arg_parser, build_rotor_style_map, load_theme
+
+# ==============================================================================
+# Data loader
+# ==============================================================================
 
 
 def _read_vlm_spanwise(
@@ -38,15 +41,16 @@ def _read_vlm_spanwise(
     omega: float,
     hub_r: float,
     tip_r: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
-    """Return (r, |Gamma|, chord, cl_from_gamma) averaged over the tail.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, np.ndarray] | None:
+    """Return (r, |Gamma|, chord, Cl, last_times) averaged over the tail.
 
-    The blade rotates, so global coordinates are not stable span coordinates.
-    The sampler writes one ordered spanwise row per time snapshot; grouping by
-    that row order avoids artificial sawtooth curves as the blade azimuth
-    changes.  The CSV ``cl`` column is a fixed wind-axis quantity and is not a
-    sectional rotor-blade coefficient, so the plot reconstructs an equivalent
-    sectional coefficient from bound circulation.
+    The blade rotates, so signed span coordinates are not stable across
+    snapshots.  The sampler already exports one row per physical span station;
+    group by that station identity and use ``abs(y)`` as the radial coordinate.
+    This avoids row-order artifacts when the blade azimuth changes.  The CSV
+    ``cl`` column is a fixed wind-axis quantity and is not a sectional
+    rotor-blade coefficient, so the plot reconstructs an equivalent sectional
+    coefficient from bound circulation.
     """
     csv_path = samples_dir / f"vlm_spanwise_{surface}.csv"
     if not csv_path.exists():
@@ -64,46 +68,68 @@ def _read_vlm_spanwise(
         t_cut = max(float(df["time"].min()), t_max - averaging_rotations * 2.0 * np.pi / omega)
     else:
         t_cut = t_max * (1.0 - tail_fraction)
-    df = df.sort_values(["time"]).copy()
-    df["station"] = df.groupby("time").cumcount()
     tail = df[df["time"] >= t_cut].copy()
-    tail["Gamma_abs"] = tail["Gamma"].abs()
+    if "span_coordinate_abs" in tail.columns:
+        tail["r_abs"] = tail["span_coordinate_abs"]
+    elif "r" in tail.columns:
+        tail["r_abs"] = tail["r"].abs()
+    else:
+        tail["r_abs"] = tail["y"].abs()
 
-    gp = tail.groupby("station")[["Gamma_abs", "chord_local"]].mean().reset_index()
-    n_stations = len(gp)
-    edges = np.linspace(hub_r, tip_r, n_stations + 1)
-    r = 0.5 * (edges[:-1] + edges[1:])
+    if "Gamma_abs" not in tail.columns:
+        tail["Gamma_abs"] = tail["Gamma"].abs()
+
+    station_cols = [col for col in ("station_id", "wing_uid", "segment_uid", "span_index") if col in tail.columns]
+    agg_spec = {
+        "r": ("r_abs", "mean"),
+        "Gamma_abs": ("Gamma_abs", "mean"),
+        "chord_local": ("chord_local", "mean"),
+    }
+    if "cl_from_gamma" in tail.columns:
+        agg_spec["cl_from_gamma"] = ("cl_from_gamma", "mean")
+
+    if station_cols:
+        gp = (
+            tail.groupby(station_cols, sort=False)
+            .agg(**agg_spec)
+            .sort_values("r")
+            .reset_index(drop=True)
+        )
+    else:
+        tail = tail.sort_values(["time", "r_abs"], kind="mergesort").copy()
+        tail["station"] = tail.groupby("time").cumcount()
+        gp = (
+            tail.groupby("station")
+            .agg(**agg_spec)
+            .sort_values("r")
+            .reset_index(drop=True)
+        )
+
+    r = gp["r"].clip(lower=hub_r, upper=tip_r).to_numpy()
     gamma = gp["Gamma_abs"].to_numpy()
     chord = gp["chord_local"].to_numpy()
-    return r, gamma, chord, tail["time"].to_numpy()
+    cl = gp["cl_from_gamma"].to_numpy() if "cl_from_gamma" in gp.columns else None
+    return r, gamma, chord, cl, tail["time"].to_numpy()
 
 
-def main() -> int:
-    ap = build_arg_parser("Spanwise loading validation: VLM vs BEM")
-    ap.add_argument(
-        "--tail-fraction",
-        type=float,
-        default=0.25,
-        help="Fraction of simulation tail used for time-averaging (default 0.25 = last 25%%).",
-    )
-    ap.add_argument(
-        "--averaging-rotations",
-        type=float,
-        default=3.0,
-        help="Number of final rotor rotations to average (default: 3).",
-    )
-    args = ap.parse_args()
+# ==============================================================================
+# Plot
+# ==============================================================================
 
-    sys.path.insert(0, str(SCRIPT_DIR))
+
+def plot_loading_validation(args) -> int:
+    samples = Path(args.solution_dir) / "samples"
+    figs = Path(args.figures_dir)
+    fmt = getattr(args, "format", "png")
+    out = figs / f"rotor_loading_validation.{fmt}"
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # -- BEM reference ---------------------------------------------------
+    sys.path.insert(0, str(Path(__file__).parent))
     from rotor_theory import bem_solve
     from generate_openvsp_blade import RotorBladeDesign, design_schedule
 
-    samples = Path(args.solution_dir) / "samples"
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
-
-    # ── BEM reference ────────────────────────────────────────────────────────
-    design = RotorBladeDesign()
+    design = RotorBladeDesign(n_stations=23, chord_stations=7)
     sched = design_schedule(design)
     bem = bem_solve(
         r=sched["r"],
@@ -117,7 +143,7 @@ def main() -> int:
     bem_ct = bem.attrs["Ct"]
     bem_cp = bem.attrs["Cp"]
 
-    # ── VLM time-averaged spanwise data ──────────────────────────────────────
+    # -- VLM time-averaged spanwise data ---------------------------------
     result = _read_vlm_spanwise(
         samples,
         surface="blade_0",
@@ -134,70 +160,61 @@ def main() -> int:
         )
         return 0
 
-    r_vlm, gamma_vlm, chord_vlm, _ = result
-    vrel_geom = np.sqrt(design.freestream_velocity**2 + (design.omega * r_vlm) ** 2)
-    cl_vlm = 2.0 * gamma_vlm / (chord_vlm * vrel_geom)
+    r_vlm, gamma_vlm, chord_vlm, cl_vlm_csv, _ = result
+    if cl_vlm_csv is not None:
+        cl_vlm = cl_vlm_csv
+    else:
+        vrel_geom = np.sqrt(design.freestream_velocity**2 + (design.omega * r_vlm) ** 2)
+        cl_vlm = 2.0 * gamma_vlm / (chord_vlm * vrel_geom)
 
-    # ── Plot ─────────────────────────────────────────────────────────────────
+    # Normalised circulation reference: Γ* = Γ / (U∞ R)
+    gamma_ref = design.freestream_velocity * design.radius
+    gamma_vlm_norm = gamma_vlm / gamma_ref
+    bem_gamma_norm = bem["Gamma"].to_numpy() / gamma_ref
+
     colors, _ = load_theme()
-    styles = rotor_styles(colors)
-    color_vlm = styles["vpm"]["color"]
-    color_bem = styles["bem"]["color"]
+    styles = build_rotor_style_map(colors)
+    s_vpm = styles["vpm"]
+    s_bem = styles["bem"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.8 * CM, 7.4 * CM), sharex=True)
-    fig.subplots_adjust(wspace=0.18, left=0.12, right=0.96, top=0.87, bottom=0.30)
+    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.4 / 2.54), sharex=True)
+    fig.subplots_adjust(wspace=0.27, left=0.12, right=0.96, top=0.87, bottom=0.27)
 
-    # ── Γ(r/R) ───────────────────────────────────────────────────────────────
+    # -- Gamma*(r/R) -----------------------------------------------------
     ax = axes[0]
-    ax.plot(
-        r_vlm / design.radius,
-        gamma_vlm,
-        color=color_vlm,
-        marker=styles["vpm"]["marker"],
-        markersize=styles["vpm"]["markersize"],
-        lw=styles["vpm"]["linewidth"],
-        label=r"VLM-VPM",
-    )
-    ax.plot(
-        bem["r_over_R"],
-        bem["Gamma"],
-        color=color_bem,
-        ls=styles["bem"]["linestyle"],
-        lw=styles["bem"]["linewidth"],
-        label=r"BEM reference",
-    )
+    vpm_kw = {
+        "color": s_vpm["color"],
+        "marker": s_vpm["marker"],
+        "markersize": s_vpm["markersize"],
+        "lw": s_vpm["linewidth"],
+        "label": s_vpm["label"],
+    }
+    bem_kw = {
+        "color": s_bem["color"],
+        "ls": s_bem["linestyle"],
+        "lw": s_bem["linewidth"],
+        "label": s_bem["label"],
+    }
+    ax.plot(r_vlm / design.radius, gamma_vlm_norm, **vpm_kw)
+    ax.plot(bem["r_over_R"], bem_gamma_norm, **bem_kw)
     ax.set_xlabel(r"$r/R$")
-    ax.set_ylabel(r"$\Gamma$ [m$^2$/s]")
-    ax.set_title(r"Bound circulation")
+    ax.set_ylabel(r"$\Gamma\,/\,(U_\infty R)$")
+    ax.set_title(r"Normalized bound circulation")
     ax.set_xlim([0, 1])
-    gamma_top = max(float(np.nanmax(gamma_vlm)), float(np.nanmax(bem["Gamma"]))) * 1.08
+    gamma_top = max(float(np.nanmax(gamma_vlm_norm)), float(np.nanmax(bem_gamma_norm))) * 1.08
     ax.set_ylim([0, gamma_top])
 
-    # ── Cl(r/R) ──────────────────────────────────────────────────────────────
+    # -- Cl(r/R) ---------------------------------------------------------
     ax2 = axes[1]
-    ax2.plot(
-        r_vlm / design.radius,
-        cl_vlm,
-        color=color_vlm,
-        marker=styles["vpm"]["marker"],
-        markersize=styles["vpm"]["markersize"],
-        lw=styles["vpm"]["linewidth"],
-        label=r"VLM-VPM",
-    )
-    ax2.plot(
-        bem["r_over_R"],
-        bem["Cl"],
-        color=color_bem,
-        ls=styles["bem"]["linestyle"],
-        lw=styles["bem"]["linewidth"],
-        label=r"BEM reference",
-    )
+    ax2.plot(r_vlm / design.radius, cl_vlm, **vpm_kw)
+    ax2.plot(bem["r_over_R"], bem["Cl"], **bem_kw)
     ax2.set_xlabel(r"$r/R$")
     ax2.set_ylabel(r"$C_l$")
     ax2.set_title(r"Sectional lift coefficient")
     ax2.set_xlim([0, 1])
     cl_top = max(float(np.nanmax(cl_vlm)), float(np.nanmax(bem["Cl"]))) * 1.08
     ax2.set_ylim([0, cl_top])
+
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(
         handles,
@@ -209,8 +226,10 @@ def main() -> int:
         handlelength=2.2,
     )
 
-    out = figs / f"rotor_loading_validation.{args.format}"
-    save_figure(fig, out, args.dpi, args.format)
+    save_kw: dict = {"bbox_inches": "tight"}
+    if fmt == "png":
+        save_kw["dpi"] = args.dpi
+    plt.savefig(out, **save_kw)
     plt.close(fig)
     print(f"  Saved: {out}")
     print(
@@ -218,6 +237,23 @@ def main() -> int:
         f" (Betz: Ct={8/9:.4f}, Cp={16/27:.4f})"
     )
     return 0
+
+
+def main() -> int:
+    p = build_arg_parser("Spanwise loading validation: VLM vs BEM")
+    p.add_argument(
+        "--tail-fraction",
+        type=float,
+        default=0.25,
+        help="Fraction of simulation tail used for time-averaging (default 0.25 = last 25%%).",
+    )
+    p.add_argument(
+        "--averaging-rotations",
+        type=float,
+        default=3.0,
+        help="Number of final rotor rotations to average (default: 3).",
+    )
+    return plot_loading_validation(p.parse_args())
 
 
 if __name__ == "__main__":

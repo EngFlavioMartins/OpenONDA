@@ -17,7 +17,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-# ── Directory layout ─────────────────────────────────────────────────────────
+# -- Directory layout ---------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/vortexRings/
 FIGURES_DIR = SCRIPT_DIR / "figures"
@@ -27,7 +27,7 @@ FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 CM = 1 / 2.54  # cm → inch
 
-# ── Physical constants  (match ring_setup.py) ─────────────────────────────────────
+# -- Physical constants  (match ring_setup.py) -------------------------------------
 R0 = 1.0  # ring major radius [m]
 GAMMA = np.pi  # circulation [m²/s]
 CORE_RADIUS = 0.1  # initial core radius [m]
@@ -61,7 +61,7 @@ VARIANT_LABEL: dict[str, str] = {
     "LES_rvpm": "LES rVPM",
 }
 
-# ── Theme ─────────────────────────────────────────────────────────────────────
+# -- Theme ---------------------------------------------------------------------
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
@@ -88,7 +88,7 @@ def load_theme() -> tuple[dict[str, str], object | None]:
     return {}, theme
 
 
-# ── Argument parser ───────────────────────────────────────────────────────────
+# -- Argument parser -----------------------------------------------------------
 
 
 def build_arg_parser(description: str):
@@ -102,7 +102,7 @@ def build_arg_parser(description: str):
     return p
 
 
-# ── H5 helpers ────────────────────────────────────────────────────────────────
+# -- H5 helpers ----------------------------------------------------------------
 
 
 def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
@@ -277,7 +277,7 @@ def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     return t / T_REF, U_num / U_REF
 
 
-# ── Log-file parser ───────────────────────────────────────────────────────────
+# -- Log-file parser -----------------------------------------------------------
 
 
 def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -311,7 +311,7 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return t[valid], nuEns[valid], de[valid]
 
 
-# ── Figure helpers ────────────────────────────────────────────────────────────
+# -- Figure helpers ------------------------------------------------------------
 
 
 def save_fig(fig, path, dpi: int = 400) -> None:

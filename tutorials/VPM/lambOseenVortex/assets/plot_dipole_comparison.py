@@ -87,7 +87,7 @@ def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.nd
 def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dict | None:
     import pyvista as pv
 
-    # ── Primary: VTS grid data (z=0 plane) ──
+    # -- Primary: VTS grid data (z=0 plane) --
     samples_dir = solution_dir / f"dipole_{scheme}" / "samples"
     vts_list = (
         sorted(
@@ -127,7 +127,7 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
             a_c = _weighted_core_radius(xy[mask], w, c)
             rows.append((t, float(c[0]), float(c[1]), a_c, float(w.sum())))
     else:
-        # ── Fallback: HDF5 particle data ──
+        # -- Fallback: HDF5 particle data --
         files = h5_files(solution_dir, "dipole", scheme)
         for p in files:
             t, pos, gz = read_h5(p)

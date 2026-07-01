@@ -2,14 +2,14 @@
   <ServerManagerState version="6.0.20260122">
     <Proxy group="animation" type="AnimationScene" id="263" servers="16">
       <Property name="AnimationTime" id="263.AnimationTime" number_of_elements="1">
-        <Element index="0" value="4.5"/>
+        <Element index="0" value="0.05"/>
       </Property>
       <Property name="Cues" id="263.Cues" number_of_elements="1">
         <Proxy value="265"/>
         <Domain name="groups" id="263.Cues.groups"/>
       </Property>
       <Property name="EndTime" id="263.EndTime" number_of_elements="1">
-        <Element index="0" value="4.5"/>
+        <Element index="0" value="7"/>
       </Property>
       <Property name="ForceDisableCaching" id="263.ForceDisableCaching" number_of_elements="1">
         <Element index="0" value="0"/>
@@ -53,7 +53,7 @@
       </Property>
       <Property name="Reverse" id="263.Reverse"/>
       <Property name="StartTime" id="263.StartTime" number_of_elements="1">
-        <Element index="0" value="0.075"/>
+        <Element index="0" value="0.05"/>
       </Property>
       <Property name="Stop" id="263.Stop"/>
       <Property name="Stride" id="263.Stride" number_of_elements="1">
@@ -389,39 +389,39 @@
         <Domain name="range" id="13210.NumberOfTableValues.range"/>
       </Property>
       <Property name="RGBPoints" id="13210.RGBPoints" number_of_elements="36">
-        <Element index="0" value="6.792551517486572"/>
+        <Element index="0" value="2.170551300048828"/>
         <Element index="1" value="0.0564"/>
         <Element index="2" value="0.0564"/>
         <Element index="3" value="0.47"/>
-        <Element index="4" value="6.8285151503067"/>
+        <Element index="4" value="3.593240926605154"/>
         <Element index="5" value="0.243"/>
         <Element index="6" value="0.46035"/>
         <Element index="7" value="0.81"/>
-        <Element index="8" value="6.855111664370538"/>
+        <Element index="8" value="4.645375588596394"/>
         <Element index="9" value="0.356814"/>
         <Element index="10" value="0.745025"/>
         <Element index="11" value="0.954368"/>
-        <Element index="12" value="6.883120592308998"/>
+        <Element index="12" value="5.753384098979954"/>
         <Element index="13" value="0.6882"/>
         <Element index="14" value="0.93"/>
         <Element index="15" value="0.91791"/>
-        <Element index="16" value="6.897345542907716"/>
+        <Element index="16" value="6.31611061096195"/>
         <Element index="17" value="0.899496"/>
         <Element index="18" value="0.944646"/>
         <Element index="19" value="0.768657"/>
-        <Element index="20" value="6.915836658281327"/>
+        <Element index="20" value="7.047602842491173"/>
         <Element index="21" value="0.957108"/>
         <Element index="22" value="0.833819"/>
         <Element index="23" value="0.508916"/>
-        <Element index="24" value="6.940550233296394"/>
+        <Element index="24" value="8.02525009478376"/>
         <Element index="25" value="0.927521"/>
         <Element index="26" value="0.621439"/>
         <Element index="27" value="0.315357"/>
-        <Element index="28" value="6.970206732902526"/>
+        <Element index="28" value="9.198435088653545"/>
         <Element index="29" value="0.8"/>
         <Element index="30" value="0.352"/>
         <Element index="31" value="0.16"/>
-        <Element index="32" value="7.002139568328857"/>
+        <Element index="32" value="10.461669921875"/>
         <Element index="33" value="0.59"/>
         <Element index="34" value="0.0767"/>
         <Element index="35" value="0.119475"/>
@@ -2089,7 +2089,7 @@
         <Element index="9" value="0.003299"/>
         <Element index="10" value="0.002249"/>
         <Element index="11" value="0.024239"/>
-        <Element index="12" value="0.0029412500000000007"/>
+        <Element index="12" value="0.0029412500000000003"/>
         <Element index="13" value="0.004547"/>
         <Element index="14" value="0.003392"/>
         <Element index="15" value="0.030909"/>
@@ -2097,15 +2097,15 @@
         <Element index="17" value="0.006006"/>
         <Element index="18" value="0.004692"/>
         <Element index="19" value="0.038558"/>
-        <Element index="20" value="0.004902"/>
+        <Element index="20" value="0.004901999999999999"/>
         <Element index="21" value="0.007676"/>
         <Element index="22" value="0.006136"/>
         <Element index="23" value="0.046836"/>
-        <Element index="24" value="0.005882250000000001"/>
+        <Element index="24" value="0.00588225"/>
         <Element index="25" value="0.009561"/>
         <Element index="26" value="0.007713"/>
         <Element index="27" value="0.055143"/>
-        <Element index="28" value="0.00686275"/>
+        <Element index="28" value="0.006862750000000001"/>
         <Element index="29" value="0.011663"/>
         <Element index="30" value="0.009417"/>
         <Element index="31" value="0.06346"/>
@@ -2117,7 +2117,7 @@
         <Element index="37" value="0.016561"/>
         <Element index="38" value="0.013136"/>
         <Element index="39" value="0.080282"/>
-        <Element index="40" value="0.009804"/>
+        <Element index="40" value="0.009803999999999998"/>
         <Element index="41" value="0.019373"/>
         <Element index="42" value="0.015133"/>
         <Element index="43" value="0.088767"/>
@@ -2133,7 +2133,7 @@
         <Element index="53" value="0.029432"/>
         <Element index="54" value="0.021503"/>
         <Element index="55" value="0.114621"/>
-        <Element index="56" value="0.0137255"/>
+        <Element index="56" value="0.013725500000000002"/>
         <Element index="57" value="0.033385"/>
         <Element index="58" value="0.023702"/>
         <Element index="59" value="0.123397"/>
@@ -2161,7 +2161,7 @@
         <Element index="81" value="0.06134"/>
         <Element index="82" value="0.03659"/>
         <Element index="83" value="0.177642"/>
-        <Element index="84" value="0.02058825"/>
+        <Element index="84" value="0.020588249999999995"/>
         <Element index="85" value="0.066331"/>
         <Element index="86" value="0.038504"/>
         <Element index="87" value="0.186962"/>
@@ -2177,19 +2177,19 @@
         <Element index="97" value="0.081962"/>
         <Element index="98" value="0.043328"/>
         <Element index="99" value="0.215289"/>
-        <Element index="100" value="0.02450975"/>
+        <Element index="100" value="0.024509749999999997"/>
         <Element index="101" value="0.087411"/>
         <Element index="102" value="0.044556"/>
         <Element index="103" value="0.224813"/>
-        <Element index="104" value="0.025490250000000002"/>
+        <Element index="104" value="0.025490250000000006"/>
         <Element index="105" value="0.09299"/>
         <Element index="106" value="0.045583"/>
         <Element index="107" value="0.234358"/>
-        <Element index="108" value="0.0264705"/>
+        <Element index="108" value="0.026470499999999998"/>
         <Element index="109" value="0.098702"/>
         <Element index="110" value="0.046402"/>
         <Element index="111" value="0.243904"/>
-        <Element index="112" value="0.027451"/>
+        <Element index="112" value="0.027451000000000003"/>
         <Element index="113" value="0.104551"/>
         <Element index="114" value="0.047008"/>
         <Element index="115" value="0.25343"/>
@@ -2197,11 +2197,11 @@
         <Element index="117" value="0.110536"/>
         <Element index="118" value="0.047399"/>
         <Element index="119" value="0.262912"/>
-        <Element index="120" value="0.02941175"/>
+        <Element index="120" value="0.02941174999999999"/>
         <Element index="121" value="0.116656"/>
         <Element index="122" value="0.047574"/>
         <Element index="123" value="0.272321"/>
-        <Element index="124" value="0.030392250000000006"/>
+        <Element index="124" value="0.03039225000000001"/>
         <Element index="125" value="0.122908"/>
         <Element index="126" value="0.047536"/>
         <Element index="127" value="0.281624"/>
@@ -2245,7 +2245,7 @@
         <Element index="165" value="0.190367"/>
         <Element index="166" value="0.039309"/>
         <Element index="167" value="0.361447"/>
-        <Element index="168" value="0.0411765"/>
+        <Element index="168" value="0.04117649999999999"/>
         <Element index="169" value="0.197297"/>
         <Element index="170" value="0.0384"/>
         <Element index="171" value="0.367535"/>
@@ -2253,11 +2253,11 @@
         <Element index="173" value="0.204209"/>
         <Element index="174" value="0.037632"/>
         <Element index="175" value="0.373238"/>
-        <Element index="176" value="0.04313725"/>
+        <Element index="176" value="0.043137249999999995"/>
         <Element index="177" value="0.211095"/>
         <Element index="178" value="0.03703"/>
         <Element index="179" value="0.378563"/>
-        <Element index="180" value="0.04411775"/>
+        <Element index="180" value="0.04411774999999998"/>
         <Element index="181" value="0.217949"/>
         <Element index="182" value="0.036615"/>
         <Element index="183" value="0.383522"/>
@@ -2273,23 +2273,23 @@
         <Element index="193" value="0.238273"/>
         <Element index="194" value="0.036621"/>
         <Element index="195" value="0.396353"/>
-        <Element index="196" value="0.04803925"/>
+        <Element index="196" value="0.048039250000000006"/>
         <Element index="197" value="0.244967"/>
         <Element index="198" value="0.037055"/>
         <Element index="199" value="0.400007"/>
-        <Element index="200" value="0.0490195"/>
+        <Element index="200" value="0.04901949999999999"/>
         <Element index="201" value="0.25162"/>
         <Element index="202" value="0.037705"/>
         <Element index="203" value="0.403378"/>
-        <Element index="204" value="0.049999999999999996"/>
+        <Element index="204" value="0.05"/>
         <Element index="205" value="0.258234"/>
         <Element index="206" value="0.038571"/>
         <Element index="207" value="0.406485"/>
-        <Element index="208" value="0.050980500000000005"/>
+        <Element index="208" value="0.05098050000000001"/>
         <Element index="209" value="0.26481"/>
         <Element index="210" value="0.039647"/>
         <Element index="211" value="0.409345"/>
-        <Element index="212" value="0.05196075"/>
+        <Element index="212" value="0.05196075000000001"/>
         <Element index="213" value="0.271347"/>
         <Element index="214" value="0.040922"/>
         <Element index="215" value="0.411976"/>
@@ -2297,11 +2297,11 @@
         <Element index="217" value="0.27785"/>
         <Element index="218" value="0.042353"/>
         <Element index="219" value="0.414392"/>
-        <Element index="220" value="0.053921500000000004"/>
+        <Element index="220" value="0.05392150000000001"/>
         <Element index="221" value="0.284321"/>
         <Element index="222" value="0.043933"/>
         <Element index="223" value="0.416608"/>
-        <Element index="224" value="0.054902"/>
+        <Element index="224" value="0.054902000000000006"/>
         <Element index="225" value="0.290763"/>
         <Element index="226" value="0.045644"/>
         <Element index="227" value="0.418637"/>
@@ -2309,19 +2309,19 @@
         <Element index="229" value="0.297178"/>
         <Element index="230" value="0.04747"/>
         <Element index="231" value="0.420491"/>
-        <Element index="232" value="0.05686275"/>
+        <Element index="232" value="0.05686274999999999"/>
         <Element index="233" value="0.303568"/>
         <Element index="234" value="0.049396"/>
         <Element index="235" value="0.422182"/>
-        <Element index="236" value="0.057843250000000006"/>
+        <Element index="236" value="0.05784325"/>
         <Element index="237" value="0.309935"/>
         <Element index="238" value="0.051407"/>
         <Element index="239" value="0.423721"/>
-        <Element index="240" value="0.0588235"/>
+        <Element index="240" value="0.05882349999999998"/>
         <Element index="241" value="0.316282"/>
         <Element index="242" value="0.05349"/>
         <Element index="243" value="0.425116"/>
-        <Element index="244" value="0.059804"/>
+        <Element index="244" value="0.059803999999999996"/>
         <Element index="245" value="0.32261"/>
         <Element index="246" value="0.055634"/>
         <Element index="247" value="0.426377"/>
@@ -2401,7 +2401,7 @@
         <Element index="321" value="0.441207"/>
         <Element index="322" value="0.099338"/>
         <Element index="323" value="0.431594"/>
-        <Element index="324" value="0.07941175"/>
+        <Element index="324" value="0.07941174999999999"/>
         <Element index="325" value="0.447428"/>
         <Element index="326" value="0.101597"/>
         <Element index="327" value="0.43108"/>
@@ -2413,7 +2413,7 @@
         <Element index="333" value="0.459875"/>
         <Element index="334" value="0.106089"/>
         <Element index="335" value="0.429846"/>
-        <Element index="336" value="0.082353"/>
+        <Element index="336" value="0.08235299999999998"/>
         <Element index="337" value="0.4661"/>
         <Element index="338" value="0.108322"/>
         <Element index="339" value="0.429125"/>
@@ -2429,7 +2429,7 @@
         <Element index="349" value="0.484789"/>
         <Element index="350" value="0.114974"/>
         <Element index="351" value="0.426548"/>
-        <Element index="352" value="0.0862745"/>
+        <Element index="352" value="0.08627449999999999"/>
         <Element index="353" value="0.491022"/>
         <Element index="354" value="0.117179"/>
         <Element index="355" value="0.425552"/>
@@ -2441,7 +2441,7 @@
         <Element index="361" value="0.503493"/>
         <Element index="362" value="0.121575"/>
         <Element index="363" value="0.423356"/>
-        <Element index="364" value="0.08921575"/>
+        <Element index="364" value="0.08921574999999998"/>
         <Element index="365" value="0.50973"/>
         <Element index="366" value="0.123769"/>
         <Element index="367" value="0.422156"/>
@@ -2453,23 +2453,23 @@
         <Element index="373" value="0.522206"/>
         <Element index="374" value="0.12815"/>
         <Element index="375" value="0.419549"/>
-        <Element index="376" value="0.09215675"/>
+        <Element index="376" value="0.09215674999999997"/>
         <Element index="377" value="0.528444"/>
         <Element index="378" value="0.130341"/>
         <Element index="379" value="0.418142"/>
-        <Element index="380" value="0.09313725"/>
+        <Element index="380" value="0.09313724999999999"/>
         <Element index="381" value="0.534683"/>
         <Element index="382" value="0.132534"/>
         <Element index="383" value="0.416667"/>
-        <Element index="384" value="0.09411775"/>
+        <Element index="384" value="0.09411774999999999"/>
         <Element index="385" value="0.54092"/>
         <Element index="386" value="0.134729"/>
         <Element index="387" value="0.415123"/>
-        <Element index="388" value="0.095098"/>
+        <Element index="388" value="0.09509800000000002"/>
         <Element index="389" value="0.547157"/>
         <Element index="390" value="0.136929"/>
         <Element index="391" value="0.413511"/>
-        <Element index="392" value="0.0960785"/>
+        <Element index="392" value="0.09607850000000001"/>
         <Element index="393" value="0.553392"/>
         <Element index="394" value="0.139134"/>
         <Element index="395" value="0.411829"/>
@@ -2481,15 +2481,15 @@
         <Element index="401" value="0.565854"/>
         <Element index="402" value="0.143567"/>
         <Element index="403" value="0.408258"/>
-        <Element index="404" value="0.09901950000000001"/>
+        <Element index="404" value="0.0990195"/>
         <Element index="405" value="0.572081"/>
         <Element index="406" value="0.145797"/>
         <Element index="407" value="0.406369"/>
-        <Element index="408" value="0.09999999999999999"/>
+        <Element index="408" value="0.1"/>
         <Element index="409" value="0.578304"/>
         <Element index="410" value="0.148039"/>
         <Element index="411" value="0.404411"/>
-        <Element index="412" value="0.1009805"/>
+        <Element index="412" value="0.10098049999999999"/>
         <Element index="413" value="0.584521"/>
         <Element index="414" value="0.150294"/>
         <Element index="415" value="0.402385"/>
@@ -2497,15 +2497,15 @@
         <Element index="417" value="0.590734"/>
         <Element index="418" value="0.152563"/>
         <Element index="419" value="0.40029"/>
-        <Element index="420" value="0.10294125000000001"/>
+        <Element index="420" value="0.10294125000000003"/>
         <Element index="421" value="0.59694"/>
         <Element index="422" value="0.154848"/>
         <Element index="423" value="0.398125"/>
-        <Element index="424" value="0.1039215"/>
+        <Element index="424" value="0.10392150000000001"/>
         <Element index="425" value="0.603139"/>
         <Element index="426" value="0.157151"/>
         <Element index="427" value="0.395891"/>
-        <Element index="428" value="0.104902"/>
+        <Element index="428" value="0.10490199999999998"/>
         <Element index="429" value="0.60933"/>
         <Element index="430" value="0.159474"/>
         <Element index="431" value="0.393589"/>
@@ -2513,19 +2513,19 @@
         <Element index="433" value="0.615513"/>
         <Element index="434" value="0.161817"/>
         <Element index="435" value="0.391219"/>
-        <Element index="436" value="0.10686274999999999"/>
+        <Element index="436" value="0.10686274999999995"/>
         <Element index="437" value="0.621685"/>
         <Element index="438" value="0.164184"/>
         <Element index="439" value="0.388781"/>
-        <Element index="440" value="0.10784325"/>
+        <Element index="440" value="0.10784325000000003"/>
         <Element index="441" value="0.627847"/>
         <Element index="442" value="0.166575"/>
         <Element index="443" value="0.386276"/>
-        <Element index="444" value="0.10882350000000002"/>
+        <Element index="444" value="0.10882350000000005"/>
         <Element index="445" value="0.633998"/>
         <Element index="446" value="0.168992"/>
         <Element index="447" value="0.383704"/>
-        <Element index="448" value="0.109804"/>
+        <Element index="448" value="0.10980400000000001"/>
         <Element index="449" value="0.640135"/>
         <Element index="450" value="0.171438"/>
         <Element index="451" value="0.381065"/>
@@ -2533,15 +2533,15 @@
         <Element index="453" value="0.64626"/>
         <Element index="454" value="0.173914"/>
         <Element index="455" value="0.378359"/>
-        <Element index="456" value="0.11176475"/>
+        <Element index="456" value="0.11176474999999998"/>
         <Element index="457" value="0.652369"/>
         <Element index="458" value="0.176421"/>
         <Element index="459" value="0.375586"/>
-        <Element index="460" value="0.11274500000000001"/>
+        <Element index="460" value="0.112745"/>
         <Element index="461" value="0.658463"/>
         <Element index="462" value="0.178962"/>
         <Element index="463" value="0.372748"/>
-        <Element index="464" value="0.1137255"/>
+        <Element index="464" value="0.11372549999999998"/>
         <Element index="465" value="0.66454"/>
         <Element index="466" value="0.181539"/>
         <Element index="467" value="0.369846"/>
@@ -2549,15 +2549,15 @@
         <Element index="469" value="0.670599"/>
         <Element index="470" value="0.184153"/>
         <Element index="471" value="0.366879"/>
-        <Element index="472" value="0.11568625"/>
+        <Element index="472" value="0.11568625000000002"/>
         <Element index="473" value="0.676638"/>
         <Element index="474" value="0.186807"/>
         <Element index="475" value="0.363849"/>
-        <Element index="476" value="0.11666675"/>
+        <Element index="476" value="0.11666675000000001"/>
         <Element index="477" value="0.682656"/>
         <Element index="478" value="0.189501"/>
         <Element index="479" value="0.360757"/>
-        <Element index="480" value="0.117647"/>
+        <Element index="480" value="0.11764699999999996"/>
         <Element index="481" value="0.688653"/>
         <Element index="482" value="0.192239"/>
         <Element index="483" value="0.357603"/>
@@ -2565,19 +2565,19 @@
         <Element index="485" value="0.694627"/>
         <Element index="486" value="0.195021"/>
         <Element index="487" value="0.354388"/>
-        <Element index="488" value="0.11960775"/>
+        <Element index="488" value="0.11960774999999998"/>
         <Element index="489" value="0.700576"/>
         <Element index="490" value="0.197851"/>
         <Element index="491" value="0.351113"/>
-        <Element index="492" value="0.12058825"/>
+        <Element index="492" value="0.12058825000000001"/>
         <Element index="493" value="0.7065"/>
         <Element index="494" value="0.200728"/>
         <Element index="495" value="0.347777"/>
-        <Element index="496" value="0.12156875"/>
+        <Element index="496" value="0.12156875000000003"/>
         <Element index="497" value="0.712396"/>
         <Element index="498" value="0.203656"/>
         <Element index="499" value="0.344383"/>
-        <Element index="500" value="0.122549"/>
+        <Element index="500" value="0.12254899999999999"/>
         <Element index="501" value="0.718264"/>
         <Element index="502" value="0.206636"/>
         <Element index="503" value="0.340931"/>
@@ -2585,7 +2585,7 @@
         <Element index="505" value="0.724103"/>
         <Element index="506" value="0.20967"/>
         <Element index="507" value="0.337424"/>
-        <Element index="508" value="0.12450975"/>
+        <Element index="508" value="0.12450975000000002"/>
         <Element index="509" value="0.729909"/>
         <Element index="510" value="0.212759"/>
         <Element index="511" value="0.333861"/>
@@ -2721,11 +2721,11 @@
         <Element index="641" value="0.894305"/>
         <Element index="642" value="0.353399"/>
         <Element index="643" value="0.193584"/>
-        <Element index="644" value="0.15784325"/>
+        <Element index="644" value="0.15784324999999996"/>
         <Element index="645" value="0.898192"/>
         <Element index="646" value="0.358911"/>
         <Element index="647" value="0.18886"/>
-        <Element index="648" value="0.1588235"/>
+        <Element index="648" value="0.15882349999999998"/>
         <Element index="649" value="0.902003"/>
         <Element index="650" value="0.364492"/>
         <Element index="651" value="0.184116"/>
@@ -2749,11 +2749,11 @@
         <Element index="669" value="0.919879"/>
         <Element index="670" value="0.393389"/>
         <Element index="671" value="0.16007"/>
-        <Element index="672" value="0.164706"/>
+        <Element index="672" value="0.16470599999999996"/>
         <Element index="673" value="0.923215"/>
         <Element index="674" value="0.399359"/>
         <Element index="675" value="0.155193"/>
-        <Element index="676" value="0.16568625"/>
+        <Element index="676" value="0.16568624999999998"/>
         <Element index="677" value="0.92647"/>
         <Element index="678" value="0.405389"/>
         <Element index="679" value="0.150292"/>
@@ -2777,11 +2777,11 @@
         <Element index="697" value="0.941521"/>
         <Element index="698" value="0.436405"/>
         <Element index="699" value="0.125409"/>
-        <Element index="700" value="0.17156875"/>
+        <Element index="700" value="0.17156874999999996"/>
         <Element index="701" value="0.944285"/>
         <Element index="702" value="0.442772"/>
         <Element index="703" value="0.120354"/>
-        <Element index="704" value="0.172549"/>
+        <Element index="704" value="0.17254899999999998"/>
         <Element index="705" value="0.946965"/>
         <Element index="706" value="0.449191"/>
         <Element index="707" value="0.115272"/>
@@ -2789,11 +2789,11 @@
         <Element index="709" value="0.949562"/>
         <Element index="710" value="0.45566"/>
         <Element index="711" value="0.110164"/>
-        <Element index="712" value="0.17450975"/>
+        <Element index="712" value="0.17450975000000002"/>
         <Element index="713" value="0.952075"/>
         <Element index="714" value="0.462178"/>
         <Element index="715" value="0.105031"/>
-        <Element index="716" value="0.17549025"/>
+        <Element index="716" value="0.17549024999999996"/>
         <Element index="717" value="0.954506"/>
         <Element index="718" value="0.468744"/>
         <Element index="719" value="0.099874"/>
@@ -2809,7 +2809,7 @@
         <Element index="729" value="0.961293"/>
         <Element index="730" value="0.488716"/>
         <Element index="731" value="0.084289"/>
-        <Element index="732" value="0.17941175"/>
+        <Element index="732" value="0.17941174999999998"/>
         <Element index="733" value="0.963387"/>
         <Element index="734" value="0.495462"/>
         <Element index="735" value="0.079073"/>
@@ -2817,7 +2817,7 @@
         <Element index="737" value="0.965397"/>
         <Element index="738" value="0.502249"/>
         <Element index="739" value="0.073859"/>
-        <Element index="740" value="0.1813725"/>
+        <Element index="740" value="0.18137249999999996"/>
         <Element index="741" value="0.967322"/>
         <Element index="742" value="0.509078"/>
         <Element index="743" value="0.068659"/>
@@ -2829,15 +2829,15 @@
         <Element index="749" value="0.970919"/>
         <Element index="750" value="0.522853"/>
         <Element index="751" value="0.058367"/>
-        <Element index="752" value="0.18431375"/>
+        <Element index="752" value="0.18431375000000003"/>
         <Element index="753" value="0.97259"/>
         <Element index="754" value="0.529798"/>
         <Element index="755" value="0.053324"/>
-        <Element index="756" value="0.185294"/>
+        <Element index="756" value="0.18529399999999996"/>
         <Element index="757" value="0.974176"/>
         <Element index="758" value="0.53678"/>
         <Element index="759" value="0.048392"/>
-        <Element index="760" value="0.1862745"/>
+        <Element index="760" value="0.18627449999999998"/>
         <Element index="761" value="0.975677"/>
         <Element index="762" value="0.543798"/>
         <Element index="763" value="0.043618"/>
@@ -2853,7 +2853,7 @@
         <Element index="773" value="0.979666"/>
         <Element index="774" value="0.565057"/>
         <Element index="775" value="0.031409"/>
-        <Element index="776" value="0.190196"/>
+        <Element index="776" value="0.19019600000000003"/>
         <Element index="777" value="0.980824"/>
         <Element index="778" value="0.572209"/>
         <Element index="779" value="0.028508"/>
@@ -2865,15 +2865,15 @@
         <Element index="785" value="0.982881"/>
         <Element index="786" value="0.586606"/>
         <Element index="787" value="0.024661"/>
-        <Element index="788" value="0.19313725"/>
+        <Element index="788" value="0.19313725000000004"/>
         <Element index="789" value="0.983779"/>
         <Element index="790" value="0.593849"/>
         <Element index="791" value="0.02377"/>
-        <Element index="792" value="0.19411775"/>
+        <Element index="792" value="0.19411774999999998"/>
         <Element index="793" value="0.984591"/>
         <Element index="794" value="0.601122"/>
         <Element index="795" value="0.023606"/>
-        <Element index="796" value="0.195098"/>
+        <Element index="796" value="0.19509799999999997"/>
         <Element index="797" value="0.985315"/>
         <Element index="798" value="0.608422"/>
         <Element index="799" value="0.024202"/>
@@ -2881,23 +2881,23 @@
         <Element index="801" value="0.985952"/>
         <Element index="802" value="0.61575"/>
         <Element index="803" value="0.025592"/>
-        <Element index="804" value="0.19705874999999998"/>
+        <Element index="804" value="0.19705874999999995"/>
         <Element index="805" value="0.986502"/>
         <Element index="806" value="0.623105"/>
         <Element index="807" value="0.027814"/>
-        <Element index="808" value="0.19803925000000003"/>
+        <Element index="808" value="0.19803925"/>
         <Element index="809" value="0.986964"/>
         <Element index="810" value="0.630485"/>
         <Element index="811" value="0.030908"/>
-        <Element index="812" value="0.1990195"/>
+        <Element index="812" value="0.19901950000000002"/>
         <Element index="813" value="0.987337"/>
         <Element index="814" value="0.63789"/>
         <Element index="815" value="0.034916"/>
-        <Element index="816" value="0.19999999999999998"/>
+        <Element index="816" value="0.2"/>
         <Element index="817" value="0.987622"/>
         <Element index="818" value="0.64532"/>
         <Element index="819" value="0.039886"/>
-        <Element index="820" value="0.20098049999999998"/>
+        <Element index="820" value="0.20098050000000003"/>
         <Element index="821" value="0.987819"/>
         <Element index="822" value="0.652773"/>
         <Element index="823" value="0.045581"/>
@@ -2913,15 +2913,15 @@
         <Element index="833" value="0.987874"/>
         <Element index="834" value="0.675267"/>
         <Element index="835" value="0.065257"/>
-        <Element index="836" value="0.20490199999999997"/>
+        <Element index="836" value="0.20490199999999995"/>
         <Element index="837" value="0.987714"/>
         <Element index="838" value="0.682807"/>
         <Element index="839" value="0.072489"/>
-        <Element index="840" value="0.20588224999999996"/>
+        <Element index="840" value="0.20588225000000002"/>
         <Element index="841" value="0.987464"/>
         <Element index="842" value="0.690366"/>
         <Element index="843" value="0.07999"/>
-        <Element index="844" value="0.20686275000000004"/>
+        <Element index="844" value="0.20686275000000007"/>
         <Element index="845" value="0.987124"/>
         <Element index="846" value="0.697944"/>
         <Element index="847" value="0.087731"/>
@@ -2929,15 +2929,15 @@
         <Element index="849" value="0.986694"/>
         <Element index="850" value="0.70554"/>
         <Element index="851" value="0.095694"/>
-        <Element index="852" value="0.2088235"/>
+        <Element index="852" value="0.20882349999999994"/>
         <Element index="853" value="0.986175"/>
         <Element index="854" value="0.713153"/>
         <Element index="855" value="0.103863"/>
-        <Element index="856" value="0.209804"/>
+        <Element index="856" value="0.20980399999999996"/>
         <Element index="857" value="0.985566"/>
         <Element index="858" value="0.720782"/>
         <Element index="859" value="0.112229"/>
-        <Element index="860" value="0.21078425"/>
+        <Element index="860" value="0.21078424999999998"/>
         <Element index="861" value="0.984865"/>
         <Element index="862" value="0.728427"/>
         <Element index="863" value="0.120785"/>
@@ -2945,27 +2945,27 @@
         <Element index="865" value="0.984075"/>
         <Element index="866" value="0.736087"/>
         <Element index="867" value="0.129527"/>
-        <Element index="868" value="0.21274499999999996"/>
+        <Element index="868" value="0.212745"/>
         <Element index="869" value="0.983196"/>
         <Element index="870" value="0.743758"/>
         <Element index="871" value="0.138453"/>
-        <Element index="872" value="0.21372549999999998"/>
+        <Element index="872" value="0.2137254999999999"/>
         <Element index="873" value="0.982228"/>
         <Element index="874" value="0.751442"/>
         <Element index="875" value="0.147565"/>
-        <Element index="876" value="0.21470599999999995"/>
+        <Element index="876" value="0.21470599999999998"/>
         <Element index="877" value="0.981173"/>
         <Element index="878" value="0.759135"/>
         <Element index="879" value="0.156863"/>
-        <Element index="880" value="0.21568625"/>
+        <Element index="880" value="0.21568624999999994"/>
         <Element index="881" value="0.980032"/>
         <Element index="882" value="0.766837"/>
         <Element index="883" value="0.166353"/>
-        <Element index="884" value="0.21666674999999994"/>
+        <Element index="884" value="0.21666674999999996"/>
         <Element index="885" value="0.978806"/>
         <Element index="886" value="0.774545"/>
         <Element index="887" value="0.176037"/>
-        <Element index="888" value="0.21764700000000003"/>
+        <Element index="888" value="0.2176470000000001"/>
         <Element index="889" value="0.977497"/>
         <Element index="890" value="0.782258"/>
         <Element index="891" value="0.185923"/>
@@ -2981,19 +2981,19 @@
         <Element index="901" value="0.973088"/>
         <Element index="902" value="0.805409"/>
         <Element index="903" value="0.216877"/>
-        <Element index="904" value="0.22156874999999995"/>
+        <Element index="904" value="0.2215687499999999"/>
         <Element index="905" value="0.971468"/>
         <Element index="906" value="0.813122"/>
         <Element index="907" value="0.227658"/>
-        <Element index="908" value="0.222549"/>
+        <Element index="908" value="0.22254900000000005"/>
         <Element index="909" value="0.969783"/>
         <Element index="910" value="0.820825"/>
         <Element index="911" value="0.238686"/>
-        <Element index="912" value="0.2235295"/>
+        <Element index="912" value="0.22352949999999996"/>
         <Element index="913" value="0.968041"/>
         <Element index="914" value="0.828515"/>
         <Element index="915" value="0.249972"/>
-        <Element index="916" value="0.22450975000000004"/>
+        <Element index="916" value="0.2245097500000001"/>
         <Element index="917" value="0.966243"/>
         <Element index="918" value="0.836191"/>
         <Element index="919" value="0.261534"/>
@@ -3005,23 +3005,23 @@
         <Element index="925" value="0.962517"/>
         <Element index="926" value="0.851476"/>
         <Element index="927" value="0.285546"/>
-        <Element index="928" value="0.227451"/>
+        <Element index="928" value="0.22745099999999996"/>
         <Element index="929" value="0.960626"/>
         <Element index="930" value="0.859069"/>
         <Element index="931" value="0.29801"/>
-        <Element index="932" value="0.22843125000000003"/>
+        <Element index="932" value="0.22843125000000006"/>
         <Element index="933" value="0.95872"/>
         <Element index="934" value="0.866624"/>
         <Element index="935" value="0.31082"/>
-        <Element index="936" value="0.22941175000000005"/>
+        <Element index="936" value="0.22941175000000008"/>
         <Element index="937" value="0.956834"/>
         <Element index="938" value="0.874129"/>
         <Element index="939" value="0.323974"/>
-        <Element index="940" value="0.23039225"/>
+        <Element index="940" value="0.23039224999999997"/>
         <Element index="941" value="0.954997"/>
         <Element index="942" value="0.881569"/>
         <Element index="943" value="0.337475"/>
-        <Element index="944" value="0.2313725"/>
+        <Element index="944" value="0.23137250000000004"/>
         <Element index="945" value="0.953215"/>
         <Element index="946" value="0.888942"/>
         <Element index="947" value="0.351369"/>
@@ -3033,11 +3033,11 @@
         <Element index="953" value="0.950018"/>
         <Element index="954" value="0.903409"/>
         <Element index="955" value="0.380271"/>
-        <Element index="956" value="0.23431375"/>
+        <Element index="956" value="0.23431375000000002"/>
         <Element index="957" value="0.948683"/>
         <Element index="958" value="0.910473"/>
         <Element index="959" value="0.395289"/>
-        <Element index="960" value="0.235294"/>
+        <Element index="960" value="0.23529399999999992"/>
         <Element index="961" value="0.947594"/>
         <Element index="962" value="0.917399"/>
         <Element index="963" value="0.410665"/>
@@ -3053,7 +3053,7 @@
         <Element index="973" value="0.946403"/>
         <Element index="974" value="0.937159"/>
         <Element index="975" value="0.458592"/>
-        <Element index="976" value="0.23921575000000006"/>
+        <Element index="976" value="0.23921575"/>
         <Element index="977" value="0.946903"/>
         <Element index="978" value="0.943348"/>
         <Element index="979" value="0.47497"/>
@@ -3061,7 +3061,7 @@
         <Element index="981" value="0.947937"/>
         <Element index="982" value="0.949318"/>
         <Element index="983" value="0.491426"/>
-        <Element index="984" value="0.2411765"/>
+        <Element index="984" value="0.24117650000000002"/>
         <Element index="985" value="0.949545"/>
         <Element index="986" value="0.955063"/>
         <Element index="987" value="0.50786"/>
@@ -3069,19 +3069,19 @@
         <Element index="989" value="0.95174"/>
         <Element index="990" value="0.960587"/>
         <Element index="991" value="0.524203"/>
-        <Element index="992" value="0.24313725000000005"/>
+        <Element index="992" value="0.24313725000000008"/>
         <Element index="993" value="0.954529"/>
         <Element index="994" value="0.965896"/>
         <Element index="995" value="0.540361"/>
-        <Element index="996" value="0.24411775"/>
+        <Element index="996" value="0.24411774999999997"/>
         <Element index="997" value="0.957896"/>
         <Element index="998" value="0.971003"/>
         <Element index="999" value="0.556275"/>
-        <Element index="1000" value="0.245098"/>
+        <Element index="1000" value="0.24509799999999998"/>
         <Element index="1001" value="0.961812"/>
         <Element index="1002" value="0.975924"/>
         <Element index="1003" value="0.571925"/>
-        <Element index="1004" value="0.24607849999999995"/>
+        <Element index="1004" value="0.24607849999999992"/>
         <Element index="1005" value="0.966249"/>
         <Element index="1006" value="0.980678"/>
         <Element index="1007" value="0.587206"/>
@@ -3089,11 +3089,11 @@
         <Element index="1009" value="0.971162"/>
         <Element index="1010" value="0.985282"/>
         <Element index="1011" value="0.602154"/>
-        <Element index="1012" value="0.24803925"/>
+        <Element index="1012" value="0.24803925000000004"/>
         <Element index="1013" value="0.976511"/>
         <Element index="1014" value="0.989753"/>
         <Element index="1015" value="0.61676"/>
-        <Element index="1016" value="0.2490195"/>
+        <Element index="1016" value="0.24901950000000003"/>
         <Element index="1017" value="0.982257"/>
         <Element index="1018" value="0.994109"/>
         <Element index="1019" value="0.631017"/>
@@ -3188,11 +3188,11 @@
         <Domain name="bool" id="13208.AllowDuplicateScalars.bool"/>
       </Property>
       <Property name="Points" id="13208.Points" number_of_elements="8">
-        <Element index="0" value="6.792551517486572"/>
+        <Element index="0" value="2.170551300048828"/>
         <Element index="1" value="0"/>
         <Element index="2" value="0.5"/>
         <Element index="3" value="0"/>
-        <Element index="4" value="7.002139568328857"/>
+        <Element index="4" value="10.461669921875"/>
         <Element index="5" value="1"/>
         <Element index="6" value="0.5"/>
         <Element index="7" value="0"/>
@@ -4538,11 +4538,6 @@
         <Element index="2" value="1"/>
       </Property>
     </Proxy>
-    <Proxy group="misc" type="RepresentationAnimationHelper" id="10620" servers="16">
-      <Property name="Source" id="10620.Source" number_of_elements="1">
-        <Proxy value="10609"/>
-      </Property>
-    </Proxy>
     <Proxy group="representations" type="GridAxesRepresentation" id="10629" servers="21">
       <Property name="GridAxesVisibility" id="10629.GridAxesVisibility" number_of_elements="1">
         <Element index="0" value="0"/>
@@ -5318,7 +5313,7 @@
         <Domain name="bool" id="10644.EnableViewAngleLOD.bool"/>
       </Property>
       <Property name="Input" id="10644.Input" number_of_elements="1">
-        <Proxy value="10609" output_port="0"/>
+        <Proxy value="19187" output_port="0"/>
         <Domain name="input_type" id="10644.Input.input_type"/>
       </Property>
       <Property name="LastRadialAxisColor" id="10644.LastRadialAxisColor" number_of_elements="3">
@@ -13813,7 +13808,7 @@
         <Element index="1" value="0"/>
         <Element index="2" value="0.5"/>
         <Element index="3" value="0"/>
-        <Element index="4" value="30"/>
+        <Element index="4" value="10"/>
         <Element index="5" value="1"/>
         <Element index="6" value="0.5"/>
         <Element index="7" value="0"/>
@@ -14377,7 +14372,7 @@
         <Element index="1" value="0"/>
         <Element index="2" value="0.5"/>
         <Element index="3" value="0"/>
-        <Element index="4" value="30"/>
+        <Element index="4" value="10"/>
         <Element index="5" value="1"/>
         <Element index="6" value="0.5"/>
         <Element index="7" value="0"/>
@@ -14424,6 +14419,11 @@
         <Element index="0" value="1"/>
         <Element index="1" value="1"/>
         <Element index="2" value="1"/>
+      </Property>
+    </Proxy>
+    <Proxy group="misc" type="RepresentationAnimationHelper" id="19198" servers="16">
+      <Property name="Source" id="19198.Source" number_of_elements="1">
+        <Proxy value="19187"/>
       </Property>
     </Proxy>
     <Proxy group="annotations" type="GridAxes3DActor" id="7161" servers="21">
@@ -22488,7 +22488,7 @@
         </Domain>
       </Property>
       <Property name="Input" id="10851.Input" number_of_elements="1">
-        <Proxy value="10609" output_port="0"/>
+        <Proxy value="19187" output_port="0"/>
         <Domain name="input_array_cell" id="10851.Input.input_array_cell"/>
         <Domain name="input_array_point" id="10851.Input.input_array_point"/>
         <Domain name="input_type" id="10851.Input.input_type"/>
@@ -23955,7 +23955,7 @@
         <Domain name="range" id="17786.FeatureAngle.range"/>
       </Property>
       <Property name="GaussianRadius" id="17786.GaussianRadius" number_of_elements="1">
-        <Element index="0" value="0.05"/>
+        <Element index="0" value="0.035"/>
         <Domain name="range" id="17786.GaussianRadius.range"/>
       </Property>
       <Property name="GenerateNoiseTexture" id="17786.GenerateNoiseTexture" number_of_elements="1">
@@ -25929,10 +25929,10 @@
         <Element index="0" value="{:&#x3c;#6.1e}"/>
       </Property>
       <Property name="DataRangeMax" id="16775.DataRangeMax" number_of_elements="1">
-        <Element index="0" value="0.3839506966275382"/>
+        <Element index="0" value="0.3185505110115439"/>
       </Property>
       <Property name="DataRangeMin" id="16775.DataRangeMin" number_of_elements="1">
-        <Element index="0" value="0.00011587840518348304"/>
+        <Element index="0" value="2.0606486611338698e-06"/>
       </Property>
       <Property name="DrawAnnotations" id="16775.DrawAnnotations" number_of_elements="1">
         <Element index="0" value="1"/>
@@ -26203,10 +26203,10 @@
         <Element index="0" value="{:&#x3c;#6.1e}"/>
       </Property>
       <Property name="DataRangeMax" id="17933.DataRangeMax" number_of_elements="1">
-        <Element index="0" value="18.812235226541134"/>
+        <Element index="0" value="9.899013191579048"/>
       </Property>
       <Property name="DataRangeMin" id="17933.DataRangeMin" number_of_elements="1">
-        <Element index="0" value="2.9565512022974432e-06"/>
+        <Element index="0" value="2.105800606634163e-07"/>
       </Property>
       <Property name="DrawAnnotations" id="17933.DrawAnnotations" number_of_elements="1">
         <Element index="0" value="1"/>
@@ -26698,7 +26698,7 @@
         <Element index="0" value="1"/>
       </Property>
       <Property name="Input" id="17670.Input" number_of_elements="1">
-        <Proxy value="10609" output_port="0"/>
+        <Proxy value="19187" output_port="0"/>
         <Domain name="groups" id="17670.Input.groups"/>
         <Domain name="input_array" id="17670.Input.input_array"/>
         <Domain name="input_type" id="17670.Input.input_type"/>
@@ -26789,67 +26789,147 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="15936.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="15936.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="16205" servers="1">
@@ -26901,67 +26981,147 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="16205.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="16205.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="15667" servers="1">
@@ -27013,67 +27173,147 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="15667.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="15667.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="10250" servers="1">
@@ -27150,214 +27390,454 @@
       <Property name="PointArrayStatus" id="10250.PointArrayStatus">
         <Domain name="array_list" id="10250.PointArrayStatus.array_list"/>
       </Property>
-      <Property name="TimestepValues" id="10250.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="10250.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
     </Proxy>
-    <Proxy group="sources" type="XdmfReader" id="10609" servers="1">
-      <Property name="FileNameInfo" id="10609.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000015.xdmf"/>
+    <Proxy group="sources" type="XdmfReader" id="19187" servers="1">
+      <Property name="FileNameInfo" id="19187.FileNameInfo" number_of_elements="1">
+        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001360.xdmf"/>
       </Property>
-      <Property name="FileNames" id="10609.FileNames" number_of_elements="60">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000015.xdmf"/>
-        <Element index="1" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000030.xdmf"/>
-        <Element index="2" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000045.xdmf"/>
-        <Element index="3" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000060.xdmf"/>
-        <Element index="4" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000075.xdmf"/>
-        <Element index="5" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000090.xdmf"/>
-        <Element index="6" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000105.xdmf"/>
-        <Element index="7" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000120.xdmf"/>
-        <Element index="8" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000135.xdmf"/>
-        <Element index="9" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000150.xdmf"/>
-        <Element index="10" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000165.xdmf"/>
-        <Element index="11" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000180.xdmf"/>
-        <Element index="12" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000195.xdmf"/>
-        <Element index="13" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000210.xdmf"/>
-        <Element index="14" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000225.xdmf"/>
-        <Element index="15" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000240.xdmf"/>
-        <Element index="16" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000255.xdmf"/>
-        <Element index="17" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000270.xdmf"/>
-        <Element index="18" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000285.xdmf"/>
-        <Element index="19" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000300.xdmf"/>
-        <Element index="20" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000315.xdmf"/>
-        <Element index="21" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000330.xdmf"/>
-        <Element index="22" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000345.xdmf"/>
-        <Element index="23" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000360.xdmf"/>
-        <Element index="24" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000375.xdmf"/>
-        <Element index="25" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000390.xdmf"/>
-        <Element index="26" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000405.xdmf"/>
-        <Element index="27" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000420.xdmf"/>
-        <Element index="28" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000435.xdmf"/>
-        <Element index="29" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000450.xdmf"/>
-        <Element index="30" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000465.xdmf"/>
-        <Element index="31" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000480.xdmf"/>
-        <Element index="32" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000495.xdmf"/>
-        <Element index="33" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000510.xdmf"/>
-        <Element index="34" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000525.xdmf"/>
-        <Element index="35" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000540.xdmf"/>
-        <Element index="36" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000555.xdmf"/>
-        <Element index="37" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000570.xdmf"/>
-        <Element index="38" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000585.xdmf"/>
-        <Element index="39" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000600.xdmf"/>
-        <Element index="40" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000615.xdmf"/>
-        <Element index="41" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000630.xdmf"/>
-        <Element index="42" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000645.xdmf"/>
-        <Element index="43" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000660.xdmf"/>
-        <Element index="44" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000675.xdmf"/>
-        <Element index="45" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000690.xdmf"/>
-        <Element index="46" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000705.xdmf"/>
-        <Element index="47" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000720.xdmf"/>
-        <Element index="48" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000735.xdmf"/>
-        <Element index="49" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000750.xdmf"/>
-        <Element index="50" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000765.xdmf"/>
-        <Element index="51" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000780.xdmf"/>
-        <Element index="52" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000795.xdmf"/>
-        <Element index="53" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000810.xdmf"/>
-        <Element index="54" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000825.xdmf"/>
-        <Element index="55" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000840.xdmf"/>
-        <Element index="56" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000855.xdmf"/>
-        <Element index="57" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000870.xdmf"/>
-        <Element index="58" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000885.xdmf"/>
-        <Element index="59" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000900.xdmf"/>
-        <Domain name="files" id="10609.FileNames.files"/>
+      <Property name="FileNames" id="19187.FileNames" number_of_elements="140">
+        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000010.xdmf"/>
+        <Element index="1" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000020.xdmf"/>
+        <Element index="2" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000030.xdmf"/>
+        <Element index="3" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000040.xdmf"/>
+        <Element index="4" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000050.xdmf"/>
+        <Element index="5" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000060.xdmf"/>
+        <Element index="6" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000070.xdmf"/>
+        <Element index="7" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000080.xdmf"/>
+        <Element index="8" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000090.xdmf"/>
+        <Element index="9" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000100.xdmf"/>
+        <Element index="10" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000110.xdmf"/>
+        <Element index="11" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000120.xdmf"/>
+        <Element index="12" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000130.xdmf"/>
+        <Element index="13" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000140.xdmf"/>
+        <Element index="14" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000150.xdmf"/>
+        <Element index="15" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000160.xdmf"/>
+        <Element index="16" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000170.xdmf"/>
+        <Element index="17" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000180.xdmf"/>
+        <Element index="18" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000190.xdmf"/>
+        <Element index="19" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000200.xdmf"/>
+        <Element index="20" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000210.xdmf"/>
+        <Element index="21" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000220.xdmf"/>
+        <Element index="22" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000230.xdmf"/>
+        <Element index="23" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000240.xdmf"/>
+        <Element index="24" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000250.xdmf"/>
+        <Element index="25" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000260.xdmf"/>
+        <Element index="26" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000270.xdmf"/>
+        <Element index="27" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000280.xdmf"/>
+        <Element index="28" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000290.xdmf"/>
+        <Element index="29" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000300.xdmf"/>
+        <Element index="30" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000310.xdmf"/>
+        <Element index="31" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000320.xdmf"/>
+        <Element index="32" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000330.xdmf"/>
+        <Element index="33" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000340.xdmf"/>
+        <Element index="34" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000350.xdmf"/>
+        <Element index="35" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000360.xdmf"/>
+        <Element index="36" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000370.xdmf"/>
+        <Element index="37" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000380.xdmf"/>
+        <Element index="38" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000390.xdmf"/>
+        <Element index="39" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000400.xdmf"/>
+        <Element index="40" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000410.xdmf"/>
+        <Element index="41" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000420.xdmf"/>
+        <Element index="42" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000430.xdmf"/>
+        <Element index="43" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000440.xdmf"/>
+        <Element index="44" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000450.xdmf"/>
+        <Element index="45" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000460.xdmf"/>
+        <Element index="46" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000470.xdmf"/>
+        <Element index="47" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000480.xdmf"/>
+        <Element index="48" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000490.xdmf"/>
+        <Element index="49" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000500.xdmf"/>
+        <Element index="50" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000510.xdmf"/>
+        <Element index="51" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000520.xdmf"/>
+        <Element index="52" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000530.xdmf"/>
+        <Element index="53" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000540.xdmf"/>
+        <Element index="54" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000550.xdmf"/>
+        <Element index="55" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000560.xdmf"/>
+        <Element index="56" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000570.xdmf"/>
+        <Element index="57" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000580.xdmf"/>
+        <Element index="58" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000590.xdmf"/>
+        <Element index="59" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000600.xdmf"/>
+        <Element index="60" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000610.xdmf"/>
+        <Element index="61" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000620.xdmf"/>
+        <Element index="62" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000630.xdmf"/>
+        <Element index="63" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000640.xdmf"/>
+        <Element index="64" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000650.xdmf"/>
+        <Element index="65" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000660.xdmf"/>
+        <Element index="66" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000670.xdmf"/>
+        <Element index="67" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000680.xdmf"/>
+        <Element index="68" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000690.xdmf"/>
+        <Element index="69" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000700.xdmf"/>
+        <Element index="70" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000710.xdmf"/>
+        <Element index="71" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000720.xdmf"/>
+        <Element index="72" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000730.xdmf"/>
+        <Element index="73" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000740.xdmf"/>
+        <Element index="74" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000750.xdmf"/>
+        <Element index="75" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000760.xdmf"/>
+        <Element index="76" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000770.xdmf"/>
+        <Element index="77" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000780.xdmf"/>
+        <Element index="78" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000790.xdmf"/>
+        <Element index="79" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000800.xdmf"/>
+        <Element index="80" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000810.xdmf"/>
+        <Element index="81" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000820.xdmf"/>
+        <Element index="82" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000830.xdmf"/>
+        <Element index="83" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000840.xdmf"/>
+        <Element index="84" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000850.xdmf"/>
+        <Element index="85" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000860.xdmf"/>
+        <Element index="86" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000870.xdmf"/>
+        <Element index="87" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000880.xdmf"/>
+        <Element index="88" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000890.xdmf"/>
+        <Element index="89" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000900.xdmf"/>
+        <Element index="90" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000910.xdmf"/>
+        <Element index="91" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000920.xdmf"/>
+        <Element index="92" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000930.xdmf"/>
+        <Element index="93" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000940.xdmf"/>
+        <Element index="94" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000950.xdmf"/>
+        <Element index="95" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000960.xdmf"/>
+        <Element index="96" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000970.xdmf"/>
+        <Element index="97" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000980.xdmf"/>
+        <Element index="98" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000990.xdmf"/>
+        <Element index="99" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001000.xdmf"/>
+        <Element index="100" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001010.xdmf"/>
+        <Element index="101" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001020.xdmf"/>
+        <Element index="102" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001030.xdmf"/>
+        <Element index="103" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001040.xdmf"/>
+        <Element index="104" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001050.xdmf"/>
+        <Element index="105" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001060.xdmf"/>
+        <Element index="106" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001070.xdmf"/>
+        <Element index="107" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001080.xdmf"/>
+        <Element index="108" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001090.xdmf"/>
+        <Element index="109" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001100.xdmf"/>
+        <Element index="110" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001110.xdmf"/>
+        <Element index="111" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001120.xdmf"/>
+        <Element index="112" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001130.xdmf"/>
+        <Element index="113" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001140.xdmf"/>
+        <Element index="114" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001150.xdmf"/>
+        <Element index="115" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001160.xdmf"/>
+        <Element index="116" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001170.xdmf"/>
+        <Element index="117" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001180.xdmf"/>
+        <Element index="118" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001190.xdmf"/>
+        <Element index="119" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001200.xdmf"/>
+        <Element index="120" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001210.xdmf"/>
+        <Element index="121" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001220.xdmf"/>
+        <Element index="122" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001230.xdmf"/>
+        <Element index="123" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001240.xdmf"/>
+        <Element index="124" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001250.xdmf"/>
+        <Element index="125" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001260.xdmf"/>
+        <Element index="126" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001270.xdmf"/>
+        <Element index="127" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001280.xdmf"/>
+        <Element index="128" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001290.xdmf"/>
+        <Element index="129" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001300.xdmf"/>
+        <Element index="130" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001310.xdmf"/>
+        <Element index="131" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001320.xdmf"/>
+        <Element index="132" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001330.xdmf"/>
+        <Element index="133" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001340.xdmf"/>
+        <Element index="134" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001350.xdmf"/>
+        <Element index="135" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001360.xdmf"/>
+        <Element index="136" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001370.xdmf"/>
+        <Element index="137" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001380.xdmf"/>
+        <Element index="138" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001390.xdmf"/>
+        <Element index="139" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001400.xdmf"/>
+        <Domain name="files" id="19187.FileNames.files"/>
       </Property>
-      <Property name="TimestepValues" id="10609.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="19187.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
-      <Property name="CellArrayInfo" id="10609.CellArrayInfo"/>
-      <Property name="CellArrayStatus" id="10609.CellArrayStatus">
-        <Domain name="array_list" id="10609.CellArrayStatus.array_list"/>
+      <Property name="CellArrayInfo" id="19187.CellArrayInfo"/>
+      <Property name="CellArrayStatus" id="19187.CellArrayStatus">
+        <Domain name="array_list" id="19187.CellArrayStatus.array_list"/>
       </Property>
-      <Property name="GridInfo" id="10609.GridInfo" number_of_elements="2">
+      <Property name="GridInfo" id="19187.GridInfo" number_of_elements="2">
         <Element index="0" value="VortexParticles"/>
         <Element index="1" value="1"/>
       </Property>
-      <Property name="GridStatus" id="10609.GridStatus" number_of_elements="2">
+      <Property name="GridStatus" id="19187.GridStatus" number_of_elements="2">
         <Element index="0" value="VortexParticles"/>
         <Element index="1" value="1"/>
-        <Domain name="array_list" id="10609.GridStatus.array_list">
+        <Domain name="array_list" id="19187.GridStatus.array_list">
           <String text="VortexParticles"/>
         </Domain>
       </Property>
-      <Property name="PointArrayInfo" id="10609.PointArrayInfo" number_of_elements="22">
+      <Property name="PointArrayInfo" id="19187.PointArrayInfo" number_of_elements="22">
         <Element index="0" value="BackgroundVelocity"/>
         <Element index="1" value="1"/>
         <Element index="2" value="Circulation"/>
@@ -27381,7 +27861,7 @@
         <Element index="20" value="ZoneID"/>
         <Element index="21" value="1"/>
       </Property>
-      <Property name="PointArrayStatus" id="10609.PointArrayStatus" number_of_elements="22">
+      <Property name="PointArrayStatus" id="19187.PointArrayStatus" number_of_elements="22">
         <Element index="0" value="BackgroundVelocity"/>
         <Element index="1" value="1"/>
         <Element index="2" value="Circulation"/>
@@ -27404,7 +27884,7 @@
         <Element index="19" value="1"/>
         <Element index="20" value="ZoneID"/>
         <Element index="21" value="1"/>
-        <Domain name="array_list" id="10609.PointArrayStatus.array_list">
+        <Domain name="array_list" id="19187.PointArrayStatus.array_list">
           <String text="BackgroundVelocity"/>
           <String text="Circulation"/>
           <String text="GroupID"/>
@@ -27418,33 +27898,32 @@
           <String text="ZoneID"/>
         </Domain>
       </Property>
-      <Property name="SetInfo" id="10609.SetInfo"/>
-      <Property name="SetStatus" id="10609.SetStatus">
-        <Domain name="array_list" id="10609.SetStatus.array_list"/>
+      <Property name="SetInfo" id="19187.SetInfo"/>
+      <Property name="SetStatus" id="19187.SetStatus">
+        <Domain name="array_list" id="19187.SetStatus.array_list"/>
       </Property>
-      <Property name="Stride" id="10609.Stride" number_of_elements="3">
+      <Property name="Stride" id="19187.Stride" number_of_elements="3">
         <Element index="0" value="1"/>
         <Element index="1" value="1"/>
         <Element index="2" value="1"/>
-        <Domain name="range" id="10609.Stride.range"/>
+        <Domain name="range" id="19187.Stride.range"/>
       </Property>
     </Proxy>
     <Proxy group="misc" type="TimeKeeper" id="256" servers="16">
       <Property name="SuppressedTimeSources" id="256.SuppressedTimeSources"/>
       <Property name="Time" id="256.Time" number_of_elements="1">
-        <Element index="0" value="4.5"/>
+        <Element index="0" value="0.05"/>
         <Domain name="range" id="256.Time.range"/>
       </Property>
       <Property name="TimeLabel" id="256.TimeLabel" number_of_elements="1">
         <Element index="0" value="Time"/>
       </Property>
       <Property name="TimeRange" id="256.TimeRange" number_of_elements="2">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="4.5"/>
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="7"/>
       </Property>
       <Property name="TimeSources" id="256.TimeSources" number_of_elements="9">
         <Proxy value="10250"/>
-        <Proxy value="10609"/>
         <Proxy value="15667"/>
         <Proxy value="15936"/>
         <Proxy value="16205"/>
@@ -27452,68 +27931,149 @@
         <Proxy value="16781"/>
         <Proxy value="17037"/>
         <Proxy value="17670"/>
+        <Proxy value="19187"/>
       </Property>
-      <Property name="TimestepValues" id="256.TimestepValues" number_of_elements="60">
-        <Element index="0" value="0.075"/>
-        <Element index="1" value="0.15"/>
-        <Element index="2" value="0.225"/>
-        <Element index="3" value="0.3"/>
-        <Element index="4" value="0.375"/>
-        <Element index="5" value="0.45"/>
-        <Element index="6" value="0.525"/>
-        <Element index="7" value="0.6"/>
-        <Element index="8" value="0.675"/>
-        <Element index="9" value="0.75"/>
-        <Element index="10" value="0.825"/>
-        <Element index="11" value="0.9"/>
-        <Element index="12" value="0.975"/>
-        <Element index="13" value="1.05"/>
-        <Element index="14" value="1.125"/>
-        <Element index="15" value="1.2"/>
-        <Element index="16" value="1.275"/>
-        <Element index="17" value="1.35"/>
-        <Element index="18" value="1.425"/>
-        <Element index="19" value="1.5"/>
-        <Element index="20" value="1.575"/>
-        <Element index="21" value="1.65"/>
-        <Element index="22" value="1.725"/>
-        <Element index="23" value="1.8"/>
-        <Element index="24" value="1.875"/>
-        <Element index="25" value="1.95"/>
-        <Element index="26" value="2.025"/>
-        <Element index="27" value="2.1"/>
-        <Element index="28" value="2.175"/>
-        <Element index="29" value="2.25"/>
-        <Element index="30" value="2.325"/>
-        <Element index="31" value="2.4"/>
-        <Element index="32" value="2.475"/>
-        <Element index="33" value="2.55"/>
-        <Element index="34" value="2.625"/>
-        <Element index="35" value="2.7"/>
-        <Element index="36" value="2.775"/>
-        <Element index="37" value="2.85"/>
-        <Element index="38" value="2.925"/>
-        <Element index="39" value="3"/>
-        <Element index="40" value="3.075"/>
-        <Element index="41" value="3.15"/>
-        <Element index="42" value="3.225"/>
-        <Element index="43" value="3.3"/>
-        <Element index="44" value="3.375"/>
-        <Element index="45" value="3.45"/>
-        <Element index="46" value="3.525"/>
-        <Element index="47" value="3.6"/>
-        <Element index="48" value="3.675"/>
-        <Element index="49" value="3.75"/>
-        <Element index="50" value="3.825"/>
-        <Element index="51" value="3.9"/>
-        <Element index="52" value="3.975"/>
-        <Element index="53" value="4.05"/>
-        <Element index="54" value="4.125"/>
-        <Element index="55" value="4.2"/>
-        <Element index="56" value="4.275"/>
-        <Element index="57" value="4.35"/>
-        <Element index="58" value="4.425"/>
-        <Element index="59" value="4.5"/>
+      <Property name="TimestepValues" id="256.TimestepValues" number_of_elements="140">
+        <Element index="0" value="0.05"/>
+        <Element index="1" value="0.1"/>
+        <Element index="2" value="0.15"/>
+        <Element index="3" value="0.2"/>
+        <Element index="4" value="0.25"/>
+        <Element index="5" value="0.3"/>
+        <Element index="6" value="0.35"/>
+        <Element index="7" value="0.4"/>
+        <Element index="8" value="0.45"/>
+        <Element index="9" value="0.5"/>
+        <Element index="10" value="0.55"/>
+        <Element index="11" value="0.6"/>
+        <Element index="12" value="0.65"/>
+        <Element index="13" value="0.7"/>
+        <Element index="14" value="0.75"/>
+        <Element index="15" value="0.8"/>
+        <Element index="16" value="0.85"/>
+        <Element index="17" value="0.9"/>
+        <Element index="18" value="0.95"/>
+        <Element index="19" value="1"/>
+        <Element index="20" value="1.05"/>
+        <Element index="21" value="1.1"/>
+        <Element index="22" value="1.15"/>
+        <Element index="23" value="1.2"/>
+        <Element index="24" value="1.25"/>
+        <Element index="25" value="1.3"/>
+        <Element index="26" value="1.35"/>
+        <Element index="27" value="1.4"/>
+        <Element index="28" value="1.45"/>
+        <Element index="29" value="1.5"/>
+        <Element index="30" value="1.55"/>
+        <Element index="31" value="1.6"/>
+        <Element index="32" value="1.65"/>
+        <Element index="33" value="1.7"/>
+        <Element index="34" value="1.75"/>
+        <Element index="35" value="1.8"/>
+        <Element index="36" value="1.85"/>
+        <Element index="37" value="1.9"/>
+        <Element index="38" value="1.95"/>
+        <Element index="39" value="2"/>
+        <Element index="40" value="2.05"/>
+        <Element index="41" value="2.1"/>
+        <Element index="42" value="2.15"/>
+        <Element index="43" value="2.2"/>
+        <Element index="44" value="2.25"/>
+        <Element index="45" value="2.3"/>
+        <Element index="46" value="2.35"/>
+        <Element index="47" value="2.4"/>
+        <Element index="48" value="2.45"/>
+        <Element index="49" value="2.5"/>
+        <Element index="50" value="2.55"/>
+        <Element index="51" value="2.6"/>
+        <Element index="52" value="2.65"/>
+        <Element index="53" value="2.7"/>
+        <Element index="54" value="2.75"/>
+        <Element index="55" value="2.8"/>
+        <Element index="56" value="2.85"/>
+        <Element index="57" value="2.9"/>
+        <Element index="58" value="2.95"/>
+        <Element index="59" value="3"/>
+        <Element index="60" value="3.05"/>
+        <Element index="61" value="3.1"/>
+        <Element index="62" value="3.15"/>
+        <Element index="63" value="3.2"/>
+        <Element index="64" value="3.25"/>
+        <Element index="65" value="3.3"/>
+        <Element index="66" value="3.35"/>
+        <Element index="67" value="3.4"/>
+        <Element index="68" value="3.45"/>
+        <Element index="69" value="3.5"/>
+        <Element index="70" value="3.55"/>
+        <Element index="71" value="3.6"/>
+        <Element index="72" value="3.65"/>
+        <Element index="73" value="3.7"/>
+        <Element index="74" value="3.75"/>
+        <Element index="75" value="3.8"/>
+        <Element index="76" value="3.85"/>
+        <Element index="77" value="3.9"/>
+        <Element index="78" value="3.95"/>
+        <Element index="79" value="4"/>
+        <Element index="80" value="4.05"/>
+        <Element index="81" value="4.1"/>
+        <Element index="82" value="4.15"/>
+        <Element index="83" value="4.2"/>
+        <Element index="84" value="4.25"/>
+        <Element index="85" value="4.3"/>
+        <Element index="86" value="4.35"/>
+        <Element index="87" value="4.4"/>
+        <Element index="88" value="4.45"/>
+        <Element index="89" value="4.5"/>
+        <Element index="90" value="4.55"/>
+        <Element index="91" value="4.6"/>
+        <Element index="92" value="4.65"/>
+        <Element index="93" value="4.7"/>
+        <Element index="94" value="4.75"/>
+        <Element index="95" value="4.8"/>
+        <Element index="96" value="4.85"/>
+        <Element index="97" value="4.9"/>
+        <Element index="98" value="4.95"/>
+        <Element index="99" value="5"/>
+        <Element index="100" value="5.05"/>
+        <Element index="101" value="5.1"/>
+        <Element index="102" value="5.15"/>
+        <Element index="103" value="5.2"/>
+        <Element index="104" value="5.25"/>
+        <Element index="105" value="5.3"/>
+        <Element index="106" value="5.35"/>
+        <Element index="107" value="5.4"/>
+        <Element index="108" value="5.45"/>
+        <Element index="109" value="5.5"/>
+        <Element index="110" value="5.55"/>
+        <Element index="111" value="5.6"/>
+        <Element index="112" value="5.65"/>
+        <Element index="113" value="5.7"/>
+        <Element index="114" value="5.75"/>
+        <Element index="115" value="5.8"/>
+        <Element index="116" value="5.85"/>
+        <Element index="117" value="5.9"/>
+        <Element index="118" value="5.95"/>
+        <Element index="119" value="6"/>
+        <Element index="120" value="6.05"/>
+        <Element index="121" value="6.1"/>
+        <Element index="122" value="6.15"/>
+        <Element index="123" value="6.2"/>
+        <Element index="124" value="6.25"/>
+        <Element index="125" value="6.3"/>
+        <Element index="126" value="6.35"/>
+        <Element index="127" value="6.4"/>
+        <Element index="128" value="6.45"/>
+        <Element index="129" value="6.5"/>
+        <Element index="130" value="6.55"/>
+        <Element index="131" value="6.6"/>
+        <Element index="132" value="6.65"/>
+        <Element index="133" value="6.7"/>
+        <Element index="134" value="6.75"/>
+        <Element index="135" value="6.8"/>
+        <Element index="136" value="6.85"/>
+        <Element index="137" value="6.9"/>
+        <Element index="138" value="6.95"/>
+        <Element index="139" value="7"/>
       </Property>
       <Property name="Views" id="256.Views" number_of_elements="1">
         <Proxy value="7170"/>
@@ -28361,7 +28921,7 @@
         <Element index="1" value="944"/>
       </Property>
       <Property name="ViewTime" id="7170.ViewTime" number_of_elements="1">
-        <Element index="0" value="4.5"/>
+        <Element index="0" value="0.05"/>
         <Domain name="range" id="7170.ViewTime.range"/>
       </Property>
       <Property name="VolumeAnisotropy" id="7170.VolumeAnisotropy" number_of_elements="1">
@@ -28383,14 +28943,14 @@
         <Element index="0" value="0"/>
       </Property>
       <Property name="CameraFocalPoint" id="7170.CameraFocalPoint" number_of_elements="3">
-        <Element index="0" value="16.21371270593082"/>
-        <Element index="1" value="-3.3443951202549878"/>
-        <Element index="2" value="-4.745856688246357"/>
+        <Element index="0" value="15.11892101563719"/>
+        <Element index="1" value="-1.6416000656164103"/>
+        <Element index="2" value="0.13659349262453574"/>
       </Property>
       <Property name="CameraFocalPointInfo" id="7170.CameraFocalPointInfo" number_of_elements="3">
-        <Element index="0" value="16.21371270593082"/>
-        <Element index="1" value="-3.3443951202549878"/>
-        <Element index="2" value="-4.745856688246357"/>
+        <Element index="0" value="15.11892101563719"/>
+        <Element index="1" value="-1.6416000656164103"/>
+        <Element index="2" value="0.13659349262453574"/>
       </Property>
       <Property name="CameraParallelScale" id="7170.CameraParallelScale" number_of_elements="1">
         <Element index="0" value="16.47671463728684"/>
@@ -28399,14 +28959,14 @@
         <Element index="0" value="16.47671463728684"/>
       </Property>
       <Property name="CameraPosition" id="7170.CameraPosition" number_of_elements="3">
-        <Element index="0" value="-9.69291962332138"/>
-        <Element index="1" value="12.235945997166828"/>
-        <Element index="2" value="26.506865596621"/>
+        <Element index="0" value="-10.744590476770338"/>
+        <Element index="1" value="16.089386097204525"/>
+        <Element index="2" value="30.258415834064706"/>
       </Property>
       <Property name="CameraPositionInfo" id="7170.CameraPositionInfo" number_of_elements="3">
-        <Element index="0" value="-9.69291962332138"/>
-        <Element index="1" value="12.235945997166828"/>
-        <Element index="2" value="26.506865596621"/>
+        <Element index="0" value="-10.744590476770338"/>
+        <Element index="1" value="16.089386097204525"/>
+        <Element index="2" value="30.258415834064706"/>
       </Property>
       <Property name="CameraViewAngle" id="7170.CameraViewAngle" number_of_elements="1">
         <Element index="0" value="30"/>
@@ -28415,14 +28975,14 @@
         <Element index="0" value="30"/>
       </Property>
       <Property name="CameraViewUp" id="7170.CameraViewUp" number_of_elements="3">
-        <Element index="0" value="0.24539619200556087"/>
-        <Element index="1" value="0.9333764841241101"/>
-        <Element index="2" value="-0.26189510845620023"/>
+        <Element index="0" value="0.27759589473120744"/>
+        <Element index="1" value="0.9129649427057163"/>
+        <Element index="2" value="-0.29905774127871787"/>
       </Property>
       <Property name="CameraViewUpInfo" id="7170.CameraViewUpInfo" number_of_elements="3">
-        <Element index="0" value="0.24539619200556087"/>
-        <Element index="1" value="0.9333764841241101"/>
-        <Element index="2" value="-0.26189510845620023"/>
+        <Element index="0" value="0.27759589473120744"/>
+        <Element index="1" value="0.9129649427057163"/>
+        <Element index="2" value="-0.29905774127871787"/>
       </Property>
       <Property name="EyeAngle" id="7170.EyeAngle" number_of_elements="1">
         <Element index="0" value="2"/>
@@ -28473,9 +29033,6 @@
       <Item id="10375" name="PolarAxes" logname="GeometryRepresentation1/PolarAxes/PolarAxesRepresentation"/>
       <Item id="10508" name="ScaleTransferFunction" logname="GeometryRepresentation1/PointGaussianRepresentation/ScaleTransferFunction/PiecewiseFunction"/>
       <Item id="10554" name="TextureTransform" logname="GeometryRepresentation1/SurfaceRepresentation/TextureTransform/Transform2"/>
-    </ProxyCollection>
-    <ProxyCollection name="pq_helper_proxies.10609">
-      <Item id="10620" name="RepresentationAnimationHelper"/>
     </ProxyCollection>
     <ProxyCollection name="pq_helper_proxies.10851">
       <Item id="10629" name="DataAxesGrid" logname="UnstructuredGridRepresentation1/DataAxesGrid/GridAxesRepresentation"/>
@@ -28626,6 +29183,9 @@
       <Item id="17920" name="ScaleTransferFunction" logname="UnstructuredGridRepresentation2/PointGaussianRepresentation/ScaleTransferFunction/PiecewiseFunction"/>
       <Item id="17922" name="TextureTransform" logname="UnstructuredGridRepresentation2/SurfaceRepresentation/TextureTransform/Transform2"/>
     </ProxyCollection>
+    <ProxyCollection name="pq_helper_proxies.19187">
+      <Item id="19198" name="RepresentationAnimationHelper"/>
+    </ProxyCollection>
     <ProxyCollection name="pq_helper_proxies.7170">
       <Item id="7161" name="AxesGrid" logname="RenderView1/AxesGrid/GridAxes3DActor"/>
       <Item id="7164" name="LegendGrid" logname="RenderView1/LegendGrid/LegendGridActor"/>
@@ -28662,7 +29222,7 @@
       <Item id="16205" name="slice_x27m.pvd" logname="slice_x27m.pvd"/>
       <Item id="15667" name="slice_x9m.pvd*" logname="slice_x9m.pvd*"/>
       <Item id="10250" name="vlm_rotor.pvd" logname="vlm_rotor.pvd"/>
-      <Item id="10609" name="vpm_rotor_000015.xdmf*" logname="vpm_rotor_000015.xdmf*"/>
+      <Item id="19187" name="vpm_rotor_000010.xdmf*" logname="vpm_rotor_000010.xdmf*"/>
     </ProxyCollection>
     <ProxyCollection name="timekeeper">
       <Item id="256" name="TimeKeeper1"/>

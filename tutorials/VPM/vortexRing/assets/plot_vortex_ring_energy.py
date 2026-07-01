@@ -37,7 +37,7 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(12.8 * CM, 8 * CM))
 
-    # ── Energy diagnostics — all available variants ─────────────────────────
+    # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
         log = sol / variant / f"{variant}.log"
         if not log.exists():

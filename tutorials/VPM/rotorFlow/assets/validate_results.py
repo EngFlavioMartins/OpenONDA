@@ -70,7 +70,7 @@ def main() -> int:
     qA = 0.5 * 1.225 * U_inf**2 * np.pi * R**2
     failures: list[str] = []
 
-    # ── 1. VPM particle sanity ────────────────────────────────────────────────
+    # -- 1. VPM particle sanity ------------------------------------------------
     files = sorted(root.glob("vpm_rotor_*.h5"), key=_step)
     if not files or _step(files[-1]) != args.expected_step:
         failures.append(
@@ -89,7 +89,7 @@ def main() -> int:
         if not np.isfinite(alpha).all() or max_strength > 10.0:
             failures.append(f"unbounded final wake strength: {max_strength:.4g}")
 
-    # ── 2. VLM force CSV ─────────────────────────────────────────────────────
+    # -- 2. VLM force CSV -----------------------------------------------------
     csv = root / "samples" / "vlm_forces.csv"
     ct_mean = cp_mean = float("nan")
     if not csv.exists():
@@ -110,7 +110,7 @@ def main() -> int:
                 "(expected 0.4 < Ct < 1.1, 0.2 < Cp < 0.62)"
             )
 
-    # ── 3. BEM reference comparison ──────────────────────────────────────────
+    # -- 3. BEM reference comparison ------------------------------------------
     bem_ct, bem_cp = _bem_reference(R, U_inf, omega, args.blades)
     if np.isfinite(bem_ct) and np.isfinite(ct_mean):
         ct_err = abs(ct_mean - bem_ct) / max(bem_ct, 1e-10)
@@ -132,13 +132,13 @@ def main() -> int:
     elif not np.isfinite(bem_ct):
         print("  (BEM reference unavailable — skipping BEM comparison)")
 
-    # ── 4. Wake-plane snapshots ───────────────────────────────────────────────
+    # -- 4. Wake-plane snapshots ----------------------------------------------
     for tag in ("x36m", "x72m", "x108m"):
         planes = sorted((root / "samples").glob(f"slice_{tag}_*.vts"))
         if not planes or f"_{args.expected_step:06d}.vts" not in planes[-1].name:
             failures.append(f"missing final {tag} wake plane")
 
-    # ── 5. Figure outputs ─────────────────────────────────────────────────────
+    # -- 5. Figure outputs ----------------------------------------------------
     for name in (
         "rotor_performance.png",
         "rotor_wake_planes.png",

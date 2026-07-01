@@ -105,13 +105,13 @@ class BackupSystem:
     def _save_particle_optional_fields(particles_group, solver, n_particles: int) -> None:
         """Save optional/advanced particle fields to HDF5, silently skipping unavailable ones."""
         try:
-            zone_id_data = solver.particles.zone_id.to_numpy()[:n_particles]
+            zone_id_data = solver.particles.zone_id_cpu()
             particles_group.create_dataset("zone_id", data=zone_id_data)
         except (AttributeError, Exception) as e:
             print(f"(Info) Warning: zone_id field not available for backup: {e}")
 
         try:
-            vg_data = solver.particles.velocity_gradient.to_numpy()
+            vg_data = solver.particles.velocity_gradient_cpu()
             if vg_data.shape[0] >= n_particles:
                 particles_group.create_dataset(
                     "velocity_gradient", data=vg_data[:n_particles].reshape(n_particles, 9)
@@ -125,7 +125,7 @@ class BackupSystem:
             print(f"(Info) Warning: velocity_gradient field not available for backup: {e}")
 
         try:
-            sr_data = solver.particles.strain_rate.to_numpy()
+            sr_data = solver.particles.strain_rate_cpu()
             if sr_data.shape[0] >= n_particles:
                 sr_slice = sr_data[:n_particles]
                 particles_group.create_dataset("strain_rate", data=sr_slice.reshape(n_particles, 9))
@@ -160,9 +160,9 @@ class BackupSystem:
         try:
             if hasattr(solver, "physics") and hasattr(solver.physics, "get_total_enstrophy"):
                 enstrophy = solver.physics.get_total_enstrophy(
-                    solver.particles.position.to_numpy()[:n_particles],
-                    solver.particles.circulation.to_numpy()[:n_particles],
-                    solver.particles.radius.to_numpy()[:n_particles],
+                    solver.particles.position_cpu(),
+                    solver.particles.circulation_cpu(),
+                    solver.particles.radius_cpu(),
                 )
                 particles_group.create_dataset("total_enstrophy", data=enstrophy)
         except (AttributeError, RuntimeError) as e:
@@ -195,9 +195,7 @@ class BackupSystem:
                 "group_id",
                 "vorticity",
             ):
-                particles_group.create_dataset(
-                    name, data=getattr(solver.particles, name).to_numpy()[:n_particles]
-                )
+                particles_group.create_dataset(name, data=getattr(solver.particles, f"{name}_cpu")())
             BackupSystem._save_particle_optional_fields(particles_group, solver, n_particles)
 
     @staticmethod
@@ -602,9 +600,9 @@ class BackupSystem:
             )
 
             if vorticity is not None:
-                solver.particles.vorticity.from_numpy(vorticity)
+                solver.particles.set_field("vorticity", vorticity)
             if optional["strain_rate"] is not None:
-                solver.particles.strain_rate.from_numpy(optional["strain_rate"])
+                solver.particles.set_field("strain_rate", optional["strain_rate"])
 
             print(f"Restored {solver.particles.number_of_particles} particles with full precision")
 

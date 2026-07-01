@@ -26,7 +26,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------------
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
@@ -41,7 +41,7 @@ args, _ = parser.parse_known_args()
 SOL_DIR = Path(args.solution_dir).resolve()
 FIG_DIR = Path(args.figures_dir).resolve()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-# ── Theme ─────────────────────────────────────────────────────────────────────
+# -- Theme ---------------------------------------------------------------------
 m = None
 if THEME_PATH.exists():
     spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
@@ -63,12 +63,12 @@ def _c(key):
     return m.COLORS[key] if m and hasattr(m, "COLORS") else None
 
 
-# ── Colours ───────────────────────────────────────────────────────────────────
+# -- Colours -------------------------------------------------------------------
 C_MOVING = _c("TUDcyan")
 C_STATIC = _c("vpm")
 C_THEORY = _c("ref")
 
-# ── Physical constants ────────────────────────────────────────────────────────
+# -- Physical constants --------------------------------------------------------
 AR = 10.0
 CHORD = 1.0
 U_INF = 10.0
@@ -76,7 +76,7 @@ U_INF = 10.0
 cm = 1 / 2.54
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def lifting_line_polar(alpha_deg, AR, b=10.0, chord=1.0, n_terms=40):
@@ -120,7 +120,7 @@ def final_coefficients(name: str) -> tuple[float, float, float]:
     return cl, cd, cm
 
 
-# ── Data ──────────────────────────────────────────────────────────────────────
+# -- Data ----------------------------------------------------------------------
 
 MOVING_CASES = [
     ("exp_moving_aoan10", -10),
@@ -171,7 +171,7 @@ CDi_theory = np.empty_like(alpha_range)
 for i, a_deg in enumerate(alpha_range):
     CL_theory[i], CDi_theory[i] = lifting_line_polar(a_deg, AR, b=AR * CHORD, chord=CHORD)
 
-# ── Figure ────────────────────────────────────────────────────────────────────
+# -- Figure --------------------------------------------------------------------
 
 fig, (ax_cl, ax_cd, ax_cm) = plt.subplots(
     3, 1, figsize=(12 * cm, 15 * cm), sharex=True, constrained_layout=True
@@ -182,8 +182,8 @@ ax_cl.plot(
     alpha_range,
     CL_theory,
     "--",
-    color=C_THEORY,
-    lw=1.2,
+    color="gray",
+    lw=1.0,
     label=rf"Prandtl lifting-line (AR={AR:.0f})",
 )
 ax_cl.plot(moving_aoa, moving_cl, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
@@ -200,8 +200,8 @@ ax_cd.plot(
     alpha_range,
     CDi_theory,
     "--",
-    color=C_THEORY,
-    lw=1.2,
+    color="gray",
+    lw=1.0,
     label=rf"Prandtl lifting-line (AR={AR:.0f})",
 )
 ax_cd.plot(moving_aoa, moving_cd, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")

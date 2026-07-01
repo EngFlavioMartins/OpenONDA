@@ -75,6 +75,10 @@ class Particles:
         self._resize_callbacks = []  # Callbacks to invoke when container capacity changes
         # NumPy dtype matching Taichi float precision (avoids repeated branching)
         self._np_float_dtype = np.float32 if self.float_dtype == "f32" else np.float64
+        self._host_vector_chunk = None
+        self._host_scalar_chunk = None
+        self._host_matrix_chunk = None
+        self._host_int_chunk = None
         # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
@@ -176,12 +180,34 @@ class Particles:
 
     # ---- Prefix-extraction helpers (GPU → CPU, only active prefix) ----
 
+    def _ensure_host_transfer_buffers(self) -> None:
+        """Allocate fixed-shape NumPy buffers for Taichi external-array transfers.
+
+        Taichi's Vulkan/Metal external-array staging can cache one device buffer
+        per distinct ndarray shape.  Long runs with particle counts changing at
+        every remeshing/regeneration step therefore leak cached staging buffers
+        if we pass arrays of shape ``(N, ...)`` or tail slices of varying size.
+        Keep all solver-loop transfers at one fixed chunk shape and pass the
+        live count as a scalar kernel argument instead.
+        """
+        chunk = self._COPY_CHUNK_SIZE
+        if self._host_vector_chunk is None:
+            self._host_vector_chunk = np.empty((chunk, 3), dtype=self._np_float_dtype)
+            self._host_scalar_chunk = np.empty((chunk,), dtype=self._np_float_dtype)
+            self._host_matrix_chunk = np.empty((chunk, 3, 3), dtype=self._np_float_dtype)
+            self._host_int_chunk = np.empty((chunk,), dtype=np.int32)
+
     def _extract_scalar(self, field, n):
         """Return first n scalar entries as a NumPy array (no full alloc transfer)."""
         if n == 0:
             return np.empty((0,), dtype=self._np_float_dtype)
         out = np.empty((n,), dtype=self._np_float_dtype)
-        self._extract_scalar_prefix(field, out, n)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_scalar_chunk
+        for lo in range(0, n, self._COPY_CHUNK_SIZE):
+            count = min(self._COPY_CHUNK_SIZE, n - lo)
+            self._extract_scalar_prefix(field, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_vector(self, field, n):
@@ -189,7 +215,12 @@ class Particles:
         if n == 0:
             return np.empty((0, 3), dtype=self._np_float_dtype)
         out = np.empty((n, 3), dtype=self._np_float_dtype)
-        self._extract_vector_prefix(field, out, n)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
+        for lo in range(0, n, self._COPY_CHUNK_SIZE):
+            count = min(self._COPY_CHUNK_SIZE, n - lo)
+            self._extract_vector_prefix(field, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_matrix(self, field, n):
@@ -197,7 +228,12 @@ class Particles:
         if n == 0:
             return np.empty((0, 3, 3), dtype=self._np_float_dtype)
         out = np.empty((n, 3, 3), dtype=self._np_float_dtype)
-        self._extract_matrix_prefix(field, out, n)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_matrix_chunk
+        for lo in range(0, n, self._COPY_CHUNK_SIZE):
+            count = min(self._COPY_CHUNK_SIZE, n - lo)
+            self._extract_matrix_prefix(field, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_int(self, field, n):
@@ -205,7 +241,12 @@ class Particles:
         if n == 0:
             return np.empty((0,), dtype=np.int32)
         out = np.empty((n,), dtype=np.int32)
-        self._extract_int_prefix(field, out, n)
+        self._ensure_host_transfer_buffers()
+        buf = self._host_int_chunk
+        for lo in range(0, n, self._COPY_CHUNK_SIZE):
+            count = min(self._COPY_CHUNK_SIZE, n - lo)
+            self._extract_int_prefix(field, buf, lo, count)
+            out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_cpu_data(self, num_particles):
@@ -273,31 +314,39 @@ class Particles:
     # ---- Prefix extraction kernels (avoid full MAX_PARTICLES to_numpy()) ----
 
     @ti.kernel
-    def _extract_scalar_prefix(self, src: ti.template(), dst: ti.types.ndarray(), n: ti.i32):  # type: ignore
+    def _extract_scalar_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
         """Copy first n scalar entries from Taichi field to NumPy array."""
         for i in range(n):
-            dst[i] = src[i]
+            dst[i] = src[start_idx + i]
 
     @ti.kernel
-    def _extract_vector_prefix(self, src: ti.template(), dst: ti.types.ndarray(), n: ti.i32):  # type: ignore
+    def _extract_vector_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
         """Copy first n vector entries from Taichi field to NumPy array."""
         for i in range(n):
             for k in ti.static(range(3)):
-                dst[i, k] = src[i][k]
+                dst[i, k] = src[start_idx + i][k]
 
     @ti.kernel
-    def _extract_matrix_prefix(self, src: ti.template(), dst: ti.types.ndarray(), n: ti.i32):  # type: ignore
+    def _extract_matrix_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
         """Copy first n matrix entries from Taichi field to NumPy array."""
         for i in range(n):
             for j in ti.static(range(3)):
                 for k in ti.static(range(3)):
-                    dst[i, j, k] = src[i][j, k]
+                    dst[i, j, k] = src[start_idx + i][j, k]
 
     @ti.kernel
-    def _extract_int_prefix(self, src: ti.template(), dst: ti.types.ndarray(), n: ti.i32):  # type: ignore
+    def _extract_int_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
         """Copy first n integer entries from Taichi field to NumPy array."""
         for i in range(n):
-            dst[i] = src[i]
+            dst[i] = src[start_idx + i]
 
     @ti.kernel
     def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):  # type: ignore
@@ -579,27 +628,43 @@ class Particles:
 
     def _copy_vectors_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload vector data in bounded external-array chunks."""
+        self._ensure_host_transfer_buffers()
+        buf = self._host_vector_chunk
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
-            self._copy_to_taichi_vectors(src[lo:hi], dest, start_idx + lo, hi - lo)
+            n_chunk = hi - lo
+            buf[:n_chunk] = src[lo:hi]
+            self._copy_to_taichi_vectors(buf, dest, start_idx + lo, n_chunk)
 
     def _copy_scalars_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload scalar data in bounded external-array chunks."""
+        self._ensure_host_transfer_buffers()
+        buf = self._host_scalar_chunk
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
-            self._copy_to_taichi_scalars(src[lo:hi], dest, start_idx + lo, hi - lo)
+            n_chunk = hi - lo
+            buf[:n_chunk] = src[lo:hi]
+            self._copy_to_taichi_scalars(buf, dest, start_idx + lo, n_chunk)
 
     def _copy_matrices_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload matrix data in bounded external-array chunks."""
+        self._ensure_host_transfer_buffers()
+        buf = self._host_matrix_chunk
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
-            self._copy_to_taichi_matrices(src[lo:hi], dest, start_idx + lo, hi - lo)
+            n_chunk = hi - lo
+            buf[:n_chunk] = src[lo:hi]
+            self._copy_to_taichi_matrices(buf, dest, start_idx + lo, n_chunk)
 
     def _copy_ints_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload integer data in bounded external-array chunks."""
+        self._ensure_host_transfer_buffers()
+        buf = self._host_int_chunk
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
-            self._copy_to_taichi_ints(src[lo:hi], dest, start_idx + lo, hi - lo)
+            n_chunk = hi - lo
+            buf[:n_chunk] = src[lo:hi]
+            self._copy_to_taichi_ints(buf, dest, start_idx + lo, n_chunk)
 
     def _validate_numpy_input(self, arr, expected_shape_suffix, name):
         """Validate NumPy array input for Taichi kernels."""
@@ -1509,7 +1574,7 @@ class Particles:
             return
         circ = self._extract_vector(self.circulation, N)
         circ[mask] += delta_circ.astype(circ.dtype)
-        self._copy_to_taichi_vectors(circ, self.circulation, 0, N)
+        self._copy_vectors_chunked(circ, self.circulation, 0, N)
         self._cached_step = -1
 
     def remove_vortex_particles(self, indices, remove_all: bool = False):
@@ -1575,16 +1640,16 @@ class Particles:
 
         if field_name in scalar_fields:
             values = self._validate_numpy_input(values, (), field_name)
-            self._copy_to_taichi_scalars(values, field, 0, count)
+            self._copy_scalars_chunked(values, field, 0, count)
         elif field_name in int_fields:
             values = self._validate_numpy_input(values, (), field_name)
-            self._copy_to_taichi_ints(values, field, 0, count)
+            self._copy_ints_chunked(values, field, 0, count)
         elif field_name in vector_fields:
             values = self._validate_numpy_input(values, (3,), field_name)
-            self._copy_to_taichi_vectors(values, field, 0, count)
+            self._copy_vectors_chunked(values, field, 0, count)
         elif field_name in matrix_fields:
             values = self._validate_numpy_input(values, (3, 3), field_name)
-            self._copy_to_taichi_matrices(values, field, 0, count)
+            self._copy_matrices_chunked(values, field, 0, count)
         else:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
 

@@ -1396,9 +1396,11 @@ class Solver:
             target_pos_ti = self.physics.target_positions
             target_vel_ti = self.physics.target_velocities
 
-            # Transfer results to Taichi fields for kernel execution
-            target_pos_ti.from_numpy(grid_positions.astype(self.np_dtype))
-            target_vel_ti.from_numpy(velocities.astype(self.np_dtype))
+            # Transfer results to Taichi fields through fixed-shape external
+            # buffers; changing sampler sizes should not create persistent
+            # backend staging allocations.
+            self.physics._upload_vector_array(grid_positions, target_pos_ti, n_targets)
+            self.physics._upload_vector_array(velocities, target_vel_ti, n_targets)
 
             self.physics.kernels["compute_target_source_velocity_kernel"](
                 target_pos_ti,
@@ -1688,8 +1690,11 @@ class Solver:
         strain_rate: np.ndarray | None = None,
     ) -> None:
         """Replace the active particle cloud in one field-upload operation."""
-        p_circ = self.particles_circulation
-        circ_removed = p_circ.sum(axis=0) if len(p_circ) > 0 else np.zeros(3)
+        circ_removed = (
+            self.particles.total_circulation()
+            if len(self.particles) > 0
+            else np.zeros(3, dtype=self.np_dtype)
+        )
         self._particles_removed_this_step = len(self.particles)
         self._circulation_removed_this_step = circ_removed
         self._impulse_state["history"] = []
@@ -2263,8 +2268,7 @@ class Solver:
             new_p = self._apply_grid_diffusion(self._viscous_config, dt)
             if new_p is not None:
                 M = len(new_p["position"])
-                self.remove_particles(remove_all=True)
-                self.add_vortex_particles(
+                self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
                     circulation=new_p["circulation"],
@@ -2288,7 +2292,7 @@ class Solver:
             if self.flow_model == "LES":
                 N = self.particles.number_of_particles
                 if N > 0:
-                    nu_eff = self.particles.viscosity_effective.to_numpy()[:N]
+                    nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming DVH particle regeneration "
                 f"(h={vc.dvh_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
@@ -2321,7 +2325,7 @@ class Solver:
             if self.flow_model == "LES":
                 N = self.particles.number_of_particles
                 if N > 0:
-                    nu_eff = self.particles.viscosity_effective.to_numpy()[:N]
+                    nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming GBD diffusion"
                 f"(h={vc.gbd_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
@@ -2372,10 +2376,10 @@ class Solver:
                 # Compute fresh ω at current positions/strengths before split
                 self.physics.compute_vorticities(self.particles)
                 N_pre = len(self.particles)
-                _pos_pre = self.particles.position.to_numpy()[:N_pre].copy()
-                _str_pre = self.particles.circulation.to_numpy()[:N_pre].copy()
-                _rad_pre = self.particles.radius.to_numpy()[:N_pre].copy()
-                _vort_pre = self.particles.vorticity.to_numpy()[:N_pre].copy()
+                _pos_pre = self.particles.position_cpu().copy()
+                _str_pre = self.particles.circulation_cpu().copy()
+                _rad_pre = self.particles.radius_cpu().copy()
+                _vort_pre = self.particles.vorticity_cpu().copy()
                 _mask_split = _rad_pre > max_radius
 
                 stats = self._splitter.split(self.particles, max_radius)

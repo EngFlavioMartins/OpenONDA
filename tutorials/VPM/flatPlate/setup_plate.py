@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # ── Output ────────────────────────────────────────────────────────
+    # -- Output --------------------------------------------------------
     p.add_argument(
         "--name", required=True, help="Case name; CSV saved as solution/{name}/samples/{name}.csv"
     )
@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--log-freq", type=int, default=5, help="CSV logging frequency [steps]")
 
-    # ── Geometry ──────────────────────────────────────────────────────
+    # -- Geometry ------------------------------------------------------
     p.add_argument("--chord", type=float, default=1.0, help="Chord [m]")
     p.add_argument("--span", type=float, default=5.0, help="Full span [m]")
     p.add_argument(
@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--panels-chord", type=int, default=8, help="Chordwise panels")
     p.add_argument("--panels-span", type=int, default=16, help="Spanwise panels per side")
 
-    # ── Kinematics ────────────────────────────────────────────────────
+    # -- Kinematics ----------------------------------------------------
     p.add_argument(
         "--kinematics", choices=["static", "ramp", "pitching"], default="static", help="Motion type"
     )
@@ -101,12 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         '"body" = moving wing in quiescent fluid',
     )
 
-    # ── Ramp parameters ───────────────────────────────────────────────
+    # -- Ramp parameters -----------------------------------------------
     p.add_argument(
         "--tau-ramp", type=float, default=0.6, help="Ramp length [chord-lengths] (ramp only)"
     )
 
-    # ── Pitching parameters ───────────────────────────────────────────
+    # -- Pitching parameters -------------------------------------------
     p.add_argument("--pitch-amplitude", type=float, default=2.0, help="Pitch amplitude [deg]")
     p.add_argument("--reduced-freq", type=float, default=0.3, help="Reduced frequency k = ωc/(2U)")
     p.add_argument(
@@ -114,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--pts-per-period", type=int, default=60, help="Time steps per period")
 
-    # ── Solver physics ────────────────────────────────────────────────
+    # -- Solver physics ------------------------------------------------
     p.add_argument("--U-inf", type=float, default=10.0, help="Freestream speed [m/s]")
     p.add_argument("--density", type=float, default=1.0, help="Fluid density [kg/m³]")
     p.add_argument("--viscosity", type=float, default=1e-2, help="Kinematic viscosity [m²/s]")
@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         "geometry/AIC alone produces the finite-wing taper.",
     )
 
-    # ── Time control (priority: --steps > --tau-max / --n-periods) ────
+    # -- Time control (priority: --steps > --tau-max / --n-periods) ----
     p.add_argument("--steps", type=int, default=None, help="Override total step count")
     p.add_argument(
         "--tau-max", type=float, default=5.5, help="Simulation end [chord-lengths] (static/ramp)"
@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--dt", type=float, default=None, help="Override time step [s] (auto=0.01 for static/ramp)"
     )
 
-    # ── Wake adaptation ───────────────────────────────────────────────
+    # -- Wake adaptation -----------------------------------------------
     p.add_argument(
         "--cutoff-x",
         type=float,
@@ -155,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--remesh-spacing", type=float, default=0.1, help="Remeshing grid spacing [m]")
 
-    # ── Field sampling ────────────────────────────────────────────────
+    # -- Field sampling ------------------------------------------------
     p.add_argument(
         "--sample-midspan",
         action="store_true",
@@ -302,13 +302,13 @@ def main():
     print(f"  kinematics={args.kinematics}, frame={args.frame}, aoa={args.aoa}°")
     print(f"{'=' * 65}\n")
 
-    # ── Derived parameters ────────────────────────────────────────────
+    # -- Derived parameters --------------------------------------------
     dt, n_steps, t_ramp, chord_travel_fn = compute_time_params(args)
     kin, bg_vel = build_kinematics(args, t_ramp)
 
     print(f"  dt={dt:.5f}s  n_steps={n_steps}  t_ramp={t_ramp:.3f}s")
 
-    # ── Surface geometry ──────────────────────────────────────────────
+    # -- Surface geometry ----------------------------------------------
     # Wind-frame static: AoA in background velocity, plate is horizontal.
     # Body-frame and pitching: AoA encoded in plate geometry.
     if args.kinematics == "static" and args.frame == "wind":
@@ -330,12 +330,12 @@ def main():
     )
     save_surface(surface, surface_file)
 
-    # ── Force configuration ────────────────────────────────────────────
+    # -- Force configuration --------------------------------------------
     force_cfg = ForceConfig.kutta_joukowski()
 
     alpha_rad = math.radians(args.aoa)
 
-    # ── VLM solver ────────────────────────────────────────────────────
+    # -- VLM solver ----------------------------------------------------
     # U_ref encodes the aerodynamic freestream (relative wind seen by the body).
     # This sets D_hat = U_ref/|U_ref| in _decompose_wind_axes, so the drag axis
     # must point in the direction of the incoming flow, not the body velocity.
@@ -372,7 +372,7 @@ def main():
     )
     vlm.add_surface(surface_file, kinematics=kin)
 
-    # ── Samplers ──────────────────────────────────────────────────────
+    # -- Samplers ------------------------------------------------------
     backup_dir = f"solution/{args.name}"
     samplers = []
 
@@ -405,7 +405,7 @@ def main():
                 )
             )
 
-    # ── Solver config ─────────────────────────────────────────────────
+    # -- Solver config -------------------------------------------------
     cfg_kwargs = dict(
         time_step_size=dt,
         advection=AdvectionConfig(scheme="RK2"),
@@ -424,7 +424,7 @@ def main():
 
     solver_config = SolverConfig.les_simulation(cs=args.cs, **cfg_kwargs)
 
-    # ── Remove stale CSVs before run ──────────────────────────────────
+    # -- Remove stale CSVs before run ----------------------------------
     # The diagnostics/loading-distribution hooks APPEND to these every log step,
     # so a leftover file from a previous run of the same --name would accumulate
     # (and a single-case re-run without allclean would mix old+new rows at the
@@ -436,7 +436,7 @@ def main():
         if _p.exists():
             _p.unlink()
 
-    # ── Solver instantiation ──────────────────────────────────────────
+    # -- Solver instantiation ------------------------------------------
     solver = Solver(config=solver_config)
 
     # Generate mesh AFTER Solver() (ti.init required first)
@@ -446,7 +446,7 @@ def main():
         spanwise_spacing_region="end",
     )
 
-    # ── DIAGNOSTIC: standalone uncoupled steady VLM (D1) ──────────────
+    # -- DIAGNOSTIC: standalone uncoupled steady VLM (D1) --------------
     # One solve with the FULL semi-infinite horseshoe (coupled=False) = the exact
     # linear finite-wing answer. If cl(y) tapers to ~0 at the tip, the geometry/AIC
     # is fine and the coupled VPM wake is what under-delivers the tip downwash.
@@ -461,7 +461,7 @@ def main():
         out.mkdir(parents=True, exist_ok=True)
         sp.to_csv(out / f"{args.name}_spanwise.csv", index=False)
         o = sp[sp.half == "orig"].sort_values("span_index")
-        print("\n  ─── Uncoupled steady VLM (diagnostic) ───")
+        print("\n  --- Uncoupled steady VLM (diagnostic) ---")
         print(
             f"  cl_root={o.cl.iloc[0]:.4f}  cl_tip={o.cl.iloc[-1]:.4f}  "
             f"Gamma_root={o.Gamma.iloc[0]:.4f}  Gamma_tip={o.Gamma.iloc[-1]:.4f}"
@@ -474,7 +474,7 @@ def main():
     step_indices = np.arange(n_steps, dtype=float)
     chords_traveled = chord_travel_fn(step_indices)
 
-    # ── Simulation loop ───────────────────────────────────────────────
+    # -- Simulation loop -----------------------------------------------
     for _step in range(n_steps):
         solver.update_state()
 
@@ -482,7 +482,7 @@ def main():
         solver.config.samplers = samplers
         solver._execute_samplers()
 
-    # ── Post-process ──────────────────────────────────────────────────
+    # -- Post-process --------------------------------------------------
     if src_csv.exists():
         df = pd.read_csv(src_csv)
         df["chords"] = chords_traveled[: len(df)]
@@ -494,12 +494,12 @@ def main():
             cl_final = df["CL"].iloc[-1]
             cd_final = df["CD"].iloc[-1] if "CD" in df.columns else float("nan")
             n_part = df["n_particles"].iloc[-1] if "n_particles" in df.columns else "?"
-            print(f"\n  ─── Summary ───────────────────────────────────────────")
+            print(f"\n  --- Summary -------------------------------------------")
             print(f"  CL (final)  = {cl_final:8.5f}")
             print(f"  CD (final)  = {cd_final:8.5f}")
             print(f"  Particles   = {n_part}")
             print(f"  Output      = {dst_csv}")
-            print(f"  ───────────────────────────────────────────────────────\n")
+            print(f"  -------------------------------------------------------\n")
 
             if "chords" in df and df["chords"].max() >= 5.0:
                 tail = df[df["chords"] >= df["chords"].max() - 5.0]
@@ -521,7 +521,7 @@ def main():
             span_dst = span_src.parent / f"{args.name}_spanwise.csv"
             df_sp_final.to_csv(span_dst, index=False)
 
-    # ── D4: Per-station VPM→VLM induced downwash diagnostic ──────────────────
+    # -- D4: Per-station VPM→VLM induced downwash diagnostic ------------------
     # external_velocity holds the last step's VPM-induced velocity (body frame:
     # include_freestream=False so this is PURE VPM contribution). Grouped by span
     # station, w_j = V_ext·n_hat gives the normal downwash the VPM wake feeds into
@@ -570,7 +570,7 @@ def main():
         alpha_i_VPM = np.degrees(np.arctan2(-w_VPM, args.U_inf))
         ratio = np.where(np.abs(alpha_i_req) > 0.01, alpha_i_VPM / alpha_i_req, float("nan"))
 
-        print(f"\n  ─── D4: VPM→VLM induced downwash per span station ───")
+        print(f"\n  --- D4: VPM→VLM induced downwash per span station ---")
         print(f"  {'j':>3}  {'y/b':>6}  {'w_VPM':>8}  {'α_VPM':>7}  {'α_i_req':>8}  {'ratio':>6}")
         for k in range(len(y_stations)):
             yob = 2.0 * y_stations[k] / args.span

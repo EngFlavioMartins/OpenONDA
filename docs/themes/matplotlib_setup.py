@@ -491,27 +491,36 @@ def get_leapfrogging_rings_shapes2(
 
 # ==================================================
 
-# ── Colour palette — aligned with thesis/LaTeX (thesis_visuals/styles/colors.py)
+# -- Colour palette -- aligned with thesis/LaTeX (thesis_visuals/styles/colors.py)
 # Canonical names match the LaTeX \definecolor entries in thesis.tex exactly.
 COLORS = {
-    # ── TU Delft canonical names ─────────────────────────────────────────────────
+    # -- TU Delft canonical names -------------------------------------------------
     "TUDdark":     "#0C2340",   # Deep navy
     "TUDcyan":     "#0E8A85",   # Aquamarine teal
+    "TUDred":      "#C8102E",   # TU Delft red (also used as TUD accent)
     "VPMpurple":   "#5C3D9B",   # Amethyst purple
     "FVMorange":   "#772953",   # Aubergine / deep rose
     "AccentGreen": "#2B7A4E",   # Forest emerald
     "AccentRed":   "#9C2F50",   # Deep rose
     "RefGray":     "#6E8898",   # Steel blue-gray
     "DarkText":    "#2E3D46",   # Dark blue-gray
-    # ── Semantic aliases (backward-compatible keys for existing plot scripts) ─────
-    "vpm":         "#5C3D9B",   # → VPMpurple  (VPM-only results)
-    "hybrid":      "#772953",   # → FVMorange  (hybrid solver results)
-    "fvm":         "#2E3D46",   # → DarkText   (pure FVM results)
-    "of":          "#6E8898",   # → RefGray    (OpenFOAM / reference)
-    "ref":         "#6E8898",   # → RefGray    (literature / reference data)
-    "literature":  "#2E3D46",   # → DarkText   (other literature)
-    "dvh":         "#2B7A4E",   # → AccentGreen (DVH scheme)
-    "dvhr":        "#0E8A85",   # → TUDcyan    (DVH-R scheme)
+    "DNSblue":     "#1A6B9A",   # DNS / high-fidelity blue
+    "DNSorange":   "#B85C2A",   # DNS mixed variant orange
+    "LESteal":     "#1A8C88",   # LES transposed teal
+    "LESpurple":   "#7B2969",   # LES rVPM purple
+    "LBMgray":     "#505050",   # LBM reference gray
+    "TheoryGray":  "#808080",   # Standard gray for theory/reference curves
+    # -- Semantic aliases (backward-compatible keys for existing plot scripts) -----
+    "vpm":         "#5C3D9B",   # -> VPMpurple  (VPM-only results)
+    "hybrid":      "#772953",   # -> FVMorange  (hybrid solver results)
+    "fvm":         "#2E3D46",   # -> DarkText   (pure FVM results)
+    "of":          "#6E8898",   # -> RefGray    (OpenFOAM / reference)
+    "ref":         "#6E8898",   # -> RefGray    (literature / reference data)
+    "literature":  "#2E3D46",   # -> DarkText   (other literature)
+    "dvh":         "#2B7A4E",   # -> AccentGreen (DVH scheme)
+    "dvhr":        "#0E8A85",   # -> TUDcyan    (DVH-R scheme)
+    "dns":         "#1A6B9A",   # -> DNSblue    (direct numerical simulation)
+    "les":         "#0E8A85",   # -> TUDcyan    (large-eddy simulation)
 }
 
 

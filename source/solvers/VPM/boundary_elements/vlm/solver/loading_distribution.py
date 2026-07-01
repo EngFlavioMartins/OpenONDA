@@ -181,6 +181,9 @@ class VLMLoadingDistribution:
         bm_np = vlm_solver.lattice.bound_midpoints.to_numpy()[
             : vlm_solver.lattice.num_panels
         ]  # (N,3)
+        bv_np = vlm_solver.lattice.bound_velocity.to_numpy()[
+            : vlm_solver.lattice.num_panels
+        ]  # (N,3)
         kin_np = vlm_solver.lattice.kinematic_velocity.to_numpy()[
             : vlm_solver.lattice.num_panels
         ]  # (N,3)
@@ -252,9 +255,11 @@ class VLMLoadingDistribution:
                     G_j = gamma_np[cidx]  # (nc,)
                     pc_j = panel_chord[cidx]  # (nc,)
                     bm_j = bm_np[cidx]  # (nc, 3)
+                    Vrel_j = bv_np[cidx] - kin_np[cidx]  # (nc, 3)
 
                     # spanwise station coordinate: bound midpoints projected on ŝ
-                    y_station = float(np.mean(bm_j @ s_hat))
+                    span_coordinate = float(np.mean(bm_j @ s_hat))
+                    span_coordinate_abs = abs(span_coordinate)
 
                     # station width: bound-leg length (V3−V2) projected on ŝ
                     bound_legs = vp_np[cidx, 2] - vp_np[cidx, 1]  # (nc, 3)
@@ -262,27 +267,41 @@ class VLMLoadingDistribution:
                     dy = max(dy, 1e-10)
 
                     chord_local = float(pc_j.sum())
+                    Vrel_local = float(np.mean(np.linalg.norm(Vrel_j, axis=1)))
 
                     # sectional forces
                     F_sec = F_j.sum(axis=0)  # (3,)
                     L_sec = float(np.dot(F_sec, L_hat))
                     D_sec = float(np.dot(F_sec, D_hat))
                     Gamma_sec = float(G_j.sum())
+                    Gamma_abs = abs(Gamma_sec)
 
                     Lprime = L_sec / dy
                     Dprime = D_sec / dy
                     cl = Lprime / (q_inf * chord_local) if q_inf * chord_local > 1e-15 else 0.0
+                    cl_from_gamma = (
+                        2.0 * Gamma_abs / (chord_local * Vrel_local)
+                        if chord_local * Vrel_local > 1e-15
+                        else 0.0
+                    )
 
                     full_span.append(
                         {
                             "wing_uid": wing_uid,
                             "segment_uid": seg_uid,
+                            "station_id": f"{wing_uid}:{seg_uid}:{half}:{j}",
                             "half": half,
                             "span_index": j,
-                            "y": y_station,
+                            "span_coordinate": span_coordinate,
+                            "span_coordinate_abs": span_coordinate_abs,
+                            "r": span_coordinate_abs,
+                            "y": span_coordinate,
                             "chord_local": chord_local,
                             "dy": dy,
                             "Gamma": Gamma_sec,
+                            "Gamma_abs": Gamma_abs,
+                            "V_rel": Vrel_local,
+                            "cl_from_gamma": cl_from_gamma,
                             "L_prime": Lprime,
                             "D_prime": Dprime,
                             "cl": cl,
@@ -313,9 +332,13 @@ class VLMLoadingDistribution:
                             {
                                 "wing_uid": wing_uid,
                                 "segment_uid": seg_uid,
+                                "station_id": f"{wing_uid}:{seg_uid}:{half}:{j}",
                                 "half": half,
                                 "span_index": j,
-                                "y": y_station,
+                                "span_coordinate": span_coordinate,
+                                "span_coordinate_abs": span_coordinate_abs,
+                                "r": span_coordinate_abs,
+                                "y": span_coordinate,
                                 "chord_index": i,
                                 "x_over_c": float(x_over_c[i]),
                                 "panel_chord": float(pc_j[i]),
@@ -327,9 +350,20 @@ class VLMLoadingDistribution:
                             }
                         )
 
-        # assemble and sort by physical y
-        df_span = pd.DataFrame(full_span).sort_values("y").reset_index(drop=True)
-        df_chord = pd.DataFrame(full_chord).sort_values(["y", "chord_index"]).reset_index(drop=True)
+        # assemble and sort by stable physical station.  ``y`` is retained as a
+        # signed span-coordinate compatibility alias, but rotating blades can
+        # change its sign with azimuth; the absolute coordinate remains root-tip
+        # ordered in the per-time CSV block.
+        df_span = (
+            pd.DataFrame(full_span)
+            .sort_values(["half", "span_coordinate_abs"])
+            .reset_index(drop=True)
+        )
+        df_chord = (
+            pd.DataFrame(full_chord)
+            .sort_values(["half", "span_coordinate_abs", "chord_index"])
+            .reset_index(drop=True)
+        )
 
         # full span b for y_over_b
         if not df_span.empty:

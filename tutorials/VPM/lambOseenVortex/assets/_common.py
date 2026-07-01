@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# ── Directory layout ─────────────────────────────────────────────────────────
+# -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/lambOseenVortex/
 FIGURES_DIR = SCRIPT_DIR / "figures"
@@ -211,7 +211,7 @@ def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, floa
     return result
 
 
-# ── Gaussian core-radius utilities (C&W a convention) ─────────────────────────
+# -- Gaussian core-radius utilities (C&W a convention) ------------------------
 
 
 def gaussian_model(r, omega0, a):
