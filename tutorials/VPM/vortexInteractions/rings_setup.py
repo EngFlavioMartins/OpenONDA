@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-import sys as _sys
-
-_sys.tracebacklimit = 200  # override config/types.py's tracebacklimit=0
 """
-Run LES coaxial vortex-ring interactions: leapfrogging or head-on collision.
-============================================================================
-Two vortex rings are initialised coaxially.  Their relative circulation
-signs determine the interaction type:
-  gamma1 * gamma2 > 0   →  leapfrogging (same sign)
-  gamma1 * gamma2 < 0   →  head-on collision (opposite sign)
+Vortex-Ring Interaction Setup Runner
+====================================
+Parametric runner for the vortexInteractions tutorial.  Builds two coaxial
+vortex rings and runs either a leapfrogging or head-on interaction with LES,
+the selected stretching scheme, and the selected viscous model.
+Post-processing is handled by allplot.sh.
 
-All cases use LES Smagorinsky turbulence and transposed vortex stretching. The
-comparison is made with the scheme-preserving stretching-rate limiter off/on.
+Usage::
+
+    python rings_setup.py --gamma1 3.14159265358979 --gamma2 -3.14159265358979
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: May 2026
@@ -20,196 +18,196 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import argparse
-import csv
-from datetime import datetime, timezone
-import json
-import numpy as np
 from pathlib import Path
-import subprocess
 
-from source.solvers.VPM import (
-    ParticleDistributor,
-    Solver,
-    SolverConfig,
-    StabilizationConfig,
-    VelocityConfig,
-)
+import numpy as np
+
+from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
-    TurbulenceConfig,
-    ViscousConfig,
     StretchingConfig,
+    TurbulenceConfig,
+    VelocityConfig,
+    ViscousConfig,
 )
 from source.solvers.VPM.utils import VortexRingVPM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Run LES transposed coaxial vortex-ring interaction: "
-            "leapfrog or collision, with optional stretching-rate limiting."
-        )
-    )
+GAMMA_REF = np.pi
+RING_RADIUS = 1.0
+CORE_RADIUS = 0.1
+REYNOLDS_GAMMA = 3000.0
+KINEMATIC_VISCOSITY = GAMMA_REF / REYNOLDS_GAMMA
+REGEN_THRESHOLD = 2.0e-4
+REGEN_THRESHOLD_MODE = "budget"
+MAX_REGEN_NODES = 250_000
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Vortex-ring LES interaction simulation")
+
+    parser.add_argument("--gamma1", type=float, default=GAMMA_REF, help="Ring 1 circulation [m2/s].")
+    parser.add_argument("--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s].")
+    parser.add_argument("--name", default="leapfrog_les", help="Output sub-directory name.")
+    parser.add_argument("--dt", type=float, default=2.0e-2, help="Time-step size [s].")
+    parser.add_argument("--num-steps", type=int, default=450, help="Number of time steps.")
+    parser.add_argument("--particle-spacing", type=float, default=0.030, help="Particle spacing [m].")
+    parser.add_argument("--output-root", default="solution", help="Parent output directory.")
+    parser.add_argument("--backup-frequency", type=int, default=20, help="Backup interval [steps].")
+    parser.add_argument("--logging-frequency", type=int, default=10, help="Logging interval [steps].")
     parser.add_argument(
-        "--gamma1", type=float, default=np.pi, help="Circulation of ring 1 [m²/s] (default: π)."
-    )
-    parser.add_argument(
-        "--gamma2",
-        type=float,
-        default=np.pi,
-        help="Circulation of ring 2 [m²/s] (default: π). "
-        "Same sign → leapfrog; opposite sign → head-on collision.",
-    )
-    parser.add_argument(
-        "--name",
-        default="leapfrog_LES",
-        help="Output sub-directory / file-name prefix (default: leapfrog_LES)",
-    )
-    parser.add_argument("--dt", type=float, default=1.5e-2, help="Time step size [s].")
-    parser.add_argument(
-        "--num-steps",
+        "--blowup-check-frequency",
         type=int,
-        default=1200,
-        help="Number of time steps (default: 1200)",
+        default=10,
+        help="Peak-circulation blow-up check interval [steps]; 0 disables the check.",
     )
     parser.add_argument(
-        "--particle-spacing",
-        type=float,
-        default=0.025,
-        help="Initial particle spacing h [m] (default: 0.025).",
-    )
-    parser.add_argument(
-        "--output-root",
-        default="solution",
-        help="Parent directory; this case is written to <output-root>/<name>.",
-    )
-    parser.add_argument("--backup-frequency", type=int, default=5)
-    parser.add_argument("--logging-frequency", type=int, default=5)
-    parser.add_argument(
-        "--energy-audit-frequency",
-        type=int,
-        default=0,
-        help="Write samples/energy_budget.csv every N steps without running "
-        "surface samplers or verbose logging. Use 1 for short calibration "
-        "runs that need a fine dE/dt audit; 0 disables the extra audit.",
-    )
-    parser.add_argument("--max-particles", type=int, default=500_000)
-    # ── Strength relaxation: Winckelmans/Pedrizzetti direction projection ──
-    # Periodically realigns each particle's vector strength Γ with the local
-    # representable vorticity direction, preserving |Γ| exactly:
-    #     Γ ← |Γ| · normalize((1−r)·Γ̂ + r·ω̂_local).
-    # r is the tuning knob (0 = off, 1 = full realignment each application).
-    parser.add_argument(
-        "--relaxation",
-        action="store_true",
-        help="Enable the Winckelmans/Pedrizzetti strength-relaxation stabilizer "
-        "(realign Γ toward the local vorticity direction, |Γ| preserved).",
-    )
-    parser.add_argument(
-        "--relaxation-factor",
-        type=float,
-        default=0.1,
-        help="Relaxation factor r ∈ [0,1] for the constant gate (default 0.1). "
-        "The main tuning knob: larger r realigns more aggressively per step.",
-    )
-    parser.add_argument(
-        "--relaxation-gate",
-        choices=["constant", "strain"],
-        default="constant",
-        help="'constant' applies r every step; 'strain' sets r = 1−exp(−C·σ_eff·dt) "
-        "so relaxation only acts where the strain is actively misaligning Γ.",
-    )
-    parser.add_argument(
-        "--relaxation-rate",
-        type=float,
-        default=1.0,
-        help="Strain-gate rate constant C (only used with --relaxation-gate strain).",
-    )
-    parser.add_argument(
-        "--relaxation-deconv",
-        type=int,
-        default=0,
-        help="Van Cittert ADM deconvolution iterations for the target vorticity "
-        "(0 = pure Pedrizzetti/Winckelmans target; >0 sharpens it).",
-    )
-    parser.add_argument(
-        "--relaxation-verbose",
-        action="store_true",
-        help="Log per-step relaxation diagnostics.",
+        "--stretching",
+        choices=["transposed", "rvpm"],
+        default="transposed",
+        help="Vortex stretching scheme.",
     )
     parser.add_argument(
         "--viscous",
-        choices=["gbd", "dvh", "cs"],
+        choices=["cs", "gbd", "dvh"],
         default="gbd",
-        help="Viscous scheme: gbd (default, Gaussian Blob Diffusion — does not "
-        "pin dt as finely as DVH), dvh, or cs (Core Spreading).",
+        help="Viscous scheme.",
     )
-    parser.add_argument(
-        "--dvh-threshold-mode",
-        choices=["budget", "absolute", "relative_max"],
-        default="budget",
-        help="DVH regen-node survival criterion. 'budget' (default) bounds the "
-        "circulation destroyed per firing to --dvh-threshold × Σ|Γ| — an "
-        "absolute threshold (the old default, 3e-5) was measured to destroy "
-        "~1.2%% of Σ|Γ| PER FIRING on the rings (total evaporation by step "
-        "~450).",
-    )
-    parser.add_argument(
-        "--dvh-threshold",
-        type=float,
-        default=2e-4,
-        help="Threshold value: budget → fractional Σ|Γ| loss allowed per "
-        "firing (default 2e-4); absolute → node |Γ| floor in m³/s.",
-    )
-    parser.add_argument(
-        "--device",
-        choices=["gpu", "vulkan", "cpu"],
-        default="gpu",
-        help="Compute backend (default: gpu = CUDA).",
-    )
-    args = parser.parse_args()
 
+    return parser
+
+
+def build_viscous_config(scheme: str, particle_spacing: float) -> ViscousConfig:
+    if scheme == "cs":
+        return ViscousConfig.cs(
+            viscosity=KINEMATIC_VISCOSITY,
+            characteristic_distance=particle_spacing,
+        )
+    if scheme == "gbd":
+        return ViscousConfig.gbd(
+            h=particle_spacing,
+            viscosity=KINEMATIC_VISCOSITY,
+            threshold=REGEN_THRESHOLD,
+            threshold_mode=REGEN_THRESHOLD_MODE,
+            max_nodes=MAX_REGEN_NODES,
+        )
+    return ViscousConfig.dvh(
+        h=particle_spacing,
+        dvh_rd_ratio=3,
+        viscosity=KINEMATIC_VISCOSITY,
+        threshold=REGEN_THRESHOLD,
+        threshold_mode=REGEN_THRESHOLD_MODE,
+        max_nodes=MAX_REGEN_NODES,
+    )
+
+
+def build_stretching_config(scheme: str) -> StretchingConfig:
+    if scheme == "rvpm":
+        return StretchingConfig.rvpm(f=0, g=1 / 3)
+    return StretchingConfig.transposed()
+
+
+def make_surface_sampler(case_label: str, particle_spacing: float, output_dir: Path) -> SurfaceSampler:
+    if case_label == "collide":
+        bounds = [-7.0, 7.0, -4.0, 4.0]
+    else:
+        bounds = [-0.5, 11.5, -2.0, 2.0]
+
+    return SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 1, 0],
+        bounds=bounds,
+        spacing=particle_spacing,
+        file_name="xz_slice",
+        output_dir=str(output_dir / "samples"),
+    )
+
+
+def ring_centers_and_strengths(gamma1: float, gamma2: float) -> tuple[list[list[float]], list[float]]:
+    if gamma1 * gamma2 >= 0.0:
+        return [[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]], [gamma1, gamma2]
+
+    ring_separation = 4.0 * (2.0 * RING_RADIUS)
+    return [[0.5 * ring_separation, 0.0, 0.0], [-0.5 * ring_separation, 0.0, 0.0]], [
+        gamma1,
+        gamma2,
+    ]
+
+
+def initialize_vortex_rings(
+    solver: Solver,
+    positions: np.ndarray,
+    volumes: np.ndarray,
+    radii: np.ndarray,
+    gamma1: float,
+    gamma2: float,
+) -> None:
+    centers, strengths = ring_centers_and_strengths(gamma1, gamma2)
+
+    for group_index, (center, strength) in enumerate(zip(centers, strengths)):
+        velocity, viscosity, circulation = VortexRingVPM(
+            viscosity=KINEMATIC_VISCOSITY,
+            ring_center=np.zeros(3),
+            ring_radius=RING_RADIUS,
+            ring_strength=strength,
+            ring_thickness=CORE_RADIUS,
+            avg_particle_radius=float(radii.mean()),
+            positions=positions,
+            volumes=volumes,
+            epsilon_W=0.05,
+            anti_diffuse_flag=True,
+        )
+
+        solver.add_vortex_particles(
+            position=positions - np.asarray(center),
+            velocity=velocity,
+            circulation=circulation,
+            radius=radii,
+            volume=volumes,
+            viscosity=viscosity,
+            group_id=np.full(len(positions), group_index, dtype=np.int32),
+        )
+        solver.remove_weak_particles(percent=0.1, per_group=True)
+
+
+def run_case(args: argparse.Namespace) -> None:
+    case_label = "leapfrog" if args.gamma1 * args.gamma2 >= 0.0 else "collide"
+
+    # ================================================
+    # 1. Physical Parameters
+    # ================================================
     gamma1 = args.gamma1
     gamma2 = args.gamma2
-
-    case_label = "leapfrog" if gamma1 * gamma2 >= 0 else "collide"
-
-    # ================================================
-    # 1. Physical Parameters  (Alvarez et al. 2024)
-    # ================================================
-    ring_radius = 1.0  # Major radius [m]
-    reference_gamma = np.pi  # Reference circulation for Re [m²/s]
-    kinematic_viscosity = reference_gamma / 3000.0  # Re = Γ/nu = 3000
-    core_radius = 0.1  # Vortex core radius [m]
 
     # ================================================
     # 2. Numerical Parameters
     # ================================================
-    particle_spacing = args.particle_spacing  # Particle spacing h [m]
-    if particle_spacing <= 0.0:
-        parser.error("--particle-spacing must be positive")
-    if args.energy_audit_frequency < 0:
-        parser.error("--energy-audit-frequency must be non-negative")
-    time_step = args.dt  # [s]
-    num_steps = args.num_steps  # Simulation steps
+    time_step = args.dt
+    num_steps = args.num_steps
+    particle_spacing = args.particle_spacing
 
-    relaxation_enabled = args.relaxation
+    if time_step <= 0.0:
+        raise ValueError("--dt must be positive.")
+    if num_steps < 0:
+        raise ValueError("--num-steps must be non-negative.")
+    if particle_spacing <= 0.0:
+        raise ValueError("--particle-spacing must be positive.")
+    if args.blowup_check_frequency < 0:
+        raise ValueError("--blowup-check-frequency must be non-negative.")
 
     # ================================================
     # 3. Create Initial Particle Distribution
     # ================================================
     domain_bounds = [-0.15, 0.15, -1.5, 1.5, -1.5, 1.5]
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(
-        domain_bounds, particle_spacing
+        domain_bounds,
+        particle_spacing,
     )
 
     # ================================================
-    # 4. Configure Solver
+    # 4. Configure VPM Solver
     # ================================================
-    turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
-    stretching = StretchingConfig.transposed()
-
     output_dir = Path(args.output_root) / args.name
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(
@@ -218,331 +216,96 @@ def main():
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # XZ-plane field sampler for diagnostic analysis
-    if case_label == "collide":
-        xz_sampler = SurfaceSampler(
-            point=[0, 0, 0],
-            normal=[0, 1, 0],
-            bounds=[-7, 7, -4, 4],
-            spacing=particle_spacing,
-            file_name="xz_slice",
-            output_dir=str(output_dir / "samples"),
-        )
-    else:
-        xz_sampler = SurfaceSampler(
-            point=[0, 0, 0],
-            normal=[0, 1, 0],
-            bounds=[-0.5, 11.5, -2.0, 2.0],
-            spacing=particle_spacing,
-            file_name="xz_slice",
-            output_dir=str(output_dir / "samples"),
-        )
+    sampler = make_surface_sampler(case_label, particle_spacing, output_dir)
 
-    if args.viscous == "cs":
-        viscous_cfg = ViscousConfig.cs(
-            viscosity=kinematic_viscosity,
-            characteristic_distance=particle_spacing,
-        )
-    elif args.viscous == "gbd":
-        # Gaussian Blob Diffusion: grid-based like DVH but only bounds dt ≤ h²/6ν
-        # (no per-step heat-kernel pinning), so it tolerates a far coarser step.
-        viscous_cfg = ViscousConfig.gbd(
-            h=particle_spacing,
-            viscosity=kinematic_viscosity,
-            threshold_mode=args.dvh_threshold_mode,
-            threshold=args.dvh_threshold,
-        )
-    else:
-        viscous_cfg = ViscousConfig.dvh(
-            h=particle_spacing,
-            dvh_rd_ratio=3,
-            viscosity=kinematic_viscosity,
-            threshold_mode=args.dvh_threshold_mode,
-            threshold=args.dvh_threshold,
-            max_nodes=250_000,
-        )
+    advection = AdvectionConfig(scheme="RK2")
 
-    advection_cfg = AdvectionConfig(scheme="RK2")
-    if relaxation_enabled:
-        # Winckelmans/Pedrizzetti strength relaxation: realign Γ toward the local
-        # representable vorticity direction, preserving |Γ| exactly.  Conservation
-        # of ΣΓ and impulse is restored by a minimum-norm correction.
-        stabilization_cfg = StabilizationConfig.strength_relaxation(
-            mode="pedrizzetti",
-            gate=args.relaxation_gate,
-            factor=args.relaxation_factor,
-            rate=args.relaxation_rate,
-            deconv=args.relaxation_deconv,
-            conserve=True,
-            verbose=args.relaxation_verbose,
-        )
-    else:
-        stabilization_cfg = StabilizationConfig.disabled()
+    turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+
+    stretching = build_stretching_config(args.stretching)
+
+    velocity = VelocityConfig.treecode(theta=0.3)
+
+    viscous = build_viscous_config(args.viscous, particle_spacing)
 
     solver_config = SolverConfig(
         time_step_size=time_step,
-        processing_unit={"cpu": "CPU", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[args.device],
+        processing_unit="GPU_VULKAN",
+        advection=advection,
         turbulence=turbulence,
         stretching=stretching,
-        velocity=VelocityConfig.treecode(theta=0.3),
-        viscous=viscous_cfg,
-        advection=advection_cfg,
-        stabilization=stabilization_cfg,
+        velocity=velocity,
+        viscous=viscous,
+        samplers=[(sampler, "xz_slice")],
+        backup_file_name=args.name,
+        backup_directory=str(output_dir),
+        solution_name=str(output_dir),
         backup_frequency=args.backup_frequency,
         logging_frequency=args.logging_frequency,
         timing_frequency=40,
-        backup_file_name=args.name,
-        solution_name=str(output_dir),
-        backup_directory=str(output_dir),
-        max_particles=args.max_particles,
-        samplers=[(xz_sampler, "xz_slice")],
     )
 
-    def _jsonable(value):
-        if isinstance(value, dict):
-            return {str(key): _jsonable(item) for key, item in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [_jsonable(item) for item in value]
-        if isinstance(value, Path):
-            return str(value)
-        if isinstance(value, np.ndarray):
-            return value.tolist()
-        return value
-
-    try:
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            check=False,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-    except OSError:
-        revision = ""
-    manifest = {
-        "created_utc": datetime.now(timezone.utc).isoformat(),
-        "git_revision": revision or None,
-        "arguments": vars(args),
-        "case_label": case_label,
-        "output_directory": str(output_dir),
-        "solver_config": _jsonable(solver_config.to_dict()),
-    }
-    (output_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-
-    vpm = Solver(config=solver_config)
+    solver = Solver(config=solver_config)
+    # Plot scripts read flow diagnostics from the log; skip duplicate CSV output here.
+    solver._export_flow_integrals_csv = lambda: None
 
     # ================================================
     # 5. Initialize Two Vortex Rings
     # ================================================
-    if gamma1 * gamma2 >= 0:
-        # Leapfrogging: rings half a major-radius apart, same axis.
-        ring_centers = [[-0.5, 0, 0], [0.5, 0, 0]]
-        ring_strengths = [gamma1, gamma2]
-    else:
-        # Head-on collision: rings 4 diameters apart
-        ring_separation = 4.0 * (2.0 * ring_radius)
-        ring_centers = [[ring_separation / 2, 0, 0], [-ring_separation / 2, 0, 0]]
-        ring_strengths = [gamma1, gamma2]
-
-    for group_index, (center, strength) in enumerate(zip(ring_centers, ring_strengths)):
-        vel, visc, circ = VortexRingVPM(
-            viscosity=kinematic_viscosity,
-            ring_center=np.zeros(3),
-            ring_radius=ring_radius,
-            ring_strength=strength,
-            ring_thickness=core_radius,
-            avg_particle_radius=radii.mean(),
-            positions=positions,
-            volumes=volumes,
-            epsilon_W=0.05,
-            anti_diffuse_flag=True,
-        )
-
-        vpm.add_vortex_particles(
-            position=positions - np.array(center),
-            velocity=vel,
-            circulation=circ,
-            radius=radii,
-            volume=volumes,
-            viscosity=visc,
-            group_id=np.full(len(positions), group_index, dtype=np.int32),
-        )
-        vpm.remove_weak_particles(percent=0.1, per_group=True)
-
-    vpm.info()
+    initialize_vortex_rings(solver, positions, volumes, radii, gamma1, gamma2)
+    solver.info()
 
     # ================================================
-    # 6. Run simulation
+    # 6. Run Simulation
     # ================================================
-    initial_max_norm = float(np.linalg.norm(vpm.particles_circulation, axis=1).max())
-    blowup_threshold = max(50.0 * initial_max_norm, 0.1)
+    blowup_threshold = np.inf
+    if args.blowup_check_frequency > 0:
+        initial_max_norm = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
+        blowup_threshold = max(50.0 * initial_max_norm, 0.1)
+        print(
+            "BLOWUP CHECK "
+            f"step=0 time={solver.flow_time:.6e} max_gamma={initial_max_norm:.6e} "
+            f"threshold={blowup_threshold:.6e} "
+            f"n_particles={solver.particles.number_of_particles}",
+            flush=True,
+        )
 
-    metric_fields = [
-        "step",
-        "time",
-        "n_particles",
-        "max_gamma",
-        "p999_gamma",
-        "sum_gamma_magnitude",
-        "max_strain_frobenius",
-        "max_parallel_strain",
-        "radius_min",
-        "radius_max",
-    ]
+    for step in range(num_steps):
+        solver.update_state()
 
-    def stability_metrics(step):
-        """Return inexpensive indicators of the stretching feedback loop."""
-        circulation = vpm.particles_circulation
-        n_particles = len(circulation)
-        gamma_norm = np.linalg.norm(circulation, axis=1)
-        strain = vpm.particles.strain_rate_cpu(use_cache=False)[:n_particles]
-        strain_norm = np.linalg.norm(strain.reshape(n_particles, 9), axis=1)
+        check_due = (
+            args.blowup_check_frequency > 0
+            and (step + 1) % args.blowup_check_frequency == 0
+        )
+        if not check_due:
+            continue
 
-        parallel_strain = np.zeros(n_particles)
-        nonzero = gamma_norm > np.finfo(float).eps
-        if np.any(nonzero):
-            gamma_hat = circulation[nonzero] / gamma_norm[nonzero, None]
-            parallel_strain[nonzero] = np.einsum(
-                "ni,nij,nj->n", gamma_hat, strain[nonzero], gamma_hat
+        max_norm = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
+        print(
+            "BLOWUP CHECK "
+            f"step={step + 1} time={solver.flow_time:.6e} max_gamma={max_norm:.6e} "
+            f"threshold={blowup_threshold:.6e} n_particles={solver.particles.number_of_particles}",
+            flush=True,
+        )
+
+        if not np.isfinite(max_norm) or max_norm > blowup_threshold:
+            print(
+                f"\n*** BLOWUP DETECTED at step {step + 1} "
+                f"(t={solver.flow_time:.2f} s): max|Gamma|={max_norm:.4f} "
+                f"> {blowup_threshold:.4f} ***",
+                flush=True,
             )
+            solver.save_state(str(output_dir / "pre_blowup"))
+            break
+    else:
+        print(f"Simulation completed {num_steps} steps without blowup.")
 
-        radii = vpm.particles_radii
-        return {
-            "step": step,
-            "time": vpm.flow_time,
-            "n_particles": n_particles,
-            "max_gamma": float(gamma_norm.max()),
-            "p999_gamma": float(np.quantile(gamma_norm, 0.999)),
-            "sum_gamma_magnitude": float(gamma_norm.sum()),
-            "max_strain_frobenius": float(strain_norm.max()),
-            "max_parallel_strain": float(parallel_strain.max()),
-            "radius_min": float(radii.min()),
-            "radius_max": float(radii.max()),
-        }
 
-    metrics_path = output_dir / "stability_metrics.csv"
-    energy_audit_file = None
-    energy_audit_writer = None
-    if args.energy_audit_frequency > 0:
-        energy_audit_dir = output_dir / "samples"
-        energy_audit_dir.mkdir(parents=True, exist_ok=True)
-        energy_audit_path = energy_audit_dir / "energy_budget.csv"
-        energy_audit_fields = [
-            "step",
-            "time",
-            "n_particles",
-            "kinetic_energy",
-            "enstrophy",
-            "dEdt_solver",
-            "neg_nu_enstrophy",
-            "strength_magnitude",
-            "strength_x",
-            "strength_y",
-            "strength_z",
-            "impulse_x",
-            "impulse_y",
-            "impulse_z",
-            "angular_impulse_x",
-            "angular_impulse_y",
-            "angular_impulse_z",
-            "max_gamma",
-            "p999_gamma",
-            "sum_gamma_magnitude",
-            "max_strain_frobenius",
-            "max_parallel_strain",
-            "radius_min",
-            "radius_max",
-        ]
-        energy_audit_file = energy_audit_path.open("w", newline="", buffering=1)
-        energy_audit_writer = csv.DictWriter(energy_audit_file, fieldnames=energy_audit_fields)
-        energy_audit_writer.writeheader()
-
-    def write_energy_audit(step, metrics=None, force_recompute=True):
-        """Append one high-cadence energy identity sample for post-processing."""
-        if energy_audit_writer is None:
-            return
-        if force_recompute or not getattr(vpm, "_flow_integrals", None):
-            vpm._update_all_flow_integrals()
-        flow = vpm._flow_integrals
-        strength = flow.get("strength", np.zeros(3))
-        impulse = flow.get("linear_impulse", np.zeros(3))
-        angular_impulse = flow.get("angular_impulse", np.zeros(3))
-        if metrics is None:
-            metrics = stability_metrics(step)
-        energy_audit_writer.writerow(
-            {
-                "step": step,
-                "time": vpm.flow_time,
-                "n_particles": vpm.particles.number_of_particles,
-                "kinetic_energy": flow.get("kinetic_energy", 0.0),
-                "enstrophy": flow.get("enstrophy", 0.0),
-                "dEdt_solver": flow.get("kinetic_energy_dissipation_rate", 0.0),
-                "neg_nu_enstrophy": flow.get("vorticity_dissipation_rate", 0.0),
-                "strength_magnitude": flow.get("strength_magnitude", 0.0),
-                "strength_x": float(strength[0]),
-                "strength_y": float(strength[1]),
-                "strength_z": float(strength[2]),
-                "impulse_x": float(impulse[0]),
-                "impulse_y": float(impulse[1]),
-                "impulse_z": float(impulse[2]),
-                "angular_impulse_x": float(angular_impulse[0]),
-                "angular_impulse_y": float(angular_impulse[1]),
-                "angular_impulse_z": float(angular_impulse[2]),
-                "max_gamma": metrics["max_gamma"],
-                "p999_gamma": metrics["p999_gamma"],
-                "sum_gamma_magnitude": metrics["sum_gamma_magnitude"],
-                "max_strain_frobenius": metrics["max_strain_frobenius"],
-                "max_parallel_strain": metrics["max_parallel_strain"],
-                "radius_min": metrics["radius_min"],
-                "radius_max": metrics["radius_max"],
-            }
-        )
-
-    try:
-        with metrics_path.open("w", newline="", buffering=1) as metrics_file:
-            metrics_writer = csv.DictWriter(metrics_file, fieldnames=metric_fields)
-            metrics_writer.writeheader()
-            metrics0 = stability_metrics(0)
-            metrics_writer.writerow(metrics0)
-            write_energy_audit(0, metrics=metrics0, force_recompute=True)
-
-            for step in range(num_steps):
-                try:
-                    vpm.update_state()
-                except (RuntimeError, FloatingPointError) as exc:
-                    print(
-                        f"\n*** INSTABILITY ABORT at step {step + 1} "
-                        f"(t={vpm.flow_time:.2f} s) — {exc} ***"
-                    )
-                    vpm.save_state(str(output_dir / "pre_blowup"))
-                    break
-                metrics = stability_metrics(step + 1)
-                metrics_writer.writerow(metrics)
-                if (
-                    args.energy_audit_frequency > 0
-                    and (step + 1) % args.energy_audit_frequency == 0
-                ):
-                    logging_due = (
-                        args.logging_frequency > 0 and (step + 1) % args.logging_frequency == 0
-                    )
-                    write_energy_audit(
-                        step + 1,
-                        metrics=metrics,
-                        force_recompute=not logging_due,
-                    )
-                max_norm = metrics["max_gamma"]
-                if not np.isfinite(max_norm) or max_norm > blowup_threshold:
-                    print(
-                        f"\n*** BLOWUP DETECTED at step {step + 1} (t={vpm.flow_time:.2f} s) "
-                        f"— max|Γ|={max_norm:.4f} > {blowup_threshold:.4f} ***"
-                    )
-                    vpm.save_state(str(output_dir / "pre_blowup"))
-                    break
-            else:
-                print(f"Simulation completed {num_steps} steps without blowup.")
-    finally:
-        if energy_audit_file is not None:
-            energy_audit_file.close()
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    run_case(args)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

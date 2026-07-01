@@ -5,6 +5,8 @@ Run a single vortex ring for DNS/LES validation.
 This script simulates a single vortex ring and tracks its self-induced
 velocity decay against the Saffman analytical model.
 
+Objective: test the different stretching schemes
+
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: April 2026
 
@@ -19,7 +21,6 @@ from source.solvers.VPM import (
     ParticleDistributor,
     Solver,
     SolverConfig,
-    StabilizationConfig,
     VelocityConfig,
 )
 from source.solvers.VPM.config.types import (
@@ -55,24 +56,11 @@ def main():
         default=600,
         help="Number of time steps (default: 600)",
     )
-    parser.add_argument("--cs", type=float, default=0.10, help="Smagorinsky constant for LES.")
     parser.add_argument(
         "--particle-spacing", type=float, default=0.035,
         help="Initial particle spacing [m] (about 2.9 points per core radius).",
     )
-    parser.add_argument(
-        "--widnall-amplitude", type=float, default=0.0,
-        help="Optional Widnall perturbation amplitude (zero for Saffman validation).",
-    )
-    parser.add_argument("--rvpm-g", type=float, default=1.0 / 3.0)
-    parser.add_argument(
-        "--relaxation",
-        choices=["off", "blend", "pedrizzetti"],
-        default="off",
-        help="Experimental strength relaxation; not used by the certified Saffman benchmark.",
-    )
-    parser.add_argument("--relaxation-rate", type=float, default=1.0)
-    parser.add_argument("--relaxation-factor", type=float, default=0.3)
+
     args = parser.parse_args()
 
     # ================================================
@@ -102,47 +90,26 @@ def main():
     # 4. Configure Solver for simulation mode
     # ================================================
     turbulence = (
-        TurbulenceConfig.dns()
-        if args.mode == "dns"
-        else TurbulenceConfig.les_smagorinsky(cs=args.cs, ce=1.048)
+        TurbulenceConfig.dns() if args.mode == "dns" else TurbulenceConfig.les_smagorinsky()
     )
 
     _stretching_map = {
-        "direct": StretchingConfig.classical(),
-        "transposed": StretchingConfig.transposed(),
-        "mixed": StretchingConfig.mixed(),
-        "rvpm": StretchingConfig.rvpm(g=args.rvpm_g),
+        "direct": StretchingConfig.classical(scheme='Euler'),
+        "transposed": StretchingConfig.transposed(scheme='Euler'),
+        "mixed": StretchingConfig.mixed(scheme='Euler'),
+        "rvpm": StretchingConfig.rvpm(g=1/3),
     }
     stretching = _stretching_map[args.stretching]
 
     output_dir = Path(args.solution_dir) / args.name
-
-    if args.relaxation != "off":
-        print(
-            "WARNING: strength relaxation is experimental for the single-ring "
-            "Saffman benchmark; validate Gamma_tube and U/U0 before using it "
-            "for conclusions."
-        )
-        stabilization_cfg = StabilizationConfig.strength_relaxation(
-            mode=args.relaxation,
-            gate="constant" if args.relaxation == "pedrizzetti" else "strain",
-            factor=args.relaxation_factor,
-            rate=args.relaxation_rate,
-            conserve=True,
-            cfl=0.2,
-            max_substeps=64,
-        )
-    else:
-        stabilization_cfg = StabilizationConfig.disabled()
 
     solver_config = SolverConfig(
         time_step_size=time_step,
         advection=AdvectionConfig(scheme="RK2"),
         turbulence=turbulence,
         stretching=stretching,
-        velocity=VelocityConfig.treecode(theta=0.5),
+        velocity=VelocityConfig.treecode(theta=0.3),
         viscous=ViscousConfig.cs(),
-        stabilization=stabilization_cfg,
         backup_frequency=6,
         logging_frequency=6,
         timing_frequency=40,
@@ -166,7 +133,7 @@ def main():
         avg_particle_radius=radii.mean(),
         positions=positions,
         volumes=volumes,
-        epsilon_W=args.widnall_amplitude,
+        epsilon_W=0.025,
         anti_diffuse_flag=True,
     )
 
@@ -185,8 +152,12 @@ def main():
     # ================================================
     # 6. Run Simulation
     # ================================================
-    for step in range(num_steps):
+    max_circ0 = np.abs(vpm.particles.circulation_cpu).max()
+    for _ in range(num_steps):
         vpm.update_state()
+        if np.abs(vpm.particles.circulation_cpu).max() > 50 * max_circ0:
+            print("Solution blew up — stopping.")
+            break
 
 
 if __name__ == "__main__":

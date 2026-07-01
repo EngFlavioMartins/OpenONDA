@@ -24,7 +24,20 @@ from ..utils import cavity_utils
 
 
 def _compute_rhie_chow_coefficients(volumes, A_U):
-    """Compute DU coefficients for Rhie-Chow interpolation."""
+    """Compute the DU coefficients for Rhie-Chow interpolation.
+
+    ``DU = V / A_U`` converts pressure-gradient cell values to velocity
+    corrections: ``ΔU = −DU · ∇p'``.
+
+    Args:
+        volumes: Cell volumes ``(n_elements,)``.
+        A_U:     Diagonal coefficients from the momentum equation
+                 ``(n_elements, 3)`` (per component).
+
+    Returns:
+        DU array ``(n_elements, 3)``, with a small regulariser to avoid
+        division by zero.
+    """
     return volumes[:, np.newaxis] / (A_U + 1e-10)
 
 
@@ -61,7 +74,29 @@ def _compute_geometric_diffusion(DU_f, Sf, e, mag_CF):
 def _process_interior_face_rhie_chow(
     i_face, owners, neighbours, face_weights, face_sf, face_cf_vector, DU, U_star, grad_p, rho, p
 ):
-    """Process single interior face for Rhie-Chow interpolation."""
+    """Process a single interior face for Rhie-Chow pressure-correction flux.
+
+    Computes the interpolated velocity flux, geometric-diffusion (orthogonal)
+    coefficients, and the explicit non-orthogonal and pressure-gradient
+    correction terms for one interior face.
+
+    Args:
+        i_face:         Face index.
+        owners:         Owner index array.
+        neighbours:     Neighbour index array.
+        face_weights:   Interpolation weights ``(n_faces,)``.
+        face_sf:        Face area vectors ``(n_faces, 3)``.
+        face_cf_vector: Centre-to-centre vectors ``(n_faces, 3)``.
+        DU:             Rhie-Chow coefficients ``(n_elements, 3)``.
+        U_star:         Predicted velocity ``(n_total, 3)``.
+        grad_p:         Pressure gradient ``(n_total, 3)``.
+        rho:            Density.
+        p:              Pressure field ``(n_total,)``.
+
+    Returns:
+        Tuple ``(flux_cf, flux_ff, flux_vf)``: the owner coefficient,
+        neighbour coefficient, and explicit RHS flux for this face.
+    """
     own = owners[i_face]
     nei = neighbours[i_face]
     w = face_weights[i_face]
@@ -130,7 +165,31 @@ def _process_boundary_face_rhie_chow(
     n_interior,
     p,
 ):
-    """Process single boundary face for Rhie-Chow interpolation."""
+    """Process a single boundary face for Rhie-Chow pressure-correction flux.
+
+    Handles three pressure BC types:
+    - ``zeroGradient`` / ``noSlip``: velocity flux only (no correction).
+    - ``fixedValue``: full Rhie-Chow with geometric diffusion and non-orthogonal
+      correction.
+    - ``empty``: zero contribution (2-D face).
+
+    Args:
+        i_face:         Global face index.
+        boundary:       Boundary patch dictionary.
+        owners:         Owner index array.
+        face_sf:        Face area vectors ``(n_faces, 3)``.
+        face_cf_vector: Centre-to-centre vectors ``(n_faces, 3)``.
+        U_star:         Predicted velocity ``(n_total, 3)``.
+        DU:             Rhie-Chow coefficients ``(n_elements, 3)``.
+        grad_p:         Pressure gradient ``(n_total, 3)``.
+        rho:            Density.
+        n_elements:     Number of interior elements.
+        n_interior:     Number of interior faces.
+        p:              Pressure field ``(n_total,)``.
+
+    Returns:
+        Tuple ``(flux_cf, flux_ff, flux_vf)``.
+    """
     own = owners[i_face]
     b_elem_idx = n_elements + (i_face - n_interior)
 
@@ -218,9 +277,30 @@ def _process_boundary_faces_jit(
     p_boundary_values,
     boundary_face_indices,
 ):
-    """Numba-JITted boundary face processing for Rhie-Chow assembly.
+    """Numba-JITted boundary-face processing for Rhie-Chow assembly.
 
-    bc_type_codes: 0=zeroGradient, 1=fixedValue, 2=empty
+    Vectorised over all boundary faces using integer-coded BC types.
+    Significantly faster than looping per patch in pure Python.
+
+    Args:
+        n_boundary_faces:     Total number of boundary faces.
+        n_interior:           Number of interior faces.
+        n_elements:           Number of interior elements.
+        rho:                  Density.
+        owners:               Owner index array.
+        face_sf:              Face area vectors ``(n_faces, 3)``.
+        face_cf_vector:       Centre-to-centre vectors ``(n_faces, 3)``.
+        U_star:               Predicted velocity ``(n_total, 3)``.
+        DU:                   Rhie-Chow coefficients ``(n_elements, 3)``.
+        grad_p:               Pressure gradient ``(n_total, 3)``.
+        p:                    Pressure field ``(n_total,)``.
+        bc_type_codes:        Integer-coded BC: 0=zeroGradient, 1=fixedValue, 2=empty.
+        p_boundary_values:    Fixed pressure values for fixedValue patches.
+        boundary_face_indices: Global face index for each boundary face.
+
+    Returns:
+        Tuple ``(flux_cf_out, flux_ff_out, flux_vf_out)`` — coefficient
+        arrays for all boundary faces.
     """
     n_total_boundary = len(boundary_face_indices)
     flux_cf_out = np.zeros(n_total_boundary, dtype=np.float64)
@@ -511,7 +591,20 @@ def assemble_pressure_correction_equation_rhie_chow(
 
 
 def _extend_p_prime_bcs(p_prime, mesh_data, boundaries):
-    """Extend p_prime array with ghost cell values based on boundary BC types."""
+    """Extend the pressure-correction array with ghost-cell values.
+
+    For ``fixedValue`` pressure boundaries, the ghost value is set to
+    zero (``p' = 0`` at a fixed-pressure face).  For all other types,
+    the ghost cell inherits the owner cell value (zero-gradient).
+
+    Args:
+        p_prime:    Pressure correction for interior cells ``(n_elements,)``.
+        mesh_data:  Mesh dictionary.
+        boundaries: List of boundary patch dictionaries.
+
+    Returns:
+        Extended ``p_prime`` array ``(n_elements + n_boundary_faces,)``.
+    """
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
@@ -532,7 +625,20 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries):
 
 
 def _correct_interior_fluxes(phi, p_prime, mesh_data, geo_data, DU, rho):
-    """Correct interior face fluxes using Rhie-Chow pressure correction."""
+    """Correct interior face fluxes with the Rhie-Chow pressure correction.
+
+    Applies the flux correction ``Δφ = ρ⋅g⋅(p'_P − p'_N)`` where *g* is
+    the geometric diffusion coefficient based on the interpolated DU and
+    face-normal projection.
+
+    Args:
+        phi:      Face flux array ``(n_faces,)`` (mutated in place).
+        p_prime:  Pressure correction ``(n_elements,)``.
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+        DU:       Rhie-Chow coefficients ``(n_elements, 3)``.
+        rho:      Density.
+    """
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
@@ -556,7 +662,22 @@ def _correct_interior_fluxes(phi, p_prime, mesh_data, geo_data, DU, rho):
 def _correct_boundary_fluxes(
     phi, p_prime, boundaries, owners, geo_data, n_elements, n_interior, DU, rho
 ):
-    """Correct boundary face fluxes for fixedValue pressure boundaries."""
+    """Correct boundary-face fluxes for ``fixedValue`` pressure boundaries.
+
+    Only patches whose pressure BC type is ``fixedValue`` receive a
+    correction, computed from the geometric diffusion and wall distance.
+
+    Args:
+        phi:        Face flux array ``(n_faces,)`` (mutated in place).
+        p_prime:    Pressure correction ``(n_elements,)``.
+        boundaries: List of boundary patch dictionaries.
+        owners:     Owner index array.
+        geo_data:   Geometry dictionary.
+        n_elements: Number of interior elements.
+        n_interior: Number of interior faces.
+        DU:         Rhie-Chow coefficients ``(n_elements, 3)``.
+        rho:        Density.
+    """
     for boundary in boundaries:
         if boundary.get("bc_type_p") != "fixedValue":
             continue
@@ -624,7 +745,19 @@ def _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior):
 
 
 def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries):
-    """Apply zeroGradient velocity BC (extrapolate from the owner cell)."""
+    """Apply a zero-gradient velocity BC (extrapolate from the owner cell).
+
+    Sets the ghost-cell velocity equal to the owner-cell value.
+
+    Args:
+        U:           Velocity array (mutated in place).
+        phi:         Face flux array.
+        boundary:    Boundary patch dictionary.
+        owners:      Owner index array.
+        n_elements:  Number of interior elements.
+        n_interior:  Number of interior faces.
+        boundaries:  List of all boundary patches.
+    """
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
@@ -651,7 +784,19 @@ def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
 
 
 def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
-    """Apply slip/symmetry/empty velocity BC (remove normal component)."""
+    """Apply a slip / symmetry / empty velocity BC.
+
+    Removes the component normal to the boundary face from the
+    ghost-cell velocity, leaving only the tangential part.
+
+    Args:
+        U:          Velocity array (mutated in place).
+        boundary:   Boundary patch dictionary.
+        owners:     Owner index array.
+        geo_data:   Geometry dictionary (needs ``face_sf``).
+        n_elements: Number of interior elements.
+        n_interior: Number of interior faces.
+    """
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
@@ -662,7 +807,26 @@ def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
 
 
 def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_interior):
-    """Update all velocity boundary conditions after pressure correction."""
+    """Update all velocity boundary conditions after a pressure-correction step.
+
+    Dispatches to individual BC handlers based on each patch's
+    ``bc_type_U``:
+
+    - ``zeroGradient`` → :func:`_apply_zero_gradient_bc`
+    - ``inletOutlet``  → :func:`_apply_inlet_outlet_bc`
+    - ``directionMixed`` → :func:`_apply_robin_bc`
+    - ``fixedValue`` / ``noSlip`` → :func:`_apply_fixed_value_bc`
+    - ``empty`` / ``slip`` / ``symmetry`` → :func:`_apply_slip_bc`
+
+    Args:
+        U:           Velocity array (mutated in place).
+        phi:         Face flux array.
+        boundaries:  List of boundary patch dictionaries.
+        owners:      Owner index array.
+        geo_data:    Geometry dictionary.
+        n_elements:  Number of interior elements.
+        n_interior:  Number of interior faces.
+    """
     for boundary in boundaries:
         bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
         if bc_type_u == "zeroGradient":
@@ -719,7 +883,18 @@ def correct_velocity_and_flux(U, phi, p_prime, A_U, mesh_data, geo_data, boundar
 
 
 def _remove_normal_component(U_owner, face_vector):
-    """Remove normal component from velocity vector (for slip/symmetry/empty BC)."""
+    """Remove the normal component of velocity (slip / symmetry / empty BC).
+
+    Projects out the velocity component along the face normal, leaving
+    only the tangential component: ``U_t = U − (U·n̂) n̂``.
+
+    Args:
+        U_owner:     Velocity vector at the owner cell ``(3,)``.
+        face_vector: Face area vector ``(3,)`` (direction defines normal).
+
+    Returns:
+        Tangential velocity vector ``(3,)``.
+    """
     norm_Sf = np.linalg.norm(face_vector)
     if norm_Sf > 1e-10:
         n = face_vector / norm_Sf
@@ -730,7 +905,20 @@ def _remove_normal_component(U_owner, face_vector):
 
 
 def _apply_scalar_bc(phi, indices, owners_b, bc_type, boundary, field_name):
-    """Apply a single boundary condition to a scalar field ghost-cell block."""
+    """Apply a boundary condition to a scalar field ghost-cell block.
+
+    Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip,
+    noSlip) copy the owner value.  ``fixedValue`` sets the prescribed
+    boundary value.
+
+    Args:
+        phi:        Scalar field array (mutated in place).
+        indices:    Ghost-cell indices for this patch.
+        owners_b:   Owner cell indices for the boundary faces.
+        bc_type:    Boundary condition type string.
+        boundary:   Boundary patch dictionary (may contain ``value_p`` etc.).
+        field_name: Field name for value lookup (e.g. ``"p"``, ``"phi"``).
+    """
     if bc_type in ("zeroGradient", "inlet", "outlet", "symmetry", "empty", "slip", "noSlip"):
         phi[indices] = phi[owners_b]
     elif bc_type == "fixedValue":
@@ -876,8 +1064,21 @@ class SIMPLESolver:
         return U, p, phi, {"p": self.last_res_p, "U": self.last_res_u}
 
     def solve(self, U_init, p_init, rho=1.0, nu=0.01):
-        """
-        Solve steady flow using SIMPLE.
+        """Solve a steady incompressible flow using the SIMPLE algorithm.
+
+        Iterates over ``max_iter`` SIMPLE steps, computing the momentum
+        predictor, pressure correction, and velocity/pressure update at
+        each iteration.  Convergence is declared when both the pressure
+        and velocity residuals fall below ``tolerance``.
+
+        Args:
+            U_init: Initial velocity field ``(n_total, 3)``.
+            p_init: Initial pressure field ``(n_total,)``.
+            rho:    Fluid density (default 1.0).
+            nu:     Kinematic viscosity (default 0.01).
+
+        Returns:
+            Tuple ``(U, p, phi, converged)`` where *converged* is a bool.
         """
         U = U_init.copy()
         p = p_init.copy()

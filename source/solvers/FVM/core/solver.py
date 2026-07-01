@@ -23,7 +23,20 @@ from ..solve import pimple_solver, simple_solver
 
 
 def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
-    """Load or initialise the velocity field."""
+    """Load or initialise the velocity field.
+
+    If *config.initial_U* is set, tiles it across all cells.  Otherwise
+    attempts to read the ``0/U`` OpenFOAM file.  Falls back to zeros.
+
+    Args:
+        config:   FVMConfig (may have ``initial_U``).
+        case_dir: Case root directory.
+        n_total:  Total number of elements (interior + boundary ghosts).
+        mesh_data: Mesh dictionary.
+
+    Returns:
+        Velocity array ``(n_total, 3)``.
+    """
     from ..fields import field_io
 
     if config.initial_U is not None:
@@ -36,7 +49,21 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
 
 
 def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
-    """Load or initialise the pressure field."""
+    """Load or initialise the pressure field.
+
+    If *config.initial_p* is set, fills all cells with that value.
+    Otherwise attempts to read the ``0/p`` OpenFOAM file.  Falls back
+    to zeros.
+
+    Args:
+        config:   FVMConfig (may have ``initial_p``).
+        case_dir: Case root directory.
+        n_total:  Total number of elements (interior + boundary ghosts).
+        mesh_data: Mesh dictionary.
+
+    Returns:
+        Pressure array ``(n_total,)``.
+    """
     from ..fields import field_io
 
     if config.initial_p is not None:
@@ -51,7 +78,19 @@ def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -
 def _enforce_u_boundary_constraints(
     U: np.ndarray, boundaries: list, n_elements: int, mesh_data: dict, geo_data: dict
 ) -> None:
-    """Enforce velocity boundary constraints on ghost cells after initialisation."""
+    """Enforce velocity boundary constraints on ghost cells after initialisation.
+
+    Iterates over all boundary patches and sets the ghost-layer values
+    in *U* according to each patch's boundary condition type (noSlip,
+    fixedValue, zeroGradient, empty, etc.).
+
+    Args:
+        U:          Velocity array (mutated in place).
+        boundaries: List of boundary patch dictionaries.
+        n_elements: Number of interior elements.
+        mesh_data:  Mesh dictionary.
+        geo_data:   Geometry dictionary.
+    """
     from ..solve.simple_solver import _remove_normal_component
 
     for boundary in boundaries:
@@ -223,7 +262,13 @@ class Solver(OFWInterfaceMixin):
         return cls(cfg, case_dir=case_dir)
 
     def _setup_boundary_conditions(self):
-        """Maps user-defined BoundaryConfig to internal mesh boundary data."""
+        """Map user-defined BoundaryConfig entries to internal mesh boundary data.
+
+        Iterates over ``self.config.boundaries`` and updates the
+        corresponding entries in ``self.boundaries`` with the configured
+        type and value for U, p, and nut.  Patches not found in the mesh
+        trigger a warning.
+        """
         print("\nBoundary Conditions Setup:")
         for b_cfg in self.config.boundaries:
             found = False
@@ -247,7 +292,12 @@ class Solver(OFWInterfaceMixin):
                 print(f"  Warning: Boundary '{b_cfg.name}' not found in mesh.")
 
     def _initialize_fields(self):
-        """Initializes velocity (U), pressure (p), and flux (phi) fields."""
+        """Initialise velocity (U), pressure (p), and flux (phi) fields.
+
+        Loads or creates the initial fields, enforces boundary constraints
+        on the velocity ghost layer, and computes the initial mass-flow
+        rate ``phi`` from the velocity field.
+        """
         n_elements = self.mesh_data["n_elements"]
         n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_elements
 
@@ -269,7 +319,16 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.log("  Flux Init")
 
     def _initialize_algorithm(self):
-        """Initializes the numerical solver algorithm (PIMPLE or SIMPLE)."""
+        """Initialise the numerical solver algorithm.
+
+        Reads the algorithm type from ``self.config.solver.algorithm``
+        and instantiates either a :class:`~solve.pimple_solver.PIMPLESolver`
+        or :class:`~solve.simple_solver.SIMPLESolver`.
+
+        Raises:
+            ValueError: If the algorithm is not ``"SIMPLE"``, ``"PIMPLE"``,
+                        or ``"PISO"``.
+        """
         logging.Timer.start("  Algorithm Init")
         if hasattr(self.config.solver, "to_dict"):
             params = self.config.solver.to_dict()  # type: ignore[union-attr]
@@ -290,7 +349,13 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.log("  Algorithm Init")
 
     def _initialize_turbulence(self):
-        """Initializes the turbulence model if configured."""
+        """Initialise the turbulence / LES model if configured.
+
+        Uses :func:`..turbulence.create_model` to instantiate the model
+        specified by ``self.config.turbulence``.  Stores the result in
+        ``self.turbulence`` and logs the model info.  Sets
+        ``self.flow_time`` and ``self.time_step`` to their initial values.
+        """
         self.turbulence = None
         self.nut = None
         if self.config.turbulence and self.config.turbulence.model.lower() != "none":
@@ -312,7 +377,13 @@ class Solver(OFWInterfaceMixin):
         self.dt = self.config.time.delta_t
 
     def _precompute_dynamic_weights(self):
-        """Pre-compute geometric weights for all steps if mesh motion is predictable."""
+        """Pre-compute geometric weights for every time step.
+
+        Used when mesh motion is predictable (e.g. rigid-body translation),
+        avoiding repeated geometry computation during the time loop.
+        Computes weights for each step and caches them via
+        ``self.cache.add_dynamic_step``.
+        """
         logging.Timer.start("  Precompute Dynamic Weights")
         config = self.config
         dt = config.time.delta_t
@@ -344,7 +415,15 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.log("  Precompute Dynamic Weights")
 
     def _effective_viscosity(self):
-        """Molecular + turbulent (SGS) kinematic viscosity for the next solve."""
+        """Compute the effective viscosity (molecular + turbulent).
+
+        If a turbulence model is active, computes the subgrid eddy
+        viscosity via ``self.turbulence.compute_nut(U)`` and returns
+        ``nu + nut``.  Otherwise returns the molecular viscosity only.
+
+        Returns:
+            Effective kinematic viscosity (scalar or per-element array).
+        """
         if self.turbulence is not None:
             try:
                 self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
@@ -567,7 +646,16 @@ class Solver(OFWInterfaceMixin):
                     self.write_vtk()
 
     def write_vtk(self, filename: str | None = None) -> None:
-        """Exports the current simulation state to VTK format with PVD support."""
+        """Export the current simulation state to a ``.vtu`` file with PVD time-series support.
+
+        Writes velocity (U), pressure (p), Courant number (Co), and
+        vorticity fields.  If turbulence is active, also writes ``nut``.
+        Updates the PVD collection file for time-series visualisation.
+
+        Args:
+            filename: Optional output path.  If ``None``, auto-generates
+                      ``solution/{case_name}_{step:06d}.vtu``.
+        """
         sol_dir = os.path.join(self.case_dir, "solution")
         if self.vtk_exporter is None:
             from ..io.vtk_exporter import VTKExporter
@@ -605,7 +693,11 @@ class Solver(OFWInterfaceMixin):
         sys.stdout.flush()
 
     def info(self) -> None:
-        """Prints high-level solver state information."""
+        """Print a summary of the current solver state.
+
+        Displays case name, flow time, time step, cell count, and
+        active algorithm.
+        """
         print("-" * 40)
         print("FVM Solver Information")
         print(f"  Case      : {self.config.case_name}")

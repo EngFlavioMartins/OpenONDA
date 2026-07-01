@@ -2,12 +2,12 @@
 """Energy and enstrophy evolution — ``rings_energy.png``.
 
 Two stacked panels for every case discovered under ``solution/`` (read from
-``samples/flow_integrals.csv``):
+the solver log's ``FLOW DIAGNOSTICS`` sections):
 
   (top)    Kinetic energy   E(t)/E(0)
   (bottom) Enstrophy        ε(t)/ε(0)
 
-Colour encodes the stabilization rung, linestyle the physics family — the
+Colour encodes the numerical variant, linestyle the physics family — the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 

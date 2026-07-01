@@ -55,6 +55,8 @@ class Particles:
         zone_id (ti.field): Taichi field of zone IDs (spatial zones), shape (N,).
     """
 
+    _COPY_CHUNK_SIZE = 65_536
+
     def __init__(self, max_particles=MAX_PARTICLES, float_dtype: str = "f32"):
         """
         Initialize the Particles class with Taichi fields.
@@ -553,27 +555,51 @@ class Particles:
             return False
 
         # Copy vectors directly using pre-compiled kernels (no temp fields!)
-        self._copy_to_taichi_vectors(position, self.position, start_idx, N)
-        self._copy_to_taichi_vectors(velocity, self.velocity, start_idx, N)
-        self._copy_to_taichi_vectors(circulation, self.circulation, start_idx, N)
-        self._copy_to_taichi_vectors(vorticity, self.vorticity, start_idx, N)
+        self._copy_vectors_chunked(position, self.position, start_idx, N)
+        self._copy_vectors_chunked(velocity, self.velocity, start_idx, N)
+        self._copy_vectors_chunked(circulation, self.circulation, start_idx, N)
+        self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
 
         # Copy scalars directly
-        self._copy_to_taichi_scalars(radius, self.radius, start_idx, N)
-        self._copy_to_taichi_scalars(volume, self.volume, start_idx, N)
-        self._copy_to_taichi_scalars(viscosity, self.viscosity, start_idx, N)
-        self._copy_to_taichi_scalars(viscosity_turbulent, self.viscosity_turbulent, start_idx, N)
-        self._copy_to_taichi_scalars(viscosity_effective, self.viscosity_effective, start_idx, N)
+        self._copy_scalars_chunked(radius, self.radius, start_idx, N)
+        self._copy_scalars_chunked(volume, self.volume, start_idx, N)
+        self._copy_scalars_chunked(viscosity, self.viscosity, start_idx, N)
+        self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, start_idx, N)
+        self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, start_idx, N)
 
         # Copy integer fields
-        self._copy_to_taichi_ints(group_id, self.group_id, start_idx, N)
-        self._copy_to_taichi_ints(zone_id, self.zone_id, start_idx, N)
+        self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
+        self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
 
         # Copy matrices directly
-        self._copy_to_taichi_matrices(velocity_gradient, self.velocity_gradient, start_idx, N)
-        self._copy_to_taichi_matrices(strain_rate, self.strain_rate, start_idx, N)
+        self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
+        self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
 
         return True
+
+    def _copy_vectors_chunked(self, src, dest, start_idx: int, count: int) -> None:
+        """Upload vector data in bounded external-array chunks."""
+        for lo in range(0, count, self._COPY_CHUNK_SIZE):
+            hi = min(lo + self._COPY_CHUNK_SIZE, count)
+            self._copy_to_taichi_vectors(src[lo:hi], dest, start_idx + lo, hi - lo)
+
+    def _copy_scalars_chunked(self, src, dest, start_idx: int, count: int) -> None:
+        """Upload scalar data in bounded external-array chunks."""
+        for lo in range(0, count, self._COPY_CHUNK_SIZE):
+            hi = min(lo + self._COPY_CHUNK_SIZE, count)
+            self._copy_to_taichi_scalars(src[lo:hi], dest, start_idx + lo, hi - lo)
+
+    def _copy_matrices_chunked(self, src, dest, start_idx: int, count: int) -> None:
+        """Upload matrix data in bounded external-array chunks."""
+        for lo in range(0, count, self._COPY_CHUNK_SIZE):
+            hi = min(lo + self._COPY_CHUNK_SIZE, count)
+            self._copy_to_taichi_matrices(src[lo:hi], dest, start_idx + lo, hi - lo)
+
+    def _copy_ints_chunked(self, src, dest, start_idx: int, count: int) -> None:
+        """Upload integer data in bounded external-array chunks."""
+        for lo in range(0, count, self._COPY_CHUNK_SIZE):
+            hi = min(lo + self._COPY_CHUNK_SIZE, count)
+            self._copy_to_taichi_ints(src[lo:hi], dest, start_idx + lo, hi - lo)
 
     def _validate_numpy_input(self, arr, expected_shape_suffix, name):
         """Validate NumPy array input for Taichi kernels."""
@@ -633,25 +659,25 @@ class Particles:
         strain_rate = self._validate_numpy_input(strain_rate, (3, 3), "strain_rate")
 
         # Copy vector data
-        self._copy_to_taichi_vectors(position, self.position, 0, count)
-        self._copy_to_taichi_vectors(velocity, self.velocity, 0, count)
-        self._copy_to_taichi_vectors(circulation, self.circulation, 0, count)
-        self._copy_to_taichi_vectors(vorticity, self.vorticity, 0, count)
+        self._copy_vectors_chunked(position, self.position, 0, count)
+        self._copy_vectors_chunked(velocity, self.velocity, 0, count)
+        self._copy_vectors_chunked(circulation, self.circulation, 0, count)
+        self._copy_vectors_chunked(vorticity, self.vorticity, 0, count)
 
         # Copy scalar data
-        self._copy_to_taichi_scalars(radius, self.radius, 0, count)
-        self._copy_to_taichi_scalars(volume, self.volume, 0, count)
-        self._copy_to_taichi_scalars(viscosity, self.viscosity, 0, count)
-        self._copy_to_taichi_scalars(viscosity_turbulent, self.viscosity_turbulent, 0, count)
-        self._copy_to_taichi_scalars(viscosity_effective, self.viscosity_effective, 0, count)
+        self._copy_scalars_chunked(radius, self.radius, 0, count)
+        self._copy_scalars_chunked(volume, self.volume, 0, count)
+        self._copy_scalars_chunked(viscosity, self.viscosity, 0, count)
+        self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, 0, count)
+        self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, 0, count)
 
         # Copy integer data
-        self._copy_to_taichi_ints(group_id, self.group_id, 0, count)
-        self._copy_to_taichi_ints(zone_id, self.zone_id, 0, count)
+        self._copy_ints_chunked(group_id, self.group_id, 0, count)
+        self._copy_ints_chunked(zone_id, self.zone_id, 0, count)
 
         # Copy matrix data
-        self._copy_to_taichi_matrices(velocity_gradient, self.velocity_gradient, 0, count)
-        self._copy_to_taichi_matrices(strain_rate, self.strain_rate, 0, count)
+        self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, 0, count)
+        self._copy_matrices_chunked(strain_rate, self.strain_rate, 0, count)
 
         self.number_of_particles = count
 
@@ -1003,23 +1029,23 @@ class Particles:
             strain_rate,
         ):
             # Fall back to element-by-element copy for appending
-            self._copy_to_taichi_vectors(position, self.position, start_idx, N)
-            self._copy_to_taichi_vectors(velocity, self.velocity, start_idx, N)
-            self._copy_to_taichi_vectors(circulation, self.circulation, start_idx, N)
-            self._copy_to_taichi_vectors(vorticity, self.vorticity, start_idx, N)
-            self._copy_to_taichi_scalars(radius, self.radius, start_idx, N)
-            self._copy_to_taichi_scalars(volume, self.volume, start_idx, N)
-            self._copy_to_taichi_scalars(viscosity, self.viscosity, start_idx, N)
-            self._copy_to_taichi_scalars(
+            self._copy_vectors_chunked(position, self.position, start_idx, N)
+            self._copy_vectors_chunked(velocity, self.velocity, start_idx, N)
+            self._copy_vectors_chunked(circulation, self.circulation, start_idx, N)
+            self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
+            self._copy_scalars_chunked(radius, self.radius, start_idx, N)
+            self._copy_scalars_chunked(volume, self.volume, start_idx, N)
+            self._copy_scalars_chunked(viscosity, self.viscosity, start_idx, N)
+            self._copy_scalars_chunked(
                 viscosity_turbulent, self.viscosity_turbulent, start_idx, N
             )
-            self._copy_to_taichi_scalars(
+            self._copy_scalars_chunked(
                 viscosity_effective, self.viscosity_effective, start_idx, N
             )
-            self._copy_to_taichi_ints(group_id, self.group_id, start_idx, N)
-            self._copy_to_taichi_ints(zone_id, self.zone_id, start_idx, N)
-            self._copy_to_taichi_matrices(velocity_gradient, self.velocity_gradient, start_idx, N)
-            self._copy_to_taichi_matrices(strain_rate, self.strain_rate, start_idx, N)
+            self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
+            self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
+            self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
+            self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
 
         # Update particle count
         self.number_of_particles = total_particles

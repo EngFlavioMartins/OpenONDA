@@ -86,20 +86,24 @@ def build_arg_parser(description: str):
 # ── Case styling (shared across every comparison figure) ──────────────────────
 # Encoding (kept identical in all figures so the legend reads the same):
 #   • LINESTYLE  → physics family   (leapfrog = solid, collide = dashed)
-#   • COLOUR     → stabilization rung (dns / les / les_limiter / les_pedr / fine)
-#   • MARKER     → stabilization rung (redundant cue for black-and-white print)
+#   • COLOUR     → numerical variant (stretching scheme / legacy rung)
+#   • MARKER     → numerical variant (redundant cue for black-and-white print)
 # Both rings of a given case therefore share one colour + linestyle + marker.
 _FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 _FAMILY_LABEL = {"leapfrog": "Leapfrogging", "collide": "Merging"}
 _RUNG_COLOR = {
     "dns": "#2E3D46",      # DarkText  — neutral baseline
     "les": "#0E8A85",      # TUDcyan       — bare LES (reference)
+    "transposed": "#0E8A85",
+    "rvpm": "#C8102E",
     "relax": "#C8102E",    # TUDred        — Winckelmans/Pedrizzetti relaxation
     "fine": "#2B7A4E",     # AccentGreen
 }
 _RUNG_MARKER = {
     "dns": "o",
     "les": "s",
+    "transposed": "s",
+    "rvpm": "o",
     "relax": "o",
     "fine": "v",
 }
@@ -107,9 +111,26 @@ _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup
 _INTENDED_CASE_ORDER = {
     "leapfrog_relax": 0,
     "leapfrog_les": 1,
-    "collide_relax": 2,
-    "collide_les": 3,
+    "leapfrog_transposed": 2,
+    "leapfrog_rvpm": 3,
+    "collide_relax": 4,
+    "collide_les": 5,
+    "collide_transposed": 6,
+    "collide_rvpm": 7,
 }
+
+_FLOAT_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
+_STEP_TIME_RE = re.compile(
+    rf"Time-step:\s*(?P<step>\d+)\s+Flow time:\s*(?P<time>{_FLOAT_RE})\s*s"
+)
+_DIAG_TITLE_RE = re.compile(
+    rf"FLOW DIAGNOSTICS\s+\(step\s+(?P<step>\d+),\s*t\s*=\s*(?P<time>{_FLOAT_RE})\s*s\)"
+)
+_BLOWUP_RE = re.compile(
+    rf"BLOWUP CHECK\s+step=(?P<step>\d+)\s+time=(?P<time>{_FLOAT_RE})\s+"
+    rf"max_gamma=(?P<max_gamma>{_FLOAT_RE})\s+threshold=(?P<threshold>{_FLOAT_RE})"
+    rf"(?:\s+n_particles=(?P<n_particles>\d+))?"
+)
 
 
 def case_style(name: str) -> dict:
@@ -129,8 +150,8 @@ def case_style(name: str) -> dict:
 def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
     """Return sorted case directories that hold run data, optionally by family prefix.
 
-    A directory counts as a case if it carries either per-step metrics
-    (``stability_metrics.csv``) or full-state backups (``vpm_*.h5``).
+    A directory counts as a case if it carries a solver log or full-state
+    backups. Legacy CSV metric files are also accepted for old runs.
     """
     sol = Path(solution_dir)
     if not sol.is_dir():
@@ -139,25 +160,158 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
     for d in sorted(sol.iterdir(), key=lambda path: _INTENDED_CASE_ORDER.get(path.name, 999)):
         if not d.is_dir() or (family and not d.name.startswith(family)):
             continue
-        if d.name not in _INTENDED_CASE_ORDER:
+        if (
+            d.name not in _INTENDED_CASE_ORDER
+            and not d.name.startswith(("leapfrog_", "collide_"))
+        ):
             continue
-        if (d / "stability_metrics.csv").exists() or any(d.glob("vpm_*.h5")):
+        if (
+            any(d.glob("*.log"))
+            or (d / "stability_metrics.csv").exists()
+            or any(d.glob("vpm_*.h5"))
+        ):
             cases.append(d)
     return cases
 
 
+def _latest_log(case_dir) -> Path | None:
+    case_dir = Path(case_dir)
+    expected = case_dir / f"{case_dir.name}.log"
+    if expected.exists():
+        return expected
+    logs = sorted(case_dir.glob("*.log"), key=lambda path: path.stat().st_mtime, reverse=True)
+    return logs[0] if logs else None
+
+
+def _first_float_after_colon(line: str) -> float | None:
+    _, _, tail = line.partition(":")
+    match = re.search(_FLOAT_RE, tail)
+    return float(match.group(0)) if match else None
+
+
+def _vector_after_colon(line: str) -> list[float]:
+    _, _, tail = line.partition(":")
+    return [float(value) for value in re.findall(_FLOAT_RE, tail)]
+
+
+def _trim_to_last_monotone_segment(df: pd.DataFrame) -> pd.DataFrame:
+    if "time" not in df.columns or len(df) <= 1:
+        return df
+    times = df["time"].to_numpy(float)
+    last_restart = 0
+    for i in range(1, len(times)):
+        if np.isfinite(times[i]) and np.isfinite(times[i - 1]) and times[i] < times[i - 1]:
+            last_restart = i
+    if last_restart:
+        df = df.iloc[last_restart:].reset_index(drop=True)
+    return df
+
+
+def read_log_diagnostics(case_dir) -> pd.DataFrame:
+    """Read flow diagnostics and blow-up checks from a case log."""
+    log_path = _latest_log(case_dir)
+    if log_path is None:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    current_step: int | None = None
+    current_time: float | None = None
+    active: dict | None = None
+
+    def flush_active() -> None:
+        nonlocal active
+        if active is not None and any(key not in {"step", "time"} for key in active):
+            rows.append(active)
+        active = None
+
+    for line in log_path.open(encoding="utf-8", errors="replace"):
+        if match := _BLOWUP_RE.search(line):
+            rows.append(
+                {
+                    "step": int(match.group("step")),
+                    "time": float(match.group("time")),
+                    "max_gamma": float(match.group("max_gamma")),
+                    "blowup_threshold": float(match.group("threshold")),
+                    "n_particles": (
+                        int(match.group("n_particles"))
+                        if match.group("n_particles") is not None
+                        else np.nan
+                    ),
+                }
+            )
+            continue
+
+        if match := _STEP_TIME_RE.search(line):
+            flush_active()
+            current_step = int(match.group("step"))
+            current_time = float(match.group("time"))
+            continue
+
+        if "FLOW DIAGNOSTICS" in line:
+            flush_active()
+            if match := _DIAG_TITLE_RE.search(line):
+                current_step = int(match.group("step"))
+                current_time = float(match.group("time"))
+            active = {"step": current_step, "time": current_time}
+            continue
+
+        if active is None:
+            continue
+
+        if "Total Circulation (Σ|Γ|)" in line:
+            active["sum_gamma_magnitude"] = _first_float_after_colon(line)
+        elif "Total Circulation (ΣΓ)" in line:
+            values = _vector_after_colon(line)
+            for axis, value in zip("xyz", values[:3]):
+                active[f"strength_{axis}"] = value
+        elif "Linear Impulse" in line:
+            values = _vector_after_colon(line)
+            for axis, value in zip("xyz", values[:3]):
+                active[f"impulse_{axis}"] = value
+        elif "Angular Impulse" in line:
+            values = _vector_after_colon(line)
+            for axis, value in zip("xyz", values[:3]):
+                active[f"angular_impulse_{axis}"] = value
+        elif "Total Enstrophy" in line:
+            active["enstrophy"] = _first_float_after_colon(line)
+        elif "Total Helicity" in line:
+            active["helicity"] = _first_float_after_colon(line)
+        elif "Total Energy, E" in line:
+            active["kinetic_energy"] = _first_float_after_colon(line)
+        elif "Viscous dissipation" in line:
+            active["neg_nu_enstrophy"] = _first_float_after_colon(line)
+        elif "Energy decay rate" in line:
+            value = _first_float_after_colon(line)
+            active["dEdt_solver"] = value
+            active["dEdt"] = value
+
+    flush_active()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df = df.replace([np.inf, -np.inf], np.nan)
+    if "time" in df.columns:
+        df = df.dropna(subset=["time"]).sort_values(["time", "step"], kind="stable")
+    return _trim_to_last_monotone_segment(df.reset_index(drop=True))
+
+
 def read_metric(case_dir, column: str, truncate_blowup: bool = True):
-    """Return (t*, column) from a case's ``stability_metrics.csv``.
+    """Return (t*, column) from a case log.
 
     ``t*`` is the time normalised by ``T_REF``.  When ``truncate_blowup`` is set
     the series is cut at the first snapshot where ``max_gamma`` exceeds the
     blow-up factor, so diverging runs do not swamp the axis scale.
     """
-    csv = Path(case_dir) / "stability_metrics.csv"
-    if not csv.exists():
-        return np.array([]), np.array([])
-    df = pd.read_csv(csv)
+    df = read_log_diagnostics(case_dir)
+    if df.empty:
+        csv = Path(case_dir) / "stability_metrics.csv"
+        if not csv.exists():
+            return np.array([]), np.array([])
+        df = pd.read_csv(csv)
     if column not in df.columns or "time" not in df.columns:
+        return np.array([]), np.array([])
+    df = df.dropna(subset=["time", column])
+    if df.empty:
         return np.array([]), np.array([])
     t = df["time"].to_numpy(float) / T_REF
     y = df[column].to_numpy(float)
@@ -171,23 +325,45 @@ def read_metric(case_dir, column: str, truncate_blowup: bool = True):
 
 
 def read_integrals(case_dir):
-    """Return the flow-integral DataFrame for a case, or None.
+    """Return flow-integral diagnostics parsed from the case log, or None.
 
     Keeps only the last monotonically increasing time segment so appended
     restart rows do not double back on the time axis.
     """
-    csv = Path(case_dir) / "samples" / "flow_integrals.csv"
-    if not csv.exists():
+    df = read_log_diagnostics(case_dir)
+    if df.empty:
+        csv = Path(case_dir) / "samples" / "flow_integrals.csv"
+        if not csv.exists():
+            return None
+        df = pd.read_csv(csv)
+    keep = [
+        "time",
+        "step",
+        "kinetic_energy",
+        "enstrophy",
+        "dEdt",
+        "dEdt_solver",
+        "neg_nu_enstrophy",
+        "helicity",
+        "sum_gamma_magnitude",
+        "strength_x",
+        "strength_y",
+        "strength_z",
+        "impulse_x",
+        "impulse_y",
+        "impulse_z",
+        "angular_impulse_x",
+        "angular_impulse_y",
+        "angular_impulse_z",
+        "n_particles",
+    ]
+    keep = [col for col in keep if col in df.columns]
+    if "time" not in keep or "kinetic_energy" not in keep:
         return None
-    df = pd.read_csv(csv)
-    if "time" in df.columns and len(df) > 1:
-        times = df["time"].to_numpy()
-        last_restart = 0
-        for i in range(1, len(times)):
-            if times[i] < times[i - 1]:
-                last_restart = i
-        if last_restart:
-            df = df.iloc[last_restart:].reset_index(drop=True)
+    df = df[keep].dropna(subset=["time", "kinetic_energy"])
+    if df.empty:
+        return None
+    df = _trim_to_last_monotone_segment(df.reset_index(drop=True))
     return df
 
 

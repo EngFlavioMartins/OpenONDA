@@ -30,10 +30,21 @@ from .smagorinsky import Smagorinsky, _compute_filter_width
 
 
 def _velocity_gradient_tensor(U, mesh_data, geo_data):
-    """Return the velocity-gradient tensor g[c,i,j] = ∂u_i/∂x_j for interior cells.
+    """Compute the velocity-gradient tensor for interior cells.
 
-    ``_resolve_gradient_fn`` returns grad[c,k,i] = ∂U_i/∂x_k, so the velocity
-    gradient tensor is its transpose over the last two axes.
+    Returns ``g[c, i, j] = ∂u_i/∂x_j`` for each cell *c*.
+
+    The underlying gradient function (from
+    :func:`..fields.gradients._resolve_gradient_fn`) returns
+    ``grad[c, k, i] = ∂U_i/∂x_k``, so we transpose the last two axes.
+
+    Args:
+        U:        Velocity field ``(n_elements + n_boundary, 3)``.
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+
+    Returns:
+        Velocity-gradient tensor ``(n_elements, 3, 3)``.
     """
     n_elements = mesh_data["n_elements"]
     grad_fn = gradients._resolve_gradient_fn(geo_data)
@@ -48,7 +59,22 @@ def _strain_rate(g):
 
 
 class WALE:
-    """Wall-Adapting Local Eddy-viscosity (Nicoud & Ducros, 1999)."""
+    """Wall-Adapting Local Eddy-viscosity (Nicoud & Ducros, 1999).
+
+    The WALE model computes subgrid viscosity as
+
+        ν_t = (C_w Δ)² · (S^d_ij S^d_ij)^{3/2}
+                          / ( (S_ij S_ij)^{5/2} + (S^d_ij S^d_ij)^{5/4} )
+
+    where *S^d_ij* is the traceless symmetric part of the velocity-gradient
+    squared tensor.  The model recovers the correct y³ near-wall scaling
+    and vanishes in pure shear.
+
+    Args:
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+        Cw:        WALE model coefficient (default 0.325).
+    """
 
     def __init__(self, mesh_data, geo_data, Cw=0.325):
         self.Cw = Cw
@@ -56,6 +82,12 @@ class WALE:
         self.geo_data = geo_data
 
     def get_filter_info(self):
+        """Return filter-width statistics and model name.
+
+        Returns:
+            Dict with keys ``model``, ``Cs`` (carries *C_w*), and
+            ``filter_width_min/max/mean``.
+        """
         delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
         return {
             "model": "WALE",
@@ -66,6 +98,16 @@ class WALE:
         }
 
     def compute_nut(self, U, mesh_data=None, geo_data=None):
+        """Compute the subgrid-scale turbulent viscosity (WALE model).
+
+        Args:
+            U:        Velocity field ``(n_elements + n_boundary, 3)``.
+            mesh_data: Optional override mesh dictionary.
+            geo_data:  Optional override geometry dictionary.
+
+        Returns:
+            Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
+        """
         mesh_data = mesh_data or self.mesh_data
         geo_data = geo_data or self.geo_data
 
@@ -90,7 +132,22 @@ class WALE:
 
 
 class Sigma:
-    """sigma model (Nicoud, Toda, Cabrit, Bose & Lee, 2011)."""
+    """sigma subgrid-scale model (Nicoud, Toda, Cabrit, Bose & Lee, 2011).
+
+    Computes eddy viscosity from the singular values of the velocity-gradient
+    tensor:
+
+        ν_t = (C_σ Δ)² · σ₃(σ₁ − σ₂)(σ₂ − σ₃) / σ₁²
+
+    The model yields ν_t = 0 for any 2D, axisymmetric, pure-shear, or
+    solid-rotation flow, making it suitable for transitional and
+    intermittently laminar regions.
+
+    Args:
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+        Csigma:    sigma model coefficient (default 1.35).
+    """
 
     def __init__(self, mesh_data, geo_data, Csigma=1.35):
         self.Csigma = Csigma
@@ -98,6 +155,12 @@ class Sigma:
         self.geo_data = geo_data
 
     def get_filter_info(self):
+        """Return filter-width statistics and model name.
+
+        Returns:
+            Dict with keys ``model``, ``Cs`` (carries *C_σ*), and
+            ``filter_width_min/max/mean``.
+        """
         delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
         return {
             "model": "sigma",
@@ -108,6 +171,16 @@ class Sigma:
         }
 
     def compute_nut(self, U, mesh_data=None, geo_data=None):
+        """Compute the subgrid-scale turbulent viscosity (sigma model).
+
+        Args:
+            U:        Velocity field ``(n_elements + n_boundary, 3)``.
+            mesh_data: Optional override mesh dictionary.
+            geo_data:  Optional override geometry dictionary.
+
+        Returns:
+            Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
+        """
         mesh_data = mesh_data or self.mesh_data
         geo_data = geo_data or self.geo_data
 
@@ -142,6 +215,16 @@ class DynamicSmagorinsky:
     """
 
     def __init__(self, mesh_data, geo_data, alpha2=4.0):
+        """Initialise the dynamic Smagorinsky model.
+
+        Pre-computes the static volume-weighted box-filter denominator
+        (one-ring neighbour sum) from the mesh topology.
+
+        Args:
+            mesh_data: Mesh dictionary.
+            geo_data:  Geometry dictionary.
+            alpha2:    Test-to-grid filter-width ratio squared (default 4.0).
+        """
         self.mesh_data = mesh_data
         self.geo_data = geo_data
         self.alpha2 = alpha2
@@ -158,7 +241,17 @@ class DynamicSmagorinsky:
         self._own, self._nei, self._vol, self._denom = own, nei, vol, denom
 
     def _box_filter(self, f):
-        """Volume-weighted one-ring box filter of a cell field (n_elements, ...)."""
+        """Apply a volume-weighted one-ring box filter to a cell field.
+
+        For each cell, the filtered value is the volume-weighted average
+        of the cell and its face neighbours (the one-ring).
+
+        Args:
+            f: Cell-centred field ``(n_elements, ...)``.
+
+        Returns:
+            Filtered field with the same shape as *f*.
+        """
         vol = self._vol
         shape = (vol.shape[0],) + f.shape[1:]
         num = (vol.reshape((-1,) + (1,) * (f.ndim - 1)) * f).copy()
@@ -167,6 +260,12 @@ class DynamicSmagorinsky:
         return num / self._denom.reshape((-1,) + (1,) * (f.ndim - 1))
 
     def get_filter_info(self):
+        """Return filter-width statistics, model name, and last C value.
+
+        Returns:
+            Dict with keys ``model``, ``Cs`` (sqrt of last C), and
+            ``filter_width_min/max/mean``.
+        """
         delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
         return {
             "model": "dynamicSmagorinsky",
@@ -177,6 +276,19 @@ class DynamicSmagorinsky:
         }
 
     def compute_nut(self, U, mesh_data=None, geo_data=None):
+        """Compute the subgrid-scale turbulent viscosity (dynamic procedure).
+
+        Uses the Germano identity with a volume-weighted one-ring box test
+        filter and a global (volume-averaged) Lilly least-squares contraction.
+
+        Args:
+            U:        Velocity field ``(n_elements + n_boundary, 3)``.
+            mesh_data: Optional override mesh dictionary.
+            geo_data:  Optional override geometry dictionary.
+
+        Returns:
+            Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
+        """
         mesh_data = mesh_data or self.mesh_data
         geo_data = geo_data or self.geo_data
         n_elem = mesh_data["n_elements"]
@@ -212,12 +324,31 @@ class DynamicSmagorinsky:
 
 
 def create_model(config, mesh_data, geo_data):
-    """Build the configured LES model, or ``None`` for no-model (ILES / DNS).
+    """Build the configured LES model instance from a :class:`TurbulenceConfig`.
 
-    ``config`` is a ``TurbulenceConfig`` (``.model``, ``.Cs``, ``.dynamic``).
-    Recognised models (case-insensitive): ``none``, ``smagorinsky``
-    (``dynamic=True`` → dynamic Smagorinsky), ``wale``, ``sigma``,
-    ``dynamicsmagorinsky``.
+    Factory function that dispatches to the appropriate model class based
+    on the ``config.model`` string (case-insensitive).
+
+    Recognised models:
+    - ``"none"``, ``"iles"``, ``"dns"`` → ``None`` (no subgrid model).
+    - ``"smagorinsky"`` → :class:`Smagorinsky` (or
+      :class:`DynamicSmagorinsky` if ``config.dynamic is True``).
+    - ``"dynamicsmagorinsky"`` / ``"dynamic_smagorinsky"`` →
+      :class:`DynamicSmagorinsky`.
+    - ``"wale"`` → :class:`WALE`.
+    - ``"sigma"`` → :class:`Sigma`.
+
+    Args:
+        config:   :class:`TurbulenceConfig` instance (may be ``None``).
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+
+    Returns:
+        An LES model instance with a ``compute_nut(U)`` interface,
+        or ``None`` for no-model (ILES/DNS).
+
+    Raises:
+        ValueError: If the model name is not recognised.
     """
     if config is None:
         return None

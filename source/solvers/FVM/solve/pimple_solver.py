@@ -36,6 +36,20 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
     """
 
     def __init__(self, mesh_data, geo_data, boundaries, params=None):
+        """Initialise the PIMPLE solver.
+
+        Inherits parameter defaults from
+        :class:`~simple_solver.SIMPLESolver` and overrides them
+        with transient-suitable PIMPLE defaults (``n_correctors=2``,
+        ``alpha_u=1.0``, ``alpha_p=1.0``, ``convection_scheme="deferred"``,
+        ``momentum_tol=1e-4``).
+
+        Args:
+            mesh_data:  Mesh dictionary.
+            geo_data:   Geometry dictionary.
+            boundaries: List of boundary patch dictionaries.
+            params:     Optional dict of solver parameters.
+        """
         super().__init__(mesh_data, geo_data, boundaries, params)
 
         # PIMPLE-specific defaults — only applied if user did NOT explicitly
@@ -231,8 +245,23 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         write_interval=None,
         case_dir=None,
     ):
-        """
-        Solve transient flow using PIMPLE (backward compatible loop).
+        """Solve a transient incompressible flow using the PIMPLE algorithm.
+
+        Time-marching loop that calls :meth:`step` at each time level,
+        advances the solution, and optionally writes output to disk.
+
+        Args:
+            U_init:        Initial velocity field ``(n_total, 3)``.
+            p_init:        Initial pressure field ``(n_total,)``.
+            rho:           Fluid density (default 1.0).
+            nu:            Kinematic viscosity (default 0.01).
+            dt:            Time-step size.
+            n_steps:       Number of time steps.
+            write_interval: Write frequency in steps.
+            case_dir:      Case directory for output.
+
+        Returns:
+            Tuple ``(U, p, phi, converged)``.
         """
         assert dt is not None, "PIMPLESolver.solve requires dt"
         assert n_steps is not None, "PIMPLESolver.solve requires n_steps"

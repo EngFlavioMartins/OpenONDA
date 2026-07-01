@@ -13,7 +13,22 @@ import numpy as np
 def _accumulate_interior_gradients(
     grad_phi, phi, owners, neighbours, face_sf, face_weights, n_interior_faces, n_components
 ):
-    """Accumulate interior face flux contributions to the cell gradient."""
+    """Accumulate interior-face flux contributions into the cell gradient.
+
+    For each interior face, interpolates *phi* to the face using
+    geometric weights, then adds ``phi_f · S_f`` to the owner and
+    subtracts it from the neighbour (the Gauss theorem contribution).
+
+    Args:
+        grad_phi:      Gradient accumulator array (mutated in place).
+        phi:           Field values ``(n_total, n_components)``.
+        owners:        Owner index array.
+        neighbours:    Neighbour index array.
+        face_sf:       Face area vectors ``(n_faces, 3)``.
+        face_weights:  Interpolation weights ``(n_faces,)``.
+        n_interior_faces: Number of interior faces.
+        n_components:  Number of field components (1 for scalar, 3 for vector).
+    """
     for i_component in range(n_components):
         phi_owner = phi[owners[:n_interior_faces], i_component]
         phi_neighbor = phi[neighbours[:n_interior_faces], i_component]
@@ -30,7 +45,22 @@ def _accumulate_interior_gradients(
 def _accumulate_boundary_gradients(
     grad_phi, phi, owners_b, sf_b, boundaries, n_interior_faces, n_elements, n_components
 ):
-    """Accumulate boundary face flux contributions to the cell gradient."""
+    """Accumulate boundary-face flux contributions into the cell gradient.
+
+    Skips patches with type ``"empty"`` (2D front/back).  For each
+    remaining boundary face, adds the boundary value times the area
+    vector to the owner cell's gradient.
+
+    Args:
+        grad_phi:      Gradient accumulator array (mutated in place).
+        phi:           Field values ``(n_total, n_components)``.
+        owners_b:      Owner array for boundary faces ``(n_boundary_faces,)``.
+        sf_b:          Face area vectors for boundary faces.
+        boundaries:    List of boundary patch dictionaries.
+        n_interior_faces: Number of interior faces.
+        n_elements:    Number of interior elements.
+        n_components:  Number of field components.
+    """
     for boundary in boundaries:
         bc_type = boundary.get("bc_type") or boundary.get("type")
         if bc_type == "empty":
@@ -114,10 +144,20 @@ def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
 
 
 def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
-    """
-    Vectorized version of Gauss linear gradient computation.
+    """Compute the gradient using the Gauss linear method (vectorised).
 
-    More efficient than the loop-based version for large meshes.
+    Uses :func:`numpy.add.at` for scatter-accumulation, which is
+    significantly faster than Python loops on large meshes.  The
+    algorithm and interface are identical to
+    :func:`compute_gradient_gauss_linear`.
+
+    Args:
+        phi:      Field values ``(n_total, n_components)``.
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary.
+
+    Returns:
+        Gradient field ``(n_total, 3, n_components)``.
     """
 
     # Determine field type
@@ -371,7 +411,18 @@ def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
 
 
 def _resolve_gradient_fn(geo_data):
-    """Return the correct gradient function based on geo_data config."""
+    """Return the gradient function matching the configured scheme.
+
+    Checks ``geo_data["gradient_scheme"]``:
+    - ``"lsq"`` → :func:`compute_gradient_lsq_vectorized`
+    - anything else → :func:`compute_gradient_gauss_linear_vectorized`
+
+    Args:
+        geo_data: Geometry dictionary (must contain ``"gradient_scheme"``).
+
+    Returns:
+        A callable ``grad_fn(phi, mesh_data, geo_data) -> gradient``.
+    """
     if geo_data.get("gradient_scheme") == "lsq":
         return compute_gradient_lsq_vectorized
     return compute_gradient_gauss_linear_vectorized

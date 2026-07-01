@@ -19,13 +19,28 @@ class VTKExporter:
     """
 
     def __init__(self, mesh_data: dict[str, Any]):
+        """Initialise the VTK exporter.
+
+        Builds a :class:`pyvista.UnstructuredGrid` from the mesh data
+        on construction.
+
+        Args:
+            mesh_data: Mesh dictionary (needs ``points``, ``faces``,
+                       ``owners``, ``neighbours``, ``n_elements``,
+                       ``n_interior_faces``).
+        """
         self.mesh_data = mesh_data
         self._grid = self._initialize_grid()
 
     def _initialize_grid(self) -> pv.UnstructuredGrid:
-        """
-        Constructs a PyVista UnstructuredGrid from mesh_data.
-        Handles arbitrary polyhedra.
+        """Construct a :class:`pyvista.UnstructuredGrid` from mesh data.
+
+        Groups faces by cell (using owner/neighbour connectivity) and
+        builds VTK polyhedron cells.  Handles arbitrary polyhedra
+        (hexahedra, tetrahedra, prisms, etc.).
+
+        Returns:
+            A fully constructed :class:`pyvista.UnstructuredGrid`.
         """
         points = self.mesh_data["points"]
         faces = self.mesh_data["faces"]
@@ -65,9 +80,22 @@ class VTKExporter:
     def export(
         self, filename: str, fields: dict[str, np.ndarray], interpolate_to_points: bool = True
     ):
-        """
-        Exports fields to a .vtu file.
-        Fields should be cell-centered arrays of size n_cells.
+        """Export fields to a ``.vtu`` file (VTK unstructured grid format).
+
+        Fields are stored as cell data on the internal grid.  If any
+        field array is longer than ``n_elements``, the extra entries
+        (ghost / boundary layers) are silently stripped.
+
+        Args:
+            filename:              Output ``.vtu`` file path.
+            fields:                Dict mapping field name → array.
+            interpolate_to_points: If ``True`` (default), converts cell
+                                   data to point data via
+                                   :meth:`pyvista.DataSetFilters.cell_data_to_point_data`
+                                   for smoother visualisation in ParaView.
+
+        Returns:
+            The output file path.
         """
         os.makedirs(os.path.dirname(filename), exist_ok=True)
 
@@ -91,18 +119,28 @@ class VTKExporter:
 
 
 class PVDManager:
-    """
-    Manages ParaView Data (.pvd) files for time-series visualization.
+    """Manages ParaView Data (``.pvd``) files for time-series animation.
+
+    A collection file that references individual ``.vtu`` snapshots at
+    their respective time values, enabling time-dependent visualisation
+    in ParaView.
+
+    Args:
+        filename: Output ``.pvd`` file path.
     """
 
     def __init__(self, filename: str):
         self.filename = filename
-        self.entries = []
+        self.entries: list[tuple[float, str]] = []
         if os.path.exists(filename):
             self._parse_existing()
 
     def _parse_existing(self):
-        # Very simple parser if we need to resume
+        """Parse an existing ``.pvd`` file to resume appending.
+
+        Uses a simple regex to extract ``timestep`` and ``file``
+        attributes from each ``<DataSet>`` element.
+        """
         import re
 
         with open(self.filename) as f:
@@ -114,12 +152,21 @@ class PVDManager:
                 self.entries.append((float(time), fpath))
 
     def add_step(self, time: float, vtu_file: str):
-        # Store relative path for portability
+        """Register a time step and re-write the ``.pvd`` file.
+
+        The *vtu_file* path is stored as relative to the ``.pvd`` file
+        location for portability.
+
+        Args:
+            time:     Simulation time for this snapshot.
+            vtu_file: Path to the ``.vtu`` file.
+        """
         rel_path = os.path.relpath(vtu_file, os.path.dirname(self.filename))
         self.entries.append((time, rel_path))
         self.write()
 
     def write(self):
+        """Write the ``.pvd`` collection file."""
         with open(self.filename, "w") as f:
             f.write('<?xml version="1.0"?>\n')
             f.write('<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n')
@@ -131,6 +178,15 @@ class PVDManager:
 
 
 def write_vtu(filename: str, mesh_data: dict[str, Any], fields: dict[str, np.ndarray]):
-    """Convenience function for one-off export."""
+    """Convenience function for one-off VTU export.
+
+    Creates a :class:`VTKExporter`, attaches the given fields, and
+    writes a single ``.vtu`` file.
+
+    Args:
+        filename:  Output ``.vtu`` file path.
+        mesh_data: Mesh dictionary.
+        fields:    Dict mapping field name → array (cell-centred).
+    """
     exporter = VTKExporter(mesh_data)
     exporter.export(filename, fields)

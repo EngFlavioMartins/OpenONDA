@@ -7,7 +7,14 @@ from typing import Literal
 
 
 def _collect_field_patches(filepath: str, type_key: str, value_key: str, patches: dict) -> None:
-    """Read a single OpenFOAM field file and merge its BC entries into `patches`."""
+    """Read a single OpenFOAM field file and merge its BC entries into *patches*.
+
+    Args:
+        filepath:  Path to an OpenFOAM field file (e.g. ``0/U``).
+        type_key:  Key under which the boundary type is stored (e.g. ``"type_U"``).
+        value_key: Key under which the boundary value is stored (e.g. ``"value_U"``).
+        patches:   Dict of patch-name → attributes, mutated in place.
+    """
     from ..fields.field_io import parse_field_boundary_patches
 
     if not os.path.exists(filepath):
@@ -18,7 +25,18 @@ def _collect_field_patches(filepath: str, type_key: str, value_key: str, patches
 
 
 def _build_boundary_config(name: str, vals: dict) -> "BoundaryConfig":
-    """Construct a BoundaryConfig from merged patch data for one patch name."""
+    """Construct a :class:`BoundaryConfig` from merged patch data.
+
+    Iterates over the ``(type_attr, value_attr)`` pairs for U, p, and nut,
+    setting only those that appear in *vals*.
+
+    Args:
+        name: Patch name.
+        vals: Merged attributes dict (from :func:`_collect_field_patches`).
+
+    Returns:
+        A new :class:`BoundaryConfig`.
+    """
     b = BoundaryConfig(name=name)
     for type_attr, value_attr in (
         ("type_U", "value_U"),
@@ -35,14 +53,35 @@ def _build_boundary_config(name: str, vals: dict) -> "BoundaryConfig":
 
 
 def _resolve_system_dir(path: str) -> str:
-    """Resolve path to the OpenFOAM `system` directory."""
+    """Resolve a path to the OpenFOAM ``system`` directory.
+
+    If *path* is a case directory (a directory whose basename is not
+    ``system``), appends ``"system"``.  If *path* is a file, returns its
+    parent directory.
+
+    Args:
+        path: Candidate path (directory or file).
+
+    Returns:
+        Absolute path to the ``system`` directory.
+    """
     if os.path.isdir(path) and os.path.basename(path) != "system":
         return os.path.join(path, "system")
     return path if os.path.isdir(path) else os.path.dirname(path)
 
 
 def _parse_yplus_patches(content: str) -> list[str] | None:
-    """Extract yplus patch list from the functions block of a controlDict text."""
+    """Extract the y+ patch list from the ``functions`` block of a ``controlDict``.
+
+    Parses the ``functions`` sub-dictionary for an entry matching ``"yplus"``
+    (case-insensitive) and extracts the ``patches ( ... )`` list.
+
+    Args:
+        content: Raw text of the ``controlDict`` file.
+
+    Returns:
+        List of patch names, or ``None`` if no y+ function is found.
+    """
     funcs_match = re.search(r"functions\s*\{(.+?)\}\s*", content, re.DOTALL)
     if not funcs_match:
         return None
@@ -59,7 +98,17 @@ def _parse_yplus_patches(content: str) -> list[str] | None:
 
 
 def _extract_foam_number(v) -> float | None:
-    """Parse a numeric value from an OpenFOAM dictionary entry (scalar, list, or string)."""
+    """Parse a numeric value from an OpenFOAM dictionary entry.
+
+    Handles scalars, single-element lists, and strings containing numbers
+    (takes the last numeric token found).
+
+    Args:
+        v: Raw value from a parsed OpenFOAM dictionary (scalar, list, or string).
+
+    Returns:
+        Float value, or ``None`` if no number could be extracted.
+    """
     if isinstance(v, (int, float)):
         return float(v)
     if isinstance(v, list) and v:
@@ -72,7 +121,19 @@ def _extract_foam_number(v) -> float | None:
 
 
 def _detect_turbulence_model(data: dict, filepath: str) -> str:
-    """Determine the turbulence model name from parsed data and file text."""
+    """Determine the turbulence model name from parsed data and raw file text.
+
+    Checks ``simulationType``, ``LESModel``, and ``model`` keys.  If the
+    simulation type is ``LES`` but the model name is not present in the
+    parsed data, falls back to regex on the raw file content.
+
+    Args:
+        data:     Parsed dictionary from ``turbulenceProperties``.
+        filepath: Original file path (read again if regex fallback needed).
+
+    Returns:
+        Model name string (e.g. ``"Smagorinsky"``, ``"None"``).
+    """
     sim_type = data.get("simulationType") or data.get("simulationtype")
     model = data.get("LESModel") or data.get("model")
     if model is None and sim_type and str(sim_type).upper() == "LES":
@@ -85,7 +146,18 @@ def _detect_turbulence_model(data: dict, filepath: str) -> str:
 
 
 def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool]:
-    """Return (Cs, dynamic) turbulence coefficients, falling back to regex on the file."""
+    """Return ``(Cs, dynamic)`` turbulence coefficients.
+
+    Checks for ``Cs`` (or variants ``C_s``, ``c_s``) and ``dynamic`` in the
+    parsed data.  If missing, falls back to regex on the raw file content.
+
+    Args:
+        data:     Parsed dictionary from ``turbulenceProperties``.
+        filepath: Original file path (used for regex fallback).
+
+    Returns:
+        Tuple ``(Cs, is_dynamic)``; defaults ``(0.17, False)`` if unset.
+    """
     cs_candidates = [data.get("Cs"), data.get("C_s"), data.get("c_s")]
     cs_val = next((c for c in cs_candidates if c is not None), None)
     dynamic_val = data.get("dynamic")
@@ -127,24 +199,64 @@ class BoundaryConfig:
 
     @staticmethod
     def inlet(name: str, velocity: list[float]) -> "BoundaryConfig":
+        """Create a Dirichlet velocity / zero-gradient pressure inlet.
+
+        Args:
+            name:     Patch name (e.g. ``"inlet"``).
+            velocity: Prescribed velocity vector ``[u, v, w]``.
+
+        Returns:
+            A new :class:`BoundaryConfig` suitable for inflow boundaries.
+        """
         return BoundaryConfig(
             name=name, type_U="fixedValue", value_U=velocity, type_p="zeroGradient"
         )
 
     @staticmethod
     def outlet(name: str, p: float = 0.0) -> "BoundaryConfig":
-        """Outlet: fixed pressure + ``inletOutlet`` velocity (zeroGradient on
-        outflow, zero inflow on reverse flow — bounded, no patch-name heuristic)."""
+        """Create an outlet with fixed pressure and ``inletOutlet`` velocity.
+
+        Uses ``inletOutlet`` for velocity: zero-gradient on outflow, zero
+        inflow on reverse flow.  This is bounded and does not rely on
+        patch-name heuristics.
+
+        Args:
+            name: Patch name (e.g. ``"outlet"``).
+            p:    Prescribed static pressure (default 0.0).
+
+        Returns:
+            A new :class:`BoundaryConfig` suitable for outflow boundaries.
+        """
         return BoundaryConfig(name=name, type_U="inletOutlet", type_p="fixedValue", value_p=p)
 
     @staticmethod
     def freestream(name: str, velocity: list[float]) -> "BoundaryConfig":
+        """Create a Dirichlet velocity / zero-gradient pressure freestream.
+
+        Args:
+            name:     Patch name.
+            velocity: Freestream velocity vector ``[u, v, w]``.
+
+        Returns:
+            A new :class:`BoundaryConfig` for external-flow farfield boundaries.
+        """
         return BoundaryConfig(
             name=name, type_U="fixedValue", value_U=velocity, type_p="zeroGradient"
         )
 
     @staticmethod
     def wall(name: str) -> "BoundaryConfig":
+        """Create a no-slip wall boundary condition.
+
+        Sets velocity to zero (fixed value) and pressure to zero-gradient.
+        Turbulent viscosity uses the ``calculated`` type (OpenFOAM convention).
+
+        Args:
+            name: Patch name (e.g. ``"bottomWall"``).
+
+        Returns:
+            A new :class:`BoundaryConfig` for solid walls.
+        """
         return BoundaryConfig(
             name=name,
             type_U="fixedValue",
@@ -172,10 +284,22 @@ class BoundaryConfig:
 
     @staticmethod
     def load_from_time_dir(case_dir: str, time_dir: str = "0") -> list["BoundaryConfig"]:
-        """Load boundary conditions from OpenFOAM time directory (e.g., '0').
+        """Load boundary conditions from an OpenFOAM time directory.
 
-        This reads `U`, `p`, and `nut` if present and constructs a list of
-        BoundaryConfig objects for all patches found in the files.
+        Reads ``U``, ``p``, and ``nut`` field files (if present) and
+        constructs a :class:`BoundaryConfig` for every patch found.
+
+        Args:
+            case_dir: Case root directory.
+            time_dir: Time subdirectory name (default ``"0"``).
+
+        Returns:
+            List of :class:`BoundaryConfig` objects, one per patch.
+
+        Example:
+            >>> bcs = BoundaryConfig.load_from_time_dir("/path/to/case", "0")
+            >>> bcs[0].name, bcs[0].type_U
+            ('inlet', 'fixedValue')
         """
         base = os.path.join(case_dir, time_dir)
         patches: dict = {}
@@ -203,16 +327,39 @@ class MeshConfig:
 
     @staticmethod
     def block_mesh() -> "MeshConfig":
+        """Create a default ``blockMesh`` configuration.
+
+        Returns:
+            :class:`MeshConfig` configured for OpenFOAM's ``blockMesh``.
+        """
         return MeshConfig(method="blockMesh")
 
     @staticmethod
     def cartesian(surface_file: str, max_cell_size: float) -> "MeshConfig":
+        """Create a cfMesh ``cartesianMesh`` configuration.
+
+        Args:
+            surface_file:  STL/OBJ surface file in ``constant/triSurface/``.
+            max_cell_size: Maximum isotropic cell size.
+
+        Returns:
+            :class:`MeshConfig` configured for cfMesh ``cartesianMesh``.
+        """
         return MeshConfig(
             method="cartesianMesh", surface_file=surface_file, max_cell_size=max_cell_size
         )
 
     def generate_mesh_dict(self) -> str:
-        """Generate content for system/meshDict (for cartesianMesh)."""
+        """Generate the content of ``system/meshDict`` for cfMesh cartesianMesh.
+
+        Produces an OpenFOAM-format dictionary with ``surfaceFile``,
+        ``maxCellSize``, and optional ``boundaryCellSize``, ``minCellSize``,
+        and ``localRefinement`` entries.
+
+        Returns:
+            Complete ``meshDict`` content as a string, or ``""`` if the
+            configured method is not ``cartesianMesh``.
+        """
         if self.method != "cartesianMesh":
             return ""
 
@@ -281,10 +428,32 @@ class TimeConfig:
 
     @staticmethod
     def steady(max_iter: int = 1000, write_interval: int = 100) -> "TimeConfig":
+        """Create a steady-state time configuration.
+
+        Sets ``delta_t=1``, so ``n_steps = end_time - start_time = max_iter``,
+        which is treated by the SIMPLE algorithm as outer iterations.
+
+        Args:
+            max_iter:       Equivalent number of SIMPLE iterations.
+            write_interval: Save frequency in iterations.
+
+        Returns:
+            :class:`TimeConfig` suitable for steady SIMPLE.
+        """
         return TimeConfig(delta_t=1, start_time=0, end_time=max_iter, write_interval=write_interval)
 
     @staticmethod
     def transient(dt: float, duration: float, write_interval: int = 10) -> "TimeConfig":
+        """Create a transient time configuration.
+
+        Args:
+            dt:             Time-step size (seconds).
+            duration:       Total simulation time (seconds).
+            write_interval: Save every *write_interval*-th step.
+
+        Returns:
+            :class:`TimeConfig` suitable for PIMPLE / PISO.
+        """
         return TimeConfig(
             delta_t=dt, start_time=0, end_time=duration, write_interval=write_interval
         )
@@ -399,6 +568,17 @@ class SolverParams:
         linear_solver: str = "spsolve",
         gradient_scheme: str = "lsq",
     ) -> "SolverParams":
+        """Create SIMPLE solver parameters with steady-state defaults.
+
+        Args:
+            alpha_u:        Velocity under-relaxation factor (default 0.7).
+            alpha_p:        Pressure under-relaxation factor (default 0.3).
+            linear_solver:  Linear system solver (default ``"spsolve"``).
+            gradient_scheme: Gradient scheme, ``"lsq"`` or ``"gauss"``.
+
+        Returns:
+            :class:`SolverParams` configured for steady SIMPLE.
+        """
         return SolverParams(
             algorithm="SIMPLE",
             alpha_u=alpha_u,
@@ -451,10 +631,22 @@ class TransportConfig:
 
     @staticmethod
     def air() -> "TransportConfig":
+        """Standard air properties at sea level.
+
+        Returns:
+            :class:`TransportConfig` with ``density=1.225`` kg/m³ and
+            ``nu=1.5e-5`` m²/s.
+        """
         return TransportConfig(density=1.225, nu=1.5e-5)
 
     @staticmethod
     def water() -> "TransportConfig":
+        """Standard fresh-water properties at 20°C.
+
+        Returns:
+            :class:`TransportConfig` with ``density=1000.0`` kg/m³ and
+            ``nu=1.0e-6`` m²/s.
+        """
         return TransportConfig(density=1000.0, nu=1.0e-6)
 
     @classmethod
@@ -500,6 +692,11 @@ class DynamicMeshConfig:
 
     @staticmethod
     def static() -> "DynamicMeshConfig":
+        """Create a static (no motion) mesh configuration.
+
+        Returns:
+            :class:`DynamicMeshConfig` with ``method="static"``.
+        """
         return DynamicMeshConfig(method="static")
 
     @staticmethod
@@ -509,6 +706,20 @@ class DynamicMeshConfig:
         axis: list[float] | None = None,
         origin: list[float] | None = None,
     ) -> "DynamicMeshConfig":
+        """Create a rigid-body motion configuration.
+
+        The domain translates with *velocity* and rotates with *omega*
+        around *axis* through *origin*.
+
+        Args:
+            velocity: Translation velocity vector ``[vx, vy, vz]`` (m/s).
+            omega:    Angular velocity (rad/s).
+            axis:     Rotation axis direction ``[ax, ay, az]``.
+            origin:   Rotation centre ``[ox, oy, oz]``.
+
+        Returns:
+            :class:`DynamicMeshConfig` with ``method="rigidMotion"``.
+        """
         if origin is None:
             origin = [0, 0, 0]
         if axis is None:
@@ -537,26 +748,65 @@ class TurbulenceConfig:
 
     @staticmethod
     def smagorinsky(Cs: float = 0.17, dynamic: bool = False) -> "TurbulenceConfig":
+        """Classical Smagorinsky LES model.
+
+        Args:
+            Cs:      Smagorinsky coefficient (default 0.17).
+            dynamic: If ``True``, use the Germano–Lilly dynamic procedure.
+
+        Returns:
+            :class:`TurbulenceConfig` for Smagorinsky LES.
+        """
         return TurbulenceConfig(model="Smagorinsky", Cs=Cs, dynamic=dynamic)
 
     @staticmethod
     def wale(Cw: float = 0.325) -> "TurbulenceConfig":
-        """Wall-adapting WALE model (recommended for wall-bounded LES)."""
+        """Wall-adapting WALE model (Nicoud & Ducros 1999).
+
+        Recommended for wall-bounded LES because ν_t → 0 with the
+        correct y³ near-wall scaling.
+
+        Args:
+            Cw: WALE model coefficient (default 0.325).
+
+        Returns:
+            :class:`TurbulenceConfig` for WALE LES.
+        """
         return TurbulenceConfig(model="WALE", Cs=Cw)
 
     @staticmethod
     def sigma(Csigma: float = 1.35) -> "TurbulenceConfig":
-        """sigma model — zero ν_t in 2D / pure-shear / solid-rotation regions."""
+        """sigma model (Nicoud et al. 2011).
+
+        Produces zero ν_t in 2D, pure-shear, and solid-rotation regions,
+        making it suitable for transitional flows.
+
+        Args:
+            Csigma: sigma model coefficient (default 1.35).
+
+        Returns:
+            :class:`TurbulenceConfig` for sigma LES.
+        """
         return TurbulenceConfig(model="sigma", Cs=Csigma)
 
     @staticmethod
     def dynamic_smagorinsky() -> "TurbulenceConfig":
-        """Germano–Lilly dynamic Smagorinsky (globally averaged coefficient)."""
+        """Germano–Lilly dynamic Smagorinsky (globally averaged coefficient).
+
+        Returns:
+            :class:`TurbulenceConfig` for dynamic Smagorinsky LES.
+        """
         return TurbulenceConfig(model="dynamicSmagorinsky", dynamic=True)
 
     @staticmethod
     def none() -> "TurbulenceConfig":
-        """No subgrid model (ILES / DNS); pair with a low-dissipation scheme."""
+        """No subgrid model (ILES / DNS).
+
+        Pair with a low-dissipation convection scheme.
+
+        Returns:
+            :class:`TurbulenceConfig` with ``model="None"``.
+        """
         return TurbulenceConfig(model="None")
 
     @classmethod
@@ -598,11 +848,24 @@ class FVMConfig:
     initial_p: float = 0.0
 
     def save(self, filepath: str):
+        """Serialise this configuration to a JSON file.
+
+        Args:
+            filepath: Path for the output JSON file.
+        """
         with open(filepath, "w") as f:
             json.dump(asdict(self), f, indent=4)
 
     @classmethod
     def load(cls, filepath: str):
+        """Load a configuration from a JSON file.
+
+        Args:
+            filepath: Path to a JSON file produced by :meth:`save`.
+
+        Returns:
+            A new :class:`FVMConfig` instance.
+        """
         with open(filepath) as f:
             data = json.load(f)
 

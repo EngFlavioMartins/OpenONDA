@@ -39,7 +39,48 @@ from .constants import (
 @dataclass
 class AdvectionConfig:
     """
-    Configuration for the advection term (dx/dt = u).
+    Configuration for the advection substep: dx/dt = u.
+
+    Advection advances each particle's position by solving the material-derivative
+    equation dx/dt = u( x(t), t ) over the configured time-integration scheme.
+    The substep is nested inside the solver's macro time-step (the DVH-pinned
+    dt for DVH runs).
+
+    Available schemes
+    -----------------
+    ``NONE``
+        Freeze particle positions.  Useful for stationary-flow viscous tests
+        where particle motion is undesirable.
+    ``EULER``
+        Forward / explicit Euler — 1st order.  Lowest accuracy per step;
+        generally not recommended for production runs.
+    ``RK2``
+        Heun's method — 2nd-order Runge–Kutta (default).  Good balance of
+        accuracy and cost for most applications.
+    ``RK3``
+        Strong-Stability-Preserving Runge–Kutta — 3rd order (Gottlieb, Shu &
+        Tadmor 2001).  SSP property avoids spurious oscillations for
+        Courant-limited problems.
+    ``RK4``
+        Classical 4th-order Runge–Kutta.  Highest per-step accuracy but
+        4 evaluations per step versus 2 for RK2.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Default (RK2)
+        adv = AdvectionConfig()
+
+        # 4th-order advection
+        adv = AdvectionConfig(scheme="RK4")
+
+        # Freeze particles (stationary-flow test)
+        adv = AdvectionConfig(scheme="NONE")
+
+    References
+    ----------
+    - Gottlieb, Shu & Tadmor (2001) SIAM J. Numer. Anal. 39(5), 1984–2012.
     """
 
     scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK2"
@@ -62,7 +103,82 @@ class AdvectionConfig:
 @dataclass
 class ViscousConfig:
     """
-    Configuration for viscous diffusion schemes.
+    Configuration for viscous diffusion in the VPM solver.
+
+    Viscous diffusion models the physical term ν∇²ω in the vorticity transport
+    equation.  Five fundamentally different schemes are available, each with
+    distinct trade-offs in accuracy, stability, cost, and suitability for
+    coupled FVM-VPM simulations.
+
+    Available schemes
+    -----------------
+    ``CS``
+        Core Spreading — deterministic, O(N).  Each particle's core radius
+        grows as σ(t) = √(σ₀² + 4νt).  Simple and cheap, but the varying
+        core size degrades spatial resolution over time.  Parabolic CFL:
+        Δt ≤ h²/(4ν).
+
+    ``RWM``
+        Random Walk Method — stochastic, O(N).  Particles are displaced by a
+        Gaussian random vector with variance 2νΔt.  Unconditionally stable,
+        but accuracy degrades when the displacement exceeds h/√2.
+        Accuracy bound: Δt ≤ h²/(4ν).
+
+    ``NONE``
+        No viscous diffusion.  Use for inviscid validation or when only
+        stretching (and possibly LES) is active.
+
+    ``DVH``
+        Diffused Vortex Hydrodynamics (Durante et al. 2024) — grid-based,
+        deterministic.  Each particle's circulation is scattered to nearby
+        grid nodes via the exact heat-kernel Gaussian; Shepard normalisation
+        enforces per-particle Γ conservation.  Particles are then replaced
+        by surviving grid nodes (simultaneous diffusion + regularisation).
+        No CFL lower bound — the time-step is pinned to Δt_d = β·R_d²/(4ν).
+
+    ``GBD``
+        Grid-Based Diffusion (Cottet & Koumoutsakos 2000) — grid-based,
+        deterministic.  M4' remeshing scatter → explicit 7-point Laplacian
+        → threshold pruning with Γ conservation → particle regeneration.
+        Upper CFL bound: Δt ≤ h²/(6ν).
+
+    Guidance
+    --------
+    - **CS** is the simplest choice for standalone VPM runs where moderate
+      over-diffusion is acceptable.
+    - **RWM** is useful as a stochastic alternative; run ensemble averages
+      to recover smooth fields.
+    - **DVH** is recommended for coupled FVM-VPM simulations: the
+      simultaneous regen controls particle count and the Gaussian heat-kernel
+      respects the exact diffusion increment.
+    - **GBD** is a lighter grid-based alternative when DVH's scatter stencil
+      is too expensive or when a standard finite-difference Laplacian is
+      preferred.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Core Spreading
+        visc = ViscousConfig.cs(viscosity=1e-5, characteristic_distance=0.01)
+
+        # Random Walk
+        visc = ViscousConfig.rwm(viscosity=1e-5, characteristic_distance=0.01)
+
+        # DVH with default threshold
+        visc = ViscousConfig.dvh(h=0.01, viscosity=1e-5, dvh_rd_ratio=4)
+
+        # GBD
+        visc = ViscousConfig.gbd(h=0.01, viscosity=1e-5)
+
+        # Inviscid
+        visc = ViscousConfig.inviscid()
+
+    References
+    ----------
+    - Cottet & Koumoutsakos (2000) "Vortex Methods: Theory and Practice",
+      Cambridge University Press.
+    - Durante et al. (2024) "Diffused Vortex Hydrodynamics", J. Comput. Phys.
     """
 
     scheme: Literal["CS", "RWM", "NONE", "DVH", "GBD"] = "CS"
@@ -171,6 +287,12 @@ class ViscousConfig:
     ``'relative_max'`` — keep nodes above threshold × global max|Γ|.
     ``'absolute'``     — keep nodes above the absolute circulation value
                          ``gbd_threshold`` [m³/s]."""
+
+    gbd_max_nodes: int | None = None
+    """Hard cap on surviving grid nodes per GBD regen (GBD only).
+
+    Bounds particle-count growth in long grid-diffusion runs.  None (default)
+    keeps only the built-in safety cap (3×N, ≤ MAX_PARTICLES)."""
 
     dvh_rd_ratio: int = 4
     """Ratio R_d/h for the DVH scatter kernel (DVH only).  Integer in [3, 5].
@@ -444,6 +566,7 @@ class ViscousConfig:
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
         viscosity: float | None = None,
+        max_nodes: int | None = None,
     ) -> "ViscousConfig":
         """Grid-Based Diffusion (Cottet & Koumoutsakos 2000).
 
@@ -469,6 +592,7 @@ class ViscousConfig:
                 in [m³/s] and is the preferred mode for controlling particle
                 count in simulations with large dynamic range.
             viscosity: Molecular kinematic viscosity nu [m²/s].
+            max_nodes: Hard cap on surviving regen nodes (budget-by-count).
         """
         return ViscousConfig(
             scheme="GBD",
@@ -477,6 +601,7 @@ class ViscousConfig:
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,
             viscosity=viscosity,
+            gbd_max_nodes=max_nodes,
         )
 
 @dataclass
@@ -1107,7 +1232,38 @@ class VelocityConfig:
 # =========================================================
 @dataclass
 class VLMSolverConfig:
-    """Configuration for VLM coupling."""
+    """Configuration for VLM coupling with the VPM solver.
+
+    Controls whether the VLM solver is active, whether wake vorticity is
+    shed into VPM particles, and the Tikhonov regularisation used when
+    solving the VLM influence-matrix system.
+
+    Fields
+    ------
+    enabled
+        Activate the VLM solver (default: ``False``).
+    wake_shedding
+        Shed trailing-edge vorticity into VPM particles each step
+        (default: ``True``).  Set to ``False`` for quasi-steady coupling.
+    regularization
+        Tikhonov regularisation parameter for the VLM influence-matrix
+        solve (default: ``1e-8``).  A small positive value prevents
+        singularity near panel-edge intersections and wake-panel
+        alignments.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Enable VLM with wake shedding (default)
+        vlm = VLMSolverConfig.create(wake=True)
+
+        # Enable VLM without wake shedding (quasi-steady)
+        vlm = VLMSolverConfig.create(wake=False)
+
+        # Disable VLM (pure VPM simulation)
+        vlm = VLMSolverConfig.disabled()
+    """
 
     enabled: bool = False
     wake_shedding: bool = True

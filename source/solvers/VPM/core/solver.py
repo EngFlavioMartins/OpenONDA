@@ -2342,6 +2342,7 @@ class Solver:
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,
                 nu_eff=nu_eff,
+                max_nodes=getattr(vc, "gbd_max_nodes", None),
             )
 
     def _update_adaptation(self) -> None:

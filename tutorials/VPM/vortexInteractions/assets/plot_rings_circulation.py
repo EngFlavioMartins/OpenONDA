@@ -2,11 +2,11 @@
 """Total circulation conservation — ``rings_circulation.png``.
 
 Plots Σ|Γᵢ|/Σ|Γᵢ|₀ versus normalised time for every case discovered under
-``solution/``, read from the per-step ``stability_metrics.csv``.  A faithful
+``solution/``, read from the solver log's ``FLOW DIAGNOSTICS`` sections.  A faithful
 solver keeps the curve near unity; numerical blow-up shows up as runaway
 growth (the shaded band marks the unphysical Σ|Γ| > Σ|Γ|₀ region).
 
-Colour encodes the stabilization rung, linestyle the physics family — the
+Colour encodes the numerical variant, linestyle the physics family — the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 

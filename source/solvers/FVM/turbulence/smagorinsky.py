@@ -13,7 +13,18 @@ from ..fields import gradients
 
 
 def _detect_2d_mesh(mesh_data: dict) -> bool:
-    """Return True if the mesh is pseudo-2D (has 'empty' boundary patches)."""
+    """Check whether the mesh is pseudo-2D (has ``empty`` boundary patches).
+
+    A pseudo-2D mesh is a single-layer extruded mesh where the front/back
+    faces use the ``empty`` boundary type.  This affects the filter-width
+    computation.
+
+    Args:
+        mesh_data: Mesh dictionary (must contain a ``"boundary"`` list).
+
+    Returns:
+        ``True`` if any boundary patch has type ``"empty"``.
+    """
     for boundary in mesh_data.get("boundary", []):
         if boundary.get("type") == "empty" or boundary.get("bc_type") == "empty":
             return True
@@ -21,7 +32,19 @@ def _detect_2d_mesh(mesh_data: dict) -> bool:
 
 
 def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
-    """Return the mesh thickness inferred from the first empty boundary patch."""
+    """Infer the pseudo-2D mesh thickness from an ``empty`` boundary patch.
+
+    The thickness is computed as twice the normal distance from the first
+    empty-patch face centroid to its owner element centroid.
+
+    Args:
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary (needs ``face_centroids``,
+                   ``element_centroids``).
+
+    Returns:
+        Mesh thickness (float); ``1.0`` if no empty patch found.
+    """
     for boundary in mesh_data.get("boundary", []):
         if boundary.get("type") == "empty" or boundary.get("bc_type") == "empty":
             start = boundary["startFace"]
@@ -33,7 +56,20 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
 
 
 def _compute_filter_width(vol: np.ndarray, mesh_data: dict, geo_data: dict) -> np.ndarray:
-    """Return per-cell Smagorinsky filter width (2D or 3D)."""
+    """Compute the per-cell LES filter width Δ.
+
+    For 3D meshes: ``Δ = V^{1/3}`` (cube root of cell volume).
+    For pseudo-2D meshes: ``Δ = √(V / t)`` where *t* is the out-of-plane
+    thickness from :func:`_compute_empty_bc_thickness`.
+
+    Args:
+        vol:      Cell volume array ``(n_elements,)``.
+        mesh_data: Mesh dictionary (used for 2-D detection).
+        geo_data:  Geometry dictionary (used for thickness inference).
+
+    Returns:
+        Per-cell filter width array ``(n_elements,)``.
+    """
     if _detect_2d_mesh(mesh_data):
         thickness = _compute_empty_bc_thickness(mesh_data, geo_data)
         return np.sqrt(vol / thickness)
@@ -41,6 +77,23 @@ def _compute_filter_width(vol: np.ndarray, mesh_data: dict, geo_data: dict) -> n
 
 
 class Smagorinsky:
+    """Classical Smagorinsky LES eddy-viscosity model.
+
+    Computes the subgrid-scale turbulent viscosity as
+    ``ν_t = (C_s Δ)² |S|`` where ``Δ = V^{1/3}`` is the filter width,
+    ``|S| = √(2 S_ij S_ij)`` is the strain-rate magnitude, and *C_s* is the
+    Smagorinsky coefficient (typical value 0.17).
+
+    Handles both 3D and pseudo-2D (extruded) meshes via
+    :func:`_compute_filter_width`.
+
+    Args:
+        mesh_data: Mesh dictionary.
+        geo_data:  Geometry dictionary (needs ``element_volumes``).
+        Cs:        Smagorinsky coefficient (default 0.17).
+        dynamic:   Placeholder for dynamic procedure (not yet implemented).
+    """
+
     def __init__(self, mesh_data, geo_data, Cs=0.17, dynamic=False):
         self.Cs = Cs
         self.dynamic = dynamic
@@ -48,7 +101,12 @@ class Smagorinsky:
         self.geo_data = geo_data
 
     def get_filter_info(self):
-        """Return dictionary of filter parameters for logging."""
+        """Return a dictionary of filter parameters for logging and diagnostics.
+
+        Returns:
+            Dict with keys ``model``, ``Cs``, ``filter_width_min``,
+            ``filter_width_max``, ``filter_width_mean``.
+        """
         vol = self.geo_data["element_volumes"]
         delta = vol ** (1.0 / 3.0)
         return {

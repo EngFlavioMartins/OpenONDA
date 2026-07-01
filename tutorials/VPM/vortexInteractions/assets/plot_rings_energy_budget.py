@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Energy-budget audit for vortex-ring stabilization tests.
+"""Energy-budget audit for vortex-ring interaction tests.
 
 The target identity for an unbounded viscous incompressible flow is
 
@@ -11,8 +11,7 @@ written as dE/dt = -2*nu*Enstrophy.  This script reports both the code-native
 ``neg_nu_enstrophy`` balance and the literal ``-2*enstrophy`` balance so a
 normalization mismatch is impossible to miss.
 
-It reads ``samples/energy_budget.csv`` when available; otherwise it falls back
-to ``samples/flow_integrals.csv``.
+It reads the solver log's ``FLOW DIAGNOSTICS`` sections.
 """
 
 from __future__ import annotations
@@ -26,30 +25,27 @@ import pandas as pd
 
 ASSETS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ASSETS_DIR))
-from _common import CM, T_REF, build_arg_parser, case_style, discover_cases, load_theme, save_fig
+from _common import (
+    CM,
+    T_REF,
+    build_arg_parser,
+    case_style,
+    discover_cases,
+    load_theme,
+    read_integrals,
+    save_fig,
+)
 
 
 def read_budget(case_dir: Path) -> tuple[pd.DataFrame | None, str]:
-    """Return a monotone time series and the source filename used."""
-    for name in ("energy_budget.csv", "flow_integrals.csv"):
-        path = case_dir / "samples" / name
-        if not path.exists():
-            continue
-        df = pd.read_csv(path)
-        if "time" not in df.columns or "kinetic_energy" not in df.columns:
-            continue
-        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["time", "kinetic_energy"])
-        if len(df) < 3:
-            continue
-        times = df["time"].to_numpy(float)
-        keep_from = 0
-        for i in range(1, len(times)):
-            if times[i] <= times[i - 1]:
-                keep_from = i
-        df = df.iloc[keep_from:].reset_index(drop=True)
-        if len(df) >= 3:
-            return df, name
-    return None, ""
+    """Return a monotone log-derived time series."""
+    df = read_integrals(case_dir)
+    if df is None:
+        return None, ""
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["time", "kinetic_energy"])
+    if len(df) < 3:
+        return None, ""
+    return df.reset_index(drop=True), "log"
 
 
 def local_poly_derivative(t: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
@@ -302,11 +298,6 @@ def main() -> None:
     timeseries = pd.concat(all_series, ignore_index=True)
     summary = pd.DataFrame(rows).sort_values("case")
 
-    ts_path = figures_dir / "energy_budget_timeseries.csv"
-    summary_path = figures_dir / "energy_budget_summary.csv"
-    timeseries.to_csv(ts_path, index=False, float_format="%.8e")
-    summary.to_csv(summary_path, index=False, float_format="%.8e")
-
     make_figure(timeseries, summary, figures_dir, args.dpi)
 
     cols = [
@@ -323,8 +314,6 @@ def main() -> None:
         "best_c_for_minus_c_enstrophy",
     ]
     print(summary[cols].to_string(index=False, float_format=lambda x: f"{x:.4g}"))
-    print(f"\nWritten: {summary_path}")
-    print(f"Written: {ts_path}")
 
 
 if __name__ == "__main__":

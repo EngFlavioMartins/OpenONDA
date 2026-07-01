@@ -13,8 +13,6 @@ Saves: ``figures/rotor_performance.png``
 
 from __future__ import annotations
 
-import argparse
-import importlib.util
 import sys
 from pathlib import Path
 
@@ -25,34 +23,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# ── Theme loading (same mechanism as lambOseenVortex) ────────────────────────
-
 SCRIPT_DIR = Path(__file__).resolve().parent
-TUTORIAL_DIR = SCRIPT_DIR.parent
-THEME_PATH = TUTORIAL_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = TUTORIAL_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
-
-
-def _load_theme() -> tuple[dict[str, str], object | None]:
-    import matplotlib.font_manager as fm
-
-    theme = None
-    if THEME_PATH.exists():
-        spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
-        try:
-            theme.set_style()
-        except Exception:
-            pass
-
-    if FONT_PATH.exists():
-        fm.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
-
-    if theme is not None and hasattr(theme, "COLORS"):
-        return dict(theme.COLORS), theme
-    return {}, theme
+sys.path.insert(0, str(SCRIPT_DIR))
+from _common import CM, build_arg_parser, load_theme, rotor_styles, save_figure
 
 
 # ── Physics helpers ──────────────────────────────────────────────────────────
@@ -99,90 +72,106 @@ def plot_rotor_performance(args) -> int:
     time = df["time"].to_numpy()
     rotations = time * omega / (2.0 * np.pi)
 
-    colors, _ = _load_theme()
+    colors, _ = load_theme()
+    styles = rotor_styles(colors)
 
-    fig, axes = plt.subplots(2, 1, figsize=(12.8 / 2.54, 14.0 / 2.54))
-    fig.subplots_adjust(hspace=0.35, top=0.95, bottom=0.12, left=0.14, right=0.86)
+    fig, axes = plt.subplots(2, 1, figsize=(12.8 * CM, 12.8 * CM))
+    fig.subplots_adjust(hspace=0.34, top=0.95, bottom=0.13, left=0.14, right=0.96)
 
     # ── Subplot 1: Ct & Cp vs time ─────────────────────────────────────────
     ax1 = axes[0]
-    color_ct = colors.get("hybrid", "#DB5400")
-    color_cp = colors.get("dvhr", "#1079A9")
+    color_ct = colors.get("hybrid", "#772953")
+    color_cp = colors.get("dvhr", "#0E8A85")
 
-    ax1.plot(rotations, ct, color=color_ct, lw=1.0, label=r"$C_t$")
-    ax1.plot(rotations, cp, color=color_cp, lw=1.0, label=r"$C_p$")
+    ax1.plot(rotations, ct, color=color_ct, lw=1.0, label=r"$C_T$")
+    ax1.plot(rotations, cp, color=color_cp, lw=1.0, label=r"$C_P$")
 
     # Betz-limit references
     ct_betz = 8.0 / 9.0
     cp_betz = 16.0 / 27.0
-    ax1.axhline(ct_betz, color=color_ct, ls="--", lw=0.8, alpha=0.6)
-    ax1.axhline(cp_betz, color=color_cp, ls="--", lw=0.8, alpha=0.6)
-    ax1.text(
-        rotations[-1] * 1.01,
+    ax1.axhline(
         ct_betz,
-        r" $C_{t}^{\mathrm{Betz}}$",
         color=color_ct,
-        va="center",
-        fontsize=8,
+        ls="--",
+        lw=0.8,
+        alpha=0.75,
+        label=r"$C_T$ Betz",
     )
-    ax1.text(
-        rotations[-1] * 1.01,
+    ax1.axhline(
         cp_betz,
-        r" $C_{p}^{\mathrm{Betz}}$",
         color=color_cp,
-        va="center",
-        fontsize=8,
+        ls="--",
+        lw=0.8,
+        alpha=0.75,
+        label=r"$C_P$ Betz",
     )
 
-    ax1.set_xlabel(r"Rotation")
+    ax1.set_xlabel(r"Rotor rotations")
     ax1.set_ylabel(r"Coefficient")
-    ax1.set_xlim([0, rotations[-1] * 1.08])
+    ax1.set_xlim([0, rotations[-1]])
     ax1.set_ylim([0, 1.1])
-    ax1.legend(loc="upper right", ncol=2)
-    ax1.set_title("Rotor thrust and power coefficients")
+    ax1.legend(loc="upper right", ncol=2, handlelength=2.2, columnspacing=1.0)
+    ax1.set_title(r"Rotor performance coefficients")
 
     # ── Subplot 2: Cp vs Ct with theory envelope ───────────────────────────
     ax2 = axes[1]
     ct_theory = np.linspace(0.0, 1.0, 300)
     cp_theory = actuator_disk_cp(ct_theory)
 
-    ax2.plot(ct_theory, cp_theory, "k-", lw=1.2, zorder=0, label="Actuator-disk theory")
-    ax2.plot(ct, cp, color=color_ct, lw=1.0, zorder=1, label="Simulation")
+    ax2.plot(
+        ct_theory,
+        cp_theory,
+        label=r"Actuator-disk theory",
+        zorder=0,
+        **styles["theory"],
+    )
+    ax2.plot(
+        ct,
+        cp,
+        color=styles["vpm"]["color"],
+        lw=1.0,
+        marker=styles["vpm"]["marker"],
+        markersize=styles["vpm"]["markersize"],
+        markevery=max(1, len(ct) // 24),
+        zorder=1,
+        label="VLM-VPM",
+    )
 
     # Betz point
-    ax2.scatter([ct_betz], [cp_betz], color="k", marker="*", s=80, zorder=2, label="Betz limit")
+    ax2.scatter(
+        [ct_betz],
+        [cp_betz],
+        color=colors.get("DarkText", "#2E3D46"),
+        marker="*",
+        s=36,
+        zorder=2,
+        label="Betz limit",
+    )
 
-    ax2.set_xlabel(r"$C_t$")
-    ax2.set_ylabel(r"$C_p$")
+    ax2.set_xlabel(r"$C_T$")
+    ax2.set_ylabel(r"$C_P$")
     ax2.set_xlim([0, 1.0])
-    ax2.set_ylim([0, 0.7])
+    ax2.set_ylim([0, max(0.7, float(np.nanmax(cp)) * 1.08, cp_betz * 1.08)])
     ax2.legend(loc="lower right")
-    ax2.set_title(r"$C_p$ vs $C_t$ — momentum theory envelope")
+    ax2.set_title(r"Operating trajectory")
 
     # Save
     out = Path(args.figures_dir) / f"rotor_performance.{args.format}"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    save_kw: dict = {"bbox_inches": "tight"}
-    if args.format == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
+    save_figure(fig, out, args.dpi, args.format)
     plt.close(fig)
     print(f"  Saved: {out}")
     return 0
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Rotor performance Ct/Cp plotting.")
+    p = build_arg_parser("Rotor performance Ct/Cp plotting.")
     p.add_argument(
-        "--solution-dir", default=str(TUTORIAL_DIR / "solution"), help="Solution directory."
+        "--rho",
+        type=float,
+        default=1.225,
+        help="Fluid density [kg/m^3].",
     )
-    p.add_argument("--figures-dir", default=str(TUTORIAL_DIR / "figures"), help="Output directory.")
-    p.add_argument("--format", choices=["png", "svg"], default="png")
-    p.add_argument("--dpi", type=int, default=300)
-    p.add_argument("--rho", type=float, default=1.225, help="Fluid density [kg/m³].")
-    p.add_argument(
-        "--freestream-velocity", type=float, default=7.0, help="Freestream velocity [m/s]."
-    )
+    p.add_argument("--freestream-velocity", type=float, default=7.0)
     p.add_argument("--rotor-radius", type=float, default=6.0, help="Rotor radius [m].")
     p.add_argument("--tip-speed-ratio", type=float, default=7.0, help="Tip-speed ratio TSR.")
     return plot_rotor_performance(p.parse_args())

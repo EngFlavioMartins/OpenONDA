@@ -24,14 +24,43 @@ _FALLBACK_WARN_COUNT = 0  # Track iterative solver fallback warnings
 
 
 def _cache_key_from_matrix(A_csc, ilu_key=None):
+    """Generate a hashable cache key for an ILU preconditioner.
+
+    If *ilu_key* is provided, uses it directly (user-defined key).
+    Otherwise builds a structural key from the matrix shape, indptr,
+    and indices arrays.
+
+    Args:
+        A_csc:   Matrix in CSC format.
+        ilu_key: Optional user-defined key.
+
+    Returns:
+        A tuple usable as a dict key.
+    """
     if ilu_key is not None:
         return ("key", ilu_key)
-    # Basic structural key: shape + indptr + indices
     return ("pattern", A_csc.shape, A_csc.indptr.tobytes(), A_csc.indices.tobytes())
 
 
 def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0):
-    """Solve pressure Poisson equation, preferring AMG then CG fallback."""
+    """Solve the pressure Poisson equation.
+
+    Attempts an algebraic multigrid (AMG) solve via ``pyamg``.
+    If ``pyamg`` is unavailable, falls back to
+    :func:`_cg_pressure_fallback` (CG with diagonal preconditioner).
+
+    Args:
+        A:           Sparse matrix.
+        b:           Right-hand side vector.
+        amg_tol:     AMG solver tolerance.
+        amg_maxiter: AMG max iterations.
+        tol:         CG fallback tolerance.
+        maxiter:     CG fallback max iterations.
+        x0:          Initial guess (optional).
+
+    Returns:
+        Solution vector.
+    """
     try:
         import pyamg
 
@@ -53,7 +82,21 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0):
 
 
 def _cg_pressure_fallback(A, b, tol, maxiter, x0):
-    """CG solve with diagonal preconditioner as pressure fallback."""
+    """Conjugate-gradient solve with a diagonal (Jacobi) preconditioner.
+
+    Used as the fallback for the pressure equation when AMG is not
+    available.  Falls back to ``spsolve`` if CG does not converge.
+
+    Args:
+        A:       Sparse matrix.
+        b:       Right-hand side vector.
+        tol:     Relative tolerance.
+        maxiter: Max iterations.
+        x0:      Initial guess (optional).
+
+    Returns:
+        Solution vector.
+    """
     try:
         t0 = time.perf_counter()
         M_inv = diags(1.0 / (A.diagonal() + 1e-16))
@@ -68,7 +111,25 @@ def _cg_pressure_fallback(A, b, tol, maxiter, x0):
 
 
 def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A):
-    """Return an ILU preconditioner, using cache when reuse_ilu is set."""
+    """Return an ILU preconditioner, optionally from cache.
+
+    When ``reuse_ilu`` is ``True``, looks up the cache by key and only
+    recomputes if the matrix diagonal has changed beyond
+    ``ilu_reuse_tol``.  When ``reuse_ilu`` is ``False``, computes a
+    transient (non-cached) ILU.
+
+    Args:
+        A_csc:          Matrix in CSC format.
+        reuse_ilu:      Whether to cache and reuse the ILU factorisation.
+        ilu_key:        User-defined cache key (optional).
+        ilu_drop_tol:   ILU drop tolerance.
+        ilu_fill_factor: ILU fill factor.
+        ilu_reuse_tol:  Diagonal change threshold for rebuild.
+        A:              Original matrix (for diagonal check).
+
+    Returns:
+        An ``spilu`` factorisation object.
+    """
     if not reuse_ilu:
         ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
         logger.info("Computed transient ILU preconditioner (not cached)")
@@ -99,7 +160,22 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
 
 
 def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0):
-    """Run bicgstab or gmres with preconditioner M, returning solution vector."""
+    """Run an iterative solver (BiCGSTAB or GMRES) with a preconditioner.
+
+    Falls back to ``spsolve`` if the solver does not converge.
+
+    Args:
+        A:       Sparse matrix.
+        b:       Right-hand side vector.
+        method:  ``"bicgstab"`` or ``"gmres"``.
+        M:       Preconditioner (a ``LinearOperator``).
+        tol:     Relative tolerance.
+        maxiter: Max iterations.
+        x0:      Initial guess (optional).
+
+    Returns:
+        Solution vector.
+    """
     if method == "gmres":
         x, info = gmres(A, b, M=M, rtol=tol, maxiter=maxiter, x0=x0)
     else:
@@ -118,7 +194,28 @@ def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0):
 def _solve_with_ilu(
     A, b, method, tol, maxiter, x0, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol
 ):
-    """Solve using ILU preconditioner with iterative method; fall back to spsolve on failure."""
+    """Solve a linear system with ILU-preconditioned iterative solver.
+
+    Builds or retrieves an ILU preconditioner, then runs the selected
+    iterative method.  Falls back to plain iterative or ``spsolve``
+    on failure.
+
+    Args:
+        A:               Sparse matrix.
+        b:               Right-hand side.
+        method:          ``"bicgstab"`` or ``"gmres"``.
+        tol:             Relative tolerance.
+        maxiter:         Max iterations.
+        x0:              Initial guess.
+        reuse_ilu:       Whether to cache ILU.
+        ilu_key:         ILU cache key.
+        ilu_drop_tol:    ILU drop tolerance.
+        ilu_fill_factor: ILU fill factor.
+        ilu_reuse_tol:   Diagonal change threshold.
+
+    Returns:
+        Solution vector.
+    """
     try:
         t0 = time.perf_counter()
         A_csc = A.tocsc()
@@ -140,7 +237,21 @@ def _solve_with_ilu(
 
 
 def _iterative_solve_plain(A, b, method, tol, maxiter, x0):
-    """Plain iterative solve without preconditioner; fall back to spsolve."""
+    """Solve with a plain iterative method (no preconditioner).
+
+    Falls back to ``spsolve`` on convergence failure or exception.
+
+    Args:
+        A:       Sparse matrix.
+        b:       Right-hand side.
+        method:  ``"bicgstab"`` or ``"gmres"``.
+        tol:     Relative tolerance.
+        maxiter: Max iterations.
+        x0:      Initial guess.
+
+    Returns:
+        Solution vector.
+    """
     try:
         if method == "gmres":
             x, info = gmres(A, b, rtol=tol, maxiter=maxiter, x0=x0)
@@ -170,14 +281,41 @@ def solve_linear_system(
     ilu_reuse_tol=None,
     **kwargs,
 ):
-    """
-    Solve linear system A * x = b using SciPy solvers or PyAMG for pressure.
+    """Solve the linear system ``A·x = b``.
 
-    New features:
-    - Accepts `x0` as initial guess for iterative solvers.
-    - ILU cache with optional rebuild heuristic based on diagonal change (ilu_reuse_tol).
+    Dispatches to the appropriate solver based on *method* and
+    *equation_type*:
 
-    Args: (keeps same semantics as previous implementation, with new args)
+    - ``"spsolve"``: direct sparse solve (scipy).
+    - ``equation_type="pressure"``: AMG (pyamg) with CG fallback.
+    - ``equation_type="momentum"`` or ``"scalar"``: ILU-preconditioned
+      iterative solver (BiCGSTAB / GMRES).
+    - ``"cg"``, ``"gmres"``, ``"bicgstab"``: plain iterative solver.
+
+    Supports initial guess ``x0``, ILU caching with diagonal-change
+    rebuild heuristic, and AMG tuning via ``**kwargs``.
+
+    Args:
+        A:               Sparse matrix ``(n, n)``.
+        b:               Right-hand side ``(n,)`` or ``(n, 1)``.
+        method:          Solver method (default ``"spsolve"``).
+        equation_type:   Optional hint for solver selection
+                         (``"pressure"``, ``"momentum"``, ``"scalar"``).
+        tol:             Relative residual tolerance for iterative solvers.
+        maxiter:         Maximum number of iterations.
+        x0:              Initial guess (optional, iterative solvers only).
+        reuse_ilu:       Whether to cache and reuse the ILU factorisation.
+        ilu_key:         User-defined ILU cache key.
+        ilu_drop_tol:    ILU drop tolerance.
+        ilu_fill_factor: ILU fill factor.
+        ilu_reuse_tol:   Diagonal change threshold for ILU rebuild.
+        **kwargs:        Additional arguments (e.g. ``amg_tol``, ``amg_maxiter``).
+
+    Returns:
+        Solution vector ``x``.
+
+    Raises:
+        ValueError: If *method* is not recognised.
     """
     if method == "spsolve":
         return spsolve(A, b)

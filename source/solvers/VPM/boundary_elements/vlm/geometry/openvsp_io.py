@@ -27,7 +27,54 @@ from .surface_io import save_surface
 
 @dataclass
 class OpenVSPImportConfig:
-    """Configuration for OpenVSP DegenGeom to OpenONDA VLM conversion."""
+    """Configuration for importing OpenVSP DegenGeom data into OpenONDA VLM surfaces.
+
+    Controls which components are imported, how they are discretised, and
+    how coordinate transformations are applied during the conversion.
+
+    Fields
+    ------
+    set_id
+        OpenVSP set to import (default: ``'ALL'``).
+    include_components
+        Only import components whose name matches one of these substrings
+        (``None`` = all components).
+    exclude_components
+        Skip components whose name matches one of these substrings.
+    target_surface_types
+        Surface-type(s) to import (default: wing, prop, rotor).
+    panels_chord
+        Override the number of chordwise panels (``None`` = use VSP settings).
+    panels_span
+        Override the number of spanwise panels (``None`` = use VSP settings).
+    preserve_vsp_paneling
+        Use VSP-native panel distribution when no chord/span override is
+        given (default: ``True``).
+    symmetry
+        Symmetry-plane treatment (default: ``'from_openvsp'``).
+    length_scale
+        Factor applied to all coordinates (default: ``1.0``).
+    coordinate_transform
+        Affine transformation matrix (4×4) applied to imported node
+        coordinates (``None`` = identity).
+    strict
+        Raise on unrecognised surface types (default: ``True``).
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Default import (all components, VSP-native panelling)
+        cfg = OpenVSPImportConfig()
+
+        # Import only wings with a custom 20×10 panel distribution
+        cfg = OpenVSPImportConfig(
+            include_components=["wing"],
+            panels_chord=20,
+            panels_span=10,
+            preserve_vsp_paneling=False,
+        )
+    """
 
     set_id: int | str = "ALL"
     include_components: list[str] | None = None

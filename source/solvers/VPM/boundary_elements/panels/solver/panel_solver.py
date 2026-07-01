@@ -42,6 +42,65 @@ logger = logging.getLogger("vpm")
 
 @dataclass
 class ForceConfig:
+    """Configuration for aerodynamic force evaluation on panel methods.
+
+    Supports three methodologies with different trade-offs in accuracy,
+    unsteadiness handling, and wake-truncation sensitivity.
+
+    **1. Bernoulli (default):**
+       Integrates surface pressure from the unsteady Bernoulli equation:
+
+           Cp = 1 - (V_surface / V_inf)² - (2 / V_inf²) ∂φ/∂t
+
+       Pros:
+       - Accurate for inviscid, irrotational flow
+       - Handles unsteady added-mass naturally
+       - Well-established in panel-method literature
+
+       Cons:
+       - Requires velocity-potential time history
+       - Sensitive to panel discretisation quality
+
+    **2. Kutta-Joukowski:**
+       Applies K-J theorem per panel:  F = ρ Γ × V_local
+
+       Pros:
+       - Direct evaluation, no pressure integration
+       - Fast and robust for thin lifting surfaces
+
+       Cons:
+       - Less accurate for thick bodies
+       - Misses unsteady added-mass effects
+
+    **3. Impulse-based (experimental):**
+       Computes force from impulse time derivative:
+
+           F = -dI/dt    where    I = (ρ/2) ∫ x × ω dV
+
+       Pros:
+       - Invariant to wake truncation (passes "killer test")
+       - Includes added-mass effects automatically
+       - Consistent with momentum conservation
+
+       Cons:
+       - Requires time history (BDF1 / BDF2)
+       - Returns zero on the first time step
+       - New methodology, less validated in production
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Bernoulli (default)
+        force = ForceConfig.bernoulli()
+
+        # Kutta-Joukowski
+        force = ForceConfig.kutta_joukowski()
+
+        # Impulse-based with 2nd-order BDF and smoothing
+        force = ForceConfig.impulse_based(order="BDF2", window=5)
+    """
+
     method: Literal["BERNOULLI", "KUTTA_JOUKOWSKI", "IMPULSE"] = "BERNOULLI"
     impulse_order: Literal["BDF1", "BDF2"] = "BDF2"
     smoothing_window: int = 3

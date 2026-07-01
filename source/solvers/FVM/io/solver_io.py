@@ -69,7 +69,19 @@ class SolverIO:
             sys.stdout.flush()
 
     def _gather_fields_for_io(self) -> list[dict[str, Any]]:
-        """Collects and prepares internal solver fields for file-based output."""
+        """
+        Collect and prepare internal solver fields for file-based output.
+
+        Gathers core fields (U, p, phi) and diagnostic fields (Co,
+        vorticity, nut) from the solver, extends scalar/vector arrays
+        with boundary-face (ghost) values so that OpenFOAM-format
+        writers receive a matching number of entries.
+
+        Returns:
+            list[dict[str, Any]]: A list of field dictionaries, each
+            containing keys ``"name"``, ``"type"`` (e.g. ``"volVectorField"``
+            or ``"volScalarField"``), and ``"phi"`` (the extended data array).
+        """
         fields = []
         mesh = self.solver.mesh_data
         n_elements = mesh["n_elements"]
@@ -124,7 +136,26 @@ class SolverIO:
         return fields
 
     def _maybe_log_forces(self):
-        """Computes and logs surface forces if config files are present."""
+        """
+        Compute and log surface forces to CSV and stdout.
+
+        Checks for the presence of ``system/forceCoefficients`` or
+        ``constant/forceCoefficients`` in the case directory. If found,
+        surface forces (pressure + viscous) are computed for patches
+        whose names contain ``"cube"`` (or all boundaries if none
+        match). Results are appended to ``forces_history.csv`` and a
+        summary line is printed to stdout.
+
+        Reference quantities (ref_U, ref_area, ref_length, moment_centre)
+        are read from the solver configuration.
+
+        Raises:
+            Exception: Propagated from
+                :func:`diagnostics.compute_surface_forces` if the force
+                evaluation fails. The caller should handle this silently
+                (the message is printed as a warning in
+                :meth:`write_results`).
+        """
         # Detect presence of force configs in legacy locations
         candidates = [
             os.path.join(self.case_dir, "system/forceCoefficients"),

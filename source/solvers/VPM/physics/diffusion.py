@@ -641,6 +641,36 @@ class _GridDiffusionMixin:
         return max(threshold, 1e-10)
 
     @staticmethod
+    def _cap_surviving_nodes(
+        circ_mag: np.ndarray,
+        ix: np.ndarray,
+        iy: np.ndarray,
+        iz: np.ndarray,
+        cap: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, int]:
+        """Keep exactly the strongest ``cap`` surviving grid nodes.
+
+        Raising a magnitude threshold can still overshoot the requested cap
+        when many nodes share the cutoff value.  Selecting by the already
+        surviving linear indices makes the particle-count budget exact.
+        """
+        n_survivors = len(ix)
+        if cap <= 0:
+            raise ValueError("Diffusion regeneration cap must be positive.")
+        if n_survivors <= cap:
+            threshold = float(circ_mag[ix, iy, iz].min()) if n_survivors else 0.0
+            return ix, iy, iz, threshold, n_survivors
+
+        values = circ_mag[ix, iy, iz]
+        keep_local = np.argpartition(-values, cap - 1)[:cap]
+        keep_local = keep_local[np.argsort(-values[keep_local])]
+        ix_keep = ix[keep_local]
+        iy_keep = iy[keep_local]
+        iz_keep = iz[keep_local]
+        threshold = float(circ_mag[ix_keep, iy_keep, iz_keep].min())
+        return ix_keep, iy_keep, iz_keep, threshold, n_survivors
+
+    @staticmethod
     def _redistribute_pruned_moments(
         grid_np: np.ndarray,
         circ_mag: np.ndarray,
@@ -765,6 +795,7 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         nu_eff: np.ndarray | None = None,
+        max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
@@ -927,18 +958,18 @@ class _GridDiffusionMixin:
         # ── Particle-count cap ────────────────────────────────────────────────
         # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
         # The top surviving nodes (by |Γ|) contain essentially all circulation;
-        # the dropped tail nodes contribute <0.01% of total even when the cap
-        # triggers at the vortex boundary.
-        max_nodes = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
-        if len(ix) > max_nodes:
-            flat = circ_mag.ravel()
-            order = np.argsort(-flat)
-            cutoff_val = float(flat[order[min(max_nodes - 1, len(order) - 1)]])
-            threshold = max(threshold, cutoff_val)
-            ix, iy, iz = np.where(circ_mag >= threshold)
+        # the dropped tail nodes contribute little but can otherwise trigger
+        # large Taichi external-array uploads during particle replacement.
+        cap = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
+        if max_nodes is not None:
+            cap = min(cap, int(max_nodes))
+        if len(ix) > cap:
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
+                circ_mag, ix, iy, iz, cap
+            )
             _logger.info(
                 "[GBD] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
-                len(np.where(circ_mag >= 0)[0]),
+                old_count,
                 len(ix),
                 threshold,
             )
@@ -985,6 +1016,7 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         nu_eff: np.ndarray | None = None,
+        max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
@@ -1004,6 +1036,7 @@ class _GridDiffusionMixin:
             regen_threshold,
             regen_threshold_mode,
             nu_eff=nu_eff,
+            max_nodes=max_nodes,
         )
 
     def _dvh_scatter_circ(
@@ -1227,14 +1260,12 @@ class _GridDiffusionMixin:
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         if len(ix) > cap:
-            flat = circ_mag.ravel()
-            order = np.argsort(-flat)
-            cutoff_val = float(flat[order[min(cap - 1, len(order) - 1)]])
-            threshold = max(threshold, cutoff_val)
-            ix, iy, iz = np.where(circ_mag >= threshold)
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
+                circ_mag, ix, iy, iz, cap
+            )
             _logger.info(
                 "[DVH] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
-                len(np.where(circ_mag >= 0)[0]),
+                old_count,
                 len(ix),
                 threshold,
             )

@@ -21,7 +21,17 @@ from . import convection, diffusion, matrix_assembly
 
 
 def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
-    """Create per-component momentum boundary dict from velocity boundary."""
+    """Create per-component momentum boundary dict from velocity boundary.
+
+    Args:
+        b: Velocity boundary dictionary containing keys like ``bc_type_U``
+            and ``value_U``.
+        i_comp: Component index (0, 1, 2 for x, y, z).
+
+    Returns:
+        dict: Momentum boundary dictionary with ``bc_type`` and ``value``
+            keys extracted for the specified component.
+    """
     b_mom = b.copy()
     if "bc_type_U" in b:
         b_mom["bc_type"] = b["bc_type_U"]
@@ -59,7 +69,19 @@ def _add_transient_term(
 
 
 def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
-    """Apply empty BC: zero out normal velocity component from owner cell."""
+    """Apply empty boundary condition: zero out normal velocity component.
+
+    For ``empty`` boundaries (used in 2D extruded meshes for the
+    non-solved dimension), the face-normal component of the predicted
+    velocity is removed, leaving only the tangential components.
+
+    Args:
+        U_star: Predicted velocity field (n_elements + n_boundary, 3),
+            modified in-place.
+        b_elem_indices: Indices of boundary elements to update.
+        owners_b: Owner element indices for each boundary face.
+        face_sf: Face surface area vectors for each boundary face.
+    """
     for b_idx, own, sf in zip(b_elem_indices, owners_b, face_sf, strict=False):
         norm_sf = np.linalg.norm(sf)
         if norm_sf > 1e-10:
@@ -71,7 +93,23 @@ def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
 
 
 def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
-    """Apply post-solve boundary condition to the predicted velocity field."""
+    """Apply post-solve boundary condition to the predicted velocity field.
+
+    Modifies ``U_star`` in-place at the boundary elements according to
+    the boundary condition type specified in the boundary dictionary.
+
+    Args:
+        U_star: Predicted velocity field (n_elements + n_boundary, 3),
+            modified in-place.
+        U: Old velocity field (n_elements + n_boundary, 3),
+            used as fallback for unknown bc types.
+        boundary: Boundary dictionary with keys ``startFace``, ``nFaces``,
+            ``bc_type_U``, and optionally ``value_U`` / ``value_U_field``.
+        mesh_data: Mesh connectivity containing ``owners`` and
+            ``n_interior_faces``.
+        geo_data: Geometric data containing ``face_sf``.
+        n_elements: Number of interior elements.
+    """
     start_face = boundary["startFace"]
     n_faces = boundary["nFaces"]
     b_elem_start = start_face - mesh_data["n_interior_faces"]
@@ -272,13 +310,47 @@ def solve_momentum_predictor(
     source_implicit=None,
     **solver_kwargs,
 ):
-    """
-    Solve momentum equation to get predicted velocity (U*).
+    """Solve momentum equation to get predicted velocity (U*).
 
-    ``U_old_old`` / ``ddt_scheme`` select the time discretisation (BDF1 default,
-    BDF2 via ``ddt_scheme="backward"``).  ``source_explicit`` / ``source_implicit``
-    are forwarded to :func:`assemble_momentum_equation` (see that docstring for
-    the Su/Sp convention).
+    Assembles and solves the discretised momentum equation for each
+    velocity component, applies under-relaxation, and enforces boundary
+    conditions on the predicted field.
+
+    Args:
+        U: Current velocity field (n_elements + n_boundary, 3).
+        p: Current pressure field (n_elements + n_boundary,).
+        phi: Mass flow rate field.
+        rho: Density (scalar or array).
+        nu: Kinematic viscosity (scalar or array).
+        mesh_data: Mesh connectivity data.
+        geo_data: Geometric data.
+        boundaries: List of boundary dictionaries.
+        convection_scheme: Convection discretisation scheme
+            (``'upwind'``, ``'central'``, ``'deferred'``, etc.).
+            Defaults to ``'deferred'``.
+        solver: Linear solver method. Defaults to ``'spsolve'``.
+        under_relaxation: Under-relaxation factor for the velocity
+            update (``0 < alpha <= 1``). Defaults to ``0.7``.
+        dt: Time step size. If ``None``, steady-state mode.
+        U_old: Velocity at previous time step
+            (n_elements + n_boundary, 3).
+        U_old_old: Velocity at two time steps ago (BDF2 only).
+        ddt_scheme: Time discretisation scheme (``'euler'`` or
+            ``'backward'``).
+        source_explicit: Explicit volumetric source Su
+            (n_elements, 3). Added to RHS as ``Su * V``.
+        source_implicit: Implicit volumetric source coefficient Sp
+            (n_elements,). Added to diagonal as ``Sp * V``.
+            Must be >= 0.
+        **solver_kwargs: Additional keyword arguments forwarded to the
+            linear solver (e.g., ``momentum_tol``).
+
+    Returns:
+        tuple:
+            - **U_star** (*numpy.ndarray*) -- Predicted velocity field
+              (n_elements + n_boundary, 3).
+            - **A_U** (*numpy.ndarray*) -- Relaxed diagonal coefficients
+              (n_elements, 3), used in the pressure-correction step.
     """
 
     n_elements = mesh_data["n_elements"]

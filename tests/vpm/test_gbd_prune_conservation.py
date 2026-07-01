@@ -23,6 +23,7 @@ import pytest
 from source.solvers.VPM.physics.diffusion import _GridDiffusionMixin
 
 redistribute = _GridDiffusionMixin._redistribute_pruned_moments
+cap_survivors = _GridDiffusionMixin._cap_surviving_nodes
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +121,20 @@ def test_degenerate_survivors_fall_back_gracefully():
     corrected = redistribute(grid, circ_mag, ix, iy, iz, grid_min, h)
     assert corrected.shape == (2, 3)
     assert np.allclose(corrected, grid[ix, iy, iz], atol=1e-7)
+
+
+def test_survivor_cap_is_exact_even_with_tied_cutoff_values():
+    """The count cap must not be exceeded when many nodes share |Γ|."""
+    circ_mag = np.ones((4, 4, 4), dtype=np.float32)
+    ix, iy, iz = np.where(circ_mag >= 1.0)
+
+    ix_keep, iy_keep, iz_keep, threshold, old_count = cap_survivors(
+        circ_mag, ix, iy, iz, cap=10
+    )
+
+    assert old_count == 64
+    assert len(ix_keep) == len(iy_keep) == len(iz_keep) == 10
+    assert threshold == pytest.approx(1.0)
 
 
 def test_circulation_conserved_across_threshold_sweep():

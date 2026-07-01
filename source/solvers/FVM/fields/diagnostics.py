@@ -125,7 +125,19 @@ def compute_vorticity(U, mesh_data, geo_data):
 
 
 def _normalize_patch_names(patch_names):
-    """Normalize patch_names input to a list (or None for auto-detection)."""
+    """Normalize *patch_names* into a list of strings.
+
+    Accepts ``None`` (returns ``None``), a comma-separated string, or an
+    iterable of strings.
+
+    Args:
+        patch_names: Patch name(s) to normalise.  May be ``None``, a
+            comma-separated ``str``, or an iterable of ``str``.
+
+    Returns:
+        list[str] | None: Normalized list of patch names, or ``None`` when
+        the input is ``None``.
+    """
     if patch_names is None:
         return None
     if isinstance(patch_names, str):
@@ -134,7 +146,23 @@ def _normalize_patch_names(patch_names):
 
 
 def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
-    """Return True if y+ should be computed for this boundary."""
+    """Determine whether y+ should be computed for a given boundary.
+
+    When *patch_names* is provided the boundary is selected by name.
+    Otherwise the boundary is selected if its type is ``"wall"``, its
+    velocity boundary condition is ``"fixedValue"``, or its name contains
+    ``"wall"``.
+
+    Args:
+        boundary: Boundary dictionary.  Must contain key ``"name"``, and
+            may contain ``"bc_type_U"`` and ``"type"``.
+        patch_names: Explicit list of patch names to select, or ``None``
+            for auto-detection.
+
+    Returns:
+        ``True`` if y+ should be computed for this boundary, ``False``
+        otherwise.
+    """
     name = boundary["name"]
     if patch_names is not None:
         return name in patch_names
@@ -143,7 +171,26 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
 
 
 def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
-    """Compute viscous traction forces on boundary faces. Returns (nf, 3) array."""
+    """Compute viscous traction forces on boundary faces.
+
+    Constructs the symmetric gradient tensor from the velocity gradient at
+    the owner cell, projects it onto the face normal, multiplies by
+    viscosity and face area magnitude.
+
+    Args:
+        gradU: Velocity gradient field ``(n_elements, 3, 3)``, or
+            ``None`` (returns zero forces).
+        owners_idx: Indices into *gradU* for the owner cells of the
+            boundary faces ``(nf,)``.
+        n_vec: Unit face normal vectors ``(nf, 3)``.
+        mag_Sf: Face area magnitudes ``(nf,)``.
+        mu: Dynamic viscosity — scalar ``float`` or per-element array
+            ``(n_elements,)``.
+        nf: Number of boundary faces (``int``).
+
+    Returns:
+        ndarray: Viscous force per face ``(nf, 3)``.
+    """
     if gradU is None:
         return np.zeros((nf, 3))
     grad_owner = gradU[owners_idx]
@@ -154,7 +201,27 @@ def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
 
 
 def _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length=None, moment_centre=None):
-    """Compute drag, lift, side-force, and pitching moment coefficients."""
+    """Compute drag, lift, side-force, and pitching moment coefficients.
+
+    Coefficients are normalised by the dynamic pressure
+    ``q = 0.5 * rho * ref_U**2``.
+
+    Args:
+        Ftot: Total force vector ``(3,)``.
+        ref_U: Reference velocity magnitude.
+        ref_area: Reference area.  If zero or ``None`` all coefficients
+            are set to ``0.0``.
+        rho: Fluid density.
+        ref_length: Reference length for pitching moment (optional).
+            Ignored when ``None`` or ``<= 0``.
+        moment_centre: Moment centre (unused in the current simplified
+            implementation).
+
+    Returns:
+        dict: Dictionary with keys ``"Cd"``, ``"Cl"``, ``"Cz"``, and
+        optionally ``"Cm"`` (pitching moment) when *ref_length* is
+        positive.
+    """
     q = 0.5 * rho * ref_U**2
     cd = float(Ftot[0] / (q * ref_area)) if ref_area else 0.0
     cl = float(Ftot[1] / (q * ref_area)) if ref_area else 0.0

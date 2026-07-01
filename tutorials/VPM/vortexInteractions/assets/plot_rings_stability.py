@@ -2,13 +2,12 @@
 """Stability ladder — ``rings_stability.png``.
 
 Tracks the peak circulation max|Γᵢ|/max|Γᵢ|₀ versus normalised time for every
-case discovered under ``solution/`` (read from the per-step
-``stability_metrics.csv``).  This is the blow-up indicator that orders the
-stabilization ladder: a runaway curve marks the onset of numerical blow-up,
-and where each curve ends marks that rung's survival time.  The dashed line is
-the 50× blow-up threshold used by the solver to stop a diverging run.
+case discovered under ``solution/`` (read from ``BLOWUP CHECK`` lines in the
+solver log).  A runaway curve marks the onset of numerical blow-up, and where
+each curve ends marks that variant's survival time.  The shaded band is the
+50× blow-up threshold used by the solver to stop a diverging run.
 
-Colour encodes the stabilization rung, linestyle the physics family — the
+Colour encodes the numerical variant, linestyle the physics family — the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -62,7 +61,7 @@ def main() -> None:
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax.set_ylabel(r"Peak circulation, $\max_i|\Gamma_i| / \max_i|\Gamma_i|_0$")
     ax.axhspan(50, 100, facecolor="gray", alpha=0.25, zorder=0)
-    ax.set_ylim([0,100])
+    ax.set_ylim([0.8, 100])
     if plotted:
         ax.legend(fontsize=10, ncol=2, loc="upper left")
 

@@ -200,11 +200,29 @@ class TimeIntegrator:
         self.fields_old = {}
 
     def store_old_fields(self, **fields):
-        """Store field values from previous time step."""
+        """Store field values from previous time step.
+
+        Saves deep copies of the provided fields so they can be used
+        in transient term assembly at the next time step.
+
+        Args:
+            **fields: Named field arrays to store. Each value must be a
+                numpy array that supports ``.copy()``.
+        """
         self.fields_old = {name: field.copy() for name, field in fields.items()}
 
     def advance_time(self, dt=None):
-        """Advance to next time step."""
+        """Advance to the next time step.
+
+        Increments the internal time and iteration counters.
+
+        Args:
+            dt: Time step increment. If ``None``, uses the default
+                time step stored at initialisation.
+
+        Returns:
+            float: Updated simulation time after advancing.
+        """
         if dt is None:
             dt = self.dt
         self.time += dt

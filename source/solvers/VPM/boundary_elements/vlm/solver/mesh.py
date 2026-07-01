@@ -36,6 +36,32 @@ def _stitch_symmetry_neighbors(aircraft: Aircraft, neigh_np: np.ndarray) -> None
             for seg in wing.segments.values():
                 current_idx += seg.panels_chord * seg.panels_span
 
+
+def _stitch_segment_neighbors(blocks: list[dict], neigh_np: np.ndarray) -> None:
+    """Connect contiguous spanwise segments belonging to the same wing half.
+
+    OpenVSP imports commonly represent one blade/wing as many consecutive
+    spanwise ``WingSegment`` objects.  Each segment has local structured
+    neighbours, but without this stitch every segment boundary is treated as an
+    artificial tip by the wake-shedding kernel.
+    """
+    by_half: dict[tuple[int, bool], list[dict]] = {}
+    for block in blocks:
+        by_half.setdefault((block["wing_id"], block["is_mirrored"]), []).append(block)
+
+    for half_blocks in by_half.values():
+        half_blocks.sort(key=lambda item: item["segment_order"])
+        for lower, upper in zip(half_blocks[:-1], half_blocks[1:]):
+            nc = min(lower["nc"], upper["nc"])
+            lower_start = lower["start"] + (lower["ns"] - 1) * lower["nc"]
+            upper_start = upper["start"]
+            for i in range(nc):
+                lower_idx = lower_start + i
+                upper_idx = upper_start + i
+                neigh_np[lower_idx, 1] = upper_idx
+                neigh_np[upper_idx, 0] = lower_idx
+
+
 def generate_vlm_mesh(
     aircraft: Aircraft,
     lattice,
@@ -81,6 +107,7 @@ def generate_vlm_mesh(
 
     panel_idx = 0
     wing_id = 0
+    segment_blocks: list[dict] = []
 
     for _wing_uid, wing in aircraft.wings.items():
         total_ns = sum(seg.panels_span for seg in wing.segments.values())
@@ -105,6 +132,7 @@ def generate_vlm_mesh(
                 local_edges = np.linspace(0, 1, ns_segment + 1)
 
             # Generate to numpy arrays (no GPU transfer yet)
+            start_orig = panel_idx
             panel_idx = _generate_segment_to_numpy(
                 segment,
                 panel_idx,
@@ -127,10 +155,21 @@ def generate_vlm_mesh(
                 is_mirrored=False,
                 trailing_edge_infty=trailing_edge_infty,
             )
+            segment_blocks.append(
+                {
+                    "wing_id": wing_id,
+                    "segment_order": segment_id,
+                    "is_mirrored": False,
+                    "start": start_orig,
+                    "nc": segment.panels_chord,
+                    "ns": segment.panels_span,
+                }
+            )
 
             if wing.symmetry > 0:
                 # Use SAME edges as original (no reversal needed since we don't swap vertices)
                 mirrored_edges = local_edges
+                start_mirror = panel_idx
                 panel_idx = _generate_segment_to_numpy(
                     segment,
                     panel_idx,
@@ -154,11 +193,22 @@ def generate_vlm_mesh(
                     symmetry_plane=wing.symmetry,
                     trailing_edge_infty=trailing_edge_infty,
                 )
+                segment_blocks.append(
+                    {
+                        "wing_id": wing_id,
+                        "segment_order": segment_id,
+                        "is_mirrored": True,
+                        "start": start_mirror,
+                        "nc": segment.panels_chord,
+                        "ns": segment.panels_span,
+                    }
+                )
 
             global_span_idx += ns_segment
         wing_id += 1
 
     _stitch_symmetry_neighbors(aircraft, neigh_np)
+    _stitch_segment_neighbors(segment_blocks, neigh_np)
 
     lattice.corners.from_numpy(corners_np)
     lattice.vortex_points.from_numpy(vortex_np)

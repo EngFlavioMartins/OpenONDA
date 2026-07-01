@@ -73,6 +73,7 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
             threshold=args.viscous_threshold,
             threshold_mode=args.viscous_threshold_mode,
             viscosity=nu,
+            max_nodes=args.gbd_max_nodes,
         )
     elif scheme == "dvh":
         return ViscousConfig.dvh(
@@ -81,6 +82,7 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
             threshold_mode=args.viscous_threshold_mode,
             dvh_rd_ratio=args.dvh_rd_ratio,
             viscosity=nu,
+            max_nodes=args.dvh_max_nodes,
         )
 
 
@@ -190,7 +192,11 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     )
 
     solver = Solver(config=config)
-    solver.physics._resize_temp_fields(500_000)
+    # Pre-size temp fields to the bounded particle count (see --*-max-nodes),
+    # not 500k: on a 6 GB laptop GPU the oversized pre-allocation wastes VRAM
+    # headroom that the DVH/GBD grid + treecode + per-step staging buffers need.
+    # Fields still grow on demand if a run exceeds this.
+    solver.physics._resize_temp_fields(200_000)
 
     n = len(positions)
     solver.add_vortex_particles(
@@ -214,7 +220,11 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     solver.update_config(logging_frequency=fixed_interval)
 
     # Determine number of steps: explicit --num-steps overrides --total-time
-    num_steps = int(np.ceil(args.total_time / dt_actual))
+    num_steps = (
+        int(args.num_steps)
+        if args.num_steps is not None
+        else int(np.ceil(args.total_time / dt_actual))
+    )
 
     solver.info()
     for _ in range(num_steps):
@@ -300,6 +310,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=250_000,
         help="Hard cap on surviving DVH regen nodes (budget-by-count).",
+    )
+    parser.add_argument(
+        "--gbd-max-nodes",
+        type=int,
+        default=250_000,
+        help="Hard cap on surviving GBD regen nodes (budget-by-count).",
     )
     parser.add_argument(
         "--spacing-factor",

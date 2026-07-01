@@ -262,8 +262,36 @@ class ScalarEquationSolver:
         solver="spsolve",
         **kwargs,
     ):
-        """
-        Solve transient advection-diffusion: ∂(ρφ)/∂t + ∇·(ρUφ) = ∇·(γ∇φ)
+        """Solve transient advection-diffusion over multiple time steps.
+
+        Integrates the full transport equation:
+
+        .. math:: \\frac{\\partial(\\rho\\phi)}{\\partial t}
+                  + \\nabla\\cdot(\\rho U\\phi)
+                  = \\nabla\\cdot(\\gamma\\nabla\\phi)
+
+        Args:
+            phi_initial: Initial scalar field
+                (n_elements + n_boundary,).
+            velocity: Velocity field (n_elements + n_boundary, 3).
+            gamma: Diffusion coefficient (scalar or
+                n_elements array).
+            density: Density (scalar or n_elements array).
+            dt: Time step size.
+            n_steps: Number of time steps to advance.
+            convection_scheme: Convection discretisation scheme
+                (``'upwind'``, ``'central'``, ``'deferred'``).
+                Defaults to ``'deferred'``.
+            time_scheme: Time integration scheme
+                (``'euler_implicit'`` or ``'euler_explicit'``).
+                Defaults to ``'euler_implicit'``.
+            solver: Linear solver method. Defaults to ``'spsolve'``.
+            **kwargs: Additional solver keyword arguments.
+
+        Returns:
+            list: Solution at each time step (including initial), each
+                entry is a numpy array of shape
+                (n_elements + n_boundary,).
         """
 
         # Ensure arrays

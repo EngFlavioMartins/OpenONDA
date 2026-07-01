@@ -33,6 +33,7 @@ from source.solvers.VPM.config.types import (
     AdvectionConfig,
     TurbulenceConfig,
     StretchingConfig,
+    ViscousConfig
 )
 from source.solvers.VPM.boundary_elements.vlm import VLMSolver
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
@@ -45,36 +46,11 @@ def main():
 
     parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
     parser.add_argument("--dt", type=float, default=0.005, help="Time-step size [s].")
-    # --- Stabiliser knobs (in-house LES + stretching stabiliser) -------------
-    parser.add_argument(
-        "--cs", type=float, default=0.16, help="Smagorinsky constant (in-house LES)."
-    )
-    parser.add_argument(
-        "--rvpm-g",
-        type=float,
-        default=1.0 / 3.0,
-        help="rVPM g: 0.2 (partial) … 1/3 (default; full parallel-growth suppression).",
-    )
-    parser.add_argument("--rvpm-f", type=float, default=0.0, help="rVPM f parameter.")
-    parser.add_argument(
-        "--relaxation",
-        choices=["pedrizzetti", "blend"],
-        default="blend",
-        help="Strength stabiliser: 'pedrizzetti' (|Γ|-preserving realign) or "
-        "'blend' (dissipative ADM-residual filter — can DRAIN runaway |Γ|).",
-    )
-
     parser.add_argument(
         "--ramp-rotations",
         type=float,
         default=1.0,
         help="Smooth sin-squared spin-up duration [rotor rotations].",
-    )
-    parser.add_argument(
-        "--max-strength",
-        type=float,
-        default=1.0e3,
-        help="Abort cleanly if any particle strength exceeds this value.",
     )
     parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
     args = parser.parse_args()
@@ -110,7 +86,7 @@ def main():
         tip_speed_ratio=tip_speed_ratio,
         axial_induction_design=1.0 / 3.0,
         alpha_design_deg=5.0,
-        n_stations=21,
+        n_stations=23,
         chord_stations=7,
     )
     generate_rotorflow_openvsp_blade(
@@ -128,7 +104,7 @@ def main():
         density=rho,
         linear_solver="SCIPY",
         sample_surface_forces=True,
-        logging_frequency=25,
+        logging_frequency=10,
     )
 
     rotation_period = 2.0 * np.pi / angular_velocity
@@ -165,38 +141,41 @@ def main():
     backup_dir = args.solution_dir
 
     # Downstream YZ cross-plane samplers for wake / induction validation.
-    rotor_diameter = 1.2 * rotor_radius
-    wake_half = rotor_radius * 2.0
+    off_wake = rotor_radius * 1.2
     wake_spacing = rotor_radius / 36  
     plane_samplers = [
         SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
             normal=[1, 0, 0],
-            bounds=[-wake_half, wake_half, -wake_half, wake_half],
+            bounds=[-off_wake, off_wake, -off_wake, off_wake],
             spacing=wake_spacing,
             file_name=f"slice_x{int(round(x_loc))}m",
             output_dir=backup_dir + "/samples",
         )
-        for x_loc in [1 * rotor_diameter, 2 * rotor_diameter, 3 * rotor_diameter]
+        for x_loc in [1.5 * rotor_radius, 3.0 * rotor_radius, 4.5 * rotor_radius]
     ]
 
     advection=AdvectionConfig(scheme="RK2")
 
-    turbulence=TurbulenceConfig.les_smagorinsky(cs=args.cs)
+    turbulence=TurbulenceConfig.les_smagorinsky()
 
-    #stretching=StretchingConfig.rvpm(f=args.rvpm_f, g=args.rvpm_g),
-    stretching=StretchingConfig.transposed(scheme='Euler')
+    stretching=StretchingConfig.rvpm(f=0, g=1/3)
 
     stabilization=StabilizationConfig(
+            # ISR blend relaxation is the second net — it drains runaway |Γ|.
+            relaxation_enabled=True,
+            relaxation_mode='blend', # try also 'pedrizzetti'
             remove_particles_by_bounds=[
-                -rotor_diameter,
-                20 * rotor_radius,
                 -2.0 * rotor_radius,
-                2.0 * rotor_radius,
+                20.0 * rotor_radius,
                 -2.0 * rotor_radius,
-                2.0 * rotor_radius,
+                 2.0 * rotor_radius,
+                -2.0 * rotor_radius,
+                 2.0 * rotor_radius,
             ],
         )
+
+    viscous=ViscousConfig(scheme='CS')
 
     solver_config = SolverConfig(
         time_step_size=time_step,
@@ -205,14 +184,14 @@ def main():
         background_velocity=[freestream_velocity, 0, 0],
         turbulence=turbulence,
         stretching=stretching,
+        viscous=viscous,
         samplers=plane_samplers,
-        stabilization=stabilization,
         backup_file_name="rotor",
         backup_directory=backup_dir,
         solution_name=backup_dir,
-        backup_frequency=15,
-        logging_frequency=15,
-        timing_frequency=15,
+        backup_frequency=10,
+        logging_frequency=10,
+        timing_frequency=10,
         processing_unit="GPU_VULKAN",
     )
 
@@ -222,7 +201,7 @@ def main():
     # ================================================
     # 6. Run Simulation
     # ================================================
-    for step in range(num_steps):
+    for _ in range(num_steps):
         vpm.update_state()
 
 if __name__ == "__main__":
