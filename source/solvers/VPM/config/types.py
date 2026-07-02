@@ -922,6 +922,9 @@ class StabilizationConfig:
     max_core_radius: float | None = None
     """Split particles whose core radius exceeds this value [m].  None = disabled."""
 
+    split_diagnostics_enabled: bool = False
+    """Download pre/post split fields and run detailed split diagnostics. Disabled by default."""
+
     # ── Wake / bounds cutoff ──────────────────────────────────────────────────
     remove_particles_by_bounds: list[float] | None = None
     """[xmin, xmax, ymin, ymax, zmin, zmax] — remove particles outside box.  None = disabled."""

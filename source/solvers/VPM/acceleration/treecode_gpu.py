@@ -178,7 +178,6 @@ class TaichiTreecode:
         self._aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=())
 
         # Constants for gradient kernel
-        self.MIN_R_SIGMA_GRADIENT = 0.5
         self.DEFAULT_CUTOFF_RADIUS_FACTOR = 15.0
 
         self._host_vector_chunk = None
@@ -881,7 +880,7 @@ class TaichiTreecode:
     @ti.func
     def _leaf_gradient_sum(
         self, node: int, target_pos: ti.template(), target_rad: ti.f32,
-        self_idx: int, min_r_sigma: ti.f32, max_r_sigma: ti.f32
+        self_idx: int, max_r_sigma: ti.f32
     ) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
@@ -894,7 +893,7 @@ class TaichiTreecode:
                 if r_mag_j > 1e-10:
                     sigma = 0.5 * (target_rad + self.radii[j])
                     r_sigma = r_mag_j / sigma
-                    if r_sigma > min_r_sigma and r_sigma < max_r_sigma:
+                    if r_sigma < max_r_sigma:
                         q_val = self.q_kernel(r_sigma)
                         zeta_val = self.zeta_kernel(r_sigma) / sigma**3
                         term1 = q_val / r_mag_j**3
@@ -907,7 +906,7 @@ class TaichiTreecode:
 
     @ti.func
     def _target_leaf_gradient_sum(
-        self, node: int, target_pos: ti.template(), min_r_sigma: ti.f32
+        self, node: int, target_pos: ti.template()
     ) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
@@ -919,15 +918,14 @@ class TaichiTreecode:
             if r_mag_j > 1e-10:
                 sigma = self.radii[j]
                 r_sigma = r_mag_j / sigma
-                if r_sigma > min_r_sigma:
-                    q_val = self.q_kernel(r_sigma)
-                    zeta_val = self.zeta_kernel(r_sigma) / sigma**3
-                    term1 = q_val / r_mag_j**3
-                    term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                    cross_j = r_vec_j.cross(self.circulations[j])
-                    gradu += term1 * self.skew(
-                        self.circulations[j]
-                    ) + term2 * cross_j.outer_product(r_vec_j)
+                q_val = self.q_kernel(r_sigma)
+                zeta_val = self.zeta_kernel(r_sigma) / sigma**3
+                term1 = q_val / r_mag_j**3
+                term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
+                cross_j = r_vec_j.cross(self.circulations[j])
+                gradu += term1 * self.skew(
+                    self.circulations[j]
+                ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
 
     # TRAVERSAL — Binary-tree stack-based
@@ -991,7 +989,6 @@ class TaichiTreecode:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.positions[i]
         target_rad = self.radii[i]
-        MIN_R_SIGMA = ti.cast(0.5, ti.f32)
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         root = self._root[None]
         self.traversal_stack[i, 0] = root
@@ -1009,7 +1006,7 @@ class TaichiTreecode:
             if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 r_sigma = r_mag / sigma
-                if r_sigma > MIN_R_SIGMA and r_sigma < MAX_R_SIGMA:
+                if r_sigma < MAX_R_SIGMA:
                     q_val = self.q_kernel(r_sigma)
                     zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
                     total_circ = self.node_total_circ[node]
@@ -1022,7 +1019,7 @@ class TaichiTreecode:
                     ).outer_product(r_vec)
             elif self.node_is_leaf[node] == 1:
                 gradu += self._leaf_gradient_sum(
-                    node, target_pos, target_rad, i, MIN_R_SIGMA, MAX_R_SIGMA
+                    node, target_pos, target_rad, i, MAX_R_SIGMA
                 )
             else:
                 stack_ptr = self._push_children_particle(i, node, stack_ptr)
@@ -1060,7 +1057,6 @@ class TaichiTreecode:
     def _traverse_target_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.target_positions[i]
-        MIN_R_SIGMA = ti.cast(0.5, ti.f32)
         root = self._root[None]
         self.target_traversal_stack[i, 0] = root
         stack_ptr = 1
@@ -1077,19 +1073,18 @@ class TaichiTreecode:
             if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
                 sigma = self.node_avg_radius[node]
                 r_sigma = r_mag / sigma
-                if r_sigma > MIN_R_SIGMA:
-                    q_val = self.q_kernel(r_sigma)
-                    zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
-                    total_circ = self.node_total_circ[node]
-                    term1 = q_val / (r_mag * r_mag * r_mag)
-                    term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
-                        r_mag * r_mag
-                    )
-                    gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
-                        total_circ
-                    ).outer_product(r_vec)
+                q_val = self.q_kernel(r_sigma)
+                zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
+                total_circ = self.node_total_circ[node]
+                term1 = q_val / (r_mag * r_mag * r_mag)
+                term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
+                    r_mag * r_mag
+                )
+                gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
+                    total_circ
+                ).outer_product(r_vec)
             elif self.node_is_leaf[node] == 1:
-                gradu += self._target_leaf_gradient_sum(node, target_pos, MIN_R_SIGMA)
+                gradu += self._target_leaf_gradient_sum(node, target_pos)
             else:
                 stack_ptr = self._push_children_target(i, node, stack_ptr)
         return gradu
@@ -1126,13 +1121,12 @@ class TaichiTreecode:
         configuration every RK stage.  Walking the tree once and sharing the
         MAC/open decision, node geometry, and the leaf direct sums is strictly
         cheaper than two traversals.  Every per-branch term here is identical to
-        ``_traverse_particle_vel`` + ``_traverse_particle_grad`` — velocity is
-        ungated, the gradient keeps the MIN<r/σ<MAX gate — so the output is
-        bit-identical to the two separate kernels.
+        ``_traverse_particle_vel`` + ``_traverse_particle_grad`` — velocity and
+        the near-core gradient both use the regularized kernel directly — so
+        the output is bit-identical to the two separate kernels.
         """
         N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
-        MIN_R_SIGMA = ti.cast(0.5, ti.f32)
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         u_inf = self.u_inf[None]
         root = self._root[None]
@@ -1160,7 +1154,7 @@ class TaichiTreecode:
                     total_circ = self.node_total_circ[node]
                     q_val = self.q_kernel(r_sigma)
                     vel -= q_val * r_vec.cross(total_circ) / (r_mag * r_mag * r_mag)
-                    if r_sigma > MIN_R_SIGMA and r_sigma < MAX_R_SIGMA:
+                    if r_sigma < MAX_R_SIGMA:
                         zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
                         term1 = q_val / (r_mag * r_mag * r_mag)
                         term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
@@ -1172,7 +1166,7 @@ class TaichiTreecode:
                 elif self.node_is_leaf[node] == 1:
                     vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
                     gradu += self._leaf_gradient_sum(
-                        node, target_pos, target_rad, i, MIN_R_SIGMA, MAX_R_SIGMA
+                        node, target_pos, target_rad, i, MAX_R_SIGMA
                     )
                 else:
                     stack_ptr = self._push_children_particle(i, node, stack_ptr)

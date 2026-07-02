@@ -158,9 +158,7 @@ class _GridDiffusionMixin:
     _ALLOC_HEADROOM = 1.5
 
     # How many times the DVH grid is allowed to re-allocate when the
-    # particle cloud outgrows the initial allocation.  Each re-allocation
-    # permanently leaks the old Taichi fields on the GPU (Taichi cannot
-    # free dense fields mid-run), so this is capped.
+    # particle cloud outgrows the initial allocation.
     _MAX_GRID_REALLOCS = 5
 
     # Headroom applied when *re*-allocating (larger than the initial
@@ -174,9 +172,7 @@ class _GridDiffusionMixin:
     # Conservative prune: redistribute the circulation of pruned (sub-threshold
     # / count-capped) grid nodes onto the survivors so the regeneration step
     # preserves the 0th moment (total circulation) and 1st moment (linear
-    # impulse) exactly.  Without it the threshold/budget/absolute prune silently
-    # deletes the dropped nodes' circulation — an artificial, non-physical decay
-    # (most severe in 'absolute' mode, which clips the far wake every regen).
+    # impulse) exactly.
     conserve_pruned_moments: bool = True
 
     def _init_grid_diffusion(self):
@@ -184,8 +180,6 @@ class _GridDiffusionMixin:
         self._grid_realloc_count: int = 0
 
         # Core radius assigned to regenerated particles (σ = ratio·h).
-        # Overridable via ViscousConfig.regen_radius_ratio; the FVM-VPM
-        # coupler syncs it with the hand-off's overlap_radius_ratio.
         self.regen_radius_ratio: float = _REGEN_RADIUS_RATIO
 
         # Maximum grid dimensions from VPM domain (set by configure_max_grid_extent).
@@ -194,9 +188,7 @@ class _GridDiffusionMixin:
         # Fixed grid origin when the domain is pre-allocated.  When set, the
         # scatter grid uses this origin every step instead of re-computing it
         # from pos.min – padding.  This prevents the grid from drifting in the
-        # direction of the minimum-position particle (which would progressively
-        # clip the opposite boundary, producing an asymmetric flat face on the
-        # +z / +x end of a finite vortex column).
+        # direction of the minimum-position particle.
         self._fixed_grid_min: np.ndarray | None = None
 
         # Lazily allocated grid fields (never freed after first allocation).
@@ -215,9 +207,6 @@ class _GridDiffusionMixin:
         self._body_mask_active: bool = False
 
         # Maximum number of grid cells per spatial dimension.
-        # Cap prevents GPU-memory OOM from stray / NaN particles whose extreme
-        # positions inflate the bounding box.  At h = 0.05 m this allows a
-        # 100 m extent per axis — far larger than any physical domain.
         self._MAX_CELLS_PER_DIM: int = 2000
 
     @property
@@ -291,9 +280,6 @@ class _GridDiffusionMixin:
         nz = max(5, int(np.ceil((hi[2] - lo[2]) / h)) + 1)
 
         # Half-cell offset to avoid particle-on-node coincidence (M4 aliasing).
-        # Disabled for DVH: after regeneration particles already sit on
-        # grid nodes, so the next regen step's deconvolution is exact only when
-        # the new grid aligns with the old one (no offset).
         if half_cell_offset:
             lo = lo - 0.5 * h
 
@@ -335,8 +321,7 @@ class _GridDiffusionMixin:
                 )
                 return clamped
 
-            # Re-allocate: if VPM domain cap is known, jump straight to it
-            # to avoid repeated re-allocations during wake warm-up.
+            # Re-allocate:
             self._grid_realloc_count += 1
             if cap is not None:
                 alloc_nx, alloc_ny, alloc_nz = cap
@@ -419,10 +404,7 @@ class _GridDiffusionMixin:
         nz = max(5, math.ceil((domain_bounds[5] - domain_bounds[4] + 2 * margin) / h) + 1)
         self._max_grid_dims = (nx, ny, nz)
 
-        # Store a fixed grid origin derived from the domain bounds.  This is
-        # used instead of re-computing lo = pos.min – margin every step, which
-        # would cause the grid to drift toward negative z as the cloud grows,
-        # progressively cutting off the opposite (+z) end (asymmetric flat face).
+        # Store a fixed grid origin derived from the domain bounds.
         self._fixed_grid_min = np.array(
             [domain_bounds[0] - margin, domain_bounds[2] - margin, domain_bounds[4] - margin],
             dtype=np.float32,

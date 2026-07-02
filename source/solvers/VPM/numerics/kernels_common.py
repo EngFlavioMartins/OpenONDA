@@ -459,8 +459,9 @@ def _stretching_contribution(
     """
     dstr = ti.Vector([0.0, 0.0, 0.0])
 
-    # Protect against very small r_sigma that slipped through
-    r_sigma_safe = ti.max(r_sigma, 0.5)
+    # The regularized kernels are finite as r/sigma -> 0.  Only protect the
+    # exact self denominator; do not mask near-core particle interactions.
+    r_sigma_safe = ti.max(r_sigma, EPSILON)
     sigma_safe = ti.max(sigma, EPSILON)
 
     # Compute denominators with protection
@@ -499,9 +500,6 @@ def _make_stretching_rate_kernel(q_, zeta_):
     ):  # type: ignore
         """Conservative direct pair-wise vortex stretching."""
         N = num_particles
-        MIN_R_SIGMA = 0.5
-        MAX_COEFF = 1.0e3
-
         for i in range(N):
             str_i = strengths[i]
             pos_i = positions[i]
@@ -518,14 +516,11 @@ def _make_stretching_rate_kernel(q_, zeta_):
                     sigma = 0.5 * (radii_i + radii[j])
                     r_sigma = r_mag / sigma
 
-                    if r_sigma > MIN_R_SIGMA:
-                        q_val = q_(r_sigma)
-                        zeta_val = zeta_(r_sigma)
-
-                        contribution = _stretching_contribution(
-                            str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
-                        )
-                        dstr_dt += ti.math.clamp(contribution, -MAX_COEFF, MAX_COEFF)
+                    q_val = q_(r_sigma)
+                    zeta_val = zeta_(r_sigma)
+                    dstr_dt += _stretching_contribution(
+                        str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
+                    )
 
             dstr_dt_out[i] = dstr_dt
 
@@ -561,9 +556,6 @@ def _create_gradient_kernels(kernel_functions):
     def skew(v):
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
 
-    # Minimum r/sigma to avoid singularities in velocity gradient kernel
-    MIN_R_SIGMA_GRADIENT = 0.5
-
     @ti.kernel
     def compute_velocity_gradients_kernel(
         positions: ti.template(),
@@ -590,7 +582,7 @@ def _create_gradient_kernels(kernel_functions):
                     sigma = 0.5 * (radii_i + radii[j])
                     r_sigma = r_mag / sigma
 
-                    if r_sigma > MIN_R_SIGMA_GRADIENT and r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
                         q_val = q_(r_sigma)
                         zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
                         r_cb = r_sq * r_mag  # r³ = r² · r
@@ -622,9 +614,9 @@ def _create_gradient_kernels(kernel_functions):
 
         The solver needs both u (advection) and ∇u (stretching) each RK stage;
         sharing the one j-loop reuses r_ij / r_mag / sigma / q per pair instead of
-        recomputing them in a second O(N²) sweep.  Velocity is ungated; the
-        gradient keeps the MIN<r/σ<cutoff gate — branches identical to the two
-        separate kernels, so the result is bit-identical."""
+        recomputing them in a second O(N²) sweep.  Velocity and near-core
+        gradient evaluation both use the regularized kernel directly, while
+        the far gradient cutoff matches the separate gradient kernel."""
         N = num_particles
         U_inf = background_velocity[None]
         for i in range(N):
@@ -642,7 +634,7 @@ def _create_gradient_kernels(kernel_functions):
                     r_sigma = r_mag / sigma
                     q_val = q_(r_sigma)
                     vel += q_val * (r_ij.cross(str_j)) / (r_sq * r_mag)
-                    if r_sigma > MIN_R_SIGMA_GRADIENT and r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
                         zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
                         r_cb = r_sq * r_mag
                         term1 = q_val / r_cb
@@ -810,8 +802,6 @@ def _create_target_eval_kernels(kernel_functions):
         """Compute velocity gradient tensor at arbitrary target positions."""
         M = num_targets
         N = num_particles
-        MIN_R_SIGMA = 0.5  # Same as particle-to-particle kernel
-
         for i in range(M):
             target_pos = target_positions[i]
             gradu = ti.Matrix.zero(ti.f32, 3, 3)
@@ -827,17 +817,16 @@ def _create_target_eval_kernels(kernel_functions):
                     sigma = radii[j]
                     r_sigma = r_mag / sigma
 
-                    if r_sigma > MIN_R_SIGMA:
-                        q_val = q_(r_sigma)
-                        zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                        r_cb = r_sq * r_mag  # r³ = r² · r
+                    q_val = q_(r_sigma)
+                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
+                    r_cb = r_sq * r_mag  # r³ = r² · r
 
-                        term1 = q_val / r_cb
-                        term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
+                    term1 = q_val / r_cb
+                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
 
-                        gradu += term1 * skew(str_j) + term2 * (
-                            (r_ij.cross(str_j)).outer_product(r_ij)
-                        )
+                    gradu += term1 * skew(str_j) + term2 * (
+                        (r_ij.cross(str_j)).outer_product(r_ij)
+                    )
 
             target_gradU[i] = gradu
 

@@ -294,11 +294,14 @@ class Solver:
         if self.precision not in ("f32", "f64"):
             raise ValueError(f"precision must be 'f32' or 'f64', got '{self.precision}'")
         stab = self.stabilization_config
+        max_p_init = getattr(final_config, "max_particles", MAX_PARTICLES)
         self._splitter = None
         if stab.max_core_radius is not None:
             from ..stabilization.splitting import ParticleSplitter
 
-            self._splitter = ParticleSplitter(precision=self.precision)
+            self._splitter = ParticleSplitter(
+                precision=self.precision, max_particles=max_p_init
+            )
         self._remesher = None
         if stab.remeshing_frequency is not None:
             from ..stabilization.conservative_remesh import ConservativeRemesher
@@ -360,6 +363,8 @@ class Solver:
                     except Exception as exc:
                         Logging.warning(f"Failed to configure grid max extent: {exc}")
         self.particles.register_resize_callback(self.physics._resize_temp_fields)
+        if self._splitter is not None:
+            self.particles.register_resize_callback(self._splitter.resize)
         self.source_positions = ti.Vector.field(3, dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_radii = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
@@ -402,6 +407,9 @@ class Solver:
                 clamp=stabilization.parallel_strain_clamp,
                 max_particles=max_p,
                 precision=self.precision,
+            )
+            self.particles.register_resize_callback(
+                self._parallel_strain_relaxation.resize
             )
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
@@ -2376,14 +2384,15 @@ class Solver:
             max_radius = cfg.max_core_radius
 
             if self._splitter.needs_splitting(self.particles, max_radius):
-                # Compute fresh ω at current positions/strengths before split
-                self.physics.compute_vorticities(self.particles)
-                N_pre = len(self.particles)
-                _pos_pre = self.particles.position_cpu().copy()
-                _str_pre = self.particles.circulation_cpu().copy()
-                _rad_pre = self.particles.radius_cpu().copy()
-                _vort_pre = self.particles.vorticity_cpu().copy()
-                _mask_split = _rad_pre > max_radius
+                if cfg.split_diagnostics_enabled:
+                    # Expensive debug path: downloads full particle fields.
+                    self.physics.compute_vorticities(self.particles)
+                    N_pre = len(self.particles)
+                    _pos_pre = self.particles.position_cpu().copy()
+                    _str_pre = self.particles.circulation_cpu().copy()
+                    _rad_pre = self.particles.radius_cpu().copy()
+                    _vort_pre = self.particles.vorticity_cpu().copy()
+                    _mask_split = _rad_pre > max_radius
 
                 stats = self._splitter.split(self.particles, max_radius)
                 Logging.message(
@@ -2391,7 +2400,7 @@ class Solver:
                     f"({stats.particles_total_after} total)"
                 )
                 adaptation_performed = True
-                if stats.particles_split > 0:
+                if cfg.split_diagnostics_enabled and stats.particles_split > 0:
                     _split_diag_data = (_pos_pre, _str_pre, _rad_pre, _vort_pre, _mask_split, stats)
 
         # 2. Remove particles outside bounds

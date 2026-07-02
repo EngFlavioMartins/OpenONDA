@@ -46,6 +46,13 @@ def main():
         help="Vortex stretching formulation.",
     )
     parser.add_argument(
+        "--stretching-scheme",
+        type=str.upper,
+        choices=["EULER", "RK2", "RK3", "RK4"],
+        default="RK3",
+        help="Time integrator for the stretching substep.",
+    )
+    parser.add_argument(
         "--parallel-strain-relaxation",
         action="store_true",
         help="Enable the rVPM a-posteriori parallel-strain correction.",
@@ -77,6 +84,18 @@ def main():
         "--particle-spacing", type=float, default=0.035,
         help="Initial particle spacing [m] (about 2.9 points per core radius).",
     )
+    parser.add_argument(
+        "--backup-frequency",
+        type=int,
+        default=6,
+        help="Backup interval in steps (default: 6, giving 100 snapshots for 600 steps).",
+    )
+    parser.add_argument(
+        "--logging-frequency",
+        type=int,
+        default=None,
+        help="Flow-diagnostic logging interval in steps (default: backup frequency).",
+    )
 
     args = parser.parse_args()
 
@@ -94,6 +113,7 @@ def main():
     particle_spacing = args.particle_spacing  # Grid spacing [m]
     time_step = 0.02  # [s]
     num_steps = args.num_steps
+    logging_frequency = args.backup_frequency if args.logging_frequency is None else args.logging_frequency
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -110,10 +130,11 @@ def main():
         TurbulenceConfig.dns() if args.mode == "dns" else TurbulenceConfig.les_smagorinsky()
     )
 
+    stretching_scheme = args.stretching_scheme
     _stretching_map = {
-        "direct": StretchingConfig.direct(scheme="Euler"),
-        "transposed": StretchingConfig.transposed(scheme="Euler"),
-        "mixed": StretchingConfig.mixed(scheme="Euler"),
+        "direct": StretchingConfig.direct(scheme=stretching_scheme),
+        "transposed": StretchingConfig.transposed(scheme=stretching_scheme),
+        "mixed": StretchingConfig.mixed(scheme=stretching_scheme),
     }
     stretching = _stretching_map[args.stretching]
     stabilization = (
@@ -135,9 +156,9 @@ def main():
         stabilization=stabilization,
         velocity=VelocityConfig.treecode(theta=0.3),
         viscous=ViscousConfig.cs(),
-        backup_frequency=6,
-        logging_frequency=6,
-        timing_frequency=36,
+        backup_frequency=args.backup_frequency,
+        logging_frequency=logging_frequency,
+        timing_frequency=max(1, 6 * logging_frequency) if logging_frequency > 0 else 0,
         backup_file_name=args.name,
         solution_name=str(output_dir),
         backup_directory=str(output_dir),

@@ -133,6 +133,71 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 @pytest.mark.parametrize("mode", ["DIRECT", "MIXED"])
+def test_stretching_rate_matches_velocity_gradient_form(
+    kernel_name, mode, backend, solver_for_backend
+):
+    """
+    The explicit pairwise stretching kernel must match the equivalent
+    velocity-gradient form:
+
+    * DIRECT: dΓ/dt = ∇u · Γ
+    * MIXED:  dΓ/dt = S · Γ, with S = 0.5(∇u + ∇uᵀ)
+
+    Failure → sign/order mismatch between the stretching kernel and the
+    velocity-gradient kernel used elsewhere by LES, diagnostics, and rVPM.
+    """
+    solver = _solver_with_particles(
+        solver_for_backend,
+        kernel_name,
+        positions=[
+            [0.0, 0.0, 0.0],
+            [0.7, 0.2, -0.1],
+            [-0.2, 0.6, 0.3],
+        ],
+        circulations=[
+            [0.8, -0.2, 0.4],
+            [-0.3, 0.9, 0.2],
+            [0.1, -0.5, 0.7],
+        ],
+    )
+
+    gamma0 = solver.particles.circulation_cpu().copy()
+    solver.physics.compute_velocity_gradients(solver.particles)
+    grad_u = solver.particles.velocity_gradient_cpu()
+
+    mode_int = 0 if mode == "DIRECT" else 2
+    n_particles = len(gamma0)
+    solver.physics._resize_temp_fields(n_particles)
+    solver.physics._zero_temp_fields()
+    solver.physics.compute_stretching_rate_kernel(
+        solver.particles.position,
+        solver.particles.circulation,
+        solver.particles.radius,
+        solver.physics.dstr_dt_temp,
+        mode_int,
+        n_particles,
+    )
+    actual_rate = solver.physics.dstr_dt_temp.to_numpy()[:n_particles]
+
+    if mode == "DIRECT":
+        expected_rate = np.einsum("nij,nj->ni", grad_u, gamma0)
+    else:
+        strain = 0.5 * (grad_u + np.swapaxes(grad_u, 1, 2))
+        expected_rate = np.einsum("nij,nj->ni", strain, gamma0)
+
+    np.testing.assert_allclose(
+        actual_rate,
+        expected_rate,
+        rtol=3e-3,
+        atol=3e-5,
+        err_msg=f"{kernel_name}/{backend}/{mode}: stretching rate disagrees with ∇u form",
+    )
+
+
+@pytest.mark.parametrize(
+    "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
+)
+@pytest.mark.parametrize("mode", ["DIRECT", "MIXED"])
 def test_nonconservative_stretching_changes_circulation(
     kernel_name, mode, backend, solver_for_backend
 ):

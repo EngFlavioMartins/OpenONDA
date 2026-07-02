@@ -29,14 +29,6 @@ from ..config.constants import MAX_PARTICLES
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 
 # =========================================================
-# NUMERICAL STABILITY CONSTANTS
-# =========================================================
-
-# Regularization guard for velocity gradient kernel
-# Prevents singularity when r/σ < MIN_R_SIGMA_GRADIENT
-MIN_R_SIGMA_GRADIENT = 0.5
-
-# =========================================================
 # PHYSICS BASE CLASS
 # =========================================================
 
@@ -504,12 +496,11 @@ class PhysicsBase:
             return
         if self.velocity_method == "TREECODE":
             tree = self._get_or_create_treecode(N, self.velocity_theta)
-            # Build from fields directly — no CPU round-trip for particle data.
+            # Build from fields directly
             tree.build(pos, strg, rad, N)
             # Background velocity: extract single 3-vector (cheap, 3 floats).
             bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
-            # On-device traversal + field-to-field copy: the velocities never
-            # leave the GPU (no per-step N×3 to_numpy round-trip).
+            # On-device traversal + field-to-field copy
             tree.compute_velocities_gpu(bg_arr)
             self._copy_vec3(tree.velocities, out, N)
         else:
@@ -712,8 +703,7 @@ class PhysicsBase:
         self._resize_target_fields(M)
         self._resize_filtered_fields(N_filtered)
 
-        # Copy filtered data through fixed-shape external buffers.  This avoids
-        # creating one backend staging allocation for every changing filtered N.
+        # Copy filtered data through fixed-shape external buffers. 
         self._upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
         self._upload_vector_array(filtered_circ, self._filtered_circ, N_filtered)
         self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)
@@ -943,7 +933,7 @@ class PhysicsBase:
             return
 
         tree = self._get_or_create_treecode(N, theta)
-        # Build from GPU fields directly — no CPU download.
+        # Build from GPU fields directly
         tree.build(particles.position, particles.circulation, particles.radius, N)
         bg = particles.velocity_background
         bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
@@ -1031,15 +1021,13 @@ class PhysicsBase:
         tree = self._get_or_create_treecode(N, theta)
         tree.build(particles.position, particles.circulation, particles.radius, N)
 
-        # On-device traversal + field-to-field copy: ∇u and S stay on the GPU
-        # (no per-step N×3×3 to_numpy + re-upload round-trip).
+        # On-device traversal + field-to-field copy: ∇u and S
         tree.compute_velocity_gradients_gpu()
         self._copy_mat3(tree.velocity_gradients, particles.velocity_gradient, N)
         self._copy_mat3(tree.strain_rates, particles.strain_rate, N)
 
     def compute_velocity_and_gradient_hierarchical(self, particles, theta: float = 0.5) -> None:
-        """Fused treecode evaluation of u, ∇u and S in **one** build + **one**
-        traversal (the MAC decision and geometry are shared).
+        """Fused treecode evaluation of u, ∇u and S in one build.
 
         Writes ``velocity`` (= v(x_n), reusable as the advection k1), plus
         ``velocity_gradient`` and ``strain_rate`` — replacing a separate velocity
