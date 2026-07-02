@@ -106,18 +106,13 @@ class CouplerConfig:
     viscous_scheme: ViscousConfig | None = None
     """VPM viscous diffusion scheme (``None`` = Core Spreading)."""
 
-    stretching_scheme: Literal[
-        "transposed", "classical", "mixed", "gradu", "rvpm"
-    ] = "transposed"
+    stretching_scheme: Literal["direct", "mixed", "transposed"] = "transposed"
     """VPM vortex-stretching formulation (Γ-stretching term).
 
-    ``"transposed"`` is the conservative direct O(N²) scheme. ``"rvpm"`` is the reformulated-VPM
-    operator (Alvarez & Ning): a local O(N) scheme that conserves the element
-    volume measure σ²·|Γ| and is the most stable option for high-strain wakes —
-    it is the stretching used by the stable interactingVortices rungs.  Note that
-    enabling strength relaxation forces the effective mode to GRADU/RVPM, so
-    ``"rvpm"`` is preserved under relaxation while ``"transposed"`` is mapped to
-    GRADU internally."""
+    ``"transposed"`` is the conservative direct O(N²) scheme.  rVPM-style
+    parallel-growth reduction is configured separately through
+    ``stabilization.parallel_strain_enabled`` so the physical formulation and
+    stabilization are not conflated."""
 
     les_smagorinsky_cs: float = 0.17
     """Smagorinsky constant Cs for the VPM sub-grid model (ν_t = (Cs·Δ)²|S|).

@@ -159,9 +159,12 @@ def main():
 
     turbulence=TurbulenceConfig.les_smagorinsky()
 
-    stretching=StretchingConfig.rvpm(f=0, g=1/3)
+    stretching=StretchingConfig.transposed()
 
     stabilization=StabilizationConfig(
+            parallel_strain_enabled=True,
+            parallel_strain_f=0.0,
+            parallel_strain_g=1.0 / 3.0,
             # ISR blend relaxation is the second net — it drains runaway |Γ|.
             relaxation_enabled=True,
             relaxation_mode='blend', # try also 'pedrizzetti'

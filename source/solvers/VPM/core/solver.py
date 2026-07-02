@@ -119,7 +119,7 @@ class Solver:
 
     # INITIALIZATION AND CONFIGURATION
 
-    # NOTE: Taichi initialization is handled by initialize_taichi_backend() which
+    # Taichi initialization is handled by initialize_taichi_backend() which
     # safely handles re-initialization attempts (catches exceptions if already initialized).
     def __init__(self, config: SolverConfig | None = None, **kwargs) -> None:
         """Initialize the VPM solver. See SolverConfig for all parameters."""
@@ -391,7 +391,18 @@ class Solver:
 
         # Strength relaxation — Winckelmans/Pedrizzetti direction projection.
         self._strength_relaxation = None
+        self._parallel_strain_relaxation = None
         stabilization = final_config.stabilization
+        if stabilization.parallel_strain_enabled:
+            from ..stabilization.parallel_strain import ParallelStrainRelaxation
+
+            self._parallel_strain_relaxation = ParallelStrainRelaxation(
+                f=stabilization.parallel_strain_f,
+                g=stabilization.parallel_strain_g,
+                clamp=stabilization.parallel_strain_clamp,
+                max_particles=max_p,
+                precision=self.precision,
+            )
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
@@ -639,11 +650,7 @@ class Solver:
 
             # 1. VELOCITY & GRADIENTS (At t_n)
             _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
-            # Fuse u + ∇u into one tree build + one traversal when both are needed at
-            # the same t_n configuration and the velocity carries no contribution the
-            # fused kernel does not model (sources/panel) nor post-processing
-            # (velocity_override).  The fused pass writes particles.velocity = v(x_n),
-            # which the advection integrator then reuses as its first RK stage (k1).
+            # Fuse u + ∇u into one tree build
             _fuse_vel_grad = (
                 self.flow_model != "POTENTIAL"
                 and _adv != "NONE"
@@ -661,18 +668,19 @@ class Solver:
                 with self.profiler.section("Velocity gradients"):
                     self._update_velocity_gradients()
 
+            # 2. LES FILTER UPDATE
             with self.profiler.section("LES update"):
                 self._update_LES_state()
 
-            # 2. CONVECTION (Advection x_n -> x_n+1)
+            # 3. CONVECTION (Advection x_n -> x_n+1)
             with self.profiler.section("Advection"):
                 self._update_positions(precomputed_k1=_fuse_vel_grad)
 
-            # 3. DIFFUSION & STRETCHING (Update alpha)
+            # 4. DIFFUSION & STRETCHING (Update alpha)
             with self.profiler.section("Stretching + diffusion"):
                 self._update_strength()
 
-            # 3.5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
+            # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
             if _diag_due:
                 with self.profiler.section("Flow integrals"):
@@ -681,11 +689,11 @@ class Solver:
                 with self.profiler.section("VLM diagnostics"):
                     self._record_vlm_diagnostics()
 
-            # 4. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
+            # 6. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
             with self.profiler.section("Adaptation"):
                 self._update_adaptation()
 
-            # 5. DIAGNOSTICS & IO
+            # 7. DIAGNOSTICS & IO
             with self.profiler.section("Backup / IO"):
                 self._backup_solution()
 
@@ -2194,11 +2202,9 @@ class Solver:
 
         effective_mode = self._effective_stretching_mode()
         mode_eq = {
-            "CLASSICAL": "(ω·∇)u",
-            "TRANSPOSED": "(ω·∇)u",
+            "DIRECT": "(ω·∇)u",
+            "TRANSPOSED": "(ω·∇')u",
             "MIXED": "½((ω·∇)u + (∇u)ᵀ·ω)",
-            "GRADU": "(∇u)ᵀ·ω",
-            "RVPM": "(∇u)ᵀ·ω − c_r(ω̂·(∇u)ᵀω̂)ω (rVPM)",
         }.get(effective_mode, f"({effective_mode})")
         if announce:
             Logging.message(f"Updating strengths via {mode_eq}")
@@ -2214,17 +2220,12 @@ class Solver:
         """
         return self.stretching_mode
 
-    def _rvpm_params(self) -> dict:
-        """rVPM (f, g) parameters from the stretching config."""
-        sc = self.config.stretching
-        return {
-            "rvpm_f": getattr(sc, "rvpm_f", 0.0),
-            "rvpm_g": getattr(sc, "rvpm_g", 0.2),
-        }
-
     def _apply_stretching_with_relaxation(self, dt: float) -> None:
         """Vortex stretching followed by the strength-relaxation projection, once per dt."""
         if self.stretching_enabled:
+            if self._parallel_strain_relaxation is not None:
+                self._parallel_strain_relaxation.snapshot(self.particles)
+
             # Advisory only: warn once if dt exceeds the strain-set stability limit
             # dt_rec = C/σ_max (C = 0.2 stretching-CFL target), the usual source of an
             # explicit-stretching blow-up.  An explicit solver integrates exactly the
@@ -2243,9 +2244,11 @@ class Solver:
                 dt=dt,
                 scheme=self.stretching_scheme,
                 mode=self.stretching_mode,
-                **self._rvpm_params(),
             )
             ti.sync()
+            if self._parallel_strain_relaxation is not None:
+                self._parallel_strain_relaxation.apply(self.particles)
+                ti.sync()
         if self._strength_relaxation is not None:
             self._strength_relaxation.apply(self.particles, dt)
             ti.sync()

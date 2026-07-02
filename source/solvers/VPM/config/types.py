@@ -609,39 +609,31 @@ class StretchingConfig:
     """
     Configuration for vortex stretching schemes.
 
-    Uses direct pair-wise computation (O(N²)), which conserves total circulation by
-    construction, or a local gradU-based approach (O(N)) that reuses the pre-computed
-    velocity gradient tensor.
+    Uses direct pair-wise computation (O(N²)) for the selected physical
+    stretching formulation.  Numerical stabilization is configured separately
+    through :class:`StabilizationConfig`.
 
     Modes:
-        - TRANSPOSED: dΓ/dt = (Γ·∇')u - direct O(N²), conserves ΣΓ
-        - CLASSICAL: dΓ/dt = (Γ·∇)u - direct O(N²), standard formulation
-        - MIXED: Strain-based symmetric formulation - direct O(N²)
-        - GRADU: dΓ/dt = (∇u)ᵀ·Γ using pre-computed gradU - local O(N)
-          Requires velocity gradients computed beforehand (automatic in the
-          standard solver loop).  Much cheaper than direct modes but can be
-          less stable for large dt or highly strained flows because gradU is
-          frozen at t_n for the entire RK sub-stepping.
+        - DIRECT: dΓ/dt = (Γ·∇)u, the standard direct formulation
+        - TRANSPOSED: dΓ/dt = (Γ·∇')u, conservative direct formulation
+        - MIXED: Strain-based symmetric direct formulation
 
     Examples:
           # Transposed stretching (conserves circulation, recommended)
           stretching = StretchingConfig.transposed()
 
-          # Classical stretching
-          stretching = StretchingConfig.classical()
+          # Direct stretching
+          stretching = StretchingConfig.direct()
 
           # Mixed/strain stretching
           stretching = StretchingConfig.mixed()
-
-          # GradU-based stretching (O(N), experimental)
-          stretching = StretchingConfig.gradu()
 
           # Disabled stretching
           stretching = StretchingConfig.disabled()
     """
 
-    mode: Literal["CLASSICAL", "TRANSPOSED", "MIXED", "GRADU", "RVPM"] = "TRANSPOSED"
-    """Stretching formulation mode: CLASSICAL, TRANSPOSED, MIXED, GRADU, or RVPM."""
+    mode: Literal["DIRECT", "TRANSPOSED", "MIXED"] = "TRANSPOSED"
+    """Stretching formulation mode: DIRECT, TRANSPOSED, or MIXED."""
 
     scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK2"
     """Time integration scheme for the stretching substep (dΓ/dt).
@@ -656,22 +648,21 @@ class StretchingConfig:
     enabled: bool = True
     """Whether vortex stretching is enabled."""
 
-    rvpm_f: float = 0.0
-    """rVPM reformulation parameter f (mode='RVPM' only, Alvarez & Ning).
-    Together with g sets c_r = (g+f)/(1/3+f) — the fraction of the parallel
-    stretching rate removed from the strength magnitude — and
-    c_σ = (g+f)/(1+3f) — the rate at which the core size absorbs it."""
-
-    rvpm_g: float = 0.2
-    """rVPM reformulation parameter g (mode='RVPM' only).  Default 1/5 (the
-    Alvarez & Ning value, giving c_r = 3/5 with f=0): |Γ| then grows at
-    (1−c_r)·S_∥ = (2/5)·S_∥ while σ shrinks at (1/5)·S_∥, conserving the
-    element volume measure σ²·|Γ|.  Set g=1/3, f=0 (c_r=1) to fully suppress
-    parallel growth (maximum stability)."""
+    def __post_init__(self) -> None:
+        mode = self.mode.upper()
+        scheme = self.scheme.upper()
+        if mode not in ("DIRECT", "TRANSPOSED", "MIXED"):
+            raise ValueError(f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}")
+        if scheme not in ("EULER", "RK2", "RK3", "RK4"):
+            raise ValueError(f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}")
+        if mode != self.mode:
+            object.__setattr__(self, "mode", mode)
+        if scheme != self.scheme:
+            object.__setattr__(self, "scheme", scheme)
 
     @staticmethod
-    def classical(scheme: str = "RK2"):
-        """Classical scheme: dΓ/dt = (Γ·∇)u
+    def direct(scheme: str = "RK2"):
+        """Direct scheme: dΓ/dt = (Γ·∇)u
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)
@@ -679,7 +670,7 @@ class StretchingConfig:
           - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
           - 'RK4':   classical 4th-order Runge–Kutta
         """
-        return StretchingConfig(mode="CLASSICAL", scheme=scheme)
+        return StretchingConfig(mode="DIRECT", scheme=scheme)
 
     @staticmethod
     def transposed(scheme: str = "RK2"):
@@ -704,47 +695,6 @@ class StretchingConfig:
           - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="MIXED", scheme=scheme)
-
-    @staticmethod
-    def gradu(scheme: str = "RK2"):
-        """GradU-based stretching: dΓ/dt = (∇u)ᵀ·Γ using pre-computed velocity gradients.
-
-        O(N) per sub-step (vs O(N²) for direct modes).  Requires that
-        ``compute_velocity_gradients`` has been called before the stretching step.
-
-        .. warning::
-            Experimental — can be less stable than direct modes when dt is large
-            or when the flow has strong velocity gradients, because ∇u is frozen
-            at the beginning of the time step during RK sub-stepping.
-
-        Options for `scheme`:
-          - 'EULER': forward Euler (1st order)
-          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
-          - 'RK4':   classical 4th-order Runge–Kutta
-        """
-        return StretchingConfig(mode="GRADU", scheme=scheme)
-
-    @staticmethod
-    def rvpm(scheme: str = "RK2", f: float = 0.0, g: float = 0.2):
-        """Reformulated-VPM stretching (Alvarez & Ning):
-
-            dΓ/dt = (∇u)ᵀΓ − c_r·(Γ̂·(∇u)ᵀΓ)·Γ̂,    c_r = (g+f)/(1/3+f)
-            dσ/dt = −c_σ·σ·S_∥,                      c_σ = (g+f)/(1+3f)
-
-        The parallel stretching growth of |Γ| is reduced to (1−c_r)·S_∥ and the
-        removed growth is absorbed by core-size contraction so that the vortex
-        element's volume measure σ²·|Γ| is conserved.  Defaults (f=0, g=1/5)
-        give c_r = 3/5, c_σ = 1/5 — the Alvarez & Ning values.  Like GRADU,
-        this is a local O(N) operator on the pre-computed velocity gradients.
-
-        Options for `scheme`:
-          - 'EULER': forward Euler (1st order)
-          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
-          - 'RK4':   classical 4th-order Runge–Kutta
-        """
-        return StretchingConfig(mode="RVPM", scheme=scheme, rvpm_f=f, rvpm_g=g)
 
     @staticmethod
     def disabled():
@@ -1049,6 +999,19 @@ class StabilizationConfig:
     relaxation_verbose: bool = False
     """Collect per-step strength-relaxation diagnostics."""
 
+    # ── Parallel-strain relaxation (rVPM correction) ───────────────────────
+    parallel_strain_enabled: bool = False
+    """Enable the rVPM a-posteriori correction after the stretching substep."""
+
+    parallel_strain_f: float = 0.0
+    """rVPM parameter f in c_r=(g+f)/(1/3+f), c_sigma=(g+f)/(1+3f)."""
+
+    parallel_strain_g: float = 0.2
+    """rVPM parameter g.  Default 1/5 gives the Alvarez-Ning reduction."""
+
+    parallel_strain_clamp: float | None = None
+    """Optional bound on inferred S_parallel*dt before applying the correction."""
+
     def __post_init__(self) -> None:
         """Validate direct construction as well as factory-created configs."""
         if self.max_core_radius is not None and self.max_core_radius <= 0:
@@ -1088,6 +1051,15 @@ class StabilizationConfig:
             raise ValueError("relaxation_rate must be non-negative")
         if self.relaxation_seff_min < 0:
             raise ValueError("relaxation_seff_min must be non-negative")
+        if self.parallel_strain_enabled:
+            if (1.0 / 3.0 + self.parallel_strain_f) <= 0:
+                raise ValueError("parallel_strain_f must keep 1/3 + f positive")
+            if (1.0 + 3.0 * self.parallel_strain_f) <= 0:
+                raise ValueError("parallel_strain_f must keep 1 + 3f positive")
+            if self.parallel_strain_g + self.parallel_strain_f < 0:
+                raise ValueError("parallel_strain_g + parallel_strain_f must be non-negative")
+            if self.parallel_strain_clamp is not None and self.parallel_strain_clamp <= 0:
+                raise ValueError("parallel_strain_clamp must be positive when provided")
 
     # ── Factory methods ───────────────────────────────────────────────────────
     @staticmethod
@@ -1178,6 +1150,26 @@ class StabilizationConfig:
             relaxation_verbose=verbose,
         )
 
+    @staticmethod
+    def parallel_strain_relaxation(
+        *,
+        f: float = 0.0,
+        g: float = 0.2,
+        clamp: float | None = None,
+    ) -> "StabilizationConfig":
+        """Enable the rVPM parallel-strain correction.
+
+        The correction is applied after the configured stretching formulation.
+        It infers the achieved parallel growth from |Gamma| before/after
+        stretching, reduces that growth by c_r, and contracts sigma by c_sigma.
+        """
+        return StabilizationConfig(
+            parallel_strain_enabled=True,
+            parallel_strain_f=f,
+            parallel_strain_g=g,
+            parallel_strain_clamp=clamp,
+        )
+
 # =========================================================
 # VELOCITY CONFIGURATION
 # =========================================================
@@ -1210,7 +1202,7 @@ class VelocityConfig:
     """Opening angle for Barnes-Hut treecode. Only used when method='TREECODE'.
       Smaller = more accurate but slower.
       - θ = 0.3: ~2% error, slower
-      - θ = 0.5: ~5% error (recommended)
+      - θ = 0.5: ~5% error
       - θ = 0.7: ~15% error, faster"""
 
     @staticmethod

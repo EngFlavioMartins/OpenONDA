@@ -206,11 +206,9 @@ class FVMVPMCoupler:
         # collective FVM solve; they never touch Taichi or particle data.
         if self._is_master:
             stretching_factory = {
+                "direct": StretchingConfig.direct,
                 "transposed": StretchingConfig.transposed,
-                "classical": StretchingConfig.classical,
                 "mixed": StretchingConfig.mixed,
-                "gradu": StretchingConfig.gradu,
-                "rvpm": StretchingConfig.rvpm,
             }[getattr(cfg, "stretching_scheme", "transposed")]
 
             vpm_cfg = SolverConfig(

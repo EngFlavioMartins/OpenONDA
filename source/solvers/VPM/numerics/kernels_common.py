@@ -531,108 +531,6 @@ def _make_stretching_rate_kernel(q_, zeta_):
 
     return compute_stretching_rate_kernel
 
-def _make_gradu_stretching_rate_kernel():
-    """Mini-factory: creates a local O(N) stretching rate kernel using pre-computed gradU.
-
-    Computes dα_i/dt = (∇u)_iᵀ · α_i  (transposed scheme).
-    The velocity gradient field must be populated before calling this kernel.
-    """
-
-    @ti.kernel
-    def compute_gradu_stretching_rate_kernel(
-        strengths: ti.template(),
-        gradU: ti.template(),
-        dstr_dt_out: ti.template(),
-        num_particles: ti.i32,
-    ):  # type: ignore
-        """GradU-based vortex stretching: dα/dt = (∇u)ᵀ · α.  O(N)."""
-        for i in range(num_particles):
-            J = gradU[i]  # 3×3 velocity gradient tensor
-            alpha = strengths[i]
-            # Transposed scheme: dα/dt = Jᵀ · α  (conserves ΣΓ in continuous limit)
-            dstr_dt_out[i] = ti.Vector(
-                [
-                    J[0, 0] * alpha[0] + J[1, 0] * alpha[1] + J[2, 0] * alpha[2],
-                    J[0, 1] * alpha[0] + J[1, 1] * alpha[1] + J[2, 1] * alpha[2],
-                    J[0, 2] * alpha[0] + J[1, 2] * alpha[1] + J[2, 2] * alpha[2],
-                ]
-            )
-
-    return compute_gradu_stretching_rate_kernel
-
-def _make_rvpm_stretching_rate_kernel():
-    """Mini-factory: reformulated-VPM stretching rate (Alvarez & Ning).
-
-    dα/dt = Jᵀα − c_r·(α̂·(Jᵀα))·α̂   with   c_r = (g+f)/(1/3+f).
-
-    The parallel component of the stretching rate is α̂·(Jᵀα) = |α|·(α̂·S·α̂)
-    (only the symmetric part of J survives the double projection), so the
-    scheme reduces the exponential growth rate of |α| from S_∥ to (1−c_r)·S_∥
-    while leaving the rotation of α untouched.  The companion core-size update
-    (``update_radius_rvpm_kernel``) absorbs the removed growth so that the
-    vortex-element volume ~σ²·|α| is conserved.
-    """
-
-    @ti.kernel
-    def compute_rvpm_stretching_rate_kernel(
-        strengths: ti.template(),
-        gradU: ti.template(),
-        dstr_dt_out: ti.template(),
-        c_r: ti.f32,
-        num_particles: ti.i32,
-    ):  # type: ignore
-        """rVPM vortex stretching: dα/dt = Jᵀα − c_r(α̂·Jᵀα)α̂.  O(N)."""
-        for i in range(num_particles):
-            J = gradU[i]
-            alpha = strengths[i]
-            rate = ti.Vector(
-                [
-                    J[0, 0] * alpha[0] + J[1, 0] * alpha[1] + J[2, 0] * alpha[2],
-                    J[0, 1] * alpha[0] + J[1, 1] * alpha[1] + J[2, 1] * alpha[2],
-                    J[0, 2] * alpha[0] + J[1, 2] * alpha[1] + J[2, 2] * alpha[2],
-                ]
-            )
-            an = alpha.norm()
-            if an > EPSILON:
-                ahat = alpha / an
-                rate -= c_r * ahat.dot(rate) * ahat
-            dstr_dt_out[i] = rate
-
-    return compute_rvpm_stretching_rate_kernel
-
-def _make_rvpm_radius_update_kernel():
-    """Mini-factory: rVPM core-size update.
-
-    dσ/dt = −c_σ·σ·S_∥,  S_∥ = α̂·S·α̂,  c_σ = (g+f)/(1+3f).
-
-    Integrated exactly for the frozen velocity gradient:
-    σ ← σ·exp(−c_σ·S_∥·dt).  Together with the strength growth rate
-    (1−c_r)·S_∥ = (1 − 3c_σ)·S_∥ (for f=0) this conserves the element
-    volume measure σ²·|α| per unit tube length.
-    """
-
-    @ti.kernel
-    def update_radius_rvpm_kernel(
-        strengths: ti.template(),
-        gradU: ti.template(),
-        radii: ti.template(),
-        c_sigma: ti.f32,
-        dt: ti.f32,
-        num_particles: ti.i32,
-    ):  # type: ignore
-        for i in range(num_particles):
-            alpha = strengths[i]
-            an = alpha.norm()
-            if an > EPSILON:
-                ahat = alpha / an
-                J = gradU[i]
-                # S_∥ = α̂·J·α̂ (= α̂·S·α̂; antisymmetric part cancels)
-                Ja = J @ ahat
-                s_par = ahat.dot(Ja)
-                radii[i] = radii[i] * ti.exp(-c_sigma * s_par * dt)
-
-    return update_radius_rvpm_kernel
-
 def _create_basic_kernels(kernel_functions):
     """Create basic velocity and vorticity computation kernels."""
     q_ = kernel_functions["q_"]
@@ -978,9 +876,6 @@ def _create_stretching_kernels(kernel_functions):
 
     return {
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
-        "compute_gradu_stretching_rate_kernel": _make_gradu_stretching_rate_kernel(),
-        "compute_rvpm_stretching_rate_kernel": _make_rvpm_stretching_rate_kernel(),
-        "update_radius_rvpm_kernel": _make_rvpm_radius_update_kernel(),
     }
 
 def _create_utility_kernels(kernel_functions):

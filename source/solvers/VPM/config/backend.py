@@ -263,11 +263,11 @@ def _build_backend_chain(preferred_backend: str) -> list[tuple]:
     * **macOS**            → Metal → CPU.  (Vulkan/CUDA are unavailable on Apple
                              hardware, so any GPU request maps to Metal.)
     * **CPU** (explicit)   → CPU only.
-    * **Linux / Windows**  → requested-GPU-first, then the other GPU API, then CPU:
+    * **Linux / Windows**  → requested GPU API, then CPU:
         - ``GPU``                → platform-best GPU (CUDA if an NVIDIA device is
                                    present, else Vulkan) → the other GPU → CPU.
-        - ``GPU_VULKAN``/``VULKAN`` → Vulkan → CUDA → CPU.
-        - ``CUDA``               → CUDA → Vulkan → CPU.
+        - ``GPU_VULKAN``/``VULKAN`` → Vulkan → CPU.
+        - ``CUDA``               → CUDA → CPU.
         - ``GPU_METAL``/``METAL``  (non-mac) → no Metal here, treat as ``GPU``.
 
     The returned chain is de-duplicated (preserving order) and always ends with
@@ -288,9 +288,9 @@ def _build_backend_chain(preferred_backend: str) -> list[tuple]:
     cuda = (ti.cuda, "CUDA")
 
     if preferred_backend in {"GPU_VULKAN", "VULKAN"}:
-        gpu_order = [vulkan, cuda]
+        gpu_order = [vulkan]
     elif preferred_backend == "CUDA":
-        gpu_order = [cuda, vulkan]
+        gpu_order = [cuda]
     else:
         # "GPU", "GPU_METAL"/"METAL" on non-mac, or anything unrecognised:
         # use the platform-best GPU first, then the other API.

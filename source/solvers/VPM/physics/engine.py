@@ -121,9 +121,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         particles,
         dt: float,
         scheme: str = "RK3",
-        mode: str = "TRANSPOSE",
-        rvpm_f: float = 0.0,
-        rvpm_g: float = 0.2,
+        mode: str = "TRANSPOSED",
     ):
         """
         Apply vortex stretching.
@@ -134,11 +132,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             dt: Time step size [s]
             scheme: 'EULER', 'RK2', 'RK3', or 'RK4'
-            mode: 'CLASSICAL', 'TRANSPOSE', 'MIXED', 'GRADU', or 'RVPM'
-            rvpm_f, rvpm_g: rVPM reformulation parameters (mode='RVPM' only);
-                c_r = (g+f)/(1/3+f), c_σ = (g+f)/(1+3f).  Defaults f=0, g=1/5.
+            mode: 'DIRECT', 'TRANSPOSED', or 'MIXED'
         """
-        self._stretching.vortex_stretching(particles, dt, scheme, mode, rvpm_f, rvpm_g)
+        self._stretching.vortex_stretching(particles, dt, scheme, mode)
 
     def save_strength_magnitudes(self, particles):
         """
@@ -332,9 +328,7 @@ class _StretchingHandler:
         particles,
         dt: float,
         scheme: str = "RK3",
-        mode: str = "TRANSPOSE",
-        rvpm_f: float = 0.0,
-        rvpm_g: float = 0.2,
+        mode: str = "TRANSPOSED",
     ):
         """Vortex stretching using parent's temp fields."""
         N = len(particles)
@@ -345,38 +339,15 @@ class _StretchingHandler:
         p._resize_temp_fields(N)
         p._zero_temp_fields()
 
-        # GradU/RVPM modes: local O(N) stretching using pre-computed velocity
-        # gradients.  RVPM (Alvarez & Ning reformulation) removes the fraction
-        # c_r = (g+f)/(1/3+f) of the parallel stretching rate from the strength
-        # and absorbs it into the core size (σ ← σ·exp(−c_σ·S_∥·dt),
-        # c_σ = (g+f)/(1+3f)), conserving the element volume measure σ²|α|.
         mode_str = mode.upper()
-        if mode_str in ("GRADU", "RVPM"):
-            c_r = 0.0
-            if mode_str == "RVPM":
-                c_r = (rvpm_g + rvpm_f) / (1.0 / 3.0 + rvpm_f)
-            self._gradu_stretching(particles, dt, scheme.upper(), N, c_r)
-            if mode_str == "RVPM":
-                c_sigma = (rvpm_g + rvpm_f) / (1.0 + 3.0 * rvpm_f)
-                p.update_radius_rvpm_kernel(
-                    particles.circulation,
-                    particles.velocity_gradient,
-                    particles.radius,
-                    c_sigma,
-                    dt,
-                    N,
-                )
-            return
-
-        # Convert mode
-        if mode_str == "CLASSICAL":
+        if mode_str == "DIRECT":
             mode_int = 0
-        elif mode_str in ("TRANSPOSE", "TRANSPOSED"):
+        elif mode_str == "TRANSPOSED":
             mode_int = 1
         elif mode_str == "MIXED":
             mode_int = 2
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise ValueError(f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, or MIXED.")
 
         scheme = scheme.upper()
 
@@ -486,90 +457,7 @@ class _StretchingHandler:
         p.compute_strength_magnitudes_kernel(particles.circulation, p.str_mag_before, N)
         ti.sync()
 
-    # ---- GradU-based stretching (O(N) per sub-step) ----
-
     def _limit_rate(self, positions, strengths, rates, dt: float, N: int) -> None:
         limiter = getattr(self._parent, "stretching_rate_limiter", None)
         if limiter is not None:
             limiter.apply_to_rate(positions, strengths, rates, dt, N)
-
-    def _gradu_rate(self, strengths, gradU, out, N, c_r: float = 0.0):
-        """Compute dα/dt = (∇u)ᵀ·α (c_r=0) or the rVPM rate Jᵀα − c_r(α̂·Jᵀα)α̂."""
-        if c_r != 0.0:
-            self._parent.compute_rvpm_stretching_rate_kernel(strengths, gradU, out, c_r, N)
-        else:
-            self._parent.compute_gradu_stretching_rate_kernel(strengths, gradU, out, N)
-
-    def _gradu_stretching(self, particles, dt: float, scheme: str, N: int, c_r: float = 0.0):
-        """GradU/rVPM stretching with RK time integration."""
-        p = self._parent
-        gradU = particles.velocity_gradient
-
-        if scheme == "EULER":
-            self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
-            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
-            p.step_euler_forward_kernel(
-                particles.circulation, p.dstr_dt_temp, particles.circulation, dt, N
-            )
-
-        elif scheme == "RK2":
-            # k1
-            self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
-            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
-            p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-            # k2
-            self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
-            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
-            p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
-
-        elif scheme == "RK3":
-            # k1
-            self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
-            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
-            p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-            # k2
-            self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
-            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
-            p.linear_combination_kernel(
-                p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
-            )
-            p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
-            # k3
-            self._gradu_rate(p.str_temp2, gradU, p.dstr_dt_temp3, N, c_r)
-            self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
-            p.step_rk3_ssp_combine_kernel(
-                particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
-            )
-
-        elif scheme == "RK4":
-            # k1
-            self._gradu_rate(particles.circulation, gradU, p.dstr_dt_temp, N, c_r)
-            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
-            p.step_euler_forward_kernel(
-                particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N
-            )
-            # k2
-            self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp2, N, c_r)
-            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
-            p.step_euler_forward_kernel(
-                particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N
-            )
-            # k3
-            self._gradu_rate(p.str_temp, gradU, p.dstr_dt_temp3, N, c_r)
-            self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
-            p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
-            # k4
-            self._gradu_rate(p.str_temp, gradU, p.vel_temp, N, c_r)
-            self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)
-            p.step_rk4_combine_kernel(
-                particles.circulation,
-                p.dstr_dt_temp,
-                p.dstr_dt_temp2,
-                p.dstr_dt_temp3,
-                p.vel_temp,
-                dt,
-                N,
-            )
-
-        else:
-            raise ValueError(f"Unknown scheme for GRADU stretching: {scheme}")

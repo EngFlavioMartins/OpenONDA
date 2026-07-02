@@ -89,12 +89,12 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
 
         dαᵢ/dt = Σⱼ K(xᵢ−xⱼ, σⱼ) ⊗ αⱼ   (anti-symmetric in i↔j)
 
-    satisfies d/dt(Σᵢ αᵢ) = 0 algebraically.  Classical stretching lacks this
+    satisfies d/dt(Σᵢ αᵢ) = 0 algebraically.  Direct stretching lacks this
     anti-symmetry and does NOT conserve ΣΓ.
 
     This test fails when
     --------------------
-    * The kernel uses CLASSICAL instead of TRANSPOSED mode.
+    * The kernel uses DIRECT instead of TRANSPOSED mode.
     * There is a sign error in the stretching kernel.
     * Wrong pairs of indices contribute to the rate term.
     """

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Vortex ring — stretching-formulation benchmark (direct, transposed, mixed)
-# and LES comparison (rVPM vs transposed stretching).
+# and LES comparison (rVPM correction vs plain transposed stretching).
 # Runs five configurations; strength relaxation is intentionally not part of
 # the certified Saffman benchmark.
 
@@ -25,8 +25,8 @@ echo "Starting DNS simulation (transposed stretching)..."
 echo "Starting DNS simulation (mixed stretching)..."
 "$PYTHON" ring_setup.py --mode dns --stretching mixed --name DNS_mixed --solution-dir ./solution
 
-echo "Starting LES simulation (rVPM reformulated stretching, Alvarez & Ning)..."
-"$PYTHON" ring_setup.py --mode les --stretching rvpm --name LES_rvpm --solution-dir ./solution
+echo "Starting LES simulation (transposed stretching + rVPM correction)..."
+"$PYTHON" ring_setup.py --mode les --stretching transposed --parallel-strain-relaxation --name LES_rvpm --solution-dir ./solution
 
 echo "Starting LES comparison simulation (transposed stretching)..."
 "$PYTHON" ring_setup.py --mode les --stretching transposed --name LES_transposed --solution-dir ./solution

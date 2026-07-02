@@ -25,6 +25,7 @@ import numpy as np
 from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
+    StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
     VelocityConfig,
@@ -64,9 +65,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stretching",
-        choices=["transposed", "rvpm"],
+        choices=["direct", "transposed", "mixed"],
         default="transposed",
-        help="Vortex stretching scheme.",
+        help="Vortex stretching formulation.",
+    )
+    parser.add_argument(
+        "--parallel-strain-relaxation",
+        action="store_true",
+        help="Enable the rVPM a-posteriori parallel-strain correction.",
+    )
+    parser.add_argument(
+        "--parallel-strain-f",
+        type=float,
+        default=0.0,
+        help="rVPM correction parameter f.",
+    )
+    parser.add_argument(
+        "--parallel-strain-g",
+        type=float,
+        default=1.0 / 3.0,
+        help="rVPM correction parameter g.",
     )
     parser.add_argument(
         "--viscous",
@@ -103,8 +121,10 @@ def build_viscous_config(scheme: str, particle_spacing: float) -> ViscousConfig:
 
 
 def build_stretching_config(scheme: str) -> StretchingConfig:
-    if scheme == "rvpm":
-        return StretchingConfig.rvpm(f=0, g=1 / 3)
+    if scheme == "direct":
+        return StretchingConfig.direct()
+    if scheme == "mixed":
+        return StretchingConfig.mixed()
     return StretchingConfig.transposed()
 
 
@@ -223,6 +243,14 @@ def run_case(args: argparse.Namespace) -> None:
     turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
 
     stretching = build_stretching_config(args.stretching)
+    stabilization = (
+        StabilizationConfig.parallel_strain_relaxation(
+            f=args.parallel_strain_f,
+            g=args.parallel_strain_g,
+        )
+        if args.parallel_strain_relaxation
+        else StabilizationConfig.disabled()
+    )
 
     velocity = VelocityConfig.treecode(theta=0.3)
 
@@ -234,6 +262,7 @@ def run_case(args: argparse.Namespace) -> None:
         advection=advection,
         turbulence=turbulence,
         stretching=stretching,
+        stabilization=stabilization,
         velocity=velocity,
         viscous=viscous,
         samplers=[(sampler, "xz_slice")],

@@ -1,8 +1,8 @@
 """
 Vortex stretching single-step tests — symmetry, conservation, and scheme convergence.
 
-Stretching updates circulation via dΓ/dt = (∇u)ᵀ·Γ (transpose) or
-ω·∇u (classical).  These tests verify exact properties that hold for a
+Stretching updates circulation via direct, transposed, or mixed pairwise
+operators.  These tests verify exact properties that hold for a
 single time step with no advection or diffusion.
 """
 
@@ -49,7 +49,7 @@ def _solver_with_particles(make_solver, kernel_name, positions, circulations):
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 @pytest.mark.parametrize("scheme", ["EULER", "RK2", "RK3", "RK4"])
-@pytest.mark.parametrize("mode", ["CLASSICAL", "TRANSPOSE", "MIXED"])
+@pytest.mark.parametrize("mode", ["DIRECT", "TRANSPOSED", "MIXED"])
 def test_single_blob_no_stretching(kernel_name, scheme, mode, backend, solver_for_backend):
     """
     A single blob has zero self-induced velocity gradient, therefore zero
@@ -77,7 +77,7 @@ def test_single_blob_no_stretching(kernel_name, scheme, mode, backend, solver_fo
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 @pytest.mark.parametrize("scheme", ["EULER", "RK2", "RK3", "RK4"])
-@pytest.mark.parametrize("mode", ["CLASSICAL", "TRANSPOSE", "MIXED"])
+@pytest.mark.parametrize("mode", ["DIRECT", "TRANSPOSED", "MIXED"])
 def test_two_parallel_vortices_2d_invariance(
     kernel_name, scheme, mode, backend, solver_for_backend
 ):
@@ -121,10 +121,10 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode="TRANSPOSE")
+    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode="TRANSPOSED")
     sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
     assert np.allclose(sum_after, sum_before, atol=1e-5), (
-        f"{kernel_name}/{backend}/TRANSPOSE: circulation not conserved: "
+        f"{kernel_name}/{backend}/TRANSPOSED: circulation not conserved: "
         f"before={sum_before}, after={sum_after}"
     )
 
@@ -132,12 +132,12 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
-@pytest.mark.parametrize("mode", ["CLASSICAL", "MIXED"])
+@pytest.mark.parametrize("mode", ["DIRECT", "MIXED"])
 def test_nonconservative_stretching_changes_circulation(
     kernel_name, mode, backend, solver_for_backend
 ):
     """
-    Classical and mixed stretching are not antisymmetric pairwise operators, so
+    Direct and mixed stretching are not antisymmetric pairwise operators, so
     they need not conserve ΣΓ for a generic 3-D particle arrangement.
     """
     solver = _solver_with_particles(
@@ -159,7 +159,7 @@ def test_nonconservative_stretching_changes_circulation(
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
-@pytest.mark.parametrize("mode", ["CLASSICAL", "TRANSPOSE"])
+@pytest.mark.parametrize("mode", ["DIRECT", "TRANSPOSED"])
 def test_small_dt_scheme_convergence(kernel_name, mode, backend, solver_for_backend):
     """
     For an infinitesimal time step all consistent schemes (Euler, RK2, RK3, RK4)
@@ -190,27 +190,3 @@ def test_small_dt_scheme_convergence(kernel_name, mode, backend, solver_for_back
         assert rel < 1e-3, (
             f"{kernel_name}/{backend}/{mode}: {scheme} deviates from RK4 at small dt: {rel:.3e}"
         )
-
-
-@pytest.mark.parametrize(
-    "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
-)
-def test_gradu_mode_zero_without_precomputed_gradient(kernel_name, backend, solver_for_backend):
-    """
-    GRADU mode reads particles.velocity_gradient.  If gradients have not been
-    computed (default is zero), stretching must produce no change.
-
-    Failure → GRADU mode accesses uninitialised memory or ignores the field.
-    """
-    solver = _solver_with_particles(
-        solver_for_backend,
-        kernel_name,
-        positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-        circulations=[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
-    )
-    gamma_before = solver.particles.circulation_cpu().copy()
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode="GRADU")
-    gamma_after = solver.particles.circulation_cpu()
-    assert np.allclose(gamma_after, gamma_before, atol=1e-6), (
-        f"{kernel_name}/{backend}: GRADU mode changed circulation with zero gradU"
-    )

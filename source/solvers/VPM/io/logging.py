@@ -603,6 +603,12 @@ class Logging:
                 lines.append(f"  Relaxation Gate          : {cfg.relaxation_gate}")
                 if cfg.relaxation_gate == "constant":
                     lines.append(f"  Relaxation Factor        : {cfg.relaxation_factor:.3g}")
+            if cfg.parallel_strain_enabled:
+                lines.append("  Parallel Strain Relax.   : Enabled")
+                lines.append(f"  Parallel Strain f        : {cfg.parallel_strain_f:.6g}")
+                lines.append(f"  Parallel Strain g        : {cfg.parallel_strain_g:.6g}")
+                if cfg.parallel_strain_clamp is not None:
+                    lines.append(f"  Parallel Strain Clamp    : {cfg.parallel_strain_clamp:.6g}")
         else:
             lines.append("  Status                   : Not configured")
         return lines

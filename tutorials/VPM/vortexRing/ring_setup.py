@@ -25,6 +25,7 @@ from source.solvers.VPM import (
 )
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
+    StabilizationConfig,
     TurbulenceConfig,
     ViscousConfig,
     StretchingConfig,
@@ -40,10 +41,26 @@ def main():
     parser.add_argument("--name", default="LES", help="Output file name prefix")
     parser.add_argument(
         "--stretching",
-        choices=["direct", "transposed", "mixed", "rvpm"],
+        choices=["direct", "transposed", "mixed"],
         default="transposed",
-        help="Vortex stretching scheme. 'rvpm' is the Alvarez & Ning "
-        "reformulated-VPM scheme (g=1/5, conserves σ²|Γ| for f=0).",
+        help="Vortex stretching formulation.",
+    )
+    parser.add_argument(
+        "--parallel-strain-relaxation",
+        action="store_true",
+        help="Enable the rVPM a-posteriori parallel-strain correction.",
+    )
+    parser.add_argument(
+        "--parallel-strain-f",
+        type=float,
+        default=0.0,
+        help="rVPM correction parameter f.",
+    )
+    parser.add_argument(
+        "--parallel-strain-g",
+        type=float,
+        default=0.2,
+        help="rVPM correction parameter g.",
     )
     parser.add_argument(
         "--solution-dir",
@@ -94,12 +111,19 @@ def main():
     )
 
     _stretching_map = {
-        "direct": StretchingConfig.classical(scheme='Euler'),
-        "transposed": StretchingConfig.transposed(scheme='Euler'),
-        "mixed": StretchingConfig.mixed(scheme='Euler'),
-        "rvpm": StretchingConfig.rvpm(scheme='Euler'),
+        "direct": StretchingConfig.direct(scheme="Euler"),
+        "transposed": StretchingConfig.transposed(scheme="Euler"),
+        "mixed": StretchingConfig.mixed(scheme="Euler"),
     }
     stretching = _stretching_map[args.stretching]
+    stabilization = (
+        StabilizationConfig.parallel_strain_relaxation(
+            f=args.parallel_strain_f,
+            g=args.parallel_strain_g,
+        )
+        if args.parallel_strain_relaxation
+        else StabilizationConfig.disabled()
+    )
 
     output_dir = Path(args.solution_dir) / args.name
 
@@ -108,6 +132,7 @@ def main():
         advection=AdvectionConfig(scheme="RK2"),
         turbulence=turbulence,
         stretching=stretching,
+        stabilization=stabilization,
         velocity=VelocityConfig.treecode(theta=0.3),
         viscous=ViscousConfig.cs(),
         backup_frequency=6,

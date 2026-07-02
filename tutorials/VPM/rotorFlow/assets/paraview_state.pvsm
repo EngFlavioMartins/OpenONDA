@@ -9,7 +9,7 @@
         <Domain name="groups" id="263.Cues.groups"/>
       </Property>
       <Property name="EndTime" id="263.EndTime" number_of_elements="1">
-        <Element index="0" value="7"/>
+        <Element index="0" value="8.85"/>
       </Property>
       <Property name="ForceDisableCaching" id="263.ForceDisableCaching" number_of_elements="1">
         <Element index="0" value="0"/>
@@ -25929,10 +25929,10 @@
         <Element index="0" value="{:&#x3c;#6.1e}"/>
       </Property>
       <Property name="DataRangeMax" id="16775.DataRangeMax" number_of_elements="1">
-        <Element index="0" value="0.3185505110115439"/>
+        <Element index="0" value="0.31451934477962856"/>
       </Property>
       <Property name="DataRangeMin" id="16775.DataRangeMin" number_of_elements="1">
-        <Element index="0" value="2.0606486611338698e-06"/>
+        <Element index="0" value="2.0606278357436006e-06"/>
       </Property>
       <Property name="DrawAnnotations" id="16775.DrawAnnotations" number_of_elements="1">
         <Element index="0" value="1"/>
@@ -26203,10 +26203,10 @@
         <Element index="0" value="{:&#x3c;#6.1e}"/>
       </Property>
       <Property name="DataRangeMax" id="17933.DataRangeMax" number_of_elements="1">
-        <Element index="0" value="9.899013191579048"/>
+        <Element index="0" value="8.364712065589083"/>
       </Property>
       <Property name="DataRangeMin" id="17933.DataRangeMin" number_of_elements="1">
-        <Element index="0" value="2.105800606634163e-07"/>
+        <Element index="0" value="1.3981004569775754e-07"/>
       </Property>
       <Property name="DrawAnnotations" id="17933.DrawAnnotations" number_of_elements="1">
         <Element index="0" value="1"/>
@@ -26789,7 +26789,7 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="15936.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="15936.TimestepValues" number_of_elements="174">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -26930,6 +26930,40 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="16205" servers="1">
@@ -26981,7 +27015,7 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="16205.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="16205.TimestepValues" number_of_elements="174">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -27122,6 +27156,40 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="15667" servers="1">
@@ -27173,7 +27241,7 @@
           <String text="VelocityGradient"/>
         </Domain>
       </Property>
-      <Property name="TimestepValues" id="15667.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="15667.TimestepValues" number_of_elements="174">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -27314,6 +27382,40 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="PVDReader" id="10250" servers="1">
@@ -27390,7 +27492,7 @@
       <Property name="PointArrayStatus" id="10250.PointArrayStatus">
         <Domain name="array_list" id="10250.PointArrayStatus.array_list"/>
       </Property>
-      <Property name="TimestepValues" id="10250.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="10250.TimestepValues" number_of_elements="177">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -27531,13 +27633,50 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
+        <Element index="174" value="8.75"/>
+        <Element index="175" value="8.8"/>
+        <Element index="176" value="8.85"/>
       </Property>
     </Proxy>
     <Proxy group="sources" type="XdmfReader" id="19187" servers="1">
       <Property name="FileNameInfo" id="19187.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001360.xdmf"/>
+        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001740.xdmf"/>
       </Property>
-      <Property name="FileNames" id="19187.FileNames" number_of_elements="140">
+      <Property name="FileNames" id="19187.FileNames" number_of_elements="174">
         <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000010.xdmf"/>
         <Element index="1" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000020.xdmf"/>
         <Element index="2" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_000030.xdmf"/>
@@ -27678,9 +27817,43 @@
         <Element index="137" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001380.xdmf"/>
         <Element index="138" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001390.xdmf"/>
         <Element index="139" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001400.xdmf"/>
+        <Element index="140" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001410.xdmf"/>
+        <Element index="141" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001420.xdmf"/>
+        <Element index="142" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001430.xdmf"/>
+        <Element index="143" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001440.xdmf"/>
+        <Element index="144" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001450.xdmf"/>
+        <Element index="145" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001460.xdmf"/>
+        <Element index="146" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001470.xdmf"/>
+        <Element index="147" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001480.xdmf"/>
+        <Element index="148" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001490.xdmf"/>
+        <Element index="149" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001500.xdmf"/>
+        <Element index="150" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001510.xdmf"/>
+        <Element index="151" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001520.xdmf"/>
+        <Element index="152" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001530.xdmf"/>
+        <Element index="153" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001540.xdmf"/>
+        <Element index="154" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001550.xdmf"/>
+        <Element index="155" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001560.xdmf"/>
+        <Element index="156" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001570.xdmf"/>
+        <Element index="157" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001580.xdmf"/>
+        <Element index="158" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001590.xdmf"/>
+        <Element index="159" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001600.xdmf"/>
+        <Element index="160" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001610.xdmf"/>
+        <Element index="161" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001620.xdmf"/>
+        <Element index="162" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001630.xdmf"/>
+        <Element index="163" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001640.xdmf"/>
+        <Element index="164" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001650.xdmf"/>
+        <Element index="165" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001660.xdmf"/>
+        <Element index="166" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001670.xdmf"/>
+        <Element index="167" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001680.xdmf"/>
+        <Element index="168" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001690.xdmf"/>
+        <Element index="169" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001700.xdmf"/>
+        <Element index="170" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001710.xdmf"/>
+        <Element index="171" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001720.xdmf"/>
+        <Element index="172" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001730.xdmf"/>
+        <Element index="173" value="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/rotorFlow/solution/rotor/vpm_rotor_001740.xdmf"/>
         <Domain name="files" id="19187.FileNames.files"/>
       </Property>
-      <Property name="TimestepValues" id="19187.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="19187.TimestepValues" number_of_elements="174">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -27821,6 +27994,40 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
       </Property>
       <Property name="CellArrayInfo" id="19187.CellArrayInfo"/>
       <Property name="CellArrayStatus" id="19187.CellArrayStatus">
@@ -27920,7 +28127,7 @@
       </Property>
       <Property name="TimeRange" id="256.TimeRange" number_of_elements="2">
         <Element index="0" value="0.05"/>
-        <Element index="1" value="7"/>
+        <Element index="1" value="8.85"/>
       </Property>
       <Property name="TimeSources" id="256.TimeSources" number_of_elements="9">
         <Proxy value="10250"/>
@@ -27933,7 +28140,7 @@
         <Proxy value="17670"/>
         <Proxy value="19187"/>
       </Property>
-      <Property name="TimestepValues" id="256.TimestepValues" number_of_elements="140">
+      <Property name="TimestepValues" id="256.TimestepValues" number_of_elements="177">
         <Element index="0" value="0.05"/>
         <Element index="1" value="0.1"/>
         <Element index="2" value="0.15"/>
@@ -28074,6 +28281,43 @@
         <Element index="137" value="6.9"/>
         <Element index="138" value="6.95"/>
         <Element index="139" value="7"/>
+        <Element index="140" value="7.05"/>
+        <Element index="141" value="7.1"/>
+        <Element index="142" value="7.15"/>
+        <Element index="143" value="7.2"/>
+        <Element index="144" value="7.25"/>
+        <Element index="145" value="7.3"/>
+        <Element index="146" value="7.35"/>
+        <Element index="147" value="7.4"/>
+        <Element index="148" value="7.45"/>
+        <Element index="149" value="7.5"/>
+        <Element index="150" value="7.55"/>
+        <Element index="151" value="7.6"/>
+        <Element index="152" value="7.65"/>
+        <Element index="153" value="7.7"/>
+        <Element index="154" value="7.75"/>
+        <Element index="155" value="7.8"/>
+        <Element index="156" value="7.85"/>
+        <Element index="157" value="7.9"/>
+        <Element index="158" value="7.95"/>
+        <Element index="159" value="8"/>
+        <Element index="160" value="8.05"/>
+        <Element index="161" value="8.1"/>
+        <Element index="162" value="8.15"/>
+        <Element index="163" value="8.2"/>
+        <Element index="164" value="8.25"/>
+        <Element index="165" value="8.3"/>
+        <Element index="166" value="8.35"/>
+        <Element index="167" value="8.4"/>
+        <Element index="168" value="8.45"/>
+        <Element index="169" value="8.5"/>
+        <Element index="170" value="8.55"/>
+        <Element index="171" value="8.6"/>
+        <Element index="172" value="8.65"/>
+        <Element index="173" value="8.7"/>
+        <Element index="174" value="8.75"/>
+        <Element index="175" value="8.8"/>
+        <Element index="176" value="8.85"/>
       </Property>
       <Property name="Views" id="256.Views" number_of_elements="1">
         <Proxy value="7170"/>

@@ -8,12 +8,12 @@ test_disabled_stretching_leaves_circulation_invariant
     vectors must remain exactly unchanged after any number of steps.
     Failure → the 'enabled=False' guard is missing or bypassed.
 
-test_classical_stretching_changes_total_circulation
-    The classical stretching operator dΓ/dt = (Γ·∇)u is NOT anti-symmetric
+test_direct_stretching_changes_total_circulation
+    The direct stretching operator dΓ/dt = (Γ·∇)u is NOT anti-symmetric
     across particle pairs, so the vector sum ΣΓ is NOT conserved.  For a
     generic set of randomly oriented vortex particles the relative change
     in |ΣΓ| after one step must exceed a small threshold.
-    Failure → the CLASSICAL mode code path is not being reached, or the
+    Failure → the DIRECT mode code path is not being reached, or the
     kernel has accidentally been made anti-symmetric.
 """
 
@@ -101,24 +101,24 @@ def test_disabled_stretching_leaves_circulation_invariant(tmp_path):
     )
 
 
-def test_classical_stretching_changes_total_circulation(tmp_path):
+def test_direct_stretching_changes_total_circulation(tmp_path):
     """
-    Classical stretching dΓ/dt = (Γ·∇)u is not anti-symmetric across particle
+    Direct stretching dΓ/dt = (Γ·∇)u is not anti-symmetric across particle
     pairs and therefore does NOT conserve the vector sum ΣΓ.
 
     Physical basis
     --------------
     The transposed operator satisfies ΣᵢΣⱼ K(xᵢ−xⱼ) ⊗ αⱼ = 0 by swapping i↔j.
-    The classical operator lacks this anti-symmetry: the pair contributions
+    The direct operator lacks this anti-symmetry: the pair contributions
     (αⱼ·∇ᵢⱼ)uᵢⱼ and (αᵢ·∇ⱼᵢ)uⱼᵢ do not cancel.  For a generic random
     configuration of vortex particles the net change |ΔΣΓ| is therefore
     non-negligible after even a single Euler step.
 
     This test fails when
     --------------------
-    * The CLASSICAL branch in vortex_stretching defaults back to TRANSPOSED.
-    * The mode integer mapping (0=CLASSICAL, 1=TRANSPOSED) is swapped.
-    * All particles happen to be co-planar in a configuration where classical
+    * The DIRECT branch in vortex_stretching defaults back to TRANSPOSED.
+    * The mode integer mapping (0=DIRECT, 1=TRANSPOSED) is swapped.
+    * All particles happen to be co-planar in a configuration where direct
       accidentally conserves ΣΓ (extremely unlikely with random seed).
     """
     rng = np.random.default_rng(_RNG_SEED + 1)
@@ -127,7 +127,7 @@ def test_classical_stretching_changes_total_circulation(tmp_path):
 
     solver = _stretching_solver(
         tmp_path,
-        stretching_config=StretchingConfig.classical(scheme="EULER"),
+        stretching_config=StretchingConfig.direct(scheme="EULER"),
         positions=positions,
         circulations=circulations,
     )
@@ -141,7 +141,7 @@ def test_classical_stretching_changes_total_circulation(tmp_path):
     relative_change = delta / (total_gamma + 1e-12)
 
     assert relative_change > 1e-4, (
-        f"Classical stretching should break ΣΓ conservation but relative change "
+        f"Direct stretching should break ΣΓ conservation but relative change "
         f"was only {relative_change:.2e}.  "
-        f"Check that the CLASSICAL kernel mode (mode_int=0) is active."
+        f"Check that the DIRECT kernel mode (mode_int=0) is active."
     )
