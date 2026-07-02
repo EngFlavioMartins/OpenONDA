@@ -53,6 +53,20 @@ class SmagorinskyModel:
         cs: float = SMAGORINSKY_CONSTANT,
         ce: float = 1.048,
     ):
+        """
+        Initialize the Smagorinsky SGS eddy-viscosity model.
+
+        Stores model constants, computes the derived ``ck`` parameter from
+        ``cs`` and ``ce`` (see class docstring for the relation), and
+        pre-allocates Taichi fields for the filter width and strain-rate
+        magnitude.
+
+        Args:
+            max_particles: Maximum number of particles for field allocation.
+            kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
+            cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
+            ce: Model dissipation constant (default 1.048, OpenFOAM standard).
+        """
         self.LES_filter_type = "SMAGORINSKY"
         self.max_particles = max_particles
         self.cs = cs

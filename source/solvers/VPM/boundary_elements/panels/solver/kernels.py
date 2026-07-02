@@ -13,6 +13,27 @@ import taichi as ti
 def panel_update_translation_kernel(
     lattice, body_range, displacement: np.ndarray, velocity: np.ndarray
 ) -> None:
+    """Apply a rigid translation to a contiguous range of panels.
+
+    Updates both panel geometry (vertex positions) and panel velocity using
+    the panel solver's Taichi kernels.
+
+    Parameters
+    ----------
+    lattice
+        Panel lattice instance with ``_update_geometry_kernel`` and
+        ``_update_velocity_kernel`` methods.
+    body_range : tuple[int, int]
+        ``(start_idx, end_idx)`` defining the panel range to update.
+    displacement : np.ndarray
+        Translation vector with shape ``(3,)``.
+    velocity : np.ndarray
+        Translational velocity vector with shape ``(3,)``.
+
+    Examples
+    --------
+    >>> panel_update_translation_kernel(lattice, (0, 100), disp, vel)
+    """
     start_idx, end_idx = body_range
     count = end_idx - start_idx
     disp = np.asarray(displacement, dtype=np.float64)
@@ -34,6 +55,30 @@ def panel_update_translation_kernel(
 def panel_update_rotation_kernel(
     lattice, body_range, rotation: np.ndarray, omega: np.ndarray, center: np.ndarray
 ) -> None:
+    """Apply a rigid rotation to a contiguous range of panels.
+
+    Updates both panel geometry (vertex positions) and panel velocity using
+    the panel solver's Taichi kernels. The rotation is applied about the
+    given ``center`` point.
+
+    Parameters
+    ----------
+    lattice
+        Panel lattice instance with ``_update_geometry_kernel`` and
+        ``_update_velocity_kernel`` methods.
+    body_range : tuple[int, int]
+        ``(start_idx, end_idx)`` defining the panel range to update.
+    rotation : np.ndarray
+        3x3 rotation matrix.
+    omega : np.ndarray
+        Angular velocity vector with shape ``(3,)``.
+    center : np.ndarray
+        Center of rotation with shape ``(3,)``.
+
+    Examples
+    --------
+    >>> panel_update_rotation_kernel(lattice, (0, 100), R, omega, center)
+    """
     start_idx, end_idx = body_range
     count = end_idx - start_idx
     R = np.asarray(rotation, dtype=np.float64)

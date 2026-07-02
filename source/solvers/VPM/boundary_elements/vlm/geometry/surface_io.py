@@ -62,14 +62,24 @@ def save_surface(aircraft: "Aircraft", filepath: str) -> str:
     return output_path
 
 def load_surface(filepath: str) -> "Aircraft":
-    """
-    Load aircraft surface geometry from JSON file.
+    """Load an aircraft surface geometry from a JSON file.
 
-    Args:
-        filepath: Path to surface JSON file
+    Parameters
+    ----------
+    filepath : str
+        Path to the surface JSON file (``.json`` extension is appended
+        automatically if not present).
 
-    Returns:
-        Aircraft: Loaded aircraft object
+    Returns
+    -------
+    Aircraft
+        Loaded aircraft object with wings, segments, and reference values.
+
+    Examples
+    --------
+    >>> aircraft = load_surface("aircraft.json")
+    >>> aircraft.uid
+    'my_aircraft'
     """
     input_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
 

@@ -110,12 +110,31 @@ def _load_stl_ascii(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     return vertices, normals
 
 def load_stl(filepath: str) -> tuple[np.ndarray, np.ndarray]:
-    """Load STL file and return ``(vertices, normals)`` as float64 arrays.
+    """Load an STL file and return triangle vertices and unit normals.
+
+    Attempts to use the optional ``numpy-stl`` library first, then falls back
+    to manual binary or ASCII STL parsing.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the STL file (ASCII or binary format).
 
     Returns
     -------
     tuple[np.ndarray, np.ndarray]
         ``vertices`` with shape ``(N, 3, 3)``, ``normals`` with shape ``(N, 3)``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+
+    Examples
+    --------
+    >>> vertices, normals = load_stl("body.stl")
+    >>> vertices.shape
+    (N, 3, 3)
     """
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"STL file not found: {filepath}")
@@ -167,7 +186,10 @@ def _load_stl_binary(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     return vertices, normals
 
 def save_stl(filepath: str, vertices: np.ndarray, normals: np.ndarray | None = None) -> None:
-    """Save triangular panels to STL file.
+    """Save triangular panels to a binary STL file.
+
+    Uses the optional ``numpy-stl`` library when available; otherwise writes
+    a binary STL file directly.
 
     Parameters
     ----------
@@ -176,7 +198,17 @@ def save_stl(filepath: str, vertices: np.ndarray, normals: np.ndarray | None = N
     vertices : np.ndarray
         Triangle vertices with shape ``(N, 3, 3)``.
     normals : np.ndarray | None
-        Optional unit normals with shape ``(N, 3)``.
+        Optional unit normals with shape ``(N, 3)``. Computed automatically
+        when ``None``.
+
+    Raises
+    ------
+    ValueError
+        If ``vertices`` or ``normals`` have invalid shapes.
+
+    Examples
+    --------
+    >>> save_stl("output.stl", vertices, normals)
     """
     triangles = np.asarray(vertices, dtype=np.float64)
     if triangles.ndim != 3 or triangles.shape[1:] != (3, 3):
@@ -350,6 +382,10 @@ def build_mesh_topology(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build panel adjacency and boundary masks for triangular panel meshes.
 
+    Identifies panel neighbours by shared edges, marks trailing-edge (open
+    boundary) panels, and marks leading-edge panels based on the x-coordinate
+    of each triangle centroid.
+
     Parameters
     ----------
     vertices : np.ndarray
@@ -358,7 +394,7 @@ def build_mesh_topology(
     faces : np.ndarray | None
         Optional connectivity with shape ``(N, 3)``.
     max_neighbors : int
-        Number of neighbor slots per panel.
+        Number of neighbor slots per panel (default ``8``).
 
     Returns
     -------
@@ -366,6 +402,18 @@ def build_mesh_topology(
         ``neighbor_indices`` shape ``(N, max_neighbors)`` with ``-1`` padding,
         ``is_TE_panel`` shape ``(N,)`` int32,
         ``is_LE_panel`` shape ``(N,)`` int32.
+
+    Raises
+    ------
+    ValueError
+        If ``max_neighbors`` is not positive, or if vertex/face shapes are
+        invalid.
+
+    Examples
+    --------
+    >>> neighbors, te_mask, le_mask = build_mesh_topology(vertices)
+    >>> neighbors.shape
+    (N, 8)
     """
     if max_neighbors <= 0:
         raise ValueError("max_neighbors must be positive")

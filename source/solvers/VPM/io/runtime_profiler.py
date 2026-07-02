@@ -108,12 +108,12 @@ class RuntimeProfiler:
         self.step_time = 0.0  # most-recent full-step wall time [s]
         self.n_steps = 0
 
-    # ── synchronisation ────────────────────────────────────────────────────────
+    # -- synchronisation --------------------------------------------------------
     def _synchronize(self) -> None:
         if self._sync is not None:
             self._sync()
 
-    # ── measurement ────────────────────────────────────────────────────────────
+    # -- measurement ------------------------------------------------------------
     def section(self, name: str):
         """Time a named section. Returns a no-op context when disabled.
 
@@ -133,7 +133,7 @@ class RuntimeProfiler:
         self._calls[name] = self._calls.get(name, 0) + 1
         self._last[name] = dt
 
-    # ── lifecycle ───────────────────────────────────────────────────────────────
+    # -- lifecycle ---------------------------------------------------------------
     def reset(self) -> None:
         """Clear all accumulated statistics."""
         self._cumulative.clear()
@@ -143,7 +143,7 @@ class RuntimeProfiler:
         self.step_time = 0.0
         self.n_steps = 0
 
-    # ── reporting ────────────────────────────────────────────────────────────────
+    # -- reporting ----------------------------------------------------------------
     def report_step(self) -> None:
         """Print the just-completed step's time and optional detailed breakdown.
 

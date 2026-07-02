@@ -2559,14 +2559,14 @@ class VLMSolver:
 
         n_panels = self.lattice.num_panels
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 1. Advance kinematics (move geometry to new positions)
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         self.advance_time(dt, current_time=time)
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 2. Determine reference / convection velocities early
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         U_ref = self._resolve_coupling_uref(config)
         self._last_U_ref = U_ref
         include_fs = self._determine_include_freestream(config)
@@ -2579,11 +2579,11 @@ class VLMSolver:
         bg_mag = np.linalg.norm(V_bg_unsteady)
         V_shed = V_bg_unsteady if bg_mag > 1e-3 else None
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 3. Compute VPM-induced velocity at collocation points.
         #    Particles from previous steps are already convected downstream,
         #    providing spatial separation for the explicit coupling.
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         physics.compute_target_velocities(
             particles,
             self.lattice.collocation,
@@ -2591,27 +2591,27 @@ class VLMSolver:
             include_freestream=include_fs,
         )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 4. Solve VLM system (coupled AIC — bound horseshoe + near-wake)
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         self.solve(V_external=None, dt=dt, coupled=True)
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 5. Shed the TE near-wake row from the clean post-solve cumulative Γ.
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         self.lattice.reset_wake_buffer()
         result = self._compute_wake_particles(dt, U_ref, V_particle_vel=V_shed, reset_buffer=False)
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 6. Post-process forces (Kutta-Joukowski / impulse) from the solved Γ.
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         V_ext_np = self.lattice.external_velocity.to_numpy()[:n_panels]
         self.compute_postprocess(V_ext_np, U_ref, self.density, dt=dt, coupled=True)
         self._last_forces = self.compute_forces(self.density, self._last_U_ref)
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 7. Transfer the shed wake particles to the free VPM wake.
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         if result and result.get("_gpu_transfer_ready"):
             num_shed = self.lattice.num_wake_particles[None]
             if num_shed > 0:
@@ -2626,9 +2626,9 @@ class VLMSolver:
                     viscosity=self.viscosity,
                 )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # 9. Absorb particles that collide with lifting surfaces
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # tolerance = perpendicular distance from the panel plane [m].
         # For zero-thickness lifting surfaces (flat plates, thin airfoils),
         # absorption must be disabled (tolerance=0).  The collision kernel

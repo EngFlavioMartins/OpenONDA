@@ -243,7 +243,7 @@ class _GridDiffusionMixin:
         longer a concern, while its never-shrink property made it
         catastrophically sensitive to even one outlier.
         """
-        # ── Filter non-finite positions ──────────────────────────────────
+        # -- Filter non-finite positions ----------------------------------
         finite_mask = np.isfinite(pos).all(axis=1)
         if not finite_mask.all():
             n_bad = int((~finite_mask).sum())
@@ -258,7 +258,7 @@ class _GridDiffusionMixin:
         lo = pos.min(axis=0) - margin
         hi = pos.max(axis=0) + margin
 
-        # ── Cap maximum grid extent per axis ─────────────────────────────
+        # -- Cap maximum grid extent per axis -----------------------------
         max_extent = self._MAX_CELLS_PER_DIM * h
         for d in range(3):
             span = hi[d] - lo[d]
@@ -298,7 +298,7 @@ class _GridDiffusionMixin:
         In either case, requested dimensions are clamped to
         ``_max_grid_dims`` (the VPM domain ceiling) when available.
         """
-        # ── Clamp request to VPM-domain ceiling ──────────────────────────
+        # -- Clamp request to VPM-domain ceiling --------------------------
         cap = self._max_grid_dims
         if cap is not None:
             nx = min(nx, cap[0])
@@ -809,13 +809,13 @@ class _GridDiffusionMixin:
         pos_np = particles.position_cpu()
         circ_np = particles.circulation_cpu()
 
-        # ── LES: per-particle ν_t to carry through regen  ─────────────
+        # -- LES: per-particle ν_t to carry through regen  -------------
         # The scattered ν_t is inherited by regenerated particles so that ν_t
         # survives the rebuild and reaches backup (LES recomputes it next step
         # anyway, but carrying it keeps the backed-up field faithful).
         nu_t_np = particles.viscosity_turbulent_cpu()
 
-        # ── Grid setup ────────────────────────────────────────────────────────
+        # -- Grid setup --------------------------------------------------------
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
@@ -830,7 +830,7 @@ class _GridDiffusionMixin:
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
 
-        # ── M4' scatter (GPU) ─────────────────────────────────────────────────
+        # -- M4' scatter (GPU) -------------------------------------------------
         self._current_grid.fill(0.0)
         gmin = grid_min_np.astype(float)
         self._m4_scatter_gpu_kernel(
@@ -847,7 +847,7 @@ class _GridDiffusionMixin:
             N,
         )
 
-        # ── Explicit Laplacian diffusion (GPU) ────────────────────────────────
+        # -- Explicit Laplacian diffusion (GPU) --------------------------------
         # Bug A: when ν_eff (ν+ν_t) is supplied, use a per-node coefficient
         # α_node = ν_eff·dt/h² so the SGS eddy viscosity acts in GBD runs.
         # Otherwise fall back to the scalar molecular α = ν·dt/h².
@@ -899,10 +899,10 @@ class _GridDiffusionMixin:
             )
         self._ping = not self._ping  # flip so _current_grid points to diffused field
 
-        # ── Body mask (GPU, optional) ─────────────────────────────────────────
+        # -- Body mask (GPU, optional) -----------------------------------------
         self._apply_body_mask_current_grid(nx, ny, nz)
 
-        # ── ID-field scatters (CPU, small cost) ───────────────────────────────
+        # -- ID-field scatters (CPU, small cost) -------------------------------
         zone_winner_grid = self._scatter_zone_ids(
             pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
         )
@@ -915,7 +915,7 @@ class _GridDiffusionMixin:
             pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz
         )
 
-        # ── Threshold pruning (CPU — read diffused grid back once) ────────────
+        # -- Threshold pruning (CPU — read diffused grid back once) ------------
         grid_np = self._current_grid.to_numpy()[:nx, :ny, :nz, :]
 
         circ_mag = np.linalg.norm(grid_np, axis=-1)
@@ -934,7 +934,7 @@ class _GridDiffusionMixin:
             _logger.warning("[GBD] No nodes above threshold %.2e — keeping originals.", threshold)
             return None
 
-        # ── Particle-count cap ────────────────────────────────────────────────
+        # -- Particle-count cap ------------------------------------------------
         # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
         # The top surviving nodes (by |Γ|) contain essentially all circulation;
         # the dropped tail nodes contribute little but can otherwise trigger
@@ -1173,10 +1173,10 @@ class _GridDiffusionMixin:
         pos_np = particles.position_cpu()
         circ_np = particles.circulation_cpu()
 
-        # ── LES: per-particle ν_t to carry through regen (Bug B) ─────────────
+        # -- LES: per-particle ν_t to carry through regen (Bug B) -------------
         nu_t_np = particles.viscosity_turbulent_cpu()
 
-        # ── Grid setup ────────────────────────────────────────────────────────
+        # -- Grid setup --------------------------------------------------------
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
@@ -1191,14 +1191,14 @@ class _GridDiffusionMixin:
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
 
-        # ── DVH heat-kernel scatter (Durante 2024, Eqs. 17-19) ───────────────
+        # -- DVH heat-kernel scatter (Durante 2024, Eqs. 17-19) ---------------
         # (the scatter zeroes the grid internally before depositing)
         self._dvh_scatter_circ(
             pos_np, circ_np, grid_min_np, h, nu, dt, nx, ny, nz, rd_ratio, nu_eff_np=nu_eff
         )
         self._apply_body_mask_current_grid(nx, ny, nz)
 
-        # ── ID-field scatters (nearest-node, |Γ|-weighted) ───────────────────
+        # -- ID-field scatters (nearest-node, |Γ|-weighted) -------------------
         zone_winner_grid = self._scatter_zone_ids(
             pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
         )
@@ -1211,7 +1211,7 @@ class _GridDiffusionMixin:
             pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz
         )
 
-        # ── Threshold pruning ─────────────────────────────────────────────────
+        # -- Threshold pruning -------------------------------------------------
         grid_np = self._current_grid.to_numpy()[:nx, :ny, :nz, :]
         circ_mag = np.linalg.norm(grid_np, axis=-1)
         max_circ = float(circ_mag.max())
@@ -1229,7 +1229,7 @@ class _GridDiffusionMixin:
             _logger.warning("[DVH] No nodes above threshold %.2e — keeping originals.", threshold)
             return None
 
-        # ── Particle-count cap ────────────────────────────────────────────────
+        # -- Particle-count cap ------------------------------------------------
         # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
         # An explicit max_nodes (e.g. ViscousConfig.dvh_max_nodes) additionally
         # bounds the budget-mode halo growth: keeping only the strongest

@@ -245,7 +245,9 @@ class OfflineFlowDiagnostics:
             n_particles=n,
         )
 
-    #TODO: be areful with using f64 as default. Everywhere in this code, f32 should be the default. Moreover, the default everywhere should be set at the solver class object initialiation, such that f32 or f64 are consistently selected everwhere. Make sure that no other code in this repository uses f64 as default. And make sure that the selection of precision is safe and governened by one constructor only.
+    # Precision policy: f32 is the default throughout OpenONDA. Precision should
+    # be selected at the Solver class constructor and propagated consistently.
+    # Ensure no other code uses f64 as default.
     def compute_all(self, verbose: bool = True) -> None:
         """
         Compute flow integrals for all timesteps.
@@ -255,7 +257,7 @@ class OfflineFlowDiagnostics:
         """
         # Initialize evaluator (reuse across steps to maintain energy history for dE/dt)
         self.evaluator = ParticleFieldEvaluation(
-            particles_kernel="GAUSSIAN", 
+            particles_kernel="GAUSSIAN",
             max_particles=self._estimate_max_particles(),
             accumulator_dtype=ti.f64,
         )

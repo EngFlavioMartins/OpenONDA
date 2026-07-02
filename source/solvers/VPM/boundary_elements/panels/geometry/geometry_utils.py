@@ -17,6 +17,31 @@ logger = logging.getLogger("vpm")
 
 @dataclass
 class ParticleFilterResult:
+    """Result of filtering particles against a closed STL body.
+
+    Contains the filtered particle arrays (only particles outside the body)
+    together with the boolean mask and integer indices of the outside subset.
+
+    Parameters
+    ----------
+    positions : np.ndarray
+        Filtered particle positions with shape ``(M, 3)``.
+    velocities : np.ndarray
+        Filtered particle velocities with shape ``(M, 3)``.
+    strengths : np.ndarray
+        Filtered particle vortex strengths with shape ``(M, 3)``.
+    radii : np.ndarray
+        Filtered particle radii with shape ``(M,)``.
+    volumes : np.ndarray
+        Filtered particle volumes with shape ``(M,)``.
+    viscosities : np.ndarray
+        Filtered particle viscosities with shape ``(M,)``.
+    outside_mask : np.ndarray
+        Boolean mask of shape ``(N,)`` where ``True`` indicates particles
+        outside the body.
+    outside_indices : np.ndarray
+        Integer indices of the outside particles with shape ``(M,)``.
+    """
     positions: np.ndarray
     velocities: np.ndarray
     strengths: np.ndarray

@@ -4,7 +4,7 @@ Taichi kernels for VLM geometry updates and wake shedding.
 
 import taichi as ti
 
-# ── Weak-freestream wake-convection heuristics ──────────────────────────────
+# -- Weak-freestream wake-convection heuristics ------------------------------
 # When the freestream is weak relative to the blade/section kinematic speed
 # (e.g. a hovering or low-advance-ratio rotor), newly shed TE particles would
 # otherwise be deposited in (or convected back through) the rotor disk plane.

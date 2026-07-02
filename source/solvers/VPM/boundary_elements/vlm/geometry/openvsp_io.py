@@ -122,11 +122,41 @@ def export_openvsp_degengeom(
     config: OpenVSPImportConfig | None = None,
 ) -> Path:
     """
-    Export an OpenVSP ``.vsp3`` model to DegenGeom CSV using the OpenVSP API.
+    Export an OpenVSP ``.vsp3`` model to a DegenGeom CSV file.
 
-    Direct ``.vsp3`` import requires the optional ``openvsp`` Python module. If
-    it is unavailable, export DegenGeom CSV manually from OpenVSP and call
-    :func:`load_degengeom_csv`.
+    Uses the optional ``openvsp`` Python API when available.  Falls back to
+    launching a subprocess with a system-installed OpenVSP Python interpreter.
+    When neither is available, the user must export the CSV manually from
+    OpenVSP and call :func:`load_degengeom_csv` directly.
+
+    Parameters
+    ----------
+    vsp_file : str | Path
+        Path to the ``.vsp3`` input file.
+    output_csv : str | Path
+        Path for the generated DegenGeom CSV file.
+    config : OpenVSPImportConfig | None
+        Import configuration (see :class:`OpenVSPImportConfig`).
+
+    Returns
+    -------
+    Path
+        Path to the generated CSV file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the ``.vsp3`` file does not exist.
+    RuntimeError
+        If the export completes but no CSV file is produced.
+    ImportError
+        If OpenVSP Python API is unavailable and no subprocess fallback exists.
+
+    Examples
+    --------
+    >>> csv_path = export_openvsp_degengeom("model.vsp3", "degen.csv")
+    >>> csv_path.exists()
+    True
     """
 
     cfg = config or OpenVSPImportConfig()
@@ -184,7 +214,36 @@ def load_degengeom_csv(
     csv_file: str | Path,
     config: OpenVSPImportConfig | None = None,
 ) -> Aircraft:
-    """Parse an OpenVSP DegenGeom CSV file into an OpenONDA ``Aircraft``."""
+    """Parse an OpenVSP DegenGeom CSV file into an OpenONDA
+    :class:`~.aircraft.Aircraft`.
+
+    Parameters
+    ----------
+    csv_file : str | Path
+        Path to the DegenGeom CSV file.
+    config : OpenVSPImportConfig | None
+        Import configuration (see :class:`OpenVSPImportConfig`).  When
+        ``None``, defaults are used.
+
+    Returns
+    -------
+    Aircraft
+        Populated aircraft model with wings and segments derived from the
+        CSV lifting-surface tables.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the CSV file does not exist.
+    ValueError
+        If no lifting-surface point tables are found.
+
+    Examples
+    --------
+    >>> aircraft = load_degengeom_csv("degen.csv")
+    >>> len(aircraft.wings)
+    2
+    """
 
     cfg = config or OpenVSPImportConfig()
     csv_path = Path(csv_file)

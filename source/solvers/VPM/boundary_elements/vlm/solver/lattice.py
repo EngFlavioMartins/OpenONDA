@@ -330,7 +330,7 @@ class VLMLattice:
         """Get pressure coefficient as numpy array."""
         return self.pressure_coefficient.to_numpy()[: self.num_panels]
 
-    # ─── NumPy-based geometry update (avoids Taichi field dimension bugs) ─────
+    # --- NumPy-based geometry update (avoids Taichi field dimension bugs) -----
     def translate_panels(self, dX: np.ndarray, start_idx: int = 0, end_idx: int = None):
         """
         Translate panel geometry by dX using NumPy (CPU).
@@ -615,7 +615,7 @@ class VLMLattice:
         # Add scalar fields
         N = self.num_panels
 
-        # ── Geometry ─────────────────────────────────────────────────────────
+        # -- Geometry ---------------------------------------------------------
 
         # Panel Areas
         areas_np = self.areas.to_numpy()[:N].reshape(-1, 1)
@@ -664,7 +664,7 @@ class VLMLattice:
         is_le_vtk.SetName("IsLE")
         polydata.GetCellData().AddArray(is_le_vtk)
 
-        # ── Circulation ───────────────────────────────────────────────────────
+        # -- Circulation -------------------------------------------------------
 
         # Per-panel (horseshoe) circulation Γ  — used directly in K-J
         gamma_np = self.circulation.to_numpy()[:N]
@@ -672,7 +672,7 @@ class VLMLattice:
         gamma_vtk.SetName("Circulation")
         polydata.GetCellData().AddArray(gamma_vtk)
 
-        # ── Velocity fields ───────────────────────────────────────────────────
+        # -- Velocity fields ---------------------------------------------------
 
         # Velocity at bound-vortex midpoints including wake-induced downwash.
         # This is the V used in the actual K-J force kernel:  F = ρΓ(V×l).
@@ -684,7 +684,7 @@ class VLMLattice:
         bv_vtk.SetNumberOfComponents(3)
         polydata.GetCellData().AddArray(bv_vtk)
 
-        # ── Pressure ──────────────────────────────────────────────────────────
+        # -- Pressure ----------------------------------------------------------
 
         # DeltaCp: pressure-jump coefficient across the panel surface.
         #   ΔCp = 2Γ / (V∞ · Δc)
@@ -709,7 +709,7 @@ class VLMLattice:
         dcp_vtk.SetName("DeltaCp")
         polydata.GetCellData().AddArray(dcp_vtk)
 
-        # ── Per-panel forces (as computed by the solver) ──────────────────────
+        # -- Per-panel forces (as computed by the solver) ----------------------
 
         # Total panel force F = F_KJ + F_unsteady  (ground-truth for cross-check)
         forces_np = self.forces.to_numpy()[:N]

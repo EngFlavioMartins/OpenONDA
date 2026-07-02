@@ -57,7 +57,7 @@ def _clear_stale_taichi_cache() -> None:
     # Prevent Taichi from using a stale external cache path.
     os.environ.pop("TI_OFFLINE_CACHE_FILE_PATH", None)
 
-# ── Integrated-GPU detection ───────────────────────────────────────────
+# -- Integrated-GPU detection -------------------------------------------
 # On integrated GPUs the Vulkan heap "size" is total system RAM, but the
 # actual usable "budget" is much smaller.  Taichi 1.7.x computes its
 # memory pool as  heap_size × device_memory_fraction,  which can vastly
@@ -140,7 +140,7 @@ def _safe_device_memory_for_init(
     Returns a dict with either ``{"device_memory_fraction": ...}`` or
     ``{"device_memory_GB": ...}``.
     """
-    # ── Metal (macOS) path ──────────────────────────────────────────────────
+    # -- Metal (macOS) path --------------------------------------------------
     if platform.system() == "Darwin" or backend in {"GPU_METAL", "METAL"}:
         if _is_apple_silicon():
             # Apple Silicon: GPU shares system RAM (unified memory).
@@ -154,7 +154,7 @@ def _safe_device_memory_for_init(
         # Intel Mac with discrete GPU: Metal still manages memory itself.
         return {}
 
-    # ── Linux / Vulkan / CUDA path ──────────────────────────────────────
+    # -- Linux / Vulkan / CUDA path --------------------------------------
     # CUDA is always a discrete NVIDIA GPU.  Skip all integrated-GPU
     # heuristics (Vulkan heap ratios, DRM driver names) which are unreliable
     # on Optimus / hybrid-graphics laptops: the Intel iGPU's i915 driver
@@ -380,7 +380,7 @@ def initialize_taichi_backend(
     if precision not in _PRECISION_MAP:
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
 
-    # ── Environment-variable override (highest priority) ────────────────
+    # -- Environment-variable override (highest priority) ----------------
     # Users (and install.sh) can set OPENONDA_PROCESSING_UNIT to control
     # the backend without modifying any Python config:
     #   export OPENONDA_PROCESSING_UNIT=GPU    # best GPU for this platform
@@ -398,7 +398,7 @@ def initialize_taichi_backend(
             )
         preferred_backend = env_unit
 
-    # ── Platform-aware backend chain (GPU first, CPU last) ──────────────
+    # -- Platform-aware backend chain (GPU first, CPU last) --------------
     # Build the ordered list of (arch, name) candidates to attempt.  Every
     # viable GPU for this platform is tried before the CPU, so a transient
     # failure on the first-choice GPU API still lands on another GPU instead

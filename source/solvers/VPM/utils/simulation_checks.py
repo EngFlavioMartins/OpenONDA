@@ -109,7 +109,9 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
 
     return result
 
-#TODO: is this method even in use anywhere? Haven't we moved this to the viscous schemes initialization? If so, delete this. Check if its used. If its still used, make sure its plugged and adopted by all viscous methods.
+# NOTE: This function appears to be unused (no callers found in the codebase).
+# It may have been superseded by the viscous scheme initialization.
+# Consider removing if no longer needed after verification.
 def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     """
     Check and recommend time-step sizing constraints for all viscous schemes.

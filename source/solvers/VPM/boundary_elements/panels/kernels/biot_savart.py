@@ -21,8 +21,33 @@ def compute_vortex_ring_velocity(
     v2: ti.types.vector(3, float),
 ) -> ti.types.vector(3, float):
     """
-    Induced velocity at point P from a triangular vortex ring (v0, v1, v2).
-    Doublet strength = 1.0. Velocity = Σ (Biot-Savart segment).
+    Induced velocity at point ``p`` from a unit-strength triangular vortex ring.
+
+    The induced velocity is computed as the sum of Biot-Savart contributions
+    from each of the three straight segments ``(v0, v1)``, ``(v1, v2)``, and
+    ``(v2, v0)``.
+
+    Parameters
+    ----------
+    p : ti.types.vector(3, float)
+        Evaluation point.
+    v0 : ti.types.vector(3, float)
+        First vertex of the triangle.
+    v1 : ti.types.vector(3, float)
+        Second vertex of the triangle.
+    v2 : ti.types.vector(3, float)
+        Third vertex of the triangle.
+
+    Returns
+    -------
+    ti.types.vector(3, float)
+        Induced velocity vector.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        vel = compute_vortex_ring_velocity(p, v0, v1, v2)
     """
     vel = ti.Vector([0.0, 0.0, 0.0])
     vel += biot_savart_segment(p, v0, v1)
@@ -34,7 +59,33 @@ def compute_vortex_ring_velocity(
 def biot_savart_segment(
     p: ti.types.vector(3, float), v0: ti.types.vector(3, float), v1: ti.types.vector(3, float)
 ) -> ti.types.vector(3, float):
-    """Biot-Savart induced velocity by a single straight segment [v0, v1]. Strength = 1.0."""
+    """
+    Induced velocity at ``p`` from a unit-strength straight vortex segment.
+
+    Uses a regularised Biot-Savart kernel (Krasny / Rosenhead form) that
+    clamps distances and adds a small core-radius epsilon to the denominator
+    to avoid singularities near the segment vertices.
+
+    Parameters
+    ----------
+    p : ti.types.vector(3, float)
+        Evaluation point.
+    v0 : ti.types.vector(3, float)
+        Start vertex of the segment.
+    v1 : ti.types.vector(3, float)
+        End vertex of the segment.
+
+    Returns
+    -------
+    ti.types.vector(3, float)
+        Induced velocity vector.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        vel = biot_savart_segment(p, v0, v1)
+    """
     r1 = p - v0
     r2 = p - v1
     r1xr2 = r1.cross(r2)

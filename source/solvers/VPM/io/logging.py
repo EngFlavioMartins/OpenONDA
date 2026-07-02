@@ -195,7 +195,7 @@ class Logging:
         lines.append(title)
         lines.append(bar)
 
-        # ── Collect all sections ──────────────────────────────────────────
+        # -- Collect all sections ------------------------------------------
         sections = []
         label_w = 0
 
@@ -272,7 +272,7 @@ class Logging:
         except Exception:
             pass
 
-        # ── Render sections ──────────────────────────────────────────────
+        # -- Render sections ----------------------------------------------
         for sec_idx, (sec_name, items) in enumerate(sections):
             if sec_idx > 0:
                 lines.append(sep)
@@ -846,7 +846,7 @@ class Logging:
         print(f"{'Total simulation time:':<23}{total_elapsed:.3e} s", flush=True)
 
         if detailed_timing and len(detailed_timing) > 0:
-            print("  └─ Detailed breakdown:")
+            print("  └- Detailed breakdown:")
             for operation, duration in detailed_timing.items():
                 pct = 100.0 * duration / step_elapsed if step_elapsed > 0 else 0
                 print(f"     {operation:<24}: {duration:6.3f}s ({pct:5.1f}%)")

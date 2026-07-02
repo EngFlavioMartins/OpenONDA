@@ -917,25 +917,25 @@ class StabilizationConfig:
                                    remeshing_frequency=20, remeshing_spacing=0.03)
     """
 
-    # ── Particle splitting ─────────────────────────────────────────────────────
+    # -- Particle splitting -----------------------------------------------------
     max_core_radius: float | None = None
     """Split particles whose core radius exceeds this value [m].  None = disabled."""
 
     split_diagnostics_enabled: bool = False
     """Download pre/post split fields and run detailed split diagnostics. Disabled by default."""
 
-    # ── Wake / bounds cutoff ──────────────────────────────────────────────────
+    # -- Wake / bounds cutoff --------------------------------------------------
     remove_particles_by_bounds: list[float] | None = None
     """[xmin, xmax, ymin, ymax, zmin, zmax] — remove particles outside box.  None = disabled."""
 
-    # ── Weak-particle removal ─────────────────────────────────────────────────
+    # -- Weak-particle removal -------------------------------------------------
     weak_threshold_percent: float | None = None
     """Remove particles with |Γ| < weak_threshold_percent% of the group maximum.  None = disabled."""
 
     per_group: bool = True
     """Apply the weak-particle threshold independently per group (True, default) or globally."""
 
-    # ── Conservative remeshing ────────────────────────────────────────────────
+    # -- Conservative remeshing ------------------------------------------------
     remeshing_frequency: int | None = None
     """Remesh every N steps.  None = disabled."""
 
@@ -969,7 +969,7 @@ class StabilizationConfig:
     remeshing_projection_padding: int = 4
     """Zero-padding cells used by the isolated-domain FFT projection."""
 
-    # ── Strength relaxation (Winckelmans/Pedrizzetti direction projection) ──
+    # -- Strength relaxation (Winckelmans/Pedrizzetti direction projection) --
     relaxation_enabled: bool = False
     """Enable strength-relaxation stabilization of vortex stretching."""
 
@@ -1001,7 +1001,7 @@ class StabilizationConfig:
     relaxation_verbose: bool = False
     """Collect per-step strength-relaxation diagnostics."""
 
-    # ── Parallel-strain relaxation (rVPM correction) ───────────────────────
+    # -- Parallel-strain relaxation (rVPM correction) -----------------------
     parallel_strain_enabled: bool = False
     """Enable the rVPM a-posteriori correction after the stretching substep."""
 
@@ -1063,10 +1063,16 @@ class StabilizationConfig:
             if self.parallel_strain_clamp is not None and self.parallel_strain_clamp <= 0:
                 raise ValueError("parallel_strain_clamp must be positive when provided")
 
-    # ── Factory methods ───────────────────────────────────────────────────────
+    # -- Factory methods -------------------------------------------------------
     @staticmethod
     def disabled() -> "StabilizationConfig":
-        """No stabilisation mechanisms active."""
+        """No stabilisation mechanisms active.
+
+        Examples:
+              >>> stab = StabilizationConfig.disabled()
+              >>> stab.max_core_radius is None
+              True
+        """
         return StabilizationConfig()
 
     @staticmethod
@@ -1074,7 +1080,19 @@ class StabilizationConfig:
         radius: float,
         weak_threshold_percent: float = 1.0,
     ) -> "StabilizationConfig":
-        """Particle splitting when core radius exceeds ``radius``."""
+        """Particle splitting when core radius exceeds ``radius``.
+
+        Examples:
+              >>> stab = StabilizationConfig.particle_splitting(radius=0.1)
+              >>> stab.max_core_radius
+              0.1
+
+              >>> stab = StabilizationConfig.particle_splitting(
+              ...     radius=0.08, weak_threshold_percent=2.0
+              ... )
+              >>> stab.weak_threshold_percent
+              2.0
+        """
         if radius <= 0:
             raise ValueError("max_core_radius must be positive")
         return StabilizationConfig(
@@ -1096,7 +1114,19 @@ class StabilizationConfig:
         project_solenoidal: bool = False,
         projection_padding: int = 4,
     ) -> "StabilizationConfig":
-        """Periodic conservative remeshing."""
+        """Periodic conservative remeshing.
+
+        Examples:
+              >>> stab = StabilizationConfig.conservative_remeshing()
+              >>> stab.remeshing_frequency
+              20
+
+              >>> stab = StabilizationConfig.conservative_remeshing(
+              ...     frequency=10, spacing=0.02, project_solenoidal=True
+              ... )
+              >>> stab.remeshing_project_solenoidal
+              True
+        """
         if frequency <= 0:
             raise ValueError("remeshing frequency must be positive")
         if spacing is not None and spacing <= 0:
@@ -1138,7 +1168,19 @@ class StabilizationConfig:
         seff_min: float = 1e-4,
         verbose: bool = False,
     ) -> "StabilizationConfig":
-        """Enable strength relaxation with its complete set of controls."""
+        """Enable strength relaxation with its complete set of controls.
+
+        Examples:
+              >>> stab = StabilizationConfig.strength_relaxation()
+              >>> stab.relaxation_enabled
+              True
+
+              >>> stab = StabilizationConfig.strength_relaxation(
+              ...     mode="pedrizzetti", factor=0.5
+              ... )
+              >>> stab.relaxation_mode
+              'pedrizzetti'
+        """
         return StabilizationConfig(
             relaxation_enabled=True,
             relaxation_mode=mode,
@@ -1164,6 +1206,17 @@ class StabilizationConfig:
         The correction is applied after the configured stretching formulation.
         It infers the achieved parallel growth from |Gamma| before/after
         stretching, reduces that growth by c_r, and contracts sigma by c_sigma.
+
+        Examples:
+              >>> stab = StabilizationConfig.parallel_strain_relaxation()
+              >>> stab.parallel_strain_enabled
+              True
+
+              >>> stab = StabilizationConfig.parallel_strain_relaxation(
+              ...     f=0.1, g=0.3, clamp=0.5
+              ... )
+              >>> stab.parallel_strain_clamp
+              0.5
         """
         return StabilizationConfig(
             parallel_strain_enabled=True,
@@ -1209,7 +1262,21 @@ class VelocityConfig:
 
     @staticmethod
     def direct() -> "VelocityConfig":
-        """Direct O(N²) pairwise velocity computation (exact)."""
+        """Direct O(N²) pairwise velocity computation (exact).
+
+        Returns
+        -------
+        VelocityConfig
+            Configuration with ``method`` set to ``'DIRECT'``.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            >>> velocity = VelocityConfig.direct()
+            >>> velocity.method
+            'DIRECT'
+        """
         return VelocityConfig(method="DIRECT")
 
     @staticmethod
@@ -1218,6 +1285,24 @@ class VelocityConfig:
 
         Args:
               theta: Opening angle parameter (0.3-0.7). Smaller = more accurate.
+
+        Returns
+        -------
+        VelocityConfig
+            Configuration with ``method`` set to ``'TREECODE'`` and the given
+            opening angle.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            >>> velocity = VelocityConfig.treecode()
+            >>> velocity.theta
+            0.3
+
+            >>> velocity = VelocityConfig.treecode(theta=0.5)
+            >>> velocity.theta
+            0.5
         """
         return VelocityConfig(method="TREECODE", theta=theta)
 
@@ -1407,8 +1492,8 @@ class SolverConfig:
       Clamped to the range [0.1, 0.7].  Values above ~0.7 almost always cause
       allocation failures on Vulkan backends."""
 
-    # TODO: Consider converting to numpy array with correct precision in __post_init__
     background_velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Free-stream background velocity vector [ux, uy, uz] in m/s. Default: [0.0, 0.0, 0.0]"""
     """Free-stream background velocity vector [ux, uy, uz] in m/s. Default: [0.0, 0.0, 0.0]"""
 
     verbose: bool = True
@@ -1519,7 +1604,14 @@ class SolverConfig:
             )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert configuration to dictionary for serialization."""
+        """Convert configuration to dictionary for serialization.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary representation of the solver configuration, including
+            all nested dataclass fields serialised as nested dictionaries.
+        """
         # Serialize generic logic (assuming dataclasses.asdict or manual)
         # Since we have nested dataclasses, let's use a helper or manual construct
 
@@ -1555,7 +1647,13 @@ class SolverConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SolverConfig":
-        """Create configuration from dictionary."""
+        """Create configuration from dictionary.
+
+        Returns
+        -------
+        SolverConfig
+            Configuration object reconstructed from the dictionary.
+        """
         values = dict(data)
         nested_types = {
             "advection": AdvectionConfig,
@@ -1596,6 +1694,18 @@ class SolverConfig:
 
         Returns:
               SolverConfig: Initialized configuration object
+
+        Examples:
+              >>> # Default viscous flow
+              >>> config = SolverConfig.viscous_flow_simulation()
+              >>> config.time_step_size
+              0.01
+
+              >>> config = SolverConfig.viscous_flow_simulation(
+              ...     time_step_size=0.005, background_velocity=(10.0, 0.0, 0.0)
+              ... )
+              >>> config.time_step_size
+              0.005
         """
         if viscous is None:
             viscous = ViscousConfig.cs()
@@ -1629,6 +1739,18 @@ class SolverConfig:
 
         Returns:
               SolverConfig: Initialized configuration object
+
+        Examples:
+              >>> # Default DNS
+              >>> config = SolverConfig.dns_simulation()
+              >>> config.time_step_size
+              0.01
+
+              >>> config = SolverConfig.dns_simulation(
+              ...     time_step_size=0.001, processing_unit="CPU"
+              ... )
+              >>> config.time_step_size
+              0.001
         """
         # Extract common kwargs if provided to avoid multiple values for the same argument
         stretching = kwargs.pop("stretching", StretchingConfig.transposed())
@@ -1664,6 +1786,18 @@ class SolverConfig:
 
         Returns:
               SolverConfig: Initialized configuration object
+
+        Examples:
+              >>> # Default LES
+              >>> config = SolverConfig.les_simulation()
+              >>> config.time_step_size
+              0.01
+
+              >>> config = SolverConfig.les_simulation(
+              ...     time_step_size=0.005, cs=0.15
+              ... )
+              >>> config.time_step_size
+              0.005
         """
         stretching = kwargs.pop("stretching", StretchingConfig.transposed())
         viscous = kwargs.pop("viscous", ViscousConfig.cs())
@@ -1685,7 +1819,13 @@ class SolverConfig:
 
     @classmethod
     def load_from_file(cls, filename: str) -> "SolverConfig":
-        """Load configuration from JSON file."""
+        """Load configuration from JSON file.
+
+        Returns
+        -------
+        SolverConfig
+            Configuration object deserialised from the JSON file.
+        """
         with open(filename) as f:
             data = json.load(f)
         return cls.from_dict(data)
@@ -1831,6 +1971,11 @@ class SolverState(BaseModel):
 
         Raises:
               ValueError: If solver has invalid or missing required attributes
+
+        Examples:
+              >>> state = SolverState.from_solver(solver)
+              >>> state.time_step_size
+              0.01
         """
         try:
             # Extract core attributes, handling missing values gracefully
@@ -2014,6 +2159,11 @@ class ParticlesState(BaseModel):
 
         Raises:
               ValueError: If particles object is invalid or conversion fails
+
+        Examples:
+              >>> state = ParticlesState.from_particles(particles)
+              >>> len(state.positions)
+              10000
         """
         try:
             # Convert Taichi fields to numpy arrays, then to lists

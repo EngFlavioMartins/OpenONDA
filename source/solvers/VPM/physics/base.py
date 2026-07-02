@@ -1067,7 +1067,17 @@ class PhysicsBase:
     # DIAGNOSTICS METHODS
 
     def compute_kinetic_energy(self, particles):
-        """Compute kinetic energy at each particle."""
+        """
+        Compute kinetic energy at each particle.
+
+        Evaluates E = ½‖u‖² per particle by calling a Taichi kernel that
+        gathers velocity from the Biot–Savart sum and stores the result
+        in ``particles.kinetic_energy``.
+
+        Args:
+            particles: Particle container with ``position``, ``circulation``,
+                ``radius``, and ``kinetic_energy`` fields.
+        """
         N = len(particles)
         if N == 0:
             return
@@ -1077,7 +1087,17 @@ class PhysicsBase:
         )
 
     def compute_enstrophy(self, particles):
-        """Compute enstrophy at each particle."""
+        """
+        Compute enstrophy at each particle.
+
+        Evaluates Z = ½‖ω‖² per particle by calling a Taichi kernel that
+        computes vorticity from the velocity gradient and stores the result
+        in ``particles.enstrophy``.
+
+        Args:
+            particles: Particle container with ``position``, ``circulation``,
+                ``radius``, and ``enstrophy`` fields.
+        """
         N = len(particles)
         if N == 0:
             return
@@ -1087,7 +1107,17 @@ class PhysicsBase:
         )
 
     def compute_helicity(self, particles):
-        """Compute helicity at each particle."""
+        """
+        Compute helicity at each particle.
+
+        Evaluates H = u · ω per particle by calling a Taichi kernel that
+        combines the velocity and vorticity fields and stores the result
+        in ``particles.helicity``.
+
+        Args:
+            particles: Particle container with ``position``, ``circulation``,
+                ``radius``, and ``helicity`` fields.
+        """
         N = len(particles)
         if N == 0:
             return

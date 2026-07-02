@@ -70,16 +70,16 @@ class TaichiTreecode:
         self.theta_sq = theta * theta
         self.kernel_type = kernel_type.upper()
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.circulations = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.radii = ti.field(dtype=ti.f32, shape=max_particles)
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # TREE STRUCTURE (binary LBVH)
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # Node properties (center/half_size computed from AABB)
         self.node_center = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
@@ -103,9 +103,9 @@ class TaichiTreecode:
         # Particle-to-leaf mapping (contiguous sorted indices)
         self.leaf_particles = ti.field(dtype=ti.i32, shape=max_particles)
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # LBVH BUILD FIELDS
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.morton_codes = ti.field(dtype=ti.u32, shape=max_particles)
         self.sorted_indices = ti.field(dtype=ti.i32, shape=max_particles)
         # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
@@ -129,20 +129,20 @@ class TaichiTreecode:
         self._node_aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self._node_aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # OUTPUT VELOCITIES
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.velocities = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.velocity_gradients = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
         self.strain_rates = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # TARGET POINT FIELDS
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.max_targets = max_particles
         self.target_positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.target_velocities = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
@@ -150,16 +150,16 @@ class TaichiTreecode:
         self.n_targets = ti.field(dtype=ti.i32, shape=())
         self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # TREE TRAVERSAL STACK
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.max_stack_depth = 48
         self.traversal_stack = ti.field(dtype=ti.i32, shape=(max_particles, 48))
         self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(max_particles, 48))
 
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         # COUNTERS
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
         self.n_particles = ti.field(dtype=ti.i32, shape=())
         self.n_nodes = ti.field(dtype=ti.i32, shape=())
         self._root = ti.field(dtype=ti.i32, shape=())
@@ -226,10 +226,10 @@ class TaichiTreecode:
             N:  Number of active particles (required for field API).
             force:  Accepted for API compatibility; the tree is always rebuilt.
         """
-        # The tree is rebuilt on every call. 
+        # The tree is rebuilt on every call.
         t_start = time.perf_counter()
 
-        # ── Detect calling convention ──────────────────────────────────
+        # -- Detect calling convention ----------------------------------
         using_fields = hasattr(positions, 'shape') and hasattr(positions, '__getitem__') \
                        and not isinstance(positions, np.ndarray)
 
@@ -253,7 +253,7 @@ class TaichiTreecode:
             self.n_particles[None] = N_val
             self._upload_numpy_particles(pos_np, strg_np, rad_np, N_val)
 
-        # ── Build LBVH ────────────────────────────────────────────────
+        # -- Build LBVH ------------------------------------------------
         self._build_lbvh(N_val)
 
         self.build_time = time.perf_counter() - t_start
@@ -404,7 +404,7 @@ class TaichiTreecode:
             self.circulations[i] = strg[i]
             self.radii[i] = rad[i]
 
-    # ── GPU Karras tree build (fully parallel, Vulkan-portable) ──────────
+    # -- GPU Karras tree build (fully parallel, Vulkan-portable) ----------
 
     @ti.func
     def _clz32(self, x: ti.u32) -> ti.i32:
@@ -446,7 +446,7 @@ class TaichiTreecode:
         contiguous sorted range; leaf ``j`` is stored at field index ``j``.
         Internal node 0 is always the root (covers [0, N-1]).
         """
-        # ── init all nodes (parallel) ──
+        # -- init all nodes (parallel) --
         for idx in range(2 * N - 1):
             self.node_left[idx] = -1
             self.node_right[idx] = -1
@@ -455,7 +455,7 @@ class TaichiTreecode:
             self._node_last[idx] = -1
             self.node_particle_start[idx] = -1
             self.node_particle_count[idx] = 0
-        # ── leaves (parallel) ──
+        # -- leaves (parallel) --
         for j in range(N):
             self.node_is_leaf[j] = 1
             self.leaf_particles[j] = self.sorted_indices[j]
@@ -463,7 +463,7 @@ class TaichiTreecode:
             self._node_last[j] = j
             self.node_particle_start[j] = j
             self.node_particle_count[j] = 1
-        # ── internal nodes: one independent thread per node ──
+        # -- internal nodes: one independent thread per node --
         for i in range(N - 1):
             # Direction of the range (toward the neighbour with longer prefix).
             dl = self._delta(i, i - 1, N)
@@ -611,7 +611,7 @@ class TaichiTreecode:
 
         self.n_nodes[None] = 2 * N - 1
 
-    # ── AABB kernel ──────────────────────────────────────────────────
+    # -- AABB kernel --------------------------------------------------
 
     @ti.kernel
     def _compute_aabb_kernel(self, N: ti.i32):
@@ -630,7 +630,7 @@ class TaichiTreecode:
                 ti.atomic_min(self._aabb_min[None][k], p[k])
                 ti.atomic_max(self._aabb_max[None][k], p[k])
 
-    # ── Morton-code kernel ────────────────────────────────────────────
+    # -- Morton-code kernel --------------------------------------------
 
     @ti.func
     def _expand_bits(self, v: ti.u32) -> ti.u32:
@@ -664,7 +664,7 @@ class TaichiTreecode:
             code |= self._expand_bits(qi[2])
             self.morton_codes[i] = code
 
-    # ── Bottom-up multipoles ──────────────────────────────────────────
+    # -- Bottom-up multipoles ------------------------------------------
 
     @ti.kernel
     def _compute_parents_kernel(self, N: ti.i32):

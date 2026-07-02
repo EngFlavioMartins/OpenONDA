@@ -17,6 +17,20 @@ from ..config.constants import MAX_PARTICLES
 from ..config.types import CachedParticleProperty
 
 def _validate_finite_array(arr, name: str) -> None:
+    """Check that an array contains only finite (non-NaN, non-Inf) values.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Array to validate.
+    name : str
+        Human-readable name of the array, used in error messages.
+
+    Raises
+    ------
+    ValueError
+        If any element is NaN or Inf, with a count of each.
+    """
     if not np.all(np.isfinite(arr)):
         nan_count = np.sum(np.isnan(arr))
         inf_count = np.sum(np.isinf(arr))
@@ -27,6 +41,27 @@ def _validate_finite_array(arr, name: str) -> None:
         )
 
 def _coerce_int_id_array(arr, N: int) -> np.ndarray:
+    """Coerce an integer ID array to a contiguous ``np.int32`` array.
+
+    Parameters
+    ----------
+    arr : np.ndarray | int | None
+        Input array, a scalar int, or ``None``.
+    N : int
+        Desired length when ``arr`` is ``None`` or a scalar.
+
+    Returns
+    -------
+    np.ndarray
+        C-contiguous ``np.int32`` array of length ``N``.
+
+    Examples
+    --------
+    >>> _coerce_int_id_array(None, 5)
+    array([0, 0, 0, 0, 0], dtype=int32)
+    >>> _coerce_int_id_array(3, 5)
+    array([3, 3, 3, 3, 3], dtype=int32)
+    """
     if arr is None:
         return np.zeros(N, dtype=np.int32)
     if isinstance(arr, int):

@@ -32,6 +32,21 @@ class ParticlesLES:
         cs: float = SMAGORINSKY_CONSTANT,
         ce: float = 1.048,
     ):
+        """
+        Initialize the LES turbulence model.
+
+        Selects and instantiates a sub-grid-scale model (e.g.
+        :class:`SmagorinskyModel`) based on ``LES_filter_type``, stores the
+        particle kernel type, and sets up diagnostic field trackers.
+
+        Args:
+            LES_filter_type: Identifier for the SGS model.  Supported values:
+                ``"SMAGORINSKY"``, ``"LES_SMAGORINSKY"``.
+            max_particles: Maximum number of particles for field allocation.
+            kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
+            cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
+            ce: Model dissipation constant (default 1.048, OpenFOAM standard).
+        """
         self.LES_filter_type = LES_filter_type
         self.max_particles = max_particles
         self.kernel_type = kernel_type.upper()
