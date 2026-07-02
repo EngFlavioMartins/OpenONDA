@@ -168,8 +168,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     # ================================================
     # Time integration
     # ================================================
-    advection = AdvectionConfig(scheme="RK2")
-    stretching = StretchingConfig.transposed(scheme="Euler")
+    advection = AdvectionConfig(scheme="RK3")
+    stretching = StretchingConfig.transposed(scheme="RK3")
 
     # ================================================
     # Core-size control (CS only)

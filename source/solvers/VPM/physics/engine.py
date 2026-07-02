@@ -59,7 +59,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     # ADVECTION INTERFACE
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK4",
+    def update_positions(self, particles, dt: float, scheme: str = "RK3",
                          precomputed_k1: bool = False):
         """
         Update particle positions using specified time integration scheme.
@@ -162,7 +162,7 @@ class _AdvectionHandler:
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK4",
+    def update_positions(self, particles, dt: float, scheme: str = "RK3",
                          precomputed_k1: bool = False):
         """Advance particle positions by dt with a single step of the given scheme.
 

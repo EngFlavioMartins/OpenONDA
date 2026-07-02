@@ -150,7 +150,7 @@ def main():
 
     solver_config = SolverConfig(
         time_step_size=time_step,
-        advection=AdvectionConfig(scheme="RK2"),
+        advection=AdvectionConfig(scheme="RK3"),
         turbulence=turbulence,
         stretching=stretching,
         stabilization=stabilization,
@@ -193,7 +193,7 @@ def main():
         group_id=0,
     )
 
-    vpm.remove_weak_particles(percent=1.0, per_group=True)
+    vpm.remove_weak_particles(percent=0.1, per_group=True)
 
     # ================================================
     # 6. Run Simulation

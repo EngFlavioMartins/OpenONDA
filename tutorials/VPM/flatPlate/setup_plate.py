@@ -408,7 +408,7 @@ def main():
     # -- Solver config -------------------------------------------------
     cfg_kwargs = dict(
         time_step_size=dt,
-        advection=AdvectionConfig(scheme="RK2"),
+        advection=AdvectionConfig(scheme="RK3"),
         vlm_solver=vlm,
         background_velocity=bg_vel,
         logging_frequency=args.log_freq,

@@ -238,7 +238,7 @@ def run_case(args: argparse.Namespace) -> None:
 
     sampler = make_surface_sampler(case_label, particle_spacing, output_dir)
 
-    advection = AdvectionConfig(scheme="RK2")
+    advection = AdvectionConfig(scheme="RK3")
 
     turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
 

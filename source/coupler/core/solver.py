@@ -215,7 +215,7 @@ class FVMVPMCoupler:
                 time_step_size=self.dt,
                 viscous=cfg.viscous_scheme,
                 stretching=stretching_factory(),
-                advection=AdvectionConfig(scheme=getattr(cfg, "advection_scheme", "RK2")),
+                advection=AdvectionConfig(scheme=getattr(cfg, "advection_scheme", "RK3")),
                 turbulence=TurbulenceConfig.les_smagorinsky(cs=cfg.les_smagorinsky_cs),
                 stabilization=replace(
                     cfg.stabilization,

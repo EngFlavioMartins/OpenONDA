@@ -690,8 +690,8 @@ class _GridDiffusionMixin:
         if wsum <= 0.0 or len(ix) < 4:
             return Gk.astype(np.float32)
 
-        # Deficit = (all non-empty nodes) − (survivors), computed via full-grid
-        # moments minus survivor moments (covers both threshold- and cap-drops).
+        # Deficit = (all non-empty nodes) - (survivors), computed via full-grid
+        # moments minus survivor moments
         nzi, nzj, nzk = np.where(circ_mag > 0.0)
         Gall = grid_np[nzi, nzj, nzk].astype(np.float64)
         Xall = np.stack(
@@ -747,10 +747,7 @@ class _GridDiffusionMixin:
             ],
             axis=1,
         ).astype(np.float32)
-        # Carry the pre-regen turbulent viscosity forward (Bug B): regenerated
-        # particles inherit the |Γ|-weighted ν_t of their grid node so that
-        # ν_t survives the DVH/GBD rebuild and reaches backup / the next LES
-        # compute.  ``add_vortex_particles`` reconstructs ν_eff = ν + ν_t.
+        # Carry the pre-regen turbulent viscosity forward: reconstructs ν_eff = ν + ν_t.
         if nu_t_grid is not None:
             viscosity_turbulent = nu_t_grid[ix, iy, iz].astype(np.float32)
         else:
@@ -812,7 +809,7 @@ class _GridDiffusionMixin:
         pos_np = particles.position_cpu()
         circ_np = particles.circulation_cpu()
 
-        # ── LES: per-particle ν_t to carry through regen (Bug B) ─────────────
+        # ── LES: per-particle ν_t to carry through regen  ─────────────
         # The scattered ν_t is inherited by regenerated particles so that ν_t
         # survives the rebuild and reaches backup (LES recomputes it next step
         # anyway, but carrying it keeps the backed-up field faithful).

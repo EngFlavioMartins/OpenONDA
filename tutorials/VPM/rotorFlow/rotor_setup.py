@@ -155,7 +155,7 @@ def main():
         for x_loc in [1.5 * rotor_radius, 3.0 * rotor_radius, 4.5 * rotor_radius]
     ]
 
-    advection=AdvectionConfig(scheme="RK2")
+    advection=AdvectionConfig(scheme="RK3")
 
     turbulence=TurbulenceConfig.les_smagorinsky()
 

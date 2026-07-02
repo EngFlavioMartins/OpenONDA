@@ -657,7 +657,7 @@ class Solver:
                     self._advance_panel()
 
             # 1. VELOCITY & GRADIENTS (At t_n)
-            _adv = (self.config.advection.scheme if self.config.advection else "RK4").upper()
+            _adv = (self.config.advection.scheme if self.config.advection else "RK3").upper()
             # Fuse u + ∇u into one tree build
             _fuse_vel_grad = (
                 self.flow_model != "POTENTIAL"

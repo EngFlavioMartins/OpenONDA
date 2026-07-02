@@ -96,12 +96,10 @@ class CouplerConfig:
     does ~6 treecode evaluations; ~0.4 is ~1.3-1.7x faster per eval at <1%
     velocity error and is a good default for coupled runs."""
 
-    advection_scheme: str = "RK2"
+    advection_scheme: str = "RK3"
     """Time integrator for particle advection: "RK2" | "RK4" | "RK3" | "EULER".
-    RK4 costs 4 velocity (treecode) evaluations per step, RK2 only 2 — and since
-    the overlap is remeshed every coupling step (the hand-off, not the time
-    integrator, sets accuracy), RK2 is sufficient and ~25-30% cheaper on the
-    dominant VPM stage.  Use "RK4" to recover the higher-order integrator."""
+    RK3 is the production default used for coherent-vortex VPM cases.  RK2 is
+    cheaper, while RK4 costs one additional velocity evaluation per step."""
 
     viscous_scheme: ViscousConfig | None = None
     """VPM viscous diffusion scheme (``None`` = Core Spreading)."""

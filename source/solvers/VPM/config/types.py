@@ -55,12 +55,11 @@ class AdvectionConfig:
         Forward / explicit Euler — 1st order.  Lowest accuracy per step;
         generally not recommended for production runs.
     ``RK2``
-        Heun's method — 2nd-order Runge–Kutta (default).  Good balance of
-        accuracy and cost for most applications.
+        Heun's method — 2nd-order Runge–Kutta.  Good balance of accuracy
+        and cost for moderate advection-dominated applications.
     ``RK3``
         Strong-Stability-Preserving Runge–Kutta — 3rd order (Gottlieb, Shu &
-        Tadmor 2001).  SSP property avoids spurious oscillations for
-        Courant-limited problems.
+        Tadmor 2001).  Default for production VPM runs.
     ``RK4``
         Classical 4th-order Runge–Kutta.  Highest per-step accuracy but
         4 evaluations per step versus 2 for RK2.
@@ -69,7 +68,7 @@ class AdvectionConfig:
     --------
     .. code-block:: python
 
-        # Default (RK2)
+        # Default (RK3)
         adv = AdvectionConfig()
 
         # 4th-order advection
@@ -83,14 +82,14 @@ class AdvectionConfig:
     - Gottlieb, Shu & Tadmor (2001) SIAM J. Numer. Anal. 39(5), 1984–2012.
     """
 
-    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK2"
+    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK3"
     """Time integration scheme for the advection substep (dx/dt = u).
 
     Options:
       - 'NONE':  freeze particle positions (useful for stationary-flow viscous tests)
       - 'EULER': forward Euler (1st order)
-      - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+      - 'RK2':   Heun's method, 2nd-order Runge–Kutta
+      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
 
     Advection advances the configured scheme over the macro time-step set by the
@@ -635,13 +634,13 @@ class StretchingConfig:
     mode: Literal["DIRECT", "TRANSPOSED", "MIXED"] = "TRANSPOSED"
     """Stretching formulation mode: DIRECT, TRANSPOSED, or MIXED."""
 
-    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK2"
+    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3"
     """Time integration scheme for the stretching substep (dΓ/dt).
 
     Options:
       - 'EULER': forward Euler (1st order)
-      - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+      - 'RK2':   Heun's method, 2nd-order Runge–Kutta
+      - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
     """
 
@@ -661,37 +660,37 @@ class StretchingConfig:
             object.__setattr__(self, "scheme", scheme)
 
     @staticmethod
-    def direct(scheme: str = "RK2"):
+    def direct(scheme: str = "RK3"):
         """Direct scheme: dΓ/dt = (Γ·∇)u
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)
-          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="DIRECT", scheme=scheme)
 
     @staticmethod
-    def transposed(scheme: str = "RK2"):
+    def transposed(scheme: str = "RK3"):
         """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)
-          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="TRANSPOSED", scheme=scheme)
 
     @staticmethod
-    def mixed(scheme: str = "RK2"):
+    def mixed(scheme: str = "RK3"):
         """Mixed/strain scheme: symmetric formulation
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)
-          - 'RK2':   Heun's method, 2nd-order Runge–Kutta (default)
-          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving
+          - 'RK2':   Heun's method, 2nd-order Runge–Kutta
+          - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
         """
         return StretchingConfig(mode="MIXED", scheme=scheme)
@@ -1586,7 +1585,7 @@ class SolverConfig:
           - Stretching: disabled
           - Viscous:    Core Spreading (CS)
           - Turbulence: DNS (no subgrid model)
-          - Advection:  RK2 (Heun's method)
+          - Advection:  RK3 (SSP-RK3)
           - Velocity:   Treecode (θ = 0.5)
 
         Args:
@@ -1617,8 +1616,8 @@ class SolverConfig:
         Create a Direct Numerical Simulation (DNS) configuration.
 
         **Default physics:**
-          - Advection:  RK2 (Heun's method)
-          - Stretching: TRANSPOSED mode, RK2 (Heun's method)
+          - Advection:  RK3 (SSP-RK3)
+          - Stretching: TRANSPOSED mode, RK3 (SSP-RK3)
           - Viscous:    Core Spreading (CS)
           - Turbulence: DNS (molecular viscosity only, no SGS model)
           - Velocity:   Treecode (θ = 0.5)
@@ -1651,8 +1650,8 @@ class SolverConfig:
         Smagorinsky SGS model (k-equilibrium formulation).
 
         **Default physics:**
-          - Advection:  RK2 (Heun's method)
-          - Stretching: TRANSPOSED mode, RK2 (Heun's method)
+          - Advection:  RK3 (SSP-RK3)
+          - Stretching: TRANSPOSED mode, RK3 (SSP-RK3)
           - Viscous:    Core Spreading (CS)
           - Turbulence: LES_SMAGORINSKY with C_s = 0.17, C_e = 1.048
           - Velocity:   Treecode (θ = 0.5)
@@ -1772,8 +1771,8 @@ class SolverState(BaseModel):
     # Method and model configuration
     # Method and model configuration
     # time_integration_scheme: removed in favor of specific schemes
-    advection_scheme: str = Field(default="RK2", description="Advection time integration scheme")
-    stretching_scheme: str = Field(default="RK2", description="Stretching time integration scheme")
+    advection_scheme: str = Field(default="RK3", description="Advection time integration scheme")
+    stretching_scheme: str = Field(default="RK3", description="Stretching time integration scheme")
 
     processing_unit: str = Field(default="GPU_VULKAN", description="Computation backend")
     flow_model: str = Field(default="DNS", description="Flow physics model")
