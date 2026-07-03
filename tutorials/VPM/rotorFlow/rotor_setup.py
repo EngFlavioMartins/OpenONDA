@@ -195,7 +195,9 @@ def main():
         backup_frequency=10,
         logging_frequency=10,
         timing_frequency=10,
-        processing_unit="GPU_VULKAN",
+        # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Forcing Vulkan
+        # risks the Taichi 1.7.x per-shape staging-buffer leak on long runs.
+        processing_unit="GPU",
     )
 
     vpm = Solver(config=solver_config)

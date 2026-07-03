@@ -183,10 +183,13 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         viscous=build_viscous_config(scheme, nu, args, spacing),
         advection=advection,
         stretching=stretching,
-        # Use the portable GPU path.  Variable-size host/device transfers are
-        # handled inside the solver with fixed-shape staging buffers, so this
-        # case should not depend on CUDA-specific allocator behavior.
-        processing_unit="GPU_VULKAN",
+        # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Do NOT force
+        # GPU_VULKAN here: Taichi 1.7.x Vulkan caches one device staging buffer
+        # per distinct ndarray shape and never frees it, and the GBD/DVH grids
+        # reallocate as they grow, so long viscous runs leak VRAM until
+        # "Failed to allocate ext arr buffer" (reproduced 2026-07-03, dipole_gbd
+        # step 171).  CUDA's caching allocator reuses freed blocks and is immune.
+        processing_unit="GPU",
         backup_frequency=10,
         logging_frequency=10,
         timing_frequency=50,

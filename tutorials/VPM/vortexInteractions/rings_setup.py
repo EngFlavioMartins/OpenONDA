@@ -84,7 +84,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stabilization",
-        choices=["les", "rvpm", "relax", "remesh", "projection", "split"],
+        choices=["les", "rvpm", "relax", "remesh", "projection", "split", "energy"],
         default="les",
         help="Stabilization variant. 'les' is the unstabilized LES baseline.",
     )
@@ -169,6 +169,8 @@ def build_stabilization_config(args: argparse.Namespace, particle_spacing: float
             conserve=True,
             constraint="both",
         )
+    if args.stabilization == "energy":
+        return StabilizationConfig.energy_budget()
     if args.stabilization == "split":
         return StabilizationConfig.particle_splitting(
             radius=args.split_radius,

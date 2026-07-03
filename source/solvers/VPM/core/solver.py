@@ -237,8 +237,10 @@ class Solver:
                 f"CFL max = {dt_max:.4e} s)."
             )
 
-        # DVH: pin dt = Δt_d so the diffusion operator fires exactly once per
-        # step with the correct viscous increment.
+        # DVH: each firing advances viscous time by EXACTLY Δt_d = β·R_d²/(4nu)
+        # (the heat-kernel width is fixed at β·R_d², independent of dt).
+        self._dvh_substeps: int = 1
+        self._dvh_fire_counter: int = 0
         if vc.scheme == "DVH" and vc.viscosity is not None and vc.viscosity > 0:
             from ..physics.diffusion import _DVH_BETA
 
@@ -246,18 +248,22 @@ class Solver:
             # Round to 3 significant digits for clean time values.
             magnitude = _math.floor(_math.log10(abs(dt_d_raw)))
             dt_d = round(dt_d_raw, -magnitude + 2)
-            # Each DVH application advances viscous time by EXACTLY Δt_d
-            # (the heat-kernel width is fixed at β·R_d², independent of dt).
-            if abs(self.time_step_size - dt_d) > 1e-6 * max(self.time_step_size, dt_d):
+            user_dt = self.time_step_size
+            n_sub = max(1, int(round(dt_d / user_dt))) if user_dt > 0 else 1
+            dt_sub = dt_d / n_sub
+            if abs(user_dt - dt_sub) > 1e-6 * max(user_dt, dt_sub):
                 Logging.message(
-                    f"[DVH] INFO: time step overridden — "
-                    f"user dt = {self.time_step_size:.4e} s → Δt_d = {dt_d:.4e} s "
-                    f"(β·R_d²/(4nu), β={_DVH_BETA}, "
-                    f"R_d = {vc.dvh_rd_ratio}·h = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m)."
+                    f"[DVH] INFO: time step adjusted — "
+                    f"user dt = {user_dt:.4e} s → dt = Δt_d/{n_sub} = {dt_sub:.4e} s "
+                    f"(Δt_d = β·R_d²/(4nu) = {dt_d:.4e} s, β={_DVH_BETA}, "
+                    f"R_d = {vc.dvh_rd_ratio}·h = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m; "
+                    f"DVH fires every {n_sub} step(s))."
                 )
-                self.time_step_size = dt_d
+                self.time_step_size = dt_sub
+            self._dvh_substeps = n_sub
             self._dvh_dt_info = (
-                f"DVH fires every step (Δt = Δt_d = {dt_d:.4e} s, β·R_d²/(4nu) = {dt_d:.4e} s)."
+                f"DVH fires every {n_sub} step(s) (dt = Δt_d/{n_sub} = {dt_sub:.4e} s, "
+                f"Δt_d = β·R_d²/(4nu) = {dt_d:.4e} s)."
             )
 
         self.advection_scheme = final_config.advection.scheme
@@ -427,6 +433,19 @@ class Solver:
                 rlx=stabilization.relaxation_factor,
                 conserve=stabilization.relaxation_conserve,
                 constraint=stabilization.relaxation_constraint,
+            )
+        # Energy-budget governor: adapts the constant-gate relaxation factor so
+        # measured dE/dt tracks the viscous budget -nu_eff*Enstrophy.
+        self._energy_budget_governor = None
+        if stabilization.energy_budget_enabled:
+            from ..stabilization.energy_budget import EnergyBudgetGovernor
+
+            self._energy_budget_governor = EnergyBudgetGovernor(
+                self._strength_relaxation,
+                gain=stabilization.energy_budget_gain,
+                tolerance=stabilization.energy_budget_tolerance,
+                r_max=stabilization.energy_budget_r_max,
+                frequency=stabilization.energy_budget_frequency,
             )
 
     def _init_diagnostics_and_solvers(self, final_config: SolverConfig) -> None:
@@ -687,6 +706,24 @@ class Solver:
             # 4. DIFFUSION & STRETCHING (Update alpha)
             with self.profiler.section("Stretching + diffusion"):
                 self._update_strength()
+
+            # 4.5 ENERGY-BUDGET GOVERNOR (windowed dE/dt vs -nu*Enstrophy control)
+            gov = self._energy_budget_governor
+            if gov is not None and self.time_step % gov.frequency == 0:
+                with self.profiler.section("Energy budget"):
+                    integrals = self.field_diagnostics.compute_flow_integrals(
+                        self.particles, self.flow_time, record_history=False
+                    )
+                    r_now = gov.update(
+                        integrals["kinetic_energy"],
+                        integrals["vorticity_dissipation_rate"],
+                        self.flow_time,
+                    )
+                    if gov.last_residual is not None:
+                        Logging.message(
+                            f"\t[EnergyBudget] residual={gov.last_residual:+.3f} "
+                            f"→ relaxation factor r={r_now:.4f}"
+                        )
 
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
@@ -2273,9 +2310,15 @@ class Solver:
             Logging.message("Performing viscous diffusion via Random Walk Method.")
             self.physics.random_walk_method_diffusion(self.particles, dt=dt)
         elif self.viscous_scheme in ("DVH", "GBD"):
-            # Both schemes fire exactly once per step: DVH applies the fixed
-            # Δt_d heat-kernel increment (dt is pinned to Δt_d), GBD scales
-            # with dt directly (α = nu·dt/h²).
+            # GBD fires every step and scales with dt directly (α = nu·dt/h²).
+            # DVH applies the fixed Δt_d heat-kernel increment, so it fires
+            # once every _dvh_substeps steps (dt is pinned to Δt_d/n); the
+            # intermediate sub-steps advance advection/stretching only.
+            if self.viscous_scheme == "DVH" and self._dvh_substeps > 1:
+                self._dvh_fire_counter += 1
+                if self._dvh_fire_counter < self._dvh_substeps:
+                    return
+                self._dvh_fire_counter = 0
             new_p = self._apply_grid_diffusion(self._viscous_config, dt)
             if new_p is not None:
                 M = len(new_p["position"])
@@ -2295,10 +2338,16 @@ class Solver:
 
     def _apply_grid_diffusion(self, vc, dt: float):
         """Run DVH or GBD grid-based diffusion; return new particle dict."""
+        # Config viscosity is optional when particles carry their own molecular
+        # viscosity — fall back to the per-particle mean so the grid schemes
+        # (and their log lines) never see None.
+        nu = vc.viscosity
+        if nu is None or nu <= 0.0:
+            n_part = self.particles.number_of_particles
+            nu = float(self.particles.viscosity_cpu()[:n_part].mean()) if n_part > 0 else 0.0
         if self.viscous_scheme == "DVH":
             # In LES mode the per-particle effective viscosity (nu + nu_t) sets
-            # each particle's heat-kernel width — otherwise the SGS model would
-            # be computed but never act in DVH runs.
+            # each particle's heat-kernel width.
             nu_eff = None
             if self.flow_model == "LES":
                 N = self.particles.number_of_particles
@@ -2306,11 +2355,11 @@ class Solver:
                     nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming DVH particle regeneration "
-                f"(h={vc.dvh_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
+                f"(h={vc.dvh_grid_spacing:.3e}, nu={nu:.3e}, "
                 f"threshold={vc.dvh_threshold:.2e}"
                 + (
-                    f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}"
-                    if nu_eff is not None
+                    f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
+                    if nu_eff is not None and nu > 0.0
                     else ""
                 )
                 + ")."
@@ -2319,7 +2368,7 @@ class Solver:
                 self.particles,
                 dt=dt,
                 h=vc.dvh_grid_spacing,
-                nu=vc.viscosity,
+                nu=nu,
                 domain_padding=vc.dvh_domain_padding,
                 regen_threshold=vc.dvh_threshold,
                 regen_threshold_mode=vc.dvh_threshold_mode,
@@ -2330,8 +2379,7 @@ class Solver:
         else:  # GBD
             # In LES mode the per-particle effective viscosity (nu + nu_t) sets
             # the per-node Laplacian coefficient — otherwise the SGS model
-            # would be computed but never act in GBD runs (Bug A).  Mirrors
-            # the DVH branch above.
+            # would be computed but never act in GBD runs.
             nu_eff = None
             if self.flow_model == "LES":
                 N = self.particles.number_of_particles
@@ -2339,11 +2387,11 @@ class Solver:
                     nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming GBD diffusion"
-                f"(h={vc.gbd_grid_spacing:.3e}, nu={vc.viscosity:.3e}, "
+                f"(h={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "
                 f"threshold={vc.gbd_threshold:.2e}"
                 + (
-                    f", LES nu_eff/nu max={float(nu_eff.max()) / vc.viscosity:.2f}"
-                    if nu_eff is not None
+                    f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
+                    if nu_eff is not None and nu > 0.0
                     else ""
                 )
                 + ")."
@@ -2352,7 +2400,7 @@ class Solver:
                 self.particles,
                 dt=dt,
                 h=vc.gbd_grid_spacing,
-                nu=vc.viscosity,
+                nu=nu,
                 domain_padding=vc.gbd_domain_padding,
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,

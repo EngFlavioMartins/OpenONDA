@@ -1020,6 +1020,26 @@ class StabilizationConfig:
     parallel_strain_clamp: float | None = None
     """Optional bound on inferred S_parallel*dt before applying the correction."""
 
+    # -- Energy-budget governor ---------------------------------------------
+    energy_budget_enabled: bool = False
+    """Enable the energy-budget governor: a feedback loop that adapts the
+    (constant-gate) strength-relaxation factor so the measured dE/dt tracks
+    the physical viscous budget dE/dt = -nu_eff*Enstrophy.  Requires (and
+    auto-configures via the factory) a constant-gate strength relaxation."""
+
+    energy_budget_frequency: int = 5
+    """Solver steps between governor measurements (each costs one fused
+    flow-integrals kernel evaluation)."""
+
+    energy_budget_gain: float = 0.5
+    """Multiplicative adaptation gain per measurement window."""
+
+    energy_budget_tolerance: float = 0.05
+    """Relative dead-band on the budget residual (no adaptation within it)."""
+
+    energy_budget_r_max: float = 0.9
+    """Upper bound on the governed relaxation factor."""
+
     def __post_init__(self) -> None:
         """Validate direct construction as well as factory-created configs."""
         if self.max_core_radius is not None and self.max_core_radius <= 0:
@@ -1068,6 +1088,22 @@ class StabilizationConfig:
                 raise ValueError("parallel_strain_g + parallel_strain_f must be non-negative")
             if self.parallel_strain_clamp is not None and self.parallel_strain_clamp <= 0:
                 raise ValueError("parallel_strain_clamp must be positive when provided")
+        if self.energy_budget_enabled:
+            if self.energy_budget_frequency < 1:
+                raise ValueError("energy_budget_frequency must be >= 1")
+            if self.energy_budget_gain <= 0:
+                raise ValueError("energy_budget_gain must be positive")
+            if not 0 <= self.energy_budget_tolerance < 1:
+                raise ValueError("energy_budget_tolerance must be in [0, 1)")
+            if not 0 < self.energy_budget_r_max <= 1:
+                raise ValueError("energy_budget_r_max must be in (0, 1]")
+            if not self.relaxation_enabled:
+                raise ValueError(
+                    "energy_budget_enabled requires relaxation_enabled (use the "
+                    "StabilizationConfig.energy_budget() factory)"
+                )
+            if self.relaxation_gate != "constant":
+                raise ValueError("the energy-budget governor requires relaxation_gate='constant'")
 
     # -- Factory methods -------------------------------------------------------
     @staticmethod
@@ -1229,6 +1265,46 @@ class StabilizationConfig:
             parallel_strain_f=f,
             parallel_strain_g=g,
             parallel_strain_clamp=clamp,
+        )
+
+    @staticmethod
+    def energy_budget(
+        *,
+        frequency: int = 5,
+        gain: float = 0.5,
+        tolerance: float = 0.05,
+        r_max: float = 0.9,
+        mode: str = "blend",
+        deconv: int = 1,
+        conserve: bool = True,
+        constraint: str = "both",
+    ) -> "StabilizationConfig":
+        """Enable the energy-budget governor.
+
+        A slow feedback loop measures the discrete energy budget every
+        ``frequency`` steps and adapts a constant-gate strength-relaxation
+        factor so that the measured dE/dt tracks the physical viscous budget
+        dE/dt = -nu_eff*Enstrophy.  The relaxation starts inert (factor 0)
+        and only strengthens while the budget is violated.
+
+        Examples:
+              >>> stab = StabilizationConfig.energy_budget()
+              >>> stab.energy_budget_enabled
+              True
+        """
+        return StabilizationConfig(
+            energy_budget_enabled=True,
+            energy_budget_frequency=frequency,
+            energy_budget_gain=gain,
+            energy_budget_tolerance=tolerance,
+            energy_budget_r_max=r_max,
+            relaxation_enabled=True,
+            relaxation_mode=mode,
+            relaxation_deconv=deconv,
+            relaxation_gate="constant",
+            relaxation_factor=0.0,
+            relaxation_conserve=conserve,
+            relaxation_constraint=constraint,
         )
 
 # =========================================================
