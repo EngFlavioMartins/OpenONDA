@@ -196,7 +196,7 @@ def main():
         logging_frequency=10,
         timing_frequency=10,
         # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Forcing Vulkan
-        # risks the Taichi 1.7.x per-shape staging-buffer leak on long runs.
+        # risks Taichi 1.7.x field-reallocation growth in long grid-diffusion runs.
         processing_unit="GPU",
     )
 

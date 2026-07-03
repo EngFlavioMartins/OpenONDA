@@ -186,6 +186,11 @@ class TaichiTreecode:
         self._host_u32_chunk = None
         self._host_i32_chunk = None
 
+        # Topology-reuse state (see refit()): last built particle count and the
+        # combine-level bound.  None until the first build().
+        self._built_n = None
+        self._combine_levels = 0
+
         self.set_kernel_type(self.kernel_type)
 
     def set_kernel_type(self, kernel_type: str) -> None:
@@ -256,6 +261,59 @@ class TaichiTreecode:
         # -- Build LBVH ------------------------------------------------
         self._build_lbvh(N_val)
 
+        # Record the built configuration so refit() can validate that the tree
+        # topology it reuses matches the current particle set.
+        self._built_n = N_val
+        self._combine_levels = 2 * int(np.ceil(np.log2(max(N_val, 2)))) + 34
+
+        self.build_time = time.perf_counter() - t_start
+
+    @ti.kernel
+    def _copy_positions_field(self, pos: ti.template(), N: ti.i32):
+        """Overwrite only the position field (circulations/radii unchanged)."""
+        for i in range(N):
+            self.positions[i] = pos[i]
+
+    def refit(self, positions, N: int) -> None:
+        """Reuse the existing LBVH topology, updating only position multipoles.
+
+        Between the stages of a single RK advection step every particle moves
+        by less than one inter-particle spacing (any sane advection CFL), so the
+        Morton-sorted leaf assignment and the Karras hierarchy built at stage 1
+        remain a valid — if very slightly sub-optimal — bounding-volume tree for
+        the displaced positions.  Circulations and radii do not change during
+        advection, only positions do.
+
+        A refit therefore keeps ``sorted_indices``, the node child/parent links,
+        the leaf particle ranges and the per-node depths from the last
+        :meth:`build`, and only re-seeds the leaf multipoles from the new
+        positions and re-runs the level-synchronous bottom-up combine.  This
+        skips the Morton-code, sort, Karras-build, parents and depths passes —
+        typically the majority of build cost (the sort in particular).
+
+        Args:
+            positions: vec3 field of the displaced positions, in the SAME
+                particle order as the last :meth:`build` (length >= N).
+            N: number of active particles; must equal the last build's N.
+
+        Raises:
+            RuntimeError: if no compatible prior build exists (the caller should
+                fall back to a full :meth:`build`).
+        """
+        if getattr(self, "_built_n", None) != N or N <= 1:
+            raise RuntimeError(
+                "treecode.refit requires a prior build() with the same N "
+                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
+            )
+        t_start = time.perf_counter()
+        self.n_particles[None] = N
+        # Update only positions; circulations/radii are advection-invariant.
+        self._copy_positions_field(positions, N)
+        # Re-seed leaf multipoles/AABB from the new positions, then rebuild the
+        # internal-node moments bottom-up over the unchanged level structure.
+        self._leaf_multipole_init_kernel(N)
+        for level in range(self._combine_levels, -1, -1):
+            self._combine_level_kernel(N, level)
         self.build_time = time.perf_counter() - t_start
 
     @ti.kernel
@@ -575,14 +633,6 @@ class TaichiTreecode:
                 self.node_right[0] = -1
                 self.node_parent[0] = -1
             return
-
-        # No defensive ``ti.sync()`` between build kernels: Taichi submits them to
-        # one device queue in order, and each kernel-launch boundary is itself the
-        # ordering guarantee (data-dependent kernels see their predecessor's
-        # writes).  The multipole pass is *level-synchronous* (one kernel per tree
-        # level, deepest→root) precisely so the bottom-up has no cross-thread
-        # read-after-write hazard — the previous design's atomic-climb walk did,
-        # and the inter-kernel barriers only masked it by timing.
 
         # Step 1: AABB (parallel min/max reduction)
         self._compute_aabb_kernel(N)

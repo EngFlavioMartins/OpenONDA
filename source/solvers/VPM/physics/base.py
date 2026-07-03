@@ -90,6 +90,11 @@ class PhysicsBase:
         self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
         self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
 
+        # Reuse the stage-1 LBVH topology across the later RK advection stages
+        # (refit vs full rebuild).  On by default; a safe escape hatch / bench
+        # toggle — setting it False reverts to a full tree build at every stage.
+        self.reuse_tree_topology = True
+
         # Cached filtered particle fields for zone-aware BC computation
         # Avoids memory leak in _compute_target_velocities_filtered
         self._filtered_field_size = 0
@@ -471,7 +476,7 @@ class PhysicsBase:
         for i in range(N):
             dst[i] = src[i]
 
-    def velocity_self(self, pos, strg, rad, out, bg, N: int) -> None:
+    def velocity_self(self, pos, strg, rad, out, bg, N: int, reuse_tree: bool = False) -> None:
         """Self-induced velocity of a particle set, evaluated at its own positions.
 
         Writes the result into the ``out`` taichi vec3 field.  Honors the method
@@ -491,13 +496,26 @@ class PhysicsBase:
             out:  vec3 field receiving the velocities (length ≥ N).
             bg:   0-d vec3 field with the background/freestream velocity.
             N:    number of active particles.
+            reuse_tree: when True, reuse the LBVH topology from the previous
+                build and only refit its position-dependent multipoles (valid
+                for RK stages ≥ 2, where circulations/radii are unchanged and
+                particles have moved < h).  Falls back to a full build if no
+                compatible tree exists.
         """
         if N == 0:
             return
         if self.velocity_method == "TREECODE":
             tree = self._get_or_create_treecode(N, self.velocity_theta)
-            # Build from fields directly
-            tree.build(pos, strg, rad, N)
+            # Reuse the stage-1 topology when asked; otherwise (or on any
+            # mismatch) do a full build.  Circulations/radii are advection-
+            # invariant, so a refit needs only the displaced positions.
+            if reuse_tree and self.reuse_tree_topology:
+                try:
+                    tree.refit(pos, N)
+                except RuntimeError:
+                    tree.build(pos, strg, rad, N)
+            else:
+                tree.build(pos, strg, rad, N)
             # Background velocity: extract single 3-vector (cheap, 3 floats).
             bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
             # On-device traversal + field-to-field copy

@@ -653,6 +653,34 @@ class StretchingConfig:
     enabled: bool = True
     """Whether vortex stretching is enabled."""
 
+    use_treecode: bool = False
+    """Compute the stretching rate from the treecode velocity gradient instead
+    of the direct O(N²) pairwise kernel.
+
+    The stretching rate dΓ/dt = (Γ·∇)u (DIRECT), (∇u)ᵀ·Γ (TRANSPOSED) or the
+    symmetric S·Γ (MIXED) is an exact local contraction of the velocity-gradient
+    tensor ∇u.  The direct kernel forms ∇u·Γ implicitly with an O(N²) pair sum;
+    with ``use_treecode=True`` the same ∇u is evaluated by the Barnes–Hut
+    treecode (O(N log N)) and contracted locally.  The contraction itself is
+    exact (relL2 ≈ 1e-6 against the direct rate when contracted with the
+    directly-computed gradient); through the treecode gradient the rate differs
+    from direct by the Barnes–Hut opening-angle tolerance (measured relL2
+    ≈ 4e-2 at θ=0.2 on a random cloud — the same error class the advection
+    velocities already carry).
+
+    IMPORTANT — measured tradeoff (RTX 3060, 2026-07): the treecode *gradient*
+    traversal (9 tensor components, deep walks) is intrinsically expensive, so
+    the O(N²) direct kernel is actually FASTER up to at least N ≈ 250k (direct
+    0.80× the treecode wall time at 249k).  The crossover is beyond a 6 GB card.
+    The physics is preserved either way (circulation matches to ~4e-5 after
+    several steps).  Enable this only above the crossover, or once the treecode
+    traversal itself is made cheaper (higher-order multipoles → larger θ).
+    Default False keeps the faster, exact legacy rate."""
+
+    treecode_theta: float = 0.3
+    """Barnes–Hut opening angle for the treecode stretching gradient
+    (only used when ``use_treecode=True``).  Smaller = more accurate/slower."""
+
     def __post_init__(self) -> None:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
@@ -660,13 +688,15 @@ class StretchingConfig:
             raise ValueError(f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}")
         if scheme not in ("EULER", "RK2", "RK3", "RK4"):
             raise ValueError(f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}")
+        if not 0.0 < self.treecode_theta < 2.0:
+            raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
         if mode != self.mode:
             object.__setattr__(self, "mode", mode)
         if scheme != self.scheme:
             object.__setattr__(self, "scheme", scheme)
 
     @staticmethod
-    def direct(scheme: str = "RK3"):
+    def direct(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
         """Direct scheme: dΓ/dt = (Γ·∇)u
 
         Options for `scheme`:
@@ -674,11 +704,15 @@ class StretchingConfig:
           - 'RK2':   Heun's method, 2nd-order Runge–Kutta
           - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
+
+        Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
+        treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="DIRECT", scheme=scheme)
+        return StretchingConfig(mode="DIRECT", scheme=scheme,
+                                use_treecode=use_treecode, treecode_theta=treecode_theta)
 
     @staticmethod
-    def transposed(scheme: str = "RK3"):
+    def transposed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
         """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ
 
         Options for `scheme`:
@@ -686,11 +720,15 @@ class StretchingConfig:
           - 'RK2':   Heun's method, 2nd-order Runge–Kutta
           - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
+
+        Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
+        treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="TRANSPOSED", scheme=scheme)
+        return StretchingConfig(mode="TRANSPOSED", scheme=scheme,
+                                use_treecode=use_treecode, treecode_theta=treecode_theta)
 
     @staticmethod
-    def mixed(scheme: str = "RK3"):
+    def mixed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
         """Mixed/strain scheme: symmetric formulation
 
         Options for `scheme`:
@@ -698,8 +736,12 @@ class StretchingConfig:
           - 'RK2':   Heun's method, 2nd-order Runge–Kutta
           - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
           - 'RK4':   classical 4th-order Runge–Kutta
+
+        Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
+        treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="MIXED", scheme=scheme)
+        return StretchingConfig(mode="MIXED", scheme=scheme,
+                                use_treecode=use_treecode, treecode_theta=treecode_theta)
 
     @staticmethod
     def disabled():

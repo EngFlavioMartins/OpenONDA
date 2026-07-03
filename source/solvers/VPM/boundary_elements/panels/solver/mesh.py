@@ -37,12 +37,16 @@ def add_body_from_mesh_stl(
     """
     vertices, _ = load_stl(filepath)
 
+    # add_body appends panels at the end of the lattice; record the range of
+    # the new body from the panel count before/after (add_body returns None).
+    start = lattice.num_panels
     lattice.add_body(uid, vertices, motion=motion, group_id=group_id)
+    count = lattice.num_panels - start
 
     # Initial geometry update at t=0
     lattice.update_geometry(0.0)
 
-    if fix_normals:
+    if fix_normals and count > 0:
         # Flip normals away from centroid
         centers_np = lattice.centers.to_numpy()[start : start + count]
         centroid = np.mean(centers_np, axis=0)

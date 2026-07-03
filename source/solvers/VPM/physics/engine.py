@@ -122,6 +122,8 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         dt: float,
         scheme: str = "RK3",
         mode: str = "TRANSPOSED",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
     ):
         """
         Apply vortex stretching.
@@ -133,8 +135,13 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             dt: Time step size [s]
             scheme: 'EULER', 'RK2', 'RK3', or 'RK4'
             mode: 'DIRECT', 'TRANSPOSED', or 'MIXED'
+            use_treecode: evaluate the rate from the O(N log N) treecode gradient
+                instead of the direct O(N²) pairwise kernel (large N).
+            treecode_theta: Barnes–Hut opening angle for the treecode gradient.
         """
-        self._stretching.vortex_stretching(particles, dt, scheme, mode)
+        self._stretching.vortex_stretching(
+            particles, dt, scheme, mode, use_treecode, treecode_theta
+        )
 
     def save_strength_magnitudes(self, particles):
         """
@@ -187,8 +194,14 @@ class _AdvectionHandler:
         self._parent._resize_temp_fields(N)
         self._step(particles, dt, scheme, N, precomputed_k1)
 
-    def _vel(self, particles, pos_field, out_field, N):
-        """Self-induced velocity at ``pos_field`` → ``out_field`` (honors method)."""
+    def _vel(self, particles, pos_field, out_field, N, reuse_tree=False):
+        """Self-induced velocity at ``pos_field`` → ``out_field`` (honors method).
+
+        ``reuse_tree=True`` (RK stages ≥ 2) refits the stage-1 LBVH topology to
+        the displaced positions instead of rebuilding it — same physics, ~half
+        the per-stage tree cost.  Not used when a velocity override (FVM blend)
+        is active, since that path round-trips through the CPU anyway.
+        """
         self._parent.velocity_self(
             pos_field,
             particles.circulation,
@@ -196,6 +209,7 @@ class _AdvectionHandler:
             out_field,
             particles.velocity_background,
             N,
+            reuse_tree=reuse_tree and self._parent.velocity_override is None,
         )
         if self._parent.velocity_override is not None:
             pos_np = pos_field.to_numpy()
@@ -241,7 +255,7 @@ class _AdvectionHandler:
         self._k1(particles, N, precomputed_k1)
         # x_pred = x_n + dt·k1
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
-        self._vel(particles, p.pos_temp, p.vel_temp, N)  # k2 = v(x_pred)
+        self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)  # k2 = v(x_pred)
         p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
 
     def _rk3(self, particles, dt, N, precomputed_k1=False):
@@ -250,13 +264,13 @@ class _AdvectionHandler:
         self._k1(particles, N, precomputed_k1)
         # x1 = x_n + dt·k1
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
-        self._vel(particles, p.pos_temp, p.vel_temp, N)  # k2 = v(x1)
+        self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)  # k2 = v(x1)
         # x2 = x_n + dt/4·(k1 + k2)
         p.linear_combination_kernel(
             p.pos_temp2, particles.velocity, p.vel_temp, 0.25 * dt, 0.25 * dt, N
         )
         p.step_euler_forward_kernel(particles.position, p.pos_temp2, p.pos_temp2, 1.0, N)
-        self._vel(particles, p.pos_temp2, p.vel_temp2, N)  # k3 = v(x2)
+        self._vel(particles, p.pos_temp2, p.vel_temp2, N, reuse_tree=True)  # k3 = v(x2)
         p.step_rk3_ssp_combine_kernel(
             particles.position, particles.velocity, p.vel_temp, p.vel_temp2, dt, N
         )
@@ -267,13 +281,13 @@ class _AdvectionHandler:
         self._k1(particles, N, precomputed_k1)  # k1 → particles.velocity
         # k2 = v(x_n + 0.5·dt·k1)
         p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, 0.5 * dt, N)
-        self._vel(particles, p.pos_temp, p.vel_temp, N)
+        self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)
         # k3 = v(x_n + 0.5·dt·k2)
         p.step_euler_forward_kernel(particles.position, p.vel_temp, p.pos_temp, 0.5 * dt, N)
-        self._vel(particles, p.pos_temp, p.vel_temp2, N)
+        self._vel(particles, p.pos_temp, p.vel_temp2, N, reuse_tree=True)
         # k4 = v(x_n + dt·k3)  (stored in pos_temp2)
         p.step_euler_forward_kernel(particles.position, p.vel_temp2, p.pos_temp, dt, N)
-        self._vel(particles, p.pos_temp, p.pos_temp2, N)
+        self._vel(particles, p.pos_temp, p.pos_temp2, N, reuse_tree=True)
         p.step_rk4_combine_kernel(
             particles.position, particles.velocity, p.vel_temp, p.vel_temp2, p.pos_temp2, dt, N
         )
@@ -322,6 +336,10 @@ class _StretchingHandler:
 
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
+        # Set per-call by vortex_stretching(); defaults keep _rate() safe if it
+        # is ever reached before the first stretching call.
+        self._use_treecode = False
+        self._treecode_theta = 0.3
 
     def vortex_stretching(
         self,
@@ -329,13 +347,24 @@ class _StretchingHandler:
         dt: float,
         scheme: str = "RK3",
         mode: str = "TRANSPOSED",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
     ):
-        """Vortex stretching using parent's temp fields."""
+        """Vortex stretching using parent's temp fields.
+
+        ``use_treecode=True`` evaluates the stretching rate from the O(N log N)
+        treecode velocity gradient instead of the direct O(N²) pairwise kernel
+        (see _rate); numerically identical up to the Barnes–Hut tolerance.
+        """
         N = len(particles)
         if N == 0 or dt == 0.0:
             return
 
         p = self._parent
+        # Treecode stretching needs the actual treecode velocity method; if the
+        # solver is in DIRECT velocity mode there is no tree, so fall back.
+        self._use_treecode = bool(use_treecode) and p.velocity_method == "TREECODE"
+        self._treecode_theta = float(treecode_theta)
         p._resize_temp_fields(N)
         p._zero_temp_fields()
 
@@ -352,7 +381,7 @@ class _StretchingHandler:
         scheme = scheme.upper()
 
         if scheme == "EULER":
-            p.compute_stretching_rate_kernel(
+            self._rate(
                 particles.position,
                 particles.circulation,
                 particles.radius,
@@ -377,15 +406,32 @@ class _StretchingHandler:
         else:
             raise ValueError(f"Unknown scheme: {scheme}")
 
+    def _rate(self, pos, strg, rad, out, mode_int, N):
+        """Stretching rate dΓ/dt at (pos, strg): direct pairwise or treecode.
+
+        Direct: the O(N²) pairwise kernel.  Treecode: build the LBVH at
+        (pos, strg), evaluate the velocity gradient J = ∇u (O(N log N)), and
+        contract it locally — J·Γ (DIRECT), Jᵀ·Γ (TRANSPOSED) or S·Γ (MIXED).
+        The two agree up to the Barnes–Hut opening-angle tolerance.
+        """
+        p = self._parent
+        if self._use_treecode:
+            tree = p._get_or_create_treecode(N, self._treecode_theta)
+            tree.build(pos, strg, rad, N)
+            tree.compute_velocity_gradients_gpu()
+            p.gradient_contraction_rate_kernel(tree.velocity_gradients, strg, out, mode_int, N)
+        else:
+            p.compute_stretching_rate_kernel(pos, strg, rad, out, mode_int, N)
+
     def _stretching_rk2(self, particles, dt, mode_int, N):
         """RK2 stretching."""
         p = self._parent
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
@@ -394,12 +440,12 @@ class _StretchingHandler:
     def _stretching_rk3(self, particles, dt, mode_int, N):
         """RK3 stretching."""
         p = self._parent
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
@@ -407,7 +453,7 @@ class _StretchingHandler:
             p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
@@ -418,22 +464,22 @@ class _StretchingHandler:
     def _stretching_rk4(self, particles, dt, mode_int, N):
         """RK4 stretching."""
         p = self._parent
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
-        p.compute_stretching_rate_kernel(
+        self._rate(
             particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N
         )
         self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)

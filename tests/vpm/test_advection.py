@@ -221,7 +221,7 @@ def test_velocity_method_is_consistent_across_all_rk_stages(
     physics.compute_velocities_kernel = counting_direct
     physics._copy_vec3 = counting_treecode
     try:
-        physics.update_positions(solver.particles, _DT, scheme="RK4", n_substeps=1)
+        physics.update_positions(solver.particles, _DT, scheme="RK4")
     finally:
         physics.compute_velocities_kernel = direct_fn
         physics._copy_vec3 = treecode_fn

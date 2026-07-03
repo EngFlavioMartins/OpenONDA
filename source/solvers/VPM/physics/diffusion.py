@@ -209,6 +209,19 @@ class _GridDiffusionMixin:
         # Maximum number of grid cells per spatial dimension.
         self._MAX_CELLS_PER_DIM: int = 2000
 
+        # Vulkan/Taichi 1.7.x does not release replaced grid fields until
+        # ti.reset().  When enabled, DVH/GBD must use a fixed pre-allocated
+        # domain grid and any later growth is treated as a configuration error.
+        self._require_fixed_grid_allocation: bool = False
+
+    def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
+        """Require grid-based diffusion to pre-allocate one fixed grid.
+
+        This is used for Vulkan backends, where replacing Taichi fields during a
+        long DVH/GBD run causes device memory to grow monotonically.
+        """
+        self._require_fixed_grid_allocation = bool(enabled)
+
     @property
     def _current_grid(self):
         """Field holding the current vorticity (source)."""
@@ -304,11 +317,24 @@ class _GridDiffusionMixin:
             nx = min(nx, cap[0])
             ny = min(ny, cap[1])
             nz = min(nz, cap[2])
+        elif self._require_fixed_grid_allocation:
+            raise RuntimeError(
+                "Vulkan DVH/GBD requires vpm_domain_bounds so the diffusion grid "
+                "can be pre-allocated once. Refusing grow-on-demand grid allocation "
+                "because Taichi 1.7.x retains replaced Vulkan fields until ti.reset()."
+            )
 
         if self._grid_a is not None:
             alloc = self._grid_shape
             if nx <= alloc[0] and ny <= alloc[1] and nz <= alloc[2]:
                 return nx, ny, nz
+
+            if self._require_fixed_grid_allocation:
+                raise RuntimeError(
+                    "Vulkan DVH/GBD grid request exceeds the fixed pre-allocated "
+                    f"grid {alloc}: requested {(nx, ny, nz)}. Increase "
+                    "vpm_domain_bounds/padding or use CUDA/CPU for this run."
+                )
 
             if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
                 clamped = (min(nx, alloc[0]), min(ny, alloc[1]), min(nz, alloc[2]))
@@ -410,8 +436,8 @@ class _GridDiffusionMixin:
             dtype=np.float32,
         )
 
-        # Memory estimate: 2 vector fields (3×f32) + 1 scalar field (i32)
-        bytes_per_node = 2 * 12 + 4  # = 28 bytes
+        # Memory estimate: 2 vector fields (3×f32), mask i32, nu_eff f32.
+        bytes_per_node = 2 * 12 + 4 + 4  # = 32 bytes
         total_bytes = nx * ny * nz * bytes_per_node
         total_mb = total_bytes / (1 << 20)
 
@@ -430,6 +456,15 @@ class _GridDiffusionMixin:
             self._grid_shape = (nx, ny, nz)
             self._ping = True
         else:
+            if self._require_fixed_grid_allocation and self._grid_a is None:
+                limit_mb = self._MAX_PREALLOC_BYTES / (1 << 20)
+                raise MemoryError(
+                    "Vulkan DVH/GBD requires a fixed pre-allocated grid, but "
+                    f"the configured VPM domain grid is {nx}x{ny}x{nz} "
+                    f"({total_mb:.0f} MB estimate), above the {limit_mb:.0f} MB "
+                    "pre-allocation limit. Reduce vpm_domain_bounds/padding, "
+                    "increase h, or use CUDA/CPU."
+                )
             _logger.info(
                 "DVH: VPM domain grid (%d×%d×%d) = %.0f MB — %s. "
                 "Grid will grow on demand up to this cap.",

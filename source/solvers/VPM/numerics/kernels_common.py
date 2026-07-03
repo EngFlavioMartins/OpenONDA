@@ -858,6 +858,42 @@ def _create_splitting_kernels(kernel_functions):
         "apply_merger_dissipation_kernel": _make_apply_merger_dissipation_kernel(),
     }
 
+def _make_gradient_contraction_kernel():
+    """Mini-factory: rate dΓ/dt from an already-computed velocity gradient ∇u.
+
+    The pairwise stretching kernel forms ∇u·Γ implicitly; given the velocity
+    gradient tensor J (as computed by the treecode) the stretching rate is a
+    purely local contraction — O(N) instead of O(N²).  Matches the direct
+    pairwise kernel's three modes:
+
+      mode 0 (DIRECT):     dΓ = (Γ·∇)u   = J · Γ
+      mode 1 (TRANSPOSED): dΓ = (Γ·∇')u  = Jᵀ · Γ
+      mode 2 (MIXED):      dΓ = ½(J + Jᵀ)·Γ = S · Γ
+    """
+
+    @ti.kernel
+    def gradient_contraction_rate_kernel(
+        grad: ti.template(),       # velocity gradient tensor J per particle
+        strengths: ti.template(),  # Γ per particle
+        dstr_dt_out: ti.template(),
+        mode: ti.i32,
+        num_particles: ti.i32,
+    ):  # type: ignore
+        for i in range(num_particles):
+            J = grad[i]
+            g = strengths[i]
+            rate = ti.Vector([0.0, 0.0, 0.0])
+            if mode == 0:
+                rate = J @ g
+            elif mode == 1:
+                rate = J.transpose() @ g
+            else:
+                rate = (0.5 * (J + J.transpose())) @ g
+            dstr_dt_out[i] = rate
+
+    return gradient_contraction_rate_kernel
+
+
 def _create_stretching_kernels(kernel_functions):
     """Create kernels for vortex stretching computations."""
     q_ = kernel_functions["q_"]
@@ -865,6 +901,7 @@ def _create_stretching_kernels(kernel_functions):
 
     return {
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
+        "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
     }
 
 def _create_utility_kernels(kernel_functions):

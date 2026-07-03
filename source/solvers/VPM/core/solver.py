@@ -268,6 +268,12 @@ class Solver:
 
         self.advection_scheme = final_config.advection.scheme
         self.stretching_scheme = final_config.stretching.scheme
+        self.stretching_use_treecode = getattr(
+            final_config.stretching, "use_treecode", False
+        )
+        self.stretching_treecode_theta = getattr(
+            final_config.stretching, "treecode_theta", 0.3
+        )
         self.processing_unit = final_config.processing_unit.upper()
         self.flow_model = final_config.turbulence.flow_model.upper()
         self.viscous_scheme = final_config.viscous.scheme
@@ -350,24 +356,40 @@ class Solver:
 
         # Pre-allocate grid to VPM domain size for grid-based diffusion schemes
         vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
-        if vpm_bounds is not None and hasattr(self.physics, "configure_max_grid_extent"):
-            vc = getattr(final_config, "viscous", None)
-            if vc is not None:
-                scheme = getattr(vc, "scheme", "")
-                if scheme == "DVH":
-                    _grid_h = getattr(vc, "dvh_grid_spacing", None)
-                    _grid_pad = getattr(vc, "dvh_domain_padding", 3.0)
-                elif scheme == "GBD":
-                    _grid_h = getattr(vc, "gbd_grid_spacing", None)
-                    _grid_pad = getattr(vc, "gbd_domain_padding", 3.0)
-                else:
-                    _grid_h = None
-                    _grid_pad = 3.0
-                if _grid_h is not None and _grid_h > 0:
-                    try:
-                        self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
-                    except Exception as exc:
-                        Logging.warning(f"Failed to configure grid max extent: {exc}")
+        vc = getattr(final_config, "viscous", None)
+        scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
+        is_grid_diffusion = scheme in {"DVH", "GBD"}
+        fixed_grid_required = self.processing_unit == "VULKAN" and is_grid_diffusion
+        if fixed_grid_required and hasattr(self.physics, "require_fixed_grid_allocation"):
+            self.physics.require_fixed_grid_allocation(True)
+        if is_grid_diffusion and hasattr(self.physics, "configure_max_grid_extent"):
+            if scheme == "DVH":
+                _grid_h = getattr(vc, "dvh_grid_spacing", None)
+                _grid_pad = getattr(vc, "dvh_domain_padding", 3.0)
+            else:
+                _grid_h = getattr(vc, "gbd_grid_spacing", None)
+                _grid_pad = getattr(vc, "gbd_domain_padding", 3.0)
+
+            if fixed_grid_required and vpm_bounds is None:
+                raise ValueError(
+                    "Vulkan DVH/GBD requires vpm_domain_bounds so the diffusion "
+                    "grid can be pre-allocated once. Use processing_unit='GPU' "
+                    "to prefer CUDA when available, use CUDA/CPU explicitly, or "
+                    "provide fixed VPM domain bounds."
+                )
+            if fixed_grid_required and (_grid_h is None or _grid_h <= 0):
+                raise ValueError(
+                    "Vulkan DVH/GBD requires a positive grid spacing so the "
+                    "fixed diffusion grid can be pre-allocated."
+                )
+
+            if vpm_bounds is not None and _grid_h is not None and _grid_h > 0:
+                try:
+                    self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
+                except Exception as exc:
+                    if fixed_grid_required:
+                        raise
+                    Logging.warning(f"Failed to configure grid max extent: {exc}")
         self.particles.register_resize_callback(self.physics._resize_temp_fields)
         if self._splitter is not None:
             self.particles.register_resize_callback(self._splitter.resize)
@@ -2289,6 +2311,8 @@ class Solver:
                 dt=dt,
                 scheme=self.stretching_scheme,
                 mode=self.stretching_mode,
+                use_treecode=self.stretching_use_treecode,
+                treecode_theta=self.stretching_treecode_theta,
             )
             ti.sync()
             if self._parallel_strain_relaxation is not None:
@@ -2333,7 +2357,13 @@ class Solver:
                     zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
                 )
-                self._update_velocities()
+                # NB: no velocity refresh here.  After regen, particles.velocity
+                # is not read by anything before it is recomputed: the stretching
+                # step derives its own gradients, the flow-integral kernel
+                # recomputes u from Biot–Savart internally, backups refresh it via
+                # _refresh_backup_particle_fields(), and the next step's stage-1
+                # fused pass overwrites it.  Rebuilding the whole tree here just to
+                # refill a field nobody reads was ~one extra treecode eval/regen.
         ti.sync()
 
     def _apply_grid_diffusion(self, vc, dt: float):

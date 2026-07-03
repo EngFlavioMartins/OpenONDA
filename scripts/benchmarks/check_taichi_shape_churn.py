@@ -14,15 +14,21 @@ Examples
     python scripts/benchmarks/check_taichi_shape_churn.py --arch cuda
     python scripts/benchmarks/check_taichi_shape_churn.py --arch cpu
     python scripts/benchmarks/check_taichi_shape_churn.py --arch vulkan --mode fixed
+    python scripts/benchmarks/check_taichi_shape_churn.py --arch vulkan --mode field-realloc
 
 Interpretation
 --------------
 If ``--mode variable`` grows GPU memory roughly with the number of distinct
 shapes, but ``--mode fixed`` plateaus, the leak is in backend external-array
 staging/cache lifetime rather than in the VPM solver's numerical kernels.
+
+If ``--mode field-realloc`` grows GPU memory, the risk is Taichi field lifetime:
+replacing grid fields with larger fields leaves the old allocations resident
+until ``ti.reset()``.  That mirrors DVH/GBD grid reallocation.
 """
 
 import argparse
+import gc
 import os
 import subprocess
 import sys
@@ -119,6 +125,22 @@ def _download(src: ti.template(), dst: ti.types.ndarray(dtype=ti.f32, ndim=2), n
             dst[i, k] = src[i][k]
 
 
+@ti.kernel
+def _touch_grid_like(
+    grid_a: ti.template(),
+    grid_b: ti.template(),
+    mask: ti.template(),
+    nu_eff: ti.template(),
+    n: ti.i32,
+):  # type: ignore
+    for i in range(n):
+        value = ti.cast(i % 17, ti.f32)
+        grid_a[i] = ti.Vector([value, value + 1.0, value + 2.0])
+        grid_b[i] = ti.Vector([value + 3.0, value + 4.0, value + 5.0])
+        mask[i] = i % 2
+        nu_eff[i] = value
+
+
 def _shape_schedule(min_n: int, max_n: int, distinct: int, repeats: int) -> list[int]:
     if distinct <= 1:
         return [max_n] * repeats
@@ -130,7 +152,7 @@ def _shape_schedule(min_n: int, max_n: int, distinct: int, repeats: int) -> list
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arch", default="vulkan", choices=["cpu", "cuda", "vulkan", "gpu"])
-    ap.add_argument("--mode", default="variable", choices=["variable", "fixed"])
+    ap.add_argument("--mode", default="variable", choices=["variable", "fixed", "field-realloc"])
     ap.add_argument("--min-n", type=int, default=4096)
     ap.add_argument("--max-n", type=int, default=262144)
     ap.add_argument("--distinct", type=int, default=96)
@@ -147,7 +169,9 @@ def main() -> int:
     print(f"[backend] requested={backend} -> using {chosen}")
 
     max_n = int(args.max_n)
-    field = ti.Vector.field(3, dtype=ti.f32, shape=max_n)
+    field = None
+    if args.mode != "field-realloc":
+        field = ti.Vector.field(3, dtype=ti.f32, shape=max_n)
     fixed_in = np.empty((max_n, 3), dtype=np.float32)
     fixed_out = np.empty((max_n, 3), dtype=np.float32) if args.download else None
     schedule = _shape_schedule(args.min_n, max_n, args.distinct, args.repeats)
@@ -181,11 +205,18 @@ def main() -> int:
             if args.download:
                 dst = np.empty((n, 3), dtype=np.float32)
                 _download(field, dst, n)
-        else:
+        elif args.mode == "fixed":
             fixed_in[:n] = 1.0
             _upload(fixed_in, field, n)
             if args.download:
                 _download(field, fixed_out, n)
+        else:
+            grid_a = ti.Vector.field(3, dtype=ti.f32, shape=n)
+            grid_b = ti.Vector.field(3, dtype=ti.f32, shape=n)
+            mask = ti.field(dtype=ti.i32, shape=n)
+            nu_eff = ti.field(dtype=ti.f32, shape=n)
+            _touch_grid_like(grid_a, grid_b, mask, nu_eff, n)
+            gc.collect()
 
         if it == 1 or it % args.sample_every == 0 or it == len(schedule):
             ti.sync()

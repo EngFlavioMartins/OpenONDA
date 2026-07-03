@@ -184,11 +184,11 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         advection=advection,
         stretching=stretching,
         # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Do NOT force
-        # GPU_VULKAN here: Taichi 1.7.x Vulkan caches one device staging buffer
-        # per distinct ndarray shape and never frees it, and the GBD/DVH grids
-        # reallocate as they grow, so long viscous runs leak VRAM until
-        # "Failed to allocate ext arr buffer" (reproduced 2026-07-03, dipole_gbd
-        # step 171).  CUDA's caching allocator reuses freed blocks and is immune.
+        # GPU_VULKAN here: Taichi 1.7.x retains replaced Vulkan fields until
+        # ti.reset(), and GBD/DVH grid growth can reallocate large Taichi fields
+        # during long runs, leaking VRAM until "Failed to allocate ext arr buffer"
+        # (reproduced 2026-07-03, dipole_gbd step 171). CUDA is the safer choice
+        # on NVIDIA; Vulkan grid diffusion now requires a fixed domain grid.
         processing_unit="GPU",
         backup_frequency=10,
         logging_frequency=10,
