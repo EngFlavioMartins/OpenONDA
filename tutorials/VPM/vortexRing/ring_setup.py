@@ -87,6 +87,18 @@ def main():
         help="Initial particle spacing [m] (about 2.9 points per core radius).",
     )
     parser.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
+    )
+    parser.add_argument(
+        "--device-memory-fraction",
+        type=float,
+        default=0.5,
+        help="Fraction of GPU memory reserved by Taichi.",
+    )
+    parser.add_argument(
         "--backup-frequency",
         type=int,
         default=6,
@@ -156,8 +168,14 @@ def main():
         turbulence=turbulence,
         stretching=stretching,
         stabilization=stabilization,
-        velocity=VelocityConfig.treecode(theta=0.3),
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
         viscous=ViscousConfig.cs(),
+        processing_unit=args.processing_unit,
+        device_memory_fraction=args.device_memory_fraction,
         backup_frequency=args.backup_frequency,
         logging_frequency=logging_frequency,
         timing_frequency=max(1, 6 * logging_frequency) if logging_frequency > 0 else 0,

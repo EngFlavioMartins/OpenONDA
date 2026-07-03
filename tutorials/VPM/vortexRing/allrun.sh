@@ -16,20 +16,22 @@ PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
 # Clean previous solution
 ./allclean.sh
 
+COMMON_FLAGS=(--solution-dir ./solution --processing-unit CUDA)
+
 echo "Starting DNS simulation (direct stretching)..."
-"$PYTHON" ring_setup.py --mode dns --stretching direct --name DNS_direct --solution-dir ./solution
+"$PYTHON" ring_setup.py --mode dns --stretching direct --name DNS_direct "${COMMON_FLAGS[@]}"
 
 echo "Starting DNS simulation (transposed stretching)..."
-"$PYTHON" ring_setup.py --mode dns --stretching transposed --name DNS_transposed --solution-dir ./solution
+"$PYTHON" ring_setup.py --mode dns --stretching transposed --name DNS_transposed "${COMMON_FLAGS[@]}"
 
 echo "Starting DNS simulation (mixed stretching)..."
-"$PYTHON" ring_setup.py --mode dns --stretching mixed --name DNS_mixed --solution-dir ./solution
+"$PYTHON" ring_setup.py --mode dns --stretching mixed --name DNS_mixed "${COMMON_FLAGS[@]}"
 
 echo "Starting LES simulation (transposed stretching + rVPM correction)..."
-"$PYTHON" ring_setup.py --mode les --stretching transposed --parallel-strain-relaxation --name LES_rvpm --solution-dir ./solution
+"$PYTHON" ring_setup.py --mode les --stretching transposed --parallel-strain-relaxation --name LES_rvpm "${COMMON_FLAGS[@]}"
 
 echo "Starting LES comparison simulation (transposed stretching)..."
-"$PYTHON" ring_setup.py --mode les --stretching transposed --name LES_transposed --solution-dir ./solution
+"$PYTHON" ring_setup.py --mode les --stretching transposed --name LES_transposed "${COMMON_FLAGS[@]}"
 
 
 echo "Generating comparison plots..."

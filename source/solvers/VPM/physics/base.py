@@ -89,6 +89,9 @@ class PhysicsBase:
         # DIRECT: exact O(N²); use VelocityConfig.treecode(theta=0.5) for N ≳ 5 000 (~5% error)
         self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
         self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
+        self.treecode_multipole_order = 1
+        self.treecode_sort_particle_targets = False
+        self.treecode_traversal_block_dim = 128
 
         # Reuse the stage-1 LBVH topology across the later RK advection stages
         # (refit vs full rebuild).  On by default; a safe escape hatch / bench
@@ -403,6 +406,9 @@ class PhysicsBase:
                 max_nodes=2 * alloc_size,
                 theta=theta,
                 kernel_type=self.particles_kernel,
+                multipole_order=self.treecode_multipole_order,
+                sort_particle_targets=self.treecode_sort_particle_targets,
+                traversal_block_dim=self.treecode_traversal_block_dim,
             )
             self._treecode_max_particles = alloc_size
         else:
@@ -410,6 +416,9 @@ class PhysicsBase:
             self._treecode.theta = theta
             self._treecode.theta_sq = theta * theta
             self._treecode.set_kernel_type(self.particles_kernel)
+            self._treecode.set_multipole_order(self.treecode_multipole_order)
+            self._treecode.set_sort_particle_targets(self.treecode_sort_particle_targets)
+            self._treecode.traversal_block_dim = self.treecode_traversal_block_dim
 
         return self._treecode
 
@@ -454,7 +463,14 @@ class PhysicsBase:
 
     # UNIFIED SELF-INDUCED VELOCITY OPERATOR
 
-    def configure_velocity(self, method: str, theta: float = 0.5) -> None:
+    def configure_velocity(
+        self,
+        method: str,
+        theta: float = 0.5,
+        multipole_order: int = 1,
+        sort_particle_targets: bool = False,
+        traversal_block_dim: int = 128,
+    ) -> None:
         """Set how the self-induced velocity is evaluated (single source of truth).
 
         Args:
@@ -463,6 +479,15 @@ class PhysicsBase:
         """
         self.velocity_method = method.upper()
         self.velocity_theta = theta
+        if multipole_order not in (1, 2):
+            raise ValueError(f"treecode multipole_order must be 1 or 2, got {multipole_order}")
+        if traversal_block_dim < 0:
+            raise ValueError(
+                f"treecode traversal_block_dim must be >= 0, got {traversal_block_dim}"
+            )
+        self.treecode_multipole_order = int(multipole_order)
+        self.treecode_sort_particle_targets = bool(sort_particle_targets)
+        self.treecode_traversal_block_dim = int(traversal_block_dim)
 
     @ti.kernel
     def _copy_vec3(self, src: ti.template(), dst: ti.template(), N: ti.i32):

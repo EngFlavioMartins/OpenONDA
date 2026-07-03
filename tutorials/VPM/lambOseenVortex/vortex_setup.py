@@ -18,6 +18,7 @@ from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
+    VelocityConfig,
     ViscousConfig,
 )
 
@@ -57,12 +58,12 @@ DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
 RC = 0.125  # initial core radius a0 [m]
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
-TOTAL_TIME = 20.0
-LENGTH = 50  # vortex column span in z, in units of RC (default; override with --length)
+TOTAL_TIME = 16.0
+LENGTH = 20  # vortex column span in z, in units of RC (default; override with --length)
 VISCOUS_THRESHOLD_MODE = "budget"
-VISCOUS_THRESHOLD = 1.0e-4
+VISCOUS_THRESHOLD = 2.0e-4
 DVH_RD_RATIO = 3
-GBD_MAX_NODES = 250_000
+GBD_MAX_NODES = 120_000
 
 
 # =========================================================
@@ -98,7 +99,10 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     gamma1, gamma2 = args.gamma1, args.gamma2
     nu = 1.0 / args.re
     t0 = RC**2 / (4.0 * nu)
-    spacing = args.spacing_factor * RC
+    spacing_factor = args.spacing_factor
+    if scheme in {"dvh", "gbd"} and args.grid_spacing_factor is not None:
+        spacing_factor = args.grid_spacing_factor
+    spacing = spacing_factor * RC
 
     # Determine case label for folder naming
     case_type = "vortex" if gamma2 == 0 else ("dipole" if gamma1 * gamma2 < 0 else "merging")
@@ -183,15 +187,17 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         viscous=build_viscous_config(scheme, nu, args, spacing),
         advection=advection,
         stretching=stretching,
-        # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Do NOT force
-        # GPU_VULKAN here: Taichi 1.7.x retains replaced Vulkan fields until
-        # ti.reset(), and GBD/DVH grid growth can reallocate large Taichi fields
-        # during long runs, leaking VRAM until "Failed to allocate ext arr buffer"
-        # (reproduced 2026-07-03, dipole_gbd step 171). CUDA is the safer choice
-        # on NVIDIA; Vulkan grid diffusion now requires a fixed domain grid.
-        processing_unit="GPU",
-        backup_frequency=10,
-        logging_frequency=10,
+        # CUDA avoids the Taichi 1.7.x Vulkan field-lifetime growth seen in
+        # long DVH/GBD runs. Override only for backend debugging.
+        processing_unit=args.processing_unit,
+        device_memory_fraction=args.device_memory_fraction,
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
+        backup_frequency=args.backup_frequency,
+        logging_frequency=args.backup_frequency,
         timing_frequency=50,
         backup_file_name=f"{case_type}_{scheme}",
         solution_name=str(output_dir),
@@ -206,7 +212,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     # not 500k: on a 6 GB laptop GPU the oversized pre-allocation wastes VRAM
     # headroom that the DVH/GBD grid + treecode + per-step staging buffers need.
     # Fields still grow on demand if a run exceeds this.
-    solver.physics._resize_temp_fields(200_000)
+    solver.physics._resize_temp_fields(args.temp_field_capacity)
 
     n = len(positions)
     solver.add_vortex_particles(
@@ -272,21 +278,52 @@ def parse_args() -> argparse.Namespace:
         "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s].",
     )
     parser.add_argument(
-        "--dt", type=float, default=0.05, help="Time step size [s].",
+        "--dt", type=float, default=0.04, help="Time step size [s].",
     )
     parser.add_argument(
         "--num-steps", type=int, default=None, help="Exact number of time steps (overrides --total-time when given).",
     )
     parser.add_argument(
-        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of RC (default 50).",
+        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of RC.",
     )
     parser.add_argument( 
         "--re", type=float, default=RE, help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
     )
-    parser.add_argument("--dvh-max-nodes", type=int, default=250_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
+    parser.add_argument(
+        "--dvh-max-nodes", type=int, default=120_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
     )
     parser.add_argument(
-        "--spacing-factor", type=float, default=0.4, help="Particle/grid spacing as a fraction of the core radius rc (default 0.4)",
+        "--spacing-factor", type=float, default=0.45, help="Particle/grid spacing as a fraction of the core radius rc.",
+    )
+    parser.add_argument(
+        "--grid-spacing-factor",
+        type=float,
+        default=0.60,
+        help="DVH/GBD spacing as a fraction of rc. Use 0.45-0.50 for higher-resolution sweeps.",
+    )
+    parser.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default is CUDA to avoid Vulkan DVH/GBD field-retention issues.",
+    )
+    parser.add_argument(
+        "--device-memory-fraction",
+        type=float,
+        default=0.55,
+        help="Fraction of GPU memory reserved by Taichi.",
+    )
+    parser.add_argument(
+        "--temp-field-capacity",
+        type=int,
+        default=160_000,
+        help="Initial temporary-field capacity; fields still grow on demand.",
+    )
+    parser.add_argument(
+        "--backup-frequency",
+        type=int,
+        default=15,
+        help="Initial backup/log interval. Grid schemes are adjusted to preserve physical cadence.",
     )
     parser.add_argument(
         "--tag", default="", help="Suffix appended to the output directory name (for parameter sweeps).",

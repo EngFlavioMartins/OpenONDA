@@ -62,6 +62,9 @@ class TaichiTreecode:
         theta: float = 0.5,
         max_leaf_size: int = 32,
         kernel_type: str = "WINCKELMANS",
+        multipole_order: int = 1,
+        sort_particle_targets: bool = False,
+        traversal_block_dim: int = 128,
     ):
         self.max_particles = max_particles
         self.max_nodes = max_nodes
@@ -69,6 +72,11 @@ class TaichiTreecode:
         self.max_leaf_size = max_leaf_size
         self.theta_sq = theta * theta
         self.kernel_type = kernel_type.upper()
+        if multipole_order not in (1, 2):
+            raise ValueError(f"Unsupported treecode multipole_order: {multipole_order}")
+        if traversal_block_dim < 0:
+            raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
+        self.traversal_block_dim = int(traversal_block_dim)
 
         # -------------------------------------------------------------
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
@@ -88,6 +96,10 @@ class TaichiTreecode:
         self.node_total_circ = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        # First-order source-position moment around node_com:
+        #   M[b, a] = sum_j (x_j - node_com)_b * Gamma_{j,a}
+        # Used by the opt-in dipole correction when multipole_order == 2.
+        self.node_circ_dipole = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_nodes)
 
         # Binary tree structure (left/right child, -1 = none)
         self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
@@ -149,6 +161,8 @@ class TaichiTreecode:
         self.target_velocity_gradients = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
         self.n_targets = ti.field(dtype=ti.i32, shape=())
         self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
+        self.multipole_order = ti.field(dtype=ti.i32, shape=())
+        self.sort_particle_targets = ti.field(dtype=ti.i32, shape=())
 
         # -------------------------------------------------------------
         # TREE TRAVERSAL STACK
@@ -192,6 +206,8 @@ class TaichiTreecode:
         self._combine_levels = 0
 
         self.set_kernel_type(self.kernel_type)
+        self.set_multipole_order(multipole_order)
+        self.set_sort_particle_targets(sort_particle_targets)
 
     def set_kernel_type(self, kernel_type: str) -> None:
         normalized = kernel_type.upper()
@@ -203,6 +219,15 @@ class TaichiTreecode:
             raise ValueError(f"Unsupported treecode kernel_type: {kernel_type}")
         self.kernel_type = normalized
         self.kernel_type_id[None] = kernel_id
+
+    def set_multipole_order(self, order: int) -> None:
+        if order not in (1, 2):
+            raise ValueError(f"Unsupported treecode multipole_order: {order}")
+        self.multipole_order[None] = int(order)
+
+    def set_sort_particle_targets(self, enabled: bool) -> None:
+        """Evaluate particle targets in Morton order for better GPU coherence."""
+        self.sort_particle_targets[None] = 1 if enabled else 0
 
     # BUILD — On-GPU LBVH construction
 
@@ -623,9 +648,11 @@ class TaichiTreecode:
             self.node_particle_start[0] = 0
             self.node_particle_count[0] = N
             if N > 0:
+                self.sorted_indices[0] = 0
                 self.leaf_particles[0] = 0
                 self.node_total_circ[0] = self.circulations[0]
                 self.node_com[0] = self.positions[0]
+                self.node_circ_dipole[0] = ti.Matrix.zero(ti.f32, 3, 3)
                 self.node_center[0] = self.positions[0]
                 self.node_half_size[0] = 0.0
                 self.node_avg_radius[0] = self.radii[0]
@@ -751,6 +778,7 @@ class TaichiTreecode:
             self.node_total_circ[j] = self.circulations[p]
             self.node_avg_radius[j] = self.radii[p]
             self.node_com[j] = self.positions[p]
+            self.node_circ_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
             self.node_center[j] = self.positions[p]
             self.node_half_size[j] = 0.0
             self._node_aabb_min[j] = self.positions[p]
@@ -811,6 +839,21 @@ class TaichiTreecode:
             else:
                 com = (self.node_com[left] + self.node_com[right]) * 0.5
             self.node_com[idx] = com
+
+            dipole = ti.Matrix.zero(ti.f32, 3, 3)
+            d_left = self.node_com[left] - com
+            d_right = self.node_com[right] - com
+            gamma_left = self.node_total_circ[left]
+            gamma_right = self.node_total_circ[right]
+            for b in ti.static(range(3)):
+                for a in ti.static(range(3)):
+                    dipole[b, a] = (
+                        self.node_circ_dipole[left][b, a]
+                        + d_left[b] * gamma_left[a]
+                        + self.node_circ_dipole[right][b, a]
+                        + d_right[b] * gamma_right[a]
+                    )
+            self.node_circ_dipole[idx] = dipole
 
             count_l = max(self.node_particle_count[left], 1)
             count_r = max(self.node_particle_count[right], 1)
@@ -889,8 +932,109 @@ class TaichiTreecode:
         return result
 
     @ti.func
+    def zeta_prime_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        result = ti.cast(0.0, ti.f32)
+        zeta_val = self.zeta_kernel(r_sigma)
+        if self.kernel_type_id[None] == 0:
+            result = -2.0 * r_sigma * zeta_val
+        else:
+            base = r_sigma * r_sigma + 1.0
+            result = -7.0 * r_sigma * zeta_val / base
+        return result
+
+    @ti.func
     def skew(self, v: ti.template()) -> ti.Matrix:
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+
+    @ti.func
+    def _dipole_gamma_dot_r(self, node: ti.i32, r_vec: ti.template()) -> ti.math.vec3:
+        """Return sum Gamma_j * dot(r_vec, x_j - node_com)."""
+        moment = self.node_circ_dipole[node]
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for a in ti.static(range(3)):
+            for b in ti.static(range(3)):
+                out[a] += moment[b, a] * r_vec[b]
+        return out
+
+    @ti.func
+    def _dipole_gamma_cross_d(self, node: ti.i32) -> ti.math.vec3:
+        """Return sum Gamma_j x (x_j - node_com)."""
+        moment = self.node_circ_dipole[node]
+        return ti.Vector(
+            [
+                moment[2, 1] - moment[1, 2],
+                moment[0, 2] - moment[2, 0],
+                moment[1, 0] - moment[0, 1],
+            ]
+        )
+
+    @ti.func
+    def _dipole_cross_columns(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
+        """Matrix whose column b is r_vec x sum_j d_{j,b} Gamma_j."""
+        moment = self.node_circ_dipole[node]
+        out = ti.Matrix.zero(ti.f32, 3, 3)
+        for b in ti.static(range(3)):
+            gamma_b = ti.Vector([moment[b, 0], moment[b, 1], moment[b, 2]])
+            col = r_vec.cross(gamma_b)
+            for a in ti.static(range(3)):
+                out[a, b] = col[a]
+        return out
+
+    @ti.func
+    def _far_velocity_node(
+        self, node: ti.i32, r_vec: ti.template(), r_mag: ti.f32, sigma: ti.f32
+    ) -> ti.math.vec3:
+        r2 = r_mag * r_mag
+        r3 = r2 * r_mag
+        r5 = r3 * r2
+        q_val = self.q_kernel(r_mag / sigma)
+        total_circ = self.node_total_circ[node]
+        vel = -q_val * r_vec.cross(total_circ) / r3
+        if self.multipole_order[None] >= 2:
+            zeta_val = self.zeta_kernel(r_mag / sigma) / (sigma * sigma * sigma)
+            term1 = q_val / r3
+            term2 = 3.0 * q_val / r5 - zeta_val / r2
+            moment_dot = self._dipole_gamma_dot_r(node, r_vec)
+            cross_moment = self._dipole_gamma_cross_d(node)
+            vel += -term1 * cross_moment - term2 * r_vec.cross(moment_dot)
+        return vel
+
+    @ti.func
+    def _far_gradient_node(
+        self, node: ti.i32, r_vec: ti.template(), r_mag: ti.f32, sigma: ti.f32
+    ) -> ti.Matrix:
+        r2 = r_mag * r_mag
+        r3 = r2 * r_mag
+        r4 = r2 * r2
+        r5 = r3 * r2
+        r7 = r5 * r2
+        r_sigma = r_mag / sigma
+        q_val = self.q_kernel(r_sigma)
+        zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
+        total_circ = self.node_total_circ[node]
+        term1 = q_val / r3
+        term2 = 3.0 * q_val / r5 - zeta_val / r2
+        gradu = term1 * self.skew(total_circ) + term2 * r_vec.cross(
+            total_circ
+        ).outer_product(r_vec)
+        if self.multipole_order[None] >= 2:
+            zeta_prime_val = self.zeta_prime_kernel(r_sigma)
+            t1p_over_r = zeta_val / r2 - 3.0 * q_val / r5
+            t2p_over_r = (
+                5.0 * zeta_val / r4
+                - 15.0 * q_val / r7
+                - zeta_prime_val / (sigma * sigma * sigma * sigma * r3)
+            )
+            moment_dot = self._dipole_gamma_dot_r(node, r_vec)
+            cross_moment = self._dipole_gamma_cross_d(node)
+            cross_columns = self._dipole_cross_columns(node, r_vec)
+            gradu += (
+                -t1p_over_r * self.skew(moment_dot)
+                - t2p_over_r * r_vec.cross(moment_dot).outer_product(r_vec)
+                + term2 * cross_moment.outer_product(r_vec)
+                - term2 * cross_columns
+            )
+        return gradu
 
     # LEAF SUMMATION FUNCTIONS
 
@@ -1025,9 +1169,7 @@ class TaichiTreecode:
             node_size = 2.0 * self.node_half_size[node]
             if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
-                r_sigma = r_mag / sigma
-                q_val = self.q_kernel(r_sigma)
-                vel -= q_val * r_vec.cross(self.node_total_circ[node]) / (r_mag * r_mag * r_mag)
+                vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
                 vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
             else:
@@ -1057,16 +1199,7 @@ class TaichiTreecode:
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 r_sigma = r_mag / sigma
                 if r_sigma < MAX_R_SIGMA:
-                    q_val = self.q_kernel(r_sigma)
-                    zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
-                    total_circ = self.node_total_circ[node]
-                    term1 = q_val / (r_mag * r_mag * r_mag)
-                    term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
-                        r_mag * r_mag
-                    )
-                    gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
-                        total_circ
-                    ).outer_product(r_vec)
+                    gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
                 gradu += self._leaf_gradient_sum(
                     node, target_pos, target_rad, i, MAX_R_SIGMA
@@ -1094,9 +1227,7 @@ class TaichiTreecode:
             node_size = 2.0 * self.node_half_size[node]
             if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
                 sigma = self.node_avg_radius[node]
-                r_sigma = r_mag / sigma
-                q_val = self.q_kernel(r_sigma)
-                vel -= q_val * r_vec.cross(self.node_total_circ[node]) / (r_mag * r_mag * r_mag)
+                vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
                 vel += self._target_leaf_velocity_sum(node, target_pos)
             else:
@@ -1123,16 +1254,7 @@ class TaichiTreecode:
             if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
                 sigma = self.node_avg_radius[node]
                 r_sigma = r_mag / sigma
-                q_val = self.q_kernel(r_sigma)
-                zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
-                total_circ = self.node_total_circ[node]
-                term1 = q_val / (r_mag * r_mag * r_mag)
-                term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
-                    r_mag * r_mag
-                )
-                gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
-                    total_circ
-                ).outer_product(r_vec)
+                gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
                 gradu += self._target_leaf_gradient_sum(node, target_pos)
             else:
@@ -1145,7 +1267,12 @@ class TaichiTreecode:
     def compute_velocities_kernel(self, theta_sq: ti.f32):
         N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
-        for i in range(N):
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for slot in range(N):
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
             self.velocities[i] = (
                 self._traverse_particle_vel(i, theta_sq, n_nodes) + self.u_inf[None]
             )
@@ -1154,7 +1281,12 @@ class TaichiTreecode:
     def compute_velocity_gradients_kernel(self, theta_sq: ti.f32):
         N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
-        for i in range(N):
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for slot in range(N):
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
             gradu = self._traverse_particle_grad(i, theta_sq, n_nodes)
             self.velocity_gradients[i] = gradu
             strain = ti.Matrix.zero(ti.f32, 3, 3)
@@ -1180,7 +1312,12 @@ class TaichiTreecode:
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         u_inf = self.u_inf[None]
         root = self._root[None]
-        for i in range(N):
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for slot in range(N):
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
             vel = ti.Vector([0.0, 0.0, 0.0])
             gradu = ti.Matrix.zero(ti.f32, 3, 3)
             target_pos = self.positions[i]
@@ -1201,18 +1338,9 @@ class TaichiTreecode:
                     # Far field: one node, both fields share sigma / r_sigma / q.
                     sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                     r_sigma = r_mag / sigma
-                    total_circ = self.node_total_circ[node]
-                    q_val = self.q_kernel(r_sigma)
-                    vel -= q_val * r_vec.cross(total_circ) / (r_mag * r_mag * r_mag)
+                    vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
                     if r_sigma < MAX_R_SIGMA:
-                        zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
-                        term1 = q_val / (r_mag * r_mag * r_mag)
-                        term2 = 3.0 * q_val / (r_mag * r_mag * r_mag * r_mag * r_mag) - zeta_val / (
-                            r_mag * r_mag
-                        )
-                        gradu += term1 * self.skew(total_circ) + term2 * r_vec.cross(
-                            total_circ
-                        ).outer_product(r_vec)
+                        gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
                 elif self.node_is_leaf[node] == 1:
                     vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
                     gradu += self._leaf_gradient_sum(
@@ -1293,6 +1421,8 @@ class TaichiTreecode:
     def compute_target_velocities_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
         M = self.n_targets[None]
         n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
         for i in range(M):
             self.target_velocities[i] = (
                 self._traverse_target_vel(i, theta_sq, n_nodes) + self.u_inf[None]
@@ -1302,6 +1432,8 @@ class TaichiTreecode:
     def compute_target_velocity_gradients_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
         M = self.n_targets[None]
         n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
         for i in range(M):
             self.target_velocity_gradients[i] = self._traverse_target_grad(i, theta_sq, n_nodes)
 

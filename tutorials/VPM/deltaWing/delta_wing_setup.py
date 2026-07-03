@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from source.solvers.VPM import Solver, SolverConfig, StabilizationConfig
-from source.solvers.VPM.config.types import TurbulenceConfig
+from source.solvers.VPM.config.types import TurbulenceConfig, VelocityConfig
 from source.solvers.VPM.boundary_elements.vlm import VLMSolver
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
@@ -47,8 +47,20 @@ def main():
     parser.add_argument(
         "--num-steps",
         type=int,
-        default=3400,  # ~10.2 plunge periods at f=1 Hz, dt=0.003 s
-        help="Number of time steps (default: 3400 ≈ 10 plunge cycles).",
+        default=2200,  # ~8.8 plunge periods at f=1 Hz, dt=0.004 s
+        help="Number of time steps (default: 2200 ≈ 8.8 plunge cycles).",
+    )
+    parser.add_argument(
+        "--dt",
+        type=float,
+        default=0.004,
+        help="Time-step size [s].",
+    )
+    parser.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     args = parser.parse_args()
 
@@ -69,7 +81,7 @@ def main():
     # ================================================
     # 2. Numerical parameters
     # ================================================
-    time_step = 0.003  # [s]
+    time_step = args.dt  # [s]
     num_steps = args.num_steps
 
     # Motion parameters
@@ -89,7 +101,7 @@ def main():
         half_span=half_span,
         alpha=angle_of_attack,
         n_chord=8,
-        n_span=20,
+        n_span=18,
     )
     save_surface(surface, surface_file)
 
@@ -153,7 +165,7 @@ def main():
                 point=[x_loc, 0.0, 0.0],
                 normal=[1, 0, 0],
                 bounds=[-1.5, 1.5, -1.0, 1.0],  # y, z
-                spacing=0.03,
+                spacing=0.04,
                 file_name=f"wake_{n_sp}span",
                 output_dir=backup_dir + "/samples",
             )
@@ -166,12 +178,18 @@ def main():
         time_step_size=time_step,
         turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
         vlm_solver=vlm,
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
         background_velocity=[-freestream_velocity, 0, 0],
         backup_file_name="wing",
         backup_directory=backup_dir,
-        backup_frequency=10,
-        logging_frequency=10,
+        backup_frequency=20,
+        logging_frequency=20,
         timing_frequency=40,
+        processing_unit=args.processing_unit,
         # Keep the wake bounded (≥10 cycles would otherwise grow without limit).
         stabilization=StabilizationConfig(
             remove_particles_by_bounds=[-8.0, separation + 1.0, -2.0, 2.0, -1.5, 1.5],

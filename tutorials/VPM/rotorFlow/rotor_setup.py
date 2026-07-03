@@ -8,7 +8,7 @@ the VPM wake simulation.  Post-processing is handled by allplot.sh.
 
 Usage::
 
-    python rotor_setup.py --num-steps 3500
+    python rotor_setup.py --num-steps 2400 --dt 0.006
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -33,7 +33,8 @@ from source.solvers.VPM.config.types import (
     AdvectionConfig,
     TurbulenceConfig,
     StretchingConfig,
-    ViscousConfig
+    VelocityConfig,
+    ViscousConfig,
 )
 from source.solvers.VPM.boundary_elements.vlm import VLMSolver
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
@@ -44,8 +45,8 @@ from generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_
 def main():
     parser = argparse.ArgumentParser(description="RotorFlow VLM-VPM simulation")
 
-    parser.add_argument("--num-steps", type=int, default=3500, help="Number of time steps")
-    parser.add_argument("--dt", type=float, default=0.005, help="Time-step size [s].")
+    parser.add_argument("--num-steps", type=int, default=2400, help="Number of time steps")
+    parser.add_argument("--dt", type=float, default=0.006, help="Time-step size [s].")
     parser.add_argument(
         "--ramp-rotations",
         type=float,
@@ -53,6 +54,12 @@ def main():
         help="Smooth sin-squared spin-up duration [rotor rotations].",
     )
     parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
+    parser.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
+    )
     args = parser.parse_args()
 
     # ================================================
@@ -188,16 +195,19 @@ def main():
         turbulence=turbulence,
         stretching=stretching,
         viscous=viscous,
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
         samplers=plane_samplers,
         backup_file_name="rotor",
         backup_directory=backup_dir,
         solution_name=backup_dir,
-        backup_frequency=10,
-        logging_frequency=10,
-        timing_frequency=10,
-        # Platform-best GPU (CUDA on NVIDIA, Vulkan otherwise).  Forcing Vulkan
-        # risks Taichi 1.7.x field-reallocation growth in long grid-diffusion runs.
-        processing_unit="GPU",
+        backup_frequency=20,
+        logging_frequency=20,
+        timing_frequency=40,
+        processing_unit=args.processing_unit,
     )
 
     vpm = Solver(config=solver_config)

@@ -46,28 +46,28 @@ cd "$SCRIPT_DIR"
 # Clean up old data and figures:
 ./allclean.sh
 
+COMMON_FLAGS=(--re 530 --dt 0.04 --solution-dir ./solution --clean --processing-unit CUDA)
+CS_RWM_FLAGS=(--spacing-factor 0.45 --length 20 --total-time 16.0)
+GRID_FLAGS=(--grid-spacing-factor 0.45 --dvh-max-nodes 120000 --length 16 --total-time 12.0)
+
 # ============================================================
 # TEST CASE 1: Single Lamb-Oseen vortex diffusion
 # ============================================================
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes cs \
-    --re 530 --dt 0.03 --total-time 20.0 --length 20 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" "${CS_RWM_FLAGS[@]}"
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes rwm \
-    --re 530 --dt 0.03 --total-time 20.0 --length 20 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" "${CS_RWM_FLAGS[@]}"
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes dvh \
-    --re 530 --dt 0.03 --total-time 20.0 --length 20 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" "${GRID_FLAGS[@]}"
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes gbd \
-    --re 530 --dt 0.03 --total-time 20.0 --length 20 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" "${GRID_FLAGS[@]}"
 
 sleep 15
 
@@ -78,23 +78,19 @@ echo 'DONE WITH SINGLE VORTEX'
 # ============================================================
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes cs \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --spacing-factor 0.45 --total-time 24.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes rwm \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --spacing-factor 0.45 --total-time 24.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes dvh \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --grid-spacing-factor 0.45 --dvh-max-nodes 120000 --total-time 18.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes gbd \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --grid-spacing-factor 0.45 --total-time 18.0
 
 
 echo 'DONE WITH DIPOLE'
@@ -107,20 +103,16 @@ sleep 15
 # ============================================================
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes cs \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --spacing-factor 0.45 --total-time 24.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes rwm \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --spacing-factor 0.45 --total-time 24.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes dvh \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --grid-spacing-factor 0.45 --dvh-max-nodes 120000 --total-time 18.0
 
 "$PYTHON" vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes gbd \
-    --re 530 --dt 0.03 --total-time 40.0 \
-    --solution-dir ./solution --clean
+    "${COMMON_FLAGS[@]}" --grid-spacing-factor 0.45 --total-time 18.0

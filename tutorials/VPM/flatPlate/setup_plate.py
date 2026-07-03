@@ -20,7 +20,7 @@ Usage example::
     python setup_plate.py \
         --name exp_moving_aoa05 \
         --kinematics ramp --frame body \
-        --aoa 5 --span 10 --tau-max 5.5 --dt 0.01
+        --aoa 5 --span 10 --tau-max 5.5 --dt 0.0125
 
 Author:  Flavio A. C. Martins, OpenONDA Team
 Date: March 2026
@@ -54,7 +54,7 @@ from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     SmoothRampVLM,
     PitchingVLM,
 )
-from source.solvers.VPM.config.types import AdvectionConfig
+from source.solvers.VPM.config.types import AdvectionConfig, VelocityConfig
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
 from generate_surface import create_flat_plate, save_surface
@@ -87,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--aoa", type=float, default=0.0, help="Angle of attack [deg] (static/ramp only)"
     )
     p.add_argument("--panels-chord", type=int, default=8, help="Chordwise panels")
-    p.add_argument("--panels-span", type=int, default=16, help="Spanwise panels per side")
+    p.add_argument("--panels-span", type=int, default=14, help="Spanwise panels per side")
 
     # -- Kinematics ----------------------------------------------------
     p.add_argument(
@@ -139,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tau-max", type=float, default=5.5, help="Simulation end [chord-lengths] (static/ramp)"
     )
     p.add_argument(
-        "--dt", type=float, default=None, help="Override time step [s] (auto=0.01 for static/ramp)"
+        "--dt", type=float, default=None, help="Override time step [s] (auto=0.0125 for static/ramp)"
     )
 
     # -- Wake adaptation -----------------------------------------------
@@ -162,7 +162,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Attach mid-span SurfaceSampler (y = span/2 plane)",
     )
     p.add_argument(
-        "--sample-spacing", type=float, default=0.08, help="Grid spacing for mid-span sampler [m]"
+        "--sample-spacing", type=float, default=0.10, help="Grid spacing for mid-span sampler [m]"
+    )
+    p.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     p.add_argument(
         "--sample-crossflow",
@@ -206,7 +212,7 @@ def compute_time_params(args):
             return step_indices * _dt * _U / _c
 
     elif args.kinematics == "static":
-        dt = args.dt if args.dt else 0.01
+        dt = args.dt if args.dt else 0.0125
         t_ramp = 0.0
         if args.steps:
             n_steps = args.steps
@@ -217,7 +223,7 @@ def compute_time_params(args):
             return step_indices * _dt * _U / _c
 
     else:  # smooth translational ramp
-        dt = args.dt if args.dt else 0.01
+        dt = args.dt if args.dt else 0.0125
 
         t_ramp = 2.0 * args.tau_ramp * c / U  # ramp duration [s] (sin² ramp)
         if args.steps:
@@ -411,12 +417,18 @@ def main():
         advection=AdvectionConfig(scheme="RK3"),
         vlm_solver=vlm,
         background_velocity=bg_vel,
+        processing_unit=args.processing_unit,
         logging_frequency=args.log_freq,
         backup_frequency=args.backup_freq,
         backup_file_name=args.name,
         backup_directory=backup_dir,
         solution_name=backup_dir,
-        max_particles=150_000,
+        max_particles=120_000,
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
         # Field planes are certification snapshots, not transient probes.  They
         # are sampled once after the final steady step below.
         samplers=None,

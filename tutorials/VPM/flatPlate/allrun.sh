@@ -17,9 +17,9 @@
 #
 # Common parameters
 # -----------------
-#   Geometry : chord = 1 m,  span = 10 m  (AR = 10),  8×16 panels
+#   Geometry : chord = 1 m,  span = 10 m  (AR = 10),  8×14 panels
 #   Physics  : U = 10 m/s,  ρ = 1 kg/m³,  ν = 0.01 m²/s
-#   Time     : τ_ramp = 0.6 c,  τ_max = 30 c,  dt = 0.01 s
+#   Time     : τ_ramp = 0.6 c,  τ_max = 24 c,  dt = 0.0125 s
 #
 # Usage
 # -----
@@ -63,13 +63,15 @@ run_case() {
 
 # Common flags shared by every moving-wing run
 COMMON="--kinematics ramp --frame body
-        --chord 1 --span 10 --panels-chord 8 --panels-span 16
-        --tau-ramp 0.6 --tau-max 30 --dt 0.01"
+        --chord 1 --span 10 --panels-chord 8 --panels-span 14
+        --tau-ramp 0.6 --tau-max 24 --dt 0.0125
+        --processing-unit CUDA"
 
 # Common flags shared by every static wind-frame run (no ramp)
 STATIC="--kinematics static --frame wind
-        --chord 1 --span 10 --panels-chord 8 --panels-span 16
-        --tau-max 30 --dt 0.01"
+        --chord 1 --span 10 --panels-chord 8 --panels-span 14
+        --tau-max 24 --dt 0.0125
+        --processing-unit CUDA"
 
 echo "========================================================"
 echo "  OpenONDA Flat Plate — Certification Suite"

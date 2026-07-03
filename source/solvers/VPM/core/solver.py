@@ -343,7 +343,13 @@ class Solver:
         _vel_cfg = getattr(final_config, "velocity", None)
         _vel_method = "TREECODE" if (_vel_cfg and _vel_cfg.method == "TREECODE") else "DIRECT"
         _vel_theta = _vel_cfg.theta if _vel_cfg else 0.5
-        self.physics.configure_velocity(_vel_method, _vel_theta)
+        self.physics.configure_velocity(
+            _vel_method,
+            _vel_theta,
+            multipole_order=getattr(_vel_cfg, "multipole_order", 1),
+            sort_particle_targets=getattr(_vel_cfg, "sort_particle_targets", False),
+            traversal_block_dim=getattr(_vel_cfg, "traversal_block_dim", 128),
+        )
 
         _visc_cfg = getattr(final_config, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "regen_radius_ratio"):

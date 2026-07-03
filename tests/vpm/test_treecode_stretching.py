@@ -98,3 +98,34 @@ def test_config_flag_plumbs_through():
     stab = StretchingConfig.transposed(use_treecode=True, treecode_theta=0.25)
     assert stab.use_treecode is True
     assert stab.treecode_theta == 0.25
+
+
+def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
+    cfg = SolverConfig(
+        time_step_size=0.01,
+        processing_unit="CPU",
+        advection=AdvectionConfig(scheme="NONE"),
+        stretching=StretchingConfig.disabled(),
+        viscous=ViscousConfig(scheme="NONE"),
+        velocity=VelocityConfig.treecode(
+            theta=0.4,
+            multipole_order=2,
+            sort_particle_targets=True,
+            traversal_block_dim=64,
+        ),
+        turbulence=TurbulenceConfig.inviscid(),
+        backup_frequency=0,
+        logging_frequency=0,
+        backup_directory=str(tmp_path),
+        solution_name=str(tmp_path),
+        clean=True,
+        max_particles=32,
+    )
+    solver = Solver(config=cfg)
+    try:
+        assert solver.physics.velocity_theta == 0.4
+        assert solver.physics.treecode_multipole_order == 2
+        assert solver.physics.treecode_sort_particle_targets is True
+        assert solver.physics.treecode_traversal_block_dim == 64
+    finally:
+        solver.reset_gpu()

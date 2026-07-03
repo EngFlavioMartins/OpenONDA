@@ -49,7 +49,7 @@ REYNOLDS_GAMMA = 3000.0
 KINEMATIC_VISCOSITY = GAMMA_REF / REYNOLDS_GAMMA
 REGEN_THRESHOLD = 2.0e-4
 REGEN_THRESHOLD_MODE = "budget"
-MAX_REGEN_NODES = 250_000
+MAX_REGEN_NODES = 150_000
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -59,21 +59,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s].")
     parser.add_argument("--name", default="leapfrog_les", help="Output sub-directory name.")
     parser.add_argument("--dt", type=float, default=2.0e-2, help="Time-step size [s].")
-    parser.add_argument("--num-steps", type=int, default=450, help="Number of time steps.")
-    parser.add_argument("--particle-spacing", type=float, default=0.030, help="Particle spacing [m].")
+    parser.add_argument("--num-steps", type=int, default=360, help="Number of time steps.")
+    parser.add_argument("--particle-spacing", type=float, default=0.035, help="Particle spacing [m].")
     parser.add_argument("--output-root", default="solution", help="Parent output directory.")
     parser.add_argument("--backup-frequency", type=int, default=20, help="Backup interval [steps].")
     parser.add_argument("--logging-frequency", type=int, default=10, help="Logging interval [steps].")
     parser.add_argument(
         "--processing-unit",
-        default="GPU",
+        default="CUDA",
         choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
-        help="Compute backend. Default GPU selects CUDA on NVIDIA systems and Vulkan otherwise.",
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     parser.add_argument(
         "--device-memory-fraction",
         type=float,
-        default=0.4,
+        default=0.5,
         help="Fraction of GPU memory reserved by Taichi; lower values leave room for remesh transfers.",
     )
     parser.add_argument(
@@ -337,7 +337,11 @@ def run_case(args: argparse.Namespace) -> None:
     stretching = StretchingConfig.transposed(scheme="RK3")
     stabilization = build_stabilization_config(args, particle_spacing)
 
-    velocity = VelocityConfig.treecode(theta=0.3)
+    velocity = VelocityConfig.treecode(
+        theta=0.35,
+        sort_particle_targets=True,
+        traversal_block_dim=128,
+    )
 
     viscous = build_viscous_config(args.viscous, particle_spacing)
 

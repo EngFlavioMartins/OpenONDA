@@ -51,9 +51,17 @@ def _cloud(N, seed=1):
     return pos, circ, rad
 
 
-def _make_tree(N, theta):
+def _make_tree(
+    N, theta, multipole_order=1, sort_particle_targets=False, traversal_block_dim=128
+):
     return TaichiTreecode(
-        max_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
+        max_particles=N + 8,
+        max_nodes=2 * (N + 8),
+        theta=theta,
+        kernel_type="WINCKELMANS",
+        multipole_order=multipole_order,
+        sort_particle_targets=sort_particle_targets,
+        traversal_block_dim=traversal_block_dim,
     )
 
 
@@ -80,6 +88,36 @@ def _direct_velocity(pos, circ, rad, chunk=400):
             contrib[ii - s, ii] = 0.0
         out[s:e] = contrib.sum(axis=1)
     return out
+
+
+def _direct_target_velocity_gradient(targets, pos, circ, rad):
+    """Exact target velocity and gradient for Winckelmans blobs."""
+    targets = targets.astype(np.float64)
+    pos = pos.astype(np.float64)
+    circ = circ.astype(np.float64)
+    rad = rad.astype(np.float64)
+    vel = np.zeros((len(targets), 3), dtype=np.float64)
+    grad = np.zeros((len(targets), 3, 3), dtype=np.float64)
+    for m, target in enumerate(targets):
+        for xj, gj, sj in zip(pos, circ, rad):
+            r = target - xj
+            rm = np.linalg.norm(r)
+            if rm <= 1e-10:
+                continue
+            rs = rm / sj
+            r2 = rs * rs
+            base = r2 + 1.0
+            q = rs**3 * (r2 + 2.5) / base**2.5 * ONE_OVER_FOUR_PI
+            zeta = 7.5 / base**3.5 * ONE_OVER_FOUR_PI / sj**3
+            cross = np.cross(r, gj)
+            vel[m] -= q * cross / rm**3
+            term1 = q / rm**3
+            term2 = 3.0 * q / rm**5 - zeta / rm**2
+            skew = np.array(
+                [[0.0, -gj[2], gj[1]], [gj[2], 0.0, -gj[0]], [-gj[1], gj[0], 0.0]]
+            )
+            grad[m] += term1 * skew + term2 * np.outer(cross, r)
+    return vel.astype(np.float32), grad.astype(np.float32)
 
 
 def _rel_l2(a, b):
@@ -151,6 +189,32 @@ def test_internal_node_circulation_matches_its_leaf_range():
     assert worst < 1e-4
 
 
+def test_dipole_moment_matches_particles_about_node_com():
+    """Order-2 node moment must equal sum (x_j - COM_node) outer Gamma_j."""
+    N = 1024
+    pos, circ, rad = _cloud(N, seed=17)
+    tree = _make_tree(N, theta=0.4, multipole_order=2)
+    tree.build(pos, circ, rad, force=True)
+
+    moment = tree.node_circ_dipole.to_numpy()
+    com = tree.node_com.to_numpy()
+    start = tree.node_particle_start.to_numpy()
+    count = tree.node_particle_count.to_numpy()
+    leaf_particles = tree.leaf_particles.to_numpy()
+    nnodes = tree.n_nodes[None]
+
+    rng = np.random.default_rng(18)
+    probe = rng.integers(N, nnodes, size=80)
+    worst = 0.0
+    for idx in probe:
+        parts = leaf_particles[start[idx] : start[idx] + count[idx]]
+        d = pos[parts].astype(np.float64) - com[idx].astype(np.float64)
+        true_moment = np.einsum("nb,na->ba", d, circ[parts].astype(np.float64))
+        denom = np.linalg.norm(true_moment) + 1e-30
+        worst = max(worst, float(np.linalg.norm(moment[idx] - true_moment) / denom))
+    assert worst < 2e-4
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Convergence to direct summation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +233,43 @@ def test_velocity_converges_to_direct_as_theta_shrinks():
     # Tight-theta accuracy is solidly inside the Barnes-Hut band.
     assert errs[0.1] < 2e-2
     assert errs[0.2] < 5e-2
+
+
+def test_order2_improves_far_target_velocity_and_gradient():
+    """Dipole correction should reduce far-cluster error for u and ∇u."""
+    rng = np.random.default_rng(31)
+    N = 256
+    pos = (rng.normal(size=(N, 3)) * 0.025).astype(np.float32)
+    circ = (rng.normal(size=(N, 3)) * 0.1).astype(np.float32)
+    rad = np.full(N, 0.08, dtype=np.float32)
+    targets = np.array(
+        [
+            [2.5, 0.2, -0.1],
+            [-1.8, 2.1, 0.4],
+            [0.5, -2.2, 1.6],
+            [1.7, 1.5, -1.4],
+        ],
+        dtype=np.float32,
+    )
+    v_exact, g_exact = _direct_target_velocity_gradient(targets, pos, circ, rad)
+
+    tree1 = _make_tree(N, theta=1.0, multipole_order=1)
+    tree1.build(pos, circ, rad, force=True)
+    v1 = tree1.compute_target_velocities(targets)
+    g1 = tree1.compute_target_velocity_gradients(targets)
+
+    tree2 = _make_tree(N, theta=1.0, multipole_order=2)
+    tree2.build(pos, circ, rad, force=True)
+    v2 = tree2.compute_target_velocities(targets)
+    g2 = tree2.compute_target_velocity_gradients(targets)
+
+    v_err1 = _rel_l2(v1, v_exact)
+    v_err2 = _rel_l2(v2, v_exact)
+    g_err1 = _rel_l2(g1.reshape(len(targets), 9), g_exact.reshape(len(targets), 9))
+    g_err2 = _rel_l2(g2.reshape(len(targets), 9), g_exact.reshape(len(targets), 9))
+
+    assert v_err2 < 0.35 * v_err1
+    assert g_err2 < 0.35 * g_err1
 
 
 def test_background_velocity_is_added():
@@ -284,6 +385,30 @@ def test_fused_velocity_gradient_matches_two_kernel_path():
     tr = g_f[:, 0, 0] + g_f[:, 1, 1] + g_f[:, 2, 2]
     scale = np.linalg.norm(g_f.reshape(N, 9), axis=1).mean() + 1e-12
     assert np.abs(tr).max() / scale < 1e-4
+
+
+def test_morton_ordered_particle_traversal_matches_default_order():
+    """Target grouping by Morton order must only change scheduling, not values."""
+    N = 1200
+    pos, circ, rad = _cloud(N, seed=19)
+    bg = np.array([0.1, -0.2, 0.3], dtype=np.float32)
+
+    plain = _make_tree(N, theta=0.35, traversal_block_dim=64)
+    plain.build(pos, circ, rad, force=True)
+    v_plain, g_plain, s_plain = plain.compute_velocity_and_gradient(bg)
+
+    grouped = _make_tree(
+        N,
+        theta=0.35,
+        sort_particle_targets=True,
+        traversal_block_dim=64,
+    )
+    grouped.build(pos, circ, rad, force=True)
+    v_grouped, g_grouped, s_grouped = grouped.compute_velocity_and_gradient(bg)
+
+    assert _rel_l2(v_grouped, v_plain) < 1e-6
+    assert _rel_l2(g_grouped.reshape(N, 9), g_plain.reshape(N, 9)) < 1e-6
+    assert _rel_l2(s_grouped.reshape(N, 9), s_plain.reshape(N, 9)) < 1e-6
 
 
 def test_fused_direct_kernel_matches_separate_direct_kernels():

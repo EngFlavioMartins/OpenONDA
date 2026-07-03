@@ -33,6 +33,7 @@ from source.solvers.VPM.config.types import (
     SolverConfig,
     StabilizationConfig,
     StretchingConfig,
+    VelocityConfig,
     ViscousConfig,
     TurbulenceConfig,
 )
@@ -53,7 +54,13 @@ def main():
         "--num-steps",
         type=int,
         default=None,
-        help="Override total step count (default: 8 revolutions).",
+        help="Override total step count (default: 6 revolutions).",
+    )
+    parser.add_argument(
+        "--processing-unit",
+        default="CUDA",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     args = parser.parse_args()
 
@@ -78,10 +85,10 @@ def main():
     # 2. Time Stepping
     # =========================================================================
 
-    deg_per_step = 5.0
+    deg_per_step = 7.5
     dt = (deg_per_step * np.pi / 180.0) / omega
     steps_per_rev = int(360.0 / deg_per_step)
-    n_revolutions = 8
+    n_revolutions = 6
     n_steps = args.num_steps if args.num_steps is not None else n_revolutions * steps_per_rev
 
     # =========================================================================
@@ -167,7 +174,7 @@ def main():
         point=[0.0, 0.0, -1.2],
         normal=[0.0, 0.0, 1.0],
         bounds=[-0.4, 0.4, -0.4, 0.4],
-        spacing=0.005,
+        spacing=0.0075,
         file_name="sampled_zplane",
         output_dir=f"{output_dir}/samples",
     )
@@ -183,11 +190,16 @@ def main():
     config = SolverConfig(
         time_step_size=dt,
         vlm_solver=vlm,
-        backup_frequency=3,  # Save every 6 steps (90 deg) to see rotation
-        logging_frequency=3,
+        backup_frequency=6,
+        logging_frequency=6,
         timing_frequency=40,
         stretching=StretchingConfig.disabled(),  # Required for hover stability
         viscous=ViscousConfig.cs(),  # Core-spreading diffusion
+        velocity=VelocityConfig.treecode(
+            theta=0.35,
+            sort_particle_targets=True,
+            traversal_block_dim=128,
+        ),
         turbulence=TurbulenceConfig.dns(),
         particles_kernel="WINCKELMANS",
         background_velocity=background_velocity,
@@ -198,6 +210,7 @@ def main():
             remove_particles_by_bounds=wake_bounds,
         ),
         samplers=samplers,
+        processing_unit=args.processing_unit,
     )
 
     vpm = Solver(config=config)
