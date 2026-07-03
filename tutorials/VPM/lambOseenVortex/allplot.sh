@@ -54,6 +54,7 @@ echo "[1/5] Lamb-Oseen radial profiles ..."
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
     --format "$FORMAT" \
+    --dt 0.03 \
     --total-time 20.0
 
 # ── Figure 2: Vortex dipole — trajectory and core radius ─────────────────

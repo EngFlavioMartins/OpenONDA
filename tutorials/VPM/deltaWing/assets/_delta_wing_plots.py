@@ -32,12 +32,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
 THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 
 def _load_theme() -> tuple[dict[str, str], object | None]:
-    import matplotlib.font_manager as fm
-
     theme = None
     if THEME_PATH.exists():
         spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
@@ -47,10 +44,6 @@ def _load_theme() -> tuple[dict[str, str], object | None]:
             theme.set_style()
         except Exception:
             pass
-
-    if FONT_PATH.exists():
-        fm.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
 
     if theme is not None and hasattr(theme, "COLORS"):
         return dict(theme.COLORS), theme
@@ -96,19 +89,19 @@ def plot_forces(solution_dir: Path, figures_dir: Path) -> None:
     meta_path = solution_dir / "motion_params.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
 
-    fig, (ax_f, ax_z) = plt.subplots(2, 1, figsize=(12.8 / 2.54, 10.0 / 2.54), sharex=True)
+    fig, (ax_f, ax_z) = plt.subplots(2, 1, figsize=_theme.figure_size("stacked"), sharex=True)
 
     # Top: per-wing lift
     plotted = False
-    c_front = _COLORS.get("TUDcyan", "#0E8A85")
-    c_rear = _COLORS.get("AccentRed", "#9C2F50")
+    c_front = _COLORS.get("TUDcyan", "#00726e")
+    c_rear = _COLORS.get("AccentRed", "#ef527a")
     for surf, color, lbl in [("front_wing", c_front, "Front wing"),
                              ("rear_wing", c_rear, "Rear wing")]:
         t, lift = _wing_lift_history(samples, surf)
         if t.size:
             ax_f.plot(t, lift, "-", color=color, lw=1.3, label=lbl)
             plotted = True
-    ax_f.axhline(0, color="grey", lw=0.5, alpha=0.5)
+    ax_f.axhline(0, color=_COLORS.get("reference", "#808080"), lw=0.5, alpha=0.5)
     ax_f.set_ylabel("Lift [N]")
     ax_f.set_title("Forces on front vs rear delta wing")
     if plotted:
@@ -126,12 +119,9 @@ def plot_forces(solution_dir: Path, figures_dir: Path) -> None:
         ax_z.legend()
     ax_z.set_xlabel("Time [s]")
     ax_z.set_ylabel("Plunge position $z$ [m]")
-    fig.tight_layout()
     out = figures_dir / "delta_wing_forces.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    _theme.save_fig(fig, out)
 
 
 # ----------------------------------------------------------------------------
@@ -153,14 +143,11 @@ def plot_circulation(solution_dir: Path, figures_dir: Path, pattern: str) -> Non
                 circ_l1.append(float(np.linalg.norm(c, axis=1).sum()))
             else:
                 circ_l1.append(0.0)
-    fig, ax = plt.subplots(figsize=(12.8 / 2.54, 7.0 / 2.54))
-    ax.plot(times, circ_l1, "-o", ms=3, lw=1.2)
+    fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
+    ax.plot(times, circ_l1, "-o", color=_COLORS.get("VPMpurple", "#7a4f99"), ms=3, lw=1.2)
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")  # fixed: single-backslash mathtext
     ax.set_title("Delta wing: wake circulation magnitude history")
-    fig.tight_layout()
     out = figures_dir / "delta_wing_circulation_history.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    _theme.save_fig(fig, out)

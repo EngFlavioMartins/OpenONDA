@@ -26,7 +26,9 @@ from _common import (
     U_REF,
     VARIANT_LABEL,
     VARIANT_STYLE,
-    CM,
+    figure_size,
+    mark_every,
+    reference_style,
 )
 
 
@@ -38,7 +40,7 @@ def main() -> None:
 
     load_theme()
 
-    fig, ax = plt.subplots(figsize=(12.8 * CM, 8 * CM))
+    fig, ax = plt.subplots(figsize=figure_size("single_tall"))
 
     # -- Ring speed — all available variants ---------------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -49,19 +51,18 @@ def main() -> None:
         if t_star.size == 0:
             print(f"  (no ring speed data for {variant})")
             continue
-        ls = "--" if variant.startswith("DNS") else "-"
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {len(h5_files)} files")
         ax.plot(
             t_star,
             U_norm,
-            ls,
+            st["linestyle"],
             color=st["color"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=3,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=label,
         )
 
@@ -71,9 +72,7 @@ def main() -> None:
     ax.plot(
         t_phys / T_REF,
         U_saffman,
-        "--",
-        color="gray",
-        lw=1.0,
+        **reference_style(),
         zorder=5,
         label="Saffman (analytical)",
     )
@@ -82,7 +81,7 @@ def main() -> None:
     ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
     ax.set_ylim(0.6, 1.)
     ax.set_xlim(0, 38)
-    ax.legend(fontsize=10, ncol=1, loc='lower left')
+    ax.legend(ncol=1, loc='lower left')
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi)
 
 

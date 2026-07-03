@@ -115,9 +115,9 @@ def plot_rotor_performance(args) -> int:
     ax1.axhline(cp_betz, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
 
     ax1.text(7, 1.01*ct_betz, r"$C_{T,\mathrm{Betz}}$",
-             color=s_ref["color"], va="bottom", ha="left", fontsize=10)
+             color=s_ref["color"], va="bottom", ha="left" )
     ax1.text(7, 1.01*cp_betz, r"$C_{P,\mathrm{Betz}}$",
-             color=s_ref["color"], va="bottom", ha="left", fontsize=10)
+             color=s_ref["color"], va="bottom", ha="left" )
 
     ax1.set_xlabel(r"Revolutions")
     ax1.set_ylabel(r"Coefficient")
@@ -183,9 +183,9 @@ def plot_rotor_performance(args) -> int:
     ax2.legend(handles=[
         Line2D([0], [0], color=trajectory_color, lw=1.0, marker='s',
                markersize=3, label="VLM-VPM time trajectory"),
-        Line2D([0], [0], color="gray", ls="--", lw=1.0,
+        Line2D([0], [0], color=s_ref["color"], ls="--", lw=1.0,
                label="Actuator-disk theory"),
-        Line2D([0], [0], color="gray", marker='*', ms=6, lw=0,
+        Line2D([0], [0], color=s_ref["color"], marker='*', ms=6, lw=0,
                label="Betz limit"),
     ], loc="lower center")
     ax2.set_title(r"Operating trajectory")

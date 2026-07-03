@@ -59,6 +59,10 @@ RC = 0.125  # initial core radius a0 [m]
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 TOTAL_TIME = 20.0
 LENGTH = 50  # vortex column span in z, in units of RC (default; override with --length)
+VISCOUS_THRESHOLD_MODE = "budget"
+VISCOUS_THRESHOLD = 1.0e-4
+DVH_RD_RATIO = 3
+GBD_MAX_NODES = 250_000
 
 
 # =========================================================
@@ -70,17 +74,17 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
     if scheme == "gbd":
         return ViscousConfig.gbd(
             h=spacing,
-            threshold=args.viscous_threshold,
-            threshold_mode=args.viscous_threshold_mode,
+            threshold=VISCOUS_THRESHOLD,
+            threshold_mode=VISCOUS_THRESHOLD_MODE,
             viscosity=nu,
-            max_nodes=args.gbd_max_nodes,
+            max_nodes=GBD_MAX_NODES,
         )
     elif scheme == "dvh":
         return ViscousConfig.dvh(
             h=spacing,
-            threshold=args.viscous_threshold,
-            threshold_mode=args.viscous_threshold_mode,
-            dvh_rd_ratio=args.dvh_rd_ratio,
+            threshold=VISCOUS_THRESHOLD,
+            threshold_mode=VISCOUS_THRESHOLD_MODE,
+            dvh_rd_ratio=DVH_RD_RATIO,
             viscosity=nu,
             max_nodes=args.dvh_max_nodes,
         )
@@ -195,7 +199,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     )
 
     solver = Solver(config=config)
-    # Pre-size temp fields to the bounded particle count (see --*-max-nodes),
+    # Pre-size temp fields to the bounded particle count,
     # not 500k: on a 6 GB laptop GPU the oversized pre-allocation wastes VRAM
     # headroom that the DVH/GBD grid + treecode + per-step staging buffers need.
     # Fields still grow on demand if a run exceeds this.
@@ -242,7 +246,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run Lamb-Oseen vortex experiments.\n"
-            "Case is inferred from --gamma1/--gamma2:\n"
             "  gamma2=0 → single vortex | gamma1*gamma2<0 → dipole | same sign → merging"
         )
     )
@@ -251,89 +254,41 @@ def parse_args() -> argparse.Namespace:
         "--gamma1", type=float, required=True, help="Circulation of vortex 1 [m²/s]."
     )
     parser.add_argument(
-        "--gamma2",
-        type=float,
-        default=0.0,
-        help="Circulation of vortex 2 [m²/s]. "
-        "0 → single vortex; opposite sign → dipole; same sign → merging.",
+        "--gamma2", type=float, default=0.0, help="Circulation of vortex 2 [m²/s]. "
     )
     parser.add_argument(
-        "--schemes", default="cs", help="Comma-separated viscous schemes: cs, rwm, dvh, gbd."
+        "--schemes", default="cs", help="Comma-separated viscous schemes: cs, rwm, dvh, gbd.",
     )
     parser.add_argument(
-        "--solution-dir",
-        default=str(DEFAULT_SOLUTION_DIR),
-        help="Root output directory for all scheme sub-folders.",
+        "--solution-dir", default=str(DEFAULT_SOLUTION_DIR), help="Root output directory for all scheme sub-folders.",
     )
     parser.add_argument(
-        "--clean", action="store_true", help="Delete existing output sub-folder before running."
+        "--clean", action="store_true", help="Delete existing output sub-folder before running.",
     )
     parser.add_argument(
-        "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s]."
-    )
-    parser.add_argument("--dt", type=float, default=0.05, help="Time step size [s].")
-    parser.add_argument(
-        "--num-steps",
-        type=int,
-        default=None,
-        help="Exact number of time steps (overrides --total-time when given).",
+        "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s].",
     )
     parser.add_argument(
-        "--length",
-        type=float,
-        default=LENGTH,
-        help="Vortex column span in z, in units of RC (default 50). Longer columns "
-        "approach the 2D (infinite-column) induction limit.",
+        "--dt", type=float, default=0.05, help="Time step size [s].",
     )
     parser.add_argument(
-        "--re",
-        type=float,
-        default=RE,
-        help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
+        "--num-steps", type=int, default=None, help="Exact number of time steps (overrides --total-time when given).",
     )
     parser.add_argument(
-        "--viscous-threshold-mode",
-        choices=["budget", "relative_max", "absolute"],
-        default="budget",
-        help="Grid-regen node survival criterion for DVH/GBD (default: budget).",
+        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of RC (default 50).",
+    )
+    parser.add_argument( 
+        "--re", type=float, default=RE, help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
+    )
+    parser.add_argument("--dvh-max-nodes", type=int, default=250_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
     )
     parser.add_argument(
-        "--viscous-threshold",
-        type=float,
-        default=1.0e-4,
-        help="DVH/GBD regen prune threshold. In 'budget' mode this is the "
-        "fractional Σ|Γ| allowed to drop per regen step;"
-        "(measured nu_eff/nu: 1e-2→0.15, 3e-3→0.47, 1e-4→0.95, 1e-5→0.99).",
+        "--spacing-factor", type=float, default=0.4, help="Particle/grid spacing as a fraction of the core radius rc (default 0.4)",
     )
     parser.add_argument(
-        "--dvh-rd-ratio", type=int, default=3, choices=[3, 4, 5], help="DVH R_d/h ratio."
-    )
-    parser.add_argument(
-        "--dvh-max-nodes",
-        type=int,
-        default=250_000,
-        help="Hard cap on surviving DVH regen nodes (budget-by-count).",
-    )
-    parser.add_argument(
-        "--gbd-max-nodes",
-        type=int,
-        default=250_000,
-        help="Hard cap on surviving GBD regen nodes (budget-by-count).",
-    )
-    parser.add_argument(
-        "--spacing-factor",
-        type=float,
-        default=0.4,
-        help="Particle/grid spacing as a fraction of the core radius rc (default 0.4, "
-        "i.e. a0/h=2.5).",
-    )
-    parser.add_argument(
-        "--tag",
-        default="",
-        help="Suffix appended to the output directory name (for parameter sweeps).",
+        "--tag", default="", help="Suffix appended to the output directory name (for parameter sweeps).",
     )
     return parser.parse_args()
-
 
 # =========================================================
 # Entry point

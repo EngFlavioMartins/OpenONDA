@@ -77,27 +77,49 @@ def finite_column_velocity(
 # =============================================================
 
 
-def last_csv(solution_dir: Path, scheme: str, step: int | None, dt: float):
+def last_csv(
+    solution_dir: Path,
+    scheme: str,
+    step: int | None,
+    dt: float,
+    target_time: float | None = None,
+):
     folder = solution_dir / f"vortex_{scheme}" / "samples"
     if step is not None:
         c = folder / f"vortex_{scheme}_x_{step:06d}.csv"
         if c.exists():
             t = read_flow_time(c)
             return c, t if t is not None else step * dt
+        return None, None
     candidates = sorted(folder.glob(f"vortex_{scheme}_x_*.csv"))
     if not candidates:
         return None, None
-    for last in reversed(candidates):
-        df_check = pd.read_csv(last, comment="#")
-        if df_check["Uy"].abs().max() > 1e-10:
-            break
-    else:
-        last = candidates[-1]
-    t = read_flow_time(last)
-    if t is not None:
-        return last, t
-    s = int(last.stem.split("_")[-1])
-    return last, s * dt
+
+    usable = []
+    for candidate in candidates:
+        df_check = pd.read_csv(candidate, comment="#")
+        if df_check["Uy"].abs().max() <= 1e-10:
+            continue
+        t = read_flow_time(candidate)
+        if t is None:
+            s = int(candidate.stem.split("_")[-1])
+            t = s * dt
+        usable.append((candidate, t))
+    if not usable:
+        return None, None
+
+    if target_time is None:
+        return usable[-1]
+
+    selected, selected_t = min(usable, key=lambda item: abs(item[1] - target_time))
+    tolerance = max(0.5, 20.0 * dt)
+    if abs(selected_t - target_time) > tolerance:
+        print(
+            f"  [skip] {scheme.upper()} final sample is t={selected_t:.3g}s, "
+            f"not near requested t={target_time:.3g}s."
+        )
+        return None, None
+    return selected, selected_t
 
 
 # =============================================================
@@ -128,7 +150,7 @@ def plot_vortex_case(args) -> int:
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        path, t = last_csv(solution_dir, scheme, args.step, args.dt)
+        path, t = last_csv(solution_dir, scheme, args.step, args.dt, None)
         if path is None:
             continue
         df = pd.read_csv(path, comment="#")
@@ -152,8 +174,7 @@ def plot_vortex_case(args) -> int:
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": "gray", "lw": 1.0, "zorder": 0, "linestyle": "--"}
-    data_t = float(np.median([row[1] for row in scheme_data])) if scheme_data else args.total_time
-    theory_t = run_t0 + data_t
+    theory_t = run_t0 + args.total_time
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
     tg = np.gradient(tv, r_line)
@@ -174,7 +195,7 @@ def plot_vortex_case(args) -> int:
     axes[2].set_xlim([-7.5, 7.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01), fontsize=10)
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01) )
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":
         save_kw["dpi"] = args.dpi

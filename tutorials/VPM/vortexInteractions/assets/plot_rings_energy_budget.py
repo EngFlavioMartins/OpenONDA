@@ -26,14 +26,17 @@ import pandas as pd
 ASSETS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ASSETS_DIR))
 from _common import (
-    CM,
     T_REF,
     build_arg_parser,
     case_style,
     discover_cases,
+    figure_size,
     load_theme,
+    mark_every,
     read_integrals,
+    reference_fill_style,
     save_fig,
+    secondary_line_style,
 )
 
 
@@ -223,9 +226,7 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
 
 def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Path, dpi: int) -> None:
     load_theme()
-    fig, (ax_rate, ax_resid) = plt.subplots(
-        2, 1, figsize=(12.8 * CM, 11.0 * CM), sharex=True
-    )
+    fig, (ax_rate, ax_resid) = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
 
     for case, df in timeseries.groupby("case", sort=True):
         st = case_style(case)
@@ -235,11 +236,11 @@ def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Pa
         common = dict(
             color=st["color"],
             linestyle=st["linestyle"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=4,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
         )
 
         ax_rate.plot(t, df["dE_dt_poly"] / scale, label=st["label"], **common)
@@ -248,23 +249,22 @@ def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Pa
                 t,
                 df["neg_nu_enstrophy"] / scale,
                 color=st["color"],
-                linestyle=":",
-                lw=1.0,
+                **secondary_line_style(),
             )
 
         resid = df["residual_vs_neg_nu_enstrophy"].to_numpy(float)
         ax_resid.plot(t, resid / scale, **common)
 
-    ax_rate.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
+    ax_rate.axhspan(0, 2.0, **reference_fill_style())
     ax_rate.set_ylabel(r"$E_0^{-1}\,dE/dt$")
     ax_rate.set_title("Energy budget")
-    ax_rate.legend(fontsize=10, ncol=2)
-    ax_rate.set_ylim([-0.5,0.1])
+    ax_rate.legend(ncol=2)
+    ax_rate.set_ylim([-0.5, 0.2])
 
-    ax_resid.axhspan(0, 2.0, facecolor="gray", alpha=0.25, zorder=0)
+    ax_resid.axhspan(0, 2.0, **reference_fill_style())
     ax_resid.set_xlabel(r"Normalized time, $t\Gamma_0/R_0^2$")
     ax_resid.set_ylabel(r"$E_0^{-1}\{dE/dt-(-\nu\Omega)\}$")
-    ax_resid.set_ylim([-0.5,0.1])
+    ax_resid.set_ylim([-0.5, 0.2])
 
     save_fig(fig, figures_dir / "rings_energy_budget.png", dpi=dpi)
 

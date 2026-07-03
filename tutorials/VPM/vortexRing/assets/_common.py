@@ -23,9 +23,6 @@ SCRIPT_DIR = ASSETS_DIR.parent  # …/vortexRings/
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
-
-CM = 1 / 2.54  # cm → inch
 
 # -- Physical constants  (match ring_setup.py) -------------------------------------
 R0 = 1.0  # ring major radius [m]
@@ -43,49 +40,44 @@ U_REF = GAMMA / (4.0 * np.pi * R0) * (np.log(8.0 / _eps0) - _C0)
 E_REF = GAMMA**2 * R0  # [m⁵/s²]  kinetic energy scale for a ring
 P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
 
-# Consistent colour & marker per solution variant (used by every figure).
-# DNS → dashed line (--),  LES → solid line (-).
-VARIANT_STYLE: dict[str, dict[str, str]] = {
-    "DNS_direct": {"color": "#1A6B9A", "marker": "o"},
-    "DNS_transposed": {"color": "#5C3D9B", "marker": "s"},
-    "DNS_mixed": {"color": "#B85C2A", "marker": "^"},
-    "LES_direct": {"color": "#0E8A85", "marker": "D"},
-    "LES_transposed": {"color": "#1A8C88", "marker": "v"},
-    "LES_mixed": {"color": "#2B7A4E", "marker": "p"},
-    "LES_rvpm": {"color": "#7B2969", "marker": "v"},
-}
-
-# Display labels (override underscore-substitution for special cases).
-VARIANT_LABEL: dict[str, str] = {
-    **{k: k.replace("_", " ") for k in VARIANT_STYLE},
-    "LES_rvpm": "LES rVPM",
-}
-
 # -- Theme ---------------------------------------------------------------------
+
+_THEME_MODULE = None
+
+
+def _theme():
+    global _THEME_MODULE
+    if _THEME_MODULE is None:
+        if not THEME_PATH.exists():
+            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        _THEME_MODULE = theme
+    return _THEME_MODULE
+
+
+VARIANT_STYLE = _theme().VORTEX_RING_VARIANT_STYLE
+VARIANT_LABEL = _theme().VORTEX_RING_VARIANT_LABEL
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Load the OpenONDA matplotlib theme. Returns (COLORS dict, theme module)."""
-    import matplotlib.pyplot as plt
-    from matplotlib import font_manager
+    theme = _theme()
+    theme.set_style()
+    return dict(theme.COLORS), theme
 
-    theme = None
-    if THEME_PATH.exists():
-        spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
-        try:
-            theme.set_style()
-        except Exception:
-            pass
 
-    if FONT_PATH.exists():
-        font_manager.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
+def figure_size(name: str = "single") -> tuple[float, float]:
+    return _theme().figure_size(name)
 
-    if theme is not None and hasattr(theme, "COLORS"):
-        return dict(theme.COLORS), theme
-    return {}, theme
+
+def mark_every(name: str = "default") -> int:
+    return _theme().MARK_EVERY[name]
+
+
+def reference_style() -> dict:
+    return dict(_theme().REFERENCE_STYLE)
 
 
 # -- Argument parser -----------------------------------------------------------
@@ -98,7 +90,7 @@ def build_arg_parser(description: str):
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
     p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
-    p.add_argument("--dpi", type=int, default=400, help="Figure DPI.")
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
 
@@ -362,20 +354,10 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def save_fig(
     fig,
     path,
-    dpi: int = 400,
+    dpi: int | None = None,
     tight_rect: tuple[float, float, float, float] | None = None,
 ) -> None:
-    import matplotlib.pyplot as plt
-
-    if tight_rect is None:
-        fig.tight_layout()
-    else:
-        fig.tight_layout(rect=tight_rect)
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    _theme().save_fig(fig, path, dpi=dpi, tight_rect=tight_rect)
 
 
 def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:

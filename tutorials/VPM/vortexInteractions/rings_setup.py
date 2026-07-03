@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Vortex-Ring Interaction Setup Runner
-====================================
-Parametric runner for the vortexInteractions tutorial.  Builds two coaxial
-vortex rings and runs either a leapfrogging or head-on interaction with LES,
-the selected stretching scheme, and the selected viscous model.
-Post-processing is handled by allplot.sh.
+Vortex-ring interaction stabilizer benchmark.
+
+Each run uses the same physical formulation:
+
+  * LES Smagorinsky model
+  * transposed stretching
+  * RK3 advection and stretching
+
+The case matrix changes only the stabilization method so the plots show which
+stabilizer improves survival and conservation for a fixed LES baseline.
 
 Usage::
 
@@ -18,6 +22,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +30,8 @@ import numpy as np
 from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
+    RVPM_DEFAULT_F,
+    RVPM_DEFAULT_G,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -46,7 +53,7 @@ MAX_REGEN_NODES = 250_000
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Vortex-ring LES interaction simulation")
+    parser = argparse.ArgumentParser(description="Vortex-ring LES stabilizer benchmark")
 
     parser.add_argument("--gamma1", type=float, default=GAMMA_REF, help="Ring 1 circulation [m2/s].")
     parser.add_argument("--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s].")
@@ -58,38 +65,63 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backup-frequency", type=int, default=20, help="Backup interval [steps].")
     parser.add_argument("--logging-frequency", type=int, default=10, help="Logging interval [steps].")
     parser.add_argument(
+        "--processing-unit",
+        default="GPU",
+        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        help="Compute backend. Default GPU selects CUDA on NVIDIA systems and Vulkan otherwise.",
+    )
+    parser.add_argument(
+        "--device-memory-fraction",
+        type=float,
+        default=0.4,
+        help="Fraction of GPU memory reserved by Taichi; lower values leave room for remesh transfers.",
+    )
+    parser.add_argument(
         "--blowup-check-frequency",
         type=int,
         default=10,
         help="Peak-circulation blow-up check interval [steps]; 0 disables the check.",
     )
     parser.add_argument(
-        "--stretching",
-        choices=["direct", "transposed", "mixed"],
-        default="transposed",
-        help="Vortex stretching formulation.",
-    )
-    parser.add_argument(
-        "--parallel-strain-relaxation",
-        action="store_true",
-        help="Enable the rVPM a-posteriori parallel-strain correction.",
+        "--stabilization",
+        choices=["les", "rvpm", "relax", "remesh", "projection", "split"],
+        default="les",
+        help="Stabilization variant. 'les' is the unstabilized LES baseline.",
     )
     parser.add_argument(
         "--parallel-strain-f",
         type=float,
-        default=0.0,
-        help="rVPM correction parameter f.",
+        default=RVPM_DEFAULT_F,
+        help=f"rVPM correction parameter f (FLOWVPM default: {RVPM_DEFAULT_F:g}).",
     )
     parser.add_argument(
         "--parallel-strain-g",
         type=float,
-        default=1.0 / 3.0,
-        help="rVPM correction parameter g.",
+        default=RVPM_DEFAULT_G,
+        help=f"rVPM correction parameter g (FLOWVPM default: {RVPM_DEFAULT_G:g}).",
+    )
+    parser.add_argument(
+        "--relaxation-factor",
+        type=float,
+        default=0.3,
+        help="Constant factor for strength relaxation.",
+    )
+    parser.add_argument(
+        "--remesh-frequency",
+        type=int,
+        default=20,
+        help="Remeshing interval for remesh/projection variants.",
+    )
+    parser.add_argument(
+        "--split-radius",
+        type=float,
+        default=0.16,
+        help="Core-radius threshold for particle splitting.",
     )
     parser.add_argument(
         "--viscous",
         choices=["cs", "gbd", "dvh"],
-        default="gbd",
+        default="cs",
         help="Viscous scheme.",
     )
 
@@ -120,12 +152,40 @@ def build_viscous_config(scheme: str, particle_spacing: float) -> ViscousConfig:
     )
 
 
-def build_stretching_config(scheme: str) -> StretchingConfig:
-    if scheme == "direct":
-        return StretchingConfig.direct()
-    if scheme == "mixed":
-        return StretchingConfig.mixed()
-    return StretchingConfig.transposed()
+def build_stabilization_config(args: argparse.Namespace, particle_spacing: float) -> StabilizationConfig:
+    """Return exactly one benchmark stabilizer for the requested variant."""
+    if args.stabilization == "les":
+        return StabilizationConfig.disabled()
+    if args.stabilization == "rvpm":
+        return StabilizationConfig.parallel_strain_relaxation(
+            f=args.parallel_strain_f,
+            g=args.parallel_strain_g,
+        )
+    if args.stabilization == "relax":
+        return StabilizationConfig.strength_relaxation(
+            mode="pedrizzetti",
+            gate="constant",
+            factor=args.relaxation_factor,
+            conserve=True,
+            constraint="both",
+        )
+    if args.stabilization == "split":
+        return StabilizationConfig.particle_splitting(
+            radius=args.split_radius,
+            weak_threshold_percent=0.5,
+        )
+
+    project = args.stabilization == "projection"
+    return StabilizationConfig.conservative_remeshing(
+        frequency=args.remesh_frequency,
+        spacing=particle_spacing,
+        relative_threshold=0.01,
+        absolute_threshold=1.0e-8,
+        conserve_impulse=True,
+        delta_correction=False,
+        radius=particle_spacing,
+        project_solenoidal=project,
+    )
 
 
 def make_surface_sampler(case_label: str, particle_spacing: float, output_dir: Path) -> SurfaceSampler:
@@ -191,6 +251,30 @@ def initialize_vortex_rings(
         solver.remove_weak_particles(percent=0.1, per_group=True)
 
 
+def write_manifest(args: argparse.Namespace, case_label: str, output_dir: Path) -> None:
+    manifest = {
+        "case": output_dir.name,
+        "family": case_label,
+        "model": "LES",
+        "stabilization": args.stabilization,
+        "advection_scheme": "RK3",
+        "stretching_mode": "TRANSPOSED",
+        "stretching_scheme": "RK3",
+        "viscous_scheme": args.viscous,
+        "processing_unit": args.processing_unit,
+        "device_memory_fraction": args.device_memory_fraction,
+        "dt": args.dt,
+        "num_steps": args.num_steps,
+        "particle_spacing": args.particle_spacing,
+        "gamma1": args.gamma1,
+        "gamma2": args.gamma2,
+        "parallel_strain_f": args.parallel_strain_f,
+        "parallel_strain_g": args.parallel_strain_g,
+    }
+    with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2)
+
+
 def run_case(args: argparse.Namespace) -> None:
     case_label = "leapfrog" if args.gamma1 * args.gamma2 >= 0.0 else "collide"
 
@@ -215,6 +299,12 @@ def run_case(args: argparse.Namespace) -> None:
         raise ValueError("--particle-spacing must be positive.")
     if args.blowup_check_frequency < 0:
         raise ValueError("--blowup-check-frequency must be non-negative.")
+    if not 0.1 <= args.device_memory_fraction <= 0.7:
+        raise ValueError("--device-memory-fraction must be between 0.1 and 0.7.")
+    if args.remesh_frequency <= 0:
+        raise ValueError("--remesh-frequency must be positive.")
+    if args.split_radius <= 0.0:
+        raise ValueError("--split-radius must be positive.")
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -242,15 +332,8 @@ def run_case(args: argparse.Namespace) -> None:
 
     turbulence = TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
 
-    stretching = build_stretching_config(args.stretching)
-    stabilization = (
-        StabilizationConfig.parallel_strain_relaxation(
-            f=args.parallel_strain_f,
-            g=args.parallel_strain_g,
-        )
-        if args.parallel_strain_relaxation
-        else StabilizationConfig.disabled()
-    )
+    stretching = StretchingConfig.transposed(scheme="RK3")
+    stabilization = build_stabilization_config(args, particle_spacing)
 
     velocity = VelocityConfig.treecode(theta=0.3)
 
@@ -258,7 +341,8 @@ def run_case(args: argparse.Namespace) -> None:
 
     solver_config = SolverConfig(
         time_step_size=time_step,
-        processing_unit="GPU_VULKAN",
+        processing_unit=args.processing_unit,
+        device_memory_fraction=args.device_memory_fraction,
         advection=advection,
         turbulence=turbulence,
         stretching=stretching,
@@ -273,6 +357,7 @@ def run_case(args: argparse.Namespace) -> None:
         logging_frequency=args.logging_frequency,
         timing_frequency=40,
     )
+    write_manifest(args, case_label, output_dir)
 
     solver = Solver(config=solver_config)
     # Plot scripts read flow diagnostics from the log; skip duplicate CSV output here.

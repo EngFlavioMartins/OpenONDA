@@ -140,7 +140,7 @@ def plot_loading_validation(args) -> int:
 
     # -- Gamma*(r/R) -----------------------------------------------------
     ax = axes[0]
-    ax.axvspan(0, 0.17, color=s_ref["color"], linewidth=0)
+    ax.axvspan(0, 0.17, color=colors["background_light"], linewidth=0)
     vpm_kw = {
         "color": s_vpm["color"],
         "marker": s_vpm["marker"],
@@ -165,7 +165,7 @@ def plot_loading_validation(args) -> int:
 
     # -- Cl(r/R) ---------------------------------------------------------
     ax2 = axes[1]
-    ax2.axvspan(0, 0.17, color=s_ref["color"], linewidth=0)
+    ax2.axvspan(0, 0.17, color=colors["background_light"], linewidth=0)
     ax2.plot(r_vlm / design.radius, cl_vlm, **vpm_kw)
     ax2.plot(bem["r_over_R"], bem["Cl"], **bem_kw)
     ax2.set_xlabel(r"$r/R$")

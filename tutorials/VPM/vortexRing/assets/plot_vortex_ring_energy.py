@@ -23,7 +23,9 @@ from _common import (
     P_REF,
     VARIANT_LABEL,
     VARIANT_STYLE,
-    CM,
+    figure_size,
+    mark_every,
+    reference_style,
 )
 
 
@@ -35,7 +37,7 @@ def main() -> None:
 
     load_theme()
 
-    fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=(17.2 * CM, 8 * CM), sharex=True)
+    fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
     legend_handles = []
     legend_labels = []
 
@@ -48,39 +50,38 @@ def main() -> None:
         if times.size == 0:
             print(f"  (no energy data for {variant})")
             continue
-        ls = "--" if variant.startswith("DNS") else "-"
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {log}")
         t = times / T_REF
         (line,) = ax_de.plot(
             t,
             dedt / P_REF,
-            ls,
+            st["linestyle"],
             color=st["color"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=3,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=label,
         )
         ax_nuens.plot(
             t,
             nuEns / P_REF,
-            ls,
+            st["linestyle"],
             color=st["color"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=3,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=label,
         )
         legend_handles.append(line)
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
-        ax.axhline(0.0, color="gray", ls="--", lw=1.0)
+        ax.axhline(0.0, **reference_style())
         ax.set_xlabel(r"$t\,\Gamma / R_0^2$")
         ax.set_ylim(-0.05, 0.01)
         ax.set_xlim(0, 38)
@@ -92,7 +93,6 @@ def main() -> None:
     fig.legend(
         legend_handles,
         legend_labels,
-        fontsize=10,
         ncol=3,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.0),

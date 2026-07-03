@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — LES ring-interaction benchmark.
-# Runs leapfrogging and head-on collision cases, then generates comparison figures.
+# Vortex-ring interactions — LES stabilizer benchmark.
+# Runs leapfrogging and head-on collision cases with the same LES/transposed/RK3
+# solver core.  Only the stabilization method changes between cases.
 set -euo pipefail
 
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
@@ -16,26 +17,35 @@ RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
 PARTICLE_SPACING="${PARTICLE_SPACING:-0.030}"
 
-LF_DT="${LF_DT:-0.020}"
+DT="${DT:-0.020}"
+LF_DT="${LF_DT:-$DT}"
 LF_STEPS="${LF_STEPS:-450}"
-LF_VISCOUS="${LF_VISCOUS:-cs}"
 
-COLLIDE_DT="${COLLIDE_DT:-0.060}"
-COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-210}}"
-COLLIDE_VISCOUS="${COLLIDE_VISCOUS:-gbd}"
+COLLIDE_DT="${COLLIDE_DT:-$DT}"
+COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-300}}"
+
+VISCOUS="${VISCOUS:-cs}"
+PROCESSING_UNIT="${PROCESSING_UNIT:-GPU}"
+REMESH_PROCESSING_UNIT="${REMESH_PROCESSING_UNIT:-CPU}"
+DEVICE_MEMORY_FRACTION="${DEVICE_MEMORY_FRACTION:-0.4}"
 
 BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
 LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
 BLOWUP_CHECK_FREQUENCY="${BLOWUP_CHECK_FREQUENCY:-10}"
-STRETCHING="${STRETCHING:-transposed}"
-CASE_SUFFIX="${CASE_SUFFIX:-$STRETCHING}"
+STABILIZATIONS="${STABILIZATIONS:-les rvpm relax remesh projection split}"
+RUN_FAMILIES="${RUN_FAMILIES:-leapfrog collide}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
 
 echo "Results root: $RUN_ROOT"
 echo "Particle spacing: $PARTICLE_SPACING"
-echo "Viscous (leapfrog / collide): $LF_VISCOUS / $COLLIDE_VISCOUS"
-echo "Stretching: $STRETCHING"
+echo "Viscous scheme: $VISCOUS"
+echo "Processing unit: $PROCESSING_UNIT"
+echo "Remesh/projection processing unit: $REMESH_PROCESSING_UNIT"
+echo "Device memory fraction: $DEVICE_MEMORY_FRACTION"
+echo "Solver core: LES, transposed stretching, RK3 advection/stretching"
+echo "Stabilizations: $STABILIZATIONS"
+echo "Families: $RUN_FAMILIES"
 
 run_case() {
     local label="$1"
@@ -55,25 +65,56 @@ run_case() {
         "$@"
 }
 
-run_case "1/2 leapfrog_${CASE_SUFFIX}" "leapfrog_${CASE_SUFFIX}" \
-    --gamma1 "$GAMMA_PI" --gamma2 "$GAMMA_PI" \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$LF_DT" --num-steps "$LF_STEPS" \
-    --viscous "$LF_VISCOUS" \
-    --stretching "$STRETCHING" \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --blowup-check-frequency "$BLOWUP_CHECK_FREQUENCY"
+total=0
+for family in $RUN_FAMILIES; do
+    for stabilization in $STABILIZATIONS; do
+        total=$((total + 1))
+    done
+done
 
-run_case "2/2 collide_${CASE_SUFFIX}" "collide_${CASE_SUFFIX}" \
-    --gamma1 "$GAMMA_PI" --gamma2 "-$GAMMA_PI" \
-    --particle-spacing "$PARTICLE_SPACING" \
-    --dt "$COLLIDE_DT" --num-steps "$COLLIDE_STEPS" \
-    --viscous "$COLLIDE_VISCOUS" \
-    --stretching "$STRETCHING" \
-    --backup-frequency "$BACKUP_FREQUENCY" \
-    --logging-frequency "$LOGGING_FREQUENCY" \
-    --blowup-check-frequency "$BLOWUP_CHECK_FREQUENCY"
+index=0
+for family in $RUN_FAMILIES; do
+    case "$family" in
+        leapfrog)
+            gamma1="$GAMMA_PI"
+            gamma2="$GAMMA_PI"
+            dt="$LF_DT"
+            steps="$LF_STEPS"
+            ;;
+        collide)
+            gamma1="$GAMMA_PI"
+            gamma2="-$GAMMA_PI"
+            dt="$COLLIDE_DT"
+            steps="$COLLIDE_STEPS"
+            ;;
+        *)
+            echo "Unknown family in RUN_FAMILIES: $family" >&2
+            exit 1
+            ;;
+    esac
+
+    for stabilization in $STABILIZATIONS; do
+        index=$((index + 1))
+        case_name="${family}_${stabilization}"
+        case_processing_unit="$PROCESSING_UNIT"
+        case "$stabilization" in
+            remesh|projection)
+                case_processing_unit="$REMESH_PROCESSING_UNIT"
+                ;;
+        esac
+        run_case "$index/$total $case_name" "$case_name" \
+            --gamma1 "$gamma1" --gamma2 "$gamma2" \
+            --particle-spacing "$PARTICLE_SPACING" \
+            --dt "$dt" --num-steps "$steps" \
+            --viscous "$VISCOUS" \
+            --processing-unit "$case_processing_unit" \
+            --device-memory-fraction "$DEVICE_MEMORY_FRACTION" \
+            --stabilization "$stabilization" \
+            --backup-frequency "$BACKUP_FREQUENCY" \
+            --logging-frequency "$LOGGING_FREQUENCY" \
+            --blowup-check-frequency "$BLOWUP_CHECK_FREQUENCY"
+    done
+done
 
 if [[ -x ./allplot.sh ]]; then
     ./allplot.sh --solution-dir "$RUN_ROOT" --figures-dir "$FIGURES_ROOT"

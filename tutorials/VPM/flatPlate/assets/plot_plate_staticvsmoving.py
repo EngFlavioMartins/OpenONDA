@@ -25,13 +25,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 
 # -- Paths ---------------------------------------------------------------------
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
 SOL_DIR = CASE_DIR / "solution"
 FIG_DIR = CASE_DIR / "figures"
 parser = argparse.ArgumentParser()
@@ -53,9 +51,6 @@ if THEME_PATH.exists():
     except Exception as e:
         print(f"(Warning) Theme failed: {e}")
 
-if FONT_PATH.exists():
-    font_manager.fontManager.addfont(str(FONT_PATH))
-
 sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import prandtl_a3D
 
@@ -75,7 +70,7 @@ CHORD = 1.0
 U_INF = 10.0
 a_3D = prandtl_a3D(AR)
 
-cm = 1 / 2.54
+cm = m.CM if m is not None and hasattr(m, "CM") else 1 / 2.54
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -122,17 +117,17 @@ if df_moving is not None:
     phi = 1.0 - _A1 * np.exp(-_b1 * tau_th) - _A2 * np.exp(-_b2 * tau_th)
     CL_wag = CL_ss * phi
     CDi_wag = CL_wag**2 / (np.pi * AR)
-    ax1.plot(tau_th, CL_wag, "--", color="gray", lw=1.0, label=rf"Wagner (AR = {AR:.0f})")
-    ax2.plot(tau_th, CDi_wag, "--", color="gray", lw=1.0, label="Wagner")
+    ax1.plot(tau_th, CL_wag, "--", color=C_THEORY, lw=1.0, label=rf"Wagner (AR = {AR:.0f})")
+    ax2.plot(tau_th, CDi_wag, "--", color=C_THEORY, lw=1.0, label="Wagner")
 
 ax1.set_ylabel(r"Lift coefficient, $C_L$")
-ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$", fontsize=10)
-ax1.legend(fontsize=10)
+ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$" )
+ax1.legend()
 ax1.set_ylim(bottom=0)
 
 ax2.set_xlabel(r"Chord-lengths traveled, $\tau$")
 ax2.set_ylabel(r"Drag coefficient, $C_D$")
-ax2.legend(fontsize=10)
+ax2.legend()
 ax2.set_ylim(bottom=0)
 
 out = FIG_DIR / "plate_staticvsmoving.png"

@@ -20,7 +20,9 @@ from _common import (
     save_fig,
     VARIANT_LABEL,
     VARIANT_STYLE,
-    CM,
+    figure_size,
+    mark_every,
+    reference_style,
 )
 
 
@@ -34,7 +36,7 @@ def main() -> None:
 
     load_theme()
 
-    fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=(12.8 * CM, 8 * CM), sharex=True)
+    fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("single_tall"), sharex=True)
     legend_handles = []
     legend_labels = []
 
@@ -44,43 +46,37 @@ def main() -> None:
         if t.size == 0:
             continue
         t_sum, sum_err = load_vector_circulation_error(h5)
-        ls = "--" if variant.startswith("DNS") else "-"
         label = VARIANT_LABEL[variant]
         (line,) = ax_tube.plot(
             t,
             c,
-            ls,
+            st["linestyle"],
             color=st["color"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=3,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=label,
         )
         if t_sum.size:
             ax_sum.semilogy(
                 t_sum,
                 sum_err.clip(min=1e-12),
-                ls,
+                st["linestyle"],
                 color=st["color"],
-                lw=1.1,
+                lw=st["linewidth"],
                 marker=st["marker"],
-                ms=3,
-                markevery=3,
-                mew=0.4,
+                ms=st["markersize"],
+                markevery=mark_every(),
+                mew=st["markeredgewidth"],
                 label=label,
             )
         legend_handles.append(line)
         legend_labels.append(label)
 
-    ax_tube.axhline(
-        1.0,
-        color="gray",
-        ls="--",
-        lw=1.0,
-    )
-    ax_sum.axhline(1e-4, color="gray", ls="--", lw=1.0)
+    ax_tube.axhline(1.0, **reference_style())
+    ax_sum.axhline(1e-4, **reference_style())
 
     for ax in (ax_tube, ax_sum):
         ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
@@ -96,7 +92,6 @@ def main() -> None:
     fig.legend(
         legend_handles,
         legend_labels,
-        fontsize=10,
         ncol=3,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.0),

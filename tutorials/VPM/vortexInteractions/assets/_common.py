@@ -23,9 +23,6 @@ SCRIPT_DIR = ASSETS_DIR.parent  # …/vortexInteractions/
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
-
-CM = 1 / 2.54  # cm → inch
 
 # -- Physical constants  (match rings_setup.py) --------------------------------
 R0 = 1.0  # ring major radius [m]
@@ -44,29 +41,63 @@ P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
 
 # -- Theme ---------------------------------------------------------------------
 
+_THEME_MODULE = None
+
+
+def _theme():
+    """Return the shared OpenONDA matplotlib theme module."""
+    global _THEME_MODULE
+    if _THEME_MODULE is None:
+        if not THEME_PATH.exists():
+            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        _THEME_MODULE = theme
+    return _THEME_MODULE
+
 
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Load the OpenONDA matplotlib theme. Returns (COLORS dict, theme module)."""
-    import matplotlib.pyplot as plt
-    from matplotlib import font_manager
+    theme = _theme()
+    theme.set_style()
+    return dict(theme.COLORS), theme
 
-    theme = None
-    if THEME_PATH.exists():
-        spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
-        try:
-            theme.set_style()
-        except Exception:
-            pass
 
-    if FONT_PATH.exists():
-        font_manager.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
+def figure_size(name: str = "single") -> tuple[float, float]:
+    """Return a named figure size from the shared plot theme."""
+    return _theme().figure_size(name)
 
-    if theme is not None and hasattr(theme, "COLORS"):
-        return dict(theme.COLORS), theme
-    return {}, theme
+
+def reference_style() -> dict:
+    """Return the shared reference-line style."""
+    return dict(_theme().REFERENCE_STYLE)
+
+
+def reference_fill_style(kind: str = "normal") -> dict:
+    """Return the shared reference-band style."""
+    if kind == "strong":
+        return dict(_theme().REFERENCE_STRONG_FILL_STYLE)
+    return dict(_theme().REFERENCE_FILL_STYLE)
+
+
+def legend_handle_style(style: dict) -> dict:
+    """Return the shared legend-handle style for a case style."""
+    return _theme().legend_handle_style(style)
+
+
+def mark_every(name: str = "default") -> int:
+    """Return the shared marker cadence for a plot kind."""
+    return _theme().MARK_EVERY[name]
+
+
+def secondary_line_style() -> dict:
+    """Return the shared style for secondary lines related to a primary case."""
+    theme = _theme()
+    return {
+        "linestyle": theme.SECONDARY_LINESTYLE,
+        "linewidth": theme.SECONDARY_LINE_WIDTH,
+    }
 
 
 # -- Argument parser -----------------------------------------------------------
@@ -79,45 +110,11 @@ def build_arg_parser(description: str):
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
     p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
-    p.add_argument("--dpi", type=int, default=400, help="Figure DPI.")
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
 
-# -- Case styling (shared across every comparison figure) ----------------------
-# Encoding (kept identical in all figures so the legend reads the same):
-#   • LINESTYLE  → physics family   (leapfrog = solid, collide = dashed)
-#   • COLOUR     → numerical variant (stretching scheme / legacy rung)
-#   • MARKER     → numerical variant (redundant cue for black-and-white print)
-# Both rings of a given case therefore share one colour + linestyle + marker.
-_FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
-_FAMILY_LABEL = {"leapfrog": "Leapfrogging", "collide": "Merging"}
-_RUNG_COLOR = {
-    "dns": "#2E3D46",      # DarkText  — neutral baseline
-    "les": "#0E8A85",      # TUDcyan       — bare LES (reference)
-    "transposed": "#0E8A85",
-    "rvpm": "#C8102E",
-    "relax": "#C8102E",    # TUDred        — Winckelmans/Pedrizzetti relaxation
-    "fine": "#2B7A4E",     # AccentGreen
-}
-_RUNG_MARKER = {
-    "dns": "o",
-    "les": "s",
-    "transposed": "s",
-    "rvpm": "o",
-    "relax": "o",
-    "fine": "v",
-}
 _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
-_INTENDED_CASE_ORDER = {
-    "leapfrog_relax": 0,
-    "leapfrog_les": 1,
-    "leapfrog_transposed": 2,
-    "leapfrog_rvpm": 3,
-    "collide_relax": 4,
-    "collide_les": 5,
-    "collide_transposed": 6,
-    "collide_rvpm": 7,
-}
 
 _FLOAT_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
 _STEP_TIME_RE = re.compile(
@@ -133,18 +130,18 @@ _BLOWUP_RE = re.compile(
 )
 
 
-def case_style(name: str) -> dict:
-    """Return a consistent {color, linestyle, marker, label, family, rung} for a case."""
-    family, _, rung = name.partition("_")
-    rung = rung or "dns"
-    return {
-        "color": _RUNG_COLOR.get(rung, "#6E8898"),
-        "linestyle": _FAMILY_LINESTYLE.get(family, "-"),
-        "marker": _RUNG_MARKER.get(rung, "o"),
-        "label": f"{_FAMILY_LABEL.get(family, family)} {' '.join(p.upper() for p in rung.split('_'))}",
-        "family": family,
-        "rung": rung,
-    }
+def _case_parts(name: str) -> tuple[str, str]:
+    family, _, variant = name.partition("_")
+    return family, variant
+
+
+def case_style(
+    name: str,
+    include_family: bool = True,
+    colors: dict[str, str] | None = None,
+) -> dict:
+    """Return a consistent style dictionary from the shared plot theme."""
+    return _theme().case_style(name, include_family=include_family)
 
 
 def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
@@ -157,13 +154,16 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
     if not sol.is_dir():
         return []
     cases = []
-    for d in sorted(sol.iterdir(), key=lambda path: _INTENDED_CASE_ORDER.get(path.name, 999)):
-        if not d.is_dir() or (family and not d.name.startswith(family)):
+    intended_order = _theme().INTENDED_CASE_ORDER
+    family_linestyle = _theme().FAMILY_LINESTYLE
+    variant_order = _theme().VARIANT_ORDER
+    for d in sorted(sol.iterdir(), key=lambda path: intended_order.get(path.name, 999)):
+        if not d.is_dir():
             continue
-        if (
-            d.name not in _INTENDED_CASE_ORDER
-            and not d.name.startswith(("leapfrog_", "collide_"))
-        ):
+        case_family, variant = _case_parts(d.name)
+        if family and case_family != family:
+            continue
+        if case_family not in family_linestyle or variant not in variant_order:
             continue
         if (
             any(d.glob("*.log"))
@@ -497,15 +497,8 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 # -- Figure helpers ------------------------------------------------------------
 
 
-def save_fig(fig, path, dpi: int = 400) -> None:
-    import matplotlib.pyplot as plt
-
-    fig.tight_layout()
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+def save_fig(fig, path, dpi: int | None = None) -> None:
+    _theme().save_fig(fig, path, dpi=dpi)
 
 
 def read_csv(assets_dir, fname: str, xcol: str, ycol: str):

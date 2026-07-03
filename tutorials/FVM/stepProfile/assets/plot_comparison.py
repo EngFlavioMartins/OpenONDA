@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, load_pvd_timesteps, save_fig
+from _common import COLORS, build_arg_parser, figure_size, load_pvd_timesteps, save_fig
 
 
 def main():
@@ -51,11 +51,18 @@ def main():
     else:
         smearing_width_cells = 0.0
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(x_cl, phi_num, color="#1A6B9A", lw=1.2, label="Numerical")
-    ax.plot(x_cl, phi_exact, color="black", lw=1.0, ls="--", label="Exact")
-    ax.fill_between(x_cl, 0, 1, where=smearing_mask, color="gray", alpha=0.15,
-                     label=f"Smearing = {smearing_width_cells:.1f} cells")
+    fig, ax = plt.subplots(figsize=figure_size("single"))
+    ax.plot(x_cl, phi_num, color=COLORS["TUDdark"], lw=1.2, label="Numerical")
+    ax.plot(x_cl, phi_exact, color=COLORS["reference"], lw=1.0, ls="--", label="Exact")
+    ax.fill_between(
+        x_cl,
+        0,
+        1,
+        where=smearing_mask,
+        color=COLORS["background_light"],
+        alpha=0.25,
+        label=f"Smearing = {smearing_width_cells:.1f} cells",
+    )
     ax.set_xlabel("x along diagonal")
     ax.set_ylabel(r"$\phi$")
     ax.set_ylim(-0.05, 1.05)

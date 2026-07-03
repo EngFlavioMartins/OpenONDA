@@ -24,13 +24,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 
 # -- Paths ---------------------------------------------------------------------
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
 SOL_DIR = CASE_DIR / "solution"
 FIG_DIR = CASE_DIR / "figures"
 parser = argparse.ArgumentParser()
@@ -51,9 +49,6 @@ if THEME_PATH.exists():
         m.set_style()
     except Exception as e:
         print(f"(Warning) Theme failed: {e}")
-
-if FONT_PATH.exists():
-    font_manager.fontManager.addfont(str(FONT_PATH))
 
 sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import prandtl_a3D
@@ -182,17 +177,17 @@ ax_cl.plot(
     alpha_range,
     CL_theory,
     "--",
-    color="gray",
+    color=C_THEORY,
     lw=1.0,
     label=rf"Prandtl lifting-line (AR={AR:.0f})",
 )
 ax_cl.plot(moving_aoa, moving_cl, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cl.plot(static_aoa, static_cl, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cl.axhline(0, color="k", lw=0.5, alpha=0.35)
+ax_cl.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
 ax_cl.set_ylabel(r"Lift coefficient, $C_L$")
-ax_cl.set_title(r"$C_L$ vs $\alpha$", fontsize=10)
+ax_cl.set_title(r"$C_L$ vs $\alpha$" )
 ax_cl.set_ylim(bottom=-1.6, top=1.6)
-ax_cl.legend(fontsize=10)
+ax_cl.legend()
 ax_cl.set_xlim(-12, 18)
 
 # CD vs α
@@ -200,27 +195,27 @@ ax_cd.plot(
     alpha_range,
     CDi_theory,
     "--",
-    color="gray",
+    color=C_THEORY,
     lw=1.0,
     label=rf"Prandtl lifting-line (AR={AR:.0f})",
 )
 ax_cd.plot(moving_aoa, moving_cd, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cd.plot(static_aoa, static_cd, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cd.axhline(0, color="k", lw=0.5, alpha=0.35)
+ax_cd.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
 ax_cd.set_ylabel(r"Drag coefficient, $C_D$")
-ax_cd.set_title(r"$C_D$ vs $\alpha$", fontsize=10)
-ax_cd.legend(fontsize=10)
+ax_cd.set_title(r"$C_D$ vs $\alpha$" )
+ax_cd.legend()
 ax_cd.set_xlim(-12, 18)
 ax_cd.set_ylim(bottom=-0.01, top=0.10)
 
 # CM vs α
 ax_cm.plot(moving_aoa, moving_cm, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cm.plot(static_aoa, static_cm, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cm.axhline(0, color="k", lw=0.5, alpha=0.35)
+ax_cm.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
 ax_cm.set_xlabel(r"Angle of attack, $\alpha$ [°]")
 ax_cm.set_ylabel(r"Moment coeff., $C_{m,c/4}$")
-ax_cm.set_title(r"$C_{m,c/4}$ vs $\alpha$", fontsize=10)
-ax_cm.legend(fontsize=10)
+ax_cm.set_title(r"$C_{m,c/4}$ vs $\alpha$" )
+ax_cm.legend()
 ax_cm.set_ylim(bottom=-0.01, top=0.01)
 ax_cm.set_xlim(-12, 18)
 

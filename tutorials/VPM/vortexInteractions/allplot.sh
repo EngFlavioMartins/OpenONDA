@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — LES transposed strength-stabilizer comparison.
+# Vortex-ring interactions — LES transposed stabilizer comparison.
 #
-# Each script auto-discovers the intended four-case matrix under the solution
-# directory: leapfrog_{les,les_limiter} and collide_{les,les_limiter}.  The figures
-# share one styling key: colour = stabilization rung, linestyle = physics
-# family (leapfrog solid, collide dashed).
+# Each script auto-discovers the stabilizer matrix under the solution directory:
+# leapfrog_* and collide_* with variants {les,rvpm,relax,remesh,projection,split}.
+# The figures share one styling key: color = stabilization, linestyle = family.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

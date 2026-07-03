@@ -9,7 +9,7 @@ import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, save_fig, U_INF, L_REF
+from _common import COLORS, build_arg_parser, figure_size, save_fig, U_INF
 
 
 def main():
@@ -63,15 +63,27 @@ def main():
     x_cl = x_cl[sort_idx]
     ux_cl = ux_cl[sort_idx]
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(x_cl, ux_cl / U_INF, "b-", linewidth=0.8, label=f"t = {mesh.field_data.get('Time', '?')}")
+    fig, ax = plt.subplots(figsize=figure_size("single"))
+    ax.plot(
+        x_cl,
+        ux_cl / U_INF,
+        color=COLORS["TUDdark"],
+        linestyle="-",
+        linewidth=0.8,
+        label=f"t = {mesh.field_data.get('Time', '?')}",
+    )
 
     face_min = ux_cl.min()
-    ax.axhline(0, color="gray", linestyle=":", linewidth=0.5)
+    ax.axhline(0, color=COLORS["reference"], linestyle=":", linewidth=0.5)
     ax.text(
         0.97, 0.92, f"+x face min u_x/U∞ = {face_min / U_INF:.3f}",
-        transform=ax.transAxes, ha="right", va="top", fontsize=9,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8),
+        transform=ax.transAxes, ha="right", va="top" ,
+        bbox=dict(
+            boxstyle="round,pad=0.3",
+            facecolor="white",
+            edgecolor=COLORS["background_light"],
+            alpha=0.8,
+        ),
     )
 
     ax.set_xlabel("x [m]")

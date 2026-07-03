@@ -155,7 +155,13 @@ def plot_energy_enstrophy(args) -> int:
         ax.set_xlabel(r"$\nu t / a_0^2$")
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_0^2)$")
-    axes[0].axvspan(0.038 / (args.a0_over_b0**2), tau_lim, color="gray", linewidth=0.0, zorder=-10)
+    axes[0].axvspan(
+        0.038 / (args.a0_over_b0**2),
+        tau_lim,
+        color=colors["background_light"],
+        linewidth=0.0,
+        zorder=-10,
+    )
 
     handles: list = []
     for scheme in SCHEMES:
@@ -176,11 +182,11 @@ def plot_energy_enstrophy(args) -> int:
         Line2D(
             [0],
             [0],
-            color="gray",
+            color=colors["reference"],
             linestyle="None",
             marker="o",
             markersize=4,
-            mfc="gray",
+            mfc=colors["reference"],
             label=r"$dE/dt$",
         )
     )
@@ -188,7 +194,7 @@ def plot_energy_enstrophy(args) -> int:
         Line2D(
             [0],
             [0],
-            color="gray",
+            color=colors["reference"],
             linestyle="None",
             marker="o",
             markersize=4,
@@ -201,8 +207,7 @@ def plot_energy_enstrophy(args) -> int:
         [h.get_label() for h in handles],
         loc="lower center",
         ncol=3,
-        bbox_to_anchor=(0.5, 0.02),
-        fontsize=10,
+        bbox_to_anchor=(0.5, 0.02) ,
     )
 
     save_kw: dict = {"bbox_inches": "tight"}

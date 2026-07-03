@@ -16,12 +16,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "quadcopter"
 FIGURES_DIR = CASE_DIR / "figures"
 THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 
 def _load_theme() -> tuple[dict[str, str], object | None]:
-    import matplotlib.font_manager as fm
-
     theme = None
     if THEME_PATH.exists():
         spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
@@ -31,10 +28,6 @@ def _load_theme() -> tuple[dict[str, str], object | None]:
             theme.set_style()
         except Exception:
             pass
-
-    if FONT_PATH.exists():
-        fm.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
 
     if theme is not None and hasattr(theme, "COLORS"):
         return dict(theme.COLORS), theme
@@ -85,27 +78,23 @@ def load_series(solution_dir: Path, pattern: str = "vpm_*.h5"):
 
 def plot_particle_count(solution_dir: Path, figures_dir: Path) -> None:
     times, particle_count, _ = load_series(solution_dir)
-    fig, ax = plt.subplots(figsize=(12.8 / 2.54, 7.0 / 2.54))
-    ax.plot(times, particle_count, "-o", color=_COLORS.get("TUDcyan", "#0E8A85"))
+    fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
+    ax.plot(times, particle_count, "-o", color=_COLORS.get("TUDcyan", "#00726e"))
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("Particles [-]")
     ax.set_title("Quadcopter particle count evolution")
     out = figures_dir / "quadcopter_particle_count.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    _theme.save_fig(fig, out)
 
 
 def plot_vorticity_history(solution_dir: Path, figures_dir: Path) -> None:
     times, _, vorticity_l2 = load_series(solution_dir)
-    fig, ax = plt.subplots(figsize=(12.8 / 2.54, 7.0 / 2.54))
-    ax.plot(times, vorticity_l2, "-o", color=_COLORS.get("VPMpurple", "#5C3D9B"))
+    fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
+    ax.plot(times, vorticity_l2, "-o", color=_COLORS.get("VPMpurple", "#7a4f99"))
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"$\sum \|\omega\|$ [1/s]")
     ax.set_title("Quadcopter vorticity magnitude history")
     out = figures_dir / "quadcopter_vorticity_history.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    _theme.save_fig(fig, out)

@@ -33,7 +33,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 
@@ -41,7 +40,6 @@ import pandas as pd
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
 
 sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import spanwise_reference
@@ -73,9 +71,6 @@ if THEME_PATH.exists():
     except Exception as exc:
         print(f"(Warning) Theme failed: {exc}")
 
-if FONT_PATH.exists():
-    font_manager.fontManager.addfont(str(FONT_PATH))
-
 
 def _c(key):
     return m.COLORS[key] if m and hasattr(m, "COLORS") else None
@@ -86,7 +81,7 @@ C_STATIC = _c("vpm")
 C_LL = _c("ref")
 C_ELL = _c("literature")
 
-cm_inch = 1 / 2.54
+cm_inch = m.CM if m is not None and hasattr(m, "CM") else 1 / 2.54
 
 # -- Physical constants ---------------------------------------------------------
 AR = 10.0
@@ -151,14 +146,14 @@ if static_data is not None:
     )
 
 # Theory curves
-ax.plot(y_ll_over_b, cl_ll, "--", color="gray", lw=1.0, label="Lifting-line (Glauert)")
-ax.plot(y_ll_over_b, cl_ell, "--", color="gray", lw=1.0, label="Elliptic")
+ax.plot(y_ll_over_b, cl_ll, "--", color=C_LL, lw=1.0, label="Lifting-line (Glauert)")
+ax.plot(y_ll_over_b, cl_ell, "--", color=C_ELL, lw=1.0, label="Elliptic")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift coefficient, $c_\ell$")
-ax.set_title(rf"Spanwise $c_\ell$, $\alpha={args.aoa:.0f}°$, AR={AR:.0f}", fontsize=10)
+ax.set_title(rf"Spanwise $c_\ell$, $\alpha={args.aoa:.0f}°$, AR={AR:.0f}" )
 ax.set_xlim(-1, 1)
-ax.legend(fontsize=10)
+ax.legend()
 
 out = FIG_DIR / "plate_spanwise.png"
 fig.savefig(out, bbox_inches="tight", dpi=args.dpi)

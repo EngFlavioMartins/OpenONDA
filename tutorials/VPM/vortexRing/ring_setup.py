@@ -25,6 +25,8 @@ from source.solvers.VPM import (
 )
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
+    RVPM_DEFAULT_F,
+    RVPM_DEFAULT_G,
     StabilizationConfig,
     TurbulenceConfig,
     ViscousConfig,
@@ -60,14 +62,14 @@ def main():
     parser.add_argument(
         "--parallel-strain-f",
         type=float,
-        default=0.0,
-        help="rVPM correction parameter f.",
+        default=RVPM_DEFAULT_F,
+        help=f"rVPM correction parameter f (FLOWVPM default: {RVPM_DEFAULT_F:g}).",
     )
     parser.add_argument(
         "--parallel-strain-g",
         type=float,
-        default=0.2,
-        help="rVPM correction parameter g.",
+        default=RVPM_DEFAULT_G,
+        help=f"rVPM correction parameter g (FLOWVPM default: {RVPM_DEFAULT_G:g}).",
     )
     parser.add_argument(
         "--solution-dir",

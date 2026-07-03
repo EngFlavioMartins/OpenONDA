@@ -4,13 +4,12 @@
 Overlays the circulation-weighted ring trajectory (R/R₀ vs x/R₀) of every
 leapfrogging case found under ``solution/`` against the LBM literature
 reference.  Each case keeps one colour + linestyle for *both* of its rings
-(see :func:`_common.case_style`); the LBM reference is drawn as a grey dotted
-line so it never collides with a simulation style.
+(see :func:`_common.case_style`); the LBM reference uses the shared reference
+style so it never collides with a simulation style.
 """
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 import re
 import sys
@@ -24,7 +23,17 @@ from matplotlib.lines import Line2D
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 sys.path.insert(0, str(ASSETS_DIR))
-from _common import CM, case_style, discover_cases, load_theme, save_fig  # noqa: E402
+from _common import (  # noqa: E402
+    build_arg_parser,
+    case_style,
+    discover_cases,
+    figure_size,
+    legend_handle_style,
+    load_theme,
+    mark_every,
+    reference_style,
+    save_fig,
+)
 
 REFERENCE = ASSETS_DIR / "references" / "leapfrogging_lbm_trajectory.csv"
 
@@ -59,26 +68,24 @@ def load_trajectory(case_dir: Path) -> dict[int, tuple[np.ndarray, np.ndarray]]:
 
 
 def plot_reference(ax) -> bool:
-    """Draw both LBM reference rings as one grey dotted source. Returns success."""
+    """Draw both LBM reference rings as one shared reference source. Returns success."""
     if not REFERENCE.exists():
         print(f"  [WARNING] LBM reference not found: {REFERENCE}")
         return False
     reference = pd.read_csv(REFERENCE)
+    style = reference_style()
     for ring in sorted(reference["ring"].unique()):
         data = reference[reference["ring"] == ring]
-        ax.plot(data["x_over_R0"], data["R_over_R0"], color="gray", linestyle="--", lw=1.0)
+        ax.plot(data["x_over_R0"], data["R_over_R0"], **style)
     return True
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--solution-dir", default=str(CASE_DIR / "solution"))
-    parser.add_argument("--figures-dir", default=str(CASE_DIR / "figures"))
-    parser.add_argument("--dpi", type=int, default=300)
+    parser = build_arg_parser(__doc__)
     args = parser.parse_args()
 
     load_theme()
-    fig, ax = plt.subplots(figsize=(12.8 * CM, 7.5 * CM))
+    fig, ax = plt.subplots(figsize=figure_size("trajectory"))
 
     has_ref = plot_reference(ax)
 
@@ -87,28 +94,24 @@ def main() -> None:
         trajectory = load_trajectory(case_dir)
         if not trajectory:
             continue
-        st = case_style(case_dir.name)
+        st = case_style(case_dir.name, include_family=False)
         for axial, radius in trajectory.values():
             ax.plot(
                 axial, radius,
                 color=st["color"], linestyle=st["linestyle"],
-                lw=1.1, marker=st["marker"], ms=3, markevery=5, mew=0.4,
+                lw=st["linewidth"], marker=st["marker"], ms=st["markersize"],
+                markevery=mark_every("trajectory"), mew=st["markeredgewidth"],
             )
-        legend_handles.append(
-            Line2D([0], [0], color=st["color"], linestyle=st["linestyle"],
-                   marker=st["marker"], ms=4, lw=1.1, label=st["label"])
-        )
+        legend_handles.append(Line2D([0], [0], **legend_handle_style(st)))
 
     if has_ref:
-        legend_handles.append(
-            Line2D([0], [0], color="gray", linestyle="--", lw=1.0, label="LBM reference")
-        )
+        legend_handles.append(Line2D([0], [0], label="LBM reference", **reference_style()))
 
     ax.set_xlabel(r"Axial position, $x/R_0$")
     ax.set_ylabel(r"Ring radius, $R/R_0$")
-    ax.set_ylim([0.5,1.5])
+    ax.set_ylim([0.5, 1.5])
     if legend_handles:
-        ax.legend(handles=legend_handles, fontsize=10, ncol=2, loc="lower right")
+        ax.legend(handles=legend_handles, ncol=3, loc="lower right")
 
     save_fig(fig, Path(args.figures_dir) / "rings_trajectory.png", dpi=args.dpi)
 

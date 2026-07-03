@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, load_pvd_timesteps, save_fig
+from _common import COLORS, build_arg_parser, figure_size, load_pvd_timesteps, save_fig
 
 
 def main():
@@ -30,8 +30,8 @@ def main():
         snapshots.append(best)
         print(f"  t={t}: using {best['time']:.3f} s -> {best['file']}")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    colors = ["#1A6B9A", "#5C3D9B", "#B85C2A", "#0E8A85"]
+    fig, ax = plt.subplots(figsize=figure_size("single"))
+    colors = [COLORS[name] for name in ("TUDdark", "VPMpurple", "FVMorange", "TUDcyan")]
 
     for i, snap in enumerate(snapshots):
         mesh = pv.read(snap["file"])

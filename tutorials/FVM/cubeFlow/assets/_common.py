@@ -1,7 +1,7 @@
 import argparse
-import os
-import sys
 import csv
+import importlib.util
+import os
 import numpy as np
 from pathlib import Path
 
@@ -9,6 +9,20 @@ ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
+THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
+
+
+def _load_theme():
+    spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+    theme = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(theme)
+    theme.set_style()
+    return theme
+
+
+THEME = _load_theme()
+COLORS = THEME.COLORS
+figure_size = THEME.figure_size
 
 U_INF = 1.0
 L_REF = 1.0
@@ -52,7 +66,4 @@ def load_forces_csv(solution_dir):
 
 def save_fig(fig, name, figures_dir, dpi=400):
     path = os.path.join(figures_dir, name)
-    fig.savefig(path, dpi=dpi, bbox_inches="tight")
-    print(f"  Saved: {path}")
-    import matplotlib.pyplot as plt
-    plt.close(fig)
+    THEME.save_fig(fig, path, dpi=dpi)

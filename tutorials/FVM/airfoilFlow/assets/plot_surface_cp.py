@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import save_fig, build_arg_parser, U_INF, L_REF, RE
+from _common import COLORS, build_arg_parser, figure_size, save_fig, U_INF, L_REF, RE
 
 
 def main():
@@ -45,9 +45,9 @@ def main():
     upper = y >= 0
     lower = y < 0
     x_c = x / L_REF
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(x_c[upper], Cp[upper], "bo", markersize=3, label="Upper")
-    ax.plot(x_c[lower], Cp[lower], "ro", markersize=3, label="Lower")
+    fig, ax = plt.subplots(figsize=figure_size("single"))
+    ax.plot(x_c[upper], Cp[upper], "o", color=COLORS["TUDdark"], markersize=3, label="Upper")
+    ax.plot(x_c[lower], Cp[lower], "o", color=COLORS["AccentRed"], markersize=3, label="Lower")
     ax.set_xlabel("$x/c$")
     ax.set_ylabel("$C_p$")
     ax.set_title(f"NACA0012  AoA=23$^\\circ$  Re={RE:.0f}  $C_p$ distribution")

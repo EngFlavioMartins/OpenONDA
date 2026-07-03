@@ -1,7 +1,7 @@
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from _common import load_forces_csv, save_fig, build_arg_parser, U_INF, L_REF, RE
+from _common import COLORS, build_arg_parser, figure_size, load_forces_csv, save_fig, RE
 
 
 def main():
@@ -21,15 +21,15 @@ def main():
     if time is None:
         print("  No time column found")
         return
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
     if "Cl" in d:
-        ax1.plot(time, d["Cl"], "b-", linewidth=1.0)
+        ax1.plot(time, d["Cl"], color=COLORS["TUDdark"], linestyle="-", linewidth=1.0)
         ax1.set_ylabel("$C_l$")
         ax1.grid(True, alpha=0.3)
     else:
         ax1.text(0.5, 0.5, "No Cl data", ha="center", va="center", transform=ax1.transAxes)
     if "Cd" in d:
-        ax2.plot(time, d["Cd"], "r-", linewidth=1.0)
+        ax2.plot(time, d["Cd"], color=COLORS["AccentRed"], linestyle="-", linewidth=1.0)
         ax2.set_ylabel("$C_d$")
         ax2.grid(True, alpha=0.3)
     else:

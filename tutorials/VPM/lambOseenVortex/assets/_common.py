@@ -22,43 +22,34 @@ FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 REF_DIR = ASSETS_DIR / "references"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "DejaVuSerif.ttf"
 
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
+
+_THEME_MODULE = None
+
+
+def _theme():
+    global _THEME_MODULE
+    if _THEME_MODULE is None:
+        if not THEME_PATH.exists():
+            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        _THEME_MODULE = theme
+    return _THEME_MODULE
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Load the OpenONDA matplotlib theme and return (COLORS dict, theme module)."""
-    import matplotlib.pyplot as plt
-    from matplotlib import font_manager
-
-    theme = None
-    if THEME_PATH.exists():
-        spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
-        try:
-            theme.set_style()
-        except Exception:
-            pass
-
-    if FONT_PATH.exists():
-        font_manager.fontManager.addfont(str(FONT_PATH))
-        plt.rcParams["font.family"] = "DejaVu Serif"
-
-    if theme is not None and hasattr(theme, "COLORS"):
-        return dict(theme.COLORS), theme
-    return {}, theme
+    theme = _theme()
+    theme.set_style()
+    return dict(theme.COLORS), theme
 
 
 def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
     """Map scheme names to plot style dicts (color, marker, label)."""
-    return {
-        "cs": {"label": "CS", "color": colors.get("FVMorange", "#772953"), "marker": "o"},
-        "rwm": {"label": "RWM", "color": colors.get("RefGray", "#6E8898"), "marker": "^"},
-        "dvh": {"label": "DVH", "color": colors.get("TUDcyan", "#0E8A85"), "marker": "v"},
-        "gbd": {"label": "GBD", "color": colors.get("VPMpurple", "#5C3D9B"), "marker": "D"},
-    }
+    return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
 
 
 def build_arg_parser(description: str):

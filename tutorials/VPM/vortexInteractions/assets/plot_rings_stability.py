@@ -7,7 +7,7 @@ solver log).  A runaway curve marks the onset of numerical blow-up, and where
 each curve ends marks that variant's survival time.  The shaded band is the
 50× blow-up threshold used by the solver to stop a diverging run.
 
-Colour encodes the numerical variant, linestyle the physics family — the
+Color encodes the stabilization method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -16,12 +16,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from _common import (
-    CM,
     build_arg_parser,
     case_style,
     discover_cases,
+    figure_size,
     load_theme,
+    mark_every,
     read_metric,
+    reference_fill_style,
     save_fig,
 )
 
@@ -34,7 +36,7 @@ def main() -> None:
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
-    fig, ax = plt.subplots(figsize=(12.8 * CM, 7.0 * CM))
+    fig, ax = plt.subplots(figsize=figure_size("single"))
 
     plotted = False
     for case_dir in discover_cases(args.solution_dir):
@@ -48,11 +50,11 @@ def main() -> None:
             gmax / gmax[0],
             color=st["color"],
             linestyle=st["linestyle"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=20,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=st["label"],
         )
         plotted = True
@@ -60,10 +62,10 @@ def main() -> None:
     ax.set_yscale("log")
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax.set_ylabel(r"Peak circulation, $\max_i|\Gamma_i| / \max_i|\Gamma_i|_0$")
-    ax.axhspan(50, 100, facecolor="gray", alpha=0.25, zorder=0)
+    ax.axhspan(BLOWUP_FACTOR, 100, **reference_fill_style("strong"))
     ax.set_ylim([0.8, 100])
     if plotted:
-        ax.legend(fontsize=10, ncol=2, loc="upper left")
+        ax.legend(ncol=2, loc="best")
 
     save_fig(fig, figs / "rings_stability.png", dpi=args.dpi)
 

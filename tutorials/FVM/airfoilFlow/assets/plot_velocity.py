@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import save_fig, build_arg_parser, U_INF, L_REF, RE
+from _common import build_arg_parser, figure_size, save_fig, RE
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
     x = points[:, 0]
     y = points[:, 1]
     near = (x >= -1.0) & (x <= 3.0) & (y >= -1.5) & (y <= 1.5)
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=figure_size("wide_short"))
     sc = ax.scatter(x[near], y[near], c=mag[near], s=2, cmap="viridis", alpha=0.7)
     plt.colorbar(sc, ax=ax, label="$|U|$ [m/s]")
     ax.set_xlabel("$x$ [m]")

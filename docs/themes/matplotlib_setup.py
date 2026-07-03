@@ -491,83 +491,310 @@ def get_leapfrogging_rings_shapes2(
 
 # ==================================================
 
-# -- Colour palette -- aligned with thesis/LaTeX (thesis_visuals/styles/colors.py)
-# Canonical names match the LaTeX \definecolor entries in thesis.tex exactly.
+# -- Plot style ---------------------------------------------------------------
+# All tutorial plot presentation lives here: palette, font sizes, figure sizes,
+# markers, line widths, reference styles, and export defaults.
+CM = 1 / 2.54
+FONT_SIZE_PT = 10
+DEFAULT_DPI = 400
+MAX_FIGURE_WIDTH_CM = 12.8
+WIDE_FIGURE_WIDTH_CM = 17.2
+FONT_PATH = Path(__file__).with_name("DejaVuSerif.ttf")
+
+FIGURE_SIZES_CM = {
+    "single": (MAX_FIGURE_WIDTH_CM, 7.0),
+    "single_tall": (MAX_FIGURE_WIDTH_CM, 8.0),
+    "trajectory": (MAX_FIGURE_WIDTH_CM, 7.5),
+    "stacked": (MAX_FIGURE_WIDTH_CM, 11.0),
+    "wide": (WIDE_FIGURE_WIDTH_CM, 9.0),
+    "wide_short": (WIDE_FIGURE_WIDTH_CM, 8.0),
+}
+
+LINE_WIDTH = 1.1
+SECONDARY_LINE_WIDTH = 1.0
+REFERENCE_LINE_WIDTH = 1.0
+MARKER_SIZE = 3.0
+LEGEND_MARKER_SIZE = 4.0
+MARKER_EDGE_WIDTH = 0.4
+SECONDARY_LINESTYLE = ":"
+MARK_EVERY = {
+    "default": 3,
+    "energy": 4,
+    "trajectory": 5,
+}
+
+COLOR_CYCLE = (
+    "#003d5c",
+    "#7a4f99",
+    "#ef527a",
+    "#ffa600",
+    "#00726e",
+    "#4a9f2c",
+)
+BACKGROUND_LIGHT = "#C0C0C0"
+BACKGROUND_STRONG = "#A6A6A6"
+REFERENCE_GRAY = "#808080"
+
 COLORS = {
-    # -- TU Delft canonical names -------------------------------------------------
-    "TUDdark":     "#0C2340",   # Deep navy
-    "TUDcyan":     "#0E8A85",   # Aquamarine teal
-    "TUDred":      "#C8102E",   # TU Delft red (also used as TUD accent)
-    "VPMpurple":   "#5C3D9B",   # Amethyst purple
-    "FVMorange":   "#772953",   # Aubergine / deep rose
-    "AccentGreen": "#2B7A4E",   # Forest emerald
-    "AccentRed":   "#9C2F50",   # Deep rose
-    "RefGray":     "#6E8898",   # Steel blue-gray
-    "DarkText":    "#2E3D46",   # Dark blue-gray
-    "DNSblue":     "#1A6B9A",   # DNS / high-fidelity blue
-    "DNSorange":   "#B85C2A",   # DNS mixed variant orange
-    "LESteal":     "#1A8C88",   # LES transposed teal
-    "LESpurple":   "#7B2969",   # LES rVPM purple
-    "LBMgray":     "#505050",   # LBM reference gray
-    "TheoryGray":  "#808080",   # Standard gray for theory/reference curves
-    # -- Semantic aliases (backward-compatible keys for existing plot scripts) -----
-    "vpm":         "#5C3D9B",   # -> VPMpurple  (VPM-only results)
-    "hybrid":      "#772953",   # -> FVMorange  (hybrid solver results)
-    "fvm":         "#2E3D46",   # -> DarkText   (pure FVM results)
-    "of":          "#6E8898",   # -> RefGray    (OpenFOAM / reference)
-    "ref":         "#6E8898",   # -> RefGray    (literature / reference data)
-    "literature":  "#2E3D46",   # -> DarkText   (other literature)
-    "dvh":         "#2B7A4E",   # -> AccentGreen (DVH scheme)
-    "dvhr":        "#0E8A85",   # -> TUDcyan    (DVH-R scheme)
-    "dns":         "#1A6B9A",   # -> DNSblue    (direct numerical simulation)
-    "les":         "#0E8A85",   # -> TUDcyan    (large-eddy simulation)
+    # Canonical OpenONDA palette.
+    "TUDdark": "#003d5c",
+    "TUDcyan": "#00726e",
+    "TUDred": "#ef527a",
+    "VPMpurple": "#7a4f99",
+    "FVMorange": "#ffa600",
+    "AccentGreen": "#4a9f2c",
+    "AccentRed": "#ef527a",
+    "BackgroundLight": BACKGROUND_LIGHT,
+    "BackgroundGray": BACKGROUND_STRONG,
+    "ReferenceGray": REFERENCE_GRAY,
+    "RefGray": REFERENCE_GRAY,
+    "DarkText": "#003d5c",
+    "DNSblue": "#003d5c",
+    "DNSorange": "#ffa600",
+    "LESteal": "#00726e",
+    "LESpurple": "#7a4f99",
+    "LBMgray": REFERENCE_GRAY,
+    "TheoryGray": REFERENCE_GRAY,
+    # Comparison palette for method sweeps.
+    "case_les": "#003d5c",
+    "case_rvpm": "#7a4f99",
+    "case_relax": "#ef527a",
+    "case_remesh": "#ffa600",
+    "case_projection": "#00726e",
+    "case_split": "#4a9f2c",
+    "background": BACKGROUND_LIGHT,
+    "background_light": BACKGROUND_LIGHT,
+    "background_strong": BACKGROUND_STRONG,
+    "decor_light": BACKGROUND_LIGHT,
+    "reference": REFERENCE_GRAY,
+    "reference_fill": BACKGROUND_LIGHT,
+    # Semantic aliases used by existing tutorials.
+    "vpm": "#7a4f99",
+    "hybrid": "#ef527a",
+    "fvm": "#ffa600",
+    "of": "#00726e",
+    "ref": REFERENCE_GRAY,
+    "literature": REFERENCE_GRAY,
+    "dvh": "#4a9f2c",
+    "dvhr": "#00726e",
+    "dns": "#003d5c",
+    "les": "#003d5c",
+    "rvpm": "#7a4f99",
+    "relax": "#ef527a",
+    "remesh": "#ffa600",
+    "projection": "#00726e",
+    "split": "#4a9f2c",
+}
+
+FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
+FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
+VARIANT_LABEL = {
+    "les": "LES",
+    "rvpm": "rVPM",
+    "relax": "Relaxation",
+    "remesh": "Remeshing",
+    "projection": "Projection",
+    "split": "Splitting",
+}
+VARIANT_ORDER = tuple(VARIANT_LABEL)
+VARIANT_STYLE = {
+    "les": {"color": COLORS["case_les"], "marker": "s"},
+    "rvpm": {"color": COLORS["case_rvpm"], "marker": "o"},
+    "relax": {"color": COLORS["case_relax"], "marker": "D"},
+    "remesh": {"color": COLORS["case_remesh"], "marker": "^"},
+    "projection": {"color": COLORS["case_projection"], "marker": "v"},
+    "split": {"color": COLORS["case_split"], "marker": "P"},
+}
+INTENDED_CASE_ORDER = {
+    f"{family}_{variant}": family_i * len(VARIANT_ORDER) + variant_i
+    for family_i, family in enumerate(("leapfrog", "collide"))
+    for variant_i, variant in enumerate(VARIANT_ORDER)
+}
+
+VORTEX_RING_VARIANT_STYLE = {
+    "DNS_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
+    "DNS_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
+    "DNS_mixed": {"color": COLORS["case_remesh"], "marker": "^", "linestyle": "--"},
+    "LES_direct": {"color": COLORS["case_les"], "marker": "D", "linestyle": "-"},
+    "LES_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
+    "LES_mixed": {"color": COLORS["case_split"], "marker": "p", "linestyle": "-"},
+    "LES_rvpm": {"color": COLORS["case_rvpm"], "marker": "v", "linestyle": "-"},
+}
+for _style in VORTEX_RING_VARIANT_STYLE.values():
+    _style["linewidth"] = LINE_WIDTH
+    _style["markersize"] = MARKER_SIZE
+    _style["markeredgewidth"] = MARKER_EDGE_WIDTH
+VORTEX_RING_VARIANT_LABEL = {
+    **{name: name.replace("_", " ") for name in VORTEX_RING_VARIANT_STYLE},
+    "LES_rvpm": "LES rVPM",
+}
+
+LAMB_OSEEN_SCHEME_STYLE = {
+    "cs": {"label": "CS", "color": COLORS["FVMorange"], "marker": "o"},
+    "rwm": {"label": "RWM", "color": COLORS["RefGray"], "marker": "^"},
+    "dvh": {"label": "DVH", "color": COLORS["TUDcyan"], "marker": "v"},
+    "gbd": {"label": "GBD", "color": COLORS["VPMpurple"], "marker": "D"},
+}
+
+ROTOR_STYLE = {
+    "vpm": {
+        "color": COLORS["vpm"],
+        "marker": "o",
+        "markersize": 1.5,
+        "linewidth": 1.0,
+        "label": "VLM-VPM",
+    },
+    "bem": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0, "label": "BEM"},
+    "theory": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
+    "reference": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
+    "ct": {
+        "color": COLORS["vpm"],
+        "marker": "o",
+        "markersize": 1.5,
+        "linewidth": 1.0,
+        "label": r"$C_T$",
+    },
+    "cp": {
+        "color": COLORS["vpm"],
+        "marker": "s",
+        "markersize": 1.5,
+        "linewidth": 1.0,
+        "label": r"$C_P$",
+    },
+    "plane_0": {"color": COLORS["vpm"], "linewidth": 1.0},
+    "plane_1": {"color": COLORS["vpm"], "linewidth": 1.0},
+    "plane_2": {"color": COLORS["vpm"], "linewidth": 1.0},
+    "plane_3": {"color": COLORS["vpm"], "linewidth": 1.0},
+    "plane_4": {"color": COLORS["vpm"], "linewidth": 1.0},
+}
+
+REFERENCE_STYLE = {
+    "color": COLORS["reference"],
+    "linestyle": "--",
+    "linewidth": REFERENCE_LINE_WIDTH,
+}
+REFERENCE_FILL_STYLE = {
+    "facecolor": COLORS["reference_fill"],
+    "alpha": 0.25,
+    "zorder": 0,
+}
+REFERENCE_STRONG_FILL_STYLE = {
+    "facecolor": COLORS["reference_fill"],
+    "alpha": 0.50,
+    "zorder": 0,
 }
 
 
+def get_color(name: str, fallback: str | None = None) -> str:
+    """Return a named color from the central tutorial palette."""
+    if fallback is None:
+        fallback = COLORS["reference"]
+    return COLORS.get(name, fallback)
+
+
+def figure_size(name: str = "single") -> tuple[float, float]:
+    """Return a figure size in inches from a named centimetre preset."""
+    width_cm, height_cm = FIGURE_SIZES_CM[name]
+    return width_cm * CM, height_cm * CM
+
+
+def case_style(name: str, include_family: bool = True) -> dict:
+    """Return the shared style for a vortex-interaction case name."""
+    family, _, variant = name.partition("_")
+    variant = variant or "les"
+    variant_style = VARIANT_STYLE.get(variant, {"color": COLORS["reference"], "marker": "o"})
+    variant_label = VARIANT_LABEL.get(variant, variant.replace("_", " ").title())
+    label = variant_label
+    if include_family:
+        label = f"{FAMILY_LABEL.get(family, family.title())} - {variant_label}"
+    return {
+        "color": variant_style["color"],
+        "linestyle": FAMILY_LINESTYLE.get(family, "-"),
+        "linewidth": LINE_WIDTH,
+        "marker": variant_style["marker"],
+        "markersize": MARKER_SIZE,
+        "markeredgewidth": MARKER_EDGE_WIDTH,
+        "label": label,
+        "family": family,
+        "variant": variant,
+    }
+
+
+def legend_handle_style(style: dict) -> dict:
+    """Return line style values sized for legend-only handles."""
+    return {
+        "color": style["color"],
+        "linestyle": style["linestyle"],
+        "marker": style["marker"],
+        "markersize": LEGEND_MARKER_SIZE,
+        "linewidth": style["linewidth"],
+        "label": style["label"],
+    }
+
+
 def set_style():
-    """Apply publication-quality matplotlib style settings."""
-    # Define the style dictionary
+    """Apply the OpenONDA publication plotting style."""
+    if FONT_PATH.exists():
+        from matplotlib import font_manager
+
+        font_manager.fontManager.addfont(str(FONT_PATH))
+
     tex_fonts = {
-        # Use LaTeX to write all text
         "text.usetex": True,
         "text.latex.preamble": r"\usepackage{amsmath}",
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
-        # Use 10pt font in plots, to match 10pt font in document
-        "axes.labelsize": 10,
-        "font.size": 10,
-        # Make the legend/label fonts a little smaller
-        "legend.fontsize": 8,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
-        "axes.titlesize": 10,
-        # Ticks settings
-        "xtick.major.size": 6,  # Major ticks length
-        "ytick.major.size": 6,  # Major ticks length
-        "xtick.minor.size": 4,  # Minor ticks length
-        "ytick.minor.size": 4,  # Minor ticks length
-        "xtick.major.width": 0.5,  # Major ticks width
-        "ytick.major.width": 0.5,  # Major ticks width
-        "xtick.minor.width": 0.5,  # Minor ticks width
-        "ytick.minor.width": 0.5,  # Minor ticks width
-        # Grid settings
-        "axes.grid": False,  # Enable grid
-        "grid.linestyle": "--",  # Style for grid lines
-        "grid.linewidth": 0.5,  # Line width for grid
-        "grid.alpha": 0.3,  # Make the grid lines semi-transparent
-        # Minor gridlines always visible
-        "axes.grid.which": "both",  # Show both major and minor gridlines
-        "xtick.minor.visible": True,  # Make minor ticks visible
-        "ytick.minor.visible": True,  # Make minor ticks visible
-        # Enable ticks on all four sides
+        "font.serif": ["DejaVu Serif", "Computer Modern Roman"],
+        "font.size": FONT_SIZE_PT,
+        "axes.labelsize": FONT_SIZE_PT,
+        "axes.titlesize": FONT_SIZE_PT,
+        "figure.titlesize": FONT_SIZE_PT,
+        "legend.fontsize": FONT_SIZE_PT,
+        "xtick.labelsize": FONT_SIZE_PT,
+        "ytick.labelsize": FONT_SIZE_PT,
+        "figure.dpi": DEFAULT_DPI,
+        "savefig.dpi": DEFAULT_DPI,
+        "xtick.major.size": 6,
+        "ytick.major.size": 6,
+        "xtick.minor.size": 4,
+        "ytick.minor.size": 4,
+        "xtick.major.width": 0.5,
+        "ytick.major.width": 0.5,
+        "xtick.minor.width": 0.5,
+        "ytick.minor.width": 0.5,
+        "axes.grid": False,
+        "grid.linestyle": "--",
+        "grid.linewidth": 0.5,
+        "grid.alpha": 0.3,
+        "axes.grid.which": "both",
+        "axes.prop_cycle": plt.cycler(color=COLOR_CYCLE),
+        "xtick.minor.visible": True,
+        "ytick.minor.visible": True,
         "xtick.top": True,
         "ytick.right": True,
-        "axes.edgecolor": "black",  # Set color of axis box (edges of the plot area)
+        "axes.edgecolor": "black",
         "axes.linewidth": 0.5,
-        "lines.linewidth": 1.0,
+        "lines.linewidth": LINE_WIDTH,
+        "lines.markersize": MARKER_SIZE,
         "xtick.direction": "in",
         "ytick.direction": "in",
     }
 
-    # Apply the style
     plt.rcParams.update(tex_fonts)
+
+
+def save_fig(
+    fig,
+    path,
+    dpi: int | None = None,
+    tight_rect: tuple[float, float, float, float] | None = None,
+) -> None:
+    """Save a Matplotlib figure with the shared export defaults."""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if tight_rect is None:
+        fig.tight_layout()
+    else:
+        fig.tight_layout(rect=tight_rect)
+    fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {out}")

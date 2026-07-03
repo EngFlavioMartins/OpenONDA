@@ -8,8 +8,7 @@ circulation [m^2/s], but the oriented bound-vortex strength
 the two y-components must cancel (Kelvin's circulation theorem).
 
 Styling follows the other flat-plate figures (plot_plate_polar.py,
-plot_plate_spanwise.py): shared docs/themes/matplotlib_setup.py theme,
-DejaVu Serif font, explicit margins, 12 cm width, fontsize 10.
+plot_plate_spanwise.py): shared docs/themes/matplotlib_setup.py theme.
 """
 
 from __future__ import annotations
@@ -22,15 +21,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-FONT_PATH = REPO_ROOT / "docs" / "themes" / "DejaVuSerif.ttf"
-CM = 1.0 / 2.54
 
 # -- Theme (same pattern as the sibling flat-plate plotters) ------------------
 _M = None
@@ -42,8 +38,7 @@ if THEME_PATH.exists():
         _M.set_style()
     except Exception as exc:  # pragma: no cover - styling is best-effort
         print(f"(Warning) Theme failed: {exc}")
-if FONT_PATH.exists():
-    font_manager.fontManager.addfont(str(FONT_PATH))
+CM = _M.CM if _M is not None and hasattr(_M, "CM") else 1.0 / 2.54
 
 
 def _c(key: str, fallback: str) -> str:
@@ -82,8 +77,8 @@ def main() -> None:
     if t.size == 0:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
-    c_bound = _c("vpm", "#5C3D9B")
-    c_wake = _c("hybrid", "#772953")
+    c_bound = _c("vpm", "#7a4f99")
+    c_wake = _c("hybrid", "#ef527a")
     residual = bound + wake
     scale = max(float(np.max(np.abs(bound))), float(np.max(np.abs(wake))), 1e-15)
     rel = 100.0 * residual / scale
@@ -98,19 +93,17 @@ def main() -> None:
     ax.plot(t, bound, color=c_bound, lw=1.5, label=r"Bound, $\alpha_{b,y}$")
     ax.plot(t, -wake, "--", color=c_wake, lw=1.5, label=r"Wake, $-\alpha_{w,y}$")
     ax.set_ylabel(r"Vortex strength [m$^3$/s]")
-    ax.set_title(
-        rf"Bound–wake vortex-strength closure, $\alpha={args.aoa:.0f}^\circ$", fontsize=10
-    )
-    ax.legend(fontsize=10, loc="lower right")
+    ax.set_title(rf"Bound–wake vortex-strength closure, $\alpha={args.aoa:.0f}^\circ$")
+    ax.legend(loc="lower right")
 
-    axr.axhline(0.0, color="gray", ls="--", lw=1.0)
-    axr.plot(t, rel / 1e-4, color=_c("DarkText", "#2E3D46"), lw=1.2)
+    axr.axhline(0.0, color=_c("reference", "#808080"), ls="--", lw=1.0)
+    axr.plot(t, rel / 1e-4, color=_c("DarkText", "#003d5c"), lw=1.2)
     axr.set_xlabel("Time [s]")
     axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")
     axr.set_xlim(float(t.min()), float(t.max()))
     axr.text(
         0.02, 0.94, rf"$\max|\Sigma\alpha_y|/\max|\alpha_y| = {max_rel:.1e}\,\%$",
-        transform=axr.transAxes, ha="left", va="top", fontsize=10,
+        transform=axr.transAxes, ha="left", va="top" ,
     )
 
     out_dir = Path(args.figures_dir)

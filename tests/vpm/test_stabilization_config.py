@@ -1,6 +1,7 @@
 import pytest
 
 from source.solvers.VPM import SolverConfig, StabilizationConfig
+from source.solvers.VPM.config.types import RVPM_DEFAULT_F, RVPM_DEFAULT_G
 
 
 def test_strength_relaxation_factory_builds_nested_config():
@@ -42,3 +43,20 @@ def test_stabilization_round_trip_is_nested():
 
     assert restored.stabilization == original.stabilization
     assert restored.stabilization.relaxation_rate == 1.5
+
+
+def test_parallel_strain_factory_uses_flowvpm_rvpm_defaults():
+    stabilization = StabilizationConfig.parallel_strain_relaxation()
+
+    assert stabilization.parallel_strain_enabled
+    assert stabilization.parallel_strain_f == pytest.approx(RVPM_DEFAULT_F)
+    assert stabilization.parallel_strain_g == pytest.approx(RVPM_DEFAULT_G)
+
+
+def test_vortex_interactions_cli_uses_flowvpm_rvpm_default():
+    from tutorials.VPM.vortexInteractions.rings_setup import build_arg_parser
+
+    args = build_arg_parser().parse_args([])
+
+    assert args.parallel_strain_f == pytest.approx(RVPM_DEFAULT_F)
+    assert args.parallel_strain_g == pytest.approx(RVPM_DEFAULT_G)

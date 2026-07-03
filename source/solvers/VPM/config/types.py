@@ -33,6 +33,12 @@ from .constants import (
     MAX_PARTICLES,
 )
 
+RVPM_DEFAULT_F = 0.0
+"""FLOWVPM default rVPM re-orientation parameter."""
+
+RVPM_DEFAULT_G = 1.0 / 5.0
+"""FLOWVPM default rVPM stretching-compensation parameter."""
+
 # =========================================================
 # ADVECTION CONFIGURATION
 # =========================================================
@@ -1005,11 +1011,11 @@ class StabilizationConfig:
     parallel_strain_enabled: bool = False
     """Enable the rVPM a-posteriori correction after the stretching substep."""
 
-    parallel_strain_f: float = 0.0
+    parallel_strain_f: float = RVPM_DEFAULT_F
     """rVPM parameter f in c_r=(g+f)/(1/3+f), c_sigma=(g+f)/(1+3f)."""
 
-    parallel_strain_g: float = 0.2
-    """rVPM parameter g.  Default 1/5 gives the Alvarez-Ning reduction."""
+    parallel_strain_g: float = RVPM_DEFAULT_G
+    """rVPM parameter g.  Default 1/5 matches FLOWVPM's rVPM alias."""
 
     parallel_strain_clamp: float | None = None
     """Optional bound on inferred S_parallel*dt before applying the correction."""
@@ -1197,8 +1203,8 @@ class StabilizationConfig:
     @staticmethod
     def parallel_strain_relaxation(
         *,
-        f: float = 0.0,
-        g: float = 0.2,
+        f: float = RVPM_DEFAULT_F,
+        g: float = RVPM_DEFAULT_G,
         clamp: float | None = None,
     ) -> "StabilizationConfig":
         """Enable the rVPM parallel-strain correction.

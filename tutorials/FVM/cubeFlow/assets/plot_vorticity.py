@@ -9,7 +9,7 @@ import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, save_fig, U_INF, L_REF
+from _common import build_arg_parser, figure_size, save_fig
 
 
 def main():
@@ -60,7 +60,7 @@ def main():
     slice_pts = mesh.points[mask]
     slice_vort = vort_mag[mask]
 
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=figure_size("wide_short"))
     sc = ax.scatter(
         slice_pts[:, 0], slice_pts[:, 1],
         c=slice_vort, s=1.0, cmap="hot",

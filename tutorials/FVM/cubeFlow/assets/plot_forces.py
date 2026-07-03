@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, load_forces_csv, save_fig, U_INF, L_REF, RE, NU
+from _common import COLORS, build_arg_parser, figure_size, load_forces_csv, save_fig, U_INF, L_REF
 
 
 def main():
@@ -29,23 +29,28 @@ def main():
         cd = d["Cd"]
         cl = d["Cl"]
 
-        fig, axes = plt.subplots(3, 1, figsize=(10, 10), sharex=False)
+        fig, axes = plt.subplots(3, 1, figsize=figure_size("stacked"), sharex=False)
 
         ax = axes[0]
-        ax.plot(t, cd, "b-", linewidth=0.8)
+        ax.plot(t, cd, color=COLORS["TUDdark"], linestyle="-", linewidth=0.8)
         cd_mean = np.mean(cd)
-        ax.axhline(cd_mean, color="r", linestyle="--", linewidth=0.6)
+        ax.axhline(cd_mean, color=COLORS["reference"], linestyle="--", linewidth=0.6)
         ax.text(
             0.97, 0.92, f"mean Cd = {cd_mean:.4f}",
-            transform=ax.transAxes, ha="right", va="top", fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8),
+            transform=ax.transAxes, ha="right", va="top" ,
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                edgecolor=COLORS["background_light"],
+                alpha=0.8,
+            ),
         )
         ax.set_ylabel("$C_d$")
         ax.set_title(f"Drag coefficient — {pname}")
         ax.grid(True, alpha=0.3)
 
         ax = axes[1]
-        ax.plot(t, cl, "g-", linewidth=0.8)
+        ax.plot(t, cl, color=COLORS["AccentGreen"], linestyle="-", linewidth=0.8)
         ax.set_ylabel("$C_l$")
         ax.set_xlabel("Time [s]")
         ax.set_title(f"Lift coefficient — {pname}")
@@ -59,7 +64,7 @@ def main():
         fft_freq = np.fft.rfftfreq(n, d=dt)
         fft_mag = np.abs(fft_vals)
         mask = fft_freq > 0
-        ax.plot(fft_freq[mask], fft_mag[mask], "purple", linewidth=0.8)
+        ax.plot(fft_freq[mask], fft_mag[mask], color=COLORS["VPMpurple"], linewidth=0.8)
         ax.set_xlabel("Frequency [Hz]")
         ax.set_ylabel("Magnitude")
         ax.set_title("FFT of $C_d$ (detrended)")
@@ -72,8 +77,13 @@ def main():
                 st = fft_freq[mask][peak_idx] * L_REF / U_INF
                 ax.text(
                     0.97, 0.92, f"St = {st:.3f}  (f = {fft_freq[mask][peak_idx]:.3f} Hz)",
-                    transform=ax.transAxes, ha="right", va="top", fontsize=9,
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.8),
+                    transform=ax.transAxes, ha="right", va="top" ,
+                    bbox=dict(
+                        boxstyle="round,pad=0.3",
+                        facecolor="white",
+                        edgecolor=COLORS["background_light"],
+                        alpha=0.8,
+                    ),
                 )
 
         plt.tight_layout()

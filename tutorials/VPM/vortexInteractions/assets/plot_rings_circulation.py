@@ -6,7 +6,7 @@ Plots Σ|Γᵢ|/Σ|Γᵢ|₀ versus normalised time for every case discovered un
 solver keeps the curve near unity; numerical blow-up shows up as runaway
 growth (the shaded band marks the unphysical Σ|Γ| > Σ|Γ|₀ region).
 
-Colour encodes the numerical variant, linestyle the physics family — the
+Color encodes the stabilization method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -15,12 +15,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from _common import (
-    CM,
     build_arg_parser,
     case_style,
     discover_cases,
+    figure_size,
     load_theme,
+    mark_every,
     read_metric,
+    reference_fill_style,
     save_fig,
 )
 
@@ -31,7 +33,7 @@ def main() -> None:
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
-    fig, ax = plt.subplots(figsize=(12.8 * CM, 7.0 * CM))
+    fig, ax = plt.subplots(figsize=figure_size("single"))
 
     plotted = False
     for case_dir in discover_cases(args.solution_dir):
@@ -44,21 +46,21 @@ def main() -> None:
             circ / circ[0],
             color=st["color"],
             linestyle=st["linestyle"],
-            lw=1.1,
+            lw=st["linewidth"],
             marker=st["marker"],
-            ms=3,
-            markevery=20,
-            mew=0.4,
+            ms=st["markersize"],
+            markevery=mark_every(),
+            mew=st["markeredgewidth"],
             label=st["label"],
         )
         plotted = True
 
-    ax.axhspan(1.0, 10.0, facecolor="gray", alpha=0.25, zorder=0)
+    ax.axhspan(1.0, 10.0, **reference_fill_style())
     ax.set_ylim(0.0, 1.5)
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax.set_ylabel(r"Total circulation, $\Sigma|\Gamma_i| / \Sigma|\Gamma_i|_0$")
     if plotted:
-        ax.legend(fontsize=10, ncol=2)
+        ax.legend(ncol=2, loc="best")
 
     save_fig(fig, figs / "rings_circulation.png", dpi=args.dpi)
 

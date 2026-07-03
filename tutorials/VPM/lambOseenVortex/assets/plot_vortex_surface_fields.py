@@ -213,7 +213,6 @@ def plot_surface_fields(
         tx = -0.85 * ax_lim if ha == "left" else 0.85 * ax_lim
         ty = 0.85 * ax_lim if va == "top" else -0.85 * ax_lim
         txt_kw = dict(
-            fontsize=10,
             ha=ha,
             va=va,
             bbox=dict(boxstyle="round,pad=0.15", fc="white", alpha=0.65, lw=0),
@@ -240,8 +239,8 @@ def plot_surface_fields(
     sm_w.set_array([])
     cb_v = fig.colorbar(sm_v, ax=ax_v, fraction=0.05, pad=0.04)
     cb_w = fig.colorbar(sm_w, ax=ax_w, fraction=0.05, pad=0.04)
-    cb_v.set_label(r"$|\mathbf{u}|\,/\,U_{c,0}$", fontsize=10, loc="top")
-    cb_w.set_label(r"$\omega_z\,/\,\omega_{c,0}$", fontsize=10, loc="top")
+    cb_v.set_label(r"$|\mathbf{u}|\,/\,U_{c,0}$" , loc="top")
+    cb_w.set_label(r"$\omega_z\,/\,\omega_{c,0}$" , loc="top")
 
     figures_dir.mkdir(parents=True, exist_ok=True)
     out = figures_dir / f"vortex_surface_fields.{fmt}"
