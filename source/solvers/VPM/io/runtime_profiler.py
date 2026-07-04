@@ -107,6 +107,7 @@ class RuntimeProfiler:
         self.wall_time = 0.0  # cumulative full-step wall time [s]
         self.step_time = 0.0  # most-recent full-step wall time [s]
         self.n_steps = 0
+        self.particle_count: int | None = None
 
     # -- synchronisation --------------------------------------------------------
     def _synchronize(self) -> None:
@@ -142,6 +143,11 @@ class RuntimeProfiler:
         self.wall_time = 0.0
         self.step_time = 0.0
         self.n_steps = 0
+        self.particle_count = None
+
+    def set_particle_count(self, count: int | None) -> None:
+        """Store the particle count to include in cumulative timing reports."""
+        self.particle_count = None if count is None else int(count)
 
     # -- reporting ----------------------------------------------------------------
     def report_step(self) -> None:
@@ -165,9 +171,18 @@ class RuntimeProfiler:
             f" VPM RUNTIME PROFILE  ({self.n_steps} steps, "
             f"{self.wall_time:.3f} s wall)"
         )
+        particle_line = (
+            f"  Number of particles     : {self.particle_count:d}"
+            if self.particle_count is not None
+            else None
+        )
         if not self._cumulative:
             bar = "=" * max(len(title), 40)
-            return ["", bar, title, bar, "  (no sections recorded)", bar]
+            lines = ["", bar, title, bar]
+            if particle_line is not None:
+                lines.append(particle_line)
+            lines.extend(["  (no sections recorded)", bar])
+            return lines
 
         label_w = max(len("Section"), *(len(k) for k in self._cumulative))
         header = (
@@ -176,7 +191,10 @@ class RuntimeProfiler:
         )
         bar = "=" * len(header)
         sep = "-" * len(header)
-        lines = ["", bar, title, sep, header, sep]
+        lines = ["", bar, title]
+        if particle_line is not None:
+            lines.append(particle_line)
+        lines.extend([sep, header, sep])
 
         measured = 0.0
         for name, total in sorted(self._cumulative.items(), key=lambda kv: kv[1], reverse=True):

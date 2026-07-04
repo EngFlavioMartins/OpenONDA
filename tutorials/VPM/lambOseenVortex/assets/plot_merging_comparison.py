@@ -310,7 +310,7 @@ def plot_merging_case(args) -> int:
     tau_max = 0.07
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
-    fig.subplots_adjust(hspace=0.15, top=0.93, bottom=0.18, left=0.09, right=0.91)
+    fig.subplots_adjust(hspace=0.15, top=0.93, bottom=0.23, left=0.09, right=0.91)
 
     for scheme in SCHEMES:
         ts = extract_merging_timeseries(solution_dir, scheme, run_nu, args.b0, a0)
@@ -366,16 +366,16 @@ def plot_merging_case(args) -> int:
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 520])
-    axes[0].set_xlim([0, tau_limit])
+    axes[0].set_xlim([0, 3.0])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
     axes[1].set_ylim([0, 0.3])
-    axes[1].set_xlim([0, tau_limit])
+    axes[1].set_xlim([0, 3.0])
 
     axes[2].set_xlabel(r"$\nu t / a_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
-    axes[2].set_ylim([0, 1.6])
-    axes[2].set_xlim([0, tau_limit])
+    axes[2].set_ylim([0, 3.0])
+    axes[2].set_xlim([0, 3.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0) )

@@ -172,7 +172,7 @@ def plot_dipole_case(args) -> int:
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 8.0 / 2.54))
+    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.5 / 2.54))
     fig.subplots_adjust(wspace=0.25, bottom=0.30, top=0.92, left=0.08, right=0.92)
 
     for scheme in SCHEMES:
@@ -205,11 +205,11 @@ def plot_dipole_case(args) -> int:
     axes[0].set_xlabel(r"$\nu t / a_0^2$")
     axes[0].set_ylabel(r"$x_c / b_0$")
     axes[0].set_title("Core trajectory over time")
-    axes[0].set_ylim([0.0, 5.5])
+    axes[0].set_ylim([0.0, 2.5])
     axes[1].set_xlabel(r"$\nu t / a_0^2$")
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_ylim([0.9, 5.5])
+    axes[1].set_ylim([0.9, 4.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
@@ -218,7 +218,7 @@ def plot_dipole_case(args) -> int:
             labels,
             loc="lower center",
             ncol=len(handles),
-            bbox_to_anchor=(0.5, 0.06) ,
+            bbox_to_anchor=(0.5, 0.05) ,
         )
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":

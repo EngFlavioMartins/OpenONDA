@@ -68,12 +68,15 @@ def test_reset_clears_all_statistics():
 
 def test_format_report_contains_sections_and_footer():
     prof = RuntimeProfiler(sync=None)
+    prof.set_particle_count(42)
     for _ in range(3):
         with prof.step():
             with prof.section("Velocity"):
                 pass
     report = "\n".join(prof.format_report())
     assert "VPM RUNTIME PROFILE" in report
+    assert "Number of particles" in report
+    assert "42" in report
     assert "Velocity" in report
     assert "Step total" in report
     assert "3 steps" in report

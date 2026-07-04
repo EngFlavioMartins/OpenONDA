@@ -131,7 +131,7 @@ def plot_energy_enstrophy(args) -> int:
 
     tau_scale = run_nu / (a0**2)
     p_ref = run_nu * (args.gamma**2) / (a0**2)
-    tau_lim = 0.08 / (args.a0_over_b0**2)
+    tau_lim = 0.04 / (args.a0_over_b0**2)
 
     fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.5 / 2.54), sharey='row')
     fig.subplots_adjust(wspace=0.10, top=0.96, bottom=0.35, left=0.11, right=0.89)
@@ -150,18 +150,11 @@ def plot_energy_enstrophy(args) -> int:
             run_t0,
         )
         
-        ax.set_ylim([-1.02, 0])
+        ax.set_ylim([-0.5, 0])
         ax.set_xlim([0, tau_lim])
         ax.set_xlabel(r"$\nu t / a_0^2$")
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_0^2)$")
-    axes[0].axvspan(
-        0.038 / (args.a0_over_b0**2),
-        tau_lim,
-        color=colors["background_light"],
-        linewidth=0.0,
-        zorder=-10,
-    )
 
     handles: list = []
     for scheme in SCHEMES:

@@ -203,6 +203,7 @@ class Solver(OFWInterfaceMixin):
         self.vtk_exporter = None
         self.pvd_manager = None
         self.last_forces = None
+        self.ibm = None
         self.forces_history_path = None
         self._force_log_counter = 0
         self.cfl_max = 0.0
@@ -432,6 +433,74 @@ class Solver(OFWInterfaceMixin):
                 print(f"Warning: nut computation failed: {e}")
         return self.config.transport.nu
 
+    def set_immersed_bodies(self, bodies, h: float | None = None) -> "object":
+        """Attach immersed bodies (discrete direct-forcing IBM) to the solver.
+
+        Builds the interpolation/spreading operators (Pinelli et al. 2010,
+        Constant et al. — see docs/plans/2026-07-fvm-ibm-design.md) on the
+        live mesh and hooks them into the PIMPLE momentum predictor.  Body
+        forces are appended to ``solution/ibm_forces_history.csv`` every step.
+
+        Args:
+            bodies: One :class:`ImmersedBody` or a list of them.
+            h:      Eulerian grid spacing near the bodies; inferred from the
+                    mesh when ``None``.
+
+        Returns:
+            The constructed :class:`IBMForcing` (for direct inspection).
+        """
+        from ..immersed_boundary import IBMForcing
+
+        if not hasattr(self.algorithm, "ibm"):
+            raise ValueError(
+                "Immersed boundaries require the PIMPLE/PISO algorithm "
+                f"(configured: {self.config.solver.algorithm!r})."
+            )
+        self.ibm = IBMForcing(self.mesh_data, self.geo_data, bodies, h=h)
+        self.algorithm.ibm = self.ibm
+        diag = self.ibm.diagnostics()
+        print(
+            f"Immersed boundary: {diag['n_markers']} markers, h={diag['h']:.4g}, "
+            f"alpha={ {k: round(v, 3) for k, v in diag['alpha'].items()} }, "
+            f"kernel sums [{diag['kernel_row_sum_min']:.3f}, "
+            f"{diag['kernel_row_sum_max']:.3f}], "
+            f"quadrature residual {diag['quadrature_residual']:.2e}"
+        )
+        return self.ibm
+
+    def _log_ibm_forces(self, step_dt: float) -> None:
+        """Append per-body IBM forces (and Cd/Cl) to solution/ibm_forces_history.csv."""
+        rho = self.config.transport.density
+        forces = self.ibm.body_forces(rho=rho)
+        ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
+        ref_area = getattr(self.config.solver, "ref_area", 1.0)
+        q = 0.5 * rho * ref_U**2 * ref_area
+
+        sol_dir = os.path.join(self.case_dir, "solution")
+        os.makedirs(sol_dir, exist_ok=True)
+        # No-slip quality monitor: marker slip of the *final* velocity field
+        # (the predictor slip stored by compute_force overestimates it).
+        slip = self.ibm.slip_error(self.U)
+
+        csv_path = os.path.join(sol_dir, "ibm_forces_history.csv")
+        write_header = not os.path.exists(csv_path)
+        with open(csv_path, "a") as fh:
+            writer = csv.writer(fh)
+            if write_header:
+                writer.writerow(
+                    ["time", "step", "dt", "body", "Fx", "Fy", "Fz", "Cd", "Cl", "slip"]
+                )
+            for name, F in forces.items():
+                writer.writerow(
+                    [self.flow_time, self.time_step, step_dt, name,
+                     F[0], F[1], F[2], F[0] / q, F[1] / q, slip]
+                )
+        msg = "  IBM forces:"
+        for name, F in forces.items():
+            msg += f" {name}: Cd={F[0] / q:.4f} Cl={F[1] / q:.4f}"
+        msg += f" | slip={slip:.2e}"
+        print(msg)
+
     def _fringe_source(self):
         """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − U) from
         registered coupling fields, or (None, None) if not set.
@@ -629,6 +698,9 @@ class Solver(OFWInterfaceMixin):
                 log_msg += f" | {pname}: Cd={C.get('Cd', 0):.4f} Cl={C.get('Cl', 0):.4f}"
             print(log_msg)
             sys.stdout.flush()
+
+        if self.ibm is not None:
+            self._log_ibm_forces(step_dt)
 
         if self.turbulence and self.nut is not None:
             logging.Logging.turbulence_info(self.nut, self.config.transport.nu)

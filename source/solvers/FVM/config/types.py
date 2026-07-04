@@ -515,6 +515,10 @@ class SolverParams:
     # Moment centre for Cm computation (default [0,0,0])
     moment_centre: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
+    # Immersed boundary: multidirect residual-forcing iterations per outer
+    # corrector (only used when bodies are attached via set_immersed_bodies).
+    ibm_forcing_loops: int = 2
+
     # Schemes (OpenFOAM-like)
     # Default to a bounded 2nd-order TVD scheme: far less diffusive than upwind
     # (the previous default) yet oscillation-free, unlike pure central.  Other

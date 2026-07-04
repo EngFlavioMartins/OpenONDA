@@ -658,6 +658,7 @@ class Solver:
         See :attr:`profiler` (:class:`RuntimeProfiler`) for the underlying
         statistics and ``profiler.reset()`` to clear them.
         """
+        self.profiler.set_particle_count(self.particles.number_of_particles)
         self.profiler.report()
 
     def update_state(self) -> None:
@@ -776,6 +777,7 @@ class Solver:
 
         # Periodic cumulative runtime-profiling report.
         if self.timing_frequency > 0 and self.time_step % self.timing_frequency == 0:
+            self.profiler.set_particle_count(self.particles.number_of_particles)
             self.profiler.report()
 
         # Log flow diagnostics at specified frequency

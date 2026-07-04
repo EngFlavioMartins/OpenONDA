@@ -69,6 +69,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
+        # Optional immersed-boundary forcing (set via Solver.set_immersed_bodies).
+        self.ibm = None
+
     def step(self, U, p, phi, U_old=None, dt=None, rho=1.0, nu=0.01, U_old_old=None,
              source_explicit=None, source_implicit=None):
         """
@@ -115,23 +118,46 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             p_before = p[:n_elem].copy()
 
             # ---- 1a. Momentum Predictor (once per outer iteration) ----
+            def _solve_predictor(src_explicit):
+                return momentum.solve_momentum_predictor(
+                    U, p, phi, rho, nu,
+                    self.mesh_data, self.geo_data, self.boundaries,
+                    convection_scheme=self.params["convection_scheme"],
+                    solver=self.params["linear_solver"],
+                    under_relaxation=alpha_u,
+                    dt=dt, U_old=U_old, U_old_old=U_old_old, ddt_scheme=ddt_scheme,
+                    source_explicit=src_explicit, source_implicit=source_implicit,
+                    reuse_ilu=self.params.get("reuse_ilu", False),
+                    ilu_key=self.params.get("ilu_key", None),
+                    ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
+                    ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
+                    momentum_tol=self.params.get("momentum_tol", 1e-4),
+                    ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
+                )
+
             logging.Timer.start("    Momentum Predictor")
-            U_star, A_U = momentum.solve_momentum_predictor(
-                U, p, phi, rho, nu,
-                self.mesh_data, self.geo_data, self.boundaries,
-                convection_scheme=self.params["convection_scheme"],
-                solver=self.params["linear_solver"],
-                under_relaxation=alpha_u,
-                dt=dt, U_old=U_old, U_old_old=U_old_old, ddt_scheme=ddt_scheme,
-                source_explicit=source_explicit, source_implicit=source_implicit,
-                reuse_ilu=self.params.get("reuse_ilu", False),
-                ilu_key=self.params.get("ilu_key", None),
-                ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
-                ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
-                momentum_tol=self.params.get("momentum_tol", 1e-4),
-                ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
-            )
+            U_star, A_U = _solve_predictor(source_explicit)
             logging.Timer.log("    Momentum Predictor")
+
+            # ---- 1a'. Immersed-boundary direct forcing (Pinelli/Constant) ----
+            # Force from the force-free predictor drives the marker velocity to
+            # the target: F = (U_d − I[û])/Δt, spread to cells and applied via a
+            # second predictor solve.  Each outer corrector repeats this, which
+            # is the paper's IBM↔pressure sub-iteration.
+            ibm = getattr(self, "ibm", None)
+            if ibm is not None:
+                logging.Timer.start("    IBM Forcing")
+                src_ibm = rho * ibm.compute_force(U_star, dt)
+                if source_explicit is not None:
+                    src_ibm = src_ibm + source_explicit
+                U_star, A_U = _solve_predictor(src_ibm)
+                # Multidirect residual forcing: drive the remaining marker slip
+                # to ~0 explicitly (unit gain, no feedback overshoot) before
+                # the pressure correctors see the field.
+                ibm.multidirect_correct(
+                    U_star, dt, n_iter=int(self.params.get("ibm_forcing_loops", 2))
+                )
+                logging.Timer.log("    IBM Forcing")
 
             U_iter = U_star.copy()
 
@@ -220,7 +246,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 self.mesh_data["owners"], self.geo_data,
                 n_elem, self.mesh_data["n_interior_faces"],
             )
-            U[:n_elem] = U_iter[:n_elem]
+            # Copy the full array (interior + ghost layer): gradients and
+            # boundary upwinding at the next step read the ghost values, which
+            # would otherwise stay frozen at their initial state.
+            U[:] = U_iter[:]
 
             # ---- 1e. Under-relaxation between outer iterations ----
             if outer < n_outer - 1:

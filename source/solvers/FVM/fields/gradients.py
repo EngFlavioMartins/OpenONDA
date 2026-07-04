@@ -348,7 +348,14 @@ def compute_lsq_geometry(mesh_data, geo_data):
         M[2, 0] = M[0, 2]
         M[2, 1] = M[1, 2]
 
-        M_inv[c] = np.linalg.inv(M)
+        M_inv[c] = M
+
+    # Pseudo-inverse (stacked): on 2D single-layer meshes the out-of-plane
+    # moments vanish (empty patches are excluded from the stencil), making M
+    # exactly singular.  pinv zeroes the gradient along rank-deficient
+    # directions, which is the correct 2D behaviour; on full-rank 3D cells it
+    # equals the ordinary inverse.
+    M_inv = np.linalg.pinv(M_inv)
 
     return {
         "lsq_nei_phi_idx": nei_phi_idx,
