@@ -147,16 +147,26 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             ibm = getattr(self, "ibm", None)
             if ibm is not None:
                 logging.Timer.start("    IBM Forcing")
-                src_ibm = rho * ibm.compute_force(U_star, dt)
-                if source_explicit is not None:
-                    src_ibm = src_ibm + source_explicit
-                U_star, A_U = _solve_predictor(src_ibm)
-                # Multidirect residual forcing: drive the remaining marker slip
-                # to ~0 explicitly (unit gain, no feedback overshoot) before
-                # the pressure correctors see the field.
-                ibm.multidirect_correct(
-                    U_star, dt, n_iter=int(self.params.get("ibm_forcing_loops", 2))
-                )
+                n_loops = int(self.params.get("ibm_forcing_loops", 2))
+                if bool(self.params.get("ibm_second_solve", True)):
+                    # Constant et al. variant (default): re-solve the momentum
+                    # equation with the spread force on the RHS, then converge
+                    # the residual slip with multidirect iterations.
+                    src_ibm = rho * ibm.compute_force(U_star, dt)
+                    if source_explicit is not None:
+                        src_ibm = src_ibm + source_explicit
+                    U_star, A_U = _solve_predictor(src_ibm)
+                    ibm.multidirect_correct(U_star, dt, n_iter=n_loops)
+                else:
+                    # Uhlmann (2005) / Kempe & Fröhlich (2012) variant: apply
+                    # the forcing explicitly to the predictor field,
+                    # u ← u + Δt·S[(U_d − I[u])/Δt], iterated (multidirect).
+                    # Saves a full momentum solve per outer corrector.
+                    # NOTE: both variants share the same forcing stability
+                    # limit Fo = ν·Δt/h² ≲ 0.1 (see the IBM design doc);
+                    # neither is stable above it.
+                    ibm.begin_step()
+                    ibm.multidirect_correct(U_star, dt, n_iter=max(n_loops, 2))
                 logging.Timer.log("    IBM Forcing")
 
             U_iter = U_star.copy()

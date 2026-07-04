@@ -41,14 +41,18 @@ python cylinderIBM_setup.py --Re 100 --end-time 150 --h 0.05
 Expected behaviour of the monitors:
 
 - **slip** is the IBM-specific health signal `max_s |u(X_s)|`. It should sit
-  orders of magnitude below U∞ once the startup transient passes. If it grows
-  or oscillates, reduce the Courant target (the direct-forcing feedback loop is
-  underdamped above Co ≈ 0.5) or increase `--n-outer` / `ibm_forcing_loops`.
+  orders of magnitude below U∞ (≈ 1–3×10⁻³ here) once the startup transient
+  passes. If it grows or slowly sawtooths, the time step is too large: the
+  direct-forcing loop needs **both** Co ≤ 0.5 **and** Fo = ν·Δt/h² ≲ 0.1
+  (the driver caps Δt by `--max-fo 0.1` automatically; see the design doc for
+  the experiment matrix behind this).
 - **C_D converges from above** with mesh refinement: the diffuse-interface
-  kernel enlarges the effective cylinder diameter by O(h), so coarse grids
+  kernel enlarges the effective cylinder diameter by ≈ h, so coarse grids
   over-predict drag (paper Fig. 8 shows the same 1st–2nd-order approach from
-  above). At h = D/10 expect ≈ +20–30 %; at h = D/16 ≈ +10 %; h = D/25 gets
-  within a few %. The domain here (24D × 16D) is also smaller than the paper's
+  above). Measured at Re = 30: h = D/10 gives C_D ≈ 1.98 and L/D ≈ 1.84
+  (≈ +11 % — and rescaling by the effective diameter D + h puts both back in
+  the reference bands: 1.80 and 1.67). Expect ≈ +5–8 % at the default
+  h = D/16. The domain here (24D × 16D) is also smaller than the paper's
   64D × 32D, adding a small blockage over-prediction.
 
 ## Files

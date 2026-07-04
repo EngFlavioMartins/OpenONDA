@@ -8,6 +8,10 @@ FVM-VPM Coupled Solver — overset/Chimera-style four-step loop.
    Σ u·S = 0 to machine precision — the Gresho-Sani compatibility condition
    for the pure-Neumann pressure problem.  Direction-agnostic: no face is
    treated as inflow or outflow.
+   With ``donor_interior_source="fvm"`` the trace is instead split per
+   sub-step into an interpolated exterior-particle term and a LIVE
+   FVM-interior Biot-Savart term (Weymouth–Lauber-consistent; see
+   ``_run_fvm_substeps_live_interior``).
 2. FVM       : impose Dirichlet-U on all faces; the pressure closure is
    fixedFluxPressure (0/p), whose gradient the solver's constrainPressure
    computes with exact discrete weights — compatibility by construction.
@@ -358,11 +362,16 @@ class FVMVPMCoupler:
                     "set_robin_velocity_boundary_condition (needs local face count "
                     "+ pstreamScatterDoubles)."
                 )
-            if int(self.config.bc_coupling_iterations) > 1:
+            if (
+                int(self.config.bc_coupling_iterations) > 1
+                and getattr(self.config, "donor_interior_source", "particles") != "fvm"
+            ):
                 raise NotImplementedError(
-                    "bc_coupling_iterations>1 (Weymouth–Lauber coupled BC) is not "
-                    f"parallel-safe (n_procs={n_procs}). Set bc_coupling_iterations<=1 "
-                    "under MPI, or run serially."
+                    "bc_coupling_iterations>1 with donor_interior_source='particles' "
+                    f"(legacy Weymouth–Lauber path) is not parallel-safe "
+                    f"(n_procs={n_procs}). Use donor_interior_source='fvm' (its "
+                    "vorticity gather is collective on all ranks), set "
+                    "bc_coupling_iterations<=1, or run serially."
                 )
 
         n_steps = int(self.config.t_end / self.dt)
@@ -424,8 +433,16 @@ class FVMVPMCoupler:
             # STEP 1 — Donor BC (rank 0 computes; C++ scatter distributes)
             # ─────────────────────────────────────────────────────────────────
             t1 = time.time()
+            donor_source = getattr(self.config, "donor_interior_source", "particles")
             if self._is_master:
-                u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
+                if donor_source == "fvm":
+                    # Exterior-only endpoint: U∞ + BS(particles outside the box).
+                    # The interior term is added LIVE per sub-step from the FVM
+                    # vorticity (see _run_fvm_substeps), so it is never staled
+                    # by the coupling window.
+                    u_bc_next = self._donor_exterior_velocity(face_centers)
+                else:
+                    u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
                 omega_bc_next = self._last_omega_donor
                 if self._u_bc_prev is None:
                     self._u_bc_prev = u_bc_next.copy()
@@ -644,6 +661,51 @@ class FVMVPMCoupler:
 
         return u_donor
 
+    def _donor_exterior_velocity(self, face_centers: np.ndarray) -> np.ndarray:
+        """Exterior-wake donor endpoint: U∞ + BS(particles OUTSIDE the box).
+
+        Used by ``donor_interior_source="fvm"``.  Deliberately UNPROJECTED and
+        WITHOUT the interior term: the FVM-interior Biot–Savart is added live
+        at every sub-step and the solenoidal projection is applied to the
+        assembled trace there (projecting the endpoint too would double-count
+        the compatibility shift).
+
+        Exterior sources are at least a buffer width from every face and
+        evolve on the slow VPM timescale, so linearly interpolating THIS term
+        across the window is far more defensible than interpolating the total
+        trace (which smears the fast near-field).
+
+        For ``donor_bc_mode="mixed"`` the face vorticity target is still the
+        full-cloud particle ω (``compute_target_vorticities`` has no zone
+        mask); the in-box contribution there carries the one-window lag the
+        velocity trace no longer has.
+        """
+        n = len(face_centers)
+        assert self.vpm is not None
+        if self.vpm.particles.number_of_particles == 0:
+            self._last_omega_donor = np.zeros((n, 3), dtype=np.float64)
+            return np.tile(self.u_inf, (n, 1)).astype(np.float64)
+
+        exterior_mask = self._outside_box_mask()
+        logger.info(
+            "     [Donor] exterior particles=%d/%d + live FVM-interior BS per "
+            "sub-step (donor_interior_source=fvm)",
+            int(exterior_mask.sum()),
+            self.vpm.particles.number_of_particles,
+        )
+        u_ext = self.vpm.compute_target_velocities(
+            face_centers,
+            include_freestream=True,
+            zone_mask=exterior_mask,
+        )
+        if getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
+            self._last_omega_donor = np.asarray(
+                self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
+            )
+        else:
+            self._last_omega_donor = None
+        return np.asarray(u_ext, dtype=np.float64).reshape(-1, 3)
+
     @staticmethod
     def _project_to_solenoidal(
         u: np.ndarray, face_normals: np.ndarray, face_areas: np.ndarray
@@ -695,73 +757,55 @@ class FVMVPMCoupler:
             self.ofw.get_vorticity_field_into(self._omega_global_buffer)
         return self._omega_global_buffer
 
-    def _fvm_interior_induced_velocity(self, targets: np.ndarray) -> np.ndarray:
+    def _fvm_interior_induced_velocity(
+        self, targets: np.ndarray, omega: np.ndarray | None = None
+    ) -> np.ndarray:
         """Biot–Savart velocity at ``targets`` induced by the FVM interior vorticity.
 
         Closes the Weymouth–Lauber BC↔pressure coupling: the box-boundary
         velocity must include the velocity induced by the vorticity *inside* the
         box (body boundary layer + near wake), re-evaluated from the freshly
-        solved FVM field each Picard iteration.
+        solved FVM field each sub-step / Picard iteration.
 
         Singular kernel regularised with an h-sized core to bound the near-face
-        contribution.  Sign convention matches the VPM solver: with r = target −
-        source, u = (1/4π) Σ (Γ_c × r)/(|r|²+core²)^{3/2}  [≡ −(r×Γ)], validated
-        once against an analytic single-element field.
+        contribution; source selection (noise floor + hard cap) and the
+        Numba-parallel direct sum live in ``helpers/interior_bs.py``.
+
+        MPI: cell geometry comes from the injector's one-time collective gather;
+        ``omega`` must be passed in when the caller already fetched it on all
+        ranks (fetching here from a rank-0-only section would deadlock the
+        collective getter).
         """
+        from source.coupler.core.helpers import interior_bs
+
         assert self.ofw is not None
         targets = np.ascontiguousarray(targets, dtype=np.float64).reshape(-1, 3)
+        if omega is None:
+            omega = self._get_vorticity_field_buffer()
 
-        omega = self._get_vorticity_field_buffer()
-        centers = np.asarray(
-            self.ofw.get_cell_center_coordinates(), dtype=np.float64
-        ).reshape(-1, 3)
-        vols = np.asarray(self.ofw.get_cell_volumes(), dtype=np.float64).ravel()
-
-        gamma = omega * vols[:, None]  # circulation per cell [m³/s]
-        mag = np.linalg.norm(gamma, axis=1)
-        if mag.size == 0:
-            return np.zeros_like(targets)
-        peak = float(mag.max())
-        if peak <= 0.0:
+        assert self.injector is not None
+        centers = self.injector._cell_centers
+        vols = self.injector._cell_volumes
+        if centers is None or centers.shape[0] == 0:
             return np.zeros_like(targets)
 
-        # Source selection.  Direct BS is O(n_face·n_src); the box is mostly
-        # irrotational, so (1) drop cells below 0.1 % of the peak |Γ| (noise),
-        # then (2) hard-cap to the N_MAX strongest cells.  The induced velocity
-        # at the boundary is dominated by the strong near-cube + wake vorticity,
-        # so the dropped tail is negligible while the cost stays bounded
-        # (a too-loose 1e-6 floor previously kept ~all 4·10⁵ cells → minutes/eval).
-        N_MAX = 20_000
-        floor = 1e-3 * peak
-        keep = np.flatnonzero(mag > floor)
-        n_above = keep.size
-        if keep.size > N_MAX:
-            order = np.argpartition(mag[keep], keep.size - N_MAX)[keep.size - N_MAX:]
-            keep = keep[order]
-        if keep.size == 0:
+        # Weak-remainder pooling at 2h: conserves the diffuse wake circulation
+        # whose induction carves the outflow deficit into the trace (dropping
+        # it pins the boundary near freestream → spurious fast wake recovery).
+        src, gamma, info = interior_bs.select_sources(
+            omega, centers, vols, pool_h=2.0 * float(self.config.h)
+        )
+        if src.shape[0] == 0:
             return np.zeros_like(targets)
         logger.info(
-            "     [Donor] FVM-interior BS sources: %d (|Γ|>%.2e of peak %.2e; %d above floor)",
-            keep.size, floor, peak, n_above,
+            "     [Donor] FVM-interior BS sources: %d exact + %d pooled bins "
+            "(%d above the %.0e·peak floor; %.0f%% of Σ|Γ| represented)",
+            src.shape[0] - info["n_pooled_bins"], info["n_pooled_bins"],
+            info["n_above"], interior_bs.FLOOR_FRACTION,
+            100.0 * info["kept_fraction"],
         )
-
         self._validate_bs_sign_once()
-
-        src = np.ascontiguousarray(centers[keep], dtype=np.float32)
-        G = np.ascontiguousarray(gamma[keep], dtype=np.float32)
-        tgt32 = targets.astype(np.float32)
-        core2 = np.float32(float(self.config.h) ** 2)
-        inv4pi = np.float32(1.0 / (4.0 * np.pi))
-        out = np.zeros((len(targets), 3), dtype=np.float64)
-        CH = 128  # chunk targets to bound (CH × n_src × 3) memory
-        for i in range(0, len(tgt32), CH):
-            tt = tgt32[i : i + CH]  # (m, 3)
-            r = tt[:, None, :] - src[None, :, :]  # (m, n_src, 3)
-            r2 = np.einsum("mnk,mnk->mn", r, r) + core2
-            inv = r2 ** np.float32(-1.5)  # (m, n_src)
-            cross = np.cross(G[None, :, :], r)  # Γ × r  (m, n_src, 3)
-            out[i : i + CH] = (inv4pi * np.einsum("mn,mnk->mk", inv, cross)).astype(np.float64)
-        return out
+        return interior_bs.bs_velocity(targets, src, gamma, core=float(self.config.h))
 
     def _validate_bs_sign_once(self) -> None:
         """One-time analytic check of the FVM-interior BS kernel sign.
@@ -896,6 +940,14 @@ class FVMVPMCoupler:
         u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
         mixed = getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed"
 
+        if getattr(self.config, "donor_interior_source", "particles") == "fvm":
+            self._run_fvm_substeps_live_interior(
+                patch, face_centers, face_normals, face_areas,
+                u_prev, u_next, omega_prev, omega_next,
+                N=N, n_bc=n_bc, mixed=mixed, u_inf_mag=u_inf_mag,
+            )
+            return
+
         if N > 1 and u_next.shape[0] > 0:
             # Physical guard: linear interpolation under-resolves the wake if the
             # donor BC changes a lot across one VPM cycle (Co_vpm too large).
@@ -933,6 +985,98 @@ class FVMVPMCoupler:
                     omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
                 self._fvm_step(
                     patch, u_bc, advance=True,
+                    omega_target=omega_bc if mixed else None,
+                )
+
+    def _run_fvm_substeps_live_interior(
+        self,
+        patch: str,
+        face_centers: np.ndarray,
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+        u_ext_prev: np.ndarray,
+        u_ext_next: np.ndarray,
+        omega_prev: np.ndarray | None,
+        omega_next: np.ndarray | None,
+        *,
+        N: int,
+        n_bc: int,
+        mixed: bool,
+        u_inf_mag: float,
+    ) -> None:
+        """FVM sub-cycle with the Weymouth–Lauber-consistent split donor.
+
+        Sub-step k imposes
+
+            u_bc = interp_α(U∞ + BS(exterior particles))      [slow, interpolated]
+                 + BS(FVM interior ω, LIVE)                     [fast, never stale]
+
+        re-projected onto the discretely solenoidal subspace, where the
+        interior term is re-evaluated from the current FVM vorticity before
+        every solve.  With ``n_bc > 1`` the solve is Picard-iterated per
+        sub-step: iteration k ≥ 1 re-fetches the post-solve vorticity, so the
+        boundary trace becomes consistent with the interior at the sub-step's
+        NEW time level (the BC↔pressure closure of Weymouth & Lauber); the
+        time step is committed on the final iteration only.
+
+        MPI: the vorticity gather is collective and runs on ALL ranks every
+        iteration; the Biot–Savart and trace assembly are rank-0-only (the
+        boundary arrays are empty elsewhere; the C++ BC scatter distributes).
+        """
+        if N > 1 and u_ext_next.shape[0] > 0:
+            dU = float(np.max(np.linalg.norm(u_ext_next - u_ext_prev, axis=1))) / u_inf_mag
+            big = dU > 0.5
+            logger.log(
+                logging.WARNING if big else logging.INFO,
+                "     [Sub-cycle] %d×dt_fvm=%.3e s  exterior donor ΔBC "
+                "max|Δu|/U∞=%.3f  (interior term is live)%s",
+                N, self.dt_fvm, dU,
+                "  (large — lower dt or period_multiplier)" if big else "",
+            )
+
+        for sub in range(N):
+            alpha = (sub + 1) / N
+            u_ext = (1.0 - alpha) * u_ext_prev + alpha * u_ext_next
+            omega_bc = None
+            if mixed and omega_prev is not None and omega_next is not None:
+                omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
+
+            for k in range(n_bc):
+                # Collective on ALL ranks; refreshed each iteration so k ≥ 1
+                # sees the post-solve interior (new-time-level closure).
+                t_w = time.time()
+                omega_interior = self._get_vorticity_field_buffer()
+                t_w = time.time() - t_w
+                t_bs = time.time()
+                if self._is_master and u_ext.shape[0] > 0:
+                    u_int = self._fvm_interior_induced_velocity(
+                        face_centers, omega=omega_interior
+                    )
+                    u_bc = self._project_to_solenoidal(
+                        u_ext + u_int, face_normals, face_areas
+                    )
+                else:
+                    u_bc = u_ext
+                t_bs = time.time() - t_bs
+                if self._is_master:
+                    logger.info(
+                        "     [Sub-cycle] sub=%d/%d it=%d/%d  ω-gather=%.2fs  BS+proj=%.2fs",
+                        sub + 1, N, k + 1, n_bc, t_w, t_bs,
+                    )
+                    if sub == N - 1 and k == n_bc - 1 and u_bc.shape[0] > 0:
+                        # Same +x deficit probe the legacy donor logs, on the
+                        # fully assembled (exterior + live interior) trace.
+                        x_max = self.config.fvm_box[1]
+                        plus_x = face_centers[:, 0] >= x_max - 1e-6
+                        if plus_x.any():
+                            ux = u_bc[plus_x, 0] / (u_inf_mag + 1e-30)
+                            logger.info(
+                                "     [Donor deficit +x] u_x/U∞ min=%.3f mean=%.3f "
+                                "max=%.3f  n_face=%d",
+                                ux.min(), ux.mean(), ux.max(), int(plus_x.sum()),
+                            )
+                self._fvm_step(
+                    patch, u_bc, advance=(k == n_bc - 1),
                     omega_target=omega_bc if mixed else None,
                 )
 

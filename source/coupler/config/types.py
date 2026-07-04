@@ -204,6 +204,32 @@ class CouplerConfig:
     without re-remeshing the cloud (which would inject extra diffusion).  2–3 is
     typically enough; the residual is bounded by the per-step pressure change."""
 
+    donor_interior_source: str = "particles"
+    """Which representation of the FVM-box INTERIOR feeds the donor BC trace.
+
+    ``"particles"`` (legacy) — the donor is one full-cloud Biot–Savart per
+    coupling window: U∞ + BS(all particles, in-box included), linearly
+    interpolated across the FVM sub-steps.  The in-box particles are a
+    mollified copy of the *previous* window's FVM interior advected by the
+    VPM, so the interior term the boundary sees lags by up to one full
+    coupling step dt_vpm, and the linear interpolation of the trace smears
+    vortices that translate past a face within the window.
+
+    ``"fvm"`` (Weymouth–Lauber-consistent, arXiv:2404.09034) — the donor is
+    decomposed per sub-step:
+
+        u_bc(t) = U∞ + BS(exterior particles, interpolated in t)
+                     + BS(FVM interior ω, evaluated LIVE at t)
+
+    The fast near-field term is re-evaluated from the freshly solved FVM
+    vorticity at EVERY sub-step (no time interpolation, no stale in-box
+    representation, no BC-family jump at the final sub-step); only the slow,
+    distant exterior-wake term is interpolated.  ``bc_coupling_iterations``
+    then counts Picard iterations of BC↔pressure per sub-step (1 = one-shot
+    with the interior at the sub-step's OLD time level, lag dt_fvm; 2 closes
+    the pressure coupling at the new time level).  Collective-safe under MPI:
+    the vorticity gather runs on all ranks, the Biot–Savart on rank 0 only."""
+
     donor_bc_mode: str = "dirichlet"
     """Type of donor velocity BC imposed on the FVM coupling patch
     (Billuart et al., JCP 2023, §3.1, Eqs. 11–14).
@@ -287,6 +313,13 @@ class CouplerConfig:
 
     def __post_init__(self) -> None:
         """Validate enum-like config fields."""
+        _valid_donor_interior_sources = ("particles", "fvm")
+        if self.donor_interior_source not in _valid_donor_interior_sources:
+            raise ValueError(
+                f"donor_interior_source must be one of "
+                f"{_valid_donor_interior_sources!r}, got "
+                f"{self.donor_interior_source!r}."
+            )
         _valid_donor_bc_modes = ("dirichlet", "mixed")
         if self.donor_bc_mode not in _valid_donor_bc_modes:
             raise ValueError(
@@ -400,6 +433,7 @@ class CouplerConfig:
                 "panel_bc_type": self.panel_bc_type,
                 "panel_mesh": self.panel_mesh,
                 "bc_coupling_iterations": self.bc_coupling_iterations,
+                "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
                 "handoff_target_mode": self.handoff_target_mode,
                 "les_smagorinsky_cs": self.les_smagorinsky_cs,

@@ -146,7 +146,89 @@ def _neighborhood_centroid(xy, w, seed, radius, max_iter=20, tol=1e-8):
     return c
 
 
-def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
+def _structured_scalar_field(xy, values):
+    x_round = np.round(xy[:, 0], 10)
+    y_round = np.round(xy[:, 1], 10)
+    xs = np.unique(x_round)
+    ys = np.unique(y_round)
+    if xs.size * ys.size != xy.shape[0]:
+        return None
+    ix = np.searchsorted(xs, x_round)
+    iy = np.searchsorted(ys, y_round)
+    field = np.full((ys.size, xs.size), np.nan, dtype=np.float64)
+    field[iy, ix] = values
+    if np.isnan(field).any():
+        return None
+    return xs, ys, field
+
+
+def _triangle_kernel_1d(spacing: float, support: float) -> np.ndarray:
+    half_width = max(1, int(np.ceil(support / spacing)))
+    offsets = np.arange(-half_width, half_width + 1, dtype=np.float64) * spacing
+    weights = np.maximum(1.0 - np.abs(offsets) / max(support, spacing), 0.0)
+    if weights.sum() <= 0.0:
+        return np.array([1.0], dtype=np.float64)
+    return weights / weights.sum()
+
+
+def _filtered_extrema_centers(xy, w, b0, a0, prev_c):
+    """Experimental-style center detection: extrema of triangle-filtered vorticity."""
+    grid = _structured_scalar_field(xy, w)
+    if grid is None:
+        return None
+    xs, ys, field = grid
+    if xs.size < 3 or ys.size < 3:
+        return None
+
+    try:
+        from scipy.ndimage import convolve1d, maximum_filter
+    except ImportError:
+        return None
+
+    dx = float(np.median(np.diff(xs)))
+    dy = float(np.median(np.diff(ys)))
+    support = 0.5 * a0
+    kx = _triangle_kernel_1d(dx, support)
+    ky = _triangle_kernel_1d(dy, support)
+    filt = convolve1d(field, kx, axis=1, mode="nearest")
+    filt = convolve1d(filt, ky, axis=0, mode="nearest")
+
+    # Search local extrema over roughly half a filter support to avoid picking
+    # adjacent grid points on the same filtered peak.
+    window = max(3, int(2 * np.ceil(0.5 * support / min(dx, dy)) + 1))
+    maxima = filt == maximum_filter(filt, size=window, mode="nearest")
+    coords = np.argwhere(maxima)
+    if coords.size == 0:
+        return None
+    values = filt[maxima]
+    order = np.argsort(values)[::-1]
+
+    centers = []
+    for idx in order:
+        iy, ix = coords[idx]
+        pt = np.array([xs[ix], ys[iy]], dtype=np.float64)
+        if all(np.linalg.norm(pt - c) > 0.10 * b0 for c in centers):
+            centers.append(pt)
+        if len(centers) == 2:
+            break
+
+    if len(centers) == 1:
+        centers = [centers[0], centers[0]]
+    if len(centers) < 2:
+        return None
+
+    cores = np.array(centers, dtype=np.float64)
+    if prev_c is not None:
+        direct = np.linalg.norm(cores[0] - prev_c[0]) + np.linalg.norm(cores[1] - prev_c[1])
+        swapped = np.linalg.norm(cores[1] - prev_c[0]) + np.linalg.norm(cores[0] - prev_c[1])
+        if swapped < direct:
+            cores = cores[::-1]
+    elif cores[0, 1] < cores[1, 1]:
+        cores = cores[::-1]
+    return cores
+
+
+def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False):
     if xy is None or gz is None:
         return np.nan, np.nan, np.nan, 0.0, None, None
     xy = xy.astype(np.float64)
@@ -156,38 +238,45 @@ def step_diagnostics(xy, gz, b0, prev_c, prev_c1, use_peaks=False):
 
     R = 0.45 * b0
 
-    if prev_c is not None:
-        init = prev_c.copy()
+    cores = None
+    if use_filtered_extrema:
+        cores = _filtered_extrema_centers(xy, w, b0, a0, prev_c)
+
+    if cores is not None:
+        pass
     else:
-        i1 = np.argmax(w)
-        p1 = xy[i1]
-        d1 = np.linalg.norm(xy - p1, axis=1)
-        w2 = w.copy()
-        w2[d1 < 0.25 * b0] = 0.0
-        if w2.max() < 0.1 * w[i1]:
-            init = np.array([p1, p1])
+        if prev_c is not None:
+            init = prev_c.copy()
         else:
-            i2 = np.argmax(w2)
-            init = np.array([p1, xy[i2]])
+            i1 = np.argmax(w)
+            p1 = xy[i1]
+            d1 = np.linalg.norm(xy - p1, axis=1)
+            w2 = w.copy()
+            w2[d1 < 0.25 * b0] = 0.0
+            if w2.max() < 0.1 * w[i1]:
+                init = np.array([p1, p1])
+            else:
+                i2 = np.argmax(w2)
+                init = np.array([p1, xy[i2]])
 
-    _, kmeans_centers = _kmeans2(xy, w, init)
-    c0 = _neighborhood_centroid(xy, w, kmeans_centers[0], R)
-    c1 = _neighborhood_centroid(xy, w, kmeans_centers[1], R)
+        _, kmeans_centers = _kmeans2(xy, w, init)
+        c0 = _neighborhood_centroid(xy, w, kmeans_centers[0], R)
+        c1 = _neighborhood_centroid(xy, w, kmeans_centers[1], R)
 
-    mid_test = 0.5 * (c0 + c1)
-    d_mid = np.linalg.norm(xy - mid_test, axis=1)
-    w_mid = w[np.argmin(d_mid)]
+        mid_test = 0.5 * (c0 + c1)
+        d_mid = np.linalg.norm(xy - mid_test, axis=1)
+        w_mid = w[np.argmin(d_mid)]
 
-    d_c0 = np.linalg.norm(xy - c0, axis=1)
-    d_c1 = np.linalg.norm(xy - c1, axis=1)
-    w_c0 = w[np.argmin(d_c0)]
-    w_c1 = w[np.argmin(d_c1)]
+        d_c0 = np.linalg.norm(xy - c0, axis=1)
+        d_c1 = np.linalg.norm(xy - c1, axis=1)
+        w_c0 = w[np.argmin(d_c0)]
+        w_c1 = w[np.argmin(d_c1)]
 
-    sep_now = np.linalg.norm(c0 - c1)
-    if sep_now < 0.15 * b0 or w_mid > 0.96 * min(w_c0, w_c1):
-        cores = np.array([mid_test, mid_test])
-    else:
-        cores = np.array([c0, c1])
+        sep_now = np.linalg.norm(c0 - c1)
+        if sep_now < 0.15 * b0 or w_mid > 0.96 * min(w_c0, w_c1):
+            cores = np.array([mid_test, mid_test])
+        else:
+            cores = np.array([c0, c1])
 
     ref = prev_c1 if prev_c1 is not None else np.array([0.0, 0.5 * b0])
     if np.linalg.norm(cores[1] - ref) < np.linalg.norm(cores[0] - ref):
@@ -253,7 +342,7 @@ def extract_merging_timeseries(
                 break
 
             sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
-                xy, omega_z, b0, prev_c, prev_c1, use_peaks=True
+                xy, omega_z, b0, a0, prev_c, prev_c1, use_filtered_extrema=True
             )
             rows.append((t, sep, a_c2, ang, gam))
     else:
@@ -264,7 +353,7 @@ def extract_merging_timeseries(
             t, pos, gz = read_h5(p)
             xy = pos[:, :2] if pos is not None else None
             sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
-                xy, gz, b0, prev_c, prev_c1, use_peaks=False
+                xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
             )
             rows.append((t, sep, a_c2, ang, gam))
 
@@ -281,11 +370,15 @@ def extract_merging_timeseries(
     else:
         th = np.full_like(raw_ang, np.nan)
     b_over_b0 = d[:, 1] / b0
-    b_over_b0[d[:, 1] == 0.0] = np.nan
     return {
         "tau": tau,
         "theta_deg": th,
-        "a_c2_over_b02": d[:, 2] / b0**2,
+        # ``step_diagnostics`` returns half the second moment of the 2-D
+        # vorticity distribution.  For the Lamb-Oseen form used by the solver,
+        # omega ~ exp(-r^2 / r_c^2), that moment is r_c^2 / 2.  The C&W merger
+        # reference reports the Lamb-Oseen core-size parameter squared, so
+        # convert the moment back to r_c^2 before plotting.
+        "a_c2_over_b02": 2.0 * d[:, 2] / b0**2,
         "b_over_b0": b_over_b0,
         "total_gamma": d[:, 4],
     }
@@ -366,16 +459,16 @@ def plot_merging_case(args) -> int:
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 520])
-    axes[0].set_xlim([0, 3.0])
+    axes[0].set_xlim([0, 1.75])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
     axes[1].set_ylim([0, 0.3])
-    axes[1].set_xlim([0, 3.0])
+    axes[1].set_xlim([0, 1.75])
 
     axes[2].set_xlabel(r"$\nu t / a_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_ylim([0, 3.0])
-    axes[2].set_xlim([0, 3.0])
+    axes[2].set_xlim([0, 1.75])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0) )

@@ -99,6 +99,8 @@ def main():
     # becomes underdamped at larger Courant numbers.
     parser.add_argument("--max-cfl", type=float, default=0.5, help="Target max Courant")
     parser.add_argument("--max-dt", type=float, default=0.03, help="Max dt cap [s]")
+    parser.add_argument("--max-fo", type=float, default=0.1,
+                        help="Max forcing Fourier number nu*dt/h^2 (stability cap)")
     parser.add_argument("--write-interval-time", type=float, default=5.0,
                         help="Write VTK every N seconds of flow time")
     parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
@@ -111,6 +113,18 @@ def main():
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # --- IBM forcing stability: Fourier-number cap on dt --------------------
+    # The direct-forcing feedback loop is stable only for
+    # Fo = nu*dt/h^2 <~ 0.1 (in addition to Co <= 0.5); above it a slow
+    # sawtooth develops in Cd/slip.  Cap dt accordingly (binds at low Re).
+    nu = args.u_inf * args.diameter / args.Re
+    dt_fo = args.max_fo * args.h**2 / nu
+    if dt_fo < args.max_dt:
+        print(f"  [IBM] capping max dt to {dt_fo:.4g} s "
+              f"(Fo = nu*dt/h^2 <= {args.max_fo})")
+        args.max_dt = dt_fo
+        args.initial_dt = min(args.initial_dt, dt_fo)
 
     # --- Mesh: uniform h core around the cylinder, stretched far field -----
     print("\n--- Mesh Generation (rectilinear, in-memory) ---")

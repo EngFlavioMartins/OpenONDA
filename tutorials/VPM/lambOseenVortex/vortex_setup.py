@@ -98,24 +98,30 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     """Run one viscous scheme for the case given by --gamma1/--gamma2."""
     gamma1, gamma2 = args.gamma1, args.gamma2
     nu = 1.0 / args.re
-    t0 = RC**2 / (4.0 * nu)
+    rc = args.core_radius
+    b0 = args.separation
+    if rc <= 0.0:
+        raise ValueError("--core-radius must be positive")
+    if b0 <= 0.0:
+        raise ValueError("--separation must be positive")
+    t0 = rc**2 / (4.0 * nu)
     spacing_factor = args.spacing_factor
     if scheme in {"dvh", "gbd"} and args.grid_spacing_factor is not None:
         spacing_factor = args.grid_spacing_factor
-    spacing = spacing_factor * RC
+    spacing = spacing_factor * rc
 
     # Determine case label for folder naming
     case_type = "vortex" if gamma2 == 0 else ("dipole" if gamma1 * gamma2 < 0 else "merging")
     output_dir = solution_dir / f"{case_type}_{scheme}{args.tag}"
 
     # Grid bounds:
-    margin = 7.0 * RC  # clearance beyond vortex cores
-    y_offset = 0.5 * B0 if gamma2 != 0 else 0.0  # half-separation for pairs
+    margin = 7.0 * rc  # clearance beyond vortex cores
+    y_offset = 0.5 * b0 if gamma2 != 0 else 0.0  # half-separation for pairs
     domain_half = y_offset + margin  # single: 1.5*rc, pair: b0/2 + 1.5*rc
 
     if gamma1 * gamma2 < 0:
         # Dipole: extra room in +x for self-propulsion
-        bounds_x_max = domain_half + 8.0 * B0
+        bounds_x_max = domain_half + 8.0 * b0
     else:
         bounds_x_max = domain_half
 
@@ -124,8 +130,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         bounds_x_max,
         -domain_half,
         domain_half,
-        -args.length * RC / 2,
-        args.length * RC / 2,
+        -args.length * rc / 2,
+        args.length * rc / 2,
     ]
 
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(domain_bounds, spacing)
@@ -307,6 +313,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument( 
         "--re", type=float, default=RE, help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
+    )
+    parser.add_argument(
+        "--core-radius",
+        type=float,
+        default=RC,
+        help="Initial Lamb-Oseen core radius a0 [m]. Default preserves the legacy tutorial value.",
+    )
+    parser.add_argument(
+        "--separation",
+        type=float,
+        default=B0,
+        help="Initial centre-to-centre separation b0 [m] for two-vortex cases.",
     )
     parser.add_argument(
         "--dvh-max-nodes", type=int, default=120_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",

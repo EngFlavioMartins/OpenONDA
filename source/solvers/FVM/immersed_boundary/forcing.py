@@ -205,6 +205,10 @@ class IBMForcing:
         self.last_slip = float(np.linalg.norm(self.U_target - u_marker, axis=1).max())
         return self.spread(F)
 
+    def begin_step(self) -> None:
+        """Reset the per-step Lagrangian force accumulator (for force logging)."""
+        self.last_F = np.zeros_like(self.last_F)
+
     def multidirect_correct(self, U: np.ndarray, dt: float, n_iter: int = 2) -> None:
         """Multidirect forcing iterations (Kempe & Fröhlich 2012 / Breugem 2012).
 
