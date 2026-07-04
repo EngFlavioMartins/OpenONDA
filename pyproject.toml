@@ -123,8 +123,7 @@ all = [
 # Minimum confidence for reporting unused code (0-100).
 min_confidence = 80
 # b_vec: mutated in-place with numpy +=; vulture cannot track writes as reads.
-# gamma_old2: Taichi kernel template parameter; reserved for BDF-2 KJ stencil.
-ignore_names = ["b_vec", "gamma_old2"]
+ignore_names = ["b_vec"]
 
 [project.urls]
 Homepage = "https://github.com/EngFlavioMartins/OpenONDA"

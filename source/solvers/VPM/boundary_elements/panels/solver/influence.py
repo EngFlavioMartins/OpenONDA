@@ -270,37 +270,6 @@ def compute_forces_bernoulli(
         v_mag_sq = V_surface[i].norm_sqr()
         p_diff = 0.5 * rho * (V_inf_mag * V_inf_mag - v_mag_sq)
         forces[i] = p_diff * areas[i] * normals[i]
-
-@ti.kernel
-def compute_forces_impulse(
-    strengths: ti.template(),
-    strengths_old: ti.template(),
-    strengths_old2: ti.template(),
-    areas: ti.template(),
-    normals: ti.template(),
-    rho: TI_FLOAT,
-    dt: TI_FLOAT,
-    step: int,
-    forces: ti.template(),
-    n: int,
-):
-    """
-    Compute forces using impulse formula: F = -dI/dt.
-    I = rho * mu * Area * n.
-    F = -rho * d(mu*Area*n)/dt.
-    Assuming fixed geometry (Area and normals constant).
-    """
-    for i in range(n):
-        dmu_dt = 0.0
-        if step == 0:
-            dmu_dt = strengths[i] / dt
-        elif step == 1:
-            dmu_dt = (strengths[i] - strengths_old[i]) / dt
-        else:
-            dmu_dt = (3.0 * strengths[i] - 4.0 * strengths_old[i] + strengths_old2[i]) / (2.0 * dt)
-
-        forces[i] = -rho * dmu_dt * areas[i] * normals[i]
-
 @ti.kernel
 def compute_forces_kutta_joukowski(
     strengths: ti.template(),

@@ -70,4 +70,4 @@ def append_loads_to_csv(
 
 # append_vlm_loads_to_csv removed: VLM force CSV is now written exclusively
 # by solver.py's _export_vlm_forces_to_csv, which uses the correct cached
-# reference velocity and includes channel decomposition (CL_kj / CL_unsteady).
+# reference velocity.

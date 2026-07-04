@@ -84,7 +84,7 @@ class PanelLattice:
         self.strengths_old2 = ti.field(dtype=dtype, shape=N)
         self.source_strengths = ti.field(dtype=dtype, shape=N)
 
-        # Cumulative strengths (for Impulse and BDF integration)
+        # Cumulative strengths for time-history integration
         self.cumulative_strengths = ti.field(dtype=dtype, shape=N)
         self.cumulative_strengths_old = ti.field(dtype=dtype, shape=N)
         self.cumulative_strengths_old2 = ti.field(dtype=dtype, shape=N)

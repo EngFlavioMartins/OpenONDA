@@ -124,7 +124,8 @@ def test_solver_exposes_profiler_and_records_steps(tmp_path):
     assert solver.profiler.n_steps == n_steps
     # Core stages must have been timed.
     assert "Advection" in solver.profiler._cumulative
-    assert "Stretching + diffusion" in solver.profiler._cumulative
+    assert "Viscous diffusion" in solver.profiler._cumulative
+    assert "Stretching" in solver.profiler._cumulative
     # The public mirror tracks the profiler's cumulative wall time.
     assert solver.simulation_time == pytest.approx(solver.profiler.wall_time)
 

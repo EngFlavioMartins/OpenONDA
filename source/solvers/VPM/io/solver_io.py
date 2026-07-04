@@ -256,8 +256,7 @@ class SolverIO:
         """Export VLM solver results (VTK + PVD collection).
 
         VLM force CSV is written by solver.py's _export_vlm_forces_to_csv,
-        which uses the correct cached reference velocity and includes channel
-        decomposition (CL_kj / CL_unsteady).
+        which uses the correct cached reference velocity.
         """
         vlm_solver = getattr(self.solver, "vlm_solver", None)
         if vlm_solver is None or not getattr(vlm_solver, "_mesh_generated", False):

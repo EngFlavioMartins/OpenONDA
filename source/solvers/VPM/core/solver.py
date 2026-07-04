@@ -477,7 +477,7 @@ class Solver:
             )
 
     def _init_diagnostics_and_solvers(self, final_config: SolverConfig) -> None:
-        """Build diagnostics history dict, impulse state, and initialize optional solvers."""
+        """Build diagnostics history dict and initialize optional solvers."""
         self._diagnostics_history: dict = {
             "time": [],
             "flow_time": [],
@@ -498,7 +498,6 @@ class Solver:
             "vlm_lesp_max": [],
             "vlm_n_particles": [],
         }
-        self._impulse_state: dict = VLMForceEvaluator.make_impulse_state()
         self._init_optional_solvers(final_config)
         # Runtime wall-clock profiler. ``ti.sync`` makes the timing GPU-correct
         # (Taichi kernels are asynchronous); it is shared across all backends.
@@ -510,11 +509,7 @@ class Solver:
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
             Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
-            if (
-                self.config.force.method != "KUTTA_JOUKOWSKI"
-                or self.vlm_solver.force.method == "KUTTA_JOUKOWSKI"
-            ):
-                self.vlm_solver.force = self.config.force
+            self.vlm_solver.force = self.config.force
             self.vlm_solver.check_coupling_stability(
                 self.time_step_size, getattr(self.config, "background_velocity", None)
             )
@@ -732,8 +727,12 @@ class Solver:
                 self._update_positions(precomputed_k1=_fuse_vel_grad)
 
             # 4. DIFFUSION & STRETCHING (Update alpha)
-            with self.profiler.section("Stretching + diffusion"):
-                self._update_strength()
+            if self.flow_model != "POTENTIAL":
+                self._announce_strength_update()
+                with self.profiler.section("Viscous diffusion"):
+                    self._apply_viscous_diffusion(self.time_step_size)
+                with self.profiler.section("Stretching"):
+                    self._apply_stretching_with_relaxation(self.time_step_size)
 
             # 4.5 ENERGY-BUDGET GOVERNOR (windowed dE/dt vs -nu*Enstrophy control)
             gov = self._energy_budget_governor
@@ -1269,52 +1268,31 @@ class Solver:
         self, density: float = 1.225, V_ref_mag: float | None = None
     ) -> dict[str, np.ndarray | float]:
         """
-        Compute aerodynamic forces using configured method.
-
-        This is the unified API for force evaluation. The method used depends
-        on the solver configuration (config.force.method):
-
-        - 'KUTTA_JOUKOWSKI': Classical pressure integration on bound panels (conventional)
-        - 'IMPULSE': Force from impulse time derivative F = -dI/dt (experimental)
+        Compute aerodynamic forces with Kutta-Joukowski bound-panel integration.
 
         Args:
             density: Fluid density [kg/m³]
-            V_ref_mag: Reference velocity magnitude [m/s] (used for K-J method)
+            V_ref_mag: Reference velocity magnitude [m/s]
                        If None, uses background velocity magnitude
 
         Returns:
             Dictionary with keys:
-            - 'method': str - Method used ('KUTTA_JOUKOWSKI' or 'IMPULSE')
+            - 'method': str - Method used ('KUTTA_JOUKOWSKI')
             - 'force': np.ndarray - Force vector [Fx, Fy, Fz] [N]
             - 'Fx', 'Fy', 'Fz': float - Individual force components [N]
-            - Additional keys depending on method
 
         Example::
 
-            >>> # Configure solver for impulse-based forces
-            >>> config = SolverConfig(force=ForceConfig.impulse_based(order=2))
-            >>> solver = Solver(config=config)
-            >>>
-            >>> # Compute forces (uses impulse method)
-            >>> result = solver.compute_forces(density=1.225)
-            >>> print(f"Force: {result['force']}")
-            >>> print(f"Method: {result['method']}")
-            >>>
-            >>> # Or use conventional K-J method
             >>> config = SolverConfig(force=ForceConfig.kutta_joukowski())
             >>> solver = Solver(config=config)
             >>> result = solver.compute_forces(density=1.225)
-
-        Note:
-            The method compute_impulse_based_force()
-            and compare_force_methods() are still available.
+            >>> print(f"Force: {result['force']}")
+            >>> print(f"Method: {result['method']}")
         """
         method = self.config.force.method
 
         if method == "KUTTA_JOUKOWSKI":
             return self._compute_forces_kutta_joukowski(density, V_ref_mag)
-        elif method == "IMPULSE":
-            return self._compute_forces_impulse(density)
         else:
             raise ValueError(f"Unknown force method: {method}")
 
@@ -1324,32 +1302,6 @@ class Solver:
         """Compute forces via the Kutta-Joukowski theorem. Delegates to VLMForceEvaluator."""
         return VLMForceEvaluator.compute_kutta_joukowski(
             self.vlm_solver, self.background_velocity, density, V_ref_mag
-        )
-
-    def _compute_forces_impulse(self, density: float) -> dict[str, np.ndarray | float]:
-        """Compute forces via impulse F = -dI/dt. Delegates to VLMForceEvaluator."""
-        return VLMForceEvaluator.compute_impulse(
-            self._impulse_state,
-            self.vlm_solver,
-            self.total_linear_impulse,
-            self.flow_time,
-            density,
-            self.config.force,
-        )
-
-    def compare_force_methods(
-        self, density: float = 1.225, V_ref_mag: float | None = None
-    ) -> dict[str, np.ndarray]:
-        """Compare impulse-based vs Kutta-Joukowski forces. Delegates to VLMForceEvaluator."""
-        return VLMForceEvaluator.compare_methods(
-            self._impulse_state,
-            self.vlm_solver,
-            self.total_linear_impulse,
-            self.background_velocity,
-            self.flow_time,
-            density,
-            self.config.force,
-            V_ref_mag,
         )
 
     # PARTICLE PHYSICS COMPUTATIONS (PER-PARTICLE ANALYSIS)
@@ -1675,15 +1627,11 @@ class Solver:
         """
         # Track circulation before removal (for conservation diagnostics)
         if particle_indices is not None and len(particle_indices) > 0:
-            # Reduce circulation ΣΓ and impulse 0.5·Σ(r×Γ) of the removed subset
-            # entirely on device — only the index list goes up and two 3-vectors
-            # come back, instead of downloading every particle's position/strength.
-            circ_removed, impulse_removed = self.particles.subset_moments(particle_indices)
+            # Reduce circulation ΣΓ on device instead of downloading every
+            # particle's position/strength.
+            circ_removed, _ = self.particles.subset_moments(particle_indices)
             self._particles_removed_this_step = len(particle_indices)
             self._circulation_removed_this_step = circ_removed
-
-            # Accumulate all removals (in case of multiple remove calls between force evaluations)
-            self._impulse_state["removed_accumulated"] += impulse_removed
 
         elif remove_all:
             # Removal calculation for ALL particles — summed on device (ΣΓ) so we
@@ -1693,10 +1641,6 @@ class Solver:
             self._particles_removed_this_step = len(self.particles)
             self._circulation_removed_this_step = circ_removed
 
-            # Clear history on total removal
-            self._impulse_state["history"] = []
-            self._impulse_state["time_history"] = []
-            self._impulse_state["removed_accumulated"] = np.zeros(3)
         else:
             self._particles_removed_this_step = 0
             self._circulation_removed_this_step = np.zeros(3)
@@ -1778,9 +1722,6 @@ class Solver:
         )
         self._particles_removed_this_step = len(self.particles)
         self._circulation_removed_this_step = circ_removed
-        self._impulse_state["history"] = []
-        self._impulse_state["time_history"] = []
-        self._impulse_state["removed_accumulated"] = np.zeros(3)
 
         if viscosity is None:
             nu = getattr(self._viscous_config, "viscosity", None)
@@ -2273,18 +2214,22 @@ class Solver:
         if self.flow_model == "POTENTIAL":
             return
 
+        if announce:
+            self._announce_strength_update()
+
+        dt = self.time_step_size if dt is None else dt
+        self._apply_viscous_diffusion(dt)
+        self._apply_stretching_with_relaxation(dt)
+
+    def _announce_strength_update(self) -> None:
+        """Log the stretching formulation used for this strength update."""
         effective_mode = self._effective_stretching_mode()
         mode_eq = {
             "DIRECT": "(ω·∇)u",
             "TRANSPOSED": "(ω·∇')u",
             "MIXED": "½((ω·∇)u + (∇u)ᵀ·ω)",
         }.get(effective_mode, f"({effective_mode})")
-        if announce:
-            Logging.message(f"Updating strengths via {mode_eq}")
-
-        dt = self.time_step_size if dt is None else dt
-        self._apply_viscous_diffusion(dt)
-        self._apply_stretching_with_relaxation(dt)
+        Logging.message(f"Updating strengths via {mode_eq}")
 
     def _effective_stretching_mode(self) -> str:
         """Mode actually used by the stretching step.

@@ -162,7 +162,7 @@ def main():
     """Generate theory curves for all validation AoA values and save to CSV.
 
     Curve sets:
-      • AR=4  AoA=5°, 15°  — matches tests/impulse_based_methodology/test1
+      • AR=4  AoA=5°, 15°  — Beckwith & Babinsky reference geometry
       • AR=5  AoA=10°      — matches tutorials/VPM/flatPlateVLM  (this tutorial)
     """
     print("Generating theoretical CL curves...")

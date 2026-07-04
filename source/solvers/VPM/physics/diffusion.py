@@ -1546,8 +1546,9 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         """
         Apply viscous diffusion using Core Spreading Method.
 
-        CSM models diffusion by expanding the particle core radius:
-            σ²(t) = σ²(0) + 2nut
+        CSM models diffusion by expanding the particle core radius.  For the
+        Gaussian kernel:
+            sigma^2(t) = sigma^2(0) + 4*nu*t
 
         which is equivalent to convolution with a Gaussian diffusion kernel.
 
@@ -1571,7 +1572,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         self._resize_temp_fields(N)
         self._zero_temp_fields()
 
-        # Update radii: σ_new = sqrt(σ² + 2nu_eff*dt)
+        # Update radii using the kernel-specific diffusivity constant.
         self.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
 
     # RANDOM WALK METHOD (RWM)

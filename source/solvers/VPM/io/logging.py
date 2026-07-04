@@ -484,10 +484,6 @@ class Logging:
             f"  Viscosity                : {vlm.viscosity:.3e} m²/s",
             f"  Force Evaluation Method  : {vlm.force.method}",
         ]
-        if vlm.force.method == "IMPULSE":
-            lines.append(f"    - Order                : {vlm.force.impulse_order}")
-            sm = vlm.force.impulse_smoothing_window or "None"
-            lines.append(f"    - Smoothing Window     : {sm}")
         if len(vlm.surfaces) > 0:
             lines.append("\n  SURFACES:")
             for uid, (_aircraft, kinematics) in vlm.surfaces.items():

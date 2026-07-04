@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import json
 import os
 import time
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import taichi as ti
@@ -34,7 +34,6 @@ from .influence import (
     compute_induced_velocities,
     compute_induced_velocities_at_bound,
     compute_panel_forces_coupled,
-    compute_panel_forces_impulse_coupled,
     compute_pressure_coefficients,
     compute_RHS_coupled,
 )
@@ -53,98 +52,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class ForceConfig:
-    """
-    Configuration for aerodynamic force evaluation in VLM-VPM coupling.
+    """Configuration for VLM aerodynamic force evaluation.
 
-    Supports two methodologies:
-
-    **1. Conventional (Kutta-Joukowski):**
-       Integrates pressure forces over bound vortex panels using K-J theorem:
-       F = ρ Γ × V_local
-
-       Pros:
-       - Direct, instantaneous evaluation
-       - Well-established in classical VLM
-       - No time history required
-
-       Cons:
-       - Changes spuriously when far-wake particles are removed
-       - Misses added-mass effects
-       - Incomplete in unsteady flows
-
-    **2. Experimental (Impulse-based):**
-       Computes force from impulse time derivative:
-       F = -dI/dt where I = (ρ/2) ∫ x × ω dV
-
-       Pros:
-       - Invariant to wake truncation (passes "killer test")
-       - Automatically includes added-mass effects
-       - Captures unsteady lift components
-       - Consistent with momentum conservation
-
-       Cons:
-       - Requires time history (2-3 steps)
-       - New methodology (less validated in production)
-       - Returns zero on first time step
-
-    **Usage:**
-          # Use conventional K-J method (default)
-          vlm = VLMSolver(force=ForceConfig.kutta_joukowski())
-
-          # Use experimental impulse method
-          vlm = VLMSolver(force=ForceConfig.impulse_based(order=2))
+    VLM surface loads are evaluated with the conventional Kutta-Joukowski
+    pressure integration on bound vortex panels.
     """
 
-    method: Literal["KUTTA_JOUKOWSKI", "IMPULSE"] = "KUTTA_JOUKOWSKI"
-    """
-      Force evaluation method.
-
-      Options:
-            - 'KUTTA_JOUKOWSKI': Classical pressure integration on bound panels (conventional)
-            - 'IMPULSE': Force from impulse time derivative F = -dI/dt (experimental)
-      """
-
-    impulse_order: int = 2
-    """
-      Order of time derivative for impulse method (1 or 2).
-
-      Used only when method='IMPULSE'.
-
-      - Order 1: First-order backward difference (O(Δt) error)
-      - Order 2: Second-order backward difference (O(Δt²) error)
-      - Order 3: Third-order backward difference (O(Δt³) error)
-
-      Order 2 or 3 recommended for smooth force histories.
-      """
-
-    impulse_smoothing_window: int | None = None
-    """
-      Moving average window for impulse force smoothing.
-
-      Used only when method='IMPULSE'.
-
-      If None: No smoothing (use instantaneous derivative)
-      If int (e.g., 5): Apply moving average over last N force evaluations
-
-      Recommended: 3-5 for noisy high-vorticity simulations.
-      """
-
-    impulse_startup_steps: int = 0
-    """
-      Number of startup steps during which the impulse signal dI/dt uses
-      lower-order (BDF1) differentiation for initial stability.
-      """
-
-    impulse_differentiation: Literal["BACKWARD", "CENTRAL"] = "BACKWARD"
-    """
-      Differentiation scheme for the impulse force (dI/dt).
-
-      - 'BACKWARD': Uses F_n = -(I_n - I_n-1)/dt (BDF1) or BDF2. Centered at t_n-1/2.
-      - 'CENTRAL': Uses F_n = -(I_n+1 - I_n-1)/2dt (Centered). High stability, no ringing,
-                   but introduces a 1-step lag in reporting.
-
-      Recommended: 'BACKWARD' for real-time control, 'CENTRAL' for smooth validation plots.
-      """
+    method: str = "KUTTA_JOUKOWSKI"
+    """Force evaluation method. Only ``"KUTTA_JOUKOWSKI"`` is supported."""
 
     kj_smoothing: bool = False
     """
@@ -178,38 +93,6 @@ class ForceConfig:
               ForceConfig: K-J force evaluation configuration
         """
         return ForceConfig(method="KUTTA_JOUKOWSKI")
-
-    @staticmethod
-    def impulse_based(
-        order: int = 2,
-        smoothing_window: int | None = None,
-        startup_steps: int = 0,
-        differentiation: Literal["BACKWARD", "CENTRAL"] = "BACKWARD",
-    ) -> "ForceConfig":
-        """
-        Create experimental impulse-based force configuration.
-
-        Computes force from impulse time derivative F = -dI/dt.
-        This method is invariant to wake truncation.
-
-        Args:
-            order: Time derivative order (1, 2, or 3). Default: 2 (higher accuracy)
-            smoothing_window: Moving average window size. Default: None (no smoothing)
-            startup_steps: Number of BDF1-only startup steps. Default: 0
-            differentiation: Scheme for dI/dt ('BACKWARD' or 'CENTRAL').
-
-        Returns:
-            ForceConfig: Impulse-based force evaluation configuration
-        """
-        if order not in (1, 2, 3):
-            raise ValueError(f"impulse_order must be 1, 2, or 3, got {order}")
-        return ForceConfig(
-            method="IMPULSE",
-            impulse_order=order,
-            impulse_smoothing_window=smoothing_window,
-            impulse_startup_steps=startup_steps,
-            impulse_differentiation=differentiation,
-        )
 
 class VLMSolver:
     """
@@ -1337,7 +1220,7 @@ class VLMSolver:
            V_external_np: External velocity (N, 3).
            U_ref: Reference velocity vector [ux, uy, uz] (m/s).
            density: Fluid density
-           dt: Time step size (required for impulse method)
+           dt: Time step size
            coupled: Whether in coupled mode (bound only AIC)
         """
         # Ensure external velocity is set (idempotent if same array)
@@ -1347,8 +1230,7 @@ class VLMSolver:
         if U_ref_mag < 1e-10:
             U_ref_mag = 1.0
 
-        # 0. Update cumulative circulation field for Impulse method
-        # Must be done after solve() but before force computation.
+        # 0. Keep cumulative circulation current for wake diagnostics.
         self._compute_cumulative_circulation_cpu()
 
         # 1. Compute velocities at COLLOCATION points (for Cp)
@@ -1402,46 +1284,18 @@ class VLMSolver:
             1 if coupled else 0,
         )
 
-        if self.force.method == "IMPULSE":
-            # Impulse method (Unsteady Bernoulli: KJ + Added Mass)
-            compute_panel_forces_impulse_coupled(
-                self.lattice.bound_velocity,
-                self.lattice.vortex_points,
-                self.lattice.circulation,
-                self.lattice.circulation_old,
-                self.lattice.circulation_old2,
-                self.lattice.cumulative_circulation,  # Current mu
-                self.lattice.cumulative_circulation_old,  # mu_{n-1}
-                self.lattice.cumulative_circulation_old2,  # mu_{n-2}
-                self.lattice.kinematic_velocity,
-                self.lattice.forces,
-                self.lattice.areas,
-                self.lattice.normals,
-                self.lattice.panel_is_mirrored,
-                self.lattice.forces_kj,
-                self.lattice.forces_unsteady,
-                self.lattice.num_panels,
-                density,
-                dt if dt is not None else 1.0,
-                getattr(self, "_vlm_step_count", 0),
-                self.force.impulse_startup_steps,
-                self.force.impulse_order,
-                smooth_kj,
-            )
-        else:
-            # Standard Kutta-Joukowski (Quasi-steady)
-            compute_panel_forces_coupled(
-                self.lattice.bound_velocity,
-                self.lattice.vortex_points,
-                self.lattice.circulation,
-                self.lattice.circulation_old,
-                self.lattice.kinematic_velocity,
-                self.lattice.forces,
-                self.lattice.num_panels,
-                density,
-                U_ref_mag,
-                smooth_kj,
-            )
+        compute_panel_forces_coupled(
+            self.lattice.bound_velocity,
+            self.lattice.vortex_points,
+            self.lattice.circulation,
+            self.lattice.circulation_old,
+            self.lattice.kinematic_velocity,
+            self.lattice.forces,
+            self.lattice.num_panels,
+            density,
+            U_ref_mag,
+            smooth_kj,
+        )
 
     def _resolve_uref(self, U_ref: np.ndarray | None, n_panels: int) -> np.ndarray:
         """Return a valid reference velocity, auto-computed if not provided."""
@@ -1618,9 +1472,6 @@ class VLMSolver:
         Returns:
             np.ndarray: Total circulation vector [Γx, Γy, Γz] [m²/s]
 
-        Note:
-            For impulse-consistent force evaluation, this must be combined with
-            wake circulation from VPM particles.
         """
         if not self._solved:
             return np.zeros(3)
@@ -1638,71 +1489,6 @@ class VLMSolver:
         circulation_total = np.sum(gamma[:, np.newaxis] * l_vec, axis=0)
 
         return circulation_total
-
-    def compute_bound_impulse(self, density: float) -> np.ndarray:
-        r"""
-        Compute hydrodynamic impulse of bound circulation (horseshoe system).
-
-        The bound impulse is computed by integrating x cross vorticity over the
-        bound segments and trailing filaments up to the trailing edge.
-        This is consistent with the fluid-bound impulse convention used in VPM.
-
-        .. math::
-            \mathbf{I}_{bound} = \frac{density}{2} \sum_i \int \mathbf{x} \times \boldsymbol{\omega}_i \, dl
-
-        Args:
-            density: Fluid density [kg/m³]
-
-        Returns:
-            np.ndarray: Bound impulse vector [Ix, Iy, Iz] [kg·m²/s]
-        """
-        if not self._solved:
-            return np.zeros(3)
-
-        n_panels = self.lattice.num_panels
-        gamma = self.lattice.circulation.to_numpy()[:n_panels]
-        vortex_pts = self.lattice.vortex_points.to_numpy()[:n_panels]
-        corners = self.lattice.corners.to_numpy()[:n_panels]
-
-        # 1. Bound Vortex Segment (V2 -> V3 at 1/4 chord)
-        v2 = vortex_pts[:, 1]
-        v3 = vortex_pts[:, 2]
-
-        # Midpoint and vector
-        x_b = 0.5 * (v2 + v3)
-        l_b = v3 - v2
-
-        # 2. Trailing Leg Segments (Connect Bound Vortex to TE)
-        # We must account for the impulse of the vortex filaments
-        # connecting the bound vortex (1/4 chord) to the TE.
-
-        # TE points: S (Left TE) and R (Right TE) in panel orientation:
-        # P=0 (front left), Q=1 (front right), R=2 (back right), S=3 (back left)
-        # So back edge is R - S.
-        s_pts = corners[:, 3]
-        r_pts = corners[:, 2]
-
-        # Left Leg: Inflow from TE to Bound (S -> V2)
-        x_l = 0.5 * (s_pts + v2)
-        l_l = v2 - s_pts
-
-        # Right Leg: Outflow from Bound to TE (V3 -> R)
-        x_r = 0.5 * (v3 + r_pts)
-        l_r = r_pts - v3
-
-        # 3. Vectorized Impulse Calculation
-        # I = 0.5 * density * sum( x_i x (Gamma_i * l_i) )
-        g_vec = gamma[:, None]  # Shape (N, 1) for broadcasting
-
-        # Cross products (Shape N, 3)
-        term_b = np.cross(x_b, g_vec * l_b)
-        term_l = np.cross(x_l, g_vec * l_l)
-        term_r = np.cross(x_r, g_vec * l_r)
-
-        # Sum over all panels
-        total_impulse = np.sum(term_b + term_l + term_r, axis=0)
-
-        return 0.5 * density * total_impulse
 
     def _compute_one_surface_forces(
         self,
@@ -1881,10 +1667,7 @@ class VLMSolver:
         print("\n" + "-" * 60)
         print("VLM AERODYNAMIC FORCES")
         print("-" * 60)
-        method_name = (
-            "Kutta-Joukowski" if self.force.method == "KUTTA_JOUKOWSKI" else "Impulse-Based"
-        )
-        print(f"  Surface forces computed using {method_name} method:")
+        print("  Surface forces computed using Kutta-Joukowski method:")
         print("    L = Lift force (perpendicular to freestream)")
         print("    D = Drag force (parallel to freestream)")
         print("    CL, CD = Lift and drag coefficients")
@@ -2544,7 +2327,7 @@ class VLMSolver:
              (includes particles from previous steps, advected downstream)
           4. Solve VLM (coupled AIC — bound horseshoe + near-wake panel)
           5. Shed TE near-wake row (uses CLEAN post-solve cumulative Γ)
-          6. Post-process forces (Kutta-Joukowski / impulse)
+          6. Post-process forces (Kutta-Joukowski)
           7. Transfer the aged near-wake row to the free VPM wake
           8. Absorb colliding particles
 
@@ -2603,7 +2386,7 @@ class VLMSolver:
         result = self._compute_wake_particles(dt, U_ref, V_particle_vel=V_shed, reset_buffer=False)
 
         # --------------------------------------------------------------
-        # 6. Post-process forces (Kutta-Joukowski / impulse) from the solved Γ.
+        # 6. Post-process forces from the solved Γ.
         # --------------------------------------------------------------
         V_ext_np = self.lattice.external_velocity.to_numpy()[:n_panels]
         self.compute_postprocess(V_ext_np, U_ref, self.density, dt=dt, coupled=True)
@@ -2640,8 +2423,7 @@ class VLMSolver:
         # the plate, since they can be arbitrarily close to the zero-thickness
         # plane.  With tolerance=0.03, ~32 particles were intermittently
         # removed at specific convective times (τ≈1 and τ≈5), creating
-        # step-discontinuities in particle count that the BDF impulse-force
-        # derivative amplifies into CL spikes.
+        # step-discontinuities in particle count and noisy load histories.
         #
         # For thick bodies (3D geometry with enclosed volumes), set
         # _absorb_tolerance to a positive value (e.g. core_radius).

@@ -54,7 +54,7 @@ echo "[1/5] Lamb-Oseen radial profiles ..."
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
     --format "$FORMAT" \
-    --dt 0.03 \
+    --dt 0.04 \
     --total-time 20.0
 
 # ── Figure 2: Vortex dipole — trajectory and core radius ─────────────────
@@ -72,7 +72,7 @@ echo "[3/5] Merging vortex comparison ..."
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
     --format "$FORMAT" \
-    --total-time 40.0
+    --total-time 20.0
 
 # ── Figure 4: z = 0 surface fields — tiled quadrant comparison ───────────
 echo "[4/5] z=0 surface fields ..."

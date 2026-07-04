@@ -91,20 +91,7 @@ def last_csv(
             t = read_flow_time(c)
             return c, t if t is not None else step * dt
         return None, None
-    candidates = sorted(folder.glob(f"vortex_{scheme}_x_*.csv"))
-    if not candidates:
-        return None, None
-
-    usable = []
-    for candidate in candidates:
-        df_check = pd.read_csv(candidate, comment="#")
-        if df_check["Uy"].abs().max() <= 1e-10:
-            continue
-        t = read_flow_time(candidate)
-        if t is None:
-            s = int(candidate.stem.split("_")[-1])
-            t = s * dt
-        usable.append((candidate, t))
+    usable = usable_csvs(solution_dir, scheme, dt)
     if not usable:
         return None, None
 
@@ -120,6 +107,22 @@ def last_csv(
         )
         return None, None
     return selected, selected_t
+
+
+def usable_csvs(solution_dir: Path, scheme: str, dt: float) -> list[tuple[Path, float]]:
+    """Return sampled x-line CSVs that contain a non-zero velocity field."""
+    folder = solution_dir / f"vortex_{scheme}" / "samples"
+    usable = []
+    for candidate in sorted(folder.glob(f"vortex_{scheme}_x_*.csv")):
+        df_check = pd.read_csv(candidate, comment="#")
+        if df_check["Uy"].abs().max() <= 1e-10:
+            continue
+        t = read_flow_time(candidate)
+        if t is None:
+            s = int(candidate.stem.split("_")[-1])
+            t = s * dt
+        usable.append((candidate, t))
+    return usable
 
 
 # =============================================================
@@ -145,12 +148,14 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
     half_length = read_column_half_length(solution_dir) or 25.0 * ac0
 
+    target_time = None if args.step is not None else args.total_time
+
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
     fig.subplots_adjust(hspace=0.1, top=0.95, bottom=0.19, left=0.15, right=0.85)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        path, t = last_csv(solution_dir, scheme, args.step, args.dt, None)
+        path, t = last_csv(solution_dir, scheme, args.step, args.dt, target_time)
         if path is None:
             continue
         df = pd.read_csv(path, comment="#")
@@ -172,9 +177,13 @@ def plot_vortex_case(args) -> int:
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
+    elapsed_time = args.total_time if target_time is not None else (
+        float(np.median([s[1] for s in scheme_data])) if scheme_data else args.total_time
+    )
+
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": "gray", "lw": 1.0, "zorder": 0, "linestyle": "--"}
-    theory_t = run_t0 + args.total_time
+    theory_t = run_t0 + elapsed_time
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
     tg = np.gradient(tv, r_line)

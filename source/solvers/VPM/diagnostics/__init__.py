@@ -9,7 +9,7 @@ Date: February 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from .conservation import ConservationTracker, ImpulseForceEvaluator
+from .conservation import ConservationTracker
 from .split_diagnostics import diagnose_split
 
-__all__ = ["ConservationTracker", "ImpulseForceEvaluator", "diagnose_split"]
+__all__ = ["ConservationTracker", "diagnose_split"]

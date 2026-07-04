@@ -90,9 +90,6 @@ class VLMLattice:
         # Previous circulation strength Γ_old (N,) - for wake shedding (dGamma/dt)
         self.circulation_old = ti.field(dtype=dtype, shape=(max_panels,))
 
-        # Two-steps-ago circulation Γ_old2 (N,) - for BDF2 dGamma/dt
-        self.circulation_old2 = ti.field(dtype=dtype, shape=(max_panels,))
-
         # Time-averaged circulation 0.5*(Γ + Γ_old) used by kj_smoothing to
         # compute bound_velocity so V_bound and the force kernel use the same
         # smoothed gamma (eliminates the 2Δt oscillation in KJ forces).
@@ -105,9 +102,6 @@ class VLMLattice:
 
         # Previous cumulative circulation (for delta-shedding)
         self.cumulative_circulation_old = ti.field(dtype=dtype, shape=(max_panels,))
-
-        # Two-steps-ago cumulative circulation (for BDF2 added mass)
-        self.cumulative_circulation_old2 = ti.field(dtype=dtype, shape=(max_panels,))
 
         # Aerodynamic influence coefficient (AIC) matrix (N x N)
         # AIC[i,j] = downwash at panel i due to unit circulation on panel j
@@ -130,11 +124,6 @@ class VLMLattice:
 
         # Panel forces (N x 3)
         self.forces = ti.Vector.field(3, dtype=dtype, shape=(max_panels,))
-
-        # Per-channel diagnostic force fields (KJ vs unsteady/added-mass)
-        # Populated only when force method is IMPULSE; otherwise zero.
-        self.forces_kj = ti.Vector.field(3, dtype=dtype, shape=(max_panels,))
-        self.forces_unsteady = ti.Vector.field(3, dtype=dtype, shape=(max_panels,))
 
         # External velocity field at collocation points (N x 3) - matching VPM convention
         self.external_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_panels,))
@@ -219,12 +208,9 @@ class VLMLattice:
 
     @ti.kernel
     def save_old_circulation(self):
-        """Cascade circulation history: old2 <- old <- current, for BDF2 time-stepping."""
+        """Save current circulation as previous-step state."""
         for i in range(self.num_panels):
-            self.circulation_old2[i] = self.circulation_old[i]
             self.circulation_old[i] = self.circulation[i]
-
-            self.cumulative_circulation_old2[i] = self.cumulative_circulation_old[i]
             self.cumulative_circulation_old[i] = self.cumulative_circulation[i]
 
     @ti.kernel
@@ -283,7 +269,6 @@ class VLMLattice:
         self.num_panels = 0
         self.circulation.fill(0.0)
         self.circulation_old.fill(0.0)
-        self.circulation_old2.fill(0.0)
         self.circulation_smooth.fill(0.0)
         self.cumulative_circulation.fill(0.0)
         self.cumulative_circulation_old.fill(0.0)
@@ -492,14 +477,6 @@ class VLMLattice:
     def get_forces(self) -> np.ndarray:
         """Get panel forces as numpy array."""
         return self.forces.to_numpy()[: self.num_panels]
-
-    def get_forces_kj(self) -> np.ndarray:
-        """Get KJ-only panel forces (impulse method diagnostic; zero for KJ method)."""
-        return self.forces_kj.to_numpy()[: self.num_panels]
-
-    def get_forces_unsteady(self) -> np.ndarray:
-        """Get unsteady (added-mass) panel forces (impulse method diagnostic; zero for KJ method)."""
-        return self.forces_unsteady.to_numpy()[: self.num_panels]
 
     def get_AIC_matrix(self) -> np.ndarray:
         """Get AIC matrix as numpy array."""

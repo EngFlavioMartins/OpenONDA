@@ -92,6 +92,15 @@ class Particles:
 
     _COPY_CHUNK_SIZE = 65_536
 
+    # Capacity policy: re-creating the Taichi fields invalidates every kernel
+    # compiled against them (a multi-second re-JIT), so grow with geometric
+    # headroom and shrink only with wide hysteresis to keep resizes rare under
+    # repeatedly changing particle counts (DVH/GBD regeneration, remeshing).
+    _CAPACITY_GROWTH = 1.5  # grow target = max(needed, growth × capacity)
+    _SHRINK_TRIGGER = 4.0  # shrink only when capacity > trigger × live count
+    _SHRINK_HEADROOM = 2.0  # shrink target = headroom × live count
+    _MIN_CAPACITY = 65_536  # ~20 MB of fields — never resize below this
+
     def __init__(self, max_particles=MAX_PARTICLES, float_dtype: str = "f32"):
         """
         Initialize the Particles class with Taichi fields.
@@ -187,6 +196,17 @@ class Particles:
         # Notify registered listeners about the resize
         for callback in self._resize_callbacks:
             callback(self._max_particles)
+
+    def _grow_capacity(self, needed: int) -> None:
+        """Grow field capacity to at least ``needed`` with geometric headroom.
+
+        Leaves ``_CAPACITY_GROWTH`` headroom so a sequence of growing particle
+        counts triggers O(log N) re-allocations instead of one per call.
+        """
+        if needed <= self._max_particles:
+            return
+        target = min(int(self._max_particles * self._CAPACITY_GROWTH), MAX_PARTICLES)
+        self._resize_fields(max(needed, target, self._MIN_CAPACITY))
 
     def resize(self, new_capacity: int) -> None:
         """
@@ -972,8 +992,7 @@ class Particles:
         vorticity: np.ndarray = np.zeros(3),
     ):
         # Ensure we have space for one more particle
-        if self.number_of_particles >= self._max_particles:
-            self._resize_fields(self.number_of_particles)
+        self._grow_capacity(self.number_of_particles + 1)
 
         # Prepare data arrays with a single particle (using float32 for Taichi compatibility)
         position = np.ascontiguousarray(position, dtype=np.float32).reshape(1, 3)
@@ -1106,8 +1125,7 @@ class Particles:
 
         # Ensure we have enough space for all particles
         total_particles = self.number_of_particles + N
-        if total_particles > self._max_particles:
-            self._resize_fields(total_particles)
+        self._grow_capacity(total_particles)
 
         # Copy all data to Taichi fields at once
         start_idx = self.number_of_particles
@@ -1226,8 +1244,7 @@ class Particles:
             raise ValueError("Velocity gradient and strain rate must have shape (N, 3, 3).")
         vorticity = (circulation / volume[:, None]).astype(dt)
 
-        if self._max_particles < N:
-            self._resize_fields(N)
+        self._grow_capacity(N)
 
         self._populate_from_numpy(
             position,
@@ -1368,8 +1385,7 @@ class Particles:
 
         # Ensure we have capacity
         total_particles = self.number_of_particles + count
-        if total_particles > self._max_particles:
-            self._resize_fields(total_particles)
+        self._grow_capacity(total_particles)
 
         start_idx = self.number_of_particles
 
@@ -1591,9 +1607,14 @@ class Particles:
 
             self.remove_vortex_particles(indices=indices_to_remove, remove_all=False)
             new_N = self.number_of_particles
-            # Only resize if there are particles remaining (Taichi requires dimension > 0)
-            if new_N > 0:
-                self._resize_fields(new_N)
+            # Shrink with hysteresis: keep _SHRINK_HEADROOM headroom so the next
+            # growth (e.g. DVH/GBD regeneration) does not immediately re-allocate,
+            # and only shrink at all when the capacity is far oversized.
+            shrink_target = max(int(self._SHRINK_HEADROOM * new_N), self._MIN_CAPACITY)
+            if new_N > 0 and self._max_particles > max(
+                self._SHRINK_TRIGGER * new_N, shrink_target
+            ):
+                self._resize_fields(shrink_target)
 
     def update_circulations_masked(self, mask: np.ndarray, delta_circ: np.ndarray) -> None:
         """Apply an in-place circulation delta to a masked subset of particles.

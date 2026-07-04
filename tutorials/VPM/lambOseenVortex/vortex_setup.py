@@ -191,8 +191,13 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         # long DVH/GBD runs. Override only for backend debugging.
         processing_unit=args.processing_unit,
         device_memory_fraction=args.device_memory_fraction,
+        # Quadrupole far-field expansion (multipole_order=3) is both more
+        # accurate and faster than the old monopole at theta=0.35: it keeps
+        # velocity/gradient errors below that baseline while opening the
+        # Barnes-Hut acceptance angle to theta=0.7 (~1.4x fewer node visits).
         velocity=VelocityConfig.treecode(
-            theta=0.35,
+            theta=0.7,
+            multipole_order=3,
             sort_particle_targets=True,
             traversal_block_dim=128,
         ),
@@ -235,16 +240,30 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     solver.update_config(backup_frequency=fixed_interval)
     solver.update_config(logging_frequency=fixed_interval)
 
-    # Determine number of steps: explicit --num-steps overrides --total-time
-    num_steps = (
-        int(args.num_steps)
-        if args.num_steps is not None
-        else int(np.ceil(args.total_time / dt_actual))
-    )
+    # Determine number of steps.  For benchmark plots the final sample must
+    # land exactly on the requested physical time, otherwise the numerical
+    # profile and analytic Lamb-Oseen reference are silently compared at
+    # different diffusion ages.
+    if args.num_steps is not None:
+        num_steps = int(args.num_steps)
+    else:
+        steps_float = args.total_time / dt_actual
+        num_steps = int(round(steps_float))
+        if not np.isclose(num_steps * dt_actual, args.total_time, rtol=1e-12, atol=1e-9):
+            raise ValueError(
+                f"{scheme.upper()} cannot finish exactly at t={args.total_time:g}s "
+                f"with dt={dt_actual:.12g}s (steps={steps_float:.6f}). "
+                "Choose a dt/grid spacing whose adjusted time step divides the target time."
+            )
 
     solver.info()
     for _ in range(num_steps):
         solver.update_state()
+    if not np.isclose(solver.flow_time, num_steps * dt_actual, rtol=0.0, atol=1e-9):
+        raise RuntimeError(
+            f"{scheme.upper()} finished at t={solver.flow_time:.12g}s, "
+            f"expected {num_steps * dt_actual:.12g}s."
+        )
     solver.reset_gpu()  # This should clean up the GPU
 
 

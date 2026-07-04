@@ -72,7 +72,7 @@ class TaichiTreecode:
         self.max_leaf_size = max_leaf_size
         self.theta_sq = theta * theta
         self.kernel_type = kernel_type.upper()
-        if multipole_order not in (1, 2):
+        if multipole_order not in (1, 2, 3):
             raise ValueError(f"Unsupported treecode multipole_order: {multipole_order}")
         if traversal_block_dim < 0:
             raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
@@ -100,6 +100,10 @@ class TaichiTreecode:
         #   M[b, a] = sum_j (x_j - node_com)_b * Gamma_{j,a}
         # Used by the opt-in dipole correction when multipole_order == 2.
         self.node_circ_dipole = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_nodes)
+        # Second-order source-position moment around node_com:
+        #   Q[node, k][a, b] = sum_j Gamma_{j,k} * d_a * d_b,   d = x_j - node_com
+        # (symmetric in a, b).  Used when multipole_order == 3 (quadrupole).
+        self.node_circ_quad = ti.Matrix.field(3, 3, dtype=ti.f32, shape=(max_nodes, 3))
 
         # Binary tree structure (left/right child, -1 = none)
         self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
@@ -221,7 +225,7 @@ class TaichiTreecode:
         self.kernel_type_id[None] = kernel_id
 
     def set_multipole_order(self, order: int) -> None:
-        if order not in (1, 2):
+        if order not in (1, 2, 3):
             raise ValueError(f"Unsupported treecode multipole_order: {order}")
         self.multipole_order[None] = int(order)
 
@@ -652,7 +656,11 @@ class TaichiTreecode:
                 self.leaf_particles[0] = 0
                 self.node_total_circ[0] = self.circulations[0]
                 self.node_com[0] = self.positions[0]
-                self.node_circ_dipole[0] = ti.Matrix.zero(ti.f32, 3, 3)
+                # NB: Python scope — ti.Matrix.zero is Taichi-scope only here.
+                zero33 = np.zeros((3, 3), dtype=np.float32)
+                self.node_circ_dipole[0] = zero33
+                for k in range(3):
+                    self.node_circ_quad[0, k] = zero33
                 self.node_center[0] = self.positions[0]
                 self.node_half_size[0] = 0.0
                 self.node_avg_radius[0] = self.radii[0]
@@ -779,6 +787,8 @@ class TaichiTreecode:
             self.node_avg_radius[j] = self.radii[p]
             self.node_com[j] = self.positions[p]
             self.node_circ_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
+            for k in ti.static(range(3)):
+                self.node_circ_quad[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
             self.node_center[j] = self.positions[p]
             self.node_half_size[j] = 0.0
             self._node_aabb_min[j] = self.positions[p]
@@ -854,6 +864,28 @@ class TaichiTreecode:
                         + d_right[b] * gamma_right[a]
                     )
             self.node_circ_dipole[idx] = dipole
+
+            if self.multipole_order[None] >= 3:
+                # Quadrupole shift: Q'_k[a,b] = Q_k[a,b] + s_a D[b,k] + s_b D[a,k]
+                # + Gamma_k s_a s_b, with s the child COM offset and D the
+                # child's own dipole (D[b,k] = sum d_b Gamma_k about child COM).
+                dip_l = self.node_circ_dipole[left]
+                dip_r = self.node_circ_dipole[right]
+                for k in ti.static(range(3)):
+                    quad = ti.Matrix.zero(ti.f32, 3, 3)
+                    for a in ti.static(range(3)):
+                        for b in ti.static(range(3)):
+                            quad[a, b] = (
+                                self.node_circ_quad[left, k][a, b]
+                                + d_left[a] * dip_l[b, k]
+                                + d_left[b] * dip_l[a, k]
+                                + gamma_left[k] * d_left[a] * d_left[b]
+                                + self.node_circ_quad[right, k][a, b]
+                                + d_right[a] * dip_r[b, k]
+                                + d_right[b] * dip_r[a, k]
+                                + gamma_right[k] * d_right[a] * d_right[b]
+                            )
+                    self.node_circ_quad[idx, k] = quad
 
             count_l = max(self.node_particle_count[left], 1)
             count_r = max(self.node_particle_count[right], 1)
@@ -943,6 +975,23 @@ class TaichiTreecode:
         return result
 
     @ti.func
+    def zeta_double_prime_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        """Second derivative of the regularization kernel zeta.
+
+        Gaussian:  zeta'' = (4x^2 - 2) zeta.
+        HOA:       zeta'' = zeta (56x^2 - 7) / (x^2 + 1)^2.
+        """
+        result = ti.cast(0.0, ti.f32)
+        zeta_val = self.zeta_kernel(r_sigma)
+        x2 = r_sigma * r_sigma
+        if self.kernel_type_id[None] == 0:
+            result = (4.0 * x2 - 2.0) * zeta_val
+        else:
+            base = x2 + 1.0
+            result = zeta_val * (56.0 * x2 - 7.0) / (base * base)
+        return result
+
+    @ti.func
     def skew(self, v: ti.template()) -> ti.Matrix:
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
 
@@ -981,6 +1030,45 @@ class TaichiTreecode:
         return out
 
     @ti.func
+    def _quad_P_matrix(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
+        """P[k, j] = (Q_k r)_j = sum_p Gamma_{p,k} (r . d_p) d_{p,j}."""
+        out = ti.Matrix.zero(ti.f32, 3, 3)
+        for k in ti.static(range(3)):
+            for j in ti.static(range(3)):
+                acc = 0.0
+                for b in ti.static(range(3)):
+                    acc += self.node_circ_quad[node, k][j, b] * r_vec[b]
+                out[k, j] = acc
+        return out
+
+    @ti.func
+    def _quad_B_vector(self, node: ti.i32, P: ti.template(), r_vec: ti.template()) -> ti.math.vec3:
+        """B_k = r^T Q_k r = sum_p Gamma_{p,k} (r . d_p)^2  (= P_k . r)."""
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            out[k] = P[k, 0] * r_vec[0] + P[k, 1] * r_vec[1] + P[k, 2] * r_vec[2]
+        return out
+
+    @ti.func
+    def _quad_trace_vector(self, node: ti.i32) -> ti.math.vec3:
+        """trQ_k = sum_p Gamma_{p,k} |d_p|^2."""
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            out[k] = (
+                self.node_circ_quad[node, k][0, 0]
+                + self.node_circ_quad[node, k][1, 1]
+                + self.node_circ_quad[node, k][2, 2]
+            )
+        return out
+
+    @ti.func
+    def _quad_A_vector(self, P: ti.template()) -> ti.math.vec3:
+        """A_i = eps_ijk P[k, j] = sum_p (r . d_p) (d_p x Gamma_p)_i."""
+        return ti.Vector(
+            [P[2, 1] - P[1, 2], P[0, 2] - P[2, 0], P[1, 0] - P[0, 1]]
+        )
+
+    @ti.func
     def _far_velocity_node(
         self, node: ti.i32, r_vec: ti.template(), r_mag: ti.f32, sigma: ti.f32
     ) -> ti.math.vec3:
@@ -997,6 +1085,20 @@ class TaichiTreecode:
             moment_dot = self._dipole_gamma_dot_r(node, r_vec)
             cross_moment = self._dipole_gamma_cross_d(node)
             vel += -term1 * cross_moment - term2 * r_vec.cross(moment_dot)
+            if self.multipole_order[None] >= 3:
+                # Quadrupole:  u += g A + (g/2) r x trQ + (g'/2r) r x B,
+                # g = term2 (from (d.grad)^2 F = 2g rd d + [g|d|^2 + (g'/r) rd^2] r).
+                zeta_p = self.zeta_prime_kernel(r_mag / sigma)
+                g_prime_over_r = (
+                    5.0 * zeta_val / (r2 * r2)
+                    - 15.0 * q_val / (r5 * r2)
+                    - zeta_p / (sigma * sigma * sigma * sigma * r3)
+                )
+                P = self._quad_P_matrix(node, r_vec)
+                A = self._quad_A_vector(P)
+                B = self._quad_B_vector(node, P, r_vec)
+                trQ = self._quad_trace_vector(node)
+                vel += term2 * A + r_vec.cross(0.5 * (term2 * trQ + g_prime_over_r * B))
         return vel
 
     @ti.func
@@ -1034,6 +1136,53 @@ class TaichiTreecode:
                 + term2 * cross_moment.outer_product(r_vec)
                 - term2 * cross_columns
             )
+            if self.multipole_order[None] >= 3:
+                # Quadrupole:  grad u += 1/2 [ -skew(c1) + (r x c2) (x) r
+                #                              + 2h (A (x) r + X) + 2g W ]
+                # with g = term2, h = g'/r (= t2p_over_r), c1_k = h B_k + g trQ_k,
+                # c2_k = (h'/r) B_k + h trQ_k, X[:,m] = r x P[:,m], and
+                # W[i,m] = eps_ijk Q_k[j,m].
+                sigma4 = sigma * sigma * sigma * sigma
+                zeta_pp = self.zeta_double_prime_kernel(r_sigma)
+                g_dbl_prime = (
+                    7.0 * zeta_prime_val / (sigma4 * r3)
+                    - 30.0 * zeta_val / r4
+                    + 90.0 * q_val / r7
+                    - zeta_pp / (sigma4 * sigma * r2)
+                )
+                h_val = t2p_over_r
+                hp_over_r = g_dbl_prime / r2 - h_val / r2
+                P = self._quad_P_matrix(node, r_vec)
+                A = self._quad_A_vector(P)
+                B = self._quad_B_vector(node, P, r_vec)
+                trQ = self._quad_trace_vector(node)
+                c1 = h_val * B + term2 * trQ
+                c2 = hp_over_r * B + h_val * trQ
+                X = ti.Matrix.zero(ti.f32, 3, 3)
+                W = ti.Matrix.zero(ti.f32, 3, 3)
+                for m in ti.static(range(3)):
+                    p_m = ti.Vector([P[0, m], P[1, m], P[2, m]])
+                    col = r_vec.cross(p_m)
+                    for i in ti.static(range(3)):
+                        X[i, m] = col[i]
+                    W[0, m] = (
+                        self.node_circ_quad[node, 2][1, m]
+                        - self.node_circ_quad[node, 1][2, m]
+                    )
+                    W[1, m] = (
+                        self.node_circ_quad[node, 0][2, m]
+                        - self.node_circ_quad[node, 2][0, m]
+                    )
+                    W[2, m] = (
+                        self.node_circ_quad[node, 1][0, m]
+                        - self.node_circ_quad[node, 0][1, m]
+                    )
+                gradu += 0.5 * (
+                    -self.skew(c1)
+                    + r_vec.cross(c2).outer_product(r_vec)
+                    + 2.0 * h_val * (A.outer_product(r_vec) + X)
+                    + 2.0 * term2 * W
+                )
         return gradu
 
     # LEAF SUMMATION FUNCTIONS

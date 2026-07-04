@@ -24,7 +24,6 @@ from .influence import (
     build_AIC_matrix,
     build_AIC_matrix_dirichlet,
     compute_forces_bernoulli,
-    compute_forces_impulse,
     compute_forces_kutta_joukowski,
     compute_pressure_bernoulli,
     compute_RHS_dirichlet_with_sources,
@@ -44,7 +43,7 @@ logger = logging.getLogger("vpm")
 class ForceConfig:
     """Configuration for aerodynamic force evaluation on panel methods.
 
-    Supports three methodologies with different trade-offs in accuracy,
+    Supports two methodologies with different trade-offs in accuracy,
     unsteadiness handling, and wake-truncation sensitivity.
 
     **1. Bernoulli (default):**
@@ -72,21 +71,6 @@ class ForceConfig:
        - Less accurate for thick bodies
        - Misses unsteady added-mass effects
 
-    **3. Impulse-based (experimental):**
-       Computes force from impulse time derivative:
-
-           F = -dI/dt    where    I = (ρ/2) ∫ x × ω dV
-
-       Pros:
-       - Invariant to wake truncation (passes "killer test")
-       - Includes added-mass effects automatically
-       - Consistent with momentum conservation
-
-       Cons:
-       - Requires time history (BDF1 / BDF2)
-       - Returns zero on the first time step
-       - New methodology, less validated in production
-
     Examples
     --------
     .. code-block:: python
@@ -96,14 +80,9 @@ class ForceConfig:
 
         # Kutta-Joukowski
         force = ForceConfig.kutta_joukowski()
-
-        # Impulse-based with 2nd-order BDF and smoothing
-        force = ForceConfig.impulse_based(order="BDF2", window=5)
     """
 
-    method: Literal["BERNOULLI", "KUTTA_JOUKOWSKI", "IMPULSE"] = "BERNOULLI"
-    impulse_order: Literal["BDF1", "BDF2"] = "BDF2"
-    smoothing_window: int = 3
+    method: Literal["BERNOULLI", "KUTTA_JOUKOWSKI"] = "BERNOULLI"
 
     @classmethod
     def bernoulli(cls):
@@ -112,14 +91,6 @@ class ForceConfig:
     @classmethod
     def kutta_joukowski(cls):
         return cls(method="KUTTA_JOUKOWSKI")
-
-    @classmethod
-    def impulse_based(
-        cls,
-        order: Literal["BDF1", "BDF2"] = "BDF2",
-        window: int = 3,
-    ):
-        return cls(method="IMPULSE", impulse_order=order, smoothing_window=window)
 
 class PanelSolver:
     def __init__(
@@ -452,22 +423,8 @@ class PanelSolver:
                 self.panel_forces,
                 n,
             )
-        elif self.force_config.method == "IMPULSE":
-            impulse_step = self.step
-            if self.force_config.impulse_order == "BDF1":
-                impulse_step = min(self.step, 1)
-            compute_forces_impulse(
-                self.lattice.strengths,
-                self.lattice.strengths_old,
-                self.lattice.strengths_old2,
-                self.lattice.areas,
-                self.lattice.normals,
-                rho,
-                dt,
-                impulse_step,
-                self.panel_forces,
-                n,
-            )
+        else:
+            raise ValueError(f"Unknown panel force method: {self.force_config.method}")
 
         # Summarize forces by group_id
         forces_np = self.panel_forces.to_numpy()[:n]
@@ -819,7 +776,7 @@ class PanelSolver:
             V_external_np: External velocity (N, 3) or (3,)
             U_ref: Reference velocity vector [ux, uy, uz] (m/s)
             density: Fluid density
-            dt: Time step size (required for impulse method)
+            dt: Time step size
             coupled: Whether in coupled mode (unused for panel method)
         """
         if self.lattice is None or self.lattice.num_panels == 0:

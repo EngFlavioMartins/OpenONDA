@@ -2,8 +2,7 @@
 """
 Theoretical Models for Flat Plate VLM-VPM Validation
 ======================================================
-Consolidates all analytical reference functions used in the manuscript:
-"Some Contributions Toward Impulse-Driven VLM-VPM Coupling".
+Consolidates analytical reference functions for flat-plate validation cases.
 
 Modules
 -------

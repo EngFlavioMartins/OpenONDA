@@ -479,8 +479,8 @@ class PhysicsBase:
         """
         self.velocity_method = method.upper()
         self.velocity_theta = theta
-        if multipole_order not in (1, 2):
-            raise ValueError(f"treecode multipole_order must be 1 or 2, got {multipole_order}")
+        if multipole_order not in (1, 2, 3):
+            raise ValueError(f"treecode multipole_order must be 1, 2 or 3, got {multipole_order}")
         if traversal_block_dim < 0:
             raise ValueError(
                 f"treecode traversal_block_dim must be >= 0, got {traversal_block_dim}"

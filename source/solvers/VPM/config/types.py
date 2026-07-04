@@ -1384,10 +1384,11 @@ class VelocityConfig:
       - θ = 0.5: ~5% error
       - θ = 0.7: ~15% error, faster"""
 
-    multipole_order: Literal[1, 2] = 1
+    multipole_order: Literal[1, 2, 3] = 1
     """Treecode far-field expansion order. 1 is the legacy monopole. 2 adds a
     circulation dipole moment per node, improving far-field gradient accuracy at
-    extra per-node cost."""
+    extra per-node cost. 3 adds the quadrupole moment, allowing a larger theta
+    at the same accuracy (usually the fastest accuracy/cost trade-off)."""
 
     sort_particle_targets: bool = False
     """Evaluate particle targets in Morton order for better GPU traversal
@@ -1403,9 +1404,9 @@ class VelocityConfig:
             raise ValueError(f"velocity method must be DIRECT or TREECODE, got {self.method!r}")
         if not 0.0 < self.theta < 2.0:
             raise ValueError(f"velocity theta must be in (0, 2), got {self.theta!r}")
-        if self.multipole_order not in (1, 2):
+        if self.multipole_order not in (1, 2, 3):
             raise ValueError(
-                f"velocity multipole_order must be 1 or 2, got {self.multipole_order!r}"
+                f"velocity multipole_order must be 1, 2 or 3, got {self.multipole_order!r}"
             )
         if self.traversal_block_dim < 0:
             raise ValueError(
@@ -1436,7 +1437,7 @@ class VelocityConfig:
     @staticmethod
     def treecode(
         theta: float = 0.3,
-        multipole_order: Literal[1, 2] = 1,
+        multipole_order: Literal[1, 2, 3] = 1,
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
     ) -> "VelocityConfig":
@@ -1444,7 +1445,7 @@ class VelocityConfig:
 
         Args:
               theta: Opening angle parameter (0.3-0.7). Smaller = more accurate.
-              multipole_order: 1 for monopole, 2 for dipole-corrected far nodes.
+              multipole_order: 1 monopole, 2 dipole, 3 quadrupole far-node expansion.
               sort_particle_targets: Evaluate particle targets in Morton order.
               traversal_block_dim: Taichi traversal kernel block size; 0 = backend default.
 

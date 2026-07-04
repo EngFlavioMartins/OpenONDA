@@ -3,7 +3,7 @@ VLM diagnostics module — recording and CSV export of VLM force/circulation his
 
 Owns all logic for:
   - Appending per-step VLM scalars to the solver diagnostics history dict.
-  - Writing vlm_forces.csv (including impulse-based CL channel decomposition).
+  - Writing vlm_forces.csv.
   - Appending flow_time / observed_dt history entries.
 
 Nothing in this module should import from the top-level VPM Solver class; all
@@ -141,10 +141,6 @@ class VLMDiagnostics:
     ) -> None:
         """Append one row to ``<backup_directory>/samples/vlm_forces.csv``.
 
-        Performs impulse-based CL channel decomposition (KJ vs unsteady) when
-        the VLM force method is ``'IMPULSE'`` and the required lattice helpers
-        are available.
-
         Parameters
         ----------
         vlm_solver:
@@ -170,8 +166,6 @@ class VLMDiagnostics:
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 
-        CL_kj, CL_unsteady = VLMDiagnostics._decompose_impulse_cl(vlm_solver, forces)
-
         row = {
             "time": flow_time,
             "step": time_step,
@@ -194,8 +188,6 @@ class VLMDiagnostics:
             "Cl_c4": forces.get("Cl_c4", 0.0),
             "Cm_c4": forces.get("Cm_c4", 0.0),
             "Cn_c4": forces.get("Cn_c4", 0.0),
-            "CL_kj": CL_kj,
-            "CL_unsteady": CL_unsteady,
             "gamma_bound_y": gamma_bound,
             "gamma_wake_y": gamma_wake,
             "lesp_max": lesp_max,
@@ -207,41 +199,3 @@ class VLMDiagnostics:
             df.to_csv(csv_path, index=False)
         else:
             df.to_csv(csv_path, mode="a", header=False, index=False)
-
-    # Internal helpers
-
-    @staticmethod
-    def _decompose_impulse_cl(vlm_solver, forces: dict) -> tuple[float, float]:
-        """Return (CL_kj, CL_unsteady) for impulse-method force decomposition.
-
-        Returns (0.0, 0.0) when the force method is not IMPULSE or when any
-        required attribute is missing / numerically degenerate.
-        """
-        if (
-            getattr(getattr(vlm_solver, "force", None), "method", None) != "IMPULSE"
-            or not hasattr(vlm_solver, "_last_U_ref")
-            or vlm_solver._last_U_ref is None
-        ):
-            return 0.0, 0.0
-
-        try:
-            U_ref = vlm_solver._last_U_ref
-            U_ref_mag = float(np.linalg.norm(U_ref))
-            norm_f = float(forces.get("q", 0.0)) * float(forces.get("S_ref", 1.0))
-            if U_ref_mag < 1e-10 or norm_f < 1e-10:
-                return 0.0, 0.0
-
-            V_hat = U_ref / U_ref_mag
-            z_hat = np.array([0.0, 0.0, 1.0])
-            L_hat = z_hat - np.dot(z_hat, V_hat) * V_hat
-            L_hat_norm = np.linalg.norm(L_hat)
-            L_hat = L_hat / L_hat_norm if L_hat_norm > 1e-10 else np.array([0.0, 0.0, 1.0])
-
-            F_kj = np.sum(vlm_solver.lattice.get_forces_kj(), axis=0)
-            F_un = np.sum(vlm_solver.lattice.get_forces_unsteady(), axis=0)
-            return (
-                float(np.dot(F_kj, L_hat) / norm_f),
-                float(np.dot(F_un, L_hat) / norm_f),
-            )
-        except Exception:
-            return 0.0, 0.0
