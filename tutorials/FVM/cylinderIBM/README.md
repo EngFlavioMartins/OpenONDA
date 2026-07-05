@@ -49,11 +49,19 @@ Expected behaviour of the monitors:
 - **C_D converges from above** with mesh refinement: the diffuse-interface
   kernel enlarges the effective cylinder diameter by ≈ h, so coarse grids
   over-predict drag (paper Fig. 8 shows the same 1st–2nd-order approach from
-  above). Measured at Re = 30: h = D/10 gives C_D ≈ 1.98 and L/D ≈ 1.84
-  (≈ +11 % — and rescaling by the effective diameter D + h puts both back in
-  the reference bands: 1.80 and 1.67). Expect ≈ +5–8 % at the default
-  h = D/16. The domain here (24D × 16D) is also smaller than the paper's
-  64D × 32D, adding a small blockage over-prediction.
+  above). **Certified runs at Re = 30** (Fo-capped, run to steady state):
+
+  | resolution | C_D   | L/D   | final slip | reference (Constant et al.) |
+  |------------|-------|-------|------------|-----------------------------|
+  | h = D/10   | 1.98  | 1.84  | 1.4e-3     | C_D 1.74–1.80, L/D 1.55–1.70 |
+  | h = D/16   | 1.94  | 1.76  | 1.3e-3     | (same)                      |
+
+  Both over-predict C_D by ≈ 8–14 %; rescaling by the effective diameter D + h
+  (C_D · D/(D+h)) brings D/16 to ≈ 1.83, essentially the top of the band. The
+  domain here (24D × 16D) is also smaller than the paper's 64D × 32D, adding a
+  small blockage over-prediction. The point of the case is the **monitors**
+  (flat slip, Cl ≈ 0 symmetry, physical attached wake) — hitting C_D to the
+  percent needs h ≈ D/25 and the larger domain, at ~4× the run cost.
 
 ## Files
 

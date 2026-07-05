@@ -141,9 +141,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
             # ---- 1a'. Immersed-boundary direct forcing (Pinelli/Constant) ----
             # Force from the force-free predictor drives the marker velocity to
-            # the target: F = (U_d − I[û])/Δt, spread to cells and applied via a
-            # second predictor solve.  Each outer corrector repeats this, which
-            # is the paper's IBM↔pressure sub-iteration.
+            # the target: F = (U_d − I[û])/Δt, spread to the cells.  Two variants
+            # (ibm_second_solve): re-solve the momentum equation with the force
+            # (Constant et al., default) or apply it explicitly (Uhlmann); both
+            # then run multidirect residual iterations.  Repeated every outer
+            # corrector — the paper's IBM↔pressure sub-iteration.
             ibm = getattr(self, "ibm", None)
             if ibm is not None:
                 logging.Timer.start("    IBM Forcing")
