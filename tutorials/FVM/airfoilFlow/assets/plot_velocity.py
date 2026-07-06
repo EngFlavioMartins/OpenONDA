@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import build_arg_parser, figure_size, save_fig, RE
+from _common import COLORMAPS, build_arg_parser, figure_size, save_fig, RE
 
 
 def main():
@@ -46,14 +46,14 @@ def main():
     y = points[:, 1]
     near = (x >= -1.0) & (x <= 3.0) & (y >= -1.5) & (y <= 1.5)
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
-    sc = ax.scatter(x[near], y[near], c=mag[near], s=2, cmap="viridis", alpha=0.7)
+    sc = ax.scatter(x[near], y[near], c=mag[near], s=2, cmap=COLORMAPS["field_speed"], alpha=0.7)
     plt.colorbar(sc, ax=ax, label="$|U|$ [m/s]")
     ax.set_xlabel("$x$ [m]")
     ax.set_ylabel("$y$ [m]")
     ax.set_title(f"NACA0012  AoA=23$^\\circ$  Re={RE:.0f}  Velocity magnitude")
     ax.set_aspect("equal")
     fig.tight_layout()
-    save_fig(fig, "airfoil_velocity.png", args.figures_dir, dpi=args.dpi)
+    save_fig(fig, "airfoil_velocity.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

@@ -101,6 +101,7 @@ def main() -> None:
         figs / "vortex_ring_circulation.png",
         dpi=args.dpi,
         tight_rect=(0.0, 0.16, 1.0, 1.0),
+        figure_format=args.format,
     )
 
 

@@ -9,7 +9,7 @@ import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, figure_size, save_fig
+from _common import COLORMAPS, build_arg_parser, figure_size, save_fig
 
 
 def main():
@@ -63,7 +63,7 @@ def main():
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
     sc = ax.scatter(
         slice_pts[:, 0], slice_pts[:, 1],
-        c=slice_vort, s=1.0, cmap="hot",
+        c=slice_vort, s=1.0, cmap=COLORMAPS["vorticity_magnitude"],
         vmin=0, vmax=np.percentile(slice_vort, 95),
     )
     plt.colorbar(sc, ax=ax, label=r"$|\omega|$ [1/s]")
@@ -74,7 +74,7 @@ def main():
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    save_fig(fig, "cube_vorticity_slice.png", figures_dir, dpi=dpi)
+    save_fig(fig, "cube_vorticity_slice.png", figures_dir, dpi=dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

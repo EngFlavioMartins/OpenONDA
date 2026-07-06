@@ -97,7 +97,13 @@ def main() -> None:
         loc="lower center",
         bbox_to_anchor=(0.5, 0.0),
     )
-    save_fig(fig, figs / "vortex_ring_energy.png", dpi=args.dpi, tight_rect=(0.0, 0.16, 1.0, 1.0))
+    save_fig(
+        fig,
+        figs / "vortex_ring_energy.png",
+        dpi=args.dpi,
+        tight_rect=(0.0, 0.16, 1.0, 1.0),
+        figure_format=args.format,
+    )
 
 
 if __name__ == "__main__":

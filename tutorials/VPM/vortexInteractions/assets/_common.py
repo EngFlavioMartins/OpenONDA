@@ -110,6 +110,7 @@ def build_arg_parser(description: str):
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
     p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
+    p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
@@ -497,8 +498,8 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 # -- Figure helpers ------------------------------------------------------------
 
 
-def save_fig(fig, path, dpi: int | None = None) -> None:
-    _theme().save_fig(fig, path, dpi=dpi)
+def save_fig(fig, path, dpi: int | None = None, figure_format: str = "png") -> None:
+    _theme().save_fig(fig, path, figure_format=figure_format, dpi=dpi)
 
 
 def read_csv(assets_dir, fname: str, xcol: str, ycol: str):

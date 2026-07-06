@@ -35,6 +35,7 @@ FIG_DIR = CASE_DIR / "figures"
 parser = argparse.ArgumentParser()
 parser.add_argument("--solution-dir", default=str(SOL_DIR))
 parser.add_argument("--figures-dir", default=str(FIG_DIR))
+parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
 args, _ = parser.parse_known_args()
 SOL_DIR = Path(args.solution_dir).resolve()
@@ -42,21 +43,19 @@ FIG_DIR = Path(args.figures_dir).resolve()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 # -- Theme ---------------------------------------------------------------------
 m = None
-if THEME_PATH.exists():
-    spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    try:
-        m.set_style()
-    except Exception as e:
-        print(f"(Warning) Theme failed: {e}")
+if not THEME_PATH.exists():
+    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.set_style()
 
 sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import prandtl_a3D
 
 
 def _c(key):
-    return m.COLORS[key] if m and hasattr(m, "COLORS") else None
+    return m.COLORS[key]
 
 
 # -- Colours -------------------------------------------------------------------
@@ -70,7 +69,7 @@ CHORD = 1.0
 U_INF = 10.0
 a_3D = prandtl_a3D(AR)
 
-cm = m.CM if m is not None and hasattr(m, "CM") else 1 / 2.54
+cm = m.CM
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -131,6 +130,4 @@ ax2.legend()
 ax2.set_ylim(bottom=0)
 
 out = FIG_DIR / "plate_staticvsmoving.png"
-fig.savefig(out, bbox_inches="tight", dpi=args.dpi)
-plt.close(fig)
-print(f"  Saved: {out}")
+m.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

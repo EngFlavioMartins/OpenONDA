@@ -35,19 +35,13 @@ THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 
 def _load_theme() -> tuple[dict[str, str], object | None]:
-    theme = None
-    if THEME_PATH.exists():
-        spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
-        try:
-            theme.set_style()
-        except Exception:
-            pass
-
-    if theme is not None and hasattr(theme, "COLORS"):
-        return dict(theme.COLORS), theme
-    return {}, theme
+    if not THEME_PATH.exists():
+        raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+    spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
+    theme = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(theme)
+    theme.set_style()
+    return dict(theme.COLORS), theme
 
 
 _COLORS, _theme = _load_theme()
@@ -84,7 +78,7 @@ def _wing_lift_history(samples_dir: Path, surface: str):
     return (a[:, 0], a[:, 1]) if a.size else (np.array([]), np.array([]))
 
 
-def plot_forces(solution_dir: Path, figures_dir: Path) -> None:
+def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
     samples = solution_dir / "samples"
     meta_path = solution_dir / "motion_params.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
@@ -93,15 +87,15 @@ def plot_forces(solution_dir: Path, figures_dir: Path) -> None:
 
     # Top: per-wing lift
     plotted = False
-    c_front = _COLORS.get("TUDcyan", "#00726e")
-    c_rear = _COLORS.get("AccentRed", "#ef527a")
+    c_front = _COLORS["TUDcyan"]
+    c_rear = _COLORS["AccentRed"]
     for surf, color, lbl in [("front_wing", c_front, "Front wing"),
                              ("rear_wing", c_rear, "Rear wing")]:
         t, lift = _wing_lift_history(samples, surf)
         if t.size:
             ax_f.plot(t, lift, "-", color=color, lw=1.3, label=lbl)
             plotted = True
-    ax_f.axhline(0, color=_COLORS.get("reference", "#808080"), lw=0.5, alpha=0.5)
+    ax_f.axhline(0, color=_COLORS["reference"], lw=0.5, alpha=0.5)
     ax_f.set_ylabel("Lift [N]")
     ax_f.set_title("Forces on front vs rear delta wing")
     if plotted:
@@ -121,13 +115,18 @@ def plot_forces(solution_dir: Path, figures_dir: Path) -> None:
     ax_z.set_ylabel("Plunge position $z$ [m]")
     out = figures_dir / "delta_wing_forces.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    _theme.save_fig(fig, out)
+    _theme.save_fig(fig, out, figure_format=figure_format)
 
 
 # ----------------------------------------------------------------------------
 # Figure 2: total wake circulation history
 # ----------------------------------------------------------------------------
-def plot_circulation(solution_dir: Path, figures_dir: Path, pattern: str) -> None:
+def plot_circulation(
+    solution_dir: Path,
+    figures_dir: Path,
+    pattern: str,
+    figure_format: str = "png",
+) -> None:
     files = sorted(solution_dir.glob(pattern), key=_step)
     if not files:
         files = sorted(solution_dir.glob("vpm_*.h5"), key=_step)
@@ -144,10 +143,10 @@ def plot_circulation(solution_dir: Path, figures_dir: Path, pattern: str) -> Non
             else:
                 circ_l1.append(0.0)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
-    ax.plot(times, circ_l1, "-o", color=_COLORS.get("VPMpurple", "#7a4f99"), ms=3, lw=1.2)
+    ax.plot(times, circ_l1, "-o", color=_COLORS["VPMpurple"], ms=3, lw=1.2)
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")  # fixed: single-backslash mathtext
     ax.set_title("Delta wing: wake circulation magnitude history")
     out = figures_dir / "delta_wing_circulation_history.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    _theme.save_fig(fig, out)
+    _theme.save_fig(fig, out, figure_format=figure_format)

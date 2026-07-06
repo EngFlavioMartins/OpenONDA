@@ -148,7 +148,7 @@ def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float 
 def plot_surface_fields(
     solution_dir: Path, figures_dir: Path, dpi: int = 300, fmt: str = "png", dt: float = _DT
 ) -> int:
-    load_theme()
+    colors, theme = load_theme()
 
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
@@ -176,8 +176,8 @@ def plot_surface_fields(
     w_max = max(d["vort_z"].max() for d in datasets.values()) / _WC0
     v_norm = mcolors.Normalize(vmin=0.0, vmax=v_max)
     w_norm = mcolors.Normalize(vmin=0.0, vmax=w_max)
-    v_cmap = "plasma"
-    w_cmap = "inferno"
+    v_cmap = theme.COLORMAPS["vortex_speed"]
+    w_cmap = theme.COLORMAPS["vortex_vorticity"]
 
     x_ext = max(abs(d["X"]).max() for d in datasets.values()) / _AC0
     y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / _AC0
@@ -217,12 +217,12 @@ def plot_surface_fields(
         txt_kw = dict(
             ha=ha,
             va=va,
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", alpha=0.65, lw=0),
+            bbox=dict(boxstyle="round,pad=0.15", fc=colors["LightText"], alpha=0.65, lw=0),
         )
         ax_v.text(tx, ty, label, **txt_kw)
         ax_w.text(tx, ty, label, **txt_kw)
 
-    divider_kw = dict(color="white", linewidth=1.0, alpha=0.9)
+    divider_kw = dict(color=colors["LightText"], linewidth=1.0, alpha=0.9)
     for ax in (ax_v, ax_w):
         ax.axhline(0, **divider_kw)
         ax.axvline(0, **divider_kw)
@@ -262,7 +262,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dpi", type=int, default=300)
     p.add_argument(
         "--format",
-        choices=["png", "svg"],
+        choices=load_theme()[1].EXPORT_FORMATS,
         default="png",
         help="Output figure format (default: png).",
     )

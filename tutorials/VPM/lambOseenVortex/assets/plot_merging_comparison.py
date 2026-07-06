@@ -230,12 +230,23 @@ def _filtered_extrema_centers(xy, w, b0, a0, prev_c):
 
 
 def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False):
+    """Returns (sep, a_c2, ang, total_gamma, cores, cores[0], merged).
+
+    ``merged`` is True once the field can no longer be described as two
+    distinguishable cores: either the tracker's degenerate fallbacks collapsed
+    both "centers" onto the same point (true single-core merger), or the
+    reported separation is larger than any real two-vortex pair could sustain
+    (b can only shrink toward merger, never grow past b0) -- a tell for the
+    tracker having locked onto a noise/edge artifact as a fake second core.
+    Callers should stop extending the timeseries the first time this is True
+    rather than plot the degenerate-branch output as if it were data.
+    """
     if xy is None or gz is None:
-        return np.nan, np.nan, np.nan, 0.0, None, None
+        return np.nan, np.nan, np.nan, 0.0, None, None, False
     xy = xy.astype(np.float64)
     w = np.abs(gz).astype(np.float64)
     if w.sum() < 1e-30:
-        return np.nan, np.nan, np.nan, 0.0, None, None
+        return np.nan, np.nan, np.nan, 0.0, None, None, False
 
     R = 0.45 * b0
 
@@ -284,6 +295,12 @@ def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
         cores = cores[::-1]
 
     sep = float(np.linalg.norm(cores[0] - cores[1]))
+
+    # See docstring: coincident centers = genuine merger; sep > 1.5*b0 = a
+    # spurious "second core" (noise/edge artifact), since real separation only
+    # shrinks toward merger and C&W's own b/b0 never exceeds ~1.1 even at t=0.
+    merged = sep < 0.05 * b0 or sep > 1.5 * b0
+
     mid = 0.5 * (cores[0] + cores[1])
     ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
 
@@ -297,7 +314,7 @@ def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
     else:
         a_c2 = np.nan
 
-    return sep, a_c2, ang, float(w.sum()), cores.copy(), cores[0].copy()
+    return sep, a_c2, ang, float(w.sum()), cores.copy(), cores[0].copy(), merged
 
 
 # =============================================================
@@ -342,9 +359,16 @@ def extract_merging_timeseries(
                 )
                 break
 
-            sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
+            sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
                 xy, omega_z, b0, a0, prev_c, prev_c1, use_filtered_extrema=True
             )
+            if merged:
+                tau = nu * t / a0**2
+                print(
+                    f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
+                    f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
+                )
+                break
             rows.append((t, sep, a_c2, ang, gam))
     else:
         files = h5_files(solution_dir, "merging", scheme)
@@ -353,9 +377,16 @@ def extract_merging_timeseries(
         for p in files:
             t, pos, gz = read_h5(p)
             xy = pos[:, :2] if pos is not None else None
-            sep, a_c2, ang, gam, prev_c, prev_c1 = step_diagnostics(
+            sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
                 xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
             )
+            if merged:
+                tau = nu * t / a0**2
+                print(
+                    f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
+                    f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
+                )
+                break
             rows.append((t, sep, a_c2, ang, gam))
 
     if not rows:
@@ -455,16 +486,16 @@ def plot_merging_case(args) -> int:
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 400])
-    axes[0].set_xlim([0, 1.75])
+    axes[0].set_xlim([0, 1.7])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
     axes[1].set_ylim([0, 0.3])
-    axes[1].set_xlim([0, 1.75])
+    axes[1].set_xlim([0, 1.7])
 
     axes[2].set_xlabel(r"$\nu t / a_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
-    axes[2].set_ylim([0, 3.0])
-    axes[2].set_xlim([0, 1.75])
+    axes[2].set_ylim([0, 1.5])
+    axes[2].set_xlim([0, 1.7])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0) )

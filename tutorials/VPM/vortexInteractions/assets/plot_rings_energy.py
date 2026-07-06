@@ -68,7 +68,7 @@ def main() -> None:
     if plotted:
         ax_e.legend(ncol=2)
 
-    save_fig(fig, figs / "rings_energy.png", dpi=args.dpi)
+    save_fig(fig, figs / "rings_energy.png", dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

@@ -34,8 +34,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "$FORMAT" != "png" && "$FORMAT" != "svg" ]]; then
-    echo "Unknown format: $FORMAT (must be png or svg)" >&2; exit 1
+if [[ "$FORMAT" != "png" && "$FORMAT" != "pdf" ]]; then
+    echo "Unknown format: $FORMAT (must be png or pdf)" >&2; exit 1
 fi
 
 mkdir -p figures

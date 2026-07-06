@@ -224,7 +224,13 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
     return out, summary
 
 
-def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Path, dpi: int) -> None:
+def make_figure(
+    timeseries: pd.DataFrame,
+    summary: pd.DataFrame,
+    figures_dir: Path,
+    dpi: int,
+    figure_format: str = "png",
+) -> None:
     load_theme()
     fig, (ax_rate, ax_resid) = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
 
@@ -266,7 +272,7 @@ def make_figure(timeseries: pd.DataFrame, summary: pd.DataFrame, figures_dir: Pa
     ax_resid.set_ylabel(r"$E_0^{-1}\{dE/dt-(-\nu\Omega)\}$")
     ax_resid.set_ylim([-0.5, 0.2])
 
-    save_fig(fig, figures_dir / "rings_energy_budget.png", dpi=dpi)
+    save_fig(fig, figures_dir / "rings_energy_budget.png", dpi=dpi, figure_format=figure_format)
 
 
 def main() -> None:
@@ -298,7 +304,7 @@ def main() -> None:
     timeseries = pd.concat(all_series, ignore_index=True)
     summary = pd.DataFrame(rows).sort_values("case")
 
-    make_figure(timeseries, summary, figures_dir, args.dpi)
+    make_figure(timeseries, summary, figures_dir, args.dpi, args.format)
 
     cols = [
         "case",

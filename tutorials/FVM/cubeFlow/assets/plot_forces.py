@@ -40,7 +40,7 @@ def main():
             transform=ax.transAxes, ha="right", va="top" ,
             bbox=dict(
                 boxstyle="round,pad=0.3",
-                facecolor="white",
+                facecolor=COLORS["LightText"],
                 edgecolor=COLORS["background_light"],
                 alpha=0.8,
             ),
@@ -80,14 +80,14 @@ def main():
                     transform=ax.transAxes, ha="right", va="top" ,
                     bbox=dict(
                         boxstyle="round,pad=0.3",
-                        facecolor="white",
+                        facecolor=COLORS["LightText"],
                         edgecolor=COLORS["background_light"],
                         alpha=0.8,
                     ),
                 )
 
         plt.tight_layout()
-        save_fig(fig, "cube_forces.png", figures_dir, dpi=dpi)
+        save_fig(fig, "cube_forces.png", figures_dir, dpi=dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

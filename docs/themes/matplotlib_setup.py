@@ -497,6 +497,7 @@ def get_leapfrogging_rings_shapes2(
 CM = 1 / 2.54
 FONT_SIZE_PT = 10
 DEFAULT_DPI = 400
+EXPORT_FORMATS = ("png", "pdf")
 MAX_FIGURE_WIDTH_CM = 12.8
 WIDE_FIGURE_WIDTH_CM = 17.2
 FONT_PATH = Path(__file__).with_name("DejaVuSerif.ttf")
@@ -523,45 +524,60 @@ MARK_EVERY = {
     "trajectory": 5,
 }
 
+PALETTE = {
+    "dark": "#003d5c",
+    "teal": "#00726e",
+    "purple": "#7a4f99",
+    "orange": "#d98c00",
+    "green": "#4a9f2c",
+    "gray": "#808080",
+    "light_gray": "#C0C0C0",
+    "strong_gray": "#A6A6A6",
+    "white": "#ffffff",
+    "black": "#000000",
+}
 COLOR_CYCLE = (
-    "#003d5c",
-    "#7a4f99",
-    "#ef527a",
-    "#ffa600",
-    "#00726e",
-    "#4a9f2c",
+    PALETTE["dark"],
+    PALETTE["purple"],
+    PALETTE["orange"],
+    PALETTE["teal"],
+    PALETTE["green"],
+    PALETTE["gray"],
 )
-BACKGROUND_LIGHT = "#C0C0C0"
-BACKGROUND_STRONG = "#A6A6A6"
-REFERENCE_GRAY = "#808080"
+BACKGROUND_LIGHT = PALETTE["light_gray"]
+BACKGROUND_STRONG = PALETTE["strong_gray"]
+REFERENCE_GRAY = PALETTE["gray"]
 
 COLORS = {
-    # Canonical OpenONDA palette.
-    "TUDdark": "#003d5c",
-    "TUDcyan": "#00726e",
-    "TUDred": "#ef527a",
-    "VPMpurple": "#7a4f99",
-    "FVMorange": "#ffa600",
-    "AccentGreen": "#4a9f2c",
-    "AccentRed": "#ef527a",
+    # Semantic aliases over the 10-color PALETTE above.
+    "TUDdark": PALETTE["dark"],
+    "TUDcyan": PALETTE["teal"],
+    "TUDred": PALETTE["orange"],
+    "VPMpurple": PALETTE["purple"],
+    "FVMorange": PALETTE["orange"],
+    "AccentGreen": PALETTE["green"],
+    "AccentRed": PALETTE["teal"],
     "BackgroundLight": BACKGROUND_LIGHT,
     "BackgroundGray": BACKGROUND_STRONG,
     "ReferenceGray": REFERENCE_GRAY,
     "RefGray": REFERENCE_GRAY,
-    "DarkText": "#003d5c",
-    "DNSblue": "#003d5c",
-    "DNSorange": "#ffa600",
-    "LESteal": "#00726e",
-    "LESpurple": "#7a4f99",
+    "DarkText": PALETTE["dark"],
+    "LightText": PALETTE["white"],
+    "AxisBlack": PALETTE["black"],
+    "MaskGray": PALETTE["light_gray"],
+    "DNSblue": PALETTE["dark"],
+    "DNSorange": PALETTE["orange"],
+    "LESteal": PALETTE["teal"],
+    "LESpurple": PALETTE["purple"],
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
     # Comparison palette for method sweeps.
-    "case_les": "#003d5c",
-    "case_rvpm": "#7a4f99",
-    "case_relax": "#ef527a",
-    "case_remesh": "#ffa600",
-    "case_projection": "#00726e",
-    "case_split": "#4a9f2c",
+    "case_les": PALETTE["dark"],
+    "case_rvpm": PALETTE["purple"],
+    "case_relax": PALETTE["teal"],
+    "case_remesh": PALETTE["orange"],
+    "case_projection": PALETTE["green"],
+    "case_split": PALETTE["gray"],
     "background": BACKGROUND_LIGHT,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
@@ -569,21 +585,33 @@ COLORS = {
     "reference": REFERENCE_GRAY,
     "reference_fill": BACKGROUND_LIGHT,
     # Semantic aliases used by existing tutorials.
-    "vpm": "#7a4f99",
-    "hybrid": "#ef527a",
-    "fvm": "#ffa600",
-    "of": "#00726e",
+    "vpm": PALETTE["purple"],
+    "hybrid": PALETTE["teal"],
+    "fvm": PALETTE["orange"],
+    "of": PALETTE["green"],
     "ref": REFERENCE_GRAY,
     "literature": REFERENCE_GRAY,
-    "dvh": "#4a9f2c",
-    "dvhr": "#00726e",
-    "dns": "#003d5c",
-    "les": "#003d5c",
-    "rvpm": "#7a4f99",
-    "relax": "#ef527a",
-    "remesh": "#ffa600",
-    "projection": "#00726e",
-    "split": "#4a9f2c",
+    "dvh": PALETTE["green"],
+    "dvhr": PALETTE["teal"],
+    "dns": PALETTE["dark"],
+    "les": PALETTE["dark"],
+    "rvpm": PALETTE["purple"],
+    "relax": PALETTE["teal"],
+    "remesh": PALETTE["orange"],
+    "projection": PALETTE["green"],
+    "split": PALETTE["gray"],
+}
+
+COLORMAPS = {
+    "field_speed": "viridis",
+    "field_vorticity": "magma",
+    "vorticity_magnitude": "hot",
+    "velocity": "Spectral_r",
+    "vorticity": "RdBu_r",
+    "error": "inferno",
+    "error_diverging": "seismic",
+    "vortex_speed": "plasma",
+    "vortex_vorticity": "inferno",
 }
 
 FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
@@ -692,6 +720,18 @@ def get_color(name: str, fallback: str | None = None) -> str:
     return COLORS.get(name, fallback)
 
 
+def get_colormap(name: str) -> str:
+    """Return a named colormap from the central tutorial palette."""
+    return COLORMAPS[name]
+
+
+def figure_path(path, figure_format: str = "png") -> Path:
+    """Return a figure path with one of the supported export suffixes."""
+    if figure_format not in EXPORT_FORMATS:
+        raise ValueError(f"Unsupported figure format: {figure_format!r}")
+    return Path(path).with_suffix(f".{figure_format}")
+
+
 def figure_size(name: str = "single") -> tuple[float, float]:
     """Return a figure size in inches from a named centimetre preset."""
     width_cm, height_cm = FIGURE_SIZES_CM[name]
@@ -785,16 +825,21 @@ def set_style():
 def save_fig(
     fig,
     path,
+    figure_format: str | None = None,
     dpi: int | None = None,
     tight_rect: tuple[float, float, float, float] | None = None,
 ) -> None:
     """Save a Matplotlib figure with the shared export defaults."""
     out = Path(path)
+    if figure_format is not None:
+        out = figure_path(out, figure_format)
     out.parent.mkdir(parents=True, exist_ok=True)
-    if tight_rect is None:
-        fig.tight_layout()
-    else:
-        fig.tight_layout(rect=tight_rect)
+    layout_engine = fig.get_layout_engine() if hasattr(fig, "get_layout_engine") else None
+    if layout_engine is None:
+        if tight_rect is None:
+            fig.tight_layout()
+        else:
+            fig.tight_layout(rect=tight_rect)
     fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {out}")

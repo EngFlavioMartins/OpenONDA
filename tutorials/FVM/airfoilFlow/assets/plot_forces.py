@@ -37,7 +37,7 @@ def main():
     ax2.set_xlabel("Time [s]")
     fig.suptitle(f"NACA0012  AoA=23$^\\circ$  Re={RE:.0f}")
     fig.tight_layout()
-    save_fig(fig, "airfoil_forces.png", args.figures_dir, dpi=args.dpi)
+    save_fig(fig, "airfoil_forces.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

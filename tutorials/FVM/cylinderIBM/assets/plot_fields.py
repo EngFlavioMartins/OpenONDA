@@ -9,7 +9,7 @@ import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, figure_size, load_markers, save_fig  # noqa: E402
+from _common import COLORS, COLORMAPS, build_arg_parser, figure_size, load_markers, save_fig  # noqa: E402
 
 
 def main():
@@ -32,11 +32,11 @@ def main():
 
     markers = load_markers(args.solution_dir)
 
-    fields = [("|U|", np.linalg.norm(u, axis=1), "viridis", None)]
+    fields = [("|U|", np.linalg.norm(u, axis=1), COLORMAPS["field_speed"], None)]
     if vort is not None:
         wz = vort[:, 2] if vort.ndim == 2 else vort
         lim = max(np.percentile(np.abs(wz), 99.0), 1e-12)
-        fields.append((r"$\omega_z$", wz, "RdBu_r", (-lim, lim)))
+        fields.append((r"$\omega_z$", wz, COLORMAPS["vorticity"], (-lim, lim)))
 
     for label, f, cmap, clim in fields:
         fig, ax = plt.subplots(figsize=figure_size("wide"))
@@ -47,7 +47,7 @@ def main():
         if markers is not None:
             ax.plot(np.append(markers[:, 0], markers[0, 0]),
                     np.append(markers[:, 1], markers[0, 1]),
-                    "k-", linewidth=0.8)
+                    "-", color=COLORS["AxisBlack"], linewidth=0.8)
         ax.set_xlim(-3, 10)
         ax.set_ylim(-3.5, 3.5)
         ax.set_aspect("equal")
@@ -57,7 +57,7 @@ def main():
         fig.colorbar(sc, ax=ax, shrink=0.8)
         fig.tight_layout()
         name = "field_umag.png" if label == "|U|" else "field_vorticity.png"
-        save_fig(fig, name, args.figures_dir, dpi=args.dpi)
+        save_fig(fig, name, args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

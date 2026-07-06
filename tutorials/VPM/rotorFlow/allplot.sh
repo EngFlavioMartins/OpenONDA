@@ -9,11 +9,13 @@ PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
     || command -v python)}"
 SOLUTION_DIR="./solution/rotor"
 DPI=300
+FORMAT="png"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
         --dpi) DPI="$2"; shift 2 ;;
+        --format) FORMAT="$2"; shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -22,14 +24,14 @@ mkdir -p figures
 
 echo "[1/3] Rotor performance"
 "$PYTHON" assets/plot_rotor_performance.py \
-    --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
+    --solution-dir "$SOLUTION_DIR" --dpi "$DPI" --format "$FORMAT"
 
 echo "[2/3] Rotor wake planes"
 "$PYTHON" assets/plot_rotor_wake_planes.py \
-    --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
+    --solution-dir "$SOLUTION_DIR" --dpi "$DPI" --format "$FORMAT"
 
 echo "[3/3] Spanwise loading vs BEM"
 "$PYTHON" assets/plot_rotor_loading_validation.py \
-    --solution-dir "$SOLUTION_DIR" --dpi "$DPI"
+    --solution-dir "$SOLUTION_DIR" --dpi "$DPI" --format "$FORMAT"
 
 echo "Figures written to: $SCRIPT_DIR/figures"

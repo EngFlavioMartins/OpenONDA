@@ -53,6 +53,7 @@ parser.add_argument(
 )
 parser.add_argument("--solution-dir", default=str(CASE_DIR / "solution"))
 parser.add_argument("--figures-dir", default=str(CASE_DIR / "figures"))
+parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
 args, _ = parser.parse_known_args()
 
@@ -62,18 +63,16 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # -- Theme ----------------------------------------------------------------------
 m = None
-if THEME_PATH.exists():
-    spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    try:
-        m.set_style()
-    except Exception as exc:
-        print(f"(Warning) Theme failed: {exc}")
+if not THEME_PATH.exists():
+    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.set_style()
 
 
 def _c(key):
-    return m.COLORS[key] if m and hasattr(m, "COLORS") else None
+    return m.COLORS[key]
 
 
 C_MOVING = _c("TUDcyan")
@@ -81,7 +80,7 @@ C_STATIC = _c("vpm")
 C_LL = _c("ref")
 C_ELL = _c("literature")
 
-cm_inch = m.CM if m is not None and hasattr(m, "CM") else 1 / 2.54
+cm_inch = m.CM
 
 # -- Physical constants ---------------------------------------------------------
 AR = 10.0
@@ -156,6 +155,4 @@ ax.set_xlim(-1, 1)
 ax.legend()
 
 out = FIG_DIR / "plate_spanwise.png"
-fig.savefig(out, bbox_inches="tight", dpi=args.dpi)
-plt.close(fig)
-print(f"  Saved: {out}")
+m.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

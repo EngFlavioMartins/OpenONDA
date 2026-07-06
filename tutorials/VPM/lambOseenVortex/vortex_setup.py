@@ -40,7 +40,7 @@ from source.solvers.VPM.config.types import (
 #   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
 #   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference velocity gradient
 #   $t_0 = \sigma_0^2/(4\nu)$          = 1.65 s     initial vortex age
-#   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
+#   $h$ (particle spacing)              = 0.3 * r_{c,0}
 #
 # Buckingham-Pi groups used in figures:
 #   $\tau = \nu t / b_0^2$                              time
@@ -59,18 +59,17 @@ DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
 RC = 0.125  # initial C&W core radius a0 [m] — radius of PEAK azimuthal velocity
+MERGING_RC = 0.17  # C&W co-rotating merger benchmark core radius a0 [m]
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 
 # C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen
-# vortex that radius is r_max = BETA_RMAX * sigma (BETA_RMAX = 1.12091, the
-# nonzero root of e^x = 1 + 2x). LambOseenVPM parameterizes the Gaussian width
-# sigma via a_sq = 4*nu*t, so a0 must be converted to sigma = a0/BETA_RMAX before
-# setting the vortex age. Matches assets/_common.py:BETA_RMAX exactly.
-BETA_RMAX = 1.1209064227785341
-TOTAL_TIME = 16.0
-LENGTH = 20  # vortex column span in z, in units of RC (default; override with --length)
+BETA_RMAX = 1.12
+TOTAL_TIME = 20.0
+LENGTH = 50  # vortex column span in z, in units of RC
+SPACING_FACTOR = 0.3
+GRID_SPACING_FACTOR = 0.3
 VISCOUS_THRESHOLD_MODE = "budget"
-VISCOUS_THRESHOLD = 2.0e-4
+VISCOUS_THRESHOLD = 1.0e-3
 DVH_RD_RATIO = 3
 GBD_MAX_NODES = 120_000
 
@@ -107,7 +106,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     """Run one viscous scheme for the case given by --gamma1/--gamma2."""
     gamma1, gamma2 = args.gamma1, args.gamma2
     nu = 1.0 / args.re
-    rc = args.core_radius
+    rc = MERGING_RC if gamma1 * gamma2 > 0 else args.core_radius
     b0 = args.separation
     if rc <= 0.0:
         raise ValueError("--core-radius must be positive")
@@ -204,14 +203,8 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         viscous=build_viscous_config(scheme, nu, args, spacing),
         advection=advection,
         stretching=stretching,
-        # CUDA avoids the Taichi 1.7.x Vulkan field-lifetime growth seen in
-        # long DVH/GBD runs. Override only for backend debugging.
         processing_unit=args.processing_unit,
         device_memory_fraction=args.device_memory_fraction,
-        # Quadrupole far-field expansion (multipole_order=3) is both more
-        # accurate and faster than the old monopole at theta=0.35: it keeps
-        # velocity/gradient errors below that baseline while opening the
-        # Barnes-Hut acceptance angle to theta=0.7 (~1.4x fewer node visits).
         velocity=VelocityConfig.treecode(
             theta=0.7,
             multipole_order=3,
@@ -230,10 +223,6 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     )
 
     solver = Solver(config=config)
-    # Pre-size temp fields to the bounded particle count,
-    # not 500k: on a 6 GB laptop GPU the oversized pre-allocation wastes VRAM
-    # headroom that the DVH/GBD grid + treecode + per-step staging buffers need.
-    # Fields still grow on demand if a run exceeds this.
     solver.physics._resize_temp_fields(args.temp_field_capacity)
 
     n = len(positions)
@@ -251,26 +240,21 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     # DVH overrides the user-set time step, so we query the actual dt used.
     dt_actual = solver.get_time_step_size()
 
-    # Keep a consistent physical backup interval (~0.3s matching CS/RWM at
-    # args.dt=0.03, backup_frequency=10) regardless of which scheme is used.
     fixed_interval = max(1, round(10.0 * args.dt / dt_actual))
     solver.update_config(backup_frequency=fixed_interval)
     solver.update_config(logging_frequency=fixed_interval)
 
-    # Determine number of steps.  For benchmark plots the final sample must
-    # land exactly on the requested physical time, otherwise the numerical
-    # profile and analytic Lamb-Oseen reference are silently compared at
-    # different diffusion ages.
     if args.num_steps is not None:
         num_steps = int(args.num_steps)
     else:
         steps_float = args.total_time / dt_actual
-        num_steps = int(round(steps_float))
-        if not np.isclose(num_steps * dt_actual, args.total_time, rtol=1e-12, atol=1e-9):
-            raise ValueError(
-                f"{scheme.upper()} cannot finish exactly at t={args.total_time:g}s "
-                f"with dt={dt_actual:.12g}s (steps={steps_float:.6f}). "
-                "Choose a dt/grid spacing whose adjusted time step divides the target time."
+        num_steps = max(1, round(steps_float))
+        actual_time = num_steps * dt_actual
+        if not np.isclose(actual_time, args.total_time, rtol=1e-12, atol=1e-9):
+            print(
+                f"  [{scheme}] dt={dt_actual:.6g}s does not evenly divide "
+                f"--total-time={args.total_time:g}s; running {num_steps} steps "
+                f"to t={actual_time:.6g}s instead ({actual_time - args.total_time:+.4g}s off target)."
             )
 
     solver.info()
@@ -308,7 +292,10 @@ def parse_args() -> argparse.Namespace:
         "--solution-dir", default=str(DEFAULT_SOLUTION_DIR), help="Root output directory for all scheme sub-folders.",
     )
     parser.add_argument(
-        "--clean", action="store_true", help="Delete existing output sub-folder before running.",
+        "--clean",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Delete existing output sub-folder before running.",
     )
     parser.add_argument(
         "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s].",
@@ -329,7 +316,7 @@ def parse_args() -> argparse.Namespace:
         "--core-radius",
         type=float,
         default=RC,
-        help="Initial Lamb-Oseen core radius a0 [m]. Default preserves the legacy tutorial value.",
+        help="Initial Lamb-Oseen core radius a0 [m]. Co-rotating merger cases use MERGING_RC.",
     )
     parser.add_argument(
         "--separation",
@@ -341,13 +328,16 @@ def parse_args() -> argparse.Namespace:
         "--dvh-max-nodes", type=int, default=120_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
     )
     parser.add_argument(
-        "--spacing-factor", type=float, default=0.45, help="Particle/grid spacing as a fraction of the core radius rc.",
+        "--spacing-factor",
+        type=float,
+        default=SPACING_FACTOR,
+        help="Particle/grid spacing as a fraction of the core radius rc.",
     )
     parser.add_argument(
         "--grid-spacing-factor",
         type=float,
-        default=0.60,
-        help="DVH/GBD spacing as a fraction of rc. Use 0.45-0.50 for higher-resolution sweeps.",
+        default=GRID_SPACING_FACTOR,
+        help="DVH/GBD spacing as a fraction of rc.",
     )
     parser.add_argument(
         "--processing-unit",

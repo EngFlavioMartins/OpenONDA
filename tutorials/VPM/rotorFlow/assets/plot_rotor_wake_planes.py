@@ -184,10 +184,10 @@ def plot_wake_planes(args) -> int:
     ax.axhline(1.0 - 2.0 * args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
 
     x_text = 1.03
-    ax.text(x_text, 1.03, r"$U_\infty$", color="dimgray", va="center", ha="left" )
-    ax.text(x_text, 1.03 - args.a, r"$(1-a)U_\infty$", color="dimgray", va="center", ha="left" )
+    ax.text(x_text, 1.03, r"$U_\infty$", color=s_ref["color"], va="center", ha="left" )
+    ax.text(x_text, 1.03 - args.a, r"$(1-a)U_\infty$", color=s_ref["color"], va="center", ha="left" )
     ax.text(x_text, 1.03 - 2.0 * args.a, r"$(1-2a)U_\infty$",
-            color="dimgray", va="center", ha="left" )
+            color=s_ref["color"], va="center", ha="left" )
 
     ax.axvspan(
         args.hub_radius / R,

@@ -67,7 +67,7 @@ def main() -> None:
     if plotted:
         ax.legend(ncol=2, loc="best")
 
-    save_fig(fig, figs / "rings_stability.png", dpi=args.dpi)
+    save_fig(fig, figs / "rings_stability.png", dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

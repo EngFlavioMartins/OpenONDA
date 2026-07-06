@@ -50,7 +50,7 @@ def main():
     ax.set_ylabel(r"$\phi$")
     ax.set_ylim(-0.05, 1.05)
     ax.legend()
-    save_fig(fig, "step_profile.png", figs_dir, dpi=dpi)
+    save_fig(fig, "step_profile.png", figs_dir, dpi=dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

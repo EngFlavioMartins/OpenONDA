@@ -90,6 +90,7 @@ def build_arg_parser(description: str):
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
     p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
+    p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
@@ -356,8 +357,9 @@ def save_fig(
     path,
     dpi: int | None = None,
     tight_rect: tuple[float, float, float, float] | None = None,
+    figure_format: str = "png",
 ) -> None:
-    _theme().save_fig(fig, path, dpi=dpi, tight_rect=tight_rect)
+    _theme().save_fig(fig, path, figure_format=figure_format, dpi=dpi, tight_rect=tight_rect)
 
 
 def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:

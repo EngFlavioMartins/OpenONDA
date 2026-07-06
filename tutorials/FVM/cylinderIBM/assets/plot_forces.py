@@ -79,7 +79,7 @@ def main():
         ax.grid(True, alpha=0.3, which="both")
 
         fig.tight_layout()
-        save_fig(fig, f"forces_{name}.png", args.figures_dir, dpi=args.dpi)
+        save_fig(fig, f"forces_{name}.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
         print(f"  {name}: mean Cd = {cd_mean:.4f}", end="")
         if "Cd" in ref:

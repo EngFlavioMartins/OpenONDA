@@ -23,6 +23,7 @@ def _load_theme():
 
 THEME = _load_theme()
 COLORS = THEME.COLORS
+COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
 U_INF = 1.0
@@ -41,6 +42,7 @@ def build_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--solution-dir", default=str(SOLUTION_DIR))
     parser.add_argument("--figures-dir", default=str(FIGURES_DIR))
+    parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=400)
     parser.add_argument("--Re", type=float, default=30.0)
     return parser
@@ -78,6 +80,6 @@ def load_markers(solution_dir):
     return np.loadtxt(path, delimiter=",", skiprows=1)
 
 
-def save_fig(fig, name, figures_dir, dpi=400):
-    path = os.path.join(figures_dir, name)
-    THEME.save_fig(fig, path, dpi=dpi)
+def save_fig(fig, name, figures_dir, dpi=400, figure_format="png"):
+    path = Path(figures_dir) / name
+    THEME.save_fig(fig, path, figure_format=figure_format, dpi=dpi)

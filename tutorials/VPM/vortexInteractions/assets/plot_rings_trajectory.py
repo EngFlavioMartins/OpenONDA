@@ -113,7 +113,12 @@ def main() -> None:
     if legend_handles:
         ax.legend(handles=legend_handles, ncol=3, loc="lower right")
 
-    save_fig(fig, Path(args.figures_dir) / "rings_trajectory.png", dpi=args.dpi)
+    save_fig(
+        fig,
+        Path(args.figures_dir) / "rings_trajectory.png",
+        dpi=args.dpi,
+        figure_format=args.format,
+    )
 
 
 if __name__ == "__main__":

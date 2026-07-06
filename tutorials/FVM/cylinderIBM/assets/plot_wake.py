@@ -72,14 +72,14 @@ def main():
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
     ax.plot(x_cl / D_REF, u_cl / U_INF, color=COLORS["TUDdark"], linewidth=1.0)
-    ax.axhline(0.0, color="k", linewidth=0.5)
-    ax.axvspan(-0.5, 0.5, color="0.85", label="cylinder")
+    ax.axhline(0.0, color=COLORS["AxisBlack"], linewidth=0.5)
+    ax.axvspan(-0.5, 0.5, color=COLORS["MaskGray"], label="cylinder")
     if L is not None and "L_over_D" in ref:
         lo, hi = ref["L_over_D"]
         ax.axvspan(0.5 + lo, 0.5 + hi, color=COLORS["reference"], alpha=0.3,
                    label=f"ref. wake closure: L/D = {lo:.2f}-{hi:.2f}")
     if L is not None:
-        ax.axvline(0.5 + L, color=COLORS["TUDred"] if "TUDred" in COLORS else "r",
+        ax.axvline(0.5 + L, color=COLORS["TUDred"],
                    linestyle="--", linewidth=0.8, label=f"L/D = {L / D_REF:.3f}")
     ax.set_xlim(-2, 10)
     ax.set_xlabel("x / D")
@@ -88,7 +88,7 @@ def main():
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    save_fig(fig, "wake_centreline.png", args.figures_dir, dpi=args.dpi)
+    save_fig(fig, "wake_centreline.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
     if L is not None:
         msg = f"  recirculation length L/D = {L / D_REF:.3f}"

@@ -182,7 +182,7 @@ def plot_vortex_case(args) -> int:
     )
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
-    ref_kw = {"color": "gray", "lw": 1.0, "zorder": 0, "linestyle": "--"}
+    ref_kw = {"color": colors["reference"], "lw": 1.0, "zorder": 0, "linestyle": "--"}
     theory_t = run_t0 + elapsed_time
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]

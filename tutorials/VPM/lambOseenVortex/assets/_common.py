@@ -69,13 +69,11 @@ def build_arg_parser(description: str):
 
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
-    p.add_argument(
-        "--figures-dir", default=str(FIGURES_DIR), help="Output directory for PNG figures."
-    )
+    p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output figure directory.")
     p.add_argument("--dpi", type=int, default=300, help="Figure DPI (PNG only).")
     p.add_argument(
         "--format",
-        choices=["png", "svg"],
+        choices=_theme().EXPORT_FORMATS,
         default="png",
         help="Output figure format (default: png).",
     )

@@ -55,7 +55,7 @@ def main():
     ax.grid(True, alpha=0.3)
     ax.invert_yaxis()
     fig.tight_layout()
-    save_fig(fig, "airfoil_cp.png", args.figures_dir, dpi=args.dpi)
+    save_fig(fig, "airfoil_cp.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

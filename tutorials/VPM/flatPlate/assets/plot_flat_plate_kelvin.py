@@ -30,22 +30,18 @@ THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
 
 # -- Theme (same pattern as the sibling flat-plate plotters) ------------------
 _M = None
-if THEME_PATH.exists():
-    _spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-    _M = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_M)
-    try:
-        _M.set_style()
-    except Exception as exc:  # pragma: no cover - styling is best-effort
-        print(f"(Warning) Theme failed: {exc}")
-CM = _M.CM if _M is not None and hasattr(_M, "CM") else 1.0 / 2.54
+if not THEME_PATH.exists():
+    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+_spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
+_M = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_M)
+_M.set_style()
+CM = _M.CM
 
 
-def _c(key: str, fallback: str) -> str:
-    """Theme colour by key, with a fallback if the theme is unavailable."""
-    if _M is not None and hasattr(_M, "COLORS"):
-        return _M.COLORS.get(key, fallback)
-    return fallback
+def _c(key: str) -> str:
+    """Theme colour by key."""
+    return _M.COLORS[key]
 
 
 def load_budget(case_dir: Path, name: str):
@@ -70,6 +66,7 @@ def main() -> None:
     ap.add_argument("--aoa", type=float, default=8.0, help="Angle of attack [deg] (title only).")
     ap.add_argument("--solution-dir", default=str(CASE_DIR / "solution"))
     ap.add_argument("--figures-dir", default=str(CASE_DIR / "figures"))
+    ap.add_argument("--format", choices=_M.EXPORT_FORMATS, default="png")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args()
 
@@ -77,8 +74,8 @@ def main() -> None:
     if t.size == 0:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
-    c_bound = _c("vpm", "#7a4f99")
-    c_wake = _c("hybrid", "#ef527a")
+    c_bound = _c("vpm")
+    c_wake = _c("hybrid")
     residual = bound + wake
     scale = max(float(np.max(np.abs(bound))), float(np.max(np.abs(wake))), 1e-15)
     rel = 100.0 * residual / scale
@@ -96,8 +93,8 @@ def main() -> None:
     ax.set_title(rf"Bound–wake vortex-strength closure, $\alpha={args.aoa:.0f}^\circ$")
     ax.legend(loc="lower right")
 
-    axr.axhline(0.0, color=_c("reference", "#808080"), ls="--", lw=1.0)
-    axr.plot(t, rel / 1e-4, color=_c("DarkText", "#003d5c"), lw=1.2)
+    axr.axhline(0.0, color=_c("reference"), ls="--", lw=1.0)
+    axr.plot(t, rel / 1e-4, color=_c("DarkText"), lw=1.2)
     axr.set_xlabel("Time [s]")
     axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")
     axr.set_xlim(float(t.min()), float(t.max()))
@@ -109,9 +106,7 @@ def main() -> None:
     out_dir = Path(args.figures_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "flat_plate_kelvin.png"
-    fig.savefig(out, dpi=args.dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved: {out}")
+    _M.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
     print(f"Maximum relative closure residual: {max_rel / 100.0:.3e}")
 
 

@@ -25,7 +25,7 @@
 #   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
 #   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference gradient
 #   $t_0 = \sigma_0^2/(4\nu)$          = 1.65 s     initial vortex age
-#   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
+#   $h$ (particle spacing)              = 0.3 * r_{c,0}
 #
 # Co-rotating merger runs override the legacy tutorial core radius with
 # $a_0/b_0 = 0.17$, matching the C&W merger benchmark.
@@ -57,31 +57,20 @@ cd "$SCRIPT_DIR"
 # Clean up old data and figures:
 ./allclean.sh
 
-COMMON_FLAGS=(--re 530 --dt 0.04 --solution-dir ./solution --clean --processing-unit CUDA)
-CS_RWM_FLAGS=(--spacing-factor 0.4 --length 20 --total-time 20.0)
-DVH_FLAGS=(--grid-spacing-factor 0.40899787483419064 --dvh-max-nodes 120000 --length 16 --total-time 20.0)
-GBD_FLAGS=(--grid-spacing-factor 0.4 --length 16 --total-time 20.0)
-MERGING_GEOMETRY_FLAGS=(--core-radius 0.17 --separation 1.0)
-MERGING_DVH_FLAGS=(--grid-spacing-factor 0.3007337314957284 --dvh-max-nodes 120000 --length 16 --total-time 20.0)
-
 # ============================================================
 # TEST CASE 1: Single Lamb-Oseen vortex diffusion
 # ============================================================
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 0.0 --schemes cs \
-    "${COMMON_FLAGS[@]}" "${CS_RWM_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 0.0 --schemes cs
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 0.0 --schemes rwm \
-    "${COMMON_FLAGS[@]}" "${CS_RWM_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 0.0 --schemes rwm
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 0.0 --schemes dvh \
-    "${COMMON_FLAGS[@]}" "${DVH_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 0.0 --schemes dvh
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 0.0 --schemes gbd \
-    "${COMMON_FLAGS[@]}" "${GBD_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 0.0 --schemes gbd
 
 sleep 15
 
@@ -91,20 +80,16 @@ echo 'DONE WITH SINGLE VORTEX'
 # TEST CASE 2: Vortex dipole (counter-rotating pair)
 # ============================================================
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 -1.0 --schemes cs \
-    "${COMMON_FLAGS[@]}" --spacing-factor 0.40 --total-time 20.0
+    --gamma1 1.0 --gamma2 -1.0 --schemes cs
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 -1.0 --schemes rwm \
-    "${COMMON_FLAGS[@]}" --spacing-factor 0.40 --total-time 20.0
+    --gamma1 1.0 --gamma2 -1.0 --schemes rwm
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 -1.0 --schemes dvh \
-    "${COMMON_FLAGS[@]}" "${DVH_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 -1.0 --schemes dvh
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 -1.0 --schemes gbd \
-    "${COMMON_FLAGS[@]}" "${GBD_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 -1.0 --schemes gbd
 
 
 echo 'DONE WITH DIPOLE'
@@ -116,17 +101,13 @@ sleep 15
 # TEST CASE 3: Co-rotating vortex merger vortex merger
 # ============================================================
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 1.0 --schemes cs \
-    "${COMMON_FLAGS[@]}" "${MERGING_GEOMETRY_FLAGS[@]}" --spacing-factor 0.40 --length 20 --total-time 20.0
+    --gamma1 1.0 --gamma2 1.0 --schemes cs
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 1.0 --schemes rwm \
-    "${COMMON_FLAGS[@]}" "${MERGING_GEOMETRY_FLAGS[@]}" --spacing-factor 0.40 --length 20 --total-time 20.0
+    --gamma1 1.0 --gamma2 1.0 --schemes rwm
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 1.0 --schemes dvh \
-    "${COMMON_FLAGS[@]}" "${MERGING_GEOMETRY_FLAGS[@]}" "${MERGING_DVH_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 1.0 --schemes dvh
 
 "$PYTHON" vortex_setup.py \
-    --gamma1 1.0 --gamma2 1.0 --schemes gbd \
-    "${COMMON_FLAGS[@]}" "${MERGING_GEOMETRY_FLAGS[@]}" "${GBD_FLAGS[@]}"
+    --gamma1 1.0 --gamma2 1.0 --schemes gbd
