@@ -23,7 +23,6 @@ FVM-VPM Coupled Solver — overset/Chimera-style four-step loop.
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import logging
@@ -50,15 +49,8 @@ from source.coupler.core.helpers.continuous_overlap import (
 from source.coupler.core.helpers.fvm_velocity_blend import FVMVelocityBlend
 from source.coupler.core.helpers.output_redirector import OutputRedirector
 from source.coupler.core.helpers.setup import SetupHandler
-from source.solvers.OFW.fvm_solver import fvm_solver
-from source.solvers.VPM import Solver as VPM_Solver
-from source.solvers.VPM import SolverConfig
-from source.solvers.VPM.config.types import (
-    AdvectionConfig,
-    StretchingConfig,
-    TurbulenceConfig,
-    VelocityConfig,
-)
+from source.solvers.OFW.fvm_solver import fvm_solver  # type hint for the injected FVM
+from source.solvers.VPM import Solver as VPM_Solver  # type hint for the injected VPM
 from source.solvers.VPM.io.logging import Logging
 
 logger = logging.getLogger("coupler")
@@ -83,9 +75,50 @@ class FVMVPMCoupler:
     FVM-VPM coupler: the four-step overset loop with fringe relaxation.
     """
 
-    def __init__(self, config: CouplerConfig):
+    def __init__(
+        self,
+        config: CouplerConfig,
+        *,
+        fvm_solver,
+        vpm_solver=None,
+    ):
+        """Build the coupler around externally-constructed sub-solvers.
+
+        The caller builds each sub-solver with its OWN native API
+        (``VPM_Solver(SolverConfig(...))``, ``fvm_solver(case_dir)`` /
+        ``FVM.Solver.from_case(...)``) and injects the instances; ``config``
+        (:class:`CouplerConfig`) carries ONLY the coupling parameters — the
+        interface box, the hand-off/donor/fringe knobs, the shared physical
+        quantities (``u_inf``, ``nu``, particle spacing ``h``) and the FVM
+        sub-step ``config.dt``.  The VPM's physics (viscous scheme, stretching,
+        advection, turbulence, treecode θ, stabilization, kernel, precision,
+        domain bounds, max_particles) lives in its ``SolverConfig``; the FVM's
+        in its case dictionaries.  The sub-cycle count is derived internally
+        from the VPM's ``time_step_size`` and ``config.dt``.
+
+        Prefer the named constructor :meth:`from_solvers` for readability.
+
+        * ``fvm_solver`` — required on EVERY MPI rank (collective solve).
+        * ``vpm_solver`` — the GPU particle solver on the master rank; ``None``
+          on non-master ranks (build the GPU VPM on the master only, gated by
+          :meth:`is_master_rank`).
+
+        The FVM case must be prepared (``prepare_case``) before the FVM solver
+        reads it — see :meth:`from_solvers` for the canonical setup order.
+        """
+        if fvm_solver is None:
+            raise ValueError(
+                "FVMVPMCoupler requires an injected fvm_solver on every rank. "
+                "Build it with fvm_solver(case_dir) (all ranks) and the VPM on "
+                "the master, then use FVMVPMCoupler.from_solvers(config, "
+                "fvm_solver=..., vpm_solver=...)."
+            )
         self.config = config
         self.case_dir = Path(".").absolute()
+
+        # Injected sub-solvers.  The VPM may be None on non-master ranks.
+        self._injected_fvm = fvm_solver
+        self._injected_vpm = vpm_solver
 
         # In parallel (mpirun), every process runs this constructor.
         # OMPI_COMM_WORLD_RANK is set by mpirun before Python starts.
@@ -141,6 +174,117 @@ class FVMVPMCoupler:
         if self._is_master:
             self._write_run_metadata()
 
+    # =========================================================
+    # Construction helpers (dependency injection)
+    # =========================================================
+
+    @classmethod
+    def from_solvers(
+        cls,
+        config: CouplerConfig,
+        *,
+        fvm_solver,
+        vpm_solver=None,
+    ) -> "FVMVPMCoupler":
+        """Build a coupler around externally-constructed sub-solvers.
+
+        ``fvm_solver`` is required on every MPI rank (it participates in the
+        collective FVM solve).  ``vpm_solver`` is the GPU particle solver on
+        the master rank and ``None`` on non-master ranks.
+
+        The FVM case files (controlDict deltaT/writeInterval, transport nu,
+        coupling-patch BC type, initial field) must already reflect ``config``
+        BEFORE the FVM solver reads them at construction, so the intended flow
+        is::
+
+            FVMVPMCoupler.prepare_case(config)          # all ranks
+            fvm = fvm_solver(case_dir)                  # all ranks
+            vpm = VPM_Solver(SolverConfig(...)) if is_master else None
+            coupler = FVMVPMCoupler.from_solvers(
+                config, fvm_solver=fvm, vpm_solver=vpm)
+            coupler.run()
+        """
+        return cls(config, fvm_solver=fvm_solver, vpm_solver=vpm_solver)
+
+    @staticmethod
+    def _validate_injected_vpm(vpm, cfg: CouplerConfig) -> None:
+        """Fail-fast consistency checks between an injected VPM and the coupling
+        config — the safety net that makes dependency injection safe without
+        restricting which native VPM options the caller sets.
+
+        Hard errors on show-stoppers (VPM removal domain must contain the FVM
+        box, else injected near-body particles get culled every step); warnings
+        on likely-unintended mismatches (background velocity, hand-off radius).
+        """
+        box = cfg.fvm_box
+        # Hand-off radius: DVH/GBD regen rebuilds every particle with
+        # σ = regen_radius_ratio·h, but the Beale correction deconvolves
+        # assuming σ = overlap_radius_ratio·h.  A mismatch costs ~4× in-box
+        # velocity error.  The coupler can no longer silently sync it (the VPM
+        # is already built), so warn loudly — set regen_radius_ratio on the
+        # VPM's ViscousConfig to equal cfg.overlap_radius_ratio.
+        vsc = getattr(getattr(vpm, "config", None), "viscous", None)
+        regen = getattr(vsc, "regen_radius_ratio", None)
+        if regen is not None and abs(float(regen) - float(cfg.overlap_radius_ratio)) > 1e-9:
+            logger.warning(
+                "[Init] Injected VPM viscous regen_radius_ratio=%.2f != "
+                "overlap_radius_ratio=%.2f. The Beale deconvolution assumes the "
+                "hand-off radius; set the VPM ViscousConfig.regen_radius_ratio = "
+                "%.2f to match (measured ~4× in-box velocity error otherwise).",
+                float(regen), float(cfg.overlap_radius_ratio), float(cfg.overlap_radius_ratio),
+            )
+        dom = getattr(vpm, "vpm_domain_bounds", None)
+        if dom is None:
+            dom = getattr(getattr(vpm, "config", None), "vpm_domain_bounds", None)
+        if dom is not None and len(dom) == 6:
+            contains = (
+                dom[0] <= box[0] and dom[1] >= box[1]
+                and dom[2] <= box[2] and dom[3] >= box[3]
+                and dom[4] <= box[4] and dom[5] >= box[5]
+            )
+            if not contains:
+                raise ValueError(
+                    f"Injected VPM domain {tuple(dom)} does not contain the FVM "
+                    f"box {tuple(box)}. The near-body particles the coupler injects "
+                    "would be removed by the VPM's out-of-bounds cull every step. "
+                    "Widen vpm_domain_bounds (or the VPM stabilization "
+                    "remove_particles_by_bounds) to enclose fvm_box."
+                )
+        bg = getattr(vpm, "background_velocity", None)
+        if bg is not None:
+            bg = np.asarray(bg, dtype=np.float64).reshape(-1)
+            if bg.size == 3 and not np.allclose(bg, np.asarray(cfg.u_inf), atol=1e-9):
+                logger.warning(
+                    "[Init] Injected VPM background_velocity %s != config.u_inf %s; "
+                    "the donor freestream and the VPM advection freestream disagree.",
+                    tuple(bg), tuple(cfg.u_inf),
+                )
+
+    @staticmethod
+    def is_master_rank() -> bool:
+        """True on the rank that owns the GPU VPM and all IO (rank 0).
+
+        Lets an injection setup script build the VPM on the master only without
+        hard-coding the ``OMPI_COMM_WORLD_RANK`` lookup."""
+        return int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) == 0
+
+    @staticmethod
+    def prepare_case(config: CouplerConfig, *, restart: bool = False) -> None:
+        """Write the FVM case dictionaries from ``config`` (deltaT, writeInterval,
+        nu, coupling-patch BC type, initial field) BEFORE the FVM solver is
+        built in injection mode.  Idempotent; master-rank only (guards inside).
+
+        Uses ``config.period_multiplier`` and ``config.dt`` for the write
+        cadence — the same values the running loop later re-derives from the
+        VPM step; a mismatch only shifts the FVM output interval, not the
+        coupling physics."""
+        if int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) != 0:
+            return
+        SetupHandler(config).prepare_directories(
+            max(1, int(config.period_multiplier)), float(config.dt), restart=restart
+        )
+
+
     def _configure_logging(self) -> None:
         """Send coupler diagnostics to solution/coupler.log AND the console.
 
@@ -180,82 +324,50 @@ class FVMVPMCoupler:
             logger.warning("[Init] Failed to write run_metadata.json", exc_info=True)
 
     def initialize(self) -> None:
-        """Build solvers, prepare directories, seed particles.
+        """Adopt the injected solvers, reconcile the sub-cycling, and build the
+        coupling components (injector, fringe, velocity blend, body panel).
 
-        The VPM is built FIRST: some viscous schemes (DVH) dictate their own
-        time step Δt_d and override the configured dt.  Whatever dt the VPM
-        settles on becomes THE coupled dt — it is propagated to the FVM
-        (controlDict deltaT, write interval) and to the hand-off (buffer CFL
-        sizing) before those components are built.
+        The VPM's ``time_step_size`` is authoritative for the coupling step: a
+        viscous scheme (e.g. DVH) may have set its own Δt_d, so the sub-cycle
+        count ``period_multiplier = round(dt_vpm / dt_fvm)`` is re-derived from
+        it here, keeping ``config.dt`` as the fixed FVM accuracy knob.
+
+        Idempotent: a second call is a no-op (the coupling components are built
+        exactly once), so ``initialize`` then ``run``/``solve`` is safe.
         """
+        if self.injector is not None:
+            return  # already initialized
         cfg = self.config
 
-        # Radius consistency: DVH/GBD regen rebuilds every particle each step
-        # with σ = regen_radius_ratio·h, silently overriding the hand-off radii.
-        # The Beale correction deconvolves assuming σ = overlap_radius_ratio·h,
-        # so the two MUST match (measured cost of the mismatch: ~4× in-box
-        # velocity error at σ_regen=2.5h vs the corrected-for 1.5h).
+        # Adopt the injected VPM (None on non-master).  Validation checks it is
+        # mutually consistent with the coupling config (domain ⊇ box, hand-off
+        # radius, freestream) — the VPM is already built, so the coupler can no
+        # longer silently fix a mismatch; it fails/warns instead.
+        self.vpm = self._injected_vpm if self._is_master else None
         if self._is_master:
-            if cfg.viscous_scheme is not None and hasattr(cfg.viscous_scheme, "regen_radius_ratio"):
-                if cfg.viscous_scheme.regen_radius_ratio != cfg.overlap_radius_ratio:
-                    logger.info(
-                        "[Init] Syncing viscous regen radius to the hand-off: "
-                        "regen_radius_ratio %.2f → %.2f (= overlap_radius_ratio).",
-                        cfg.viscous_scheme.regen_radius_ratio,
-                        cfg.overlap_radius_ratio,
-                    )
-                    cfg.viscous_scheme.regen_radius_ratio = float(cfg.overlap_radius_ratio)
+            if self.vpm is None:
+                raise ValueError(
+                    "from_solvers: vpm_solver is None on the master rank. "
+                    "Build the VPM on the master (FVMVPMCoupler.is_master_rank())."
+                )
+            self._validate_injected_vpm(self.vpm, cfg)
+            logger.info("[Init] Using injected VPM solver.")
 
-        # VPM + GPU: rank 0 only.  Non-master ranks only participate in the
-        # collective FVM solve; they never touch Taichi or particle data.
-        if self._is_master:
-            stretching_factory = {
-                "direct": StretchingConfig.direct,
-                "transposed": StretchingConfig.transposed,
-                "mixed": StretchingConfig.mixed,
-            }[getattr(cfg, "stretching_scheme", "transposed")]
-
-            vpm_cfg = SolverConfig(
-                time_step_size=self.dt,
-                viscous=cfg.viscous_scheme,
-                stretching=stretching_factory(),
-                advection=AdvectionConfig(scheme=getattr(cfg, "advection_scheme", "RK3")),
-                turbulence=TurbulenceConfig.les_smagorinsky(cs=cfg.les_smagorinsky_cs),
-                stabilization=replace(
-                    cfg.stabilization,
-                    remove_particles_by_bounds=list(cfg.vpm_domain),
-                ),
-                particles_kernel=cfg.particles_kernel,
-                background_velocity=list(cfg.u_inf),
-                logging_frequency=cfg.log_period,
-                backup_frequency=cfg.backup_period,
-                backup_file_name="./solution/vpm_solution",
-                samplers=cfg.samplers,
-                velocity=VelocityConfig.treecode(theta=cfg.treecode_theta),
-                vpm_domain_bounds=list(cfg.vpm_domain),
-                max_particles=cfg.max_particles,
-                precision=cfg.precision,
-            )
-
-            with self.vpm_redirector:
-                self.vpm = VPM_Solver(config=vpm_cfg)
-
-        # ── Time-step consistency: the VPM may override its OWN step (e.g. DVH
-        # dictates a diffusion dt Δt_d).  Whatever the VPM settled on IS dt_vpm;
-        # keep dt_fvm fixed (it is the FVM accuracy knob) and re-derive the
-        # integer sub-cycle count period_multiplier = round(dt_vpm / dt_fvm). ──
+        # ── Time-step consistency: the VPM may carry its OWN step (e.g. DVH
+        # dictates a diffusion dt Δt_d).  Whatever the VPM has IS dt_vpm; keep
+        # dt_fvm fixed (the FVM accuracy knob) and re-derive the integer
+        # sub-cycle count period_multiplier = round(dt_vpm / dt_fvm). ──
         # NOTE: in parallel, period_multiplier is only updated on rank 0.  If a
-        # viscous scheme overrides dt in a parallel run, all ranks must configure
+        # viscous scheme overrides dt in a parallel run, all ranks must set
         # period_multiplier explicitly in CouplerConfig to stay in sync.
         if self._is_master:
             vpm_dt = float(self.vpm.time_step_size)
             if abs(vpm_dt - self.dt_vpm) > 1e-12 * max(self.dt_vpm, vpm_dt):
                 new_N = max(1, int(round(vpm_dt / self.dt_fvm)))
                 logger.warning(
-                    "[Init] VPM overrode the coupling step (viscous scheme %s): "
+                    "[Init] Injected VPM step differs from period_multiplier·dt: "
                     "dt_vpm %.4e → %.4e s.  Keeping dt_fvm=%.4e s and re-deriving "
                     "period_multiplier=%d FVM sub-steps per VPM step.",
-                    getattr(cfg.viscous_scheme, "scheme", "?"),
                     self.dt_vpm,
                     vpm_dt,
                     self.dt_fvm,
@@ -266,23 +378,11 @@ class FVMVPMCoupler:
                 self.dt = vpm_dt
                 self._write_run_metadata()  # re-record with the final dt_vpm / N
 
-        # Setup directories: FVM deltaT = dt_fvm, writeInterval at the VPM
-        # (coupling) cadence = backup_period · period_multiplier FVM steps.
-        # Rank 0 writes; non-master ranks read the result via shared filesystem.
-        if self._is_master:
-            setup_h = SetupHandler(cfg)
-            setup_h.prepare_directories(self.period_multiplier, self.dt_fvm, restart=False)
-
-        # Build the Eulerian backend — it marches on the small dt_fvm.  Default
-        # is the OFW (OpenFOAM) wrapper; "FVM" selects the OpenONDA native solver,
-        # which exposes the same OFW contract and builds from the case directory.
-        with self.ofw_redirector:
-            if str(getattr(cfg, "eulerian_backend", "OFW")).upper() == "FVM":
-                from source.solvers.FVM import Solver as _FVMSolver
-
-                self.ofw = _FVMSolver.from_case(str(self.case_dir))
-            else:
-                self.ofw = fvm_solver(str(self.case_dir))
+        # Adopt the injected FVM (all ranks), built by the caller from a case
+        # prepared via ``prepare_case``.  The runtime setters stamp the
+        # reconciled dt_fvm and nu so the coupling step and viscosity are the
+        # single source of truth even if the case dicts differed.
+        self.ofw = self._injected_fvm
         self.ofw.set_time_step(self.dt_fvm)
         self.ofw.set_kinematic_viscosity(cfg.nu)
 
@@ -337,8 +437,24 @@ class FVMVPMCoupler:
             print("Initialization complete.\n")
 
     def run(self, start_step: int = 0) -> None:
-        """Run the four-step coupling loop."""
-        self.initialize()
+        """Initialize (if not already) and run the coupling loop.
+
+        Convenience wrapper = :meth:`initialize` + :meth:`solve`.  Callers who
+        want the explicit build→initialize→solve flow can call those two
+        directly; ``initialize`` is idempotent so ``run`` after a manual
+        ``initialize`` will not rebuild.
+        """
+        if self.injector is None:  # not yet initialized
+            self.initialize()
+        self.solve(start_step=start_step)
+
+    def solve(self, start_step: int = 0) -> None:
+        """Run the four-step coupling loop (requires :meth:`initialize` first)."""
+        if self.injector is None:
+            raise RuntimeError(
+                "solve() called before initialize(); call coupler.initialize() "
+                "first, or use coupler.run() which does both."
+            )
         assert self._is_master == (self.vpm is not None)
         assert self.ofw is not None
 
@@ -645,21 +761,44 @@ class FVMVPMCoupler:
                 delta_u_n if total_area > 0.0 else 0.0,
             )
 
-        # Deficit probe on +x face
-        u_inf_x = float(self.u_inf[0])
-        x_max = self.config.fvm_box[1]
-        plus_x = face_centers[:, 0] >= x_max - 1e-6
-        if plus_x.any():
-            ux_face = u_donor[plus_x, 0]
-            logger.info(
-                "     [Donor deficit +x] u_x/U∞ min=%.3f mean=%.3f max=%.3f  n_face=%d",
-                ux_face.min() / u_inf_x,
-                ux_face.mean() / u_inf_x,
-                ux_face.max() / u_inf_x,
-                int(plus_x.sum()),
-            )
+        # Deficit probe on the OUTFLOW face (direction-agnostic: derived from
+        # u_inf, not hard-wired to +x).
+        self._log_outflow_deficit(face_centers, u_donor)
 
         return u_donor
+
+    def _outflow_axis_sign(self) -> tuple[int, float]:
+        """(axis, sign) of the box face most aligned with the freestream.
+
+        Makes the flow-direction diagnostics work for any inlet/outlet
+        placement; the coupling physics is already direction-agnostic."""
+        u = np.asarray(self.u_inf, dtype=np.float64).reshape(-1)
+        if u.size != 3 or not np.any(u != 0.0):
+            return 0, +1.0
+        axis = int(np.argmax(np.abs(u)))
+        return axis, float(np.sign(u[axis]))
+
+    def _log_outflow_deficit(self, face_centers: np.ndarray, u_field: np.ndarray) -> None:
+        """Log the streamwise-velocity deficit on the outflow face (the face the
+        freestream points toward), normalised by |U∞|.  Direction-agnostic."""
+        axis, sign = self._outflow_axis_sign()
+        u_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
+        box = self.config.fvm_box
+        face_lo, face_hi = box[2 * axis], box[2 * axis + 1]
+        if sign >= 0:
+            mask = face_centers[:, axis] >= face_hi - 1e-6
+        else:
+            mask = face_centers[:, axis] <= face_lo + 1e-6
+        if not mask.any():
+            return
+        # Streamwise component = projection of u onto the freestream direction.
+        u_stream = (u_field[mask] @ (np.asarray(self.u_inf) / u_mag))
+        logger.info(
+            "     [Donor deficit outflow axis=%d sign=%+d] u_s/U∞ min=%.3f "
+            "mean=%.3f max=%.3f  n_face=%d",
+            axis, int(sign), u_stream.min() / u_mag, u_stream.mean() / u_mag,
+            u_stream.max() / u_mag, int(mask.sum()),
+        )
 
     def _donor_exterior_velocity(self, face_centers: np.ndarray) -> np.ndarray:
         """Exterior-wake donor endpoint: U∞ + BS(particles OUTSIDE the box).
@@ -1064,17 +1203,9 @@ class FVMVPMCoupler:
                         sub + 1, N, k + 1, n_bc, t_w, t_bs,
                     )
                     if sub == N - 1 and k == n_bc - 1 and u_bc.shape[0] > 0:
-                        # Same +x deficit probe the legacy donor logs, on the
-                        # fully assembled (exterior + live interior) trace.
-                        x_max = self.config.fvm_box[1]
-                        plus_x = face_centers[:, 0] >= x_max - 1e-6
-                        if plus_x.any():
-                            ux = u_bc[plus_x, 0] / (u_inf_mag + 1e-30)
-                            logger.info(
-                                "     [Donor deficit +x] u_x/U∞ min=%.3f mean=%.3f "
-                                "max=%.3f  n_face=%d",
-                                ux.min(), ux.mean(), ux.max(), int(plus_x.sum()),
-                            )
+                        # Outflow deficit on the fully assembled (exterior +
+                        # live interior) trace; direction-agnostic.
+                        self._log_outflow_deficit(face_centers, u_bc)
                 self._fvm_step(
                     patch, u_bc, advance=(k == n_bc - 1),
                     omega_target=omega_bc if mixed else None,

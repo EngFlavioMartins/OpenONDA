@@ -9,16 +9,9 @@ Date: June 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from dataclasses import asdict, dataclass, field
-from typing import Literal
+from dataclasses import dataclass, field
 
 import numpy as np
-
-from source.solvers.VPM.config.types import (
-    StabilizationConfig,
-    StretchingConfig,
-    ViscousConfig,
-)
 
 
 @dataclass
@@ -53,12 +46,9 @@ class CouplerConfig:
     """Steps between sampler outputs."""
 
     # ── Near field (FVM / OpenFOAM) ───────────────────────────────────────
-    eulerian_backend: str = "OFW"
-    """Eulerian (near-body) backend: ``"OFW"`` (OpenFOAM Cython wrapper, default)
-    or ``"FVM"`` (OpenONDA native finite-volume solver).  Both expose the same
-    duck-typed contract; ``"FVM"`` builds via ``source.solvers.FVM.Solver.from_case``
-    and runs serially (``n_procs()==1``)."""
-
+    # The near-body solver (OpenFOAM ``fvm_solver(case_dir)`` or the native
+    # ``FVM.Solver.from_case``) is built by the caller and injected, so the
+    # backend choice lives in the setup script, not here.
     fvm_box: tuple[float, float, float, float, float, float] = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
     """OpenFOAM domain bounds [x0, x1, y0, y1, z0, z1] [m]."""
 
@@ -80,59 +70,18 @@ class CouplerConfig:
     ``{"cylinder": {"diameter": 1.0, "center": [0,0,0], "refinement": 60}}``."""
 
     # ── Far field (VPM) ───────────────────────────────────────────────────
+    # The VPM is built by the caller with its OWN native ``SolverConfig`` and
+    # injected (``FVMVPMCoupler.from_solvers``).  Its physics — viscous scheme,
+    # stretching, advection, turbulence, treecode θ, stabilization, particle
+    # kernel, max_particles, precision, domain bounds — therefore lives in that
+    # ``SolverConfig``, NOT here.  The coupler reads the domain/kernel/dtype it
+    # needs back from the injected solver and validates them against ``fvm_box``
+    # (see ``_validate_injected_vpm``).  Only the particle SPACING, which must
+    # equal the hand-off lattice spacing, is a coupling parameter:
     h: float = 0.05
-    """Particle spacing [m] (match ``grid_spacing``)."""
-
-    vpm_domain: tuple[float, float, float, float, float, float] = (-2.0, 5.0, -2.0, 2.0, -2.0, 2.0)
-    """VPM domain bounds [m]; particles outside are removed."""
-
-    max_particles: int = 500_000
-
-    particles_kernel: str = "GAUSSIAN"
-    """VPM regularization kernel.  The strength correction assumes GAUSSIAN."""
-
-    treecode_theta: float = 0.3
-    """Barnes-Hut opening angle (lower = more accurate, slower).  Each VPM step
-    does ~6 treecode evaluations; ~0.4 is ~1.3-1.7x faster per eval at <1%
-    velocity error and is a good default for coupled runs."""
-
-    advection_scheme: str = "RK3"
-    """Time integrator for particle advection: "RK2" | "RK4" | "RK3" | "EULER".
-    RK3 is the production default used for coherent-vortex VPM cases.  RK2 is
-    cheaper, while RK4 costs one additional velocity evaluation per step."""
-
-    viscous_scheme: ViscousConfig | None = None
-    """VPM viscous diffusion scheme (``None`` = Core Spreading)."""
-
-    stretching_scheme: Literal["direct", "mixed", "transposed"] = "transposed"
-    """VPM vortex-stretching formulation (Γ-stretching term).
-
-    ``"transposed"`` is the conservative direct O(N²) scheme.  rVPM-style
-    parallel-growth reduction is configured separately through
-    ``stabilization.parallel_strain_enabled`` so the physical formulation and
-    stabilization are not conflated."""
-
-    les_smagorinsky_cs: float = 0.17
-    """Smagorinsky constant Cs for the VPM sub-grid model (ν_t = (Cs·Δ)²|S|).
-
-    0.17 is the standard value and matches OpenFOAM's Smagorinsky default
-    (Ck=0.094 ⇒ Cs≈0.17) used by the reference/hybrid FVM, so the VPM far-wake
-    is not damped harder than the grid it couples to.  The previous 0.3 put
-    ν_t on the order of the molecular ν at Re=1000, roughly halving the
-    effective wake Reynolds number and suppressing bluff-body shedding.
-    0 disables the sub-grid model entirely."""
-
-    stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
-    """VPM stabilization configuration."""
-
-    precision: Literal["f32", "f64"] = "f32"
-    """Floating-point precision shared by the VPM solver and every coupler
-    data hand-off (donor BC, particle injection, body-panel RHS).  ``'f32'``
-    (default) or ``'f64'``.  Propagated to the VPM ``SolverConfig`` and used to
-    pick the NumPy dtype of all arrays written into the VPM Taichi fields so
-    no f32←f64 precision-loss warnings are emitted and a future f64 run is
-    end-to-end consistent.  ``'f64'`` requires the CPU backend (Vulkan/CUDA do
-    not support f64 well)."""
+    """Particle spacing [m] — the hand-off lattice spacing; must equal the
+    injected VPM's particle spacing.  (Typically also matches the FVM
+    ``grid_spacing`` so the interface resolutions agree.)"""
 
     # ── Coupling ──────────────────────────────────────────────────────────
     buffer_thickness: float = 0.10
@@ -307,10 +256,6 @@ class CouplerConfig:
     σ=1.0h/4 iters.  σ/h < 1 breaks particle overlap (BS field ripple) —
     do not go below 1.0.  Default 1.5 is the smoothest/safest."""
 
-    # ── Samplers (optional) ───────────────────────────────────────────────
-    samplers: list | None = None
-    """List of (sampler, name) tuples written at ``log_period``."""
-
     def __post_init__(self) -> None:
         """Validate enum-like config fields."""
         _valid_donor_interior_sources = ("particles", "fvm")
@@ -332,8 +277,6 @@ class CouplerConfig:
                 f"handoff_target_mode must be one of {_valid_handoff_modes!r}, "
                 f"got {self.handoff_target_mode!r}."
             )
-        if self.precision not in ("f32", "f64"):
-            raise ValueError(f"precision must be 'f32' or 'f64', got {self.precision!r}.")
 
     # ── Derived properties ────────────────────────────────────────────────
     @property
@@ -402,25 +345,14 @@ class CouplerConfig:
                 },
                 "surface": self.surface,
             },
+            # Coupling-interface geometry (the injected VPM's physics lives in
+            # its own SolverConfig, not here).  The acceptance scripts read
+            # h / buffer_thickness / dead_zone_h from this block.
             "vpm_solver": {
                 "particle_spacing": self.h,
                 "buffer_thickness": self.buffer_thickness,
                 "dead_zone_h": self.dead_zone_h,
                 "h": self.h,
-                "max_particles": self.max_particles,
-                "particles_kernel": self.particles_kernel,
-                "treecode_theta": self.treecode_theta,
-                "advection_scheme": self.advection_scheme,
-                "stretching_scheme": self.stretching_scheme,
-                "stabilization": asdict(self.stabilization),
-                "vpm_domain": {
-                    "xmin": self.vpm_domain[0],
-                    "xmax": self.vpm_domain[1],
-                    "ymin": self.vpm_domain[2],
-                    "ymax": self.vpm_domain[3],
-                    "zmin": self.vpm_domain[4],
-                    "zmax": self.vpm_domain[5],
-                },
             },
             "coupler": {
                 "blend_relaxation": self.blend_relaxation,
@@ -436,8 +368,6 @@ class CouplerConfig:
                 "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
                 "handoff_target_mode": self.handoff_target_mode,
-                "les_smagorinsky_cs": self.les_smagorinsky_cs,
                 "period_multiplier": self.period_multiplier,
-                "precision": self.precision,
             },
         }

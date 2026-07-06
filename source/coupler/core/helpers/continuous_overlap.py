@@ -276,6 +276,32 @@ def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> 
         return float("inf")
     return float(max(l_buf - _M4P_SUPPORT * h, 0.0) / (safety * u))
 
+def _outflow_band_mask(
+    grid_pos: np.ndarray,
+    lo: np.ndarray,
+    hi: np.ndarray,
+    h: float,
+    u_inf=None,
+) -> np.ndarray:
+    """Boolean mask of the downstream-most h-layer of the box.
+
+    Direction-agnostic: the outflow face is the box face whose outward normal
+    is most aligned with the freestream ``u_inf``.  With ``u_inf=None`` (or a
+    zero vector) it defaults to the +x face, preserving the legacy behaviour.
+    Used only by the flux-ratio diagnostic — the hand-off itself treats every
+    face identically.
+    """
+    axis, sign = 0, +1.0
+    if u_inf is not None:
+        u = np.asarray(u_inf, dtype=np.float64).reshape(-1)
+        if u.size == 3 and np.any(u != 0.0):
+            axis = int(np.argmax(np.abs(u)))
+            sign = float(np.sign(u[axis]))
+    if sign >= 0:
+        return grid_pos[:, axis] >= hi[axis] - h
+    return grid_pos[:, axis] <= lo[axis] + h
+
+
 def cosine_eta(
     grid_pos: np.ndarray,
     box: np.ndarray,
@@ -694,10 +720,13 @@ def continuous_handoff(
     # the stencil is still interior.
     cfl = float(abs(u_max) * abs(dt) / (buffer_length + 1e-30))
 
-    # Outflow-band vorticity-flux ratio (downstream-most h-layer of the box)
+    # Outflow-band vorticity-flux ratio (downstream-most h-layer of the box).
+    # Direction-agnostic: the outflow face is the one whose outward normal is
+    # most aligned with the freestream (derived from ``u_inf``); defaults to
+    # +x only when no direction is supplied.
     flux_ratio = 0.0
     if target is not None and len(grid_pos) > 0:
-        band = grid_pos[:, 0] >= hi[0] - h
+        band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
         if band.any():
             g_vpm = np.linalg.norm(np.sum(grid_blended[band], axis=0))
             g_fvm = np.linalg.norm(np.sum(target[band], axis=0))
@@ -762,12 +791,17 @@ class ContinuousOverlapInjector:
         self.blend_relaxation = float(cfg.blend_relaxation)
         self.strength_corr_iters = int(cfg.strength_correction_iterations)
         self.strength_corr_relax = float(cfg.strength_correction_relax)
-        if self.strength_corr_iters > 0 and cfg.particles_kernel != "GAUSSIAN":
+        # The Beale deconvolution assumes the GAUSSIAN mollifier; read the
+        # actual kernel from the injected VPM (the coupling config no longer
+        # owns it).  Skipped on non-master (coupler.vpm is None there).
+        kernel = getattr(getattr(coupler, "vpm", None), "config", None)
+        kernel = getattr(kernel, "particles_kernel", None)
+        if self.strength_corr_iters > 0 and kernel is not None and kernel != "GAUSSIAN":
             logger.warning(
                 "[Handoff] strength_correction assumes the GAUSSIAN particle "
-                "kernel (mollifier e^{-r²/σ²}); particles_kernel=%s — the "
+                "kernel (mollifier e^{-r²/σ²}); the injected VPM uses %s — the "
                 "deconvolution operator will not match the induced field.",
-                cfg.particles_kernel,
+                kernel,
             )
 
         self._box: np.ndarray | None = None
@@ -873,7 +907,10 @@ class ContinuousOverlapInjector:
                 "u_inf": self.config.U_inf,
             }
         else:
-            kw_target = {"fvm_cell_circ": cell_circ[in_bbox]}
+            # ``u_inf`` is ignored by the vorticity target path but sets the
+            # outflow-band direction for the flux-ratio diagnostic (the ω path
+            # is otherwise direction-agnostic).
+            kw_target = {"fvm_cell_circ": cell_circ[in_bbox], "u_inf": self.config.U_inf}
 
         def inside_mesh_at_node(grid_pos):
             d, _ = tree.query(grid_pos)
