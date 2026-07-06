@@ -7,7 +7,7 @@ the particle field; the near-field vorticity is conservatively handed
 back to the particles every step.
 
 Organization:
-- config/types.py: CouplerConfig (one flat, physics-driven dataclass)
+- config/types.py: CouplerSetup (one flat coupling-setup dataclass)
 - core/solver.py:  FVMVPMCoupler (the four-step coupling loop)
 - core/helpers/:   hand-off, fringe relaxation, case setup, I/O redirection
 - diagnostics/:    conservation recovery and validation signals
@@ -18,9 +18,7 @@ Date: June 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from source.solvers.VPM.config.types import StabilizationConfig, ViscousConfig  # noqa: F401
-
-from .config.types import CouplerConfig
+from .config.types import CouplerConfig, CouplerSetup
 
 try:
     from .core.solver import FVMVPMCoupler
@@ -30,7 +28,6 @@ except ImportError:
 
 __all__ = [
     "CouplerConfig",
+    "CouplerSetup",
     "FVMVPMCoupler",
-    "StabilizationConfig",
-    "ViscousConfig",
 ]

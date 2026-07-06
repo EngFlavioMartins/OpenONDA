@@ -41,7 +41,7 @@ except ImportError:
 import numpy as np
 import taichi as ti
 
-from source.coupler.config.types import CouplerConfig
+from source.coupler.config.types import CouplerSetup
 from source.coupler.core.helpers.continuous_overlap import (
     ContinuousOverlapInjector,
     cosine_eta,
@@ -75,45 +75,40 @@ class FVMVPMCoupler:
     FVM-VPM coupler: the four-step overset loop with fringe relaxation.
     """
 
-    def __init__(
-        self,
-        config: CouplerConfig,
-        *,
-        fvm_solver,
-        vpm_solver=None,
-    ):
-        """Build the coupler around externally-constructed sub-solvers.
+    def __init__(self, vpm_solver, fvm_solver, coupler_setup: CouplerSetup):
+        """Build the coupler around externally-constructed sub-solvers::
+
+            coupler = FVMVPMCoupler(vpm_solver, fvm_solver, coupler_setup)
 
         The caller builds each sub-solver with its OWN native API
         (``VPM_Solver(SolverConfig(...))``, ``fvm_solver(case_dir)`` /
-        ``FVM.Solver.from_case(...)``) and injects the instances; ``config``
-        (:class:`CouplerConfig`) carries ONLY the coupling parameters — the
+        ``FVM.Solver.from_case(...)``) and injects the instances;
+        :class:`CouplerSetup` carries ONLY the coupling parameters — the
         interface box, the hand-off/donor/fringe knobs, the shared physical
         quantities (``u_inf``, ``nu``, particle spacing ``h``) and the FVM
-        sub-step ``config.dt``.  The VPM's physics (viscous scheme, stretching,
+        sub-step ``dt``.  The VPM's physics (viscous scheme, stretching,
         advection, turbulence, treecode θ, stabilization, kernel, precision,
         domain bounds, max_particles) lives in its ``SolverConfig``; the FVM's
         in its case dictionaries.  The sub-cycle count is derived internally
-        from the VPM's ``time_step_size`` and ``config.dt``.
-
-        Prefer the named constructor :meth:`from_solvers` for readability.
+        from the configured solver time steps.
 
         * ``fvm_solver`` — required on EVERY MPI rank (collective solve).
         * ``vpm_solver`` — the GPU particle solver on the master rank; ``None``
           on non-master ranks (build the GPU VPM on the master only, gated by
           :meth:`is_master_rank`).
 
-        The FVM case must be prepared (``prepare_case``) before the FVM solver
-        reads it — see :meth:`from_solvers` for the canonical setup order.
+        The FVM case must be prepared (:meth:`prepare_case`) before the FVM
+        solver reads it — see :meth:`from_solvers` for the canonical order.
         """
         if fvm_solver is None:
             raise ValueError(
                 "FVMVPMCoupler requires an injected fvm_solver on every rank. "
                 "Build it with fvm_solver(case_dir) (all ranks) and the VPM on "
-                "the master, then use FVMVPMCoupler.from_solvers(config, "
-                "fvm_solver=..., vpm_solver=...)."
+                "the master, then FVMVPMCoupler(vpm_solver, fvm_solver, "
+                "coupler_setup)."
             )
-        self.config = config
+        self.coupler_setup = coupler_setup
+        self.config = coupler_setup
         self.case_dir = Path(".").absolute()
 
         # Injected sub-solvers.  The VPM may be None on non-master ranks.
@@ -151,28 +146,20 @@ class FVMVPMCoupler:
         self.injector: ContinuousOverlapInjector | None = None
         self.fringe = None
         self.vel_blend: FVMVelocityBlend | None = None
-        self.body_panel = None
         self._u_bc_prev: np.ndarray | None = None  # donor BC carried between sub-cycles
         self._omega_bc_prev: np.ndarray | None = None  # donor ω BC carried between sub-cycles
         self._last_omega_donor: np.ndarray | None = None  # ω at faces from last _donor_velocity call
         self._omega_global_buffer: np.ndarray | None = None
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
-        # The user configures ``config.dt`` = dt_fvm (the small, accurate FVM
-        # step).  The VPM cloud and the whole coupling cadence (donor BC,
-        # hand-off, samplers, backups) run on the LARGER dt_vpm = N · dt_fvm.
-        # Internally ``self.dt`` IS the coupling step dt_vpm, so the VPM build,
-        # loop cadence, injector buffer and fringe (which all read self.dt /
-        # cfg.dt) size themselves on the inter-hand-off interval.  Only the FVM
-        # deltaT and the per-sub-step BC interpolation use self.dt_fvm.
-        self.period_multiplier = max(1, int(config.period_multiplier))
-        self.dt_fvm = float(config.dt)
-        self.dt_vpm = self.period_multiplier * self.dt_fvm
+        # ``coupler_setup.dt`` starts as dt_fvm.  During initialize(), the
+        # injected VPM time step becomes authoritative for dt_vpm and the
+        # integer sub-cycle count is derived from dt_vpm / dt_fvm.
+        self.dt_fvm = float(coupler_setup.dt)
+        self.period_multiplier = 1
+        self.dt_vpm = self.dt_fvm
         self.dt = self.dt_vpm
-        self.u_inf = np.array(config.u_inf, dtype=np.float64)
-
-        if self._is_master:
-            self._write_run_metadata()
+        self.u_inf = np.array(coupler_setup.u_inf, dtype=np.float64)
 
     # =========================================================
     # Construction helpers (dependency injection)
@@ -181,33 +168,28 @@ class FVMVPMCoupler:
     @classmethod
     def from_solvers(
         cls,
-        config: CouplerConfig,
+        coupler_setup: CouplerSetup,
         *,
         fvm_solver,
         vpm_solver=None,
     ) -> "FVMVPMCoupler":
-        """Build a coupler around externally-constructed sub-solvers.
+        """Keyword-argument constructor (``coupler_setup`` first, solvers named).
 
-        ``fvm_solver`` is required on every MPI rank (it participates in the
-        collective FVM solve).  ``vpm_solver`` is the GPU particle solver on
-        the master rank and ``None`` on non-master ranks.
+        Equivalent to ``FVMVPMCoupler(vpm_solver, fvm_solver, coupler_setup)``.
+        The FVM case must already reflect ``coupler_setup`` before the FVM
+        solver reads it, so the canonical flow is::
 
-        The FVM case files (controlDict deltaT/writeInterval, transport nu,
-        coupling-patch BC type, initial field) must already reflect ``config``
-        BEFORE the FVM solver reads them at construction, so the intended flow
-        is::
-
-            FVMVPMCoupler.prepare_case(config)          # all ranks
-            fvm = fvm_solver(case_dir)                  # all ranks
             vpm = VPM_Solver(SolverConfig(...)) if is_master else None
+            FVMVPMCoupler.prepare_case(coupler_setup, vpm_solver=vpm)  # all ranks
+            fvm = fvm_solver(case_dir)                                 # all ranks
             coupler = FVMVPMCoupler.from_solvers(
-                config, fvm_solver=fvm, vpm_solver=vpm)
+                coupler_setup, fvm_solver=fvm, vpm_solver=vpm)
             coupler.run()
         """
-        return cls(config, fvm_solver=fvm_solver, vpm_solver=vpm_solver)
+        return cls(vpm_solver, fvm_solver, coupler_setup)
 
     @staticmethod
-    def _validate_injected_vpm(vpm, cfg: CouplerConfig) -> None:
+    def _validate_injected_vpm(vpm, cfg: CouplerSetup) -> None:
         """Fail-fast consistency checks between an injected VPM and the coupling
         config — the safety net that makes dependency injection safe without
         restricting which native VPM options the caller sets.
@@ -269,19 +251,32 @@ class FVMVPMCoupler:
         return int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) == 0
 
     @staticmethod
-    def prepare_case(config: CouplerConfig, *, restart: bool = False) -> None:
-        """Write the FVM case dictionaries from ``config`` (deltaT, writeInterval,
+    def prepare_case(
+        coupler_setup: CouplerSetup,
+        *,
+        vpm_solver=None,
+        restart: bool = False,
+    ) -> None:
+        """Write the FVM case dictionaries from ``coupler_setup`` (deltaT,
         nu, coupling-patch BC type, initial field) BEFORE the FVM solver is
         built in injection mode.  Idempotent; master-rank only (guards inside).
 
-        Uses ``config.period_multiplier`` and ``config.dt`` for the write
-        cadence — the same values the running loop later re-derives from the
-        VPM step; a mismatch only shifts the FVM output interval, not the
-        coupling physics."""
+        If ``vpm_solver`` is provided on the master rank, the write cadence is
+        derived from the VPM/FVM time-step ratio before the FVM wrapper reads
+        controlDict.  initialize() recomputes the same sub-cycle count after
+        both solvers are attached."""
         if int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) != 0:
             return
-        SetupHandler(config).prepare_directories(
-            max(1, int(config.period_multiplier)), float(config.dt), restart=restart
+        period_multiplier = 1
+        if vpm_solver is not None:
+            vpm_dt = FVMVPMCoupler._get_vpm_time_step(vpm_solver)
+            period_multiplier = FVMVPMCoupler._derive_period_multiplier(
+                vpm_dt, float(coupler_setup.dt)
+            )
+        SetupHandler(coupler_setup).prepare_directories(
+            period_multiplier,
+            float(coupler_setup.dt),
+            restart=restart,
         )
 
 
@@ -323,14 +318,36 @@ class FVMVPMCoupler:
         except Exception:
             logger.warning("[Init] Failed to write run_metadata.json", exc_info=True)
 
-    def initialize(self) -> None:
-        """Adopt the injected solvers, reconcile the sub-cycling, and build the
-        coupling components (injector, fringe, velocity blend, body panel).
+    @staticmethod
+    def _get_vpm_time_step(vpm) -> float:
+        get_vpm_dt = getattr(vpm, "get_time_step_size", None)
+        return float(get_vpm_dt() if callable(get_vpm_dt) else vpm.time_step_size)
 
-        The VPM's ``time_step_size`` is authoritative for the coupling step: a
-        viscous scheme (e.g. DVH) may have set its own Δt_d, so the sub-cycle
-        count ``period_multiplier = round(dt_vpm / dt_fvm)`` is re-derived from
-        it here, keeping ``config.dt`` as the fixed FVM accuracy knob.
+    @staticmethod
+    def _derive_period_multiplier(dt_vpm: float, dt_fvm: float) -> int:
+        """Return the integer FVM sub-cycle count implied by solver time steps."""
+        if dt_fvm <= 0.0:
+            raise ValueError(f"FVM time step must be positive, got {dt_fvm!r}.")
+        if dt_vpm <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {dt_vpm!r}.")
+        ratio = dt_vpm / dt_fvm
+        period_multiplier = max(1, int(round(ratio)))
+        if not np.isclose(ratio, period_multiplier, rtol=1e-9, atol=1e-12):
+            raise ValueError(
+                "The VPM time step must be an integer multiple of the FVM time "
+                f"step for sub-cycling. Got dt_vpm={dt_vpm:.12g}, "
+                f"dt_fvm={dt_fvm:.12g}, ratio={ratio:.12g}."
+            )
+        return period_multiplier
+
+    def initialize(self) -> None:
+        """Adopt the injected solvers, derive sub-cycling, and build coupling
+        components.
+
+        ``CouplerSetup.dt`` configures the FVM step.  The injected VPM solver's
+        ``time_step_size`` configures the coupling/VPM step.  After both
+        solvers have their time steps set, the coupler derives
+        ``period_multiplier = round(dt_vpm / dt_fvm)`` internally.
 
         Idempotent: a second call is a no-op (the coupling components are built
         exactly once), so ``initialize`` then ``run``/``solve`` is safe.
@@ -353,38 +370,35 @@ class FVMVPMCoupler:
             self._validate_injected_vpm(self.vpm, cfg)
             logger.info("[Init] Using injected VPM solver.")
 
-        # ── Time-step consistency: the VPM may carry its OWN step (e.g. DVH
-        # dictates a diffusion dt Δt_d).  Whatever the VPM has IS dt_vpm; keep
-        # dt_fvm fixed (the FVM accuracy knob) and re-derive the integer
-        # sub-cycle count period_multiplier = round(dt_vpm / dt_fvm). ──
-        # NOTE: in parallel, period_multiplier is only updated on rank 0.  If a
-        # viscous scheme overrides dt in a parallel run, all ranks must set
-        # period_multiplier explicitly in CouplerConfig to stay in sync.
-        if self._is_master:
-            vpm_dt = float(self.vpm.time_step_size)
-            if abs(vpm_dt - self.dt_vpm) > 1e-12 * max(self.dt_vpm, vpm_dt):
-                new_N = max(1, int(round(vpm_dt / self.dt_fvm)))
-                logger.warning(
-                    "[Init] Injected VPM step differs from period_multiplier·dt: "
-                    "dt_vpm %.4e → %.4e s.  Keeping dt_fvm=%.4e s and re-deriving "
-                    "period_multiplier=%d FVM sub-steps per VPM step.",
-                    self.dt_vpm,
-                    vpm_dt,
-                    self.dt_fvm,
-                    new_N,
-                )
-                self.period_multiplier = new_N
-                self.dt_vpm = vpm_dt
-                self.dt = vpm_dt
-                self._write_run_metadata()  # re-record with the final dt_vpm / N
-
         # Adopt the injected FVM (all ranks), built by the caller from a case
-        # prepared via ``prepare_case``.  The runtime setters stamp the
-        # reconciled dt_fvm and nu so the coupling step and viscosity are the
-        # single source of truth even if the case dicts differed.
+        # prepared via ``prepare_case``.  The runtime setters stamp dt_fvm and
+        # nu so the setup remains the single source of truth even if the case
+        # dictionaries differed.
         self.ofw = self._injected_fvm
         self.ofw.set_time_step(self.dt_fvm)
         self.ofw.set_kinematic_viscosity(cfg.nu)
+
+        # Derive sub-cycling only after both solvers have been configured.
+        vpm_dt = float(self.dt_fvm)
+        if self._is_master:
+            vpm_dt = self._get_vpm_time_step(self.vpm)
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            vpm_dt = float(_mpi4py_comm.bcast(vpm_dt if self._is_master else None, root=0))
+
+        self.dt_vpm = vpm_dt
+        self.period_multiplier = self._derive_period_multiplier(self.dt_vpm, self.dt_fvm)
+        self.dt = self.dt_vpm
+        if self._is_master:
+            logger.info(
+                "[Init] Time steps: dt_fvm=%.4e s, dt_vpm=%.4e s, "
+                "period_multiplier=%d.",
+                self.dt_fvm,
+                self.dt_vpm,
+                self.period_multiplier,
+            )
+            SetupHandler(cfg).update_controldict(
+                self.period_multiplier, self.dt_fvm, restart=False
+            )
 
         # Downstream coupling components (injector hand-off buffer, fringe) size
         # themselves on the inter-hand-off interval = dt_vpm; make cfg.dt report
@@ -395,19 +409,6 @@ class FVMVPMCoupler:
         self.injector = ContinuousOverlapInjector(self)
         self.injector.setup(self.ofw)
 
-        # Body panel: rank 0 only (uses VPM).
-        if getattr(cfg, "body_panel_enabled", False) and self._is_master:
-            from source.coupler.core.helpers.body_panel import BodyPanelModel
-
-            with self.vpm_redirector:
-                self.body_panel = BodyPanelModel(cfg)
-            self.body_panel.solve(self.vpm, self.u_inf, 0.0)  # initial (zero-wake) solve
-            self.vpm.set_body_induced_velocity(self.body_panel.induced)
-            self.body_panel.log_diagnostics()
-            logger.info("[BodyPanel] body panel model ENABLED (body_panel_enabled=True)")
-        else:
-            self.body_panel = None
-
         # Build velocity forcing.  FVMVelocityBlend is built on ALL ranks because
         # vel_blend.update() triggers collective OFW getters; only the VPM wiring
         # is rank-0-only.
@@ -415,8 +416,6 @@ class FVMVPMCoupler:
             self.vel_blend = FVMVelocityBlend(cfg, self.ofw)
             self.vel_blend.update()  # collective: snapshot initial 0/U field
             if self._is_master:
-                # Body-panel advection term is CPU/NumPy and too slow per RK
-                # stage over the whole cloud.
                 self.vpm.set_velocity_override(self.vel_blend)
             if self._is_master:
                 logger.info("[VelBlend] velocity forcing ENABLED (overlap_velocity_forcing=True)")
@@ -434,6 +433,7 @@ class FVMVPMCoupler:
             with self.vpm_redirector:
                 print(Logging.solver_info(self.vpm))
                 sys.stdout.flush()
+            self._write_run_metadata()
             print("Initialization complete.\n")
 
     def run(self, start_step: int = 0) -> None:
@@ -532,10 +532,6 @@ class FVMVPMCoupler:
                     vel_np = np.asarray(self.vpm.particles_velocities, dtype=np.float64).reshape(-1, 3)
                     self.vel_blend.log_diagnostics(pos_np, vel_np, float(np.linalg.norm(self.u_inf)))
 
-                if self.body_panel is not None:
-                    with self.vpm_redirector:
-                        self.body_panel.solve(self.vpm, self.u_inf, t_end)
-                    self.body_panel.log_diagnostics()
             t0 = time.time() - t0
 
             # ─────────────────────────────────────────────────────────────────

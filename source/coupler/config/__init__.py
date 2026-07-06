@@ -8,6 +8,6 @@ Date: June 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from .types import CouplerConfig
+from .types import CouplerConfig, CouplerSetup
 
-__all__ = ["CouplerConfig"]
+__all__ = ["CouplerConfig", "CouplerSetup"]

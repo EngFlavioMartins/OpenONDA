@@ -8,15 +8,23 @@
 #   $\Gamma$       = 1.0 m^2/s          circulation per vortex
 #   $\nu$          = 1/530 m^2/s        kinematic viscosity
 #   $b_0$          = 1.0 m              centre-to-centre separation
-#   $r_{c,0}$     = 0.125 m            initial core radius (= a_0)
+#   $r_{c,0}$     = 0.125 m            initial core radius a_0 (radius of PEAK
+#                                      azimuthal velocity — C&W convention)
 #   $a_0/b_0$     = 0.125              core-to-separation ratio
+#   $\sigma_0 = a_0/1.12091$          = 0.1115 m   diffused Gaussian width
+#
+# C&W's a_0 is the radius of maximum azimuthal velocity, which for a Lamb-Oseen
+# vortex is r_max = 1.12091*sigma (root of e^x = 1 + 2x). LambOseenVPM diffuses
+# the Gaussian width sigma = a_0/1.12091 -- the --core-radius / --separation
+# values below are the C&W peak-velocity radii and are NOT rescaled here; the
+# conversion lives in vortex_setup.py (and assets/_common.py for the plots).
 #
 # Derived reference quantities:
 #   $Re = \Gamma/\nu$                    = 530        Reynolds number
 #   $U_{c,0} = \Gamma/(2\pi r_{c,0})$   = 1.273 m/s  reference velocity
 #   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
 #   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference gradient
-#   $t_0 = r_{c,0}^2/(4\nu)$           = 2.07 s     initial vortex age
+#   $t_0 = \sigma_0^2/(4\nu)$          = 1.65 s     initial vortex age
 #   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
 #
 # Co-rotating merger runs override the legacy tutorial core radius with

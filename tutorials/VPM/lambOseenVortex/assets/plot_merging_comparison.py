@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
+    BETA_RMAX,
     REF_DIR,
     SCHEMES,
     add_physics_args,
@@ -373,12 +374,7 @@ def extract_merging_timeseries(
     return {
         "tau": tau,
         "theta_deg": th,
-        # ``step_diagnostics`` returns half the second moment of the 2-D
-        # vorticity distribution.  For the Lamb-Oseen form used by the solver,
-        # omega ~ exp(-r^2 / r_c^2), that moment is r_c^2 / 2.  The C&W merger
-        # reference reports the Lamb-Oseen core-size parameter squared, so
-        # convert the moment back to r_c^2 before plotting.
-        "a_c2_over_b02": 2.0 * d[:, 2] / b0**2,
+        "a_c2_over_b02": 2.0 * BETA_RMAX**2 * d[:, 2] / b0**2,
         "b_over_b0": b_over_b0,
         "total_gamma": d[:, 4],
     }
@@ -458,7 +454,7 @@ def plot_merging_case(args) -> int:
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
-    axes[0].set_ylim([-10, 520])
+    axes[0].set_ylim([-10, 400])
     axes[0].set_xlim([0, 1.75])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")

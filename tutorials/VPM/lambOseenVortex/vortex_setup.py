@@ -29,15 +29,17 @@ from source.solvers.VPM.config.types import (
 #   $\Gamma$       = 1.0 m^2/s          circulation per vortex
 #   $\nu$          = 1/530 m^2/s        kinematic viscosity
 #   $b_0$          = 1.0 m              centre-to-centre separation
-#   $r_{c,0}$     = 0.125 m            initial core radius (= a_0)
+#   $r_{c,0}$     = 0.125 m            initial core radius a_0 (radius of peak
+#                                      azimuthal velocity — C&W convention)
 #   $a_0/b_0$     = 0.125              core-to-separation ratio
+#   $\sigma_0 = a_0/1.12091$          = 0.1115 m   diffused Gaussian width
 #
 # Derived reference quantities:
 #   $Re = \Gamma/\nu$                    = 530        Reynolds number
 #   $U_{c,0} = \Gamma/(2\pi r_{c,0})$   = 1.273 m/s  reference velocity
 #   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
 #   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference velocity gradient
-#   $t_0 = r_{c,0}^2/(4\nu)$           = 2.07 s     initial vortex age
+#   $t_0 = \sigma_0^2/(4\nu)$          = 1.65 s     initial vortex age
 #   $h$ (particle spacing)              = 0.04125 m  (0.33 * r_{c,0})
 #
 # Buckingham-Pi groups used in figures:
@@ -56,8 +58,15 @@ TUTORIAL_DIR = Path(__file__).resolve().parent
 DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
-RC = 0.125  # initial core radius a0 [m]
+RC = 0.125  # initial C&W core radius a0 [m] — radius of PEAK azimuthal velocity
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
+
+# C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen
+# vortex that radius is r_max = BETA_RMAX * sigma (BETA_RMAX = 1.12091, the
+# nonzero root of e^x = 1 + 2x). LambOseenVPM parameterizes the Gaussian width
+# sigma via a_sq = 4*nu*t, so a0 must be converted to sigma = a0/BETA_RMAX before
+# setting the vortex age. Matches assets/_common.py:BETA_RMAX exactly.
+BETA_RMAX = 1.1209064227785341
 TOTAL_TIME = 16.0
 LENGTH = 20  # vortex column span in z, in units of RC (default; override with --length)
 VISCOUS_THRESHOLD_MODE = "budget"
@@ -104,7 +113,9 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         raise ValueError("--core-radius must be positive")
     if b0 <= 0.0:
         raise ValueError("--separation must be positive")
-    t0 = rc**2 / (4.0 * nu)
+    # rc is the C&W peak-velocity radius; diffuse the matching Gaussian width.
+    sigma0 = rc / BETA_RMAX
+    t0 = sigma0**2 / (4.0 * nu)
     spacing_factor = args.spacing_factor
     if scheme in {"dvh", "gbd"} and args.grid_spacing_factor is not None:
         spacing_factor = args.grid_spacing_factor

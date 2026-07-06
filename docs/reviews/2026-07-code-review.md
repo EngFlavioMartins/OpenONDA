@@ -22,7 +22,7 @@ entry) calls it with the default `fix_normals=True`, so *every* STL body
 addition through the public API raised `NameError`.  Backed by: `ruff F821`
 (5 hits) + call trace `panel_solver.py:196 → mesh.py:47`.  Fixed locally by
 capturing the appended panel range from `lattice.num_panels` before/after
-`add_body` (no API change; `tests/coupler/test_body_panel.py` 5/5 pass).
+`add_body` (no API change; targeted panel-solver regression tests passed).
 This is exactly the rubric's "context-window decay" pattern: the author
 expected `add_body` to return `(start, count)`; it returns `None`.
 

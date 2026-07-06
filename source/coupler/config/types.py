@@ -15,11 +15,53 @@ import numpy as np
 
 
 @dataclass
-class CouplerConfig:
-    """Configuration for the FVM-VPM coupled solver.
+class CouplerSetup:
+    """Setup for the FVM-VPM coupled solver — coupling parameters only.
 
-    One flat dataclass, one coupling path.  Defaults reflect the validated
-    cubeFlow setup; case scripts override only what differs.
+    This dataclass carries the **coupling** and **FVM-case** parameters: the
+    interface box, the hand-off / donor / fringe knobs, the shared physical
+    quantities (``u_inf``, ``nu``, particle spacing ``h``) and the FVM sub-step
+    ``dt``.  It deliberately holds **no VPM physics** — the viscous scheme,
+    stretching, advection, turbulence, treecode θ, stabilization, particle
+    kernel, precision, ``max_particles`` and domain bounds all live in the
+    VPM's own ``SolverConfig``.  The caller builds the VPM and FVM solvers with
+    their native APIs and injects the instances into :class:`FVMVPMCoupler`
+    alongside this setup; the coupler reads the domain/kernel/dt it needs back
+    from the injected VPM and validates them against ``fvm_box``.
+
+    Defaults reflect the validated cubeFlow setup; case scripts override only
+    what differs.  The VPM/coupling step is read from the injected VPM's
+    ``time_step_size`` and the integer FVM sub-cycle count is derived as
+    ``round(dt_vpm / dt)`` internally.
+
+    Example
+    -------
+    ::
+
+        from source.coupler import CouplerSetup, FVMVPMCoupler
+        from source.solvers.VPM import Solver as VPM_Solver, SolverConfig
+        from source.solvers.OFW.fvm_solver import fvm_solver
+
+        # 1. Coupling parameters (this class) — no VPM physics here.
+        setup = CouplerSetup(
+            u_inf=[1.0, 0.0, 0.0], nu=1e-3,
+            dt=0.02,                       # FVM sub-step; dt_vpm comes from the VPM
+            fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+            grid_spacing=0.035, h=0.035,
+            buffer_thickness=0.21, dead_zone_h=4.0,
+            prune_vorticity_min=0.1, donor_interior_source="fvm",
+        )
+
+        is_master = FVMVPMCoupler.is_master_rank()
+        # 2. VPM — native SolverConfig, GPU, master rank only.
+        vpm = VPM_Solver(config=SolverConfig(time_step_size=0.10, ...)) if is_master else None
+        # 3. FVM — write the case dicts, then build on every rank.
+        FVMVPMCoupler.prepare_case(setup, vpm_solver=vpm)
+        fvm = fvm_solver(".")
+        # 4-5. Couple, then run.
+        coupler = FVMVPMCoupler(vpm, fvm, setup)
+        coupler.initialize()
+        coupler.solve()
     """
 
     # ── Physics ───────────────────────────────────────────────────────────
@@ -33,7 +75,8 @@ class CouplerConfig:
     """Fluid density [kg/m³]."""
 
     dt: float = 0.05
-    """Coupled time step [s] (shared by FVM and VPM)."""
+    """FVM sub-step [s].  The VPM/coupling step is read from the injected VPM
+    solver and the integer sub-cycle count is derived internally."""
 
     t_end: float = 1.0
     """Simulated end time [s]."""
@@ -118,22 +161,6 @@ class CouplerConfig:
 
     strength_correction_relax: float = 1.0
     """Under-relaxation λ ∈ (0, 1] of the strength-correction iteration."""
-
-    period_multiplier: int = 1
-    """FVM sub-cycles per VPM (coupling) step — the multi-rate control.
-
-    The configured ``dt`` is the **FVM** step ``dt_fvm`` (small, accurate).  The
-    VPM cloud advances once per ``dt_vpm = period_multiplier · dt_fvm``, and the
-    coupling cadence (donor BC, hand-off, viscous regen, samplers, backups) is the
-    VPM step.  Each VPM step the FVM is sub-cycled ``period_multiplier`` times,
-    its boundary velocity **linearly interpolated** between the previous cycle's
-    donor BC (held at the cycle start) and the freshly-advanced VPM's donor BC
-    (the "future" value at the cycle end), re-projected solenoidal each sub-step.
-
-    ``1`` = synchronous FVM/VPM stepping (no sub-cycling). Use ``>1`` when the
-    coupling/VPM step gives
-    the FVM an inaccurate Courant number (e.g. cube: dt=0.01, period_multiplier=10
-    → dt_vpm=0.1, FVM Co≈0.8 like the reference instead of Co≈11)."""
 
     bc_coupling_iterations: int = 1
     """Outer Picard iterations of the donor-velocity BC against the FVM pressure
@@ -231,23 +258,6 @@ class CouplerConfig:
     refines.  The default is ``"vorticity"``; the
     velocity path is exercised by ``tests/coupler/test_continuous_overlap.py``."""
 
-    body_panel_enabled: bool = False
-    """Add a boundary-element (Hess-Smith panel) body model to the VPM so its
-    induced field carries the body's IRROTATIONAL blockage — the no-penetration
-    completion that free vortex particles structurally cannot represent (the
-    diagnosed root cause of the wall-origin near-body error). Requires
-    ``panel_mesh`` (a coarse closed STL)."""
-
-    panel_bc_type: str = "DIRICHLET"
-    """Panel boundary condition: ``"DIRICHLET"`` (Morino, validated for closed
-    bluff bodies) or ``"NEUMANN"``.  Use DIRICHLET — NEUMANN is not calibrated
-    for closed bodies in the current panel solver."""
-
-    panel_mesh: str | None = None
-    """Path to the coarse closed-surface panel STL for the body model (e.g.
-    ``constant/triSurface/cube_panels.stl``, written by ``mesh_helper.py``).
-    Keep it coarse (~1e3 panels): the dense AIC solve is O(n_panels^3)/step."""
-
     overlap_radius_ratio: float = 1.5
     """Particle core radius σ in units of h for overlap-region particles.
     σ sets the deconvolution bandwidth of the Beale correction: thin vortex
@@ -284,25 +294,18 @@ class CouplerConfig:
         return np.array(self.u_inf, dtype=np.float64)
 
     @property
-    def U_mag(self) -> float:
-        return float(np.linalg.norm(self.U_inf))
-
-    @property
     def is_ramping(self) -> bool:
+        # No velocity ramp in the coupled cases; kept because SetupHandler
+        # reads it when writing the initial 0/U field.
         return False
 
-    @property
-    def velocity_ramp_period(self) -> float:
-        return 0.0
-
-    # Compatibility aliases: helpers address the config as cfg.physics.*,
-    # cfg.fvm_solver.* and cfg.vpm_solver.*; the flat config answers for all.
+    # Namespacing aliases: SetupHandler addresses the flat setup as
+    # ``cfg.physics.*``, ``cfg.fvm_solver.*`` and ``cfg.fvm_domain.*``; the flat
+    # object answers for all three.  (Not a solver — despite the name,
+    # ``fvm_solver`` here is the FVM-case *parameters*, distinct from the
+    # injected FVM solver object.)
     @property
     def physics(self):
-        return self
-
-    @property
-    def vpm_solver(self):
         return self
 
     @property
@@ -310,15 +313,8 @@ class CouplerConfig:
         return self
 
     @property
-    def particle_spacing(self):
-        return self.h
-
-    @property
     def fvm_domain(self):
         return self
-
-    def as_list(self):
-        return list(self.fvm_box)
 
     def to_dict(self) -> dict:
         return {
@@ -361,13 +357,14 @@ class CouplerConfig:
                 "strength_correction_relax": self.strength_correction_relax,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
                 "overlap_velocity_forcing": self.overlap_velocity_forcing,
-                "body_panel_enabled": self.body_panel_enabled,
-                "panel_bc_type": self.panel_bc_type,
-                "panel_mesh": self.panel_mesh,
                 "bc_coupling_iterations": self.bc_coupling_iterations,
                 "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
                 "handoff_target_mode": self.handoff_target_mode,
-                "period_multiplier": self.period_multiplier,
             },
         }
+
+
+# Backward-compatible name for older setup scripts/tests.  New code should use
+# CouplerSetup to make the solver-injection boundary explicit.
+CouplerConfig = CouplerSetup

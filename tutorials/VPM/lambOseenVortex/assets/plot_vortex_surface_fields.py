@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import FIGURES_DIR, SOLUTION_DIR, load_theme
+from _common import BETA_RMAX, FIGURES_DIR, SOLUTION_DIR, load_theme
 
 
 # =============================================================
@@ -45,9 +45,11 @@ from _common import FIGURES_DIR, SOLUTION_DIR, load_theme
 # =============================================================
 
 _NU = 1.0 / 530.0
-_AC0 = 0.125
-_T0 = _AC0**2 / (4.0 * _NU)
-_UC0 = 1.0 / (2.0 * np.pi * _AC0)
+_AC0 = 0.125  # C&W peak-velocity core radius a0 [m]
+# a0 is the peak-velocity radius; the diffused Gaussian width is a0/BETA_RMAX, so
+# the reference-field age uses the converted width (see _common.BETA_RMAX).
+_T0 = (_AC0 / BETA_RMAX) ** 2 / (4.0 * _NU)
+_UC0 = 1.0 / (2.0 * np.pi * _AC0)  # length-scale normalisation: no BETA correction
 _WC0 = 1.0 / (np.pi * _AC0**2)
 _DT = 0.03
 

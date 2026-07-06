@@ -25,6 +25,17 @@ THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
 
+# Cerretelli & Williamson (2003) define the vortex core radius a as the radius of
+# PEAK azimuthal velocity. For a Lamb-Oseen vortex that radius is
+#   r_max = BETA_RMAX * sigma,   BETA_RMAX = 1.12091
+# the nonzero root of e^x = 1 + 2x with x = (r_max/sigma)^2 = 1.256431, where
+# sigma is the Gaussian width the solver diffuses (omega ~ exp(-r^2/sigma^2),
+# sigma^2 = 4*nu*t). Any code that turns a C&W core radius a0 into a Gaussian
+# AGE must use sigma0 = a0/BETA_RMAX; any code that turns it into a core AREA
+# must use sigma0^2 = a0^2/BETA_RMAX^2. Code that only uses a0 as a length- or
+# time-normalization scale (r/a0, nu*t/a0^2, Uc0 = gamma/(2*pi*a0)) must NOT.
+BETA_RMAX = 1.1209064227785341
+
 _THEME_MODULE = None
 
 
@@ -81,10 +92,13 @@ def add_physics_args(parser) -> None:
     """Add physical-parameter arguments with defaults matching vortex_setup.py."""
     _RE = 530.0  # Re_Γ = Γ/nu — matches allrun.sh and the C&W 2003 reference
     _NU = 1.0 / _RE
-    _AC0 = 0.125
+    _AC0 = 0.125  # C&W peak-velocity core radius a0 [m] (a0/b0 = 0.125)
     parser.add_argument("--gamma", type=float, default=1.0)
     parser.add_argument("--nu", type=float, default=_NU)
-    parser.add_argument("--t0", type=float, default=_AC0**2 / (4.0 * _NU))
+    # a0 is the peak-velocity radius; the diffused Gaussian width is a0/BETA_RMAX,
+    # so the vortex age is (a0/BETA_RMAX)^2 / (4 nu). Every plot script overrides
+    # this via resolve_runtime_physics, so this default is documentation only.
+    parser.add_argument("--t0", type=float, default=(_AC0 / BETA_RMAX) ** 2 / (4.0 * _NU))
     parser.add_argument("--dt", type=float, default=0.02)
     parser.add_argument("--re", type=float, default=_RE)
     parser.add_argument("--circulation", type=float, default=1.0)
@@ -178,7 +192,12 @@ def resolve_runtime_physics(
     nu = read_run_viscosity(solution_dir)
     if nu is None or nu <= 0.0:
         nu = fallback_nu
-    return {"nu": nu, "t0": ac0**2 / (4.0 * nu), "ac0": ac0}
+    # ac0 is the C&W peak-velocity radius; the analytic reference must diffuse the
+    # same Gaussian width the solver does, sigma0 = ac0/BETA_RMAX, so its age is
+    # sigma0^2/(4 nu) -- NOT ac0^2/(4 nu), which would make the Theory curve 12%
+    # wider than the initialised field (26% in a^2).
+    sigma0 = ac0 / BETA_RMAX
+    return {"nu": nu, "t0": sigma0**2 / (4.0 * nu), "ac0": ac0}
 
 
 def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
@@ -206,7 +225,12 @@ def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, floa
 
 
 def gaussian_model(r, omega0, a):
-    """Lamb-Oseen vorticity using C&W convention: ω = ω0 · exp(-r² / (2a²))."""
+    """Gaussian vorticity fit ω = ω0·exp(-r²/(2a²)).
+
+    Here *a* is the statistical standard deviation, which equals sigma/√2 for the
+    solver's omega ~ exp(-r²/sigma²) form.  It is NOT the C&W peak-velocity core
+    radius (= BETA_RMAX·sigma); convert if you need to compare against C&W.
+    """
     return omega0 * np.exp(-(r**2) / (2.0 * a**2))
 
 
@@ -229,7 +253,7 @@ def azimuthal_profile(xy, values, center, n_bins=50, r_max=None):
 
 
 def fit_gaussian_core(r_profile, omega_profile):
-    """Return a² (sigma²) from a Gaussian fit (C&W convention)."""
+    """Return a² from a Gaussian fit, where a = statistical std = sigma/√2."""
     from scipy.optimize import curve_fit
 
     mask = omega_profile > 0.05 * omega_profile.max()

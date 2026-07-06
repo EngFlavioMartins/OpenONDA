@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler import CouplerConfig, FVMVPMCoupler
+from source.coupler import CouplerConfig, CouplerSetup, FVMVPMCoupler
 
 
 # ---------------------------------------------------------------------------
@@ -88,14 +88,12 @@ def _make_config(**over):
         u_inf=[1.0, 0.0, 0.0],
         nu=1e-3,
         dt=0.02,
-        period_multiplier=5,
         t_end=1.0,
         fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
         h=0.05,
         buffer_thickness=0.3,
         dead_zone_h=4.0,
         overlap_velocity_forcing=False,
-        body_panel_enabled=False,
     )
     base.update(over)
     return CouplerConfig(**base)
@@ -125,12 +123,10 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
 
 
 def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):
-    """period_multiplier is re-derived from the injected VPM's time_step_size /
-    dt_fvm, overriding the config hint when they disagree (DVH-style override)."""
+    """period_multiplier is derived from the injected VPM time_step_size / dt_fvm."""
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
-    # Config says N=5 (→ dt_vpm 0.1) but the VPM settled on 0.06 s.
-    cfg = _make_config(period_multiplier=5, dt=0.02)
+    cfg = _make_config(dt=0.02)
     c = FVMVPMCoupler.from_solvers(
         cfg, fvm_solver=_FakeFVM(), vpm_solver=_FakeVPM(time_step_size=0.06)
     )
@@ -177,9 +173,44 @@ def test_config_has_no_vpm_physics_fields():
         "viscous_scheme", "stretching_scheme", "advection_scheme",
         "les_smagorinsky_cs", "treecode_theta", "max_particles",
         "vpm_domain", "particles_kernel", "precision", "stabilization",
-        "samplers", "eulerian_backend",
+        "samplers", "eulerian_backend", "period_multiplier",
     ):
         assert not hasattr(cfg, gone), f"{gone} should have moved to SolverConfig"
+
+
+def test_public_api_exposes_coupler_setup_not_vpm_configs():
+    """The coupler package should not be a convenience export point for VPM
+    solver-build classes; those belong to source.solvers.VPM.config.types."""
+    import source.coupler as coupler_pkg
+
+    assert CouplerConfig is CouplerSetup
+    assert not hasattr(coupler_pkg, "ViscousConfig")
+    assert not hasattr(coupler_pkg, "StabilizationConfig")
+
+
+def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
+    """Preferred public API: vpm_solver + fvm_solver + CouplerSetup."""
+    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
+    monkeypatch.chdir(tmp_path)
+    setup = CouplerSetup(
+        u_inf=[1.0, 0.0, 0.0],
+        nu=1e-3,
+        dt=0.02,
+        t_end=1.0,
+        fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        h=0.05,
+        buffer_thickness=0.3,
+        dead_zone_h=4.0,
+        overlap_velocity_forcing=False,
+    )
+    vpm = _FakeVPM(time_step_size=0.1)
+    fvm = _FakeFVM()
+
+    c = FVMVPMCoupler(vpm, fvm, setup)
+
+    assert c.coupler_setup is setup
+    assert c._injected_fvm is fvm
+    assert c._injected_vpm is vpm
 
 
 def test_initialize_is_idempotent_and_solve_guard(monkeypatch, tmp_path):
@@ -238,7 +269,7 @@ def test_missing_fvm_solver_raises(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="requires an injected fvm_solver"):
-        FVMVPMCoupler(_make_config(), fvm_solver=None, vpm_solver=_FakeVPM(0.1))
+        FVMVPMCoupler(_FakeVPM(0.1), None, _make_config())
 
 
 if __name__ == "__main__":
