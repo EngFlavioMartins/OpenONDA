@@ -59,7 +59,12 @@ DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
 RC = 0.125  # initial C&W core radius a0 [m] — radius of PEAK azimuthal velocity
-MERGING_RC = 0.17  # C&W co-rotating merger benchmark core radius a0 [m]
+# C&W 2003 eq. (4.1): the co-rotating merger experiment starts at a0/b0 = 0.125
+# +/- 0.007 — the SAME core-to-separation ratio as the single-vortex case, and the
+# ratio at which their reference fig. 5 data (Re=530) were taken. A larger a0/b0
+# seeds the pair much closer to the convective-merger threshold a_crit/b0 = 0.29
+# (eq. 4.2), so it merges far too early. (Was 0.17, which merged ~2x too soon.)
+MERGING_RC = 0.125  # C&W co-rotating merger benchmark core radius a0 [m] (a0/b0=0.125)
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 
 # C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen

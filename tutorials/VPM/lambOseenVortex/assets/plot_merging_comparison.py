@@ -296,10 +296,12 @@ def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
 
     sep = float(np.linalg.norm(cores[0] - cores[1]))
 
-    # See docstring: coincident centers = genuine merger; sep > 1.5*b0 = a
+    # See docstring: coincident centers = genuine merger; sep > 1.15*b0 = a
     # spurious "second core" (noise/edge artifact), since real separation only
-    # shrinks toward merger and C&W's own b/b0 never exceeds ~1.1 even at t=0.
-    merged = sep < 0.05 * b0 or sep > 1.5 * b0
+    # shrinks toward merger and C&W's own b/b0 never exceeds ~1.07 even at t=0
+    # (see b_over_b0_tau.csv). The old 1.5*b0 gate let post-merger artifacts
+    # through (e.g. GBD's tracker locking onto a filament at b/b0~1.25).
+    merged = sep < 0.05 * b0 or sep > 1.15 * b0
 
     mid = 0.5 * (cores[0] + cores[1])
     ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
@@ -486,16 +488,16 @@ def plot_merging_case(args) -> int:
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 400])
-    axes[0].set_xlim([0, 1.7])
+    axes[0].set_xlim([0, 2.6])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
     axes[1].set_ylim([0, 0.3])
-    axes[1].set_xlim([0, 1.7])
+    axes[1].set_xlim([0, 2.6])
 
     axes[2].set_xlabel(r"$\nu t / a_0^2$")
     axes[2].set_ylabel(r"$b / b_0$")
-    axes[2].set_ylim([0, 1.5])
-    axes[2].set_xlim([0, 1.7])
+    axes[2].set_ylim([0, 1.2])
+    axes[2].set_xlim([0, 2.6])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0) )

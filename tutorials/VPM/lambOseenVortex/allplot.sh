@@ -72,7 +72,7 @@ echo "[3/5] Merging vortex comparison ..."
     --figures-dir "$FIGURES_DIR" \
     --dpi "$DPI" \
     --format "$FORMAT" \
-    --a0-over-b0 0.17 \
+    --a0-over-b0 0.125 \
     --total-time 20.0
 
 # ── Figure 4: z = 0 surface fields — tiled quadrant comparison ───────────
