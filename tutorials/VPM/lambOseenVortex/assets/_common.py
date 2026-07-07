@@ -26,14 +26,6 @@ THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
 
 # Cerretelli & Williamson (2003) define the vortex core radius a as the radius of
-# PEAK azimuthal velocity. For a Lamb-Oseen vortex that radius is
-#   r_max = BETA_RMAX * sigma,   BETA_RMAX = 1.12091
-# the nonzero root of e^x = 1 + 2x with x = (r_max/sigma)^2 = 1.256431, where
-# sigma is the Gaussian width the solver diffuses (omega ~ exp(-r^2/sigma^2),
-# sigma^2 = 4*nu*t). Any code that turns a C&W core radius a0 into a Gaussian
-# AGE must use sigma0 = a0/BETA_RMAX; any code that turns it into a core AREA
-# must use sigma0^2 = a0^2/BETA_RMAX^2. Code that only uses a0 as a length- or
-# time-normalization scale (r/a0, nu*t/a0^2, Uc0 = gamma/(2*pi*a0)) must NOT.
 BETA_RMAX = 1.1209064227785341
 
 _THEME_MODULE = None
@@ -190,10 +182,6 @@ def resolve_runtime_physics(
     nu = read_run_viscosity(solution_dir)
     if nu is None or nu <= 0.0:
         nu = fallback_nu
-    # ac0 is the C&W peak-velocity radius; the analytic reference must diffuse the
-    # same Gaussian width the solver does, sigma0 = ac0/BETA_RMAX, so its age is
-    # sigma0^2/(4 nu) -- NOT ac0^2/(4 nu), which would make the Theory curve 12%
-    # wider than the initialised field (26% in a^2).
     sigma0 = ac0 / BETA_RMAX
     return {"nu": nu, "t0": sigma0**2 / (4.0 * nu), "ac0": ac0}
 

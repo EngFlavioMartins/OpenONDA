@@ -20,11 +20,18 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from .config.types import CouplerConfig, CouplerSetup
 
-try:
-    from .core.solver import FVMVPMCoupler
-except ImportError:
-    print("ERROR: FVMVPMCoupler import failed. Check Cython extensions / OpenFOAM linkage.")
-    raise
+def __getattr__(name: str):
+    if name == "FVMVPMCoupler":
+        try:
+            from .core.solver import FVMVPMCoupler
+        except ImportError:
+            print(
+                "ERROR: FVMVPMCoupler import failed. "
+                "Check Cython extensions / OpenFOAM linkage."
+            )
+            raise
+        return FVMVPMCoupler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "CouplerConfig",

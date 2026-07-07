@@ -501,6 +501,7 @@ class ViscousConfig:
         dvh_rd_ratio: int = 4,
         viscosity: float | None = None,
         max_nodes: int | None = None,
+        regen_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """DVH (Diffused Vortex Hydrodynamics) with particle regeneration.
 
@@ -548,6 +549,9 @@ class ViscousConfig:
                 determines the DVH time-step Δt_d = β·R_d²/(4nu).
             max_nodes: Hard cap on surviving regen nodes (budget-by-count) —
                 bounds the budget-mode halo growth.  None = built-in cap only.
+            regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
+                particles.  Default 2.5 (legacy).  Lower toward 1.5 to avoid
+                over-smearing the reconstructed field (see the field docstring).
         """
         if not isinstance(dvh_rd_ratio, int) or dvh_rd_ratio not in (3, 4, 5):
             raise ValueError(
@@ -562,6 +566,7 @@ class ViscousConfig:
             dvh_rd_ratio=dvh_rd_ratio,
             viscosity=viscosity,
             dvh_max_nodes=max_nodes,
+            regen_radius_ratio=regen_radius_ratio,
         )
 
     @staticmethod
@@ -572,6 +577,7 @@ class ViscousConfig:
         threshold_mode: str = "budget",
         viscosity: float | None = None,
         max_nodes: int | None = None,
+        regen_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """Grid-Based Diffusion (Cottet & Koumoutsakos 2000).
 
@@ -598,6 +604,9 @@ class ViscousConfig:
                 count in simulations with large dynamic range.
             viscosity: Molecular kinematic viscosity nu [m²/s].
             max_nodes: Hard cap on surviving regen nodes (budget-by-count).
+            regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
+                particles.  Default 2.5 (legacy).  Lower toward 1.5 to avoid
+                over-smearing the reconstructed field (see the field docstring).
         """
         return ViscousConfig(
             scheme="GBD",
@@ -607,6 +616,7 @@ class ViscousConfig:
             gbd_threshold_mode=threshold_mode,
             viscosity=viscosity,
             gbd_max_nodes=max_nodes,
+            regen_radius_ratio=regen_radius_ratio,
         )
 
 @dataclass

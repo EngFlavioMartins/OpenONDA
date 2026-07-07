@@ -525,16 +525,17 @@ MARK_EVERY = {
 }
 
 PALETTE = {
-    "dark": "#003d5c",
-    "teal": "#00726e",
-    "purple": "#7a4f99",
-    "orange": "#d98c00",
-    "green": "#4a9f2c",
-    "gray": "#808080",
+    "dark":     "#0C2340",
+    "teal":     "#0E8A85",
+    "purple":   "#5C3D9B",
+    "orange":   "#C76D24",
+    "green":    "#2B7A4E",
+    "red":      "#9C2F50",
+    "gray":     "#6E8898",
     "light_gray": "#C0C0C0",
-    "strong_gray": "#A6A6A6",
-    "white": "#ffffff",
-    "black": "#000000",
+    "strong_gray": "#8B8B8B",
+    "white":    "#ffffff",
+    "black":    "#000000",
 }
 COLOR_CYCLE = (
     PALETTE["dark"],

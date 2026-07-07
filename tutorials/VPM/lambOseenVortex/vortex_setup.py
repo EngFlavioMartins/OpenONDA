@@ -63,15 +63,24 @@ MERGING_RC = 0.17  # C&W co-rotating merger benchmark core radius a0 [m]
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 
 # C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen
-BETA_RMAX = 1.12
+# vortex r_max = BETA_RMAX*sigma, BETA_RMAX = nonzero root of e^x = 1 + 2x.
+BETA_RMAX = 1.1209064227785341
 TOTAL_TIME = 20.0
-LENGTH = 50  # vortex column span in z, in units of RC
+
+# z-column span in units of RC. Kept short (was 50) so the capped DVH/GBD regen
+# nodes are not spread thin across redundant z-layers: the cap only affords an
+# in-plane disk of radius sqrt(max_nodes/(nz*pi))*h (nz=LENGTH/spacing_factor);
+# too-long a column shrinks that disk below the domain and hard-clips the
+# diffusing tail (spurious under-diffusion). 16 keeps the mid-plane 3-D while
+# max_nodes=250k keeps the clip radius past the domain on every case.
+LENGTH = 16
 SPACING_FACTOR = 0.3
 GRID_SPACING_FACTOR = 0.3
 VISCOUS_THRESHOLD_MODE = "budget"
-VISCOUS_THRESHOLD = 1.0e-3
+VISCOUS_THRESHOLD = 1.0e-5
+REGEN_RADIUS_RATIO = 1.5
 DVH_RD_RATIO = 3
-GBD_MAX_NODES = 120_000
+GBD_MAX_NODES = 250_000
 
 
 # =========================================================
@@ -87,6 +96,7 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
             threshold_mode=VISCOUS_THRESHOLD_MODE,
             viscosity=nu,
             max_nodes=GBD_MAX_NODES,
+            regen_radius_ratio=REGEN_RADIUS_RATIO,
         )
     elif scheme == "dvh":
         return ViscousConfig.dvh(
@@ -96,6 +106,7 @@ def build_viscous_config(scheme: str, nu: float, args: argparse.Namespace, spaci
             dvh_rd_ratio=DVH_RD_RATIO,
             viscosity=nu,
             max_nodes=args.dvh_max_nodes,
+            regen_radius_ratio=REGEN_RADIUS_RATIO,
         )
 
 
@@ -325,7 +336,7 @@ def parse_args() -> argparse.Namespace:
         help="Initial centre-to-centre separation b0 [m] for two-vortex cases.",
     )
     parser.add_argument(
-        "--dvh-max-nodes", type=int, default=120_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
+        "--dvh-max-nodes", type=int, default=250_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
     )
     parser.add_argument(
         "--spacing-factor",
