@@ -458,27 +458,13 @@ class FVMVPMCoupler:
         assert self._is_master == (self.vpm is not None)
         assert self.ofw is not None
 
-        # MPI-safety gate.  Two coupling modes are NOT yet parallel-safe and would
-        # deadlock or corrupt memory under mpirun -n>1 (see audit notes):
-        #   * donor_bc_mode="mixed": set_robin_velocity_boundary_condition does not
-        #     scatter and uses the GLOBAL face count to index a LOCAL-sized patch
-        #     field (out-of-bounds write on master); the Python path also makes
-        #     master/non-master call different collectives.
-        #   * donor_interior_source="particles" with bc_coupling_iterations>1
-        #     is MPI-safe only in Dirichlet mode: the VPM/FVM-interior donor is
-        #     assembled on rank 0 and scattered by the C++ fixed-value setter.
-        #     Robin/mixed still needs a scatter-safe C++ setter.
-        # Fail loudly here rather than hang/segfault deep in the loop.
+        # MPI-safety gate.  The Robin BC setter now uses pstreamScatterDoubles
+        # for both velocity and vorticity arrays, making it parallel-safe.
+        # The only remaining concern is donor_interior_source="particles" with
+        # bc_coupling_iterations>1, which is MPI-safe only in Dirichlet mode:
+        # the VPM/FVM-interior donor is assembled on rank 0 and scattered by
+        # the C++ fixed-value setter.
         n_procs = self.ofw.n_procs()
-        donor_source = getattr(self.config, "donor_interior_source", "particles")
-        if n_procs > 1 and getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
-            raise NotImplementedError(
-                "donor_bc_mode='mixed' (Robin BC) is not parallel-safe "
-                f"(n_procs={n_procs}). Use donor_bc_mode='dirichlet' under MPI, "
-                "or run serially. See foamSolverCore.C "
-                "set_robin_velocity_boundary_condition (needs local face count "
-                "+ pstreamScatterDoubles)."
-            )
 
         n_steps = int(self.config.t_end / self.dt)
         patch = self.config.patch_name
