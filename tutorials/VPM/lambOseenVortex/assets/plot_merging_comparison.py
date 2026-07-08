@@ -494,7 +494,7 @@ def plot_merging_case(args) -> int:
     axes[1].set_ylim([0, 0.3])
     axes[1].set_xlim([0, 2.6])
 
-    axes[2].set_xlabel(r"$\nu t / a_0^2$")
+    axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_ylim([0, 1.2])
     axes[2].set_xlim([0, 2.6])

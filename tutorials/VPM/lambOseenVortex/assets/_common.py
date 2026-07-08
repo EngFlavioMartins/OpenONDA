@@ -82,7 +82,7 @@ def add_physics_args(parser) -> None:
     """Add physical-parameter arguments with defaults matching vortex_setup.py."""
     _RE = 530.0  # Re_Γ = Γ/nu — matches allrun.sh and the C&W 2003 reference
     _NU = 1.0 / _RE
-    _AC0 = 0.125  # C&W peak-velocity core radius a0 [m] (a0/b0 = 0.125)
+    _AC0 = 0.125  # C&W peak-velocity core radius a_{c,0} [m] (a_{c,0}/b_0 = 0.125)
     parser.add_argument("--gamma", type=float, default=1.0)
     parser.add_argument("--nu", type=float, default=_NU)
     # a0 is the peak-velocity radius; the diffused Gaussian width is a0/BETA_RMAX,

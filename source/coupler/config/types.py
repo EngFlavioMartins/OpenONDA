@@ -232,32 +232,6 @@ class CouplerSetup:
     applied in both modes — it is still needed for the normal component /
     ``fixedFluxPressure`` pairing."""
 
-    handoff_target_mode: str = "vorticity"
-    """How the FVM target circulation is computed for the hand-off blend
-    (Billuart et al., JCP 2023, §3.3).
-
-    ``"vorticity"`` scatters ``ω_FVM · V_cell`` directly onto
-    the VPM lattice via M4′.  Fast, but interpolating ω (a derivative) is
-    inaccurate in high-gradient regions (boundary layers, shear layers) and
-    non-conservative.
-
-    ``"velocity"`` (FIX B) scatters ``u_FVM · V_cell`` and ``V_cell`` separately,
-    divides to get the interpolated velocity on the lattice (with the configured
-    freestream ``u_inf`` subtracted first), then computes ``ω = ∇×u`` via
-    central differences on the **data-extent sub-grid** — the bounding box of
-    lattice nodes that received FVM data.  Because u is smoother than ω (one
-    integration lower), the interpolation is more accurate.  Conservation holds
-    by the **discrete Stokes theorem on the sub-grid**: the curl is not taken on
-    the full lattice (where ``u_lat = 0`` in the buffer would telescope the sum
-    to zero — the original FIX B defect), nor are the sub-grid corner holes
-    (from the non-rectangular M4′-support data region) left as zero
-    discontinuities; they are axis-wise edge-padded (Neumann) before the curl so
-    ``Σ_node Γ = ∮_∂data (n̂ × u_lat) dS ≈ ∫_box ω_FVM dV``.  The vorticity path
-    is exactly conservative (M4′ partition of unity); the velocity path is
-    conservative to the ~2h data-extent smear, converging as the lattice
-    refines.  The default is ``"vorticity"``; the
-    velocity path is exercised by ``tests/coupler/test_continuous_overlap.py``."""
-
     overlap_radius_ratio: float = 1.5
     """Particle core radius σ in units of h for overlap-region particles.
     σ sets the deconvolution bandwidth of the Beale correction: thin vortex
@@ -280,12 +254,6 @@ class CouplerSetup:
             raise ValueError(
                 f"donor_bc_mode must be one of {_valid_donor_bc_modes!r}, "
                 f"got {self.donor_bc_mode!r}."
-            )
-        _valid_handoff_modes = ("vorticity", "velocity")
-        if self.handoff_target_mode not in _valid_handoff_modes:
-            raise ValueError(
-                f"handoff_target_mode must be one of {_valid_handoff_modes!r}, "
-                f"got {self.handoff_target_mode!r}."
             )
 
     # ── Derived properties ────────────────────────────────────────────────
@@ -360,7 +328,6 @@ class CouplerSetup:
                 "bc_coupling_iterations": self.bc_coupling_iterations,
                 "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
-                "handoff_target_mode": self.handoff_target_mode,
             },
         }
 

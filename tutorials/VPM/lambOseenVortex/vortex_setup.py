@@ -26,45 +26,45 @@ from source.solvers.VPM.config.types import (
 # Buckingham-Pi normalisation
 # =========================================================
 # Dimensional parameters:
-#   $\Gamma$       = 1.0 m^2/s          circulation per vortex
-#   $\nu$          = 1/530 m^2/s        kinematic viscosity
-#   $b_0$          = 1.0 m              centre-to-centre separation
-#   $r_{c,0}$     = 0.125 m            initial core radius a_0 (radius of peak
-#                                      azimuthal velocity — C&W convention)
-#   $a_0/b_0$     = 0.125              core-to-separation ratio
-#   $\sigma_0 = a_0/1.12091$          = 0.1115 m   diffused Gaussian width
+#   $\Gamma$          = 1.0 m^2/s          circulation per vortex
+#   $\nu$             = 1/530 m^2/s        kinematic viscosity
+#   $b_0$             = 1.0 m              centre-to-centre separation
+#   $a_{c,0}$         = 0.125 m            initial core radius (radius of peak
+#                                          azimuthal velocity — C&W convention)
+#   $a_{c,0}/b_0$     = 0.125              core-to-separation ratio
+#   $\sigma_0 = a_{c,0}/1.12091$          = 0.1115 m   diffused Gaussian width
 #
 # Derived reference quantities:
-#   $Re = \Gamma/\nu$                    = 530        Reynolds number
-#   $U_{c,0} = \Gamma/(2\pi r_{c,0})$   = 1.273 m/s  reference velocity
-#   $\omega_{c,0} = \Gamma/(\pi r_{c,0}^2)$ = 20.37 1/s  reference vorticity
-#   $G_{c,0} = U_{c,0}/r_{c,0}$        = 10.19 1/s  reference velocity gradient
-#   $t_0 = \sigma_0^2/(4\nu)$          = 1.65 s     initial vortex age
-#   $h$ (particle spacing)              = 0.3 * r_{c,0}
+#   $Re = \Gamma/\nu$                            = 530        Reynolds number
+#   $U_{c,0} = \Gamma/(2\pi a_{c,0})$           = 1.273 m/s  reference velocity
+#   $\omega_{c,0} = \Gamma/(\pi a_{c,0}^2)$     = 20.37 1/s  reference vorticity
+#   $G_{c,0} = U_{c,0}/a_{c,0}$                = 10.19 1/s  reference velocity gradient
+#   $t_0 = \sigma_0^2/(4\nu)$                  = 1.65 s     initial vortex age
+#   $h$ (particle spacing)                      = 0.3 * a_{c,0}
 #
 # Buckingham-Pi groups used in figures:
-#   $\tau = \nu t / b_0^2$                              time
-#   $r^* = r / r_{c,0}$                                 radius
-#   $u^* = u_\theta / U_{c,0}$                          azimuthal velocity
-#   $\omega^* = \omega_z / \omega_{c,0}$                vorticity
-#   $G^* = (\partial u_y/\partial x)\,r_{c,0}/U_{c,0}$  velocity gradient
-#   $x_c^* = x_c / b_0$                                 dipole trajectory
-#   $r_c^* = r_c / r_{c,0}$                             core radius (dipole)
-#   $\sigma^2 / b_0^2$                                  core area (merging)
-#   $b^* = b / b_0$                                     separation (merging)
-#   $P^* = (dE/dt) / (\nu\Gamma^2/b_0^2)$               energy dissipation
+#   $\tau = \nu t / a_{c,0}^2$                              time
+#   $r^* = r / a_{c,0}$                                     radius
+#   $u^* = u_\theta / U_{c,0}$                              azimuthal velocity
+#   $\omega^* = \omega_z / \omega_{c,0}$                    vorticity
+#   $G^* = (\partial u_y/\partial x)\,a_{c,0}/U_{c,0}$      velocity gradient
+#   $x_c^* = x_c / b_0$                                     dipole trajectory
+#   $a_c^* = a_c / a_{c,0}$                                 core radius (dipole)
+#   $\sigma^2 / b_0^2$                                      core area (merging)
+#   $b^* = b / b_0$                                         separation (merging)
+#   $P^* = (dE/dt) / (\nu\Gamma^2/a_{c,0}^2)$               energy dissipation
 #
 TUTORIAL_DIR = Path(__file__).resolve().parent
 DEFAULT_SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 RE = 530.0  # Re_Γ = Γ/nu — matches C&W 2003 reference data
-RC = 0.125  # initial C&W core radius a0 [m] — radius of PEAK azimuthal velocity
+AC0 = 0.125  # initial C&W core radius a_{c,0} [m] — radius of PEAK azimuthal velocity
 # C&W 2003 eq. (4.1): the co-rotating merger experiment starts at a0/b0 = 0.125
 # +/- 0.007 — the SAME core-to-separation ratio as the single-vortex case, and the
 # ratio at which their reference fig. 5 data (Re=530) were taken. A larger a0/b0
 # seeds the pair much closer to the convective-merger threshold a_crit/b0 = 0.29
 # (eq. 4.2), so it merges far too early. (Was 0.17, which merged ~2x too soon.)
-MERGING_RC = 0.125  # C&W co-rotating merger benchmark core radius a0 [m] (a0/b0=0.125)
+MERGING_AC0 = 0.125  # C&W co-rotating merger benchmark core radius a_{c,0} [m] (a0/b0=0.125)
 B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 
 # C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen
@@ -72,7 +72,7 @@ B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 BETA_RMAX = 1.1209064227785341
 TOTAL_TIME = 20.0
 
-# z-column span in units of RC. Kept short (was 50) so the capped DVH/GBD regen
+# z-column span in units of AC0. Kept short (was 50) so the capped DVH/GBD regen
 # nodes are not spread thin across redundant z-layers: the cap only affords an
 # in-plane disk of radius sqrt(max_nodes/(nz*pi))*h (nz=LENGTH/spacing_factor);
 # too-long a column shrinks that disk below the domain and hard-clips the
@@ -122,7 +122,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     """Run one viscous scheme for the case given by --gamma1/--gamma2."""
     gamma1, gamma2 = args.gamma1, args.gamma2
     nu = 1.0 / args.re
-    rc = MERGING_RC if gamma1 * gamma2 > 0 else args.core_radius
+    rc = MERGING_AC0 if gamma1 * gamma2 > 0 else args.core_radius
     b0 = args.separation
     if rc <= 0.0:
         raise ValueError("--core-radius must be positive")
@@ -323,7 +323,7 @@ def parse_args() -> argparse.Namespace:
         "--num-steps", type=int, default=None, help="Exact number of time steps (overrides --total-time when given).",
     )
     parser.add_argument(
-        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of RC.",
+        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of AC0.",
     )
     parser.add_argument( 
         "--re", type=float, default=RE, help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
@@ -331,8 +331,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--core-radius",
         type=float,
-        default=RC,
-        help="Initial Lamb-Oseen core radius a0 [m]. Co-rotating merger cases use MERGING_RC.",
+        default=AC0,
+        help="Initial Lamb-Oseen core radius a_{c,0} [m]. Co-rotating merger cases use MERGING_AC0.",
     )
     parser.add_argument(
         "--separation",

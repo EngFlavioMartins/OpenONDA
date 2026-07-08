@@ -8,8 +8,8 @@ The coupler calls this to push two volume fields into OpenFOAM each run:
     buffer band.  This is the FVM-side complement of the VPM-side authority weight
     eta -- where eta -> 0 (VPM takes over), lambda -> max (FVM defers to VPM).
 
-  * `Utarget`  (volVectorField, set EVERY coupling step): the VPM velocity sampled
-    at the FVM cell centres, i.e. the field the fringe relaxes toward.
+  * `Utarget`  (volVectorField, set EVERY coupling step): the VPM velocity
+    sampled at the FVM cell centres, i.e. the field the fringe relaxes toward.
 
 Both are looked up by name inside the solver (relaxationSource.H / fvOptions).
 """
@@ -40,7 +40,7 @@ def build_lambda(
     s = np.clip(d_in / max(buffer_thickness, 1e-12), 0.0, 1.0)
     lam = lambda_max * 0.5 * (1.0 + np.cos(np.pi * s))
     lam[d_in >= buffer_thickness] = 0.0  # core: FVM is free
-    lam[d_in < 0.0] = lambda_max  # (shouldn't happen) outside
+    lam[d_in < 0.0] = lambda_max  # outside the box, if present
     return lam
 
 
@@ -73,16 +73,21 @@ class FringeFields:
         lam_max = lambda_max_from_scales(
             u_char, cfg.buffer_thickness, cfg.dt, A=getattr(cfg, "fringe_strength", 4.0)
         )
-        self.lam = build_lambda(self.cc, cfg.fvm_box, cfg.buffer_thickness, lam_max)
+        self.lam = build_lambda(
+            self.cc,
+            cfg.fvm_box,
+            cfg.buffer_thickness,
+            lam_max,
+        )
 
-        # set the static lambda once
         self.ofw.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.lam))
 
     def update_target(self) -> None:
-        """Sample the VPM velocity at the FVM cell centres and push as Utarget.
+        """Sample the VPM velocity at the FVM cell centres and push Utarget.
 
         Only cells with lambda>0 (the band) actually use it, so to save work we
-        evaluate VPM only there and leave the core as freestream (unused)."""
+        evaluate VPM only there and leave the core as freestream (unused).
+        """
         band = self.lam > 0.0
         Ut = np.tile(self.cfg.U_inf, (len(self.cc), 1)).astype(float)
         if band.any():

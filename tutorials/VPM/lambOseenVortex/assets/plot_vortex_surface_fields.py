@@ -37,21 +37,12 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import BETA_RMAX, FIGURES_DIR, SOLUTION_DIR, load_theme
-
-
-# =============================================================
-# Physical reference constants (matching vortex_setup.py)
-# =============================================================
-
-_NU = 1.0 / 530.0
-_AC0 = 0.125  # C&W peak-velocity core radius a0 [m]
-# a0 is the peak-velocity radius; the diffused Gaussian width is a0/BETA_RMAX, so
-# the reference-field age uses the converted width (see _common.BETA_RMAX).
-_T0 = (_AC0 / BETA_RMAX) ** 2 / (4.0 * _NU)
-_UC0 = 1.0 / (2.0 * np.pi * _AC0)  # length-scale normalisation: no BETA correction
-_WC0 = 1.0 / (np.pi * _AC0**2)
-_DT = 0.03
+from _common import (
+    add_physics_args,
+    build_arg_parser,
+    load_theme,
+    resolve_runtime_physics,
+)
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
@@ -145,10 +136,17 @@ def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float 
 # =============================================================
 
 
-def plot_surface_fields(
-    solution_dir: Path, figures_dir: Path, dpi: int = 300, fmt: str = "png", dt: float = _DT
-) -> int:
+def plot_surface_fields(args) -> int:
+    solution_dir = Path(args.solution_dir)
+    fmt = getattr(args, "format", "png")
+
     colors, theme = load_theme()
+    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    run_nu = runtime["nu"]
+    ac0 = runtime["ac0"]
+    t0 = runtime["t0"]
+    uc_ref = args.gamma / (2.0 * np.pi * ac0)
+    wc_ref = args.gamma / (np.pi * ac0**2)
 
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
@@ -172,24 +170,17 @@ def plot_surface_fields(
         return 1
 
     # -- Shared normalisation limits ------------------------------------
-    v_max = max(d["vel_mag"].max() for d in datasets.values()) / _UC0
-    w_max = max(d["vort_z"].max() for d in datasets.values()) / _WC0
+    v_max = max(d["vel_mag"].max() for d in datasets.values()) / uc_ref
+    w_max = max(d["vort_z"].max() for d in datasets.values()) / wc_ref
     v_norm = mcolors.Normalize(vmin=0.0, vmax=v_max)
     w_norm = mcolors.Normalize(vmin=0.0, vmax=w_max)
     v_cmap = theme.COLORMAPS["vortex_speed"]
     w_cmap = theme.COLORMAPS["vortex_vorticity"]
 
-    x_ext = max(abs(d["X"]).max() for d in datasets.values()) / _AC0
-    y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / _AC0
+    x_ext = max(abs(d["X"]).max() for d in datasets.values()) / ac0
+    y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / ac0
     ext = max(x_ext, y_ext)
     ax_lim = ext
-
-    first_data = next(iter(datasets.values()))
-    ft = first_data.get("flow_time")
-    if ft is not None:
-        t_total = _T0 + ft
-    else:
-        t_total = _T0 + first_data["step"] * dt
 
     # -- Figure --------------------------------------------------------
     fig, (ax_v, ax_w) = plt.subplots(
@@ -201,12 +192,12 @@ def plot_surface_fields(
             continue
         d = datasets[scheme]
         mid = d["mid"]
-        Xn = d["X"] / _AC0
-        Yn = d["Y"] / _AC0
+        Xn = d["X"] / ac0
+        Yn = d["Y"] / ac0
         Xs = _quad(Xn, qid, mid)
         Ys = _quad(Yn, qid, mid)
-        vms = _quad(d["vel_mag"] / _UC0, qid, mid)
-        wzs = _quad(d["vort_z"] / _WC0, qid, mid)
+        vms = _quad(d["vel_mag"] / uc_ref, qid, mid)
+        wzs = _quad(d["vort_z"] / wc_ref, qid, mid)
 
         pcm_kw = dict(shading="gouraud", rasterized=True)
         ax_v.pcolormesh(Xs, Ys, vms, cmap=v_cmap, norm=v_norm, **pcm_kw)
@@ -244,11 +235,12 @@ def plot_surface_fields(
     cb_v.set_label(r"$|\mathbf{u}|\,/\,U_{c,0}$" , loc="top")
     cb_w.set_label(r"$\omega_z\,/\,\omega_{c,0}$" , loc="top")
 
+    figures_dir = Path(args.figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
     out = figures_dir / f"vortex_surface_fields.{fmt}"
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":
-        save_kw["dpi"] = dpi
+        save_kw["dpi"] = args.dpi
     plt.savefig(out, **save_kw)
     plt.close(fig)
     print(f"  Saved: {out}")
@@ -256,34 +248,14 @@ def plot_surface_fields(
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="z=0 surface field tiled comparison.")
-    p.add_argument("--solution-dir", default=str(SOLUTION_DIR))
-    p.add_argument("--figures-dir", default=str(FIGURES_DIR))
-    p.add_argument("--dpi", type=int, default=300)
-    p.add_argument(
-        "--format",
-        choices=load_theme()[1].EXPORT_FORMATS,
-        default="png",
-        help="Output figure format (default: png).",
-    )
-    p.add_argument(
-        "--dt",
-        type=float,
-        default=_DT,
-        help="Time-step size [s] (used to compute physical time from step number).",
-    )
+    p = build_arg_parser("z=0 surface field tiled comparison.")
+    add_physics_args(p)
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    return plot_surface_fields(
-        solution_dir=Path(args.solution_dir),
-        figures_dir=Path(args.figures_dir),
-        dpi=args.dpi,
-        fmt=args.format,
-        dt=args.dt,
-    )
+    return plot_surface_fields(args)
 
 
 if __name__ == "__main__":

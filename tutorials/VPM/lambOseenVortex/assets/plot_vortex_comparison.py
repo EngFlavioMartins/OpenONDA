@@ -2,9 +2,9 @@
 """Lamb-Oseen single vortex — radial profile comparison.
 
 Reads the last x-line CSV sample from each viscous scheme and plots:
-  - azimuthal velocity uθ / Uc,0
-  - z-vorticity  ωz / ωc
-  - velocity gradient (∂uy/∂x) · rc,0 / Uc,0
+  - azimuthal velocity  uθ / U_{c,0}
+  - z-vorticity         ωz / ω_{c,0}
+  - velocity gradient   (∂uy/∂x) · a_{c,0} / U_{c,0}
 
 Saves: figures/vortex_comparison.png
 """
@@ -199,8 +199,8 @@ def plot_vortex_case(args) -> int:
     axes[1].set_xlim([-7.5, 7.5])
     axes[1].set_ylim(bottom=-0.01)
 
-    axes[2].set_xlabel(r"$r / r_{c,0}$")
-    axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,r_{c,0} / U_{c,0}$")
+    axes[2].set_xlabel(r"$r / a_{c,0}$")
+    axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,a_{c,0} / U_{c,0}$")
     axes[2].set_xlim([-7.5, 7.5])
 
     handles, labels = axes[0].get_legend_handles_labels()

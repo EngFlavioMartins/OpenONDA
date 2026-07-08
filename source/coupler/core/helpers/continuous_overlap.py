@@ -73,177 +73,6 @@ RADIUS_RATIO = 1.5
 _M4P_SUPPORT = 2.0
 
 # =========================================================
-# FIX B: velocity-based target circulation (Billuart 2023 §3.3)
-# Conservative via the discrete Stokes theorem on the data-extent sub-grid
-# (NOT the full lattice — see _velocity_based_target docstring for the
-# zero-circulation defect that motivated the sub-grid + axis-wise hole fill).
-# =========================================================
-def _fill_holes_axiswise(u_sub: np.ndarray, mask_sub: np.ndarray) -> np.ndarray:
-    """Fill ``mask=False`` nodes in a 3-D sub-grid by axis-wise edge padding.
-
-    Forward/backward fill of the nearest ``mask=True`` value along each axis
-    (cascading x → y → z).  The interior (``mask=True``) is left untouched; only
-    the bounding-box holes created by the non-rectangular M4′-support data
-    region (Euclidean 2h support erodes the corners of the axis-aligned data
-    extent) are filled.  This gives a Neumann condition at the data boundary so
-    the lattice curl sees a smooth field instead of a zero discontinuity that
-    ``np.gradient`` would amplify into a spurious vorticity sheet.
-    """
-    u = u_sub.copy()
-    m = mask_sub.astype(bool)
-    for ax in range(3):
-        u = np.swapaxes(u, 0, ax)
-        m = np.swapaxes(m, 0, ax)
-        for i in range(1, u.shape[0]):
-            empty = ~m[i]
-            if empty.any():
-                u[i, empty] = u[i - 1, empty]
-                m[i, empty] = m[i - 1, empty]
-        for i in range(u.shape[0] - 2, -1, -1):
-            empty = ~m[i]
-            if empty.any():
-                u[i, empty] = u[i + 1, empty]
-                m[i, empty] = m[i + 1, empty]
-        u = np.swapaxes(u, 0, ax)
-    return u
-
-def _curl_on_regular_grid(u_grid: np.ndarray, shape: tuple[int, int, int], h: float) -> np.ndarray:
-    """Compute ω = ∇×u on a regular h-lattice via 2nd-order central differences.
-
-    Parameters
-    ----------
-    u_grid : (Nx*Ny*Nz, 3)  velocity field on the lattice (flat, C-order)
-    shape  : (Nx, Ny, Nz)
-    h      : lattice spacing
-
-    Returns
-    -------
-    omega_grid : (Nx*Ny*Nz, 3)  vorticity on the lattice (flat)
-    """
-    u = u_grid.reshape(*shape, 3)  # (Nx, Ny, Nz, 3)
-    ux, uy, uz = u[..., 0], u[..., 1], u[..., 2]
-
-    # Central differences with one-sided at boundaries (Neumann edge)
-    def dcd(f, axis):
-        return np.gradient(f, h, axis=axis, edge_order=1)
-
-    omega = np.stack(
-        [
-            dcd(uz, 1) - dcd(uy, 2),  # ω_x = ∂u_z/∂y - ∂u_y/∂z
-            dcd(ux, 2) - dcd(uz, 0),  # ω_y = ∂u_x/∂z - ∂u_z/∂x
-            dcd(uy, 0) - dcd(ux, 1),  # ω_z = ∂u_y/∂x - ∂u_x/∂y
-        ],
-        axis=-1,
-    )
-    return omega.reshape(-1, 3)
-
-def _velocity_based_target(
-    fvm_cell_pos: np.ndarray,
-    fvm_cell_vel: np.ndarray,
-    fvm_cell_vol: np.ndarray,
-    u_inf: np.ndarray,
-    lo_lat: np.ndarray,
-    h: float,
-    shape: tuple[int, int, int],
-) -> np.ndarray:
-    """Conservative velocity-based target circulation on the VPM lattice.
-
-    Interpolates the FVM velocity onto the lattice (scatter ``u·V`` and ``V``
-    separately, divide to get the volume-weighted velocity ``u_lat``), then
-    computes ``ω = ∇×u`` via central differences on the **data-extent
-    sub-grid** — the bounding box of lattice nodes that actually received FVM
-    data (Billuart et al., JCP 2023, §3.3).
-
-    Why the sub-grid, not the full lattice: the lattice extends a full
-    ``buffer_length + 2h`` beyond ``fvm_box`` and **no FVM cells live there**,
-    so ``u_lat = 0`` in the buffer.  Taking the curl on the full lattice makes
-    the discrete Stokes sum telescope to the *lattice* boundary, where
-    ``n̂×u_lat = 0`` ⇒ ``Σ_node Γ ≡ 0`` for every flow — the hand-off could not
-    transfer the shed wake.  Restricting the curl to the data-extent sub-grid
-    closes discrete Stokes over the *data* boundary (≈ the box faces):
-
-        Σ_node Γ = ∮_∂data (n̂ × u_lat) dS ≈ ∫_box ω_FVM dV
-
-    to interpolation accuracy (the data boundary sits ~2h beyond the box via
-    the M4′ support, so for a vortex compact inside the box the two integrals
-    coincide; for vorticity that reaches the faces the velocity path sums over
-    the slightly enlarged data extent — the same smear the vorticity path's M4′
-    scatter applies).  The sub-grid edges use one-sided differences
-    (``edge_order=1``), i.e. a Neumann condition at the data boundary, so no
-    spurious vorticity sheet is manufactured at the coupling faces — the
-    cubeFlow interface-noise pathology.
-
-    The configured freestream ``u_inf`` is subtracted before the scatter so the
-    interpolated field is the perturbation velocity.  ``∇×U∞ ≡ 0`` (exactly, in
-    discrete too), so the curl is unchanged by the subtraction; it makes the
-    intent explicit and keeps the field fed to the curl a small perturbation
-    rather than ``U∞`` plus a zero-cFO cutoff.
-
-    Returns
-    -------
-    target : (Nx*Ny*Nz, 3)  target circulation Γ = ω · h³ on the lattice
-    """
-    pos = np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3)
-    vel = np.asarray(fvm_cell_vel, dtype=np.float64).reshape(-1, 3)
-    # Subtract the freestream: the curl of a constant is zero, so this does not
-    # change ω, but it makes u_lat the perturbation field (no U∞ step at the
-    # data boundary) and is robust to any future nonlinear use of u_lat.
-    u_rel = vel - np.asarray(u_inf, dtype=np.float64).reshape(1, 3)
-    vol = np.asarray(fvm_cell_vol, dtype=np.float64).ravel()
-
-    # Scatter u·V  → volume-weighted velocity on lattice
-    _, u_weighted = remesh_to_grid(pos, u_rel * vol[:, None], lo_lat, h, shape)
-    # Scatter V    → volume weight on lattice
-    vol_vec = np.stack([vol, vol, vol], axis=1)
-    _, vol_weight = remesh_to_grid(pos, vol_vec, lo_lat, h, shape)
-
-    # Interpolated velocity = Σ(u·V·W) / Σ(V·W)  (volume-weighted average)
-    vw = vol_weight[:, 0].copy()  # all 3 components of vol_weight are equal
-    mask = vw > 1e-30
-    u_lat = np.zeros_like(u_weighted)
-    u_lat[mask] = u_weighted[mask] / vw[mask][:, None]
-
-    # ω = ∇×u on the data-extent sub-grid only (see docstring: closing Stokes
-    # over the data boundary instead of the zero-padded lattice boundary).
-    omega_lat = np.zeros_like(u_lat)
-    if mask.any():
-        mask3 = mask.reshape(shape)
-        any_x = np.asarray(mask3.any(axis=(1, 2)))
-        any_y = np.asarray(mask3.any(axis=(0, 2)))
-        any_z = np.asarray(mask3.any(axis=(0, 1)))
-        i_lo = np.array([int(np.argmax(any_x)), int(np.argmax(any_y)), int(np.argmax(any_z))])
-        i_hi = np.array(
-            [
-                int(len(any_x) - np.argmax(any_x[::-1]) - 1),
-                int(len(any_y) - np.argmax(any_y[::-1]) - 1),
-                int(len(any_z) - np.argmax(any_z[::-1]) - 1),
-            ]
-        )
-        sub_shape = (
-            int(i_hi[0] - i_lo[0] + 1),
-            int(i_hi[1] - i_lo[1] + 1),
-            int(i_hi[2] - i_lo[2] + 1),
-        )
-        u3 = u_lat.reshape(shape + (3,))
-        m_sub = mask3[i_lo[0] : i_hi[0] + 1, i_lo[1] : i_hi[1] + 1, i_lo[2] : i_hi[2] + 1]
-        u_sub = u3[i_lo[0] : i_hi[0] + 1, i_lo[1] : i_hi[1] + 1, i_lo[2] : i_hi[2] + 1, :]
-        # The data region is non-rectangular (Euclidean M4′ support erodes the
-        # corners of the axis-aligned bounding box), so the sub-grid has
-        # mask=False holes where u_lat = 0.  Fill them by axis-wise edge padding
-        # (Neumann) before the curl, else np.gradient amplifies the zero
-        # discontinuity into a spurious vorticity sheet at every hole.
-        if (~m_sub).any():
-            u_sub = _fill_holes_axiswise(u_sub, m_sub)
-        omega_sub = _curl_on_regular_grid(u_sub.reshape(-1, 3), sub_shape, h)
-        omega3 = omega_lat.reshape(shape + (3,))
-        omega3[i_lo[0] : i_hi[0] + 1, i_lo[1] : i_hi[1] + 1, i_lo[2] : i_hi[2] + 1, :] = (
-            omega_sub.reshape(sub_shape + (3,))
-        )
-
-    # Target circulation = ω · h³
-    return omega_lat * (h**3)
-
-# =========================================================
 # Integral invariants
 # =========================================================
 def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
@@ -469,8 +298,6 @@ def continuous_handoff(
     omega_at_node=None,
     fvm_cell_pos=None,
     fvm_cell_circ=None,
-    fvm_cell_vel=None,
-    fvm_cell_vol=None,
     u_inf=None,
     inside_mesh_at_node=None,
     ramp_width: float | None = None,
@@ -497,21 +324,12 @@ def continuous_handoff(
     h : float
         Lattice spacing (= VPM particle spacing).
     fvm_cell_pos, fvm_cell_circ : ndarray (M, 3) or None
-        Conservative FVM→lattice source (``handoff_target_mode="vorticity"``):
-        cell centres and their circulation ``Γ_cell = ω_cell · V_cell``,
-        scattered onto the lattice with the same M4′ kernel as the wake.  The
-        injected target circulation equals ``Σ ω_cell·V_cell`` exactly,
-        independent of the FVM mesh refinement.
-    fvm_cell_vel, fvm_cell_vol : ndarray (M, 3), (M,) or None
-        Velocity-based source (``handoff_target_mode="velocity"``, FIX B):
-        cell-centre velocities and cell volumes.  ``u·V`` and ``V`` are
-        scattered separately, divided to the interpolated velocity, then
-        ``ω = ∇×u`` is taken on the data-extent sub-grid (discrete-Stokes
-        closed; see :func:`_velocity_based_target`).  Requires ``u_inf``.
+        Conservative FVM→lattice source: cell centres and their circulation
+        ``Γ_cell = ω_cell · V_cell``, scattered onto the lattice with the same
+        M4′ kernel as the wake.  The injected target circulation equals
+        ``Σω_cell·V_cell`` exactly, independent of the FVM mesh refinement.
     u_inf : ndarray (3,) or None
-        Freestream velocity vector subtracted before the velocity-based scatter
-        (``∇×U∞ ≡ 0``; see :func:`_velocity_based_target`).  Ignored by the
-        vorticity path.
+        Freestream velocity vector used to orient the outflow-band diagnostic.
     omega_at_node : callable ``grid_pos -> ω (M, 3)`` or None
         Test/no-body path (``target = ω·h³``); ignored when ``fvm_cell_pos``
         is given.  When both are None the hand-off is pure transport.
@@ -592,20 +410,7 @@ def continuous_handoff(
 
     # ── Build the FVM target circulation on the lattice ──────────────────────
     target = None
-    if fvm_cell_vel is not None and fvm_cell_vol is not None and len(fvm_cell_vel) > 0:
-        # FIX B (Billuart §3.3): interpolate u_FVM, compute ω=∇×u on the
-        # data-extent sub-grid (discrete-Stokes-closed over the data boundary,
-        # not the full lattice whose zero-padded buffer forces ΣΓ ≡ 0).
-        target = _velocity_based_target(
-            fvm_cell_pos if fvm_cell_pos is not None else np.zeros((0, 3)),
-            fvm_cell_vel,
-            fvm_cell_vol,
-            np.asarray(u_inf, dtype=np.float64).reshape(3) if u_inf is not None else np.zeros(3),
-            lo_lat,
-            h,
-            shape,
-        )
-    elif fvm_cell_pos is not None and fvm_cell_circ is not None and len(fvm_cell_pos) > 0:
+    if fvm_cell_pos is not None and fvm_cell_circ is not None and len(fvm_cell_pos) > 0:
         _, target = remesh_to_grid(
             np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3),
             np.asarray(fvm_cell_circ, dtype=np.float64).reshape(-1, 3),
@@ -808,7 +613,6 @@ class ContinuousOverlapInjector:
         self._cell_tree = None
         self._cell_centers: np.ndarray | None = None
         self._cell_volumes: np.ndarray | None = None
-        self._velocity_buffer: np.ndarray | None = None
         self.step = 0
 
     # ── setup ────────────────────────────────────────────────────────────────
@@ -889,29 +693,6 @@ class ContinuousOverlapInjector:
         margin = self.buffer_length + (_M4P_SUPPORT + 2.0) * h
         in_bbox = np.all((cell_pos >= lo - margin) & (cell_pos <= hi + margin), axis=1)
 
-        # FIX B: when handoff_target_mode="velocity", compute the target from
-        # ∇×u_FVM on the data-extent sub-grid (Billuart §3.3) instead of
-        # scattering ω·V.  The freestream is subtracted before the scatter.
-        handoff_mode = getattr(self.config, "handoff_target_mode", "vorticity")
-        kw_target = {}
-        if handoff_mode == "velocity":
-            if self._velocity_buffer is None:
-                self._velocity_buffer = np.ascontiguousarray(
-                    fvm.get_velocity_field(), dtype=np.float64
-                ).reshape(-1, 3)
-            else:
-                fvm.get_velocity_field_into(self._velocity_buffer)
-            kw_target = {
-                "fvm_cell_vel": self._velocity_buffer[in_bbox],
-                "fvm_cell_vol": self._cell_volumes[in_bbox],
-                "u_inf": self.config.U_inf,
-            }
-        else:
-            # ``u_inf`` is ignored by the vorticity target path but sets the
-            # outflow-band direction for the flux-ratio diagnostic (the ω path
-            # is otherwise direction-agnostic).
-            kw_target = {"fvm_cell_circ": cell_circ[in_bbox], "u_inf": self.config.U_inf}
-
         def inside_mesh_at_node(grid_pos):
             d, _ = tree.query(grid_pos)
             return d < 1.5 * h
@@ -922,6 +703,8 @@ class ContinuousOverlapInjector:
             self._box,
             h,
             fvm_cell_pos=cell_pos[in_bbox],
+            fvm_cell_circ=cell_circ[in_bbox],
+            u_inf=self.config.U_inf,
             inside_mesh_at_node=inside_mesh_at_node,
             ramp_width=self.ramp_width,
             dead_zone=self.dead_zone,
@@ -934,7 +717,6 @@ class ContinuousOverlapInjector:
             u_max=self.u_inf,
             dt=self.dt,
             eta_fn=eta_fn,
-            **kw_target,
         )
 
         # Write the rebuilt cloud back to the VPM solver.

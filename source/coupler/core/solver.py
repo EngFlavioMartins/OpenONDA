@@ -172,7 +172,7 @@ class FVMVPMCoupler:
         *,
         fvm_solver,
         vpm_solver=None,
-    ) -> "FVMVPMCoupler":
+    ) -> FVMVPMCoupler:
         """Keyword-argument constructor (``coupler_setup`` first, solvers named).
 
         Equivalent to ``FVMVPMCoupler(vpm_solver, fvm_solver, coupler_setup)``.
@@ -464,31 +464,21 @@ class FVMVPMCoupler:
         #     scatter and uses the GLOBAL face count to index a LOCAL-sized patch
         #     field (out-of-bounds write on master); the Python path also makes
         #     master/non-master call different collectives.
-        #   * bc_coupling_iterations>1 (Weymouth–Lauber): _run_fvm_substeps calls
-        #     _donor_velocity (VPM + interior-vorticity gather) on ALL ranks, but
-        #     self.vpm is None on non-master and the gathers are master-only.
+        #   * donor_interior_source="particles" with bc_coupling_iterations>1
+        #     is MPI-safe only in Dirichlet mode: the VPM/FVM-interior donor is
+        #     assembled on rank 0 and scattered by the C++ fixed-value setter.
+        #     Robin/mixed still needs a scatter-safe C++ setter.
         # Fail loudly here rather than hang/segfault deep in the loop.
         n_procs = self.ofw.n_procs()
-        if n_procs > 1:
-            if getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
-                raise NotImplementedError(
-                    "donor_bc_mode='mixed' (Robin BC) is not parallel-safe "
-                    f"(n_procs={n_procs}). Use donor_bc_mode='dirichlet' under MPI, "
-                    "or run serially. See foamSolverCore.C "
-                    "set_robin_velocity_boundary_condition (needs local face count "
-                    "+ pstreamScatterDoubles)."
-                )
-            if (
-                int(self.config.bc_coupling_iterations) > 1
-                and getattr(self.config, "donor_interior_source", "particles") != "fvm"
-            ):
-                raise NotImplementedError(
-                    "bc_coupling_iterations>1 with donor_interior_source='particles' "
-                    f"(legacy Weymouth–Lauber path) is not parallel-safe "
-                    f"(n_procs={n_procs}). Use donor_interior_source='fvm' (its "
-                    "vorticity gather is collective on all ranks), set "
-                    "bc_coupling_iterations<=1, or run serially."
-                )
+        donor_source = getattr(self.config, "donor_interior_source", "particles")
+        if n_procs > 1 and getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
+            raise NotImplementedError(
+                "donor_bc_mode='mixed' (Robin BC) is not parallel-safe "
+                f"(n_procs={n_procs}). Use donor_bc_mode='dirichlet' under MPI, "
+                "or run serially. See foamSolverCore.C "
+                "set_robin_velocity_boundary_condition (needs local face count "
+                "+ pstreamScatterDoubles)."
+            )
 
         n_steps = int(self.config.t_end / self.dt)
         patch = self.config.patch_name
@@ -545,13 +535,8 @@ class FVMVPMCoupler:
             # STEP 1 — Donor BC (rank 0 computes; C++ scatter distributes)
             # ─────────────────────────────────────────────────────────────────
             t1 = time.time()
-            donor_source = getattr(self.config, "donor_interior_source", "particles")
             if self._is_master:
                 if donor_source == "fvm":
-                    # Exterior-only endpoint: U∞ + BS(particles outside the box).
-                    # The interior term is added LIVE per sub-step from the FVM
-                    # vorticity (see _run_fvm_substeps), so it is never staled
-                    # by the coupling window.
                     u_bc_next = self._donor_exterior_velocity(face_centers)
                 else:
                     u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
@@ -563,8 +548,6 @@ class FVMVPMCoupler:
                         omega_bc_next.copy() if omega_bc_next is not None else None
                     )
             else:
-                # Non-master: provide zero-filled arrays of the right shape.
-                # The C++ scatter in _fvm_step reads only from master’s buffer.
                 u_bc_next = np.zeros_like(face_centers)
                 omega_bc_next = None
                 if self._u_bc_prev is None:
@@ -594,8 +577,6 @@ class FVMVPMCoupler:
             #          then INJECT (rank 0 only, uses pre-fetched omega)
             # ─────────────────────────────────────────────────────────────────
             t3 = time.time()
-            # get_vorticity_field is collective; calling on all ranks avoids
-            # deadlock when inject() is rank-0-gated below.
             omega_global = self._get_vorticity_field_buffer()
 
             if self._is_master:
@@ -651,6 +632,7 @@ class FVMVPMCoupler:
         face_areas: np.ndarray,
         exterior_mask: np.ndarray | None = None,
         add_fvm_interior: bool = False,
+        fvm_omega: np.ndarray | None = None,
     ) -> np.ndarray:
         """Donor velocity at boundary face centres (overset/Chimera-style).
 
@@ -677,7 +659,9 @@ class FVMVPMCoupler:
             # No particles → no VPM vorticity at the boundary.
             self._last_omega_donor = np.zeros((n, 3), dtype=np.float64)
             if add_fvm_interior:
-                u_donor = u_donor + self._fvm_interior_induced_velocity(face_centers)
+                u_donor = u_donor + self._fvm_interior_induced_velocity(
+                    face_centers, omega=fvm_omega
+                )
             else:
                 return u_donor
         else:
@@ -710,7 +694,9 @@ class FVMVPMCoupler:
                 self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
             )
             if add_fvm_interior:
-                u_donor = u_donor + self._fvm_interior_induced_velocity(face_centers)
+                u_donor = u_donor + self._fvm_interior_induced_velocity(
+                    face_centers, omega=fvm_omega
+                )
 
 # =========================================================
         # The Biot-Savart donor is analytically solenoidal (∮u·n dA = 0), but
@@ -1101,13 +1087,23 @@ class FVMVPMCoupler:
             is_final = sub == N - 1
             if is_final and n_bc > 1:
                 # Weymouth–Lauber donor↔pressure Picard at the full future BC.
-                exterior_mask = self._outside_box_mask()
+                exterior_mask = self._outside_box_mask() if self._is_master else None
                 for k in range(n_bc):
-                    u_wl = self._donor_velocity(
-                        face_centers, face_normals, face_areas,
-                        exterior_mask=exterior_mask, add_fvm_interior=True,
-                    )
-                    omega_wl = self._last_omega_donor
+                    # Collective on all ranks.  Rank 0 uses the gathered field
+                    # to assemble the legacy Weymouth-Lauber donor; other ranks
+                    # pass an empty array into the scatter-safe Dirichlet setter.
+                    omega_interior = self._get_vorticity_field_buffer()
+                    if self._is_master:
+                        u_wl = self._donor_velocity(
+                            face_centers, face_normals, face_areas,
+                            exterior_mask=exterior_mask,
+                            add_fvm_interior=True,
+                            fvm_omega=omega_interior,
+                        )
+                        omega_wl = self._last_omega_donor
+                    else:
+                        u_wl = np.zeros_like(face_centers)
+                        omega_wl = None
                     self._fvm_step(
                         patch, u_wl, advance=(k == n_bc - 1),
                         omega_target=omega_wl if mixed else None,
