@@ -883,18 +883,11 @@ class FVMVPMCoupler:
             zone_mask=exterior_mask,
         )
         if getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
-            # Use FVM vorticity at face centres — consistent with the velocity
-            # split (exterior particles + FVM-interior).  The full particle cloud
-            # would include in-box particles whose smoothed, lagged vorticity is
-            # inconsistent with the FVM-interior velocity term, causing a wrong
-            # Neumann tangential gradient that manufactures spurious vorticity.
-            _omega_fvm = self._fvm_face_vorticity(face_centers)
-            self._last_omega_donor = (
-                _omega_fvm
-                if _omega_fvm is not None
-                else np.asarray(
-                    self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
-                )
+            # VPM vorticity for the Robin BC Neumann target.  See comment in
+            # _donor_velocity for why particle vorticity is used instead of FVM
+            # vorticity (FVM vorticity at inlet causes exponential instability).
+            self._last_omega_donor = np.asarray(
+                self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
             )
         else:
             self._last_omega_donor = None
