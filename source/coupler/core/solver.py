@@ -150,6 +150,7 @@ class FVMVPMCoupler:
         self._omega_bc_prev: np.ndarray | None = None  # donor ω BC carried between sub-cycles
         self._last_omega_donor: np.ndarray | None = None  # ω at faces from last _donor_velocity call
         self._omega_global_buffer: np.ndarray | None = None
+        self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
         # ``coupler_setup.dt`` starts as dt_fvm.  During initialize(), the
@@ -458,12 +459,12 @@ class FVMVPMCoupler:
         assert self._is_master == (self.vpm is not None)
         assert self.ofw is not None
 
-        # MPI-safety gate.  The Robin BC setter now uses pstreamScatterDoubles
-        # for both velocity and vorticity arrays, making it parallel-safe.
-        # The only remaining concern is donor_interior_source="particles" with
-        # bc_coupling_iterations>1, which is MPI-safe only in Dirichlet mode:
-        # the VPM/FVM-interior donor is assembled on rank 0 and scattered by
-        # the C++ fixed-value setter.
+        # MPI-safety gate.  The Robin BC setter uses pstreamScatterDoubles for
+        # both velocity and vorticity arrays, making it parallel-safe on all
+        # ranks.  Non-master ranks always pass zero arrays so the C++ scatter
+        # overwrites them with rank-0's data.  Every call to _fvm_step must
+        # invoke the SAME C++ setter on all ranks (Robin or Dirichlet) to keep
+        # the MPI collectives in sync.
         n_procs = self.ofw.n_procs()
 
         n_steps = int(self.config.t_end / self.dt)
@@ -522,7 +523,7 @@ class FVMVPMCoupler:
             # ─────────────────────────────────────────────────────────────────
             t1 = time.time()
             if self._is_master:
-                if donor_source == "fvm":
+                if getattr(self.config, "donor_interior_source", "particles") == "fvm":
                     u_bc_next = self._donor_exterior_velocity(face_centers)
                 else:
                     u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
@@ -535,9 +536,12 @@ class FVMVPMCoupler:
                     )
             else:
                 u_bc_next = np.zeros_like(face_centers)
-                omega_bc_next = None
+                _mixed = getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed"
+                omega_bc_next = np.zeros_like(face_centers) if _mixed else None
                 if self._u_bc_prev is None:
                     self._u_bc_prev = np.zeros_like(face_centers)
+                if self._omega_bc_prev is None and _mixed:
+                    self._omega_bc_prev = np.zeros_like(face_centers)
             t1 = time.time() - t1
 
             # ─────────────────────────────────────────────────────────────────
@@ -550,6 +554,9 @@ class FVMVPMCoupler:
                 self._omega_bc_prev, omega_bc_next,
             )
             if self._is_master:
+                self._u_bc_prev = u_bc_next
+                self._omega_bc_prev = omega_bc_next
+            elif getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
                 self._u_bc_prev = u_bc_next
                 self._omega_bc_prev = omega_bc_next
 
@@ -606,6 +613,69 @@ class FVMVPMCoupler:
 
         if self._is_master:
             flush_log()
+
+# =========================================================
+    # Neumann vorticity helper (mixed / Robin BC)
+# =========================================================
+
+    def _fvm_face_vorticity(self, face_centers: np.ndarray) -> np.ndarray | None:
+        """Interpolate the cached FVM vorticity to boundary face centres.
+
+        This is the correct Neumann target for the mixed BC:
+
+          ∂u_t/∂n = ω_FVM × n̂   (Billuart 2023 Eq. 12)
+
+        Using the FVM's own cell vorticity (nearest-cell interpolation)
+        rather than the full particle-cloud vorticity eliminates two
+        sources of noise that caused spurious VPM wake contamination:
+
+        1. **Source inconsistency** (split-donor path): the velocity BC
+           uses exterior particles + live FVM-interior Biot–Savart, while
+           the particle vorticity includes in-box particles that lag one
+           full coupling window. Using FVM vorticity for both halves of
+           the Robin condition removes this mismatch.
+
+        2. **Gaussian smoothing bias**: particle vorticity is filtered by
+           the σ = 1.5h core, systematically under-representing gradients
+           at scales < 2σ. Near the boundary this biases the Neumann
+           gradient down, causing the FVM to generate compensating
+           spurious vorticity every step. FVM cell vorticity has no such
+           filter.
+
+        Returns ``None`` on the first coupling step when ``_omega_global_buffer``
+        has not yet been populated; callers should then fall back to the
+        particle vorticity as a one-time bootstrap.
+
+        The buffer ``_omega_global_buffer`` is populated by
+        ``_get_vorticity_field_buffer()`` at the end of step 3 every cycle,
+        so the values here are always from the most-recently solved FVM step
+        (one coupling-window lag, identical to the lag already present in the
+        velocity BC from the particle side).
+        """
+        if self._omega_global_buffer is None:
+            return None  # first step: no FVM solve has occurred yet
+
+        assert self.injector is not None
+        centers = self.injector._cell_centers
+        if centers is None or centers.shape[0] == 0:
+            return None
+
+        # Build the kD-tree once; the mesh never changes during a run.
+        if self._bc_omega_tree is None:
+            from scipy.spatial import cKDTree
+            self._bc_omega_tree = cKDTree(np.asarray(centers, dtype=np.float64))
+
+        _, idx = self._bc_omega_tree.query(
+            np.ascontiguousarray(face_centers, dtype=np.float64), k=1
+        )
+        omega = np.ascontiguousarray(self._omega_global_buffer[idx], dtype=np.float64)
+        logger.info(
+            "     [Donor] Neumann ω from FVM nearest-cell  n_face=%d  "
+            "|ω|_max=%.3e s⁻¹",
+            len(face_centers),
+            float(np.max(np.linalg.norm(omega, axis=1))) if len(omega) else 0.0,
+        )
+        return omega
 
 # =========================================================
     # STEP 1 — Donor velocity BC (overset-style, full particle cloud)
@@ -670,14 +740,19 @@ class FVMVPMCoupler:
                 include_freestream=True,
                 zone_mask=exterior_mask,  # None means all particles.
             )
-            # VPM vorticity at the boundary faces — the Neumann target for the
-            # mixed/Robin donor BC (Billuart 2023 Eq. 12: ∂u_t/∂n = ω_VPM × n̂).
-            # Computed on the full cloud (compute_target_vorticities has no
-            # zone_mask); the in-box particles are hand-off-overwritten each
-            # cycle so their boundary ω contribution is small.  The solenoidal
-            # projection below is a gradient field (∇×∇φ=0) and does not alter ω.
-            self._last_omega_donor = np.asarray(
-                self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
+            # Neumann target for the mixed/Robin BC (Billuart 2023 Eq. 12:
+            # ∂u_t/∂n = ω × n̂).  Use the FVM's own cell vorticity (sharp,
+            # unsmoothed, no core-mollification bias) rather than the full
+            # particle cloud (which includes smoothed, lagged in-box particles
+            # that generate inconsistent Neumann gradients near the boundary).
+            # Falls back to particle vorticity on the first step only.
+            _omega_fvm = self._fvm_face_vorticity(face_centers)
+            self._last_omega_donor = (
+                _omega_fvm
+                if _omega_fvm is not None
+                else np.asarray(
+                    self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
+                )
             )
             if add_fvm_interior:
                 u_donor = u_donor + self._fvm_interior_induced_velocity(
@@ -782,10 +857,12 @@ class FVMVPMCoupler:
         across the window is far more defensible than interpolating the total
         trace (which smears the fast near-field).
 
-        For ``donor_bc_mode="mixed"`` the face vorticity target is still the
-        full-cloud particle ω (``compute_target_vorticities`` has no zone
-        mask); the in-box contribution there carries the one-window lag the
-        velocity trace no longer has.
+        For ``donor_bc_mode="mixed"``, the Neumann vorticity target uses the
+        FVM's own cell vorticity (via :meth:`_fvm_face_vorticity`), consistent
+        with the FVM-interior split used for the velocity.  Using the full
+        particle cloud here would pair a velocity that excludes in-box particles
+        with a vorticity that includes them, producing a Neumann gradient
+        inconsistent with the imposed normal velocity.
         """
         n = len(face_centers)
         assert self.vpm is not None
@@ -806,8 +883,18 @@ class FVMVPMCoupler:
             zone_mask=exterior_mask,
         )
         if getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
-            self._last_omega_donor = np.asarray(
-                self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
+            # Use FVM vorticity at face centres — consistent with the velocity
+            # split (exterior particles + FVM-interior).  The full particle cloud
+            # would include in-box particles whose smoothed, lagged vorticity is
+            # inconsistent with the FVM-interior velocity term, causing a wrong
+            # Neumann tangential gradient that manufactures spurious vorticity.
+            _omega_fvm = self._fvm_face_vorticity(face_centers)
+            self._last_omega_donor = (
+                _omega_fvm
+                if _omega_fvm is not None
+                else np.asarray(
+                    self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
+                )
             )
         else:
             self._last_omega_donor = None
@@ -1075,9 +1162,11 @@ class FVMVPMCoupler:
                 # Weymouth–Lauber donor↔pressure Picard at the full future BC.
                 exterior_mask = self._outside_box_mask() if self._is_master else None
                 for k in range(n_bc):
-                    # Collective on all ranks.  Rank 0 uses the gathered field
-                    # to assemble the legacy Weymouth-Lauber donor; other ranks
-                    # pass an empty array into the scatter-safe Dirichlet setter.
+                    # Collective on all ranks.  Rank 0 assembles the full
+                    # Weymouth–Lauber donor; non-master ranks pass zero arrays
+                    # that the C++ pstreamScatter overwrites with rank-0's data.
+                    # Both ranks MUST call the same setter (Robin or Dirichlet)
+                    # to keep the MPI collectives in sync.
                     omega_interior = self._get_vorticity_field_buffer()
                     if self._is_master:
                         u_wl = self._donor_velocity(
@@ -1089,7 +1178,7 @@ class FVMVPMCoupler:
                         omega_wl = self._last_omega_donor
                     else:
                         u_wl = np.zeros_like(face_centers)
-                        omega_wl = None
+                        omega_wl = np.zeros_like(face_centers) if mixed else None
                     self._fvm_step(
                         patch, u_wl, advance=(k == n_bc - 1),
                         omega_target=omega_wl if mixed else None,
@@ -1098,8 +1187,13 @@ class FVMVPMCoupler:
                 u_bc = (1.0 - alpha) * u_prev + alpha * u_next
                 u_bc = self._project_to_solenoidal(u_bc, face_normals, face_areas)
                 omega_bc = None
-                if mixed and omega_prev is not None and omega_next is not None:
-                    omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
+                if mixed:
+                    if omega_prev is not None and omega_next is not None:
+                        omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
+                    elif omega_next is not None:
+                        omega_bc = omega_next
+                    elif omega_prev is not None:
+                        omega_bc = omega_prev
                 self._fvm_step(
                     patch, u_bc, advance=True,
                     omega_target=omega_bc if mixed else None,
@@ -1155,8 +1249,13 @@ class FVMVPMCoupler:
             alpha = (sub + 1) / N
             u_ext = (1.0 - alpha) * u_ext_prev + alpha * u_ext_next
             omega_bc = None
-            if mixed and omega_prev is not None and omega_next is not None:
-                omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
+            if mixed:
+                if omega_prev is not None and omega_next is not None:
+                    omega_bc = (1.0 - alpha) * omega_prev + alpha * omega_next
+                elif omega_next is not None:
+                    omega_bc = omega_next
+                elif omega_prev is not None:
+                    omega_bc = omega_prev
 
             for k in range(n_bc):
                 # Collective on ALL ranks; refreshed each iteration so k ≥ 1

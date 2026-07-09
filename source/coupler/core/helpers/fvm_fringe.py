@@ -24,23 +24,48 @@ def build_lambda(
     fvm_box: tuple[float, float, float, float, float, float],
     buffer_thickness: float,
     lambda_max: float,
+    dead_zone: float = 0.0,
 ) -> np.ndarray:
-    """Static relaxation rate per cell.
+    """Static relaxation rate per cell, respecting the hand-off dead zone.
 
-    lambda(d) = lambda_max * 0.5 * (1 + cos(pi * s)),   s = clip(d / L_buffer, 0, 1)
-    where d is the distance from the cell centre INWARD to the nearest box face.
-    lambda = lambda_max at the face (d=0), 0 once d >= buffer_thickness (the core).
-    Raised cosine => C^1 smooth => no impedance jump => no reflection.
+    The fringe is the FVM-side complement of the VPM-side η weight: it forces
+    the FVM velocity toward the VPM field in the transition band.  However, the
+    dead zone (the thin strip at every FVM face where η = 0) must be excluded
+    from the fringe as well: VPM particles in the dead zone carry stale
+    (Lagrangian, uncorrected) vorticity and are not forced toward the FVM, so
+    forcing the FVM toward their velocity would introduce a spurious one-way
+    coupling at exactly the faces where the two descriptions should be
+    decoupled.
+
+    The corrected profile uses a sin² ramp restricted to the buffer zone
+    (dead_zone < d < buffer_thickness):
+
+        λ = 0                                    d ≤ dead_zone  (dead zone)
+        λ = λ_max · sin²(π·s),  s=(d−dz)/(B−dz)  dead_zone < d < buffer_thickness
+        λ = 0                                    d ≥ buffer_thickness (FVM core)
+
+    This profile is C¹ everywhere (zero value AND zero slope at both ends of
+    the ramp), peaks at the midpoint of the buffer zone, and vanishes in both
+    the dead zone and the core — matching the region where η is actively
+    transitioning (0 < η < 1) and particle corrections are meaningful.
     """
     x = np.atleast_2d(cell_centres)
     xmin, xmax, ymin, ymax, zmin, zmax = fvm_box
     lo = np.array([xmin, ymin, zmin])
     hi = np.array([xmax, ymax, zmax])
-    d_in = np.minimum(x - lo, hi - x).min(axis=1)  # distance to nearest face
-    s = np.clip(d_in / max(buffer_thickness, 1e-12), 0.0, 1.0)
-    lam = lambda_max * 0.5 * (1.0 + np.cos(np.pi * s))
-    lam[d_in >= buffer_thickness] = 0.0  # core: FVM is free
-    lam[d_in < 0.0] = lambda_max  # outside the box, if present
+    d_in = np.minimum(x - lo, hi - x).min(axis=1)  # signed distance inward to nearest face
+
+    lam = np.zeros(len(d_in), dtype=np.float64)
+
+    dz = max(dead_zone, 0.0)
+    buf_width = max(buffer_thickness - dz, 1e-30)
+    active = (d_in > dz) & (d_in < buffer_thickness)
+    if active.any():
+        s = (d_in[active] - dz) / buf_width
+        # sin² is C¹, zero at s=0 (dead-zone edge) and s=1 (core boundary),
+        # peaks at s=0.5 (midpoint of the transition band).
+        lam[active] = lambda_max * np.sin(np.pi * s) ** 2
+
     return lam
 
 
@@ -73,11 +98,13 @@ class FringeFields:
         lam_max = lambda_max_from_scales(
             u_char, cfg.buffer_thickness, cfg.dt, A=getattr(cfg, "fringe_strength", 4.0)
         )
+        dead_zone = float(getattr(cfg, "dead_zone_h", 3.0)) * float(getattr(cfg, "h", 0.0))
         self.lam = build_lambda(
             self.cc,
             cfg.fvm_box,
             cfg.buffer_thickness,
             lam_max,
+            dead_zone=dead_zone,
         )
 
         self.ofw.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.lam))
