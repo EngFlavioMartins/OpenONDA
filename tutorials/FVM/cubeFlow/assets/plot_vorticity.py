@@ -62,9 +62,13 @@ def main():
 
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
     sc = ax.scatter(
-        slice_pts[:, 0], slice_pts[:, 1],
-        c=slice_vort, s=1.0, cmap=COLORMAPS["vorticity_magnitude"],
-        vmin=0, vmax=np.percentile(slice_vort, 95),
+        slice_pts[:, 0],
+        slice_pts[:, 1],
+        c=slice_vort,
+        s=1.0,
+        cmap=COLORMAPS["vorticity_magnitude"],
+        vmin=0,
+        vmax=np.percentile(slice_vort, 95),
     )
     plt.colorbar(sc, ax=ax, label=r"$|\omega|$ [1/s]")
     ax.set_xlabel("x [m]")

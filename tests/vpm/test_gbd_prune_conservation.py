@@ -39,7 +39,7 @@ def _make_grid(seed: int = 0):
 
     # Strong, asymmetric core (survives) — placed off-centre so the 1st moment
     # is non-trivial and the survivor set is genuinely 3-D (well-conditioned M).
-    for (cx, cy, cz, amp) in [(8, 10, 12, 1.0), (15, 13, 11, 0.7), (11, 16, 14, 0.5)]:
+    for cx, cy, cz, amp in [(8, 10, 12, 1.0), (15, 13, 11, 0.7), (11, 16, 14, 0.5)]:
         for i in range(nx):
             for j in range(ny):
                 for k in range(nz):
@@ -128,9 +128,7 @@ def test_survivor_cap_is_exact_even_with_tied_cutoff_values():
     circ_mag = np.ones((4, 4, 4), dtype=np.float32)
     ix, iy, iz = np.where(circ_mag >= 1.0)
 
-    ix_keep, iy_keep, iz_keep, threshold, old_count = cap_survivors(
-        circ_mag, ix, iy, iz, cap=10
-    )
+    ix_keep, iy_keep, iz_keep, threshold, old_count = cap_survivors(circ_mag, ix, iy, iz, cap=10)
 
     assert old_count == 64
     assert len(ix_keep) == len(iy_keep) == len(iz_keep) == 10

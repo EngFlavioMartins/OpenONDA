@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
+
 def panel_mesh_to_vtp(
     vertices: np.ndarray,
     centers: np.ndarray,

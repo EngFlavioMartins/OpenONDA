@@ -12,6 +12,7 @@ import numpy as np
 
 # =========================================================
 
+
 def LambOseenVPM(
     viscosity: float,
     avg_particle_radius: float,
@@ -92,7 +93,9 @@ def LambOseenVPM(
 
     return velocities, viscosities, strengths
 
+
 # =========================================================
+
 
 def VortexRingVPM(
     viscosity: float,
@@ -158,7 +161,9 @@ def VortexRingVPM(
 
     return velocities, viscosities, strengths
 
+
 # =========================================================
+
 
 def DoubletFlowVPM(
     viscosity: float,
@@ -211,7 +216,9 @@ def DoubletFlowVPM(
 
     return velocities, viscosities, strengths
 
+
 # =========================================================
+
 
 def TaylorGreenVortexVPM(
     viscosity: float,
@@ -273,7 +280,9 @@ def TaylorGreenVortexVPM(
 
     return velocities, viscosities, strengths
 
+
 # =========================================================
+
 
 def IsotropicTurbulenceVPM(
     viscosity: float,

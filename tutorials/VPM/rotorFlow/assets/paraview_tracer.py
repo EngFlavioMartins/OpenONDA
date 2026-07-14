@@ -1,54 +1,55 @@
 # trace generated using paraview version 6.0.1-1233-gf6d296c8ae
-#import paraview
-#paraview.compatibility.major = 6
-#paraview.compatibility.minor = 0
+# import paraview
+# paraview.compatibility.major = 6
+# paraview.compatibility.minor = 0
 
 #### import the simple module from the paraview
 from paraview.simple import *
+
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
 # find source
-slice_x9mpvd = FindSource('slice_x9m.pvd*')
+slice_x9mpvd = FindSource("slice_x9m.pvd*")
 
 # set active source
 SetActiveSource(slice_x9mpvd)
 
 # get color transfer function/color map for 'Velocity'
-velocityLUT = GetColorTransferFunction('Velocity')
+velocityLUT = GetColorTransferFunction("Velocity")
 
 # get opacity transfer function/opacity map for 'Velocity'
-velocityPWF = GetOpacityTransferFunction('Velocity')
+velocityPWF = GetOpacityTransferFunction("Velocity")
 
 # get 2D transfer function for 'Velocity'
-velocityTF2D = GetTransferFunction2D('Velocity')
+velocityTF2D = GetTransferFunction2D("Velocity")
 
 # get active view
-renderView1 = GetActiveViewOrCreate('RenderView')
+renderView1 = GetActiveViewOrCreate("RenderView")
 
 # get display properties
 slice_x9mpvdDisplay = GetRepresentation(slice_x9mpvd, view=renderView1)
 
 # create a new 'Calculator'
-calculator1 = Calculator(registrationName='Calculator1', Input=slice_x9mpvd)
+calculator1 = Calculator(registrationName="Calculator1", Input=slice_x9mpvd)
 
 # find source
-vlm_rotorpvd = FindSource('vlm_rotor.pvd')
+vlm_rotorpvd = FindSource("vlm_rotor.pvd")
 
 # find source
-vpm_rotor_000015xdmf = FindSource('vpm_rotor_000015.xdmf*')
+vpm_rotor_000015xdmf = FindSource("vpm_rotor_000015.xdmf*")
 
 # Properties modified on calculator1
 calculator1.Set(
-    ResultArrayName='u_zy',
-    Function='Velocity_Y*jHat + Velocity_Z*kHat',
+    ResultArrayName="u_zy",
+    Function="Velocity_Y*jHat + Velocity_Z*kHat",
 )
 
 # show data in view
-calculator1Display = Show(calculator1, renderView1, 'StructuredGridRepresentation')
+calculator1Display = Show(calculator1, renderView1, "StructuredGridRepresentation")
 
 # trace defaults for the display properties.
-calculator1Display.Representation = 'Surface'
+calculator1Display.Representation = "Surface"
 
 # hide data in view
 Hide(slice_x9mpvd, renderView1)
@@ -57,28 +58,28 @@ Hide(slice_x9mpvd, renderView1)
 calculator1Display.SetScalarBarVisibility(renderView1, True)
 
 # find source
-slice_x18mpvd = FindSource('slice_x18m.pvd')
+slice_x18mpvd = FindSource("slice_x18m.pvd")
 
 # find source
-slice_x27mpvd = FindSource('slice_x27m.pvd')
+slice_x27mpvd = FindSource("slice_x27m.pvd")
 
 # update the view to ensure updated data information
 renderView1.Update()
 
 # get color transfer function/color map for 'Vorticity'
-vorticityLUT = GetColorTransferFunction('Vorticity')
+vorticityLUT = GetColorTransferFunction("Vorticity")
 
 # Rescale transfer function
 vorticityLUT.RescaleTransferFunction(0.0046280805924543734, 146.872800859739)
 
 # get opacity transfer function/opacity map for 'Vorticity'
-vorticityPWF = GetOpacityTransferFunction('Vorticity')
+vorticityPWF = GetOpacityTransferFunction("Vorticity")
 
 # Rescale transfer function
 vorticityPWF.RescaleTransferFunction(0.0046280805924543734, 146.872800859739)
 
 # set scalar coloring
-ColorBy(calculator1Display, ('POINTS', 'u_zy', 'Magnitude'))
+ColorBy(calculator1Display, ("POINTS", "u_zy", "Magnitude"))
 
 # Hide the scalar bar for this color map if no visible data is colored by it.
 HideScalarBarIfNotNeeded(velocityLUT, renderView1)
@@ -90,13 +91,13 @@ calculator1Display.RescaleTransferFunctionToDataRange(True, False)
 calculator1Display.SetScalarBarVisibility(renderView1, True)
 
 # get color transfer function/color map for 'u_zy'
-u_zyLUT = GetColorTransferFunction('u_zy')
+u_zyLUT = GetColorTransferFunction("u_zy")
 
 # get opacity transfer function/opacity map for 'u_zy'
-u_zyPWF = GetOpacityTransferFunction('u_zy')
+u_zyPWF = GetOpacityTransferFunction("u_zy")
 
 # get 2D transfer function for 'u_zy'
-u_zyTF2D = GetTransferFunction2D('u_zy')
+u_zyTF2D = GetTransferFunction2D("u_zy")
 
 # set active source
 SetActiveSource(vlm_rotorpvd)
@@ -110,7 +111,7 @@ ReloadFiles(vlm_rotorpvd)
 SetActiveSource(vpm_rotor_000015xdmf)
 
 # get 2D transfer function for 'Vorticity'
-vorticityTF2D = GetTransferFunction2D('Vorticity')
+vorticityTF2D = GetTransferFunction2D("Vorticity")
 
 # get display properties
 vpm_rotor_000015xdmfDisplay = GetRepresentation(vpm_rotor_000015xdmf, view=renderView1)
@@ -145,13 +146,13 @@ SetActiveSource(calculator1)
 SetActiveSource(slice_x18mpvd)
 
 # create a new 'Calculator'
-calculator2 = Calculator(registrationName='Calculator2', Input=slice_x18mpvd)
+calculator2 = Calculator(registrationName="Calculator2", Input=slice_x18mpvd)
 
 # show data in view
-calculator2Display = Show(calculator2, renderView1, 'StructuredGridRepresentation')
+calculator2Display = Show(calculator2, renderView1, "StructuredGridRepresentation")
 
 # trace defaults for the display properties.
-calculator2Display.Representation = 'Surface'
+calculator2Display.Representation = "Surface"
 
 # hide data in view
 Hide(slice_x18mpvd, renderView1)
@@ -163,7 +164,7 @@ calculator2Display.SetScalarBarVisibility(renderView1, True)
 renderView1.Update()
 
 # set scalar coloring
-ColorBy(calculator2Display, ('POINTS', 'u_zy', 'Magnitude'))
+ColorBy(calculator2Display, ("POINTS", "u_zy", "Magnitude"))
 
 # Hide the scalar bar for this color map if no visible data is colored by it.
 HideScalarBarIfNotNeeded(velocityLUT, renderView1)
@@ -178,13 +179,13 @@ calculator2Display.SetScalarBarVisibility(renderView1, True)
 SetActiveSource(slice_x27mpvd)
 
 # create a new 'Calculator'
-calculator3 = Calculator(registrationName='Calculator3', Input=slice_x27mpvd)
+calculator3 = Calculator(registrationName="Calculator3", Input=slice_x27mpvd)
 
 # show data in view
-calculator3Display = Show(calculator3, renderView1, 'StructuredGridRepresentation')
+calculator3Display = Show(calculator3, renderView1, "StructuredGridRepresentation")
 
 # trace defaults for the display properties.
-calculator3Display.Representation = 'Surface'
+calculator3Display.Representation = "Surface"
 
 # hide data in view
 Hide(slice_x27mpvd, renderView1)
@@ -196,7 +197,7 @@ calculator3Display.SetScalarBarVisibility(renderView1, True)
 renderView1.Update()
 
 # set scalar coloring
-ColorBy(calculator3Display, ('POINTS', 'u_zy', 'Magnitude'))
+ColorBy(calculator3Display, ("POINTS", "u_zy", "Magnitude"))
 
 # Hide the scalar bar for this color map if no visible data is colored by it.
 HideScalarBarIfNotNeeded(velocityLUT, renderView1)
@@ -293,7 +294,7 @@ ReloadFiles(slice_x27mpvd)
 # get layout
 layout1 = GetLayout()
 
-#Enter preview mode
+# Enter preview mode
 layout1.PreviewMode = [1476, 945]
 
 # set active source
@@ -306,7 +307,7 @@ u_zyLUT.RescaleTransferFunction(2.2219614797736116e-05, 0.12737713874912346)
 u_zyPWF.RescaleTransferFunction(2.2219614797736116e-05, 0.12737713874912346)
 
 # Properties modified on calculator1
-calculator1.Function = 'Velocity_Y*jHat / 7 + Velocity_Z*kHat / 7'
+calculator1.Function = "Velocity_Y*jHat / 7 + Velocity_Z*kHat / 7"
 
 # update the view to ensure updated data information
 renderView1.Update()
@@ -459,22 +460,22 @@ animationScene1.GoToFirst()
 animationScene1.Play()
 
 # find settings proxy
-generalSettings = GetSettingsProxy('GeneralSettings')
+generalSettings = GetSettingsProxy("GeneralSettings")
 
 # find settings proxy
-iOSettings = GetSettingsProxy('IOSettings')
+iOSettings = GetSettingsProxy("IOSettings")
 
 # find settings proxy
-renderViewInteractionSettings = GetSettingsProxy('RenderViewInteractionSettings')
+renderViewInteractionSettings = GetSettingsProxy("RenderViewInteractionSettings")
 
 # find settings proxy
-renderViewSettings = GetSettingsProxy('RenderViewSettings')
+renderViewSettings = GetSettingsProxy("RenderViewSettings")
 
 # find settings proxy
-representedArrayListSettings = GetSettingsProxy('RepresentedArrayListSettings')
+representedArrayListSettings = GetSettingsProxy("RepresentedArrayListSettings")
 
 # find settings proxy
-colorPalette = GetSettingsProxy('ColorPalette')
+colorPalette = GetSettingsProxy("ColorPalette")
 
 # set active source
 SetActiveSource(vlm_rotorpvd)
@@ -486,7 +487,7 @@ renderView1.OrientationAxesVisibility = 0
 materialLibrary1 = GetMaterialLibrary()
 
 # Properties modified on vlm_rotorpvdDisplay
-vlm_rotorpvdDisplay.Interpolation = 'PBR'
+vlm_rotorpvdDisplay.Interpolation = "PBR"
 
 # Properties modified on vlm_rotorpvdDisplay
 vlm_rotorpvdDisplay.Metallic = 0.1
@@ -516,19 +517,19 @@ vlm_rotorpvdDisplay.Metallic = 0.68
 SetActiveSource(vpm_rotor_000015xdmf)
 
 # create a new 'Calculator'
-calculator4 = Calculator(registrationName='Calculator4', Input=vpm_rotor_000015xdmf)
+calculator4 = Calculator(registrationName="Calculator4", Input=vpm_rotor_000015xdmf)
 
 # Properties modified on calculator4
 calculator4.Set(
-    ResultArrayName='vort_norm ',
-    Function='Vorticity / 8.17',
+    ResultArrayName="vort_norm ",
+    Function="Vorticity / 8.17",
 )
 
 # show data in view
-calculator4Display = Show(calculator4, renderView1, 'UnstructuredGridRepresentation')
+calculator4Display = Show(calculator4, renderView1, "UnstructuredGridRepresentation")
 
 # trace defaults for the display properties.
-calculator4Display.Representation = 'Surface'
+calculator4Display.Representation = "Surface"
 
 # hide data in view
 Hide(vpm_rotor_000015xdmf, renderView1)
@@ -546,22 +547,22 @@ u_zyLUT.RescaleTransferFunction(2.5756184087688322e-05, 0.40222122409135946)
 u_zyPWF.RescaleTransferFunction(2.5756184087688322e-05, 0.40222122409135946)
 
 # get color transfer function/color map for 'Radius'
-radiusLUT = GetColorTransferFunction('Radius')
+radiusLUT = GetColorTransferFunction("Radius")
 
 # get opacity transfer function/opacity map for 'Radius'
-radiusPWF = GetOpacityTransferFunction('Radius')
+radiusPWF = GetOpacityTransferFunction("Radius")
 
 # get 2D transfer function for 'Radius'
-radiusTF2D = GetTransferFunction2D('Radius')
+radiusTF2D = GetTransferFunction2D("Radius")
 
 # Properties modified on calculator4
-calculator4.ResultArrayName = 'omega_norm '
+calculator4.ResultArrayName = "omega_norm "
 
 # update the view to ensure updated data information
 renderView1.Update()
 
 # set scalar coloring
-ColorBy(calculator4Display, ('POINTS', 'omega_norm ', 'Magnitude'))
+ColorBy(calculator4Display, ("POINTS", "omega_norm ", "Magnitude"))
 
 # Hide the scalar bar for this color map if no visible data is colored by it.
 HideScalarBarIfNotNeeded(radiusLUT, renderView1)
@@ -573,13 +574,13 @@ calculator4Display.RescaleTransferFunctionToDataRange(True, False)
 calculator4Display.SetScalarBarVisibility(renderView1, True)
 
 # get color transfer function/color map for 'omega_norm'
-omega_normLUT = GetColorTransferFunction('omega_norm')
+omega_normLUT = GetColorTransferFunction("omega_norm")
 
 # get opacity transfer function/opacity map for 'omega_norm'
-omega_normPWF = GetOpacityTransferFunction('omega_norm')
+omega_normPWF = GetOpacityTransferFunction("omega_norm")
 
 # get 2D transfer function for 'omega_norm'
-omega_normTF2D = GetTransferFunction2D('omega_norm')
+omega_normTF2D = GetTransferFunction2D("omega_norm")
 
 # change scalar bar placement
 u_zyLUTColorBar.Set(
@@ -680,7 +681,7 @@ animationScene1.GoToPrevious()
 SetActiveSource(calculator4)
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = '$\\mathbs{\\omega} / \\text{TSR} U_\\infty / R$'
+omega_normLUTColorBar.Title = "$\\mathbs{\\omega} / \\text{TSR} U_\\infty / R$"
 
 # Properties modified on omega_normLUTColorBar
 omega_normLUTColorBar.Title = """\\omega = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
@@ -693,7 +694,7 @@ omega_normLUTColorBar.Set(
 )
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.ComponentTitle = ''
+omega_normLUTColorBar.ComponentTitle = ""
 
 # Properties modified on omega_normLUTColorBar
 omega_normLUTColorBar.ScalarBarLength = 0.25
@@ -702,7 +703,7 @@ omega_normLUTColorBar.ScalarBarLength = 0.25
 omega_normLUTColorBar.ScalarBarLength = 0.2
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.WindowLocation = 'Upper Left Corner'
+omega_normLUTColorBar.WindowLocation = "Upper Left Corner"
 
 # Properties modified on omega_normLUTColorBar
 omega_normLUTColorBar.Title = """$\\omega = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
@@ -713,10 +714,10 @@ omega_normLUTColorBar.Title = """$\\bm{\\omega} / \\text{TSR} = U_\\infty / R
 $"""
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = '$\\bm{\\omega} R / U_\\infty \\text{TSR}$'
+omega_normLUTColorBar.Title = "$\\bm{\\omega} R / U_\\infty \\text{TSR}$"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = '$\\mathbf{\\omega} R / U_\\infty \\text{TSR}$'
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / U_\\infty \\text{TSR}$"
 
 # set active source
 SetActiveSource(vlm_rotorpvd)
@@ -749,10 +750,10 @@ animationScene1.GoToLast()
 SetActiveSource(calculator4)
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = '$\\mathbf{\\omega} R / U_\\infty \\mathrm{TSR}$'
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / U_\\infty \\mathrm{TSR}$"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = '$\\mathbf{\\omega} R / \\mathrm{TSR} U_\\infty$'
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / \\mathrm{TSR} U_\\infty$"
 
 # change scalar bar placement
 omega_normLUTColorBar.Position = [0.04103150406504065, 0.7452330508474576]
@@ -773,10 +774,10 @@ omega_normLUTColorBar.ScalarBarLength = 0.15
 omega_normLUTColorBar.ScalarBarLength = 0.2
 
 # Apply a preset using its name. Note this may not work as expected when presets have duplicate names.
-omega_normLUT.ApplyPreset('Viridis', True)
+omega_normLUT.ApplyPreset("Viridis", True)
 
 # change representation type
-calculator4Display.SetRepresentationType('Point Gaussian')
+calculator4Display.SetRepresentationType("Point Gaussian")
 
 # Properties modified on calculator4Display
 calculator4Display.Emissive = 1
@@ -788,31 +789,33 @@ calculator4Display.Emissive = 0
 calculator4Display.ScaleByArray = 1
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'Vorticity']
+calculator4Display.SetScaleArray = ["POINTS", "Vorticity"]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'ZoneID']
+calculator4Display.SetScaleArray = ["POINTS", "ZoneID"]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'omega_norm ']
+calculator4Display.SetScaleArray = ["POINTS", "omega_norm "]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'ZoneID']
+calculator4Display.SetScaleArray = ["POINTS", "ZoneID"]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'Vorticity']
+calculator4Display.SetScaleArray = ["POINTS", "Vorticity"]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'Volume']
+calculator4Display.SetScaleArray = ["POINTS", "Volume"]
 
 # Properties modified on calculator4Display
-calculator4Display.SetScaleArray = ['POINTS', 'Vorticity']
+calculator4Display.SetScaleArray = ["POINTS", "Vorticity"]
 
 # Properties modified on calculator4Display
-calculator4Display.ScaleArrayComponent = 'Magnitude'
+calculator4Display.ScaleArrayComponent = "Magnitude"
 
 # Rescale transfer function
-calculator4Display.ScaleTransferFunction.RescaleTransferFunction(0.0031346733689129862, 94.042281411837)
+calculator4Display.ScaleTransferFunction.RescaleTransferFunction(
+    0.0031346733689129862, 94.042281411837
+)
 
 # Rescale transfer function
 calculator4Display.ScaleTransferFunction.RescaleTransferFunction(0.00313467, 20.0)
@@ -836,13 +839,15 @@ calculator4Display.ScaleTransferFunction.RescaleTransferFunction(0.0, 20.0)
 calculator4Display.OpacityByArray = 1
 
 # Properties modified on calculator4Display
-calculator4Display.OpacityArray = ['POINTS', 'Vorticity']
+calculator4Display.OpacityArray = ["POINTS", "Vorticity"]
 
 # Properties modified on calculator4Display
-calculator4Display.OpacityArrayComponent = 'Magnitude'
+calculator4Display.OpacityArrayComponent = "Magnitude"
 
 # Rescale transfer function
-calculator4Display.OpacityTransferFunction.RescaleTransferFunction(0.0031346733689129862, 94.042281411837)
+calculator4Display.OpacityTransferFunction.RescaleTransferFunction(
+    0.0031346733689129862, 94.042281411837
+)
 
 # Rescale transfer function
 calculator4Display.OpacityTransferFunction.RescaleTransferFunction(0.00313467, 20.0)
@@ -851,7 +856,7 @@ calculator4Display.OpacityTransferFunction.RescaleTransferFunction(0.00313467, 2
 calculator4Display.OpacityTransferFunction.RescaleTransferFunction(0.0, 20.0)
 
 # Properties modified on calculator4Display
-calculator4Display.ShaderPreset = 'Plain circle'
+calculator4Display.ShaderPreset = "Plain circle"
 
 # Properties modified on calculator4Display
 calculator4Display.GaussianRadius = 0.05
@@ -888,15 +893,15 @@ u_zyLUTColorBar.Set(
 
 # Properties modified on u_zyLUTColorBar
 u_zyLUTColorBar.Set(
-    Title='$\\|u_{yx} \\| / U_\\infty$',
-    ComponentTitle='',
+    Title="$\\|u_{yx} \\| / U_\\infty$",
+    ComponentTitle="",
 )
 
 # Properties modified on u_zyLUTColorBar
-u_zyLUTColorBar.WindowLocation = 'Lower Right Corner'
+u_zyLUTColorBar.WindowLocation = "Lower Right Corner"
 
 # Apply a preset using its name. Note this may not work as expected when presets have duplicate names.
-u_zyLUT.ApplyPreset('Plasma', True)
+u_zyLUT.ApplyPreset("Plasma", True)
 
 # Rescale transfer function
 u_zyLUT.RescaleTransferFunction(0.00024809653759605177, 0.326506233851271)
@@ -1016,13 +1021,13 @@ animationScene1.Play()
 SetActiveSource(calculator1)
 
 # Apply a preset using its name. Note this may not work as expected when presets have duplicate names.
-u_zyLUT.ApplyPreset('Inferno', True)
+u_zyLUT.ApplyPreset("Inferno", True)
 
 # set active source
 SetActiveSource(calculator2)
 
 # Apply a preset using its name. Note this may not work as expected when presets have duplicate names.
-u_zyLUT.ApplyPreset('Inferno', True)
+u_zyLUT.ApplyPreset("Inferno", True)
 
 animationScene1.GoToFirst()
 
@@ -1044,7 +1049,7 @@ vorticityLUT.RescaleTransferFunction(0.0, 80.04451106716921)
 vorticityPWF.RescaleTransferFunction(0.0, 80.04451106716921)
 
 # Properties modified on vpm_rotor_000015xdmfDisplay
-vpm_rotor_000015xdmfDisplay.ShaderPreset = 'Plain circle'
+vpm_rotor_000015xdmfDisplay.ShaderPreset = "Plain circle"
 
 # set active source
 SetActiveSource(calculator4)
@@ -1322,18 +1327,18 @@ animationScene1.Play()
 
 animationScene1.GoToFirst()
 
-#================================================================
+# ================================================================
 # addendum: following script captures some of the application
 # state to faithfully reproduce the visualization during playback
-#================================================================
+# ================================================================
 
-#--------------------------------
+# --------------------------------
 # saving layout sizes for layouts
 
 # layout/tab size in pixels
 layout1.SetSize(1476, 944)
 
-#-----------------------------------
+# -----------------------------------
 # saving camera placements for views
 
 # current camera placement for renderView1

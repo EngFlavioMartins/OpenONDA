@@ -218,7 +218,7 @@ def plot_dipole_case(args) -> int:
             labels,
             loc="lower center",
             ncol=len(handles),
-            bbox_to_anchor=(0.5, 0.05) ,
+            bbox_to_anchor=(0.5, 0.05),
         )
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":

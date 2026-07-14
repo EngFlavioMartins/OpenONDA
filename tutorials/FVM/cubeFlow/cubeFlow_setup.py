@@ -68,7 +68,7 @@ def build_config_with_forces(args):
     config = build_config(args)
     config.solver.force_patches = ["cube"]
     config.solver.ref_velocity = args.u_inf
-    config.solver.ref_area = args.length ** 2
+    config.solver.ref_area = args.length**2
     config.solver.ref_length = args.length
     return config
 
@@ -77,15 +77,32 @@ def main():
     parser = argparse.ArgumentParser(description="Run cubeFlow Simulation")
     parser.add_argument("--end-time", type=float, default=30.0, help="End time [s]")
     parser.add_argument("--initial-dt", type=float, default=0.01, help="Initial time step [s]")
-    parser.add_argument("--max-cfl", type=float, default=None, help="Target max Courant number (enables adaptive dt)")
+    parser.add_argument(
+        "--max-cfl",
+        type=float,
+        default=None,
+        help="Target max Courant number (enables adaptive dt)",
+    )
     parser.add_argument("--max-dt", type=float, default=None, help="Max time step cap [s]")
-    parser.add_argument("--write-interval", type=int, default=5, help="Write interval [steps] (ignored if --write-interval-time set)")
-    parser.add_argument("--write-interval-time", type=float, default=2.0, help="Write VTK every N seconds of flow time")
+    parser.add_argument(
+        "--write-interval",
+        type=int,
+        default=5,
+        help="Write interval [steps] (ignored if --write-interval-time set)",
+    )
+    parser.add_argument(
+        "--write-interval-time",
+        type=float,
+        default=2.0,
+        help="Write VTK every N seconds of flow time",
+    )
     parser.add_argument("--Re", type=float, default=300.0, help="Reynolds number")
     parser.add_argument("--u-inf", type=float, default=1.0, help="Inlet velocity magnitude [m/s]")
     parser.add_argument("--length", type=float, default=1.0, help="Reference length [m]")
     parser.add_argument("--rho", type=float, default=1.0, help="Fluid density [kg/m^3]")
-    parser.add_argument("--msh", type=str, default="./assets/cubeFlow.msh", help="Path to mesh file")
+    parser.add_argument(
+        "--msh", type=str, default="./assets/cubeFlow.msh", help="Path to mesh file"
+    )
     parser.add_argument("--linear-solver", type=str, default="bicgstab", help="Linear solver")
     parser.add_argument("--n-correctors", type=int, default=2, help="PIMPLE correctors")
     parser.add_argument("--n-outer", type=int, default=1, help="PIMPLE outer iterations")

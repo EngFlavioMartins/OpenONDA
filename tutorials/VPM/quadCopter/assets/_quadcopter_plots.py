@@ -70,6 +70,7 @@ def load_series(solution_dir: Path, pattern: str = "vpm_*.h5"):
         raise SystemExit(f"No backup files found in {solution_dir}")
     return read_series(files)
 
+
 def plot_particle_count(solution_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
     times, particle_count, _ = load_series(solution_dir)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
@@ -82,7 +83,9 @@ def plot_particle_count(solution_dir: Path, figures_dir: Path, figure_format: st
     _theme.save_fig(fig, out, figure_format=figure_format)
 
 
-def plot_vorticity_history(solution_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
+def plot_vorticity_history(
+    solution_dir: Path, figures_dir: Path, figure_format: str = "png"
+) -> None:
     times, _, vorticity_l2 = load_series(solution_dir)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
     ax.plot(times, vorticity_l2, "-o", color=_COLORS["VPMpurple"])

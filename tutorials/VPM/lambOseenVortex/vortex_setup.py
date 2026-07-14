@@ -65,7 +65,7 @@ AC0 = 0.125  # initial C&W core radius a_{c,0} [m] — radius of PEAK azimuthal 
 # seeds the pair much closer to the convective-merger threshold a_crit/b0 = 0.29
 # (eq. 4.2), so it merges far too early. (Was 0.17, which merged ~2x too soon.)
 MERGING_AC0 = 0.125  # C&W co-rotating merger benchmark core radius a_{c,0} [m] (a0/b0=0.125)
-B0 = 1.0    # center-to-center separation b0 [m]  (a0/b0 = 0.125)
+B0 = 1.0  # center-to-center separation b0 [m]  (a0/b0 = 0.125)
 
 # C&W 2003 define a0 as the radius of PEAK azimuthal velocity. For a Lamb-Oseen
 # vortex r_max = BETA_RMAX*sigma, BETA_RMAX = nonzero root of e^x = 1 + 2x.
@@ -243,12 +243,20 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
 
     n = len(positions)
     solver.add_vortex_particles(
-        positions, v1_vel, v1_circ, radii, volumes,
+        positions,
+        v1_vel,
+        v1_circ,
+        radii,
+        volumes,
         group_id=np.zeros(n, dtype=np.int32),
     )
     if gamma2 != 0.0:
         solver.add_vortex_particles(
-            positions, v2_vel, v2_circ, radii, volumes,
+            positions,
+            v2_vel,
+            v2_circ,
+            radii,
+            volumes,
             group_id=np.ones(n, dtype=np.int32),
         )
     solver.remove_weak_particles(percent=1.0, per_group=True)
@@ -302,10 +310,14 @@ def parse_args() -> argparse.Namespace:
         "--gamma2", type=float, default=0.0, help="Circulation of vortex 2 [m²/s]. "
     )
     parser.add_argument(
-        "--schemes", default="cs", help="Comma-separated viscous schemes: cs, rwm, dvh, gbd.",
+        "--schemes",
+        default="cs",
+        help="Comma-separated viscous schemes: cs, rwm, dvh, gbd.",
     )
     parser.add_argument(
-        "--solution-dir", default=str(DEFAULT_SOLUTION_DIR), help="Root output directory for all scheme sub-folders.",
+        "--solution-dir",
+        default=str(DEFAULT_SOLUTION_DIR),
+        help="Root output directory for all scheme sub-folders.",
     )
     parser.add_argument(
         "--clean",
@@ -314,19 +326,34 @@ def parse_args() -> argparse.Namespace:
         help="Delete existing output sub-folder before running.",
     )
     parser.add_argument(
-        "--total-time", type=float, default=TOTAL_TIME, help="Total simulation time [s].",
+        "--total-time",
+        type=float,
+        default=TOTAL_TIME,
+        help="Total simulation time [s].",
     )
     parser.add_argument(
-        "--dt", type=float, default=0.04, help="Time step size [s].",
+        "--dt",
+        type=float,
+        default=0.04,
+        help="Time step size [s].",
     )
     parser.add_argument(
-        "--num-steps", type=int, default=None, help="Exact number of time steps (overrides --total-time when given).",
+        "--num-steps",
+        type=int,
+        default=None,
+        help="Exact number of time steps (overrides --total-time when given).",
     )
     parser.add_argument(
-        "--length", type=float, default=LENGTH, help="Vortex column span in z, in units of AC0.",
+        "--length",
+        type=float,
+        default=LENGTH,
+        help="Vortex column span in z, in units of AC0.",
     )
-    parser.add_argument( 
-        "--re", type=float, default=RE, help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
+    parser.add_argument(
+        "--re",
+        type=float,
+        default=RE,
+        help="Reynolds number Re_Γ = Γ/nu (default: 530, matching C&W 2003 reference).",
     )
     parser.add_argument(
         "--core-radius",
@@ -341,7 +368,10 @@ def parse_args() -> argparse.Namespace:
         help="Initial centre-to-centre separation b0 [m] for two-vortex cases.",
     )
     parser.add_argument(
-        "--dvh-max-nodes", type=int, default=250_000, help="Hard cap on surviving DVH regen nodes (budget-by-count).",
+        "--dvh-max-nodes",
+        type=int,
+        default=250_000,
+        help="Hard cap on surviving DVH regen nodes (budget-by-count).",
     )
     parser.add_argument(
         "--spacing-factor",
@@ -380,9 +410,12 @@ def parse_args() -> argparse.Namespace:
         help="Initial backup/log interval. Grid schemes are adjusted to preserve physical cadence.",
     )
     parser.add_argument(
-        "--tag", default="", help="Suffix appended to the output directory name (for parameter sweeps).",
+        "--tag",
+        default="",
+        help="Suffix appended to the output directory name (for parameter sweeps).",
     )
     return parser.parse_args()
+
 
 # =========================================================
 # Entry point

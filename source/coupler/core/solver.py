@@ -40,17 +40,18 @@ logger = logging.getLogger("coupler")
 
 def _world_rank() -> int:
     """Return the launcher rank for OpenMPI, MPICH/PMI, or MVAPICH."""
-    if _mpi4py_comm is not None:
-        return int(_mpi4py_comm.Get_rank())
     for name in (
         "OMPI_COMM_WORLD_RANK",
         "PMI_RANK",
         "PMIX_RANK",
         "MV2_COMM_WORLD_RANK",
+        "SLURM_PROCID",
     ):
         value = os.environ.get(name)
         if value is not None:
             return int(value)
+    if _mpi4py_comm is not None:
+        return int(_mpi4py_comm.Get_rank())
     return 0
 
 
@@ -290,24 +291,26 @@ class FVMVPMCoupler:
         )
 
     def _configure_logging(self) -> None:
-        """Send coupler diagnostics to solution/coupler.log AND the console.
+        """Send diagnostics to this case's log and, by default, the console."""
+        log_path = (self.solution_dir / "coupler.log").resolve()
+        for handler in list(logger.handlers):
+            if getattr(handler, "_openonda_case_log", False):
+                logger.removeHandler(handler)
+                handler.close()
 
-        Without an explicit handler the 'coupler' logger drops all INFO
-        records (Python's last-resort handler only shows WARNING+), losing
-        the per-step diagnostics (donor flux residual, injection balance).
-        """
-        if logger.handlers:
-            return  # already configured (e.g. by an embedding application)
+        has_external_handlers = bool(logger.handlers)
         logger.setLevel(logging.INFO)
         logger.propagate = False
 
-        file_h = logging.FileHandler(self.solution_dir / "coupler.log", mode="w")
+        file_h = logging.FileHandler(log_path, mode="w")
+        file_h._openonda_case_log = True
         file_h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
         logger.addHandler(file_h)
 
-        console_h = logging.StreamHandler(sys.stdout)
-        console_h.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(console_h)
+        if not has_external_handlers:
+            console_h = logging.StreamHandler(sys.stdout)
+            console_h.setFormatter(logging.Formatter("%(message)s"))
+            logger.addHandler(console_h)
 
     def _write_run_metadata(self) -> None:
         metadata = {
@@ -616,6 +619,7 @@ class FVMVPMCoupler:
                     sum_before = 0.0
 
                 self.injector.inject(self.ofw, self.vpm, eta_fn=eta_fn, omega=omega_global)
+                t3 = time.time() - t3
 
                 n_after = self.vpm.particles.number_of_particles
                 sum_after = 0.0
@@ -639,7 +643,6 @@ class FVMVPMCoupler:
                 )
                 sys.stdout.flush()
                 flush_log()
-            t3 = time.time() - t3
 
             # Barrier: sync all ranks after inject so non-master cannot exit
             # while rank 0 is still inside inject.  mpi4py MPI.Barrier is used

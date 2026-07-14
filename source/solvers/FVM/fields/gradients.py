@@ -273,7 +273,6 @@ def compute_lsq_geometry(mesh_data, geo_data):
     """
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
-    n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
     boundary = mesh_data["boundary"]
@@ -304,7 +303,7 @@ def compute_lsq_geometry(mesh_data, geo_data):
             face_idx = start + j
             own = owners[face_idx]
             bf_idx = face_idx - n_interior  # 0‑based boundary‑face number
-            phi_idx = n_elements + bf_idx    # position in the phi array
+            phi_idx = n_elements + bf_idx  # position in the phi array
             dr = face_c[face_idx] - elem_c[own]
             stencil_nei[own].append(-phi_idx - 1)  # negative ⇒ boundary
             stencil_dr[own].append(dr)

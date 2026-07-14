@@ -79,9 +79,9 @@ def main() -> None:
 
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
     ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
-    ax.set_ylim(0.6, 1.)
+    ax.set_ylim(0.6, 1.0)
     ax.set_xlim(0, 38)
-    ax.legend(ncol=1, loc='lower left')
+    ax.legend(ncol=1, loc="lower left")
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)
 
 

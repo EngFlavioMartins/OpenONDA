@@ -57,6 +57,79 @@ def normalized_residual(A, x, b):
     return float(np.linalg.norm(residual) / scale)
 
 
+def _trivial_solution(A, b, x0, tol):
+    """Residual-verified early exit: zero RHS or an already-converged ``x0``.
+
+    Returns the verified solution, or ``None`` when an iterative solve is
+    actually needed.  SciPy's Krylov methods report breakdown (``info=-10``)
+    instead of convergence when started at (or extremely near) the solution,
+    so skipping them here is a correctness fix as much as a speed one.
+    """
+    if float(np.linalg.norm(b)) == 0.0:
+        return np.zeros(A.shape[0], dtype=np.float64)
+    if x0 is not None and normalized_residual(A, x0, b) <= tol:
+        return np.asarray(x0, dtype=np.float64)
+    return None
+
+
+def _breakdown_converged(A, b, x, tol, method, info):
+    """True when a nonzero ``info`` iterate nevertheless meets the tolerance.
+
+    SciPy signals breakdown (``info < 0``) when the recurrence scalars
+    underflow, which typically happens *because* the residual already dropped
+    below what the recurrences can resolve.  The algebraic residual is the
+    ground truth, so accept the iterate when it verifies.
+    """
+    res = normalized_residual(A, x, b)
+    if res <= tol:
+        logger.info(
+            "%s reported info=%s at converged residual %.3e <= %.1e; accepted",
+            method,
+            info,
+            res,
+            tol,
+        )
+        return True
+    return False
+
+
+def _run_krylov(A, b, method, M, tol, maxiter, x0):
+    """Run a SciPy Krylov method in residual-correction form.
+
+    Solves ``A e = r0 / ||r0||`` with ``r0 = b - A x0`` and returns
+    ``x0 + ||r0|| e``.  The unit-normalized RHS keeps the recurrence scalars
+    (rho, omega) away from underflow on tiny-scale systems — SciPy otherwise
+    reports breakdown (``info=-10``) on RHS vectors that are pure assembly
+    roundoff (~1e-19).  ``tol`` keeps its meaning ``||b - A x|| <= tol ||b||``
+    via the rescaled effective tolerance.
+    """
+    b_norm = float(np.linalg.norm(b))
+    if b_norm == 0.0:
+        return np.zeros(A.shape[0], dtype=np.float64), 0
+    if x0 is None:
+        x0 = np.zeros(A.shape[0], dtype=np.float64)
+        r0 = np.asarray(b, dtype=np.float64)
+    else:
+        x0 = np.asarray(x0, dtype=np.float64)
+        r0 = np.asarray(b, dtype=np.float64) - A @ x0
+    r0_norm = float(np.linalg.norm(r0))
+    if r0_norm == 0.0:
+        return x0.copy(), 0
+    rtol_eff = float(np.clip(tol * b_norm / r0_norm, 1e-14, 0.99))
+    kwargs = {"rtol": rtol_eff, "maxiter": maxiter}
+    if M is not None:
+        kwargs["M"] = M
+    # Resolved at call time so tests can monkeypatch the module attributes.
+    if method == "gmres":
+        solve_fn = gmres
+    elif method == "cg":
+        solve_fn = cg
+    else:
+        solve_fn = bicgstab
+    e, info = solve_fn(A, r0 / r0_norm, **kwargs)
+    return x0 + r0_norm * e, info
+
+
 def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context):
     """Collectively solve a replicated SciPy system with distributed PETSc.
 
@@ -214,9 +287,12 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
 def _cache_key_from_matrix(A_csc, ilu_key=None):
     """Generate a hashable cache key for an ILU preconditioner.
 
-    If *ilu_key* is provided, uses it directly (user-defined key).
-    Otherwise builds a structural key from the matrix shape, indptr,
-    and indices arrays.
+    A short *ilu_key* (e.g. the momentum component ``"x"``) namespaces the
+    entry without hashing the pattern bytes every solve, but the matrix
+    ``shape`` is always part of the key so a cache built for one mesh cannot
+    be handed to a differently-sized system — the failure mode when two
+    solvers of different resolution share a process (mesh-refinement study,
+    test suite).  Without a key, the full structural pattern is hashed.
 
     Args:
         A_csc:   Matrix in CSC format.
@@ -226,7 +302,7 @@ def _cache_key_from_matrix(A_csc, ilu_key=None):
         A tuple usable as a dict key.
     """
     if ilu_key is not None:
-        return ("key", ilu_key)
+        return ("key", ilu_key, A_csc.shape)
     return ("pattern", A_csc.shape, A_csc.indptr.tobytes(), A_csc.indices.tobytes())
 
 
@@ -279,6 +355,9 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
     Returns:
         Solution vector.
     """
+    x_early = _trivial_solution(A, b, x0, amg_tol)
+    if x_early is not None:
+        return x_early
     try:
         import pyamg
     except ImportError:
@@ -293,12 +372,16 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
         ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol)
         M = ml.aspreconditioner(cycle="V")
         x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0)
+        if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
+            info = 0
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
             # hierarchy ineffective without silently accepting a poor solve.
             ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True)
             M = ml.aspreconditioner(cycle="V")
             x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0)
+            if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
+                info = 0
         if info != 0:
             raise RuntimeError(f"AMG-preconditioned pressure CG did not converge (info={info})")
         logger.info(f"pyamg pressure solve time={time.perf_counter() - t0:.3f}s")
@@ -324,11 +407,16 @@ def _cg_pressure_fallback(A, b, tol, maxiter, x0, failure_policy):
     Returns:
         Solution vector.
     """
+    x_early = _trivial_solution(A, b, x0, tol)
+    if x_early is not None:
+        return x_early
     try:
         t0 = time.perf_counter()
         M_inv = diags(1.0 / (A.diagonal() + 1e-16))
         x, info = cg(A, b, M=M_inv, rtol=tol, maxiter=maxiter, x0=x0)
         logger.info(f"CG pressure fallback time={time.perf_counter() - t0:.3f}s")
+        if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG (Jacobi)", info):
+            info = 0
         if info != 0:
             logger.warning(f"CG (pressure fallback) did not converge, info={info}")
             if failure_policy == "raise":
@@ -412,10 +500,17 @@ def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
     Returns:
         Solution vector.
     """
-    if method == "gmres":
-        x, info = gmres(A, b, M=M, rtol=tol, maxiter=maxiter, x0=x0)
-    else:
-        x, info = bicgstab(A, b, M=M, rtol=tol, maxiter=maxiter, x0=x0)
+    x, info = _run_krylov(A, b, method, M, tol, maxiter, x0)
+    if info != 0 and _breakdown_converged(A, b, x, tol, method, info):
+        info = 0
+    if info != 0 and method == "bicgstab":
+        # BiCGStab's recurrences can break down on systems GMRES handles
+        # without trouble; one residual-verified GMRES attempt with the same
+        # preconditioner before declaring failure.
+        x_g, info_g = _run_krylov(A, b, "gmres", M, tol, maxiter, x0)
+        if info_g == 0 or _breakdown_converged(A, b, x_g, tol, "gmres rescue", info_g):
+            logger.info("bicgstab breakdown recovered by GMRES rescue")
+            x, info = x_g, 0
     if info != 0:
         global _FALLBACK_WARN_COUNT
         _FALLBACK_WARN_COUNT += 1
@@ -467,6 +562,9 @@ def _solve_with_ilu(
     Returns:
         Solution vector.
     """
+    x_early = _trivial_solution(A, b, x0, tol)
+    if x_early is not None:
+        return x_early
     try:
         t0 = time.perf_counter()
         A_csc = A.tocsc()
@@ -505,11 +603,13 @@ def _iterative_solve_plain(A, b, method, tol, maxiter, x0, failure_policy):
     Returns:
         Solution vector.
     """
+    x_early = _trivial_solution(A, b, x0, tol)
+    if x_early is not None:
+        return x_early
     try:
-        if method == "gmres":
-            x, info = gmres(A, b, rtol=tol, maxiter=maxiter, x0=x0)
-        else:
-            x, info = bicgstab(A, b, rtol=tol, maxiter=maxiter, x0=x0)
+        x, info = _run_krylov(A, b, method, None, tol, maxiter, x0)
+        if info != 0 and _breakdown_converged(A, b, x, tol, method, info):
+            info = 0
         if info != 0:
             logger.warning(f"Plain iterative solver did not converge info={info}, falling back")
             if failure_policy == "raise":

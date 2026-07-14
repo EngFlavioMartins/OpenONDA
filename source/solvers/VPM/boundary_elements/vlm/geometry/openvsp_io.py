@@ -303,14 +303,18 @@ def load_openvsp_surface(
 
 
 def _import_openvsp() -> Any:
+    message = (
+        "Direct .vsp3 import requires the OpenVSP Python API (`openvsp`). "
+        "Install OpenVSP with Python bindings, or export DegenGeom CSV "
+        "manually from OpenVSP and call load_degengeom_csv(...)."
+    )
     try:
         import openvsp as vsp
     except ImportError as exc:
-        raise ImportError(
-            "Direct .vsp3 import requires the OpenVSP Python API (`openvsp`). "
-            "Install OpenVSP with Python bindings, or export DegenGeom CSV "
-            "manually from OpenVSP and call load_degengeom_csv(...)."
-        ) from exc
+        raise ImportError(message) from exc
+    required_api = ("GetVSPVersion", "ClearVSPModel", "AddGeom")
+    if any(not hasattr(vsp, name) for name in required_api):
+        raise ImportError(message)
     return vsp
 
 
@@ -382,8 +386,7 @@ def _openvsp_subprocess_env() -> dict[str, str]:
         )
         existing_ld_library_path = env.get("LD_LIBRARY_PATH")
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(root / "lib")]
-            + ([existing_ld_library_path] if existing_ld_library_path else [])
+            [str(root / "lib")] + ([existing_ld_library_path] if existing_ld_library_path else [])
         )
     return env
 
@@ -413,7 +416,10 @@ def _try_set_analysis_input(vsp: Any, analysis: str, key: str, value: int | str)
     if isinstance(value, str):
         setters = (("SetStringAnalysisInput", [value]),)
     else:
-        setters = (("SetIntAnalysisInput", [int(value)]), ("SetDoubleAnalysisInput", [float(value)]))
+        setters = (
+            ("SetIntAnalysisInput", [int(value)]),
+            ("SetDoubleAnalysisInput", [float(value)]),
+        )
 
     for setter_name, payload in setters:
         setter = getattr(vsp, setter_name, None)

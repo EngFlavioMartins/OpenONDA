@@ -11,7 +11,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    COLORS, REFERENCES, build_arg_parser, figure_size, load_ibm_forces_csv, save_fig,
+    COLORS,
+    REFERENCES,
+    build_arg_parser,
+    figure_size,
+    load_ibm_forces_csv,
+    save_fig,
 )
 
 
@@ -53,13 +58,18 @@ def main():
         ax = axes[0]
         ax.plot(t, cd, color=COLORS["TUDdark"], linewidth=0.9)
         if "Cd" in ref:
-            ax.axhspan(*ref["Cd"], color=COLORS["reference"], alpha=0.25,
-                       label=f"Constant et al.: {ref['Cd'][0]:.2f}-{ref['Cd'][1]:.2f}")
+            ax.axhspan(
+                *ref["Cd"],
+                color=COLORS["reference"],
+                alpha=0.25,
+                label=f"Constant et al.: {ref['Cd'][0]:.2f}-{ref['Cd'][1]:.2f}",
+            )
             ax.legend(loc="upper right", fontsize=8)
         ax.set_ylabel("$C_d$")
         ax.set_title(f"IBM cylinder forces — {name} (Re = {args.Re:g})")
-        ax.text(0.02, 0.06, f"mean $C_d$ (last 1/3) = {cd_mean:.4f}",
-                transform=ax.transAxes, fontsize=8)
+        ax.text(
+            0.02, 0.06, f"mean $C_d$ (last 1/3) = {cd_mean:.4f}", transform=ax.transAxes, fontsize=8
+        )
         ax.grid(True, alpha=0.3)
 
         ax = axes[1]
@@ -79,7 +89,9 @@ def main():
         ax.grid(True, alpha=0.3, which="both")
 
         fig.tight_layout()
-        save_fig(fig, f"forces_{name}.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+        save_fig(
+            fig, f"forces_{name}.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
+        )
 
         print(f"  {name}: mean Cd = {cd_mean:.4f}", end="")
         if "Cd" in ref:

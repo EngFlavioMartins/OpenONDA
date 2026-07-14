@@ -11,14 +11,13 @@ Date: June 2026
 Copyright (C) 2026 OpenONDA
 """
 
-import importlib
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
     OpenVSPImportConfig,
+    _import_openvsp,
     load_degengeom_csv,
     load_openvsp_surface,
 )
@@ -34,15 +33,16 @@ HERE = Path(__file__).resolve().parent
 
 def _openvsp_available() -> bool:
     try:
-        importlib.import_module("openvsp")
+        _import_openvsp()
         return True
     except ImportError:
         return False
 
 
-def _require_openvsp() -> None:
+def _require_openvsp():
     if not _openvsp_available():
         pytest.skip("OpenVSP Python API not available")
+    return _import_openvsp()
 
 
 # ---------------------------------------------------------------------------
@@ -52,16 +52,14 @@ def _require_openvsp() -> None:
 
 class TestOpenVSPImport:
     def test_import_openvsp(self):
-        _require_openvsp()
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         version = vsp.GetVSPVersion()
         assert isinstance(version, str)
         assert len(version) > 0
 
     def test_get_version_string(self):
-        _require_openvsp()
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         version = vsp.GetVSPVersion()
         assert "OpenVSP" in version
@@ -183,7 +181,7 @@ class TestOpenVspVSP3:
 
     @pytest.fixture
     def simple_vsp3(self, tmp_path: Path) -> Path:
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         vsp.ClearVSPModel()
         wing_id = vsp.AddGeom("WING")
@@ -196,8 +194,6 @@ class TestOpenVspVSP3:
         return vsp_file
 
     def test_export_degengeom_csv(self, simple_vsp3: Path, tmp_path: Path):
-        import openvsp as vsp
-
         csv_path = tmp_path / "test_wing_degen.csv"
         from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
             export_openvsp_degengeom,
@@ -226,10 +222,6 @@ class TestOpenVspVSP3:
 
 class TestLazyImport:
     def test_import_error_message(self):
-        from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
-            _import_openvsp,
-        )
-
         with pytest.raises(ImportError) as excinfo:
             import builtins
 

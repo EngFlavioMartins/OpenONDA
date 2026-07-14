@@ -1,3 +1,6 @@
+from pathlib import Path
+import runpy
+
 import pytest
 
 from source.solvers.VPM import SolverConfig, StabilizationConfig
@@ -54,7 +57,8 @@ def test_parallel_strain_factory_uses_flowvpm_rvpm_defaults():
 
 
 def test_vortex_interactions_cli_uses_flowvpm_rvpm_default():
-    from tutorials.VPM.vortexInteractions.rings_setup import build_arg_parser
+    tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions/rings_setup.py"
+    build_arg_parser = runpy.run_path(tutorial)["build_arg_parser"]
 
     args = build_arg_parser().parse_args([])
 

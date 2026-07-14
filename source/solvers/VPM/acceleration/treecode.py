@@ -32,6 +32,7 @@ import time
 
 import numpy as np
 
+
 @dataclass
 class OctreeNode:
     """
@@ -66,6 +67,7 @@ class OctreeNode:
     def is_empty(self) -> bool:
         """True if node contains no particles."""
         return len(self.particles) == 0 and self.is_leaf
+
 
 class BarnesHutTreecode:
     """
@@ -373,9 +375,11 @@ class BarnesHutTreecode:
             f"  Build time: {self.build_time * 1000:.2f} ms"
         )
 
+
 # =========================================================
 # Convenience functions for quick usage
 # =========================================================
+
 
 def compute_velocities_treecode(
     positions: np.ndarray,
@@ -400,6 +404,7 @@ def compute_velocities_treecode(
     tree = BarnesHutTreecode(theta=theta)
     tree.build(positions, circulations, radii)
     return tree.compute_velocities(positions, radii, background_velocity)
+
 
 def benchmark_treecode(
     positions: np.ndarray,

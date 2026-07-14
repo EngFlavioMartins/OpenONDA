@@ -46,9 +46,8 @@ def test_section_accumulates_calls_and_time():
 
 def test_disabled_section_is_noop_but_step_still_times():
     prof = RuntimeProfiler(enabled=False, sync=None)
-    with prof.step():
-        with prof.section("ignored"):
-            pass
+    with prof.step(), prof.section("ignored"):
+        pass
     # Disabled: no section recorded, but the step is still counted/timed.
     assert prof._cumulative == {}
     assert prof.n_steps == 1
@@ -57,9 +56,8 @@ def test_disabled_section_is_noop_but_step_still_times():
 
 def test_reset_clears_all_statistics():
     prof = RuntimeProfiler(sync=None)
-    with prof.step():
-        with prof.section("A"):
-            pass
+    with prof.step(), prof.section("A"):
+        pass
     prof.reset()
     assert prof.n_steps == 0
     assert prof.wall_time == 0.0
@@ -70,9 +68,8 @@ def test_format_report_contains_sections_and_footer():
     prof = RuntimeProfiler(sync=None)
     prof.set_particle_count(42)
     for _ in range(3):
-        with prof.step():
-            with prof.section("Velocity"):
-                pass
+        with prof.step(), prof.section("Velocity"):
+            pass
     report = "\n".join(prof.format_report())
     assert "VPM RUNTIME PROFILE" in report
     assert "Number of particles" in report

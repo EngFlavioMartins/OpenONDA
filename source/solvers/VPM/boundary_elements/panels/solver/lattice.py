@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("vpm")
 
+
 @dataclass
 class PanelBody:
     """Dataclass storing metadata for a collection of panels belonging to a single body."""
@@ -37,6 +38,7 @@ class PanelBody:
     @property
     def motion(self):
         return self.kinematics
+
 
 @ti.data_oriented
 class PanelLattice:

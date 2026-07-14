@@ -13,6 +13,7 @@ import taichi as ti
 
 from ....config.constants import PANEL_EPSILON
 
+
 @ti.func
 def compute_vortex_ring_velocity(
     p: ti.types.vector(3, float),
@@ -54,6 +55,7 @@ def compute_vortex_ring_velocity(
     vel += biot_savart_segment(p, v1, v2)
     vel += biot_savart_segment(p, v2, v0)
     return vel
+
 
 @ti.func
 def biot_savart_segment(
@@ -104,6 +106,7 @@ def biot_savart_segment(
     )
 
     return r1xr2 * K
+
 
 @ti.func
 def compute_doublet_potential(

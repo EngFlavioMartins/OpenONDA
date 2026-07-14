@@ -3,11 +3,10 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.fields.gradients import (
-    compute_lsq_geometry,
     compute_gradient_lsq_vectorized,
 )
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 def _set_ghost_cells(phi, mesh, geo, func):

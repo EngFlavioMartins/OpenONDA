@@ -170,9 +170,7 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
         else np.full_like(t, np.nan)
     )
     enstrophy = (
-        df["enstrophy"].to_numpy(float)
-        if "enstrophy" in df.columns
-        else np.full_like(t, np.nan)
+        df["enstrophy"].to_numpy(float) if "enstrophy" in df.columns else np.full_like(t, np.nan)
     )
 
     out = df.copy()

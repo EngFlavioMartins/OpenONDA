@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
+from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 @pytest.fixture(scope="module")
@@ -40,8 +40,12 @@ class TestDiffusionMatrixSPD:
 
     def test_matrix_symmetric(self, diff_data):
         flux_data = assemble_diffusion_term(
-            diff_data["phi"], diff_data["grad_phi"], diff_data["gamma"],
-            diff_data["mesh"], diff_data["geo"], diff_data["mesh"]["boundary"],
+            diff_data["phi"],
+            diff_data["grad_phi"],
+            diff_data["gamma"],
+            diff_data["mesh"],
+            diff_data["geo"],
+            diff_data["mesh"]["boundary"],
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         diff = (A - A.T).multiply(1.0 / (A.diagonal().mean() + 1e-30))
@@ -49,20 +53,26 @@ class TestDiffusionMatrixSPD:
 
     def test_row_sum_zero(self, diff_data):
         flux_data = assemble_diffusion_term(
-            diff_data["phi"], diff_data["grad_phi"], diff_data["gamma"],
-            diff_data["mesh"], diff_data["geo"], diff_data["mesh"]["boundary"],
+            diff_data["phi"],
+            diff_data["grad_phi"],
+            diff_data["gamma"],
+            diff_data["mesh"],
+            diff_data["geo"],
+            diff_data["mesh"]["boundary"],
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         row_sum = np.array(A.sum(axis=1)).flatten()
-        assert np.allclose(row_sum, 0.0, atol=1e-12), (
-            f"max row-sum = {np.max(np.abs(row_sum)):.2e}"
-        )
+        assert np.allclose(row_sum, 0.0, atol=1e-12), f"max row-sum = {np.max(np.abs(row_sum)):.2e}"
 
     def test_positive_semi_definite(self, diff_data):
         """vᵀAv ≥ 0 for each standard basis vector (diffusion operator -∇·∇ is PSD)."""
         flux_data = assemble_diffusion_term(
-            diff_data["phi"], diff_data["grad_phi"], diff_data["gamma"],
-            diff_data["mesh"], diff_data["geo"], diff_data["mesh"]["boundary"],
+            diff_data["phi"],
+            diff_data["grad_phi"],
+            diff_data["gamma"],
+            diff_data["mesh"],
+            diff_data["geo"],
+            diff_data["mesh"]["boundary"],
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         n = A.shape[0]
@@ -75,8 +85,12 @@ class TestDiffusionMatrixSPD:
     def test_zero_residual_for_constant_field(self, diff_data):
         """If φ=1, diffusion matrix + RHS should produce zero residual."""
         flux_data = assemble_diffusion_term(
-            diff_data["phi"], diff_data["grad_phi"], diff_data["gamma"],
-            diff_data["mesh"], diff_data["geo"], diff_data["mesh"]["boundary"],
+            diff_data["phi"],
+            diff_data["grad_phi"],
+            diff_data["gamma"],
+            diff_data["mesh"],
+            diff_data["geo"],
+            diff_data["mesh"]["boundary"],
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         b = assemble_rhs_from_fluxes_vectorized(flux_data, diff_data["mesh"])

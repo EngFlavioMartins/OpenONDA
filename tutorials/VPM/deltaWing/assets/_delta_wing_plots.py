@@ -71,7 +71,11 @@ def _wing_lift_history(samples_dir: Path, surface: str):
     rows = []
     for step, g in df.groupby("step"):
         t = float(g["time"].iloc[0]) if "time" in g else float(step)
-        val = float((g[col] * g["dy"]).sum()) if col == "L_prime" and "dy" in g else float(g[col].sum())
+        val = (
+            float((g[col] * g["dy"]).sum())
+            if col == "L_prime" and "dy" in g
+            else float(g[col].sum())
+        )
         rows.append((t, val))
     rows.sort()
     a = np.asarray(rows)
@@ -89,8 +93,10 @@ def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png
     plotted = False
     c_front = _COLORS["TUDcyan"]
     c_rear = _COLORS["AccentRed"]
-    for surf, color, lbl in [("front_wing", c_front, "Front wing"),
-                             ("rear_wing", c_rear, "Rear wing")]:
+    for surf, color, lbl in [
+        ("front_wing", c_front, "Front wing"),
+        ("rear_wing", c_rear, "Rear wing"),
+    ]:
         t, lift = _wing_lift_history(samples, surf)
         if t.size:
             ax_f.plot(t, lift, "-", color=color, lw=1.3, label=lbl)
@@ -103,10 +109,15 @@ def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png
 
     # Bottom: plunge trajectories z(t) = A(1 - cos(ωt + φ))
     if meta:
-        A = meta["A"]; omega = meta["omega"]; dt = meta["dt"]; n = meta["num_steps"]
+        A = meta["A"]
+        omega = meta["omega"]
+        dt = meta["dt"]
+        n = meta["num_steps"]
         t = np.arange(n) * dt
-        for surf, color, lbl in [("front_wing", c_front, "Front wing"),
-                                 ("rear_wing", c_rear, "Rear wing")]:
+        for surf, color, lbl in [
+            ("front_wing", c_front, "Front wing"),
+            ("rear_wing", c_rear, "Rear wing"),
+        ]:
             phase = meta.get("wings", {}).get(surf, 0.0)
             z = A * (1.0 - np.cos(omega * t + phase))
             ax_z.plot(t, z, "-", color=color, lw=1.3, label=f"{lbl} $z(t)$")

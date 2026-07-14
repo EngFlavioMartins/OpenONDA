@@ -15,6 +15,7 @@ import numpy as np
 
 logger = logging.getLogger("vpm")
 
+
 @dataclass
 class ParticleFilterResult:
     """Result of filtering particles against a closed STL body.
@@ -42,6 +43,7 @@ class ParticleFilterResult:
     outside_indices : np.ndarray
         Integer indices of the outside particles with shape ``(M,)``.
     """
+
     positions: np.ndarray
     velocities: np.ndarray
     strengths: np.ndarray
@@ -50,6 +52,7 @@ class ParticleFilterResult:
     viscosities: np.ndarray
     outside_mask: np.ndarray
     outside_indices: np.ndarray
+
 
 def _ray_intersects_triangle(
     origin: np.ndarray, direction: np.ndarray, tri: np.ndarray, eps: float
@@ -75,6 +78,7 @@ def _ray_intersects_triangle(
 
     t = np.dot(edge2, qvec) * inv_det
     return t > eps
+
 
 def point_inside_stl_body(
     points: np.ndarray, triangles: np.ndarray, tolerance: float = 1e-9
@@ -119,6 +123,7 @@ def point_inside_stl_body(
 
     inside_indices = np.nonzero(inside)[0]
     return inside, inside_indices
+
 
 def filter_particles_outside_body(
     positions: np.ndarray,

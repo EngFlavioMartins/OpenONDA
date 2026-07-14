@@ -28,6 +28,7 @@ import numpy as np
 if TYPE_CHECKING:
     from ..core.solver import Solver
 
+
 @dataclass
 class ConservationState:
     """Snapshot of conservation quantities at a single time step."""
@@ -73,6 +74,7 @@ class ConservationState:
 
     circulation_removed: float = 0.0
     """Magnitude of circulation lost to particle removal [m^2/s]."""
+
 
 class ConservationTracker:
     """Track conservation properties during VLM-VPM coupled simulations."""

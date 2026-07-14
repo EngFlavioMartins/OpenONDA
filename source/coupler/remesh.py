@@ -20,8 +20,8 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 
 from __future__ import annotations
 
-import numpy as np
 from numba import njit
+import numpy as np
 
 
 def m4p(q: np.ndarray | float) -> np.ndarray:

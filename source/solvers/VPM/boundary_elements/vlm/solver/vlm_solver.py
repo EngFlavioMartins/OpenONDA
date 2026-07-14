@@ -50,6 +50,7 @@ from .mesh import (
 if TYPE_CHECKING:
     from ..coupling.kinematics import VLMKinematics
 
+
 @dataclass
 class ForceConfig:
     """Configuration for VLM aerodynamic force evaluation.
@@ -93,6 +94,7 @@ class ForceConfig:
               ForceConfig: K-J force evaluation configuration
         """
         return ForceConfig(method="KUTTA_JOUKOWSKI")
+
 
 class VLMSolver:
     """

@@ -61,8 +61,10 @@ def main() -> int:
         f"Rotor TE-shedding check  (axis=[{args.axis:+.0f},0,0], "
         f"omega={design.omega:.3f} rad/s, U_inf={design.freestream_velocity} m/s)"
     )
-    print(f"{'r [m]':>7} {'c [m]':>6} {'theta [deg]':>12} {'AoA [deg]':>10} "
-          f"{'relwind·chord':>14}  verdict")
+    print(
+        f"{'r [m]':>7} {'c [m]':>6} {'theta [deg]':>12} {'AoA [deg]':>10} "
+        f"{'relwind·chord':>14}  verdict"
+    )
 
     all_ok = True
     for r, theta, c in zip(r_stations, theta_deg, chord):
@@ -87,11 +89,7 @@ def main() -> int:
 
         ok = dot > 0.0
         all_ok &= ok
-        verdict = (
-            "LE faces wind (TE shedding) OK"
-            if ok
-            else "TE faces wind (LE shedding) REVERSED"
-        )
+        verdict = "LE faces wind (TE shedding) OK" if ok else "TE faces wind (LE shedding) REVERSED"
         print(f"{r:7.2f} {c:6.3f} {theta:12.2f} {aoa:10.2f} {dot:14.3f}  {verdict}")
 
     print()

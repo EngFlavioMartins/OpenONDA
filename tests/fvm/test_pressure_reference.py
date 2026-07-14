@@ -73,10 +73,13 @@ def test_pressure_iterative_path_solves_current_matrix():
 
 
 def test_strict_iterative_policy_does_not_hide_failure(monkeypatch):
-    def fail_bicgstab(A, b, **kwargs):
+    def fail_solve(A, b, **kwargs):
         return np.zeros_like(b), 1
 
-    monkeypatch.setattr(linear_interface, "bicgstab", fail_bicgstab)
+    # Both Krylov methods must genuinely fail: a bicgstab breakdown alone is
+    # recovered by the residual-verified GMRES rescue, which is not a failure.
+    monkeypatch.setattr(linear_interface, "bicgstab", fail_solve)
+    monkeypatch.setattr(linear_interface, "gmres", fail_solve)
     A = sparse.eye(3, format="csr")
     b = np.ones(3)
     with pytest.raises(linear_interface.LinearSolveError, match="did not converge"):
@@ -88,6 +91,24 @@ def test_strict_iterative_policy_does_not_hide_failure(monkeypatch):
             maxiter=1,
             failure_policy="raise",
         )
+
+
+def test_bicgstab_breakdown_recovered_by_verified_gmres(monkeypatch):
+    def broken_bicgstab(A, b, **kwargs):
+        return np.zeros_like(b), -10
+
+    monkeypatch.setattr(linear_interface, "bicgstab", broken_bicgstab)
+    A = sparse.eye(3, format="csr")
+    b = np.ones(3)
+    x = solve_linear_system(
+        A,
+        b,
+        method="bicgstab",
+        equation_type="scalar",
+        maxiter=50,
+        failure_policy="raise",
+    )
+    np.testing.assert_allclose(x, b, rtol=1e-10)
 
 
 def test_generic_iterative_direct_fallback_honors_policy(monkeypatch):

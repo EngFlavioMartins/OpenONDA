@@ -1,5 +1,5 @@
-import sys
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -86,15 +86,42 @@ def hand_built_3d_mesh():
 
     owners = np.array(
         [
-            0, 2, 4, 6,
-            0, 4, 1, 5,
-            0, 1, 2, 3,
-            0, 2, 4, 6,
-            1, 3, 5, 7,
-            0, 1, 4, 5,
-            2, 3, 6, 7,
-            0, 1, 2, 3,
-            4, 5, 6, 7,
+            0,
+            2,
+            4,
+            6,
+            0,
+            4,
+            1,
+            5,
+            0,
+            1,
+            2,
+            3,
+            0,
+            2,
+            4,
+            6,
+            1,
+            3,
+            5,
+            7,
+            0,
+            1,
+            4,
+            5,
+            2,
+            3,
+            6,
+            7,
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
         ],
         dtype=np.int32,
     )
@@ -137,8 +164,6 @@ def main():
 
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
-    n_faces = mesh_data["n_faces"]
-    n_boundary_faces = n_faces - n_interior
 
     phi_elem = centroids[:, 0] + centroids[:, 1] + centroids[:, 2]
 

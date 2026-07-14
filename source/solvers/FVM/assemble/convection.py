@@ -272,7 +272,9 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     }
 
 
-def assemble_convection_term(phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred", grad_phi=None):
+def assemble_convection_term(
+    phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred", grad_phi=None
+):
     """
     Assemble complete convection term.
 

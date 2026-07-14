@@ -238,9 +238,7 @@ def _ring_props_from_h5(path) -> dict | None:
         cov = (centered * amag[:, None]).T @ centered / total_length_strength
         eig = np.linalg.eigvalsh(cov)
         major_R = float(np.sqrt(max(eig[-1] + eig[-2], 0.0)))
-        gamma = (
-            total_length_strength / (2.0 * np.pi * major_R) if major_R > 1e-12 else np.nan
-        )
+        gamma = total_length_strength / (2.0 * np.pi * major_R) if major_R > 1e-12 else np.nan
         out[rid] = dict(
             time=t,
             x_centroid=xc,

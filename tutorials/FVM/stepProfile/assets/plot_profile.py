@@ -43,8 +43,13 @@ def main():
         if not mid.any():
             continue
         idx = np.argsort(x[mid])
-        ax.plot(x[mid][idx], phi[mid][idx], color=colors[i % len(colors)],
-                lw=1.2, label=f"t = {snap['time']:.3f} s")
+        ax.plot(
+            x[mid][idx],
+            phi[mid][idx],
+            color=colors[i % len(colors)],
+            lw=1.2,
+            label=f"t = {snap['time']:.3f} s",
+        )
 
     ax.set_xlabel("x along diagonal")
     ax.set_ylabel(r"$\phi$")

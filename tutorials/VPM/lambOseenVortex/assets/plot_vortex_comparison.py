@@ -177,8 +177,10 @@ def plot_vortex_case(args) -> int:
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
-    elapsed_time = args.total_time if target_time is not None else (
-        float(np.median([s[1] for s in scheme_data])) if scheme_data else args.total_time
+    elapsed_time = (
+        args.total_time
+        if target_time is not None
+        else (float(np.median([s[1] for s in scheme_data])) if scheme_data else args.total_time)
     )
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
@@ -204,7 +206,7 @@ def plot_vortex_case(args) -> int:
     axes[2].set_xlim([-7.5, 7.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01) )
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01))
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":
         save_kw["dpi"] = args.dpi

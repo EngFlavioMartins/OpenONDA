@@ -26,7 +26,6 @@ its most basic form.
 """
 
 import numpy as np
-import pytest
 
 from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
 from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
@@ -94,8 +93,17 @@ def _solve_momentum_operator(mesh, geo, nu, scheme):
     S = _momentum_source(cc[:, 0], cc[:, 1], cc[:, 2], nu)
 
     mom = assemble_momentum_equation(
-        U, p, phi, 1.0, nu, mesh, geo, mesh["boundary"],
-        convection_scheme=scheme, dt=None, source_explicit=S,
+        U,
+        p,
+        phi,
+        1.0,
+        nu,
+        mesh,
+        geo,
+        mesh["boundary"],
+        convection_scheme=scheme,
+        dt=None,
+        source_explicit=S,
     )
 
     U_sol = np.zeros((n_elem, 3))
@@ -148,6 +156,5 @@ class TestMomentumOperatorMMS:
         assert deferred_p > 1.8, f"deferred order {deferred_p:.2f} < 1.8 (design 2nd order)"
         # Headline "less diffusive": the 2nd-order correction beats upwind.
         assert deferred_err[-1] < 0.25 * upwind_err[-1], (
-            f"deferred finest error {deferred_err[-1]:.3e} not << "
-            f"upwind {upwind_err[-1]:.3e}"
+            f"deferred finest error {deferred_err[-1]:.3e} not << upwind {upwind_err[-1]:.3e}"
         )

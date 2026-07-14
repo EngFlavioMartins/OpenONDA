@@ -19,12 +19,14 @@ from ....config.constants import PANEL_EPSILON, TI_FLOAT
 
 logger = logging.getLogger("vpm")
 
+
 class PanelLinearSolver(abc.ABC):
     """Abstract base class for panel method linear solvers."""
 
     @abc.abstractmethod
     def solve(self, AIC: ti.template(), rhs: ti.template(), x: ti.template(), n: int) -> bool:
         pass
+
 
 class PanelScipySolver(PanelLinearSolver):
     """CPU-side solver using scipy for dense direct solve / least-squares."""
@@ -57,6 +59,7 @@ class PanelScipySolver(PanelLinearSolver):
         x_full[:n] = sol
         x.from_numpy(x_full)
         return True
+
 
 @ti.data_oriented
 class PanelBiCGSTABSolver(PanelLinearSolver):

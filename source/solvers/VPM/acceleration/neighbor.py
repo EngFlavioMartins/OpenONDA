@@ -15,6 +15,7 @@ import taichi as ti
 # Import VPM constants
 from ..config.constants import MAX_PARTICLES
 
+
 @ti.data_oriented
 class TaichiNeighborSearch:
     def __init__(

@@ -20,6 +20,7 @@ from ..config.constants import (
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 
+
 @ti.data_oriented
 class ParticleFieldEvaluation:
     """
@@ -916,6 +917,7 @@ class ParticleFieldEvaluation:
     def reset_energy_history(self):
         """Reset the energy time history (useful when restarting simulation)."""
         self._flow_time_history.clear()
+
 
 # =========================================================
 # PUBLIC API EXPORTS

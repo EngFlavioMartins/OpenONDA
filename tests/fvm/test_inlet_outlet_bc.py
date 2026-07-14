@@ -41,4 +41,6 @@ def test_inlet_outlet_switches_on_flux_sign():
         if j % 2 == 0:  # outflow → zeroGradient (owner value)
             assert np.allclose(U[ghost], [2.0, 1.0, 0.0]), f"outflow face {j} not extrapolated"
         else:  # inflow → inletValue
-            assert np.allclose(U[ghost], [5.0, 0.0, 0.0]), f"inflow face {j} not clamped to inletValue"
+            assert np.allclose(U[ghost], [5.0, 0.0, 0.0]), (
+                f"inflow face {j} not clamped to inletValue"
+            )

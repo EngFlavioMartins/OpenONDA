@@ -11,6 +11,7 @@ import numpy as np
 
 logger = logging.getLogger("vpm")
 
+
 def _compute_unit_normals(vertices: np.ndarray) -> np.ndarray:
     edge1 = vertices[:, 1, :] - vertices[:, 0, :]
     edge2 = vertices[:, 2, :] - vertices[:, 0, :]
@@ -19,12 +20,14 @@ def _compute_unit_normals(vertices: np.ndarray) -> np.ndarray:
     np.divide(normals, magnitudes, out=normals, where=magnitudes > 0.0)
     return normals
 
+
 def _parse_facet_normal(line: str) -> list[float]:
     """Parse normal vector from a 'facet normal ...' STL line."""
     parts = line.split()
     if len(parts) >= 5:
         return [float(parts[-3]), float(parts[-2]), float(parts[-1])]
     return [0.0, 0.0, 0.0]
+
 
 def _parse_stl_ascii_lines(handle) -> tuple[list, list]:
     """Parse lines from an open ASCII STL file handle; return (vertices_list, normals_list)."""
@@ -56,6 +59,7 @@ def _parse_stl_ascii_lines(handle) -> tuple[list, list]:
 
     return vertices_list, normals_list
 
+
 def _try_load_stl_with_library(filepath: str) -> tuple[np.ndarray, np.ndarray] | None:
     """Try to load STL using numpy-stl. Returns None if library is unavailable."""
     try:
@@ -75,6 +79,7 @@ def _try_load_stl_with_library(filepath: str) -> tuple[np.ndarray, np.ndarray] |
         logger.debug("numpy-stl is unavailable; using manual STL parser.")
         return None
 
+
 def _detect_and_load_binary_stl(filepath: str) -> tuple[np.ndarray, np.ndarray] | None:
     """Try to detect and load a binary STL file. Returns None if the file is not binary."""
     with open(filepath, "rb") as handle:
@@ -92,6 +97,7 @@ def _detect_and_load_binary_stl(filepath: str) -> tuple[np.ndarray, np.ndarray] 
         logger.debug("Detected binary STL with 'solid' header.")
     return _load_stl_binary(filepath)
 
+
 def _load_stl_ascii(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     with open(filepath, encoding="utf-8", errors="ignore") as handle:
         vertices_list, normals_list = _parse_stl_ascii_lines(handle)
@@ -108,6 +114,7 @@ def _load_stl_ascii(filepath: str) -> tuple[np.ndarray, np.ndarray]:
 
     logger.debug(f"Loaded ASCII STL '{filepath}': {vertices.shape[0]} panels.")
     return vertices, normals
+
 
 def load_stl(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     """Load an STL file and return triangle vertices and unit normals.
@@ -149,6 +156,7 @@ def load_stl(filepath: str) -> tuple[np.ndarray, np.ndarray]:
 
     return _load_stl_ascii(filepath)
 
+
 def _load_stl_binary(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     """Load binary STL file and return ``(vertices, normals)``."""
     with open(filepath, "rb") as handle:
@@ -184,6 +192,7 @@ def _load_stl_binary(filepath: str) -> tuple[np.ndarray, np.ndarray]:
 
     logger.debug(f"Loaded binary STL '{filepath}': {tri_count} panels.")
     return vertices, normals
+
 
 def save_stl(filepath: str, vertices: np.ndarray, normals: np.ndarray | None = None) -> None:
     """Save triangular panels to a binary STL file.
@@ -238,6 +247,7 @@ def save_stl(filepath: str, vertices: np.ndarray, normals: np.ndarray | None = N
 
     _save_stl_binary(filepath, triangles, normals_arr)
 
+
 def _save_stl_binary(filepath: str, vertices: np.ndarray, normals: np.ndarray) -> None:
     """Write binary STL file from triangle vertices and normals."""
     triangles = np.asarray(vertices, dtype=np.float64)
@@ -279,6 +289,7 @@ def _save_stl_binary(filepath: str, vertices: np.ndarray, normals: np.ndarray) -
 
     logger.debug(f"Saved binary STL '{filepath}': {panel_count} panels.")
 
+
 def _unique_face_vertex_ids_from_triangles(triangles: np.ndarray, decimals: int = 12) -> np.ndarray:
     rounded = np.round(triangles, decimals=decimals)
     key_to_index: dict[tuple[float, float, float], int] = {}
@@ -294,6 +305,7 @@ def _unique_face_vertex_ids_from_triangles(triangles: np.ndarray, decimals: int 
             face_vertex_ids[panel, local] = key_to_index[key]
     return face_vertex_ids
 
+
 def _add_neighbor(neighbors: np.ndarray, panel: int, candidate: int, max_neighbors: int) -> None:
     row = neighbors[panel]
     for slot in range(max_neighbors):
@@ -305,6 +317,7 @@ def _add_neighbor(neighbors: np.ndarray, panel: int, candidate: int, max_neighbo
     logger.warning(
         f"Panel {panel} exceeded max_neighbors={max_neighbors}; neighbor {candidate} was dropped."
     )
+
 
 def _mark_leading_edge(te_mask: np.ndarray, triangles: np.ndarray) -> np.ndarray:
     panel_count = triangles.shape[0]
@@ -335,6 +348,7 @@ def _mark_leading_edge(te_mask: np.ndarray, triangles: np.ndarray) -> np.ndarray
                 le_mask[idx] = 1
     return le_mask
 
+
 def _validate_face_input(vertices_arr: np.ndarray, faces_arr: np.ndarray) -> None:
     """Validate vertex/face arrays when faces are provided explicitly."""
     if vertices_arr.ndim != 2 or vertices_arr.shape[1] != 3:
@@ -343,6 +357,7 @@ def _validate_face_input(vertices_arr: np.ndarray, faces_arr: np.ndarray) -> Non
         raise ValueError("faces must have shape (N, 3)")
     if np.any(faces_arr < 0) or np.any(faces_arr >= vertices_arr.shape[0]):
         raise ValueError("faces contain out-of-bounds vertex indices")
+
 
 def _build_panel_edge_map(panel_count: int, panel_vertex_ids: np.ndarray) -> dict:
     """Build edge→panel-list adjacency map for a triangular mesh."""
@@ -359,6 +374,7 @@ def _build_panel_edge_map(panel_count: int, panel_vertex_ids: np.ndarray) -> dic
             edge_map.setdefault(edge, []).append(panel)
     return edge_map
 
+
 def _populate_neighbors_from_edges(
     edge_map: dict, neighbors: np.ndarray, is_te_panel: np.ndarray, max_neighbors: int
 ) -> None:
@@ -374,6 +390,7 @@ def _populate_neighbors_from_edges(
             for nbr in panel_refs:
                 if panel != nbr:
                     _add_neighbor(neighbors, panel, nbr, max_neighbors)
+
 
 def build_mesh_topology(
     vertices: np.ndarray,

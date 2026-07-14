@@ -1,8 +1,7 @@
 import numpy as np
-import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.assemble.time_integration import assemble_transient_term_euler_implicit
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestTimeIntegration:
@@ -13,7 +12,6 @@ class TestTimeIntegration:
         geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_elements"]
 
-        rho = 1.0
         lam = 2.0
         dt = 0.1
         phi_old = np.ones(n_elem) * 10.0

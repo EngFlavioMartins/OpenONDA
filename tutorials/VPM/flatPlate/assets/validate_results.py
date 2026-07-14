@@ -8,7 +8,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-AOA_TAGS = ["aoan10", "aoan05", "aoan02", "aoa00", "aoa02", "aoa05", "aoa08", "aoa10", "aoa12", "aoa15"]
+AOA_TAGS = [
+    "aoan10",
+    "aoan05",
+    "aoan02",
+    "aoa00",
+    "aoa02",
+    "aoa05",
+    "aoa08",
+    "aoa10",
+    "aoa12",
+    "aoa15",
+]
 
 
 def main() -> int:
@@ -37,7 +48,7 @@ def main() -> int:
             scale = max(abs(float(tail.CL.mean())), 1e-12)
             rel = float(tail.CL.max() - tail.CL.min()) / scale
             if rel > 2e-3:
-                failures.append(f"{name}: CL tail range {100*rel:.3f}% > 0.2%")
+                failures.append(f"{name}: CL tail range {100 * rel:.3f}% > 0.2%")
 
     kelvin_csv = root / "exp_static_aoa08" / "samples" / "exp_static_aoa08.csv"
     if kelvin_csv.exists():
@@ -49,7 +60,12 @@ def main() -> int:
         if closure > 1e-4:
             failures.append(f"Kelvin closure {closure:.3e} > 1e-4")
 
-    for name in ["plate_polar.png", "plate_staticvsmoving.png", "plate_spanwise.png", "flat_plate_kelvin.png"]:
+    for name in [
+        "plate_polar.png",
+        "plate_staticvsmoving.png",
+        "plate_spanwise.png",
+        "flat_plate_kelvin.png",
+    ]:
         if not (figs / name).exists():
             failures.append(f"missing figure {name}")
 

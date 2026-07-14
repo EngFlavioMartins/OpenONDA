@@ -28,7 +28,7 @@ def _write_centerline(root: Path, time: float, ux_values: list[float]) -> None:
     time_dir.mkdir(parents=True)
     x = [0.5, 0.75, 1.0, 1.25, 1.5]
     rows = ["x,p,U_0,U_1,U_2"]
-    rows.extend(f"{xi},0,{ui},0,0" for xi, ui in zip(x, ux_values))
+    rows.extend(f"{xi},0,{ui},0,0" for xi, ui in zip(x, ux_values, strict=False))
     (time_dir / "centerline_p_U.csv").write_text("\n".join(rows) + "\n")
 
 

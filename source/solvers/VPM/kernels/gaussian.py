@@ -9,6 +9,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import taichi as ti
 
+
 def create_gaussian_kernels(dtype=ti.f32):
     """Create Gaussian kernel functions with specified precision.
 

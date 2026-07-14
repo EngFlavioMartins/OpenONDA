@@ -55,15 +55,23 @@ MAX_REGEN_NODES = 150_000
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Vortex-ring LES stabilizer benchmark")
 
-    parser.add_argument("--gamma1", type=float, default=GAMMA_REF, help="Ring 1 circulation [m2/s].")
-    parser.add_argument("--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s].")
+    parser.add_argument(
+        "--gamma1", type=float, default=GAMMA_REF, help="Ring 1 circulation [m2/s]."
+    )
+    parser.add_argument(
+        "--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s]."
+    )
     parser.add_argument("--name", default="leapfrog_les", help="Output sub-directory name.")
     parser.add_argument("--dt", type=float, default=2.0e-2, help="Time-step size [s].")
     parser.add_argument("--num-steps", type=int, default=360, help="Number of time steps.")
-    parser.add_argument("--particle-spacing", type=float, default=0.035, help="Particle spacing [m].")
+    parser.add_argument(
+        "--particle-spacing", type=float, default=0.035, help="Particle spacing [m]."
+    )
     parser.add_argument("--output-root", default="solution", help="Parent output directory.")
     parser.add_argument("--backup-frequency", type=int, default=20, help="Backup interval [steps].")
-    parser.add_argument("--logging-frequency", type=int, default=10, help="Logging interval [steps].")
+    parser.add_argument(
+        "--logging-frequency", type=int, default=10, help="Logging interval [steps]."
+    )
     parser.add_argument(
         "--processing-unit",
         default="CUDA",
@@ -152,7 +160,9 @@ def build_viscous_config(scheme: str, particle_spacing: float) -> ViscousConfig:
     )
 
 
-def build_stabilization_config(args: argparse.Namespace, particle_spacing: float) -> StabilizationConfig:
+def build_stabilization_config(
+    args: argparse.Namespace, particle_spacing: float
+) -> StabilizationConfig:
     """Return exactly one benchmark stabilizer for the requested variant."""
     if args.stabilization == "les":
         return StabilizationConfig.disabled()
@@ -190,7 +200,9 @@ def build_stabilization_config(args: argparse.Namespace, particle_spacing: float
     )
 
 
-def make_surface_sampler(case_label: str, particle_spacing: float, output_dir: Path) -> SurfaceSampler:
+def make_surface_sampler(
+    case_label: str, particle_spacing: float, output_dir: Path
+) -> SurfaceSampler:
     if case_label == "collide":
         bounds = [-7.0, 7.0, -4.0, 4.0]
     else:
@@ -206,7 +218,9 @@ def make_surface_sampler(case_label: str, particle_spacing: float, output_dir: P
     )
 
 
-def ring_centers_and_strengths(gamma1: float, gamma2: float) -> tuple[list[list[float]], list[float]]:
+def ring_centers_and_strengths(
+    gamma1: float, gamma2: float
+) -> tuple[list[list[float]], list[float]]:
     if gamma1 * gamma2 >= 0.0:
         return [[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]], [gamma1, gamma2]
 
@@ -394,8 +408,7 @@ def run_case(args: argparse.Namespace) -> None:
         solver.update_state()
 
         check_due = (
-            args.blowup_check_frequency > 0
-            and (step + 1) % args.blowup_check_frequency == 0
+            args.blowup_check_frequency > 0 and (step + 1) % args.blowup_check_frequency == 0
         )
         if not check_due:
             continue

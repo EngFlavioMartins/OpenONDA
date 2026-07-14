@@ -139,7 +139,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--tau-max", type=float, default=5.5, help="Simulation end [chord-lengths] (static/ramp)"
     )
     p.add_argument(
-        "--dt", type=float, default=None, help="Override time step [s] (auto=0.0125 for static/ramp)"
+        "--dt",
+        type=float,
+        default=None,
+        help="Override time step [s] (auto=0.0125 for static/ramp)",
     )
 
     # -- Wake adaptation -----------------------------------------------

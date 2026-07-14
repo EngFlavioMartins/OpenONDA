@@ -17,6 +17,7 @@ from ....config.constants import VLM_CUTOFF, VLM_EPSILON
 EPSILON = VLM_EPSILON
 CUTOFF = VLM_CUTOFF
 
+
 @ti.func
 def bound_vortex_velocity(target, pa, pb, gamma: float, epsilon: float):
     """
@@ -70,6 +71,7 @@ def bound_vortex_velocity(target, pa, pb, gamma: float, epsilon: float):
 
     return vel
 
+
 @ti.func
 def semi_infinite_vortex_velocity(target, p, d, gamma: float, epsilon: float):
     """
@@ -119,6 +121,7 @@ def semi_infinite_vortex_velocity(target, p, d, gamma: float, epsilon: float):
 
     return vel
 
+
 @ti.func
 def horseshoe_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     """
@@ -138,6 +141,7 @@ def horseshoe_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
 
     return vel
 
+
 @ti.func
 def vortex_ring_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     """
@@ -155,6 +159,7 @@ def vortex_ring_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     v41 = bound_vortex_velocity(target, v4, v1, gamma, epsilon)
 
     return v12 + v23 + v34 + v41
+
 
 @ti.func
 def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, gamma: float, epsilon: float):
@@ -188,6 +193,7 @@ def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, gamma: float, epsil
     vel = vel_left + vel_bound + vel_right
 
     return vel
+
 
 @ti.func
 def vortex_ring_tri_velocity(

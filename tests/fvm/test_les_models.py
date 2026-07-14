@@ -15,7 +15,7 @@ ghosts), so the eddy viscosity is an analytic check rather than a smoke test:
 import numpy as np
 
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.turbulence import DynamicSmagorinsky, Sigma, Smagorinsky, WALE
+from source.solvers.FVM.turbulence import WALE, DynamicSmagorinsky, Sigma, Smagorinsky
 
 from ._structured_mesh import structured_box
 

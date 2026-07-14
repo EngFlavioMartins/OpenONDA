@@ -1,5 +1,7 @@
 """Shared VPM test fixtures and CLI options."""
 
+import platform
+
 import pytest
 
 from source.solvers.VPM import Solver, SolverConfig
@@ -24,10 +26,9 @@ def pytest_addoption(parser):
 
 # ── Backend parametrisation ──────────────────────────────────────────────────
 
-# Ordered: CPU first (most reliable), then CUDA, then Vulkan.
-# Tests that fail on a backend are warned and skipped via the
-# ``solver_for_backend`` fixture.
-BACKENDS = ["CPU", "CUDA", "VULKAN"]
+# Exercise the native GPU API for the host platform. Other requested backends
+# are already covered by backend-chain unit tests.
+BACKENDS = ["CPU", "METAL"] if platform.system() == "Darwin" else ["CPU", "CUDA", "VULKAN"]
 
 
 def pytest_generate_tests(metafunc):
@@ -41,14 +42,7 @@ def pytest_generate_tests(metafunc):
 
 @pytest.fixture(scope="function")
 def solver_for_backend(tmp_path, backend):
-    """
-    Factory fixture: returns a callable ``make_solver(**kwargs)`` that
-    creates a :class:`Solver` initialised on the requested ``backend``.
-
-    ``reset_taichi_backend()`` is called before *and* after the test so
-    that switching between CPU / CUDA / Vulkan in the same pytest process
-    does not leak GPU memory or stale Taichi kernels.
-    """
+    """Return a solver factory for one requested backend."""
     reset_taichi_backend()
 
     def _make_solver(**kwargs):
@@ -59,7 +53,10 @@ def solver_for_backend(tmp_path, backend):
             logging_frequency=0,
             **kwargs,
         )
-        return Solver(config=config)
+        solver = Solver(config=config)
+        if solver.processing_unit != backend:
+            pytest.skip(f"{backend} unavailable; Taichi initialized {solver.processing_unit}")
+        return solver
 
     yield _make_solver
     reset_taichi_backend()
@@ -68,13 +65,13 @@ def solver_for_backend(tmp_path, backend):
 @pytest.fixture(scope="function")
 def minimal_solver_config(tmp_path):
     """Return a minimal ``SolverConfig`` that disables all I/O and physics."""
-    return dict(
-        time_step_size=0.01,
-        processing_unit="CPU",
-        stretching=StretchingConfig.disabled(),
-        viscous=ViscousConfig(scheme="NONE"),
-        advection=AdvectionConfig(scheme="NONE"),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
-    )
+    return {
+        "time_step_size": 0.01,
+        "processing_unit": "CPU",
+        "stretching": StretchingConfig.disabled(),
+        "viscous": ViscousConfig(scheme="NONE"),
+        "advection": AdvectionConfig(scheme="NONE"),
+        "backup_frequency": 0,
+        "logging_frequency": 0,
+        "backup_directory": str(tmp_path),
+    }

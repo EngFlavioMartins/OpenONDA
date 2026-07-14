@@ -258,7 +258,7 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
         return {}
 
     # Ensure nu is reachable
-    nu_val = nu if isinstance(nu, (float, int)) else np.mean(nu)
+    nu_val = nu if isinstance(nu, float | int) else np.mean(nu)
 
     y_plus_stats = {}
 
@@ -314,8 +314,18 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
 
 
 def compute_surface_forces(
-    U, p, mu, rho, mesh_data, geo_data, boundaries, patch_names=None, ref_U=None, ref_area=None,
-    ref_length=None, moment_centre=None
+    U,
+    p,
+    mu,
+    rho,
+    mesh_data,
+    geo_data,
+    boundaries,
+    patch_names=None,
+    ref_U=None,
+    ref_area=None,
+    ref_length=None,
+    moment_centre=None,
 ):
     """
     Compute surface forces (pressure + viscous) on boundary patches.
@@ -338,6 +348,7 @@ def compute_surface_forces(
     import numpy as _np
 
     from .gradients import _resolve_gradient_fn as _resolve_grad
+
     _grad = _resolve_grad(geo_data)
 
     n_elements = mesh_data["n_elements"]
@@ -375,10 +386,16 @@ def compute_surface_forces(
         n_vec = Sf / (mag_Sf[:, _np.newaxis] + 1e-30)
         p_owner = p[owners_idx]
         Fp = _np.sum(p_owner[:, _np.newaxis] * Sf, axis=0)
-        Fv = -_np.sum(_compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf), axis=0)
+        Fv = -_np.sum(
+            _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf), axis=0
+        )
         Ftot = Fp + Fv
         has_refs = ref_U is not None and ref_area is not None and rho is not None
-        coeffs = _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length, moment_centre) if has_refs else {}
+        coeffs = (
+            _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length, moment_centre)
+            if has_refs
+            else {}
+        )
         results[name] = {"Fp": Fp, "Fv": Fv, "Ftot": Ftot, "coeffs": coeffs, "nFaces": nf}
 
     return results

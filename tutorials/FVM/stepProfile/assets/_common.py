@@ -25,6 +25,7 @@ COLORS = THEME.COLORS
 COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
+
 def build_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--solution-dir", default=str(SOLUTION_DIR))
@@ -32,6 +33,7 @@ def build_arg_parser():
     parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=400)
     return parser
+
 
 def load_pvd_timesteps(solution_dir):
     pvd_path = os.path.join(solution_dir, "stepProfile.pvd")
@@ -41,11 +43,11 @@ def load_pvd_timesteps(solution_dir):
     root = tree.getroot()
     timesteps = []
     for ds in root.iter("DataSet"):
-        timesteps.append({
-            "time": float(ds.get("timestep")),
-            "file": os.path.join(solution_dir, ds.get("file"))
-        })
+        timesteps.append(
+            {"time": float(ds.get("timestep")), "file": os.path.join(solution_dir, ds.get("file"))}
+        )
     return timesteps
+
 
 def save_fig(fig, name, figures_dir, dpi=400, figure_format="png"):
     path = Path(figures_dir) / name

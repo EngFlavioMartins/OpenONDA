@@ -456,7 +456,7 @@ def plot_merging_case(args) -> int:
     # -- Reference curves -------------------------------
 
     run_a0_over_b0 = args.a0_over_b0
-    tau_limit = 3.5 #tau_max / (run_a0_over_b0**2)
+    tau_limit = 3.5  # tau_max / (run_a0_over_b0**2)
     a0_sigma = run_a0_over_b0 / np.sqrt(2.0)
 
     ref_kw = dict(
@@ -500,7 +500,7 @@ def plot_merging_case(args) -> int:
     axes[2].set_xlim([0, 2.6])
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0) )
+    fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
     save_kw: dict = {"bbox_inches": "tight"}
     if fmt == "png":
         save_kw["dpi"] = args.dpi

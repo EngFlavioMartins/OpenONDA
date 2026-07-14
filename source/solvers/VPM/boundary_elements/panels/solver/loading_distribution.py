@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+
 class PanelLoadingDistribution:
     """Static helpers for exporting per-panel loading distributions."""
 
@@ -65,9 +66,7 @@ class PanelLoadingDistribution:
             csv_path = samples_dir / f"panel_distribution_step{time_step:06d}.csv"
 
             with open(csv_path, "w") as f:
-                f.write(
-                    "time,step,cx,cy,cz,nx,ny,nz,strength,area,Cp,Fx,Fy,Fz,group_id\n"
-                )
+                f.write("time,step,cx,cy,cz,nx,ny,nz,strength,area,Cp,Fx,Fy,Fz,group_id\n")
                 for i in range(n):
                     c = centers[i]
                     nv = normals[i]

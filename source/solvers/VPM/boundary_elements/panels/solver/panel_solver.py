@@ -39,6 +39,7 @@ from .vtk_export import panel_mesh_to_vtp
 
 logger = logging.getLogger("vpm")
 
+
 @dataclass
 class ForceConfig:
     """Configuration for aerodynamic force evaluation on panel methods.
@@ -91,6 +92,7 @@ class ForceConfig:
     @classmethod
     def kutta_joukowski(cls):
         return cls(method="KUTTA_JOUKOWSKI")
+
 
 class PanelSolver:
     def __init__(

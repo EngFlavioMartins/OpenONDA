@@ -49,7 +49,7 @@ class ImmersedBody:
         h: float,
         alpha: float = 1.0,
         name: str = "cylinder",
-    ) -> "ImmersedBody":
+    ) -> ImmersedBody:
         """Circle of markers in the (x, y) plane (a z-extruded 2D cylinder).
 
         Markers are placed on the circle of the given diameter around
@@ -80,7 +80,7 @@ class ImmersedBody:
         h: float,
         alpha: float = 1.0,
         name: str = "sphere",
-    ) -> "ImmersedBody":
+    ) -> ImmersedBody:
         """Fibonacci-lattice sphere with ~one marker per ``(alpha h)^2`` area."""
         centre = np.asarray(centre, dtype=np.float64)
         n = max(int(round(np.pi * diameter**2 / (alpha * h) ** 2)), 8)
@@ -96,6 +96,6 @@ class ImmersedBody:
         return cls(name, X)
 
     @classmethod
-    def from_points(cls, X, U_target=None, name: str = "body") -> "ImmersedBody":
+    def from_points(cls, X, U_target=None, name: str = "body") -> ImmersedBody:
         """Arbitrary marker cloud (e.g. sampled from an STL surface)."""
         return cls(name, X, U_target)

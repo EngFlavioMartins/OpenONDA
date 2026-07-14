@@ -94,30 +94,36 @@ def plot_rotor_performance(args) -> int:
     s_ct = styles["ct"]
     s_cp = styles["cp"]
 
-    ax1.plot(rotations, ct, 
-             color=s_ct["color"], 
-             marker=s_ct["marker"], 
-             markersize=s_ct["markersize"],
-             lw=s_ct["linewidth"], 
-             label=s_ct["label"],
-             markevery=5
-             )
-    ax1.plot(rotations, cp, 
-             color=s_cp["color"], 
-             marker=s_cp["marker"], 
-             markersize=s_cp["markersize"],
-             lw=s_cp["linewidth"], 
-             label=s_cp["label"],
-             markevery=5
-             )
+    ax1.plot(
+        rotations,
+        ct,
+        color=s_ct["color"],
+        marker=s_ct["marker"],
+        markersize=s_ct["markersize"],
+        lw=s_ct["linewidth"],
+        label=s_ct["label"],
+        markevery=5,
+    )
+    ax1.plot(
+        rotations,
+        cp,
+        color=s_cp["color"],
+        marker=s_cp["marker"],
+        markersize=s_cp["markersize"],
+        lw=s_cp["linewidth"],
+        label=s_cp["label"],
+        markevery=5,
+    )
 
     ax1.axhline(ct_betz, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
     ax1.axhline(cp_betz, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
 
-    ax1.text(7, 1.01*ct_betz, r"$C_{T,\mathrm{Betz}}$",
-             color=s_ref["color"], va="bottom", ha="left" )
-    ax1.text(7, 1.01*cp_betz, r"$C_{P,\mathrm{Betz}}$",
-             color=s_ref["color"], va="bottom", ha="left" )
+    ax1.text(
+        7, 1.01 * ct_betz, r"$C_{T,\mathrm{Betz}}$", color=s_ref["color"], va="bottom", ha="left"
+    )
+    ax1.text(
+        7, 1.01 * cp_betz, r"$C_{P,\mathrm{Betz}}$", color=s_ref["color"], va="bottom", ha="left"
+    )
 
     ax1.set_xlabel(r"Revolutions")
     ax1.set_ylabel(r"Coefficient")
@@ -132,7 +138,8 @@ def plot_rotor_performance(args) -> int:
     cp_theory = actuator_disk_cp(ct_theory)
 
     ax2.plot(
-        ct_theory, cp_theory,
+        ct_theory,
+        cp_theory,
         zorder=0,
         **styles["theory"],
     )
@@ -169,9 +176,12 @@ def plot_rotor_performance(args) -> int:
     )
 
     ax2.scatter(
-        [ct_betz], [cp_betz],
+        [ct_betz],
+        [cp_betz],
         color=s_ref["color"],
-        marker="*", s=24, zorder=2,
+        marker="*",
+        s=24,
+        zorder=2,
     )
 
     ax2.set_xlabel(r"$C_T$")
@@ -180,14 +190,23 @@ def plot_rotor_performance(args) -> int:
     ax2.set_ylim([0, max(0.7, float(np.nanmax(cp)) * 1.08, cp_betz * 1.08)])
 
     from matplotlib.lines import Line2D
-    ax2.legend(handles=[
-        Line2D([0], [0], color=trajectory_color, lw=1.0, marker='s',
-               markersize=3, label="VLM-VPM time trajectory"),
-        Line2D([0], [0], color=s_ref["color"], ls="--", lw=1.0,
-               label="Actuator-disk theory"),
-        Line2D([0], [0], color=s_ref["color"], marker='*', ms=6, lw=0,
-               label="Betz limit"),
-    ], loc="lower center")
+
+    ax2.legend(
+        handles=[
+            Line2D(
+                [0],
+                [0],
+                color=trajectory_color,
+                lw=1.0,
+                marker="s",
+                markersize=3,
+                label="VLM-VPM time trajectory",
+            ),
+            Line2D([0], [0], color=s_ref["color"], ls="--", lw=1.0, label="Actuator-disk theory"),
+            Line2D([0], [0], color=s_ref["color"], marker="*", ms=6, lw=0, label="Betz limit"),
+        ],
+        loc="lower center",
+    )
     ax2.set_title(r"Operating trajectory")
 
     save_kw: dict = {"bbox_inches": "tight"}

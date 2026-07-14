@@ -1,14 +1,13 @@
 import numpy as np
-import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestMatrixAssembly:
@@ -41,7 +40,9 @@ class TestMatrixAssembly:
         mdot = compute_mass_flow_rate(U, mesh, geo)
         phi = np.ones(n_elem + n_bnd)
 
-        flux_data = assemble_convection_term(phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind")
+        flux_data = assemble_convection_term(
+            phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+        )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)
         assert np.allclose(A @ np.ones(n_elem) - b, 0.0, atol=1e-12)
@@ -66,7 +67,7 @@ class TestMatrixAssembly:
 
         A_vec = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         A_loop = assemble_matrix_from_fluxes(flux_data, mesh)
-        diff = (A_vec - A_loop)
+        diff = A_vec - A_loop
         assert diff.max() < 1e-12, (
             f"Max diff between vectorized and loop assembly: {diff.max():.2e}"
         )

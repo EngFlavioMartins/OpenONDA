@@ -40,14 +40,17 @@ def main():
 
     for label, f, cmap, clim in fields:
         fig, ax = plt.subplots(figsize=figure_size("wide"))
-        sc = ax.scatter(cc[:, 0], cc[:, 1], c=f, s=2.5, cmap=cmap, marker="s",
-                        linewidths=0)
+        sc = ax.scatter(cc[:, 0], cc[:, 1], c=f, s=2.5, cmap=cmap, marker="s", linewidths=0)
         if clim is not None:
             sc.set_clim(*clim)
         if markers is not None:
-            ax.plot(np.append(markers[:, 0], markers[0, 0]),
-                    np.append(markers[:, 1], markers[0, 1]),
-                    "-", color=COLORS["AxisBlack"], linewidth=0.8)
+            ax.plot(
+                np.append(markers[:, 0], markers[0, 0]),
+                np.append(markers[:, 1], markers[0, 1]),
+                "-",
+                color=COLORS["AxisBlack"],
+                linewidth=0.8,
+            )
         ax.set_xlim(-3, 10)
         ax.set_ylim(-3.5, 3.5)
         ax.set_aspect("equal")

@@ -346,7 +346,18 @@ def test_regen_carries_viscosity_turbulent(physics):
     expected_nu_t = np.array([1e-4, 2e-4, 3e-4, 5e-4], dtype=np.float32)
     nu_t_grid[ix, iy, iz] = expected_nu_t
     out_nut = physics._build_diffusion_particle_arrays(
-        ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 4, zone, group,
+        ix,
+        iy,
+        iz,
+        grid_np,
+        np.zeros(3),
+        H,
+        1e-3,
+        0.01,
+        None,
+        4,
+        zone,
+        group,
         nu_t_grid=nu_t_grid,
     )
     np.testing.assert_allclose(out_nut["viscosity_turbulent"], expected_nu_t, rtol=1e-6)
@@ -386,8 +397,14 @@ def _laplacian_step_variable(physics, field, nu_eff_field, dt, h):
     physics._nu_eff_grid.from_numpy(nu_eff_buf)
     physics._other_grid.fill(0.0)
     physics._laplacian_step_variable_gpu_kernel(
-        physics._current_grid, physics._other_grid, physics._nu_eff_grid,
-        float(dt), float(h), nx, ny, nz,
+        physics._current_grid,
+        physics._other_grid,
+        physics._nu_eff_grid,
+        float(dt),
+        float(h),
+        nx,
+        ny,
+        nz,
     )
     return physics._other_grid.to_numpy()[:nx, :ny, :nz, :]
 

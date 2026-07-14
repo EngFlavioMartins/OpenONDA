@@ -16,6 +16,7 @@ import taichi as ti
 from ..config.constants import MAX_PARTICLES
 from ..config.types import CachedParticleProperty
 
+
 def _validate_finite_array(arr, name: str) -> None:
     """Check that an array contains only finite (non-NaN, non-Inf) values.
 
@@ -39,6 +40,7 @@ def _validate_finite_array(arr, name: str) -> None:
             f"detected {nan_count} NaN and {inf_count} Inf values. "
             f"Cannot add particles with non-finite values."
         )
+
 
 def _coerce_int_id_array(arr, N: int) -> np.ndarray:
     """Coerce an integer ID array to a contiguous ``np.int32`` array.
@@ -67,6 +69,7 @@ def _coerce_int_id_array(arr, N: int) -> np.ndarray:
     if isinstance(arr, int):
         return np.full(N, arr, dtype=np.int32)
     return np.ascontiguousarray(arr, dtype=np.int32)
+
 
 @ti.data_oriented
 class Particles:
@@ -1154,12 +1157,8 @@ class Particles:
             self._copy_scalars_chunked(radius, self.radius, start_idx, N)
             self._copy_scalars_chunked(volume, self.volume, start_idx, N)
             self._copy_scalars_chunked(viscosity, self.viscosity, start_idx, N)
-            self._copy_scalars_chunked(
-                viscosity_turbulent, self.viscosity_turbulent, start_idx, N
-            )
-            self._copy_scalars_chunked(
-                viscosity_effective, self.viscosity_effective, start_idx, N
-            )
+            self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, start_idx, N)
+            self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, start_idx, N)
             self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
             self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
             self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
@@ -1611,9 +1610,7 @@ class Particles:
             # growth (e.g. DVH/GBD regeneration) does not immediately re-allocate,
             # and only shrink at all when the capacity is far oversized.
             shrink_target = max(int(self._SHRINK_HEADROOM * new_N), self._MIN_CAPACITY)
-            if new_N > 0 and self._max_particles > max(
-                self._SHRINK_TRIGGER * new_N, shrink_target
-            ):
+            if new_N > 0 and self._max_particles > max(self._SHRINK_TRIGGER * new_N, shrink_target):
                 self._resize_fields(shrink_target)
 
     def update_circulations_masked(self, mask: np.ndarray, delta_circ: np.ndarray) -> None:

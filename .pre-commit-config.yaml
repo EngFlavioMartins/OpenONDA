@@ -1,5 +1,5 @@
 default_language_version:
-  python: python3.10
+  python: python3
 
 repos:
   # ── Formatting & linting (ruff replaces flake8/isort/pyupgrade) ──────────────
@@ -16,7 +16,8 @@ repos:
       - id: vulture
         name: vulture (dead code, ≥90% confidence)
         entry: vulture
-        language: system
+        language: python
+        additional_dependencies: ["vulture>=2"]
         types: [python]
         pass_filenames: false
         args: [source/solvers/VPM, --min-confidence, "90"]
@@ -27,7 +28,8 @@ repos:
       - id: bandit
         name: bandit (security)
         entry: bandit
-        language: system
+        language: python
+        additional_dependencies: ["bandit>=1.7"]
         types: [python]
         pass_filenames: false
         args:

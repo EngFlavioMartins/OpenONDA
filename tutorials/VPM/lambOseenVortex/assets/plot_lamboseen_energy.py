@@ -133,7 +133,7 @@ def plot_energy_enstrophy(args) -> int:
     p_ref = run_nu * (args.gamma**2) / (a0**2)
     tau_lim = 0.04 / (args.a0_over_b0**2)
 
-    fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.5 / 2.54), sharey='row')
+    fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.5 / 2.54), sharey="row")
     fig.subplots_adjust(wspace=0.10, top=0.96, bottom=0.35, left=0.11, right=0.89)
 
     for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
@@ -149,7 +149,7 @@ def plot_energy_enstrophy(args) -> int:
             args.gamma,
             run_t0,
         )
-        
+
         ax.set_ylim([-0.5, 0])
         ax.set_xlim([0, tau_lim])
         ax.set_xlabel(r"$\nu t / a_{c,0}^2$")
@@ -200,7 +200,7 @@ def plot_energy_enstrophy(args) -> int:
         [h.get_label() for h in handles],
         loc="lower center",
         ncol=3,
-        bbox_to_anchor=(0.5, 0.02) ,
+        bbox_to_anchor=(0.5, 0.02),
     )
 
     save_kw: dict = {"bbox_inches": "tight"}

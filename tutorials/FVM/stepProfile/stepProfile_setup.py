@@ -147,8 +147,15 @@ def main():
 
     solver = ScalarEquationSolver(mesh_data, geo_data, boundaries)
     solutions = solver.solve_transient_advection_diffusion(
-        phi, U, gamma=0.0, density=1.0, dt=dt, n_steps=n_steps,
-        convection_scheme="upwind", time_scheme="euler_implicit", solver="spsolve"
+        phi,
+        U,
+        gamma=0.0,
+        density=1.0,
+        dt=dt,
+        n_steps=n_steps,
+        convection_scheme="upwind",
+        time_scheme="euler_implicit",
+        solver="spsolve",
     )
 
     print("\n--- Export ---")

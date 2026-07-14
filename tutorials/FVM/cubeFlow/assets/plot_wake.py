@@ -48,11 +48,7 @@ def main():
     y_tol = 0.05
     z_tol = 0.05
 
-    mask = (
-        (np.abs(points[:, 1]) < y_tol)
-        & (np.abs(points[:, 2]) < z_tol)
-        & (points[:, 0] >= 0.0)
-    )
+    mask = (np.abs(points[:, 1]) < y_tol) & (np.abs(points[:, 2]) < z_tol) & (points[:, 0] >= 0.0)
     if not mask.any():
         print("  WARNING: No centreline points found.")
         return
@@ -76,8 +72,12 @@ def main():
     face_min = ux_cl.min()
     ax.axhline(0, color=COLORS["reference"], linestyle=":", linewidth=0.5)
     ax.text(
-        0.97, 0.92, f"+x face min u_x/U∞ = {face_min / U_INF:.3f}",
-        transform=ax.transAxes, ha="right", va="top" ,
+        0.97,
+        0.92,
+        f"+x face min u_x/U∞ = {face_min / U_INF:.3f}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
         bbox=dict(
             boxstyle="round,pad=0.3",
             facecolor=COLORS["LightText"],

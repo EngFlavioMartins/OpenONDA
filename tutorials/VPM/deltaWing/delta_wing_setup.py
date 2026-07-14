@@ -118,6 +118,7 @@ def main():
         # h(t) = A(1 − cos(ωt+φ)) → vz = A ω sin(ωt+φ)
         def vfn(t):
             return np.array([0.0, 0.0, A * omega * np.sin(omega * t + phase)])
+
         return vfn
 
     def make_pitch(phase):
@@ -128,11 +129,12 @@ def main():
             u = vz / freestream_velocity
             dtheta = (dvz / freestream_velocity) / (1.0 + u * u)
             return np.array([0.0, -1.0, 0.0]) * dtheta
+
         return wfn
 
     wings = [
-        ("front_wing", separation, 0.0),       # upstream, phase 0
-        ("rear_wing", 0.0, np.pi),             # downstream, phase π (out of phase)
+        ("front_wing", separation, 0.0),  # upstream, phase 0
+        ("rear_wing", 0.0, np.pi),  # downstream, phase π (out of phase)
     ]
     for name, x0, phase in wings:
         kin = ManeuverVLM(
@@ -202,8 +204,12 @@ def main():
     # Save motion parameters so the post-processing can reconstruct the wing
     # plunge trajectories z(t) without re-deriving them.
     meta = {
-        "A": A, "omega": omega, "dt": time_step, "num_steps": num_steps,
-        "separation": separation, "half_span": half_span,
+        "A": A,
+        "omega": omega,
+        "dt": time_step,
+        "num_steps": num_steps,
+        "separation": separation,
+        "half_span": half_span,
         "wings": {"front_wing": 0.0, "rear_wing": np.pi},
     }
     Path(backup_dir).mkdir(parents=True, exist_ok=True)

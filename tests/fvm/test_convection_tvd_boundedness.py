@@ -30,7 +30,7 @@ def _setup():
     geo = compute_mesh_geometry(mesh)
     n_elem = mesh["n_elements"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["element_centroids"], geo["face_centroids"]
+    cc = geo["element_centroids"]
 
     # Uniform +x advection; ghosts included.
     U = np.tile([1.0, 0.0, 0.0], (n_elem + mesh["n_faces"] - n_int, 1)).astype(float)
@@ -55,7 +55,9 @@ def _one_explicit_step(mesh, geo, mdot, phi, scheme, cfl=0.5):
     n_elem = mesh["n_elements"]
     vol = geo["element_volumes"]
     grad = compute_gradient_gauss_linear_vectorized(phi, mesh, geo)[:, :, 0]
-    conv = assemble_convection_term(phi, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad)
+    conv = assemble_convection_term(
+        phi, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
+    )
     A = assemble_matrix_from_fluxes_vectorized(conv, mesh)
     b = assemble_rhs_from_fluxes_vectorized(conv, mesh)
     dudt = (-(A @ phi[:n_elem]) + b) / vol

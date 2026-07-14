@@ -51,9 +51,7 @@ def _cloud(N, seed=1):
     return pos, circ, rad
 
 
-def _make_tree(
-    N, theta, multipole_order=1, sort_particle_targets=False, traversal_block_dim=128
-):
+def _make_tree(N, theta, multipole_order=1, sort_particle_targets=False, traversal_block_dim=128):
     return TaichiTreecode(
         max_particles=N + 8,
         max_nodes=2 * (N + 8),
@@ -99,7 +97,7 @@ def _direct_target_velocity_gradient(targets, pos, circ, rad):
     vel = np.zeros((len(targets), 3), dtype=np.float64)
     grad = np.zeros((len(targets), 3, 3), dtype=np.float64)
     for m, target in enumerate(targets):
-        for xj, gj, sj in zip(pos, circ, rad):
+        for xj, gj, sj in zip(pos, circ, rad, strict=False):
             r = target - xj
             rm = np.linalg.norm(r)
             if rm <= 1e-10:
@@ -113,9 +111,7 @@ def _direct_target_velocity_gradient(targets, pos, circ, rad):
             vel[m] -= q * cross / rm**3
             term1 = q / rm**3
             term2 = 3.0 * q / rm**5 - zeta / rm**2
-            skew = np.array(
-                [[0.0, -gj[2], gj[1]], [gj[2], 0.0, -gj[0]], [-gj[1], gj[0], 0.0]]
-            )
+            skew = np.array([[0.0, -gj[2], gj[1]], [gj[2], 0.0, -gj[0]], [-gj[1], gj[0], 0.0]])
             grad[m] += term1 * skew + term2 * np.outer(cross, r)
     return vel.astype(np.float32), grad.astype(np.float32)
 
@@ -155,12 +151,12 @@ def test_parallel_karras_topology_is_consistent(N):
     assert tree._root[None] == N  # internal node 0 → field index N
     for i in range(N - 1):
         idx = N + i
-        l, r = nl[idx], nr[idx]
-        assert 0 <= l < 2 * N - 1 and 0 <= r < 2 * N - 1
+        left, right = nl[idx], nr[idx]
+        assert 0 <= left < 2 * N - 1 and 0 <= right < 2 * N - 1
         # child ranges union to the parent's, contiguous and disjoint
-        assert min(first[l], first[r]) == first[idx]
-        assert max(last[l], last[r]) == last[idx]
-        assert first[l] <= last[l] and first[r] <= last[r]
+        assert min(first[left], first[right]) == first[idx]
+        assert max(last[left], last[right]) == last[idx]
+        assert first[left] <= last[left] and first[right] <= last[right]
     # leaf coverage: every sorted slot 0..N-1 is some node's singleton leaf
     leaf_first = first[:N]
     assert sorted(leaf_first.tolist()) == list(range(N))
@@ -439,7 +435,9 @@ def test_fused_direct_kernel_matches_separate_direct_kernels():
     Gf = ti.Matrix.field(3, 3, ti.f32, shape=N)
     Sf = ti.Matrix.field(3, 3, ti.f32, shape=N)
     BG = ti.Vector.field(3, ti.f32, shape=())
-    P.from_numpy(pos); C.from_numpy(circ); R.from_numpy(rad)
+    P.from_numpy(pos)
+    C.from_numpy(circ)
+    R.from_numpy(rad)
     BG[None] = ti.Vector([0.5, -0.2, 0.3])
 
     k_vel(P, C, R, V, BG, N)

@@ -120,7 +120,7 @@ if df_moving is not None:
     ax2.plot(tau_th, CDi_wag, "--", color=C_THEORY, lw=1.0, label="Wagner")
 
 ax1.set_ylabel(r"Lift coefficient, $C_L$")
-ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$" )
+ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$")
 ax1.legend()
 ax1.set_ylim(bottom=0)
 

@@ -116,10 +116,7 @@ def plot_loading_validation(args) -> int:
         tail_fraction=args.tail_fraction,
     )
     if result is None:
-        print(
-            f"  [WARNING] vlm_spanwise_blade_0.csv not found in {samples} — "
-            "run rotorFlow first."
-        )
+        print(f"  [WARNING] vlm_spanwise_blade_0.csv not found in {samples} — run rotorFlow first.")
         return 0
 
     r_vlm, gamma_vlm, chord_vlm, cl_vlm, _ = result
@@ -192,10 +189,7 @@ def plot_loading_validation(args) -> int:
     plt.savefig(out, **save_kw)
     plt.close(fig)
     print(f"  Saved: {out}")
-    print(
-        f"  BEM Ct={bem_ct:.4f}, Cp={bem_cp:.4f}"
-        f" (Betz: Ct={8/9:.4f}, Cp={16/27:.4f})"
-    )
+    print(f"  BEM Ct={bem_ct:.4f}, Cp={bem_cp:.4f} (Betz: Ct={8 / 9:.4f}, Cp={16 / 27:.4f})")
     return 0
 
 

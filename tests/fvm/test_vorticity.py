@@ -1,9 +1,8 @@
 import numpy as np
-import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestVorticity:
@@ -11,10 +10,12 @@ class TestVorticity:
 
     def test_vorticity_from_curl(self):
         """Compute curl analytically from known gradient of solid-body rotation."""
-        locations = np.array([
-            [0.5, 0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-        ])
+        locations = np.array(
+            [
+                [0.5, 0.5, 0.5],
+                [-0.5, 0.5, 0.5],
+            ]
+        )
         for loc in locations:
             x, y, z = loc
             # dUx/dy = -1, dUy/dx = 1, all other derivatives = 0

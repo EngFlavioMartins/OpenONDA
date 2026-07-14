@@ -36,6 +36,7 @@ from ..physics.evaluation import ParticleFieldEvaluation
 # Helper Classes
 # =========================================================
 
+
 @dataclass
 class FlowIntegrals:
     """Container for flow integral quantities at a single timestep."""
@@ -50,6 +51,7 @@ class FlowIntegrals:
     linear_impulse: np.ndarray  # (3,)
     angular_impulse: np.ndarray  # (3,)
     n_particles: int
+
 
 class ParticleContainerWrapper:
     """
@@ -67,6 +69,7 @@ class ParticleContainerWrapper:
 
     def __len__(self):
         return self._count
+
 
 class OfflineFlowDiagnostics:
     """
@@ -392,6 +395,7 @@ class OfflineFlowDiagnostics:
             else "  Energy ratio:        N/A"
         )
         print("=" * 70 + "\n")
+
 
 def ComputeOfflineDiagnostics(
     backup_pattern: str | None = None,

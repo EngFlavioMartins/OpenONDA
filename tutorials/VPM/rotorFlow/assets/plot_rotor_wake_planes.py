@@ -138,7 +138,7 @@ def plot_wake_planes(args) -> int:
     fig, ax = plt.subplots(figsize=(12.8 / 2.54, 7.4 / 2.54))
     fig.subplots_adjust(left=0.14, right=0.96, bottom=0.14, top=0.90)
 
-    markers = ['s', 'o', '^']
+    markers = ["s", "o", "^"]
     n_planes = len(planes)
     alphas = np.linspace(0.5, 1.0, n_planes) if n_planes > 1 else [0.8]
     radial_edges = np.linspace(0.0, args.r_max, args.radial_bins + 1)
@@ -162,7 +162,8 @@ def plot_wake_planes(args) -> int:
             print(f"  [WARNING] could not read wake samples for {tag}: {exc}")
             continue
         ax.plot(
-            r, ux,
+            r,
+            ux,
             color=s_vpm["color"],
             alpha=alphas[i],
             marker=markers[i % len(markers)],
@@ -181,13 +182,21 @@ def plot_wake_planes(args) -> int:
     # Momentum-theory references (text-annotated, not in legend)
     ax.axhline(1.0, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
     ax.axhline(1.0 - args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
-    ax.axhline(1.0 - 2.0 * args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
+    ax.axhline(
+        1.0 - 2.0 * args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"]
+    )
 
     x_text = 1.03
-    ax.text(x_text, 1.03, r"$U_\infty$", color=s_ref["color"], va="center", ha="left" )
-    ax.text(x_text, 1.03 - args.a, r"$(1-a)U_\infty$", color=s_ref["color"], va="center", ha="left" )
-    ax.text(x_text, 1.03 - 2.0 * args.a, r"$(1-2a)U_\infty$",
-            color=s_ref["color"], va="center", ha="left" )
+    ax.text(x_text, 1.03, r"$U_\infty$", color=s_ref["color"], va="center", ha="left")
+    ax.text(x_text, 1.03 - args.a, r"$(1-a)U_\infty$", color=s_ref["color"], va="center", ha="left")
+    ax.text(
+        x_text,
+        1.03 - 2.0 * args.a,
+        r"$(1-2a)U_\infty$",
+        color=s_ref["color"],
+        va="center",
+        ha="left",
+    )
 
     ax.axvspan(
         args.hub_radius / R,
@@ -218,7 +227,9 @@ def main() -> int:
     p.add_argument("--hub-radius", type=float, default=1.0)
     p.add_argument("--u-inf", type=float, default=7.0)
     p.add_argument("--tip-speed-ratio", type=float, default=7.0)
-    p.add_argument("--dt", type=float, default=0.005, help="Simulation time step used in rotor_setup.py.")
+    p.add_argument(
+        "--dt", type=float, default=0.005, help="Simulation time step used in rotor_setup.py."
+    )
     p.add_argument("--averaging-rotations", type=float, default=3.0)
     p.add_argument("--tail-fraction", type=float, default=0.25)
     p.add_argument("--radial-bins", type=int, default=32)

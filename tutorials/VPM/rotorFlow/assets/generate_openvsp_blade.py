@@ -215,7 +215,9 @@ def check_imported_geometry(aircraft, design: RotorBladeDesign, schedule_path: P
 
     for r_value, _, theta_value, _, _ in rows:
         relwind = np.array([design.freestream_velocity, 0.0, design.omega * r_value])
-        chord_dir = np.array([np.sin(np.radians(theta_value)), 0.0, np.cos(np.radians(theta_value))])
+        chord_dir = np.array(
+            [np.sin(np.radians(theta_value)), 0.0, np.cos(np.radians(theta_value))]
+        )
         if float(np.dot(relwind, chord_dir)) <= 0.0:
             raise ValueError(
                 f"Blade section at r={r_value:.3f} m is not leading-edge first "
@@ -313,8 +315,7 @@ def _openvsp_subprocess_env() -> dict[str, str]:
         )
         existing_ld_library_path = env.get("LD_LIBRARY_PATH")
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(root / "lib")]
-            + ([existing_ld_library_path] if existing_ld_library_path else [])
+            [str(root / "lib")] + ([existing_ld_library_path] if existing_ld_library_path else [])
         )
     return env
 

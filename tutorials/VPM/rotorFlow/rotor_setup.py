@@ -149,7 +149,7 @@ def main():
 
     # Downstream YZ cross-plane samplers for wake / induction validation.
     off_wake = rotor_radius * 1.2
-    wake_spacing = rotor_radius / 36  
+    wake_spacing = rotor_radius / 36
     plane_samplers = [
         SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
@@ -162,30 +162,30 @@ def main():
         for x_loc in [1.5 * rotor_radius, 3.0 * rotor_radius, 4.5 * rotor_radius]
     ]
 
-    advection=AdvectionConfig(scheme="RK3")
+    advection = AdvectionConfig(scheme="RK3")
 
-    turbulence=TurbulenceConfig.les_smagorinsky()
+    turbulence = TurbulenceConfig.les_smagorinsky()
 
-    stretching=StretchingConfig.transposed()
+    stretching = StretchingConfig.transposed()
 
-    stabilization=StabilizationConfig(
-            parallel_strain_enabled=True,
-            parallel_strain_f=0.0,
-            parallel_strain_g=1.0 / 3.0,
-            # ISR blend relaxation is the second net — it drains runaway |Γ|.
-            relaxation_enabled=True,
-            relaxation_mode='blend', # try also 'pedrizzetti'
-            remove_particles_by_bounds=[
-                -2.0 * rotor_radius,
-                20.0 * rotor_radius,
-                -2.0 * rotor_radius,
-                 2.0 * rotor_radius,
-                -2.0 * rotor_radius,
-                 2.0 * rotor_radius,
-            ],
-        )
+    stabilization = StabilizationConfig(
+        parallel_strain_enabled=True,
+        parallel_strain_f=0.0,
+        parallel_strain_g=1.0 / 3.0,
+        # ISR blend relaxation is the second net — it drains runaway |Γ|.
+        relaxation_enabled=True,
+        relaxation_mode="blend",  # try also 'pedrizzetti'
+        remove_particles_by_bounds=[
+            -2.0 * rotor_radius,
+            20.0 * rotor_radius,
+            -2.0 * rotor_radius,
+            2.0 * rotor_radius,
+            -2.0 * rotor_radius,
+            2.0 * rotor_radius,
+        ],
+    )
 
-    viscous=ViscousConfig(scheme='CS')
+    viscous = ViscousConfig(scheme="CS")
 
     solver_config = SolverConfig(
         time_step_size=time_step,
@@ -218,6 +218,7 @@ def main():
     # ================================================
     for _ in range(num_steps):
         vpm.update_state()
+
 
 if __name__ == "__main__":
     main()

@@ -232,8 +232,8 @@ def plot_surface_fields(args) -> int:
     sm_w.set_array([])
     cb_v = fig.colorbar(sm_v, ax=ax_v, fraction=0.05, pad=0.04)
     cb_w = fig.colorbar(sm_w, ax=ax_w, fraction=0.05, pad=0.04)
-    cb_v.set_label(r"$|\mathbf{u}|\,/\,U_{c,0}$" , loc="top")
-    cb_w.set_label(r"$\omega_z\,/\,\omega_{c,0}$" , loc="top")
+    cb_v.set_label(r"$|\mathbf{u}|\,/\,U_{c,0}$", loc="top")
+    cb_w.set_label(r"$\omega_z\,/\,\omega_{c,0}$", loc="top")
 
     figures_dir = Path(args.figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)

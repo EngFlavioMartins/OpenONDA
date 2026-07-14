@@ -41,7 +41,9 @@ def main() -> int:
         t, u = load_ring_speed(files)
         ref = saffman_speed(t * T_REF) / U_REF
         rel_rmse = float(np.sqrt(np.mean((u - ref) ** 2)) / np.mean(ref))
-        print(f"{name}: dR={r_drift:.3%}, dI={i_drift:.3%}, dGamma={g_drift:.3%}, speed RMSE={rel_rmse:.3%}")
+        print(
+            f"{name}: dR={r_drift:.3%}, dI={i_drift:.3%}, dGamma={g_drift:.3%}, speed RMSE={rel_rmse:.3%}"
+        )
         if i_drift > 0.05 or g_drift > 0.08 or rel_rmse > speed_tol:
             failures.append(f"{name}: conservation/speed tolerance exceeded")
 

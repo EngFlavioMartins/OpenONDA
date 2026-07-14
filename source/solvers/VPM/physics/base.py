@@ -32,6 +32,7 @@ _HOST_TRANSFER_CHUNK_SIZE = 65536
 # PHYSICS BASE CLASS
 # =========================================================
 
+
 @ti.data_oriented
 class PhysicsBase:
     """
@@ -280,13 +281,9 @@ class PhysicsBase:
         """Allocate reusable fixed-shape buffers for ndarray kernel transfers."""
         if self._host_vector_chunk is not None:
             return
-        self._host_vector_chunk = np.empty(
-            (_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=self.np_dtype
-        )
+        self._host_vector_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=self.np_dtype)
         self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=self.np_dtype)
-        self._host_matrix_chunk = np.empty(
-            (_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=self.np_dtype
-        )
+        self._host_matrix_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=self.np_dtype)
 
     def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
         """Upload a vec3 array through fixed-size ndarray chunks."""
@@ -746,7 +743,7 @@ class PhysicsBase:
         self._resize_target_fields(M)
         self._resize_filtered_fields(N_filtered)
 
-        # Copy filtered data through fixed-shape external buffers. 
+        # Copy filtered data through fixed-shape external buffers.
         self._upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
         self._upload_vector_array(filtered_circ, self._filtered_circ, N_filtered)
         self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)

@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+
 class VLMDiagnostics:
     """Static helpers for recording VLM diagnostics and writing CSV output."""
 

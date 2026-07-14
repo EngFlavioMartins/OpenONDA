@@ -27,6 +27,7 @@ import source.solvers.VPM.config.constants as constants_module
 
 _logger = logging.getLogger(__name__)
 
+
 def _clear_stale_taichi_cache() -> None:
     """Remove all Taichi offline caches to prevent stale kernels.
 
@@ -57,6 +58,7 @@ def _clear_stale_taichi_cache() -> None:
     # Prevent Taichi from using a stale external cache path.
     os.environ.pop("TI_OFFLINE_CACHE_FILE_PATH", None)
 
+
 # -- Integrated-GPU detection -------------------------------------------
 # On integrated GPUs the Vulkan heap "size" is total system RAM, but the
 # actual usable "budget" is much smaller.  Taichi 1.7.x computes its
@@ -65,6 +67,7 @@ def _clear_stale_taichi_cache() -> None:
 #
 # The helpers below detect this situation so that device_memory_fraction
 # can be scaled down automatically.
+
 
 def _query_vulkan_budget() -> tuple[int, int] | None:
     """Return (heap_size, heap_budget) in bytes for the first device-local heap.
@@ -94,9 +97,11 @@ def _query_vulkan_budget() -> tuple[int, int] | None:
         pass
     return None
 
+
 def _is_apple_silicon() -> bool:
     """True when running on Apple Silicon (arm64 Mac with unified memory)."""
     return platform.system() == "Darwin" and platform.machine() == "arm64"
+
 
 def _is_likely_integrated_gpu() -> bool:
     """Heuristic: ``True`` when the primary GPU uses shared system memory."""
@@ -112,11 +117,13 @@ def _is_likely_integrated_gpu() -> bool:
                 return True
     return False
 
+
 # Target pool size (bytes) on integrated GPUs.  768 MiB is enough for
 # 500 000 particles (~80 MB) + GBD/DVH grids with several reallocations
 # (~400 MB) + scratch space.  Keeping the pool small leaves the maximum
 # amount of Vulkan memory for ext-arr staging buffers and the OS.
 _INTEGRATED_GPU_POOL_BYTES: int = 768 * (1 << 20)  # 768 MiB
+
 
 def _safe_device_memory_for_init(
     desired_fraction: float,
@@ -201,6 +208,7 @@ def _safe_device_memory_for_init(
 
     return {"device_memory_fraction": desired_fraction}
 
+
 # Backend (arch, name) resolution is handled dynamically by
 # _build_backend_chain() / _resolve_gpu_backend() so the best available GPU is
 # chosen at runtime without any hardcoded alias map.
@@ -209,6 +217,7 @@ _PRECISION_MAP: dict[str, tuple] = {
     "f32": (ti.f32, ti.i32),
     "f64": (ti.f64, ti.i64),
 }
+
 
 def _has_nvidia_gpu() -> bool:
     """True when ``nvidia-smi`` reports at least one working CUDA device."""
@@ -222,6 +231,7 @@ def _has_nvidia_gpu() -> bool:
         return proc.returncode == 0 and bool(proc.stdout.strip())
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
+
 
 def _resolve_gpu_backend() -> tuple:
     """Return the best GPU ``(ti_arch, name)`` for the current platform.
@@ -241,6 +251,7 @@ def _resolve_gpu_backend() -> tuple:
     # Default GPU on Linux / Windows: Vulkan (driver-agnostic).
     return (ti.vulkan, "VULKAN")
 
+
 # CPU candidates, tried last.  Newer Taichi uses ti.x64; older exposes ti.cpu.
 def _cpu_candidates() -> list[tuple]:
     """Ordered list of CPU ``(arch, name)`` pairs to try as the final fallback."""
@@ -250,6 +261,7 @@ def _cpu_candidates() -> list[tuple]:
     if hasattr(ti, "cpu"):
         cands.append((ti.cpu, "CPU"))
     return cands or [(ti.cpu, "CPU")]
+
 
 def _build_backend_chain(preferred_backend: str) -> list[tuple]:
     """Build the ordered ``[(arch, name), …]`` chain to attempt, GPUs first.
@@ -304,6 +316,7 @@ def _build_backend_chain(preferred_backend: str) -> list[tuple]:
             chain.append(cand)
     return chain
 
+
 def reset_taichi_backend() -> None:
     """Fully reset the Taichi runtime, releasing all GPU memory.
 
@@ -337,6 +350,15 @@ def reset_taichi_backend() -> None:
     gc.collect()
     # Clear the cached backend flag so the next init runs unconditionally.
     constants_module.TAICHI_BACKEND = "UNKNOWN"
+
+
+def _probe_taichi_backend() -> None:
+    """Verify that the initialized backend can allocate and access a field."""
+    probe = ti.field(dtype=ti.i32, shape=())
+    probe[None] = 1
+    if probe[None] != 1:
+        raise RuntimeError("Taichi backend field probe failed")
+
 
 def initialize_taichi_backend(
     preferred_backend: str = "GPU_VULKAN",
@@ -462,6 +484,7 @@ def initialize_taichi_backend(
 
         try:
             ti.init(**init_kwargs)
+            _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
             if name == "CPU" and preferred_backend != "CPU":
                 _logger.warning(

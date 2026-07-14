@@ -33,10 +33,18 @@ def _field(mesh, geo, fn):
 def test_uniform_flow_is_divergence_free():
     mesh = structured_box(8, 8, 8)
     geo = compute_mesh_geometry(mesh)
-    U = _field(mesh, geo, lambda x, y, z: np.column_stack([np.ones_like(x), 0.3 * np.ones_like(x), -0.5 * np.ones_like(x)]))
+    U = _field(
+        mesh,
+        geo,
+        lambda x, y, z: np.column_stack(
+            [np.ones_like(x), 0.3 * np.ones_like(x), -0.5 * np.ones_like(x)]
+        ),
+    )
     phi = compute_mass_flow_rate(U, mesh, geo)
     div = compute_continuity_error(phi, mesh, geo)
-    assert np.max(np.abs(div)) < 1e-12, f"uniform flow not divergence-free: {np.max(np.abs(div)):.2e}"
+    assert np.max(np.abs(div)) < 1e-12, (
+        f"uniform flow not divergence-free: {np.max(np.abs(div)):.2e}"
+    )
 
 
 def test_linear_field_recovers_known_divergence():
@@ -47,4 +55,6 @@ def test_linear_field_recovers_known_divergence():
     phi = compute_mass_flow_rate(U, mesh, geo)
     div = compute_continuity_error(phi, mesh, geo)
     local_div = div / geo["element_volumes"]
-    assert np.allclose(local_div, 3.0, atol=1e-10), f"max dev: {np.max(np.abs(local_div - 3.0)):.2e}"
+    assert np.allclose(local_div, 3.0, atol=1e-10), (
+        f"max dev: {np.max(np.abs(local_div - 3.0)):.2e}"
+    )

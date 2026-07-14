@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestGradientOfLinearField:
@@ -18,7 +18,7 @@ class TestGradientOfLinearField:
         n_elem = self.mesh["n_elements"]
         n_int = self.mesh["n_interior_faces"]
         fc = self.geo["face_centroids"]
-        for i, b in enumerate(self.mesh["boundary"]):
+        for b in self.mesh["boundary"]:
             start, nf = b["startFace"], b["nFaces"]
             for j in range(nf):
                 fi = start + j

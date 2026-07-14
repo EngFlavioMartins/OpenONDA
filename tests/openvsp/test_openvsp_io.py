@@ -12,14 +12,13 @@ Tests that parse ``.csv`` DegenGeom files do **not** require OpenVSP.
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
     OpenVSPImportConfig,
+    _import_openvsp,
     load_degengeom_csv,
     load_openvsp_surface,
-    _import_openvsp,
 )
 
 pytestmark = pytest.mark.openvsp
@@ -35,23 +34,22 @@ def _openvsp_available() -> bool:
         return False
 
 
-def _require_openvsp() -> None:
+def _require_openvsp():
     if not _openvsp_available():
         pytest.skip("OpenVSP Python API not available")
+    return _import_openvsp()
 
 
 class TestOpenVSPImport:
     def test_import_openvsp(self):
-        _require_openvsp()
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         version = vsp.GetVSPVersion()
         assert isinstance(version, str)
         assert len(version) > 0
 
     def test_get_version_string(self):
-        _require_openvsp()
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         version = vsp.GetVSPVersion()
         assert "OpenVSP" in version
@@ -151,7 +149,7 @@ class TestOpenVSPImportConfig:
 class TestOpenVspVSP3:
     @pytest.fixture
     def simple_vsp3(self, tmp_path: Path) -> Path:
-        import openvsp as vsp
+        vsp = _require_openvsp()
 
         vsp.ClearVSPModel()
         wing_id = vsp.AddGeom("WING")

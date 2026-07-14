@@ -31,6 +31,7 @@ logger = _stdio_logging.getLogger("vpm")
 logger.addHandler(_stdio_logging.NullHandler())
 # =========================================================
 
+
 class _LineBufferedLogStream:
     """Minimal stream adapter so print() writes are flushed to a log file in real time."""
 
@@ -56,6 +57,7 @@ class _LineBufferedLogStream:
 
     def fileno(self) -> int:
         return self._file_obj.fileno()  # type: ignore[return-value]
+
 
 def print_openonda_header(precision="f32"):
     """
@@ -135,6 +137,7 @@ def print_openonda_header(precision="f32"):
 
     print(s)
 
+
 class Logging:
     """
     Centralized logging class for VPM solver output.
@@ -202,20 +205,25 @@ class Logging:
         # Integral Quantities
         n_particles = getattr(getattr(system, "particles", None), "number_of_particles", None)
         int_items = [
-            ("Number of Particles",
-             f"{int(n_particles):d}" if n_particles is not None else "n/a"),
-            ("Total Circulation (\u03a3|\u0393|)",
-             f"{system.total_strength_magnitude:.3e} m\u00b3/s"),
-            ("Total Circulation (\u03a3\u0393)",
-             f"({system.total_strength[0]:.3e}, {system.total_strength[1]:.3e}, {system.total_strength[2]:.3e}) m\u00b3/s"),
-            ("Linear Impulse",
-             f"({system.total_linear_impulse[0]:.3e}, {system.total_linear_impulse[1]:.3e}, {system.total_linear_impulse[2]:.3e}) m\u2074/s"),
-            ("Angular Impulse",
-             f"({system.total_angular_impulse[0]:.3e}, {system.total_angular_impulse[1]:.3e}, {system.total_angular_impulse[2]:.3e}) m\u2075/s"),
-            ("Total Enstrophy",
-             f"{system.total_enstrophy:.3e} m\u00b3/s\u00b2"),
-            ("Total Helicity",
-             f"{system.total_helicity:.3e} m\u00b2/s\u00b2"),
+            ("Number of Particles", f"{int(n_particles):d}" if n_particles is not None else "n/a"),
+            (
+                "Total Circulation (\u03a3|\u0393|)",
+                f"{system.total_strength_magnitude:.3e} m\u00b3/s",
+            ),
+            (
+                "Total Circulation (\u03a3\u0393)",
+                f"({system.total_strength[0]:.3e}, {system.total_strength[1]:.3e}, {system.total_strength[2]:.3e}) m\u00b3/s",
+            ),
+            (
+                "Linear Impulse",
+                f"({system.total_linear_impulse[0]:.3e}, {system.total_linear_impulse[1]:.3e}, {system.total_linear_impulse[2]:.3e}) m\u2074/s",
+            ),
+            (
+                "Angular Impulse",
+                f"({system.total_angular_impulse[0]:.3e}, {system.total_angular_impulse[1]:.3e}, {system.total_angular_impulse[2]:.3e}) m\u2075/s",
+            ),
+            ("Total Enstrophy", f"{system.total_enstrophy:.3e} m\u00b3/s\u00b2"),
+            ("Total Helicity", f"{system.total_helicity:.3e} m\u00b2/s\u00b2"),
         ]
         for label, _ in int_items:
             label_w = max(label_w, len(label))
@@ -227,12 +235,9 @@ class Logging:
         dE_dt = system.kinetic_energy_dissipation_rate
 
         energy_items = [
-            ("Total Energy, E",
-             f"{E_current:.3e} J"),
-            ("Viscous dissipation, -\u03bd\u03a9",
-             f"{nu_enstrophy:.3e} J/s"),
-            ("Energy decay rate, dE/dt",
-             f"{dE_dt:.3e} J/s"),
+            ("Total Energy, E", f"{E_current:.3e} J"),
+            ("Viscous dissipation, -\u03bd\u03a9", f"{nu_enstrophy:.3e} J/s"),
+            ("Energy decay rate, dE/dt", f"{dE_dt:.3e} J/s"),
         ]
         for label, _ in energy_items:
             label_w = max(label_w, len(label))
@@ -244,11 +249,13 @@ class Logging:
             centroids = system.centroids_of_circulation
             geo_items = []
             if center is not None:
-                geo_items.append(("Center of Vorticity",
-                                  f"({center[0]:.3e}, {center[1]:.3e}, {center[2]:.3e})"))
+                geo_items.append(
+                    ("Center of Vorticity", f"({center[0]:.3e}, {center[1]:.3e}, {center[2]:.3e})")
+                )
             for g, cg in centroids.items():
-                geo_items.append((f"Group {g} centroid",
-                                  f"({cg[0]:.3e}, {cg[1]:.3e}, {cg[2]:.3e})"))
+                geo_items.append(
+                    (f"Group {g} centroid", f"({cg[0]:.3e}, {cg[1]:.3e}, {cg[2]:.3e})")
+                )
             if geo_items:
                 for label, _ in geo_items:
                     label_w = max(label_w, len(label))
@@ -264,10 +271,13 @@ class Logging:
                 dts = np.array(hist["observed_dt"])
                 dts_nz = dts[dts > 0]
                 if dts_nz.size > 0:
-                    dt_items.append(("VPM observed dt (mean, median)",
-                                     f"({dts_nz.mean():.3e}, {np.median(dts_nz):.3e}) s"))
-                    dt_items.append(("VPM configured dt",
-                                     f"{system.time_step_size:.3e} s"))
+                    dt_items.append(
+                        (
+                            "VPM observed dt (mean, median)",
+                            f"({dts_nz.mean():.3e}, {np.median(dts_nz):.3e}) s",
+                        )
+                    )
+                    dt_items.append(("VPM configured dt", f"{system.time_step_size:.3e} s"))
             if dt_items:
                 for label, _ in dt_items:
                     label_w = max(label_w, len(label))

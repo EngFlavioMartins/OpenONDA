@@ -20,7 +20,6 @@ Crank–Nicolson schemes, which must lift it to ≈ 2.
 """
 
 import numpy as np
-import pytest
 
 from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
 from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
@@ -104,9 +103,20 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
         # scheme's explicit central correction is lagged by one solve and would
         # cap the observed order at ~1 without outer correctors.
         mom = assemble_momentum_equation(
-            U, p, phi_flux, 1.0, nu, mesh, geo, mesh["boundary"],
-            convection_scheme="central", dt=dt, U_old=U_old, U_old_old=U_old_old,
-            ddt_scheme=ddt_scheme, source_explicit=S,
+            U,
+            p,
+            phi_flux,
+            1.0,
+            nu,
+            mesh,
+            geo,
+            mesh["boundary"],
+            convection_scheme="central",
+            dt=dt,
+            U_old=U_old,
+            U_old_old=U_old_old,
+            ddt_scheme=ddt_scheme,
+            source_explicit=S,
         )
         for i, comp in enumerate(["x", "y", "z"]):
             U[:n_elem, i] = solve_linear_system(

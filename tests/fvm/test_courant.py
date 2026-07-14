@@ -1,9 +1,8 @@
 import numpy as np
-import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.fields.diagnostics import compute_courant_number
 from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.fields.diagnostics import compute_courant_number
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestCourant:

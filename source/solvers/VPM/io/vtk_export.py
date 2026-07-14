@@ -10,7 +10,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import vtk
 from vtk.util import numpy_support
+
 # =========================================================
+
 
 def export_panels_vtk(solver, filename: str, compression: bool = True):
     """
@@ -83,6 +85,7 @@ def export_panels_vtk(solver, filename: str, compression: bool = True):
     polydata.GetFieldData().AddArray(time_array)
 
     _write_polydata_file(polydata, filename, compression)
+
 
 def _write_polydata_file(polydata, filename: str, compression: bool = True):
     """

@@ -1,14 +1,15 @@
-import json
-import pytest
-
 from source.solvers.FVM.config.types import (
-    BoundaryConfig, TimeConfig, SolverParams, TransportConfig,
-    TurbulenceConfig, MeshConfig, FVMConfig,
+    BoundaryConfig,
+    FVMConfig,
+    MeshConfig,
+    SolverParams,
+    TimeConfig,
+    TransportConfig,
+    TurbulenceConfig,
 )
 
 
 class TestConfigFactories:
-
     def test_boundary_config_inlet(self):
         bc = BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0])
         assert bc.name == "inlet"

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 class TestSurfaceForces:
@@ -12,8 +12,6 @@ class TestSurfaceForces:
     def setup(self, hand_built_3d_mesh):
         self.mesh = hand_built_3d_mesh
         self.geo = compute_mesh_geometry(hand_built_3d_mesh)
-        n_elem = self.mesh["n_elements"]
-        n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
         self.rho = 1.0
         self.mu = 0.01
         self.ref_U = 1.0
@@ -51,13 +49,17 @@ class TestSurfaceForces:
         p = self._build_full_field(np.ones(self.mesh["n_elements"]))
         U = self._build_full_field(np.zeros((self.mesh["n_elements"], 3)), n_components=3)
         result = compute_surface_forces(
-            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"],
+            U,
+            p,
+            self.mu,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
             patch_names=self._all_patch_names(),
         )
         fp = self._sum_forces(result, "Fp")
-        assert np.allclose(fp, 0.0, atol=1e-12), (
-            f"uniform p on closed surface: Fp = {fp}"
-        )
+        assert np.allclose(fp, 0.0, atol=1e-12), f"uniform p on closed surface: Fp = {fp}"
 
     def test_pressure_on_xmax_face(self):
         """p=2 on +x face only → Fp = (+2, 0, 0) for that patch."""
@@ -68,7 +70,13 @@ class TestSurfaceForces:
         U = np.zeros((n_elem + n_bnd, 3))
 
         result = compute_surface_forces(
-            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"],
+            U,
+            p,
+            self.mu,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
             patch_names=self._all_patch_names(),
         )
         # xmax has 4 faces, each Sf = (+1, 0, 0), p=1 → Fp = +p·∑Sf = (+4, 0, 0)
@@ -86,7 +94,13 @@ class TestSurfaceForces:
         U = self._build_full_field(np.random.randn(n_elem, 3), n_components=3)
 
         result = compute_surface_forces(
-            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"],
+            U,
+            p,
+            self.mu,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
             patch_names=self._all_patch_names(),
         )
         ftot = self._sum_forces(result, "Ftot")
@@ -100,9 +114,16 @@ class TestSurfaceForces:
         p = self._build_full_field(np.ones(self.mesh["n_elements"]))
         U = self._build_full_field(np.zeros((self.mesh["n_elements"], 3)), n_components=3)
         result = compute_surface_forces(
-            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"],
+            U,
+            p,
+            self.mu,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
             patch_names=self._all_patch_names(),
-            ref_U=self.ref_U, ref_area=self.ref_area,
+            ref_U=self.ref_U,
+            ref_area=self.ref_area,
         )
         fp = self._sum_forces(result, "Fp")
         fv = self._sum_forces(result, "Fv")

@@ -89,8 +89,12 @@ def main():
     parser = argparse.ArgumentParser(description="Run the cylinderIBM tutorial")
     parser.add_argument("--Re", type=float, default=30.0, help="Reynolds number U*D/nu")
     parser.add_argument("--end-time", type=float, default=60.0, help="End time [s]")
-    parser.add_argument("--h", type=float, default=0.0625,
-                        help="Uniform grid spacing near the cylinder (in D units)")
+    parser.add_argument(
+        "--h",
+        type=float,
+        default=0.0625,
+        help="Uniform grid spacing near the cylinder (in D units)",
+    )
     parser.add_argument("--diameter", type=float, default=1.0, help="Cylinder diameter")
     parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
     parser.add_argument("--rho", type=float, default=1.0, help="Density")
@@ -99,17 +103,30 @@ def main():
     # becomes underdamped at larger Courant numbers.
     parser.add_argument("--max-cfl", type=float, default=0.5, help="Target max Courant")
     parser.add_argument("--max-dt", type=float, default=0.03, help="Max dt cap [s]")
-    parser.add_argument("--max-fo", type=float, default=0.1,
-                        help="Max forcing Fourier number nu*dt/h^2 (stability cap)")
-    parser.add_argument("--write-interval-time", type=float, default=5.0,
-                        help="Write VTK every N seconds of flow time")
+    parser.add_argument(
+        "--max-fo",
+        type=float,
+        default=0.1,
+        help="Max forcing Fourier number nu*dt/h^2 (stability cap)",
+    )
+    parser.add_argument(
+        "--write-interval-time",
+        type=float,
+        default=5.0,
+        help="Write VTK every N seconds of flow time",
+    )
     parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
-    parser.add_argument("--n-outer", type=int, default=1,
-                        help="PIMPLE outer correctors (= IBM/pressure sub-iterations)")
+    parser.add_argument(
+        "--n-outer",
+        type=int,
+        default=1,
+        help="PIMPLE outer correctors (= IBM/pressure sub-iterations)",
+    )
     parser.add_argument("--linear-solver", type=str, default="spsolve")
     parser.add_argument("--convection-scheme", type=str, default="limitedLinear")
-    parser.add_argument("--marker-alpha", type=float, default=1.0,
-                        help="Marker spacing / grid spacing ratio")
+    parser.add_argument(
+        "--marker-alpha", type=float, default=1.0, help="Marker spacing / grid spacing ratio"
+    )
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
@@ -121,16 +138,17 @@ def main():
     nu = args.u_inf * args.diameter / args.Re
     dt_fo = args.max_fo * args.h**2 / nu
     if dt_fo < args.max_dt:
-        print(f"  [IBM] capping max dt to {dt_fo:.4g} s "
-              f"(Fo = nu*dt/h^2 <= {args.max_fo})")
+        print(f"  [IBM] capping max dt to {dt_fo:.4g} s (Fo = nu*dt/h^2 <= {args.max_fo})")
         args.max_dt = dt_fo
         args.initial_dt = min(args.initial_dt, dt_fo)
 
     # --- Mesh: uniform h core around the cylinder, stretched far field -----
     print("\n--- Mesh Generation (rectilinear, in-memory) ---")
     mesh_data, depth = cylinder_ibm_mesh(h=args.h, D=args.diameter)
-    print(f"  cells: {mesh_data['n_elements']}, core spacing h = {args.h} "
-          f"(D/h = {args.diameter / args.h:.0f})")
+    print(
+        f"  cells: {mesh_data['n_elements']}, core spacing h = {args.h} "
+        f"(D/h = {args.diameter / args.h:.0f})"
+    )
 
     config = build_config(args, depth)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
@@ -148,8 +166,9 @@ def main():
     # Save the marker cloud for the plotting scripts.
     sol_dir = os.path.join(case_dir, "solution")
     os.makedirs(sol_dir, exist_ok=True)
-    np.savetxt(os.path.join(sol_dir, "ibm_markers.csv"), body.X,
-               delimiter=",", header="x,y,z", comments="")
+    np.savetxt(
+        os.path.join(sol_dir, "ibm_markers.csv"), body.X, delimiter=",", header="x,y,z", comments=""
+    )
 
     solver.write_vtk()
     while solver.flow_time < config.time.end_time:

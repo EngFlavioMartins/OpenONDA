@@ -9,7 +9,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import csv
 import os
+
 # =========================================================
+
 
 def append_loads_to_csv(
     backup_file_name: str, flow_time: float, loads: dict, directory: str = "solution"
@@ -67,6 +69,7 @@ def append_loads_to_csv(
                 "Cp_max": loads.get("Cp_max", 0.0),
             }
         )
+
 
 # append_vlm_loads_to_csv removed: VLM force CSV is now written exclusively
 # by solver.py's _export_vlm_forces_to_csv, which uses the correct cached

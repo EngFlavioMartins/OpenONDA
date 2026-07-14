@@ -83,7 +83,9 @@ def main():
         help="Number of time steps (default: 600)",
     )
     parser.add_argument(
-        "--particle-spacing", type=float, default=0.035,
+        "--particle-spacing",
+        type=float,
+        default=0.035,
         help="Initial particle spacing [m] (about 2.9 points per core radius).",
     )
     parser.add_argument(
@@ -127,7 +129,9 @@ def main():
     particle_spacing = args.particle_spacing  # Grid spacing [m]
     time_step = 0.02  # [s]
     num_steps = args.num_steps
-    logging_frequency = args.backup_frequency if args.logging_frequency is None else args.logging_frequency
+    logging_frequency = (
+        args.backup_frequency if args.logging_frequency is None else args.logging_frequency
+    )
 
     # ================================================
     # 3. Create Initial Particle Distribution

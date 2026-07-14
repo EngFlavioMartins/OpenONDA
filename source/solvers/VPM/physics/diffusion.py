@@ -17,9 +17,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import logging
 
+from numba import njit
 import numpy as np
 import taichi as ti
-from numba import njit
 
 from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
@@ -32,6 +32,7 @@ _REGEN_RADIUS_RATIO = 2.5
 # DVH truncation-error parameter β ≈ 0.077 (Durante et al. 2024, Eq. 14-15).
 # Controls the Gaussian width: 4nu·Δt_d = β·R_d².
 _DVH_BETA = 0.077
+
 
 def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
@@ -50,6 +51,7 @@ def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     w[m1] = 1.0 - 2.5 * q[m1] ** 2 + 1.5 * q[m1] ** 3
     w[m2] = 0.5 * (2.0 - q[m2]) ** 2 * (1.0 - q[m2])
     return w
+
 
 @njit(cache=True, fastmath=False)
 def _dvh_scatter_numba(
@@ -133,6 +135,7 @@ def _dvh_scatter_numba(
                         grid_out[ii, jj, kk, 1] += w * cy
                         grid_out[ii, jj, kk, 2] += w * cz
 
+
 @ti.func
 def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
     """Taichi 1D M4' kernel (Monaghan 1985).  Mirrors _m4_prime_1d."""
@@ -143,6 +146,7 @@ def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
     elif r <= 2.0:
         w = 0.5 * (2.0 - r) * (2.0 - r) * (1.0 - r)
     return w
+
 
 @ti.data_oriented
 class _GridDiffusionMixin:
@@ -978,9 +982,7 @@ class _GridDiffusionMixin:
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         if len(ix) > cap:
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
-                circ_mag, ix, iy, iz, cap
-            )
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(circ_mag, ix, iy, iz, cap)
             _logger.info(
                 "[GBD] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
                 old_count,
@@ -1274,9 +1276,7 @@ class _GridDiffusionMixin:
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         if len(ix) > cap:
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
-                circ_mag, ix, iy, iz, cap
-            )
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(circ_mag, ix, iy, iz, cap)
             _logger.info(
                 "[DVH] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
                 old_count,
@@ -1520,6 +1520,7 @@ class _GridDiffusionMixin:
         for i, j, k in grid:
             if i < nx and j < ny and k < nz and body_mask[i, j, k] != 0:
                 grid[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+
 
 @ti.data_oriented
 class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):

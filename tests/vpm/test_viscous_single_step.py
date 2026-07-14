@@ -94,30 +94,31 @@ def test_cs_one_step_circulation_unchanged(kernel_name, backend, solver_for_back
 # ── Random Walk Method (RWM) ──────────────────────────────────────────────────
 
 
+def _rwm_displacements(make_solver, kernel_name, nu, n_samples):
+    solver = _viscous_solver(make_solver, "RWM", kernel=kernel_name)
+    solver.add_vortex_particles(
+        position=np.zeros((n_samples, 3)),
+        velocity=np.zeros((n_samples, 3)),
+        circulation=np.tile([0.0, 0.0, 1.0], (n_samples, 1)),
+        radius=np.full(n_samples, _SIGMA),
+        volume=np.full(n_samples, _VOLUME),
+        viscosity=np.full(n_samples, nu),
+    )
+    solver.update_state()
+    return solver.particles_positions.copy()
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 def test_rwm_one_step_mean_zero(kernel_name, backend, solver_for_backend):
-    """RWM: mean displacement over 500 ensembles must be ≈ 0."""
+    """RWM: ensemble-mean displacement must be approximately zero."""
     if backend != "CPU":
         pytest.skip("RWM ensemble test: random sequences differ across GPU backends")
 
     nu = 0.1
-    dt = 0.01
-    n_ensemble = 500
-    displacements = []
-    for _ in range(n_ensemble):
-        solver = _viscous_solver(solver_for_backend, "RWM", kernel=kernel_name)
-        solver.add_vortex_particles(
-            position=np.array([[0.0, 0.0, 0.0]]),
-            velocity=np.zeros((1, 3)),
-            circulation=np.array([[0.0, 0.0, 1.0]]),
-            radius=np.array([_SIGMA]),
-            volume=np.array([_VOLUME]),
-            viscosity=np.array([nu]),
-        )
-        solver.update_state()
-        displacements.append(solver.particles_positions[0].copy())
+    n_ensemble = 2_000
+    displacements = _rwm_displacements(solver_for_backend, kernel_name, nu, n_ensemble)
     mean_disp = np.mean(displacements, axis=0)
     assert np.all(np.abs(mean_disp) < 0.01), (
         f"{kernel_name}/{backend}: RWM mean displacement = {mean_disp} (must ≈ 0)"
@@ -134,20 +135,8 @@ def test_rwm_one_step_variance(kernel_name, backend, solver_for_backend):
 
     nu = 0.1
     dt = 0.01
-    n_ensemble = 500
-    displacements = []
-    for _ in range(n_ensemble):
-        solver = _viscous_solver(solver_for_backend, "RWM", kernel=kernel_name)
-        solver.add_vortex_particles(
-            position=np.array([[0.0, 0.0, 0.0]]),
-            velocity=np.zeros((1, 3)),
-            circulation=np.array([[0.0, 0.0, 1.0]]),
-            radius=np.array([_SIGMA]),
-            volume=np.array([_VOLUME]),
-            viscosity=np.array([nu]),
-        )
-        solver.update_state()
-        displacements.append(solver.particles_positions[0].copy())
+    n_ensemble = 2_000
+    displacements = _rwm_displacements(solver_for_backend, kernel_name, nu, n_ensemble)
     var = np.var(displacements, axis=0)
     expected = 2.0 * nu * dt
     for i, label in enumerate(["x", "y", "z"]):
@@ -271,7 +260,6 @@ def test_cross_backend_viscous_consistency(scheme, backend, solver_for_backend):
         volume=np.full(2, _VOLUME),
         viscosity=np.full(2, 0.01),
     )
-    gamma_before = solver.particles_circulation.copy()
     solver.update_state()
     gamma_after = solver.particles_circulation.copy()
 

@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 @pytest.fixture(scope="module")
@@ -38,8 +38,12 @@ class TestConvectionBounded:
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
         phi = np.zeros(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            phi, conv_data["mdot"], conv_data["mesh"], conv_data["geo"],
-            conv_data["mesh"]["boundary"], scheme="upwind",
+            phi,
+            conv_data["mdot"],
+            conv_data["mesh"],
+            conv_data["geo"],
+            conv_data["mesh"]["boundary"],
+            scheme="upwind",
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, conv_data["mesh"]).toarray()
         off_diag = A - np.diagflat(np.diag(A))
@@ -52,8 +56,12 @@ class TestConvectionBounded:
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
         phi = np.ones(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            phi, conv_data["mdot"], conv_data["mesh"], conv_data["geo"],
-            conv_data["mesh"]["boundary"], scheme="upwind",
+            phi,
+            conv_data["mdot"],
+            conv_data["mesh"],
+            conv_data["geo"],
+            conv_data["mesh"]["boundary"],
+            scheme="upwind",
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, conv_data["mesh"])
         b = assemble_rhs_from_fluxes_vectorized(flux_data, conv_data["mesh"])

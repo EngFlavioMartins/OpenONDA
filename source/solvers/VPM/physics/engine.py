@@ -19,6 +19,7 @@ from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
 from .diffusion import _GridDiffusionMixin
 
+
 @ti.data_oriented
 class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
     """
@@ -59,8 +60,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     # ADVECTION INTERFACE
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK3",
-                         precomputed_k1: bool = False):
+    def update_positions(
+        self, particles, dt: float, scheme: str = "RK3", precomputed_k1: bool = False
+    ):
         """
         Update particle positions using specified time integration scheme.
 
@@ -154,9 +156,11 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._stretching.save_strength_magnitudes(particles)
 
+
 # =========================================================
 # INTERNAL HANDLER CLASSES (share parent's temp fields and kernels)
 # =========================================================
+
 
 class _AdvectionHandler:
     """
@@ -169,8 +173,9 @@ class _AdvectionHandler:
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
 
-    def update_positions(self, particles, dt: float, scheme: str = "RK3",
-                         precomputed_k1: bool = False):
+    def update_positions(
+        self, particles, dt: float, scheme: str = "RK3", precomputed_k1: bool = False
+    ):
         """Advance particle positions by dt with a single step of the given scheme.
 
         The advance is one full step of the chosen scheme (EULER/RK2/RK3/RK4) over
@@ -292,6 +297,7 @@ class _AdvectionHandler:
             particles.position, particles.velocity, p.vel_temp, p.vel_temp2, p.pos_temp2, dt, N
         )
 
+
 class _DiffusionHandler:
     """
     Lightweight diffusion handler that uses parent's resources.
@@ -328,6 +334,7 @@ class _DiffusionHandler:
         p.update_volume_divergence_kernel(
             particles.volume, particles.radius, particles.velocity_gradient, dt, N
         )
+
 
 class _StretchingHandler:
     """
@@ -431,9 +438,7 @@ class _StretchingHandler:
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        self._rate(
-            particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
 
@@ -445,17 +450,13 @@ class _StretchingHandler:
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        self._rate(
-            particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.linear_combination_kernel(
             p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
-        self._rate(
-            particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N)
         self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
         p.step_rk3_ssp_combine_kernel(
             particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
@@ -469,19 +470,13 @@ class _StretchingHandler:
         )
         self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
-        self._rate(
-            particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
-        self._rate(
-            particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N)
         self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
-        self._rate(
-            particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N
-        )
+        self._rate(particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N)
         self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)
         p.step_rk4_combine_kernel(
             particles.circulation,

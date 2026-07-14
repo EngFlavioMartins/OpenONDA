@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+
 class VLMKinematics(ABC):
     """
     Abstract base class for VLM surface kinematics.
@@ -70,6 +71,7 @@ class VLMKinematics(ABC):
         """
         pass
 
+
 class StaticVLM(VLMKinematics):
     """
     Static kinematics - no motion.
@@ -99,6 +101,7 @@ class StaticVLM(VLMKinematics):
     def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
         """No update needed for static case."""
         pass
+
 
 class TranslatingVLM(VLMKinematics):
     """
@@ -150,6 +153,7 @@ class TranslatingVLM(VLMKinematics):
             lattice.translate_panels(dX)
         else:
             lattice.translate_panels(dX, panel_range[0], panel_range[1])
+
 
 class RotatingVLM(VLMKinematics):
     """
@@ -231,6 +235,7 @@ class RotatingVLM(VLMKinematics):
             lattice.rotate_translate_panels(
                 R, self.center, np.zeros(3), panel_range[0], panel_range[1]
             )
+
 
 class ManeuverVLM(VLMKinematics):
     """
@@ -317,6 +322,7 @@ class ManeuverVLM(VLMKinematics):
         # This ensures that for the NEXT step, we rotate around the new pivot position.
         self.rotation_center += dX
 
+
 class HeavingVLM(ManeuverVLM):
     """
     Sinusoidal heaving motion kinematics.
@@ -364,6 +370,7 @@ class HeavingVLM(ManeuverVLM):
             return Vz * self.direction
 
         super().__init__(velocity_fn=velocity_fn)
+
 
 class PitchingVLM(ManeuverVLM):
     """
@@ -421,6 +428,7 @@ class PitchingVLM(ManeuverVLM):
             angular_velocity_fn=angular_velocity_fn,
             rotation_center=pivot,
         )
+
 
 class LinearPeriodicVLM(VLMKinematics):
     """
@@ -497,6 +505,7 @@ class LinearPeriodicVLM(VLMKinematics):
             lattice.translate_panels(dX)
         else:
             lattice.translate_panels(dX, panel_range[0], panel_range[1])
+
 
 class CompositeVLM(VLMKinematics):
     """
@@ -611,6 +620,7 @@ class CompositeVLM(VLMKinematics):
         # KEY FIX: Advect the rotation center with the translation
         # This ensures that for the NEXT step, we rotate around the new pivot position.
         self.rotation_center += dX
+
 
 class AcceleratingVLM(VLMKinematics):
     """
@@ -735,6 +745,7 @@ class AcceleratingVLM(VLMKinematics):
             lattice.translate_panels(dX)
         else:
             lattice.translate_panels(dX, panel_range[0], panel_range[1])
+
 
 class SmoothRampVLM(VLMKinematics):
     """

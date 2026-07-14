@@ -150,7 +150,7 @@ ax.plot(y_ll_over_b, cl_ell, "--", color=C_ELL, lw=1.0, label="Elliptic")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift coefficient, $c_\ell$")
-ax.set_title(rf"Spanwise $c_\ell$, $\alpha={args.aoa:.0f}°$, AR={AR:.0f}" )
+ax.set_title(rf"Spanwise $c_\ell$, $\alpha={args.aoa:.0f}°$, AR={AR:.0f}")
 ax.set_xlim(-1, 1)
 ax.legend()
 

@@ -1,4 +1,5 @@
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from _common import COLORS, build_arg_parser, figure_size, load_forces_csv, save_fig, RE

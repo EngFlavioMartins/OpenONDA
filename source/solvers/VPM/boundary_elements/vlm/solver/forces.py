@@ -23,6 +23,7 @@ import numpy as np
 if TYPE_CHECKING:
     from .vlm_solver import VLMSolver
 
+
 class VLMForceEvaluator:
     """Static helpers for aerodynamic force evaluation in VLM-VPM coupling.
 

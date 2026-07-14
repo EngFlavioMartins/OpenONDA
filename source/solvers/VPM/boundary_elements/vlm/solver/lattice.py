@@ -11,6 +11,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
+
 @ti.data_oriented
 class VLMLattice:
     """

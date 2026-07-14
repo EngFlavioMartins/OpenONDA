@@ -55,6 +55,7 @@ SAMPLER_CSV_COLUMNS = [
 ]
 # =========================================================
 
+
 def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     """Extract body_stl path and case_dir from solver config (priority: FVM > VPM > direct)."""
     try:
@@ -71,6 +72,7 @@ def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     except Exception:
         body_stl = None
     return body_stl, case_dir
+
 
 class SurfaceSampler:
     """
@@ -549,6 +551,7 @@ class SurfaceSampler:
         grid.save(str(filepath), binary=True)
 
         return filepath
+
 
 class LineSampler:
     """

@@ -25,6 +25,7 @@ import taichi as ti
 
 from ..config.constants import MAX_PARTICLES, SMAGORINSKY_CONSTANT
 
+
 @ti.data_oriented
 class SmagorinskyModel:
     """

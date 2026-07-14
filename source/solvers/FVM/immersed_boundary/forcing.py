@@ -75,8 +75,7 @@ class IBMForcing:
         checked and reported by :meth:`diagnostics`.
     """
 
-    def __init__(self, mesh_data, geo_data, bodies, h: float | None = None,
-                 empty_axis="auto"):
+    def __init__(self, mesh_data, geo_data, bodies, h: float | None = None, empty_axis="auto"):
         if isinstance(bodies, ImmersedBody):
             bodies = [bodies]
         if not bodies:
@@ -231,9 +230,7 @@ class IBMForcing:
             dF = (self.U_target - self.interpolate(U)) / dt
             U[:n] += dt * self.spread(dF)
             self.last_F = self.last_F + dF
-        self.last_slip = float(
-            np.linalg.norm(self.U_target - self.interpolate(U), axis=1).max()
-        )
+        self.last_slip = float(np.linalg.norm(self.U_target - self.interpolate(U), axis=1).max())
 
     def slip_error(self, U: np.ndarray) -> float:
         """Max marker slip ``max_s |I[U]_s − U_target_s|`` (no-slip monitor)."""

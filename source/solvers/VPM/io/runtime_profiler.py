@@ -20,10 +20,10 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-import os
-import time
 from collections.abc import Callable
 from contextlib import nullcontext
+import os
+import time
 
 from .logging import Logging
 
@@ -167,10 +167,7 @@ class RuntimeProfiler:
         milliseconds per call, and percent of total wall time.  A footer adds the
         measured / unprofiled split and the per-step average.
         """
-        title = (
-            f" VPM RUNTIME PROFILE  ({self.n_steps} steps, "
-            f"{self.wall_time:.3f} s wall)"
-        )
+        title = f" VPM RUNTIME PROFILE  ({self.n_steps} steps, {self.wall_time:.3f} s wall)"
         particle_line = (
             f"  Number of particles     : {self.particle_count:d}"
             if self.particle_count is not None
@@ -186,8 +183,7 @@ class RuntimeProfiler:
 
         label_w = max(len("Section"), *(len(k) for k in self._cumulative))
         header = (
-            f"  {'Section':<{label_w}}  {'calls':>6}  {'total[s]':>9}  "
-            f"{'avg[ms]':>9}  {'%wall':>6}"
+            f"  {'Section':<{label_w}}  {'calls':>6}  {'total[s]':>9}  {'avg[ms]':>9}  {'%wall':>6}"
         )
         bar = "=" * len(header)
         sep = "-" * len(header)

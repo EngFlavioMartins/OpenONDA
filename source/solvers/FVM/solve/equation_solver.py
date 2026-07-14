@@ -60,9 +60,7 @@ class ScalarEquationSolver:
             gamma = np.full(self.n_elements, gamma)
 
         # Compute gradient
-        grad_phi = self._grad_fn(
-            phi_initial, self.mesh_data, self.geo_data
-        )
+        grad_phi = self._grad_fn(phi_initial, self.mesh_data, self.geo_data)
 
         # Assemble diffusion term
         flux_data = diffusion.assemble_diffusion_term(
@@ -118,9 +116,7 @@ class ScalarEquationSolver:
         )
 
         # Compute gradient
-        grad_phi = self._grad_fn(
-            phi_initial, self.mesh_data, self.geo_data
-        )
+        grad_phi = self._grad_fn(phi_initial, self.mesh_data, self.geo_data)
 
         # Compute mass flow rate
         mdot = convection.compute_mass_flow_rate(velocity, self.mesh_data, self.geo_data)
@@ -207,9 +203,7 @@ class ScalarEquationSolver:
             integrator.store_old_fields(phi=phi[: self.n_elements])
 
             # Compute gradient
-            grad_phi = self._grad_fn(
-                phi, self.mesh_data, self.geo_data
-            )
+            grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
 
             # Assemble diffusion
             diff_flux = diffusion.assemble_diffusion_term(
@@ -317,9 +311,7 @@ class ScalarEquationSolver:
             integrator.store_old_fields(phi=phi[: self.n_elements])
 
             # Compute gradient
-            grad_phi = self._grad_fn(
-                phi, self.mesh_data, self.geo_data
-            )
+            grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
 
             # Assemble diffusion
             diff_flux = diffusion.assemble_diffusion_term(

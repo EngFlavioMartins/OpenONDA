@@ -12,6 +12,7 @@ import numpy as np
 
 from ..config.constants import EPSILON
 
+
 def _compute_particle_statistics(system):
     """Extract particle statistics for time step validation."""
     positions = system.particles.position_cpu()
@@ -64,6 +65,7 @@ def _compute_particle_statistics(system):
         "grad_u_max": grad_u_max,
     }
 
+
 def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_mean_spacing=False):
     """Compute time step limits for a specific viscous scheme."""
     CFL_advection = 0.5
@@ -108,6 +110,7 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
         result["dt_diff_component"] = dt_diff
 
     return result
+
 
 # NOTE: This function appears to be unused (no callers found in the codebase).
 # It may have been superseded by the viscous scheme initialization.

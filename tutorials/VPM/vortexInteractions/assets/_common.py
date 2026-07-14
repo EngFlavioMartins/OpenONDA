@@ -118,9 +118,7 @@ def build_arg_parser(description: str):
 _BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
 
 _FLOAT_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
-_STEP_TIME_RE = re.compile(
-    rf"Time-step:\s*(?P<step>\d+)\s+Flow time:\s*(?P<time>{_FLOAT_RE})\s*s"
-)
+_STEP_TIME_RE = re.compile(rf"Time-step:\s*(?P<step>\d+)\s+Flow time:\s*(?P<time>{_FLOAT_RE})\s*s")
 _DIAG_TITLE_RE = re.compile(
     rf"FLOW DIAGNOSTICS\s+\(step\s+(?P<step>\d+),\s*t\s*=\s*(?P<time>{_FLOAT_RE})\s*s\)"
 )

@@ -47,6 +47,7 @@ MIN_R_SIGMA_PRESSURE = 0.5
 ONE_OVER_FOUR_PI = 0.0795774715459
 TWO_OVER_SQRT_PI = 1.1283791671
 
+
 def _q_kernel(rho: np.ndarray) -> np.ndarray:
     """Velocity kernel q(r/σ) - Gaussian regularized Biot-Savart.
 
@@ -71,6 +72,7 @@ def _q_kernel(rho: np.ndarray) -> np.ndarray:
 
     return result
 
+
 def _zeta_kernel(rho: np.ndarray) -> np.ndarray:
     """Vorticity kernel ζ(r/σ) - Gaussian distribution.
 
@@ -82,6 +84,7 @@ def _zeta_kernel(rho: np.ndarray) -> np.ndarray:
     """
     ONE_OVER_PI_15 = 0.179587122125
     return ONE_OVER_PI_15 * np.exp(-(rho**2))
+
 
 @ti.data_oriented
 class PressurePhysics(PhysicsBase):

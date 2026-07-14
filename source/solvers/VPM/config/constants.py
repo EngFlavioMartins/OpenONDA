@@ -214,6 +214,7 @@ TAICHI_DEVICE_NAME = None
 # UTILITY FUNCTIONS FOR CONSTANTS
 # =========================================================
 
+
 def get_all_constants():
     """
     Return a dictionary of all constants defined in this module.
@@ -231,6 +232,7 @@ def get_all_constants():
 
     return constants
 
+
 def print_constants():
     """Print all constants with their values in a formatted way."""
     constants = get_all_constants()
@@ -243,6 +245,7 @@ def print_constants():
         print(f"{name:<30} = {value}")
 
     print("=" * 60)
+
 
 # =========================================================
 # MODULE INITIALIZATION

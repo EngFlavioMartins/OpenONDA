@@ -39,6 +39,7 @@ RVPM_DEFAULT_F = 0.0
 RVPM_DEFAULT_G = 1.0 / 5.0
 """FLOWVPM default rVPM stretching-compensation parameter."""
 
+
 # =========================================================
 # ADVECTION CONFIGURATION
 # =========================================================
@@ -101,9 +102,11 @@ class AdvectionConfig:
     Advection advances the configured scheme over the macro time-step set by the
     solver (the DVH-pinned dt for DVH runs)."""
 
+
 # =========================================================
 # VISCOUS CONFIGURATION
 # =========================================================
+
 
 @dataclass
 class ViscousConfig:
@@ -619,6 +622,7 @@ class ViscousConfig:
             regen_radius_ratio=regen_radius_ratio,
         )
 
+
 @dataclass
 class StretchingConfig:
     """
@@ -695,9 +699,13 @@ class StretchingConfig:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
         if mode not in ("DIRECT", "TRANSPOSED", "MIXED"):
-            raise ValueError(f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}")
+            raise ValueError(
+                f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}"
+            )
         if scheme not in ("EULER", "RK2", "RK3", "RK4"):
-            raise ValueError(f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}")
+            raise ValueError(
+                f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}"
+            )
         if not 0.0 < self.treecode_theta < 2.0:
             raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
         if mode != self.mode:
@@ -718,8 +726,9 @@ class StretchingConfig:
         Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
         treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="DIRECT", scheme=scheme,
-                                use_treecode=use_treecode, treecode_theta=treecode_theta)
+        return StretchingConfig(
+            mode="DIRECT", scheme=scheme, use_treecode=use_treecode, treecode_theta=treecode_theta
+        )
 
     @staticmethod
     def transposed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
@@ -734,8 +743,12 @@ class StretchingConfig:
         Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
         treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="TRANSPOSED", scheme=scheme,
-                                use_treecode=use_treecode, treecode_theta=treecode_theta)
+        return StretchingConfig(
+            mode="TRANSPOSED",
+            scheme=scheme,
+            use_treecode=use_treecode,
+            treecode_theta=treecode_theta,
+        )
 
     @staticmethod
     def mixed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
@@ -750,16 +763,19 @@ class StretchingConfig:
         Set ``use_treecode=True`` to evaluate the rate from the O(N log N)
         treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
-        return StretchingConfig(mode="MIXED", scheme=scheme,
-                                use_treecode=use_treecode, treecode_theta=treecode_theta)
+        return StretchingConfig(
+            mode="MIXED", scheme=scheme, use_treecode=use_treecode, treecode_theta=treecode_theta
+        )
 
     @staticmethod
     def disabled():
         return StretchingConfig(enabled=False)
 
+
 # ForceConfig is imported from vlm_solver to ensure consistency and avoid duplication
 # as it is primarily a property of the VLM-VPM interaction.
 from ..boundary_elements.vlm.solver.vlm_solver import ForceConfig
+
 
 # =========================================================
 # TURBULENCE CONFIGURATION
@@ -931,9 +947,11 @@ class TurbulenceConfig:
         """
         return TurbulenceConfig(model="INVISCID", flow_model="INVISCID")
 
+
 # =========================================================
 # STABILIZATION CONFIGURATION
 # =========================================================
+
 
 @dataclass
 class StabilizationConfig:
@@ -1359,6 +1377,7 @@ class StabilizationConfig:
             relaxation_constraint=constraint,
         )
 
+
 # =========================================================
 # VELOCITY CONFIGURATION
 # =========================================================
@@ -1485,6 +1504,7 @@ class VelocityConfig:
             traversal_block_dim=traversal_block_dim,
         )
 
+
 # =========================================================
 # VLM SOLVER CONFIGURATION
 # =========================================================
@@ -1535,9 +1555,11 @@ class VLMSolverConfig:
     def disabled():
         return VLMSolverConfig(enabled=False)
 
+
 # =========================================================
 # SOLVER CONFIGURATION DATACLASS
 # =========================================================
+
 
 @dataclass
 class SolverConfig:
@@ -2033,6 +2055,7 @@ class SolverConfig:
         lines.append(f"  Background Velocity: {self.background_velocity} m/s")
         return "\n".join(lines)
 
+
 # =========================================================
 # UTILITY DECORATORS AND HELPERS
 # =========================================================
@@ -2067,6 +2090,7 @@ def CachedParticleProperty(func):
         return getattr(self, cache_name)
 
     return wrapper
+
 
 # =========================================================
 # PYDANTIC MODELS FOR SERIALIZATION AND STATE MANAGEMENT
@@ -2106,7 +2130,9 @@ class SolverState(BaseModel):
     backup_file_name: str = Field(default="", description="Optional backup file name infix")
     backup_directory: str = Field(default="solution", description="Output directory for backups")
     logging_frequency: int = Field(default=0, description="Log frequency in steps")
-    timing_frequency: int = Field(default=0, description="Runtime-profile report frequency in steps")
+    timing_frequency: int = Field(
+        default=0, description="Runtime-profile report frequency in steps"
+    )
     backup_frequency: int = Field(default=0, description="Backup frequency in steps")
 
     # Runtime state (optional, set during execution)
@@ -2245,6 +2271,7 @@ class SolverState(BaseModel):
 
         except Exception as e:
             raise ValueError(f"Failed to create solver from state: {e}") from e
+
 
 class ParticlesState(BaseModel):
     """
@@ -2435,6 +2462,7 @@ class ParticlesState(BaseModel):
         except Exception as e:
             raise ValueError(f"Failed to create particles from state: {e}") from e
 
+
 # =========================================================
 # UTILITY FUNCTIONS FOR FLOW MODEL SETTING
 # =========================================================
@@ -2454,6 +2482,7 @@ def SetFlowModel(psys, flow_model: str):
         psys.flow_model_description = "INV ::: (ω.∇)u (stretching only)"
 
     psys.flow_model = flow_model
+
 
 __all__ = [
     "SolverConfig",

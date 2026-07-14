@@ -81,9 +81,7 @@ def _superbee(r: np.ndarray) -> np.ndarray:
     Returns:
         Limiter value ψ(r) in [0, 2].
     """
-    return np.maximum.reduce(
-        [np.zeros_like(r), np.minimum(2.0 * r, 1.0), np.minimum(r, 2.0)]
-    )
+    return np.maximum.reduce([np.zeros_like(r), np.minimum(2.0 * r, 1.0), np.minimum(r, 2.0)])
 
 
 def _limited_linear(r: np.ndarray, k: float = 1.0) -> np.ndarray:

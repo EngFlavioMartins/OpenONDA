@@ -15,7 +15,9 @@ import numpy as np
 
 from ..config.constants import *  # noqa: F403
 from ..config.types import SolverConfig
+
 # =========================================================
+
 
 class BackupSystem:
     """
@@ -195,7 +197,9 @@ class BackupSystem:
                 "group_id",
                 "vorticity",
             ):
-                particles_group.create_dataset(name, data=getattr(solver.particles, f"{name}_cpu")())
+                particles_group.create_dataset(
+                    name, data=getattr(solver.particles, f"{name}_cpu")()
+                )
             BackupSystem._save_particle_optional_fields(particles_group, solver, n_particles)
 
     @staticmethod

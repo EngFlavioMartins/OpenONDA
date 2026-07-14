@@ -230,7 +230,6 @@ class DynamicSmagorinsky:
         self.alpha2 = alpha2
         self.last_C = 0.0
         # Pre-compute the static box-filter denominator Σ V over the one-ring.
-        n_elem = mesh_data["n_elements"]
         n_int = mesh_data["n_interior_faces"]
         vol = geo_data["element_volumes"]
         own = mesh_data["owners"][:n_int]
@@ -253,10 +252,13 @@ class DynamicSmagorinsky:
             Filtered field with the same shape as *f*.
         """
         vol = self._vol
-        shape = (vol.shape[0],) + f.shape[1:]
         num = (vol.reshape((-1,) + (1,) * (f.ndim - 1)) * f).copy()
-        np.add.at(num, self._own, (vol[self._nei].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._nei])
-        np.add.at(num, self._nei, (vol[self._own].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._own])
+        np.add.at(
+            num, self._own, (vol[self._nei].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._nei]
+        )
+        np.add.at(
+            num, self._nei, (vol[self._own].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._own]
+        )
         return num / self._denom.reshape((-1,) + (1,) * (f.ndim - 1))
 
     def get_filter_info(self):
@@ -309,8 +311,10 @@ class DynamicSmagorinsky:
         SmagS = Smag[:, None, None] * S
         Sf = self._box_filter(S)
         Smag_f = np.sqrt(2.0 * np.sum(Sf * Sf, axis=(1, 2)))
-        M = 2.0 * delta2[:, None, None] * (
-            self._box_filter(SmagS) - self.alpha2 * Smag_f[:, None, None] * Sf
+        M = (
+            2.0
+            * delta2[:, None, None]
+            * (self._box_filter(SmagS) - self.alpha2 * Smag_f[:, None, None] * Sf)
         )
 
         LM = np.sum(L * M, axis=(1, 2))

@@ -27,6 +27,7 @@ import warnings
 
 import numpy as np
 
+
 class VLMLoadingDistribution:
     """Static helpers for extracting and exporting chord/span loading distributions."""
 

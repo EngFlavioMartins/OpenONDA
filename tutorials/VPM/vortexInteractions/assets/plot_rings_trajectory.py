@@ -97,10 +97,15 @@ def main() -> None:
         st = case_style(case_dir.name, include_family=False)
         for axial, radius in trajectory.values():
             ax.plot(
-                axial, radius,
-                color=st["color"], linestyle=st["linestyle"],
-                lw=st["linewidth"], marker=st["marker"], ms=st["markersize"],
-                markevery=mark_every("trajectory"), mew=st["markeredgewidth"],
+                axial,
+                radius,
+                color=st["color"],
+                linestyle=st["linestyle"],
+                lw=st["linewidth"],
+                marker=st["marker"],
+                ms=st["markersize"],
+                markevery=mark_every("trajectory"),
+                mew=st["markeredgewidth"],
             )
         legend_handles.append(Line2D([0], [0], **legend_handle_style(st)))
 

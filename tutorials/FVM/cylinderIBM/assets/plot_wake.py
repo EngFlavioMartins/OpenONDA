@@ -15,7 +15,13 @@ import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    COLORS, D_REF, REFERENCES, U_INF, build_arg_parser, figure_size, save_fig,
+    COLORS,
+    D_REF,
+    REFERENCES,
+    U_INF,
+    build_arg_parser,
+    figure_size,
+    save_fig,
 )
 
 
@@ -76,11 +82,21 @@ def main():
     ax.axvspan(-0.5, 0.5, color=COLORS["MaskGray"], label="cylinder")
     if L is not None and "L_over_D" in ref:
         lo, hi = ref["L_over_D"]
-        ax.axvspan(0.5 + lo, 0.5 + hi, color=COLORS["reference"], alpha=0.3,
-                   label=f"ref. wake closure: L/D = {lo:.2f}-{hi:.2f}")
+        ax.axvspan(
+            0.5 + lo,
+            0.5 + hi,
+            color=COLORS["reference"],
+            alpha=0.3,
+            label=f"ref. wake closure: L/D = {lo:.2f}-{hi:.2f}",
+        )
     if L is not None:
-        ax.axvline(0.5 + L, color=COLORS["TUDred"],
-                   linestyle="--", linewidth=0.8, label=f"L/D = {L / D_REF:.3f}")
+        ax.axvline(
+            0.5 + L,
+            color=COLORS["TUDred"],
+            linestyle="--",
+            linewidth=0.8,
+            label=f"L/D = {L / D_REF:.3f}",
+        )
     ax.set_xlim(-2, 10)
     ax.set_xlabel("x / D")
     ax.set_ylabel(r"$u_x / U_\infty$")

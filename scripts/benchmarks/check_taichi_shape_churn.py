@@ -91,11 +91,7 @@ def _vulkan_device_memory_mb() -> float | None:
         try:
             with open(os.path.join(fd_root, name), encoding="utf-8") as f:
                 for line in f:
-                    if line.startswith("drm-memory-vram:"):
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            total += int(parts[1])
-                    elif line.startswith("drm-memory-gtt:"):
+                    if line.startswith("drm-memory-vram:") or line.startswith("drm-memory-gtt:"):
                         parts = line.split()
                         if len(parts) >= 2:
                             total += int(parts[1])
@@ -177,15 +173,8 @@ def main() -> int:
     schedule = _shape_schedule(args.min_n, max_n, args.distinct, args.repeats)
 
     print(
-        "mode={mode} iterations={iters} distinct_shapes={distinct} "
-        "min_n={min_n} max_n={max_n} download={download}".format(
-            mode=args.mode,
-            iters=len(schedule),
-            distinct=args.distinct,
-            min_n=args.min_n,
-            max_n=max_n,
-            download=args.download,
-        )
+        f"mode={args.mode} iterations={len(schedule)} distinct_shapes={args.distinct} "
+        f"min_n={args.min_n} max_n={max_n} download={args.download}"
     )
     print("iter,n,rss_mb,device_mb,elapsed_s")
 

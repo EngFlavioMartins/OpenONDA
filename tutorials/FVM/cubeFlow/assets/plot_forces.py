@@ -36,8 +36,12 @@ def main():
         cd_mean = np.mean(cd)
         ax.axhline(cd_mean, color=COLORS["reference"], linestyle="--", linewidth=0.6)
         ax.text(
-            0.97, 0.92, f"mean Cd = {cd_mean:.4f}",
-            transform=ax.transAxes, ha="right", va="top" ,
+            0.97,
+            0.92,
+            f"mean Cd = {cd_mean:.4f}",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
             bbox=dict(
                 boxstyle="round,pad=0.3",
                 facecolor=COLORS["LightText"],
@@ -76,8 +80,12 @@ def main():
             if peak_idx < len(fft_freq[mask]):
                 st = fft_freq[mask][peak_idx] * L_REF / U_INF
                 ax.text(
-                    0.97, 0.92, f"St = {st:.3f}  (f = {fft_freq[mask][peak_idx]:.3f} Hz)",
-                    transform=ax.transAxes, ha="right", va="top" ,
+                    0.97,
+                    0.92,
+                    f"St = {st:.3f}  (f = {fft_freq[mask][peak_idx]:.3f} Hz)",
+                    transform=ax.transAxes,
+                    ha="right",
+                    va="top",
                     bbox=dict(
                         boxstyle="round,pad=0.3",
                         facecolor=COLORS["LightText"],

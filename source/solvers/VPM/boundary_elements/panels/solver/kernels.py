@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import taichi as ti
 
+
 def panel_update_translation_kernel(
     lattice, body_range, displacement: np.ndarray, velocity: np.ndarray
 ) -> None:
@@ -51,6 +52,7 @@ def panel_update_translation_kernel(
         ti.Vector([0.0, 0.0, 0.0]),
         ti.Vector(disp.tolist()),
     )
+
 
 def panel_update_rotation_kernel(
     lattice, body_range, rotation: np.ndarray, omega: np.ndarray, center: np.ndarray

@@ -82,7 +82,10 @@ def main() -> None:
     max_rel = float(np.max(np.abs(rel)))
 
     fig, (ax, axr) = plt.subplots(
-        2, 1, figsize=(12 * CM, 10 * CM), sharex=True,
+        2,
+        1,
+        figsize=(12 * CM, 10 * CM),
+        sharex=True,
         gridspec_kw={"height_ratios": [1.7, 1.1]},
     )
     fig.subplots_adjust(left=0.16, right=0.95, bottom=0.12, top=0.91, hspace=0.13)
@@ -99,8 +102,12 @@ def main() -> None:
     axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")
     axr.set_xlim(float(t.min()), float(t.max()))
     axr.text(
-        0.02, 0.94, rf"$\max|\Sigma\alpha_y|/\max|\alpha_y| = {max_rel:.1e}\,\%$",
-        transform=axr.transAxes, ha="left", va="top" ,
+        0.02,
+        0.94,
+        rf"$\max|\Sigma\alpha_y|/\max|\alpha_y| = {max_rel:.1e}\,\%$",
+        transform=axr.transAxes,
+        ha="left",
+        va="top",
     )
 
     out_dir = Path(args.figures_dir)

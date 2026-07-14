@@ -16,6 +16,7 @@ import taichi as ti
 
 from ....config.constants import PANEL_EPSILON
 
+
 @ti.func
 def compute_source_potential(
     p: ti.types.vector(3, float),

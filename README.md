@@ -26,7 +26,7 @@ ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
 | Taichi | 1.7.4 (required for VPM) |
 | GCC / Clang | compatible with your OpenFOAM installation |
 
-> OpenFOAM must be installed and its environment sourced before using the OFW or FVM solvers.  
+> OpenFOAM must be installed and its environment sourced before using the OFW or FVM solvers.
 > Typical source command: `source /usr/lib/openfoam/openfoam2506/etc/bashrc`
 
 Helper install scripts for a fresh machine live in [`scripts/install/`](scripts/install/):
@@ -143,7 +143,7 @@ If you use this code in your research, please cite:
 
 ## License
 
-OpenONDA is licensed under the **GNU General Public License v3.0**.  
+OpenONDA is licensed under the **GNU General Public License v3.0**.
 See [license](license) for details.
 
 The custom boundary conditions in `source/solvers/OFW/cpp/` are derived from OpenFOAM source code and are subject to the **GNU General Public License v3.0** as required by OpenFOAM's license terms.

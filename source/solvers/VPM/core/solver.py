@@ -39,6 +39,7 @@ from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
 from ..physics.evaluation import ParticleFieldEvaluation
 
+
 class FilteredParticles:
     """Helper class to pass filtered particles to physics kernels."""
 
@@ -51,9 +52,11 @@ class FilteredParticles:
     def __len__(self):
         return self.count
 
+
 # =========================================================
 # MAIN VPM SOLVER CLASS
 # =========================================================
+
 
 @ti.data_oriented
 class Solver:
@@ -268,12 +271,8 @@ class Solver:
 
         self.advection_scheme = final_config.advection.scheme
         self.stretching_scheme = final_config.stretching.scheme
-        self.stretching_use_treecode = getattr(
-            final_config.stretching, "use_treecode", False
-        )
-        self.stretching_treecode_theta = getattr(
-            final_config.stretching, "treecode_theta", 0.3
-        )
+        self.stretching_use_treecode = getattr(final_config.stretching, "use_treecode", False)
+        self.stretching_treecode_theta = getattr(final_config.stretching, "treecode_theta", 0.3)
         self.processing_unit = final_config.processing_unit.upper()
         self.flow_model = final_config.turbulence.flow_model.upper()
         self.viscous_scheme = final_config.viscous.scheme
@@ -311,9 +310,7 @@ class Solver:
         if stab.max_core_radius is not None:
             from ..stabilization.splitting import ParticleSplitter
 
-            self._splitter = ParticleSplitter(
-                precision=self.precision, max_particles=max_p_init
-            )
+            self._splitter = ParticleSplitter(precision=self.precision, max_particles=max_p_init)
         self._remesher = None
         if stab.remeshing_frequency is not None:
             from ..stabilization.conservative_remesh import ConservativeRemesher
@@ -442,9 +439,7 @@ class Solver:
                 max_particles=max_p,
                 precision=self.precision,
             )
-            self.particles.register_resize_callback(
-                self._parallel_strain_relaxation.resize
-            )
+            self.particles.register_resize_callback(self._parallel_strain_relaxation.resize)
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
@@ -1941,7 +1936,6 @@ class Solver:
               >>> # Later, restore from checkpoint
               >>> solver = Solver.continue_from_backup('solution/checkpoint_t100')
         """
-        import os
 
         # Ensure directory exists
         if backup_dir := os.path.dirname(filename):
@@ -2115,7 +2109,9 @@ class Solver:
         The direct-vs-treecode choice is owned by physics.velocity_self
         (configured once at startup), so there is no method branching here.
         """
-        Logging.message(f"Updating particles' velocities, u ({self.physics.velocity_method.lower()})")
+        Logging.message(
+            f"Updating particles' velocities, u ({self.physics.velocity_method.lower()})"
+        )
         self.physics.velocity_self(
             self.particles.position,
             self.particles.circulation,
@@ -2418,7 +2414,6 @@ class Solver:
                 if cfg.split_diagnostics_enabled:
                     # Expensive debug path: downloads full particle fields.
                     self.physics.compute_vorticities(self.particles)
-                    N_pre = len(self.particles)
                     _pos_pre = self.particles.position_cpu().copy()
                     _str_pre = self.particles.circulation_cpu().copy()
                     _rad_pre = self.particles.radius_cpu().copy()

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 # =========================================================
 
+
 class SolverIO:
     """
     Unified IO manager for VPM Solver.
@@ -394,5 +395,6 @@ class SolverIO:
 
         except Exception as e:
             print(f"   (Warning) Could not write XDMF series file: {e}")
+
 
 __all__ = ["SolverIO"]
