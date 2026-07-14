@@ -186,8 +186,7 @@ class TestOpenVspVSP3:
         vsp.ClearVSPModel()
         wing_id = vsp.AddGeom("WING")
         vsp.SetParmVal(wing_id, "TotalSpan", "WingGeom", 2.0)
-        vsp.SetParmVal(wing_id, "Root_Chord", "WingGeom", 0.5)
-        vsp.SetParmVal(wing_id, "Tip_Chord", "WingGeom", 0.25)
+        vsp.SetParmVal(wing_id, "TotalChord", "WingGeom", 0.5)
         vsp.Update()
         vsp_file = tmp_path / "test_wing.vsp3"
         vsp.WriteVSPFile(str(vsp_file))

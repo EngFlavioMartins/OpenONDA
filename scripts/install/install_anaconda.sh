@@ -9,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$REPO_ROOT/scripts/environment/environment.yml"
+OPENVSP_INSTALLER="$SCRIPT_DIR/install_openvsp.sh"
 CONDA_ENV="${OPENONDA_CONDA_ENV:-OpenONDA}"
 
 # Large PETSc/VTK/Gmsh packages can exceed Conda's default network timeout.
@@ -111,6 +112,11 @@ conda env update --name "$CONDA_ENV" --file "$ENV_FILE"
 
 echo "Installing OpenONDA in editable mode..."
 conda run -n "$CONDA_ENV" python -m pip install --no-deps -e "$REPO_ROOT"
+
+if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
+    echo "Installing OpenVSP and its Python API..."
+    "$OPENVSP_INSTALLER"
+fi
 
 if [ -d "$REPO_ROOT/.git" ]; then
     echo "Installing pre-commit hooks..."

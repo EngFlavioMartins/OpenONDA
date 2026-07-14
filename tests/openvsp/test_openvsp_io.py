@@ -4,7 +4,7 @@ Optional tests for OpenVSP DegenGeom import/export.
 These tests are marked ``@pytest.mark.openvsp`` and are automatically
 skipped when the OpenVSP Python API is not installed.  Run with::
 
-    conda activate openonda-openvsp
+    conda activate OpenONDA
     pytest tests/openvsp/ -v -m openvsp
 
 Tests that parse ``.csv`` DegenGeom files do **not** require OpenVSP.
@@ -154,8 +154,7 @@ class TestOpenVspVSP3:
         vsp.ClearVSPModel()
         wing_id = vsp.AddGeom("WING")
         vsp.SetParmVal(wing_id, "TotalSpan", "WingGeom", 2.0)
-        vsp.SetParmVal(wing_id, "Root_Chord", "WingGeom", 0.5)
-        vsp.SetParmVal(wing_id, "Tip_Chord", "WingGeom", 0.25)
+        vsp.SetParmVal(wing_id, "TotalChord", "WingGeom", 0.5)
         vsp.Update()
         vsp_file = tmp_path / "test_wing.vsp3"
         vsp.WriteVSPFile(str(vsp_file))
