@@ -1,25 +1,4 @@
-"""
-FVM-VPM Coupled Solver — overset/Chimera-style four-step loop.
-
-0. VPM       : advance the particle cloud to t^{n+1} first (donor time level).
-1. BC (donor): full-cloud Biot-Savart (all particles, no exterior masking)
-   evaluated at the FVM boundary face centres, then projected onto the
-   discretely solenoidal subspace (uniform normal shift ε/A_tot) so that
-   Σ u·S = 0 to machine precision — the Gresho-Sani compatibility condition
-   for the pure-Neumann pressure problem.  Direction-agnostic: no face is
-   treated as inflow or outflow.
-   With ``donor_interior_source="fvm"`` the trace is instead split per
-   sub-step into an interpolated exterior-particle term and a LIVE
-   FVM-interior Biot-Savart term (Weymouth–Lauber-consistent; see
-   ``_run_fvm_substeps_live_interior``).
-2. FVM       : impose Dirichlet-U on all faces; the pressure closure is
-   fixedFluxPressure (0/p), whose gradient the solver's constrainPressure
-   computes with exact discrete weights — compatibility by construction.
-   The fringe relaxation (fvm_fringe.py) blends the FVM interior toward the
-   VPM field in a buffer band so the interior match is smooth.
-3. INJECT    : conservative continuous hand-off (η-blended M4' remesh) of the
-   FVM near-field vorticity into the particle cloud (continuous_overlap.py).
-"""
+"""FVM–VPM coupling driver with donor boundaries and conservative hand-off."""
 
 from __future__ import annotations
 
@@ -31,15 +10,16 @@ from pathlib import Path
 import signal
 import sys
 import time
+from typing import TYPE_CHECKING
 
 try:
     from mpi4py import MPI as _MPI
+
     _mpi4py_comm = _MPI.COMM_WORLD
 except ImportError:
     _mpi4py_comm = None
 
 import numpy as np
-import taichi as ti
 
 from source.coupler.config.types import CouplerSetup
 from source.coupler.core.helpers.continuous_overlap import (
@@ -49,15 +29,41 @@ from source.coupler.core.helpers.continuous_overlap import (
 from source.coupler.core.helpers.fvm_velocity_blend import FVMVelocityBlend
 from source.coupler.core.helpers.output_redirector import OutputRedirector
 from source.coupler.core.helpers.setup import SetupHandler
-from source.solvers.OFW.fvm_solver import fvm_solver  # type hint for the injected FVM
-from source.solvers.VPM import Solver as VPM_Solver  # type hint for the injected VPM
-from source.solvers.VPM.io.logging import Logging
+
+if TYPE_CHECKING:
+    # OFW is a Linux/OpenFOAM extension and must remain a type-only import.
+    from source.solvers.OFW.fvm_solver import fvm_solver
+    from source.solvers.VPM import Solver as VPM_Solver
 
 logger = logging.getLogger("coupler")
+
+
+def _world_rank() -> int:
+    """Return the launcher rank for OpenMPI, MPICH/PMI, or MVAPICH."""
+    if _mpi4py_comm is not None:
+        return int(_mpi4py_comm.Get_rank())
+    for name in (
+        "OMPI_COMM_WORLD_RANK",
+        "PMI_RANK",
+        "PMIX_RANK",
+        "MV2_COMM_WORLD_RANK",
+    ):
+        value = os.environ.get(name)
+        if value is not None:
+            return int(value)
+    return 0
+
 
 def flush_log():
     for handler in logger.handlers:
         handler.flush()
+
+
+def _vpm_solver_info(vpm_solver) -> str:
+    from source.solvers.VPM.io.logging import Logging
+
+    return Logging.solver_info(vpm_solver)
+
 
 class _DisableSIGFPE:
     """Context manager that disables OpenFOAM's SIGFPE handler."""
@@ -70,35 +76,17 @@ class _DisableSIGFPE:
         signal.signal(signal.SIGFPE, self._old_handler)
         return False
 
+
 class FVMVPMCoupler:
     """
     FVM-VPM coupler: the four-step overset loop with fringe relaxation.
     """
 
     def __init__(self, vpm_solver, fvm_solver, coupler_setup: CouplerSetup):
-        """Build the coupler around externally-constructed sub-solvers::
+        """Build a coupler from externally configured FVM and VPM solvers.
 
-            coupler = FVMVPMCoupler(vpm_solver, fvm_solver, coupler_setup)
-
-        The caller builds each sub-solver with its OWN native API
-        (``VPM_Solver(SolverConfig(...))``, ``fvm_solver(case_dir)`` /
-        ``FVM.Solver.from_case(...)``) and injects the instances;
-        :class:`CouplerSetup` carries ONLY the coupling parameters — the
-        interface box, the hand-off/donor/fringe knobs, the shared physical
-        quantities (``u_inf``, ``nu``, particle spacing ``h``) and the FVM
-        sub-step ``dt``.  The VPM's physics (viscous scheme, stretching,
-        advection, turbulence, treecode θ, stabilization, kernel, precision,
-        domain bounds, max_particles) lives in its ``SolverConfig``; the FVM's
-        in its case dictionaries.  The sub-cycle count is derived internally
-        from the configured solver time steps.
-
-        * ``fvm_solver`` — required on EVERY MPI rank (collective solve).
-        * ``vpm_solver`` — the GPU particle solver on the master rank; ``None``
-          on non-master ranks (build the GPU VPM on the master only, gated by
-          :meth:`is_master_rank`).
-
-        The FVM case must be prepared (:meth:`prepare_case`) before the FVM
-        solver reads it — see :meth:`from_solvers` for the canonical order.
+        The FVM solver is required on every rank. The VPM solver is required
+        only on rank zero.
         """
         if fvm_solver is None:
             raise ValueError(
@@ -109,32 +97,28 @@ class FVMVPMCoupler:
             )
         self.coupler_setup = coupler_setup
         self.config = coupler_setup
+        self._backend = coupler_setup.backend
         self.case_dir = Path(".").absolute()
 
         # Injected sub-solvers.  The VPM may be None on non-master ranks.
         self._injected_fvm = fvm_solver
         self._injected_vpm = vpm_solver
 
-        # In parallel (mpirun), every process runs this constructor.
-        # OMPI_COMM_WORLD_RANK is set by mpirun before Python starts.
-        # Rank 0 owns the VPM/GPU and all IO; non-master ranks only participate
-        # in the collective FVM solve.
-        self._mpi_rank = int(os.environ.get("OMPI_COMM_WORLD_RANK", "0"))
-        self._is_master = (self._mpi_rank == 0)
+        self._mpi_rank = _world_rank()
+        self._is_master = self._mpi_rank == 0
 
         self.solution_dir = self.case_dir / "solution"
         if self._is_master:
             self.solution_dir.mkdir(parents=True, exist_ok=True)
             self._configure_logging()
 
-        # Non-master ranks redirect to /dev/null (no VPM output there anyway).
-        # Redirectors capture the solvers' C-level stdout into their own logs.
         if self._is_master:
             self.vpm_redirector = OutputRedirector(
                 logfile=str(self.solution_dir / "vpm.log"), append=True
             )
+            eulerian_log = "fvm.log" if self._backend == "fvm" else "ofw.log"
             self.ofw_redirector = OutputRedirector(
-                logfile=str(self.solution_dir / "ofw.log"), append=True
+                logfile=str(self.solution_dir / eulerian_log), append=True
             )
         else:
             self.vpm_redirector = OutputRedirector()  # no-op
@@ -148,7 +132,9 @@ class FVMVPMCoupler:
         self.vel_blend: FVMVelocityBlend | None = None
         self._u_bc_prev: np.ndarray | None = None  # donor BC carried between sub-cycles
         self._omega_bc_prev: np.ndarray | None = None  # donor ω BC carried between sub-cycles
-        self._last_omega_donor: np.ndarray | None = None  # ω at faces from last _donor_velocity call
+        self._last_omega_donor: np.ndarray | None = (
+            None  # ω at faces from last _donor_velocity call
+        )
         self._omega_global_buffer: np.ndarray | None = None
         self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
 
@@ -214,16 +200,21 @@ class FVMVPMCoupler:
                 "overlap_radius_ratio=%.2f. The Beale deconvolution assumes the "
                 "hand-off radius; set the VPM ViscousConfig.regen_radius_ratio = "
                 "%.2f to match (measured ~4× in-box velocity error otherwise).",
-                float(regen), float(cfg.overlap_radius_ratio), float(cfg.overlap_radius_ratio),
+                float(regen),
+                float(cfg.overlap_radius_ratio),
+                float(cfg.overlap_radius_ratio),
             )
         dom = getattr(vpm, "vpm_domain_bounds", None)
         if dom is None:
             dom = getattr(getattr(vpm, "config", None), "vpm_domain_bounds", None)
         if dom is not None and len(dom) == 6:
             contains = (
-                dom[0] <= box[0] and dom[1] >= box[1]
-                and dom[2] <= box[2] and dom[3] >= box[3]
-                and dom[4] <= box[4] and dom[5] >= box[5]
+                dom[0] <= box[0]
+                and dom[1] >= box[1]
+                and dom[2] <= box[2]
+                and dom[3] >= box[3]
+                and dom[4] <= box[4]
+                and dom[5] >= box[5]
             )
             if not contains:
                 raise ValueError(
@@ -240,7 +231,8 @@ class FVMVPMCoupler:
                 logger.warning(
                     "[Init] Injected VPM background_velocity %s != config.u_inf %s; "
                     "the donor freestream and the VPM advection freestream disagree.",
-                    tuple(bg), tuple(cfg.u_inf),
+                    tuple(bg),
+                    tuple(cfg.u_inf),
                 )
 
     @staticmethod
@@ -249,7 +241,7 @@ class FVMVPMCoupler:
 
         Lets an injection setup script build the VPM on the master only without
         hard-coding the ``OMPI_COMM_WORLD_RANK`` lookup."""
-        return int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) == 0
+        return _world_rank() == 0
 
     @staticmethod
     def prepare_case(
@@ -265,8 +257,25 @@ class FVMVPMCoupler:
         If ``vpm_solver`` is provided on the master rank, the write cadence is
         derived from the VPM/FVM time-step ratio before the FVM wrapper reads
         controlDict.  initialize() recomputes the same sub-cycle count after
-        both solvers are attached."""
-        if int(os.environ.get("OMPI_COMM_WORLD_RANK", "0")) != 0:
+        both solvers are attached.
+
+        With ``coupler_setup.backend == "fvm"`` (native Python FVM) there is
+        no OpenFOAM case to prepare: the backend is configured
+        programmatically (see ``helpers/fvm_backend.build_fvm_backend``), so
+        this only creates the ``solution/`` directory."""
+        if _world_rank() != 0:
+            return
+        if coupler_setup.backend == "fvm":
+            if restart:
+                raise NotImplementedError(
+                    "restart=True is not yet supported with backend='fvm': the "
+                    "native FVM solver has no state save/load path yet (see "
+                    "docs/plans/2026-07-fvm-vpm-coupling-integration-plan.md, "
+                    "step C3). Run fresh, or use backend='ofw' for restarts."
+                )
+            (Path(coupler_setup.case_dir).absolute() / "solution").mkdir(
+                parents=True, exist_ok=True
+            )
             return
         period_multiplier = 1
         if vpm_solver is not None:
@@ -279,7 +288,6 @@ class FVMVPMCoupler:
             float(coupler_setup.dt),
             restart=restart,
         )
-
 
     def _configure_logging(self) -> None:
         """Send coupler diagnostics to solution/coupler.log AND the console.
@@ -376,6 +384,22 @@ class FVMVPMCoupler:
         # nu so the setup remains the single source of truth even if the case
         # dictionaries differed.
         self.ofw = self._injected_fvm
+
+        # Serial-backend guard: a serial Eulerian backend under mpirun would
+        # leave every non-master rank solving its own detached copy (or hang
+        # at the first collective) — fail loudly instead.
+        world_size = 1
+        if _mpi4py_comm is not None:
+            world_size = int(_mpi4py_comm.Get_size())
+        else:
+            world_size = int(os.environ.get("OMPI_COMM_WORLD_SIZE", "1"))
+        if world_size > 1 and int(self.ofw.n_procs()) == 1:
+            raise RuntimeError(
+                f"Launched under MPI (world size {world_size}) but the injected "
+                "Eulerian backend is serial (n_procs() == 1). Configure a parallel "
+                "backend or launch one process."
+            )
+
         self.ofw.set_time_step(self.dt_fvm)
         self.ofw.set_kinematic_viscosity(cfg.nu)
 
@@ -391,15 +415,17 @@ class FVMVPMCoupler:
         self.dt = self.dt_vpm
         if self._is_master:
             logger.info(
-                "[Init] Time steps: dt_fvm=%.4e s, dt_vpm=%.4e s, "
-                "period_multiplier=%d.",
+                "[Init] Time steps: dt_fvm=%.4e s, dt_vpm=%.4e s, period_multiplier=%d.",
                 self.dt_fvm,
                 self.dt_vpm,
                 self.period_multiplier,
             )
-            SetupHandler(cfg).update_controldict(
-                self.period_multiplier, self.dt_fvm, restart=False
-            )
+            if self._backend == "ofw":
+                # The native FVM backend has no controlDict; its write cadence
+                # is configured programmatically (helpers/fvm_backend.py).
+                SetupHandler(cfg).update_controldict(
+                    self.period_multiplier, self.dt_fvm, restart=False
+                )
 
         # Downstream coupling components (injector hand-off buffer, fringe) size
         # themselves on the inter-hand-off interval = dt_vpm; make cfg.dt report
@@ -432,7 +458,7 @@ class FVMVPMCoupler:
         if self._is_master:
             logger.info("[Init] Impulsive start: zero VPM particles.")
             with self.vpm_redirector:
-                print(Logging.solver_info(self.vpm))
+                print(_vpm_solver_info(self.vpm))
                 sys.stdout.flush()
             self._write_run_metadata()
             print("Initialization complete.\n")
@@ -465,7 +491,6 @@ class FVMVPMCoupler:
         # overwrites them with rank-0's data.  Every call to _fvm_step must
         # invoke the SAME C++ setter on all ranks (Robin or Dirichlet) to keep
         # the MPI collectives in sync.
-        n_procs = self.ofw.n_procs()
 
         n_steps = int(self.config.t_end / self.dt)
         patch = self.config.patch_name
@@ -482,9 +507,7 @@ class FVMVPMCoupler:
         face_normals = np.asarray(
             self.ofw.get_boundary_face_normals(patch), dtype=np.float64
         ).reshape(-1, 3)
-        face_areas = np.asarray(
-            self.ofw.get_boundary_face_areas(patch), dtype=np.float64
-        ).ravel()
+        face_areas = np.asarray(self.ofw.get_boundary_face_areas(patch), dtype=np.float64).ravel()
 
         for step in range(1 + start_step, n_steps + 1):
             t_end = step * self.dt
@@ -502,12 +525,20 @@ class FVMVPMCoupler:
 
                 with _DisableSIGFPE(), self.vpm_redirector:
                     self.vpm.update_state()
+                import taichi as ti
+
                 ti.sync()
 
                 if self.vel_blend is not None and self.vpm.particles.number_of_particles > 0:
-                    pos_np = np.asarray(self.vpm.particles_positions, dtype=np.float64).reshape(-1, 3)
-                    vel_np = np.asarray(self.vpm.particles_velocities, dtype=np.float64).reshape(-1, 3)
-                    self.vel_blend.log_diagnostics(pos_np, vel_np, float(np.linalg.norm(self.u_inf)))
+                    pos_np = np.asarray(self.vpm.particles_positions, dtype=np.float64).reshape(
+                        -1, 3
+                    )
+                    vel_np = np.asarray(self.vpm.particles_velocities, dtype=np.float64).reshape(
+                        -1, 3
+                    )
+                    self.vel_blend.log_diagnostics(
+                        pos_np, vel_np, float(np.linalg.norm(self.u_inf))
+                    )
 
             t0 = time.time() - t0
 
@@ -523,7 +554,7 @@ class FVMVPMCoupler:
             # ─────────────────────────────────────────────────────────────────
             t1 = time.time()
             if self._is_master:
-                if getattr(self.config, "donor_interior_source", "particles") == "fvm":
+                if self.config.donor_interior_source == "fvm":
                     u_bc_next = self._donor_exterior_velocity(face_centers)
                 else:
                     u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
@@ -536,7 +567,7 @@ class FVMVPMCoupler:
                     )
             else:
                 u_bc_next = np.zeros_like(face_centers)
-                _mixed = getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed"
+                _mixed = self.config.donor_bc_mode == "mixed"
                 omega_bc_next = np.zeros_like(face_centers) if _mixed else None
                 if self._u_bc_prev is None:
                     self._u_bc_prev = np.zeros_like(face_centers)
@@ -549,14 +580,16 @@ class FVMVPMCoupler:
             # ─────────────────────────────────────────────────────────────────
             t2 = time.time()
             self._run_fvm_substeps(
-                patch, face_centers, face_normals, face_areas,
-                self._u_bc_prev, u_bc_next,
-                self._omega_bc_prev, omega_bc_next,
+                patch,
+                face_centers,
+                face_normals,
+                face_areas,
+                self._u_bc_prev,
+                u_bc_next,
+                self._omega_bc_prev,
+                omega_bc_next,
             )
-            if self._is_master:
-                self._u_bc_prev = u_bc_next
-                self._omega_bc_prev = omega_bc_next
-            elif getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
+            if self._is_master or self.config.donor_bc_mode == "mixed":
                 self._u_bc_prev = u_bc_next
                 self._omega_bc_prev = omega_bc_next
 
@@ -576,9 +609,9 @@ class FVMVPMCoupler:
                 eta_fn = self._build_eta_fn()
                 n_before = self.vpm.particles.number_of_particles
                 if n_before > 0:
-                    sum_before = float(np.sum(
-                        np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)
-                    ))
+                    sum_before = float(
+                        np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1))
+                    )
                 else:
                     sum_before = 0.0
 
@@ -587,13 +620,16 @@ class FVMVPMCoupler:
                 n_after = self.vpm.particles.number_of_particles
                 sum_after = 0.0
                 if n_after > 0:
-                    sum_after = float(np.sum(
-                        np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)
-                    ))
+                    sum_after = float(
+                        np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1))
+                    )
 
                 logger.info(
                     "     [Inject] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
-                    n_before, n_after, sum_before, sum_after,
+                    n_before,
+                    n_after,
+                    sum_before,
+                    sum_after,
                 )
                 print()
                 print(f"[Step {step:4d}] t={t_end:.3f}s | Particles: {n_after}")
@@ -614,43 +650,14 @@ class FVMVPMCoupler:
         if self._is_master:
             flush_log()
 
-# =========================================================
+    # =========================================================
     # Neumann vorticity helper (mixed / Robin BC)
-# =========================================================
+    # =========================================================
 
     def _fvm_face_vorticity(self, face_centers: np.ndarray) -> np.ndarray | None:
-        """Interpolate the cached FVM vorticity to boundary face centres.
+        """Nearest-cell FVM vorticity for the mixed boundary condition.
 
-        This is the correct Neumann target for the mixed BC:
-
-          ∂u_t/∂n = ω_FVM × n̂   (Billuart 2023 Eq. 12)
-
-        Using the FVM's own cell vorticity (nearest-cell interpolation)
-        rather than the full particle-cloud vorticity eliminates two
-        sources of noise that caused spurious VPM wake contamination:
-
-        1. **Source inconsistency** (split-donor path): the velocity BC
-           uses exterior particles + live FVM-interior Biot–Savart, while
-           the particle vorticity includes in-box particles that lag one
-           full coupling window. Using FVM vorticity for both halves of
-           the Robin condition removes this mismatch.
-
-        2. **Gaussian smoothing bias**: particle vorticity is filtered by
-           the σ = 1.5h core, systematically under-representing gradients
-           at scales < 2σ. Near the boundary this biases the Neumann
-           gradient down, causing the FVM to generate compensating
-           spurious vorticity every step. FVM cell vorticity has no such
-           filter.
-
-        Returns ``None`` on the first coupling step when ``_omega_global_buffer``
-        has not yet been populated; callers should then fall back to the
-        particle vorticity as a one-time bootstrap.
-
-        The buffer ``_omega_global_buffer`` is populated by
-        ``_get_vorticity_field_buffer()`` at the end of step 3 every cycle,
-        so the values here are always from the most-recently solved FVM step
-        (one coupling-window lag, identical to the lag already present in the
-        velocity BC from the particle side).
+        Returns ``None`` until an FVM vorticity buffer is available.
         """
         if self._omega_global_buffer is None:
             return None  # first step: no FVM solve has occurred yet
@@ -660,9 +667,9 @@ class FVMVPMCoupler:
         if centers is None or centers.shape[0] == 0:
             return None
 
-        # Build the kD-tree once; the mesh never changes during a run.
         if self._bc_omega_tree is None:
             from scipy.spatial import cKDTree
+
             self._bc_omega_tree = cKDTree(np.asarray(centers, dtype=np.float64))
 
         _, idx = self._bc_omega_tree.query(
@@ -670,16 +677,11 @@ class FVMVPMCoupler:
         )
         omega = np.ascontiguousarray(self._omega_global_buffer[idx], dtype=np.float64)
         logger.info(
-            "     [Donor] Neumann ω from FVM nearest-cell  n_face=%d  "
-            "|ω|_max=%.3e s⁻¹",
+            "     [Donor] Neumann ω from FVM nearest-cell  n_face=%d  |ω|_max=%.3e s⁻¹",
             len(face_centers),
             float(np.max(np.linalg.norm(omega, axis=1))) if len(omega) else 0.0,
         )
         return omega
-
-# =========================================================
-    # STEP 1 — Donor velocity BC (overset-style, full particle cloud)
-# =========================================================
 
     def _donor_velocity(
         self,
@@ -690,23 +692,10 @@ class FVMVPMCoupler:
         add_fvm_interior: bool = False,
         fvm_omega: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Donor velocity at boundary face centres (overset/Chimera-style).
+        """Compute the donor velocity and remove its discrete boundary flux.
 
-        Standard donor path — ``exterior_mask=None, add_fvm_interior=False``:
-        U_donor = U_inf + BiotSavart(**all** particles) at face centres.  The
-        full VPM cloud acts as the background donor mesh (no exterior masking).
-
-        Weymouth–Lauber coupled path — ``exterior_mask`` selects the particles
-        *outside* the FVM box and ``add_fvm_interior=True`` adds the Biot–Savart
-        velocity induced by the FVM *interior* vorticity field:
-        U_donor = U_inf + BiotSavart(exterior particles) + BiotSavart(FVM ω).
-        This replaces the (stale, smoothed) in-box particle representation of the
-        interior with the freshly-solved sharp FVM field, closing the BC↔pressure
-        coupling.  No vorticity is dropped — the exterior wake is fully kept (the
-        contrast with the failed near-face exclusion, which deleted it).
-
-        The full analytic field is solenoidal; the residual quadrature flux is
-        projected out (uniform normal shift ε/A_tot, Gresho–Sani compatibility).
+        ``exterior_mask`` selects particle sources. ``add_fvm_interior`` adds
+        induction from the current FVM vorticity field.
         """
         n = len(face_centers)
         assert self.vpm is not None
@@ -729,8 +718,7 @@ class FVMVPMCoupler:
                 )
             else:
                 logger.info(
-                    "     [Donor] exterior particles=%d/%d + FVM-interior BS "
-                    "(coupled BC)",
+                    "     [Donor] exterior particles=%d/%d + FVM-interior BS (coupled BC)",
                     int(exterior_mask.sum()),
                     n_particles,
                 )
@@ -740,40 +728,19 @@ class FVMVPMCoupler:
                 include_freestream=True,
                 zone_mask=exterior_mask,  # None means all particles.
             )
-            # Neumann target for the mixed/Robin BC (Billuart 2023 Eq. 12:
-            # ∂u_t/∂n = ω × n̂).  Use the FVM's own cell vorticity (sharp,
-            # unsmoothed, no core-mollification bias) rather than the full
-            # particle cloud (which includes smoothed, lagged in-box particles
-            # that generate inconsistent Neumann gradients near the boundary).
-            # Falls back to particle vorticity on the first step only.
+            # Prefer the FVM vorticity for the mixed condition after startup.
             _omega_fvm = self._fvm_face_vorticity(face_centers)
             self._last_omega_donor = (
                 _omega_fvm
                 if _omega_fvm is not None
-                else np.asarray(
-                    self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
-                )
+                else np.asarray(self.vpm.compute_target_vorticities(face_centers), dtype=np.float64)
             )
             if add_fvm_interior:
                 u_donor = u_donor + self._fvm_interior_induced_velocity(
                     face_centers, omega=fvm_omega
                 )
 
-# =========================================================
-        # The Biot-Savart donor is analytically solenoidal (∮u·n dA = 0), but
-        # treecode quadrature, finite face-point sampling, and Gaussian core
-        # truncation leave a small residual ε = Σ_f u_f·S_f ≠ 0.  With all
-        # faces fixedValue there is no adjustable patch, so OpenFOAM cannot
-        # call adjustPhi.  The entire defect is instead absorbed by pRefCell=0
-        # (the min-corner cell), producing a pressure monopole there → spurious
-        # vorticity at (x,y,z)_min that regenerates every step.
-        #
-        # Fix: project u_donor onto the discretely solenoidal subspace via the
-        # unique minimum-L²(∂Ω) correction — a uniform normal shift ε/A_tot.
-        # This is not a tuning knob; it is the Gresho-Sani compatibility
-        # condition for the pure-Neumann pressure problem.  The correction is
-        # O(quadrature error), vanishes under mesh/treecode refinement, and
-        # carries no inflow/outflow assumption (works for any flow direction).
+        # A uniform normal correction removes the quadrature flux residual.
         normals = np.asarray(face_normals, dtype=np.float64).reshape(-1, 3)
         areas = np.asarray(face_areas, dtype=np.float64).ravel()
         flux_residual_raw = 0.0
@@ -782,12 +749,10 @@ class FVMVPMCoupler:
             flux_residual_raw = float(np.dot(u_normal, areas))
             total_area = float(np.sum(areas))
 
-            # Minimal-L² projection: subtract uniform normal δu = ε/A_tot
             if total_area > 0.0:
                 delta_u_n = flux_residual_raw / total_area  # scalar [m/s]
                 u_donor = u_donor - delta_u_n * normals
 
-            # Recompute post-projection residual for logging
             u_normal_post = np.einsum("ij,ij->i", u_donor, normals)
             flux_residual_post = float(np.dot(u_normal_post, areas))
 
@@ -835,34 +800,23 @@ class FVMVPMCoupler:
         if not mask.any():
             return
         # Streamwise component = projection of u onto the freestream direction.
-        u_stream = (u_field[mask] @ (np.asarray(self.u_inf) / u_mag))
+        u_stream = u_field[mask] @ (np.asarray(self.u_inf) / u_mag)
         logger.info(
             "     [Donor deficit outflow axis=%d sign=%+d] u_s/U∞ min=%.3f "
             "mean=%.3f max=%.3f  n_face=%d",
-            axis, int(sign), u_stream.min() / u_mag, u_stream.mean() / u_mag,
-            u_stream.max() / u_mag, int(mask.sum()),
+            axis,
+            int(sign),
+            u_stream.min() / u_mag,
+            u_stream.mean() / u_mag,
+            u_stream.max() / u_mag,
+            int(mask.sum()),
         )
 
     def _donor_exterior_velocity(self, face_centers: np.ndarray) -> np.ndarray:
-        """Exterior-wake donor endpoint: U∞ + BS(particles OUTSIDE the box).
+        """Return freestream plus induction from particles outside the FVM box.
 
-        Used by ``donor_interior_source="fvm"``.  Deliberately UNPROJECTED and
-        WITHOUT the interior term: the FVM-interior Biot–Savart is added live
-        at every sub-step and the solenoidal projection is applied to the
-        assembled trace there (projecting the endpoint too would double-count
-        the compatibility shift).
-
-        Exterior sources are at least a buffer width from every face and
-        evolve on the slow VPM timescale, so linearly interpolating THIS term
-        across the window is far more defensible than interpolating the total
-        trace (which smears the fast near-field).
-
-        For ``donor_bc_mode="mixed"``, the Neumann vorticity target uses the
-        FVM's own cell vorticity (via :meth:`_fvm_face_vorticity`), consistent
-        with the FVM-interior split used for the velocity.  Using the full
-        particle cloud here would pair a velocity that excludes in-box particles
-        with a vorticity that includes them, producing a Neumann gradient
-        inconsistent with the imposed normal velocity.
+        Live FVM-interior induction and flux projection are added per substep.
+        Mixed mode obtains its Neumann target from the particle field.
         """
         n = len(face_centers)
         assert self.vpm is not None
@@ -882,10 +836,7 @@ class FVMVPMCoupler:
             include_freestream=True,
             zone_mask=exterior_mask,
         )
-        if getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed":
-            # VPM vorticity for the Robin BC Neumann target.  See comment in
-            # _donor_velocity for why particle vorticity is used instead of FVM
-            # vorticity (FVM vorticity at inlet causes exponential instability).
+        if self.config.donor_bc_mode == "mixed":
             self._last_omega_donor = np.asarray(
                 self.vpm.compute_target_vorticities(face_centers), dtype=np.float64
             )
@@ -916,21 +867,18 @@ class FVMVPMCoupler:
         return u - (eps / total_area) * normals
 
     def _outside_box_mask(self) -> np.ndarray:
-        """Boolean mask of VPM particles strictly OUTSIDE the FVM box.
-
-        Used by the Weymouth–Lauber coupled donor BC to take the *exterior*
-        wake from particles and the *interior* from the FVM field — a clean
-        overset split with no double-counting and, crucially, no vorticity
-        dropped (the entire exterior wake is kept).
-        """
+        """Return a mask of VPM particles outside the FVM box."""
         assert self.vpm is not None
         n = self.vpm.particles.number_of_particles
         pos = np.asarray(self.vpm.particles_positions, dtype=np.float64).reshape(-1, 3)[:n]
         x0, x1, y0, y1, z0, z1 = self.config.fvm_box
         inside = (
-            (pos[:, 0] >= x0) & (pos[:, 0] <= x1)
-            & (pos[:, 1] >= y0) & (pos[:, 1] <= y1)
-            & (pos[:, 2] >= z0) & (pos[:, 2] <= z1)
+            (pos[:, 0] >= x0)
+            & (pos[:, 0] <= x1)
+            & (pos[:, 1] >= y0)
+            & (pos[:, 1] <= y1)
+            & (pos[:, 2] >= z0)
+            & (pos[:, 2] <= z1)
         )
         return ~inside
 
@@ -947,22 +895,7 @@ class FVMVPMCoupler:
     def _fvm_interior_induced_velocity(
         self, targets: np.ndarray, omega: np.ndarray | None = None
     ) -> np.ndarray:
-        """Biot–Savart velocity at ``targets`` induced by the FVM interior vorticity.
-
-        Closes the Weymouth–Lauber BC↔pressure coupling: the box-boundary
-        velocity must include the velocity induced by the vorticity *inside* the
-        box (body boundary layer + near wake), re-evaluated from the freshly
-        solved FVM field each sub-step / Picard iteration.
-
-        Singular kernel regularised with an h-sized core to bound the near-face
-        contribution; source selection (noise floor + hard cap) and the
-        Numba-parallel direct sum live in ``helpers/interior_bs.py``.
-
-        MPI: cell geometry comes from the injector's one-time collective gather;
-        ``omega`` must be passed in when the caller already fetched it on all
-        ranks (fetching here from a rank-0-only section would deadlock the
-        collective getter).
-        """
+        """Evaluate velocity induced by the current FVM vorticity field."""
         from source.coupler.core.helpers import interior_bs
 
         assert self.ofw is not None
@@ -976,9 +909,6 @@ class FVMVPMCoupler:
         if centers is None or centers.shape[0] == 0:
             return np.zeros_like(targets)
 
-        # Weak-remainder pooling at 2h: conserves the diffuse wake circulation
-        # whose induction carves the outflow deficit into the trace (dropping
-        # it pins the boundary near freestream → spurious fast wake recovery).
         src, gamma, info = interior_bs.select_sources(
             omega, centers, vols, pool_h=2.0 * float(self.config.h)
         )
@@ -987,20 +917,17 @@ class FVMVPMCoupler:
         logger.info(
             "     [Donor] FVM-interior BS sources: %d exact + %d pooled bins "
             "(%d above the %.0e·peak floor; %.0f%% of Σ|Γ| represented)",
-            src.shape[0] - info["n_pooled_bins"], info["n_pooled_bins"],
-            info["n_above"], interior_bs.FLOOR_FRACTION,
+            src.shape[0] - info["n_pooled_bins"],
+            info["n_pooled_bins"],
+            info["n_above"],
+            interior_bs.FLOOR_FRACTION,
             100.0 * info["kept_fraction"],
         )
         self._validate_bs_sign_once()
         return interior_bs.bs_velocity(targets, src, gamma, core=float(self.config.h))
 
     def _validate_bs_sign_once(self) -> None:
-        """One-time analytic check of the FVM-interior BS kernel sign.
-
-        A z-aligned vortex (Γ=+ẑ) at the origin must induce +y velocity at
-        (+x,0,0) (counter-clockwise swirl).  Guards against the sign-convention
-        error that previously inverted a Biot–Savart reconstruction.
-        """
+        """Check the Biot–Savart sign convention once per run."""
         if getattr(self, "_bs_sign_ok", False):
             return
         src = np.array([[0.0, 0.0, 0.0]])
@@ -1009,15 +936,11 @@ class FVMVPMCoupler:
         r = tgt[:, None, :] - src[None, :, :]
         r2 = np.einsum("mnk,mnk->mn", r, r) + 1e-6
         cross = np.cross(G[None, :, :], r)
-        u = (1.0 / (4.0 * np.pi)) * np.einsum("mn,mnk->mk", r2 ** -1.5, cross)
+        u = (1.0 / (4.0 * np.pi)) * np.einsum("mn,mnk->mk", r2**-1.5, cross)
         assert u[0, 1] > 0.0 and abs(u[0, 0]) < 1e-9, (
             f"FVM-interior BS sign check failed: u={u[0]} (expected +y swirl)"
         )
         self._bs_sign_ok = True
-
-# =========================================================
-    # STEP 2 — FVM advance with the donor BC pair
-# =========================================================
 
     def _fvm_step(
         self,
@@ -1061,7 +984,7 @@ class FVMVPMCoupler:
                 np.ascontiguousarray(target, dtype=np.float64), patch
             )
 
-        mode = getattr(self.config, "donor_bc_mode", "dirichlet")
+        mode = self.config.donor_bc_mode
         if mode == "mixed":
             if omega_target is None:
                 logger.warning(
@@ -1106,45 +1029,38 @@ class FVMVPMCoupler:
         omega_prev: np.ndarray | None = None,
         omega_next: np.ndarray | None = None,
     ) -> None:
-        """Advance the FVM ``period_multiplier`` sub-steps over one VPM cycle.
-
-        Sub-step k (0..N−1) imposes the donor velocity linearly interpolated to
-        α = (k+1)/N between the previous cycle's BC (``u_prev``, α→0) and this
-        cycle's *future* BC (``u_next``, α=1) — i.e. the BC at each sub-step's
-        **new** time level (backward-Euler-consistent) — re-projected solenoidal
-        so every sub-step sees a discretely divergence-free Dirichlet field.
-
-        When ``donor_bc_mode == "mixed"``, the donor vorticity is interpolated
-        the same way (``omega_prev`` → ``omega_next``) and passed to
-        ``_fvm_step`` as the Neumann target.
-
-        The final sub-step (α=1) runs the Weymouth–Lauber donor↔pressure Picard
-        when ``bc_coupling_iterations > 1``; otherwise each sub-step is a single
-        ``solve_pimple`` + ``advance_time``.
-        """
+        """Advance FVM substeps with interpolated donor boundary data."""
         N = max(1, int(self.period_multiplier))
         n_bc = max(1, int(self.config.bc_coupling_iterations))
         u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
-        mixed = getattr(self.config, "donor_bc_mode", "dirichlet") == "mixed"
+        mixed = self.config.donor_bc_mode == "mixed"
 
-        if getattr(self.config, "donor_interior_source", "particles") == "fvm":
+        if self.config.donor_interior_source == "fvm":
             self._run_fvm_substeps_live_interior(
-                patch, face_centers, face_normals, face_areas,
-                u_prev, u_next, omega_prev, omega_next,
-                N=N, n_bc=n_bc, mixed=mixed, u_inf_mag=u_inf_mag,
+                patch,
+                face_centers,
+                face_normals,
+                face_areas,
+                u_prev,
+                u_next,
+                omega_prev,
+                omega_next,
+                N=N,
+                n_bc=n_bc,
+                mixed=mixed,
+                u_inf_mag=u_inf_mag,
             )
             return
 
         if N > 1 and u_next.shape[0] > 0:
-            # Physical guard: linear interpolation under-resolves the wake if the
-            # donor BC changes a lot across one VPM cycle (Co_vpm too large).
-            # Skipped on non-master MPI ranks (empty boundary arrays).
             dU = float(np.max(np.linalg.norm(u_next - u_prev, axis=1))) / u_inf_mag
             big = dU > 0.5
             logger.log(
                 logging.WARNING if big else logging.INFO,
                 "     [Sub-cycle] %d×dt_fvm=%.3e s  donor ΔBC max|Δu|/U∞=%.3f%s",
-                N, self.dt_fvm, dU,
+                N,
+                self.dt_fvm,
+                dU,
                 "  (large — lower dt or period_multiplier)" if big else "",
             )
 
@@ -1152,18 +1068,14 @@ class FVMVPMCoupler:
             alpha = (sub + 1) / N
             is_final = sub == N - 1
             if is_final and n_bc > 1:
-                # Weymouth–Lauber donor↔pressure Picard at the full future BC.
                 exterior_mask = self._outside_box_mask() if self._is_master else None
                 for k in range(n_bc):
-                    # Collective on all ranks.  Rank 0 assembles the full
-                    # Weymouth–Lauber donor; non-master ranks pass zero arrays
-                    # that the C++ pstreamScatter overwrites with rank-0's data.
-                    # Both ranks MUST call the same setter (Robin or Dirichlet)
-                    # to keep the MPI collectives in sync.
                     omega_interior = self._get_vorticity_field_buffer()
                     if self._is_master:
                         u_wl = self._donor_velocity(
-                            face_centers, face_normals, face_areas,
+                            face_centers,
+                            face_normals,
+                            face_areas,
                             exterior_mask=exterior_mask,
                             add_fvm_interior=True,
                             fvm_omega=omega_interior,
@@ -1173,7 +1085,9 @@ class FVMVPMCoupler:
                         u_wl = np.zeros_like(face_centers)
                         omega_wl = np.zeros_like(face_centers) if mixed else None
                     self._fvm_step(
-                        patch, u_wl, advance=(k == n_bc - 1),
+                        patch,
+                        u_wl,
+                        advance=(k == n_bc - 1),
                         omega_target=omega_wl if mixed else None,
                     )
             else:
@@ -1188,7 +1102,9 @@ class FVMVPMCoupler:
                     elif omega_prev is not None:
                         omega_bc = omega_prev
                 self._fvm_step(
-                    patch, u_bc, advance=True,
+                    patch,
+                    u_bc,
+                    advance=True,
                     omega_target=omega_bc if mixed else None,
                 )
 
@@ -1208,25 +1124,7 @@ class FVMVPMCoupler:
         mixed: bool,
         u_inf_mag: float,
     ) -> None:
-        """FVM sub-cycle with the Weymouth–Lauber-consistent split donor.
-
-        Sub-step k imposes
-
-            u_bc = interp_α(U∞ + BS(exterior particles))      [slow, interpolated]
-                 + BS(FVM interior ω, LIVE)                     [fast, never stale]
-
-        re-projected onto the discretely solenoidal subspace, where the
-        interior term is re-evaluated from the current FVM vorticity before
-        every solve.  With ``n_bc > 1`` the solve is Picard-iterated per
-        sub-step: iteration k ≥ 1 re-fetches the post-solve vorticity, so the
-        boundary trace becomes consistent with the interior at the sub-step's
-        NEW time level (the BC↔pressure closure of Weymouth & Lauber); the
-        time step is committed on the final iteration only.
-
-        MPI: the vorticity gather is collective and runs on ALL ranks every
-        iteration; the Biot–Savart and trace assembly are rank-0-only (the
-        boundary arrays are empty elsewhere; the C++ BC scatter distributes).
-        """
+        """Advance substeps while recomputing FVM-interior induction."""
         if N > 1 and u_ext_next.shape[0] > 0:
             dU = float(np.max(np.linalg.norm(u_ext_next - u_ext_prev, axis=1))) / u_inf_mag
             big = dU > 0.5
@@ -1234,7 +1132,9 @@ class FVMVPMCoupler:
                 logging.WARNING if big else logging.INFO,
                 "     [Sub-cycle] %d×dt_fvm=%.3e s  exterior donor ΔBC "
                 "max|Δu|/U∞=%.3f  (interior term is live)%s",
-                N, self.dt_fvm, dU,
+                N,
+                self.dt_fvm,
+                dU,
                 "  (large — lower dt or period_multiplier)" if big else "",
             )
 
@@ -1251,39 +1151,40 @@ class FVMVPMCoupler:
                     omega_bc = omega_prev
 
             for k in range(n_bc):
-                # Collective on ALL ranks; refreshed each iteration so k ≥ 1
-                # sees the post-solve interior (new-time-level closure).
                 t_w = time.time()
                 omega_interior = self._get_vorticity_field_buffer()
                 t_w = time.time() - t_w
                 t_bs = time.time()
                 if self._is_master and u_ext.shape[0] > 0:
-                    u_int = self._fvm_interior_induced_velocity(
-                        face_centers, omega=omega_interior
-                    )
-                    u_bc = self._project_to_solenoidal(
-                        u_ext + u_int, face_normals, face_areas
-                    )
+                    u_int = self._fvm_interior_induced_velocity(face_centers, omega=omega_interior)
+                    u_bc = self._project_to_solenoidal(u_ext + u_int, face_normals, face_areas)
                 else:
                     u_bc = u_ext
                 t_bs = time.time() - t_bs
                 if self._is_master:
                     logger.info(
                         "     [Sub-cycle] sub=%d/%d it=%d/%d  ω-gather=%.2fs  BS+proj=%.2fs",
-                        sub + 1, N, k + 1, n_bc, t_w, t_bs,
+                        sub + 1,
+                        N,
+                        k + 1,
+                        n_bc,
+                        t_w,
+                        t_bs,
                     )
                     if sub == N - 1 and k == n_bc - 1 and u_bc.shape[0] > 0:
                         # Outflow deficit on the fully assembled (exterior +
                         # live interior) trace; direction-agnostic.
                         self._log_outflow_deficit(face_centers, u_bc)
                 self._fvm_step(
-                    patch, u_bc, advance=(k == n_bc - 1),
+                    patch,
+                    u_bc,
+                    advance=(k == n_bc - 1),
                     omega_target=omega_bc if mixed else None,
                 )
 
-# =========================================================
+    # =========================================================
     # ETA (authority weight)
-# =========================================================
+    # =========================================================
 
     def _build_eta_fn(self):
         """Return a callable eta(x) for the continuous hand-off."""
@@ -1296,9 +1197,9 @@ class FVMVPMCoupler:
 
         return eta_fn
 
-# =========================================================
+    # =========================================================
     # Restart support
-# =========================================================
+    # =========================================================
 
     def load_vpm_from_backup(self, backup_h5_path: str) -> int:
         """Load VPM state from an H5 backup."""

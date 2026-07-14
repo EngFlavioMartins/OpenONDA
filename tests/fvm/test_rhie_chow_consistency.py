@@ -1,15 +1,11 @@
 import numpy as np
-import pytest
 
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
-from source.solvers.FVM.assemble.matrix_assembly import assemble_matrix_from_fluxes_vectorized
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
 from source.solvers.FVM.solve.simple_solver import (
+    _compute_pressure_face_conductance,
+    _compute_rhie_chow_coefficients,
     assemble_pressure_correction_equation_rhie_chow,
     correct_velocity_and_flux,
-    _compute_rhie_chow_coefficients,
     update_scalar_boundaries,
 )
 
@@ -38,14 +34,28 @@ class TestRhieChowConsistency:
         U = np.zeros((n_elem + mesh["n_faces"] - mesh["n_interior_faces"], 3))
         p = np.zeros(n_elem + mesh["n_faces"] - mesh["n_interior_faces"])
         A_p, b_p, phi_star = assemble_pressure_correction_equation_rhie_chow(
-            U, A_U, p, 1.0, mesh, geo, mesh["boundary"], alpha_u=alpha_u,
+            U,
+            A_U,
+            p,
+            1.0,
+            mesh,
+            geo,
+            mesh["boundary"],
+            alpha_u=alpha_u,
         )
 
         # From correction (uses A_U * alpha_u internally)
         p_prime = np.zeros(n_elem)
         U_corr, phi_corr = correct_velocity_and_flux(
-            U.copy(), phi_star.copy(), p_prime, A_U, mesh, geo, mesh["boundary"],
-            rho=1.0, alpha_u=alpha_u,
+            U.copy(),
+            phi_star.copy(),
+            p_prime,
+            A_U,
+            mesh,
+            geo,
+            mesh["boundary"],
+            rho=1.0,
+            alpha_u=alpha_u,
         )
 
         # Direct computation
@@ -62,3 +72,54 @@ class TestRhieChowConsistency:
         DU_1 = _compute_rhie_chow_coefficients(volumes, A_U * 1.0)
         DU_05 = _compute_rhie_chow_coefficients(volumes, A_U * 0.5)
         assert np.allclose(DU_05, 2.0 * DU_1)
+
+    def test_pressure_solve_removes_flux_defect_on_skewed_mesh(self):
+        """Assembly and correction must conserve with the same non-orthogonal metric."""
+        from scipy.sparse.linalg import spsolve
+
+        from source.solvers.FVM.fields.diagnostics import compute_continuity_error
+
+        from ._structured_mesh import structured_box
+
+        mesh = structured_box(3, 3, 2)
+        # Affine shear makes Sf non-parallel to the owner-neighbour vector while
+        # preserving a valid mesh and exact cell connectivity.
+        mesh["points"][:, 0] += 0.35 * mesh["points"][:, 1]
+        geo = compute_mesh_geometry(mesh)
+
+        for patch in mesh["boundary"]:
+            patch["bc_type_U"] = "zeroGradient"
+            patch["bc_type_p"] = "fixedValue" if patch["name"] == "xmax" else "zeroGradient"
+            patch["value_p"] = 0.0
+
+        n = mesh["n_elements"]
+        nb = mesh["n_faces"] - mesh["n_interior_faces"]
+        rng = np.random.default_rng(17)
+        U = rng.normal(scale=0.1, size=(n + nb, 3))
+        p = rng.normal(scale=0.05, size=n + nb)
+        update_scalar_boundaries(p, mesh, mesh["boundary"], field_name="p")
+        A_U = np.full((n, 3), 4.0)
+
+        A_p, b_p, phi_star = assemble_pressure_correction_equation_rhie_chow(
+            U, A_U, p, 1.0, mesh, geo, mesh["boundary"]
+        )
+        p_prime = spsolve(A_p, b_p)
+        _, phi = correct_velocity_and_flux(
+            U.copy(), phi_star.copy(), p_prime, A_U, mesh, geo, mesh["boundary"]
+        )
+
+        linear_residual = np.linalg.norm(A_p @ p_prime - b_p)
+        continuity = compute_continuity_error(phi, mesh, geo)
+        assert linear_residual < 1e-11
+        assert np.max(np.abs(continuity)) < 2e-11
+
+    def test_face_conductance_is_positive_on_skewed_mesh(self):
+        from ._structured_mesh import structured_box
+
+        mesh = structured_box(2, 2, 2)
+        mesh["points"][:, 0] += 0.25 * mesh["points"][:, 1]
+        geo = compute_mesh_geometry(mesh)
+        DU = np.ones((mesh["n_elements"], 3))
+        conductance = _compute_pressure_face_conductance(mesh, geo, DU)
+        assert conductance.shape == (mesh["n_faces"],)
+        assert np.all(conductance > 0.0)

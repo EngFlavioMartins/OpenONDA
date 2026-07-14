@@ -3,11 +3,11 @@ import pytest
 
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
 
+gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
+
 
 class TestGmshImporter:
-
     def test_imported_mesh_topology(self):
-        import gmsh
         gmsh.initialize()
         try:
             model = gmsh.model
@@ -36,7 +36,6 @@ class TestGmshImporter:
             assert np.all(f >= 0)
 
     def test_orphan_boundary_creates_default_patch(self):
-        import gmsh
         gmsh.initialize()
         try:
             model = gmsh.model

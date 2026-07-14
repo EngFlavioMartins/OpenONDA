@@ -20,14 +20,14 @@ assembly and solve work correctly.
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
 
 def _phi_exact(x, y, z):
@@ -69,7 +69,7 @@ class TestMMSSteadyDiffusion:
     @pytest.mark.slow
     def test_consistency(self):
         """L₂ error of φ_sol vs φ_exact should be at solver‑tolerance level."""
-        import gmsh
+        gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
         for lcar in [0.5, 0.25]:
             gmsh.initialize()
@@ -94,11 +94,10 @@ class TestMMSSteadyDiffusion:
             R = A @ phi_exact - b
             b_mms = b + R  # → A·φ_sol = b + R = A·φ_exact
 
-            phi_sol = solve_linear_system(A, b_mms, method="spsolve",
-                                          equation_type="scalar")
+            phi_sol = solve_linear_system(A, b_mms, method="spsolve", equation_type="scalar")
 
             diff = phi_sol - phi_exact
-            err = np.sqrt(np.sum(vol * diff ** 2) / np.sum(vol))
+            err = np.sqrt(np.sum(vol * diff**2) / np.sum(vol))
             assert err < 1e-12, f"Discrete‑source MMS error too large: {err:.2e}"
 
     def test_single_residual(self, gmsh_unit_cube):
@@ -109,7 +108,6 @@ class TestMMSSteadyDiffusion:
 
         R = A @ phi_exact - b
         b_mms = b + R
-        phi_sol = solve_linear_system(A, b_mms, method="spsolve",
-                                      equation_type="scalar")
+        phi_sol = solve_linear_system(A, b_mms, method="spsolve", equation_type="scalar")
         assert phi_sol.shape == (mesh["n_elements"],)
         assert np.all(np.isfinite(phi_sol))

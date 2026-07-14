@@ -20,6 +20,7 @@ from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
 from ..mesh import geometry, mesh_io
 from ..solve import pimple_solver, simple_solver
+from .parallel import ParallelContext
 
 
 def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
@@ -154,12 +155,21 @@ class Solver(OFWInterfaceMixin):
         self.config = config
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         self.auto_write = True
+        self.parallel = ParallelContext.create(self.config.execution)
+        if self.config.execution.linear_backend == "petsc":
+            method = str(self.config.solver.linear_solver).lower()
+            if method not in {"bicgstab", "gmres", "cg", "amg"}:
+                raise ValueError(
+                    "PETSc execution requires linear_solver to be bicgstab, gmres, cg, "
+                    f"or amg; got {self.config.solver.linear_solver!r}. Distributed "
+                    "direct factorization is intentionally not assumed."
+                )
 
         # Fail fast on typo'd / unsupported scheme or turbulence-model names
         # (otherwise the error only surfaces deep inside the first assembly).
         from ..schemes import validate_solver_params, validate_turbulence
 
-        validate_solver_params(self.config.solver)
+        validate_solver_params(self.config.solver, self.config.time)
         validate_turbulence(self.config.turbulence)
 
         # 0. UI Header
@@ -175,6 +185,10 @@ class Solver(OFWInterfaceMixin):
             self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
             logging.Timer.log("  Mesh Load (Disk)")
 
+        from ..mesh.validation import validate_mesh
+
+        validate_mesh(self.mesh_data)
+
         # 2. Geometry Computation
         logging.Timer.start("  Geometry Compute")
         from ..mesh import cache
@@ -182,6 +196,7 @@ class Solver(OFWInterfaceMixin):
         self.cache = cache.WeightCache(is_dynamic=(config.dynamic_mesh.method != "static"))
         gs = getattr(self.config.solver, "gradient_scheme", "gauss")
         self.geo_data = geometry.compute_mesh_geometry(self.mesh_data, gradient_scheme=gs)
+        self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
 
         if not self.cache.is_dynamic:
             self.cache.set_static_weights(
@@ -194,6 +209,9 @@ class Solver(OFWInterfaceMixin):
         # 3. Component Setup
         self.boundaries = self.mesh_data["boundary"]
         self._setup_boundary_conditions()
+        from ..schemes import validate_boundary_conditions
+
+        validate_boundary_conditions(self.boundaries)
         self._initialize_fields()
         self._initialize_algorithm()
         self._initialize_turbulence()
@@ -335,6 +353,9 @@ class Solver(OFWInterfaceMixin):
             params = self.config.solver.to_dict()  # type: ignore[union-attr]
         else:
             params = vars(self.config.solver)
+        params = dict(params)
+        params["_linear_backend"] = self.config.execution.linear_backend
+        params["_parallel_context"] = self.parallel
         algo = self.config.solver.algorithm.upper()
 
         if algo in ["PIMPLE", "PISO"]:
@@ -492,8 +513,18 @@ class Solver(OFWInterfaceMixin):
                 )
             for name, F in forces.items():
                 writer.writerow(
-                    [self.flow_time, self.time_step, step_dt, name,
-                     F[0], F[1], F[2], F[0] / q, F[1] / q, slip]
+                    [
+                        self.flow_time,
+                        self.time_step,
+                        step_dt,
+                        name,
+                        F[0],
+                        F[1],
+                        F[2],
+                        F[0] / q,
+                        F[1] / q,
+                        slip,
+                    ]
                 )
         msg = "  IBM forces:"
         for name, F in forces.items():
@@ -557,7 +588,8 @@ class Solver(OFWInterfaceMixin):
             source_implicit=src_imp,
         )
         self._last_residuals = residuals
-        logging.Logging.convergence_info(residuals)
+        if self.parallel.is_root:
+            logging.Logging.convergence_info(residuals)
 
         # Continuity (incompressibility) diagnostic: a divergence-free solution
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
@@ -566,17 +598,18 @@ class Solver(OFWInterfaceMixin):
         vol = self.geo_data["element_volumes"]
         self.continuity_max = float(np.max(np.abs(cont) / (vol + 1e-30)))
         self.continuity_sum = float(np.sum(np.abs(cont)))
-        print(
-            f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
-            f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
-        )
+        if self.parallel.is_root:
+            print(
+                f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
+                f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
+            )
 
         # Surface divergence loudly instead of hiding it behind a velocity clip.
-        if not np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])):
-            print(
-                "  WARNING: non-finite velocity detected — the solution is "
-                "diverging (try a smaller dt, more correctors, or a bounded "
-                "convection scheme)."
+        finite = bool(np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])))
+        if not self.parallel.global_all(finite):
+            raise FloatingPointError(
+                "Non-finite velocity detected on at least one rank; aborting the "
+                "PIMPLE step instead of writing a corrupted parallel state."
             )
         return residuals
 
@@ -611,7 +644,9 @@ class Solver(OFWInterfaceMixin):
                 self.U, self.phi, step_dt, self.mesh_data, self.geo_data
             )
             self.cfl_max = float(np.max(Co_field))
-            print(f"  max Co = {self.cfl_max:.3f}  dt = {step_dt:.6f} s  (target Co <= {cfg_time.max_cfl})")
+            print(
+                f"  max Co = {self.cfl_max:.3f}  dt = {step_dt:.6f} s  (target Co <= {cfg_time.max_cfl})"
+            )
             sys.stdout.flush()
 
         self.advance_time()
@@ -637,36 +672,47 @@ class Solver(OFWInterfaceMixin):
 
         # y+ and Turbulence info
         patch_names = getattr(self.config.solver, "yplus_patches", None)
-        yplus_stats = diagnostics.compute_y_plus(
-            self.U,
-            self.config.transport.nu,
-            self.mesh_data,
-            self.geo_data,
-            self.boundaries,
-            patch_names=patch_names,
-        )
-        logging.Logging.yplus_info(yplus_stats)
+        if self.parallel.is_root:
+            yplus_stats = diagnostics.compute_y_plus(
+                self.U,
+                self.config.transport.nu,
+                self.mesh_data,
+                self.geo_data,
+                self.boundaries,
+                patch_names=patch_names,
+            )
+            logging.Logging.yplus_info(yplus_stats)
 
         # Force computation and logging
-        force_interval = getattr(self.config.solver, 'force_log_interval', None)
+        force_interval = getattr(self.config.solver, "force_log_interval", None)
         if force_interval is None:
             force_interval = cfg_time.write_interval
 
         self._force_log_counter += 1
-        if self._force_log_counter % force_interval == 0 or self._force_log_counter == 1:
-            ref_U = getattr(self.config.solver, 'ref_velocity', 1.0)
-            ref_area = getattr(self.config.solver, 'ref_area', 1.0)
-            ref_length = getattr(self.config.solver, 'ref_length', 1.0)
+        if self.parallel.is_root and (
+            self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
+        ):
+            ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
+            ref_area = getattr(self.config.solver, "ref_area", 1.0)
+            ref_length = getattr(self.config.solver, "ref_length", 1.0)
             mu = self.config.transport.nu * self.config.transport.density
             rho = self.config.transport.density
 
-            patches = getattr(self.config.solver, 'force_patches', None)
+            patches = getattr(self.config.solver, "force_patches", None)
 
             forces = diagnostics.compute_surface_forces(
-                self.U, self.p, mu, rho, self.mesh_data, self.geo_data,
-                self.boundaries, patch_names=patches,
-                ref_U=ref_U, ref_area=ref_area, ref_length=ref_length,
-                moment_centre=getattr(self.config.solver, 'moment_centre', [0, 0, 0])
+                self.U,
+                self.p,
+                mu,
+                rho,
+                self.mesh_data,
+                self.geo_data,
+                self.boundaries,
+                patch_names=patches,
+                ref_U=ref_U,
+                ref_area=ref_area,
+                ref_length=ref_length,
+                moment_centre=getattr(self.config.solver, "moment_centre", [0, 0, 0]),
             )
             self.last_forces = forces
 
@@ -677,21 +723,53 @@ class Solver(OFWInterfaceMixin):
             with open(csv_path, "a") as fh:
                 writer = csv.writer(fh)
                 if write_header:
-                    writer.writerow(["time", "step", "dt", "patch", "Fpx", "Fpy", "Fpz",
-                                     "Fvx", "Fvy", "Fvz", "Ftx", "Fty", "Ftz",
-                                     "Cd", "Cl", "Cz", "Cm"])
+                    writer.writerow(
+                        [
+                            "time",
+                            "step",
+                            "dt",
+                            "patch",
+                            "Fpx",
+                            "Fpy",
+                            "Fpz",
+                            "Fvx",
+                            "Fvy",
+                            "Fvz",
+                            "Ftx",
+                            "Fty",
+                            "Ftz",
+                            "Cd",
+                            "Cl",
+                            "Cz",
+                            "Cm",
+                        ]
+                    )
                 for pname, fdata in forces.items():
                     Fp = fdata.get("Fp", [0, 0, 0])
                     Fv = fdata.get("Fv", [0, 0, 0])
                     Ft = fdata.get("Ftot", [0, 0, 0])
                     C = fdata.get("coeffs", {})
-                    writer.writerow([
-                        self.flow_time, self.time_step, step_dt, pname,
-                        Fp[0], Fp[1], Fp[2],
-                        Fv[0], Fv[1], Fv[2],
-                        Ft[0], Ft[1], Ft[2],
-                        C.get("Cd"), C.get("Cl"), C.get("Cz"), C.get("Cm")
-                    ])
+                    writer.writerow(
+                        [
+                            self.flow_time,
+                            self.time_step,
+                            step_dt,
+                            pname,
+                            Fp[0],
+                            Fp[1],
+                            Fp[2],
+                            Fv[0],
+                            Fv[1],
+                            Fv[2],
+                            Ft[0],
+                            Ft[1],
+                            Ft[2],
+                            C.get("Cd"),
+                            C.get("Cl"),
+                            C.get("Cz"),
+                            C.get("Cm"),
+                        ]
+                    )
             log_msg = f"  Forces logged: {len(forces)} patch(es)"
             for pname, fdata in forces.items():
                 C = fdata.get("coeffs", {})
@@ -699,14 +777,14 @@ class Solver(OFWInterfaceMixin):
             print(log_msg)
             sys.stdout.flush()
 
-        if self.ibm is not None:
+        if self.parallel.is_root and self.ibm is not None:
             self._log_ibm_forces(step_dt)
 
-        if self.turbulence and self.nut is not None:
+        if self.parallel.is_root and self.turbulence and self.nut is not None:
             logging.Logging.turbulence_info(self.nut, self.config.transport.nu)
 
         # Output control — time-based if write_interval_time is set, else step-based
-        if self.auto_write:
+        if self.parallel.is_root and self.auto_write:
             wrt_time = cfg_time.write_interval_time
             if wrt_time is not None:
                 self._time_since_last_write += step_dt
@@ -728,6 +806,8 @@ class Solver(OFWInterfaceMixin):
             filename: Optional output path.  If ``None``, auto-generates
                       ``solution/{case_name}_{step:06d}.vtu``.
         """
+        if not self.parallel.is_root:
+            return
         sol_dir = os.path.join(self.case_dir, "solution")
         if self.vtk_exporter is None:
             from ..io.vtk_exporter import VTKExporter

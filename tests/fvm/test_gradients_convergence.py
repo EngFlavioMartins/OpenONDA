@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
 def _l2_error(grad_computed, grad_exact, volumes):
     err = grad_computed - grad_exact
-    return np.sqrt(np.sum(volumes[:, np.newaxis] * (err ** 2))) / np.sqrt(np.sum(volumes))
+    return np.sqrt(np.sum(volumes[:, np.newaxis] * (err**2))) / np.sqrt(np.sum(volumes))
 
 
 def _set_ghost_cells_to_analytic(phi, mesh, geo, func):
@@ -58,7 +58,7 @@ class TestGradientConvergence:
     def test_gradient_error_bounded(self):
         """Verify the Gauss‑linear gradient error does not diverge with
         refinement on tetrahedral meshes."""
-        import gmsh
+        gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
         errors = []
         for lcar in [0.5, 0.25, 0.125]:

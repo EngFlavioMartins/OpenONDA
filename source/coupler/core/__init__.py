@@ -8,10 +8,6 @@ Date: June 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-try:
-    from .solver import FVMVPMCoupler
-except ImportError:
-    print("ERROR: FVMVPMCoupler import failed. Check Cython extensions / OpenFOAM linkage.")
-    raise
+from .solver import FVMVPMCoupler
 
 __all__ = ["FVMVPMCoupler"]

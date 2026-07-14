@@ -176,7 +176,7 @@ def assemble_diffusion_term_boundary_fixed_value(phi, gamma, boundary_patch, mes
     }
 
 
-def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundaries):
+def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundaries, face_flux=None):
     """
     Assemble complete diffusion term for all faces.
 
@@ -186,7 +186,10 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
         gamma: Diffusion coefficient (n_elements,)
         mesh_data: Mesh connectivity
         geo_data: Geometric data
-        boundaries: List of boundary patch dictionaries
+        boundaries: List of boundary patch dictionaries.
+        face_flux: Optional signed face flux.  Required to distinguish the
+            inflow (Dirichlet) and outflow (zero-gradient) portions of an
+            ``inletOutlet`` patch.
 
     Returns:
         dict: Complete flux data for all faces
@@ -216,17 +219,17 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             # Empty BC: no flux contribution
             continue
 
-        elif bc_type in ["fixedValue", "Dirichlet", "noSlip"]:
-            if bc_type == "noSlip":
-                # Force zero value for noSlip regardless of field content
-                # We need to ensure phi[b_elem] is 0 or passed correctly.
-                # Actually, phi_b is read from phi[b_elem_indices].
-                # For noSlip, it should be 0.
-                pass
-
+        elif bc_type in ["fixedValue", "Dirichlet", "noSlip", "directionMixed"]:
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 phi, gamma, boundary, mesh_data, geo_data
             )
+
+            if bc_type == "noSlip":
+                # Enforce the mathematical value independently of ghost state.
+                indices = b_fluxes["face_indices"]
+                owners_b = mesh_data["owners"][indices]
+                b_fluxes["flux_vf"][:] = 0.0
+                b_fluxes["flux_tf"][:] = b_fluxes["flux_cf"] * phi[owners_b]
 
             indices = b_fluxes["face_indices"]
             flux_cf[indices] = b_fluxes["flux_cf"]
@@ -234,10 +237,27 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             flux_vf[indices] = b_fluxes["flux_vf"]
             flux_tf[indices] = b_fluxes["flux_tf"]
 
+        elif bc_type == "inletOutlet":
+            # Diffusion is Dirichlet only on reverse-flow/inflow faces; it is
+            # zero-gradient on outflow.  Without a signed face flux, retain the
+            # conservative zero-gradient behavior.
+            if face_flux is None:
+                continue
+            b_fluxes = assemble_diffusion_term_boundary_fixed_value(
+                phi, gamma, boundary, mesh_data, geo_data
+            )
+            indices = b_fluxes["face_indices"]
+            inflow = np.asarray(face_flux)[indices] < 0.0
+            flux_cf[indices] = np.where(inflow, b_fluxes["flux_cf"], 0.0)
+            flux_ff[indices] = 0.0
+            flux_vf[indices] = np.where(inflow, b_fluxes["flux_vf"], 0.0)
+            flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
+
         elif bc_type == "zeroGradient":
             # Zero gradient: no flux contribution
             pass
 
-        # Add more BC types as needed
+        else:
+            raise ValueError(f"Unsupported diffusion boundary condition: {bc_type!r}")
 
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}

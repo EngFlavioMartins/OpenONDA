@@ -2,11 +2,16 @@ import os
 from typing import Any
 
 import numpy as np
-import pyvista as pv
-import vtk
 
-# Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
-vtk.vtkObject.GlobalWarningDisplayOff()
+try:
+    import pyvista as pv
+    import vtk
+except ImportError:  # Optional visualization dependencies.
+    pv = None
+    vtk = None
+else:
+    # Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
+    vtk.vtkObject.GlobalWarningDisplayOff()
 
 
 class VTKExporter:
@@ -29,6 +34,10 @@ class VTKExporter:
                        ``owners``, ``neighbours``, ``n_elements``,
                        ``n_interior_faces``).
         """
+        if pv is None or vtk is None:
+            raise ImportError(
+                "VTK export requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
+            )
         self.mesh_data = mesh_data
         self._grid = self._initialize_grid()
 

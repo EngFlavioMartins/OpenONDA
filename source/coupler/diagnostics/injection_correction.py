@@ -27,12 +27,6 @@ The correction has the analytic form:
 where w_i = |Γ_i| is the particle weight and λ = [λ_Γ, λ_I, λ_A] are
 Lagrange multipliers found by solving a 9×9 linear system.
 
-Computational Cost
-------------------
-- NumPy implementation: O(N) for matrix build + O(1) for 9×9 solve
-- Taichi implementation: O(N/P) with P parallel threads + O(1) for solve
-- Typical runtime: ~5-20ms for 100k particles (NumPy), ~1-3ms (Taichi)
-
 References
 ----------
 - Cottet & Koumoutsakos (2000), "Vortex Methods", Chapter 8
@@ -56,15 +50,6 @@ import signal
 import numpy as np
 
 logger = logging.getLogger("coupler")
-
-# Try to import Taichi for GPU acceleration (optional)
-try:
-    import taichi as ti  # noqa: F401  (availability probe)
-
-    TAICHI_AVAILABLE = True
-except ImportError:
-    TAICHI_AVAILABLE = False
-    logger.debug("Taichi not available - using NumPy backend only")
 
 # =========================================================
 # FPE guard: temporarily disable hardware FPE traps installed by OpenFOAM
@@ -95,6 +80,7 @@ try:
 except Exception:
     pass
 
+
 @contextmanager
 def _suspend_fpe_traps():
     """Context manager to disable hardware FPE traps around LAPACK calls.
@@ -108,7 +94,6 @@ def _suspend_fpe_traps():
     block.
     """
     if _libm is not None and hasattr(_libm, "fedisableexcept"):
-# =========================================================
         # fedisableexcept returns the old set of enabled traps
         old_traps = _libm.fedisableexcept(_FE_ALL_EXCEPT)
         try:
@@ -118,7 +103,6 @@ def _suspend_fpe_traps():
             if old_traps & _FE_ALL_EXCEPT:
                 _libm.feenableexcept(old_traps & _FE_ALL_EXCEPT)
     else:
-# =========================================================
         old_handler = signal.getsignal(signal.SIGFPE)
         signal.signal(signal.SIGFPE, signal.SIG_DFL)
         try:
@@ -127,6 +111,7 @@ def _suspend_fpe_traps():
             if callable(old_handler) or old_handler in (signal.SIG_DFL, signal.SIG_IGN):
                 with contextlib.suppress(OSError, ValueError):
                     signal.signal(signal.SIGFPE, old_handler)
+
 
 @dataclass
 class CorrectionStats:
@@ -138,6 +123,7 @@ class CorrectionStats:
     residual_error: float  # Post-correction conservation error
     condition_number: float  # Condition number of system matrix
     num_particles: int  # Number of particles corrected
+
 
 def recover_invariants(
     pos: np.ndarray,
@@ -171,7 +157,7 @@ def recover_invariants(
             If None, the centroid of the particles is used. Shifting the reference
             to the centroid improves numerical conditioning and prevents
             non-physical "moving body" effects in low-circulation regions.
-        use_taichi: If True and available, use GPU-accelerated version
+        use_taichi: Reserved for a future accelerated implementation.
         return_stats: If True, return (corrected_circ, stats) tuple
         tolerance_ratio: If net circulation target is less than this fraction
              of the integrated vorticity magnitude, the correction is bypassed
@@ -210,27 +196,24 @@ def recover_invariants(
         if target_invariants[key].shape != (3,):
             raise ValueError(f"{key} must be shape (3,), got {target_invariants[key].shape}")
 
-    # Choose backend
-    if use_taichi and TAICHI_AVAILABLE and N > 50000:
-        circ_corrected, stats = _recover_invariants_taichi(
-            pos, circ, target_invariants, reference_point, tolerance_ratio
-        )
-    else:
-        circ_corrected, stats = _recover_invariants_numpy(
-            pos,
-            circ,
-            target_invariants,
-            reference_point,
-            tolerance_ratio,
-            conserve_circulation,
-            conserve_linear_impulse,
-            conserve_angular_impulse,
-            volumes=volumes,
-        )
+    if use_taichi:
+        raise NotImplementedError("Taichi invariant correction is not implemented")
+    circ_corrected, stats = _recover_invariants_numpy(
+        pos,
+        circ,
+        target_invariants,
+        reference_point,
+        tolerance_ratio,
+        conserve_circulation,
+        conserve_linear_impulse,
+        conserve_angular_impulse,
+        volumes=volumes,
+    )
 
     if return_stats:
         return circ_corrected, stats
     return circ_corrected
+
 
 def _recover_invariants_numpy(
     pos: np.ndarray,
@@ -464,33 +447,6 @@ def _recover_invariants_numpy(
 
     return circ_corrected, stats
 
-def _recover_invariants_taichi(
-    pos: np.ndarray,
-    circ: np.ndarray,
-    target_invariants: dict[str, np.ndarray],
-    reference_point: np.ndarray | None = None,
-    tolerance_ratio: float = 0.05,
-) -> tuple[np.ndarray, CorrectionStats]:
-    """
-    Taichi GPU-accelerated implementation.
-
-    Uses parallel reduction kernels to build the system matrix.
-    Cost: O(N/P) for matrix build with P threads + O(1) for solve.
-
-    Note: Falls back to NumPy if Taichi compilation fails.
-    """
-    try:
-        # TODO: Implement Taichi kernels when N > 100k becomes bottleneck
-        # For now, fall back to NumPy (already very fast)
-        logger.debug("Taichi backend not yet implemented - using NumPy")
-        return _recover_invariants_numpy(
-            pos, circ, target_invariants, reference_point, tolerance_ratio
-        )
-    except Exception as e:
-        logger.warning(f"Taichi backend failed: {e} - falling back to NumPy")
-        return _recover_invariants_numpy(
-            pos, circ, target_invariants, reference_point, tolerance_ratio
-        )
 
 def validate_conservation(
     pos: np.ndarray,
@@ -535,6 +491,7 @@ def validate_conservation(
     errors["passed"] = all(err < tolerance for err in errors.values())
 
     return errors
+
 
 def compute_correction_quality(
     pos_original: np.ndarray,

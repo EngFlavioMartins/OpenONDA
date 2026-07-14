@@ -16,52 +16,11 @@ import numpy as np
 
 @dataclass
 class CouplerSetup:
-    """Setup for the FVM-VPM coupled solver — coupling parameters only.
+    """Coupling and Eulerian-case parameters for an FVM-VPM run.
 
-    This dataclass carries the **coupling** and **FVM-case** parameters: the
-    interface box, the hand-off / donor / fringe knobs, the shared physical
-    quantities (``u_inf``, ``nu``, particle spacing ``h``) and the FVM sub-step
-    ``dt``.  It deliberately holds **no VPM physics** — the viscous scheme,
-    stretching, advection, turbulence, treecode θ, stabilization, particle
-    kernel, precision, ``max_particles`` and domain bounds all live in the
-    VPM's own ``SolverConfig``.  The caller builds the VPM and FVM solvers with
-    their native APIs and injects the instances into :class:`FVMVPMCoupler`
-    alongside this setup; the coupler reads the domain/kernel/dt it needs back
-    from the injected VPM and validates them against ``fvm_box``.
-
-    Defaults reflect the validated cubeFlow setup; case scripts override only
-    what differs.  The VPM/coupling step is read from the injected VPM's
-    ``time_step_size`` and the integer FVM sub-cycle count is derived as
-    ``round(dt_vpm / dt)`` internally.
-
-    Example
-    -------
-    ::
-
-        from source.coupler import CouplerSetup, FVMVPMCoupler
-        from source.solvers.VPM import Solver as VPM_Solver, SolverConfig
-        from source.solvers.OFW.fvm_solver import fvm_solver
-
-        # 1. Coupling parameters (this class) — no VPM physics here.
-        setup = CouplerSetup(
-            u_inf=[1.0, 0.0, 0.0], nu=1e-3,
-            dt=0.02,                       # FVM sub-step; dt_vpm comes from the VPM
-            fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
-            grid_spacing=0.035, h=0.035,
-            buffer_thickness=0.21, dead_zone_h=4.0,
-            prune_vorticity_min=0.1, donor_interior_source="fvm",
-        )
-
-        is_master = FVMVPMCoupler.is_master_rank()
-        # 2. VPM — native SolverConfig, GPU, master rank only.
-        vpm = VPM_Solver(config=SolverConfig(time_step_size=0.10, ...)) if is_master else None
-        # 3. FVM — write the case dicts, then build on every rank.
-        FVMVPMCoupler.prepare_case(setup, vpm_solver=vpm)
-        fvm = fvm_solver(".")
-        # 4-5. Couple, then run.
-        coupler = FVMVPMCoupler(vpm, fvm, setup)
-        coupler.initialize()
-        coupler.solve()
+    VPM-specific physics remains in the injected VPM ``SolverConfig``. The
+    coupler derives its VPM step from that solver and requires an integer ratio
+    between the VPM step and ``dt``.
     """
 
     # ── Physics ───────────────────────────────────────────────────────────
@@ -89,11 +48,11 @@ class CouplerSetup:
     """Steps between sampler outputs."""
 
     # ── Near field (FVM / OpenFOAM) ───────────────────────────────────────
-    # The near-body solver (OpenFOAM ``fvm_solver(case_dir)`` or the native
-    # ``FVM.Solver.from_case``) is built by the caller and injected, so the
-    # backend choice lives in the setup script, not here.
+    backend: str = "ofw"
+    """Eulerian backend: wrapped OpenFOAM (``ofw``) or native Python (``fvm``)."""
+
     fvm_box: tuple[float, float, float, float, float, float] = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
-    """OpenFOAM domain bounds [x0, x1, y0, y1, z0, z1] [m]."""
+    """Eulerian near-field box bounds [x0, x1, y0, y1, z0, z1] [m]."""
 
     patch_name: str = "numericalBoundary"
     """Name of the coupling (outer) boundary patch."""
@@ -105,26 +64,14 @@ class CouplerSetup:
     """FVM cell size [m]."""
 
     case_dir: str = "."
-    """Path to the OpenFOAM case directory."""
+    """OpenFOAM case directory or native-FVM output root."""
 
     surface: dict = field(default_factory=dict)
-    """Body geometry definition consumed by ``assets/mesh_helper.py``, e.g.
-    ``{"cube": {"side_length": 1.0, "center": [0,0,0], "refinement": 25}}`` or
-    ``{"cylinder": {"diameter": 1.0, "center": [0,0,0], "refinement": 60}}``."""
+    """Body geometry consumed by the OFW mesh-generation path."""
 
     # ── Far field (VPM) ───────────────────────────────────────────────────
-    # The VPM is built by the caller with its OWN native ``SolverConfig`` and
-    # injected (``FVMVPMCoupler.from_solvers``).  Its physics — viscous scheme,
-    # stretching, advection, turbulence, treecode θ, stabilization, particle
-    # kernel, max_particles, precision, domain bounds — therefore lives in that
-    # ``SolverConfig``, NOT here.  The coupler reads the domain/kernel/dtype it
-    # needs back from the injected solver and validates them against ``fvm_box``
-    # (see ``_validate_injected_vpm``).  Only the particle SPACING, which must
-    # equal the hand-off lattice spacing, is a coupling parameter:
     h: float = 0.05
-    """Particle spacing [m] — the hand-off lattice spacing; must equal the
-    injected VPM's particle spacing.  (Typically also matches the FVM
-    ``grid_spacing`` so the interface resolutions agree.)"""
+    """Particle and hand-off lattice spacing [m]."""
 
     # ── Coupling ──────────────────────────────────────────────────────────
     buffer_thickness: float = 0.10
@@ -135,10 +82,7 @@ class CouplerSetup:
     pressure artifact out of exiting particles)."""
 
     prune_vorticity_min: float = 0.01
-    """Hand-off prune floor expressed as a VORTICITY [1/s]: lattice nodes with
-    |Γ| < prune_vorticity_min · h³ are pruned (then moment-redistributed).
-    Scale-correct under h-refinement (Γ_node ∝ h³).  Choose ~1e-2 · U∞/L_char;
-    the tutorials (U∞ = L = 1) use 0.01."""
+    """Vorticity threshold [1/s] used to prune hand-off lattice nodes."""
 
     overlap_velocity_forcing: bool = True
     """Advect overlap particles with the η-blended FVM velocity instead of pure
@@ -149,99 +93,31 @@ class CouplerSetup:
     """Fringe relaxation strength A (see fvm_fringe.py)."""
 
     blend_relaxation: float = 1.0
-    """Under-relaxation α ∈ (0, 1] of the η-blend toward the FVM target:
-    Γ ← Γ + α·η·(target − Γ).  α = 1 is the hard overwrite (validated)."""
+    """Under-relaxation of the overlap blend toward the FVM target."""
 
     strength_correction_iterations: int = 3
-    """Beale/Picard iterated strength assignment (Beale 1988): after the
-    hand-off, lattice strengths are iterated so the *mollified* particle
-    vorticity (Gaussian core, σ = 1.5h) matches ω_FVM at the nodes — a
-    regularized deconvolution of the kernel smoothing on resolved scales.
-    The correction is body-guarded (never acts across the wall).  0 = off."""
+    """Iterations of the regularized particle-strength correction; zero disables it."""
 
     strength_correction_relax: float = 1.0
     """Under-relaxation λ ∈ (0, 1] of the strength-correction iteration."""
 
     bc_coupling_iterations: int = 1
-    """Outer Picard iterations of the donor-velocity BC against the FVM pressure
-    solve, per time step (Weymouth & Lauber, JCP 2025, arXiv:2404.09034).
-
-    The Biot–Savart donor BC is non-locally coupled to the pressure: the pressure
-    field generated inside the FVM box during the solve changes the interior
-    vorticity, which changes the BS velocity the box boundary should see.  A
-    single one-shot donor BC ignores
-    this and leaves the boundary inconsistent with the interior — which damps the
-    global shedding feedback for sustained bluff-body wakes.
-
-    With >1, each step iterates:  recompute donor = U∞ + BS(exterior particles)
-    + BS(FVM interior vorticity)  →  ``solve_pimple()`` (no time advance)  →
-    repeat, then ``advance_time()``.  The FVM-interior term is re-evaluated from
-    the freshly-solved field each iteration, closing the BC↔pressure coupling
-    without re-remeshing the cloud (which would inject extra diffusion).  2–3 is
-    typically enough; the residual is bounded by the per-step pressure change."""
+    """Donor-boundary/PIMPLE Picard iterations per FVM substep."""
 
     donor_interior_source: str = "particles"
-    """Which representation of the FVM-box INTERIOR feeds the donor BC trace.
-
-    ``"particles"`` (legacy) — the donor is one full-cloud Biot–Savart per
-    coupling window: U∞ + BS(all particles, in-box included), linearly
-    interpolated across the FVM sub-steps.  The in-box particles are a
-    mollified copy of the *previous* window's FVM interior advected by the
-    VPM, so the interior term the boundary sees lags by up to one full
-    coupling step dt_vpm, and the linear interpolation of the trace smears
-    vortices that translate past a face within the window.
-
-    ``"fvm"`` (Weymouth–Lauber-consistent, arXiv:2404.09034) — the donor is
-    decomposed per sub-step:
-
-        u_bc(t) = U∞ + BS(exterior particles, interpolated in t)
-                     + BS(FVM interior ω, evaluated LIVE at t)
-
-    The fast near-field term is re-evaluated from the freshly solved FVM
-    vorticity at EVERY sub-step (no time interpolation, no stale in-box
-    representation, no BC-family jump at the final sub-step); only the slow,
-    distant exterior-wake term is interpolated.  ``bc_coupling_iterations``
-    then counts Picard iterations of BC↔pressure per sub-step (1 = one-shot
-    with the interior at the sub-step's OLD time level, lag dt_fvm; 2 closes
-    the pressure coupling at the new time level).  Collective-safe under MPI:
-    the vorticity gather runs on all ranks, the Biot–Savart on rank 0 only."""
+    """Interior donor representation: hand-off particles or live FVM vorticity."""
 
     donor_bc_mode: str = "dirichlet"
-    """Type of donor velocity BC imposed on the FVM coupling patch
-    (Billuart et al., JCP 2023, §3.1, Eqs. 11–14).
-
-    ``"dirichlet"`` imposes the full
-    donor velocity vector as a Dirichlet condition
-    (``set_dirichlet_velocity_boundary_condition_vec``).  Any velocity mismatch
-    between the VPM donor and the FVM interior is converted into spurious
-    vorticity at the boundary that advects into the wake — the cubeFlow
-    interface-noise defect (onset t > 14 s).
-
-    ``"mixed"`` imposes a Robin / mixed condition
-    (``set_robin_velocity_boundary_condition``): the *normal* component is
-    Dirichlet (``u·n̂ = u_VPM·n̂``) and the *tangential* component is a
-    vorticity-matched Neumann condition (``∂u_t/∂n = ω_VPM × n̂``) via an
-    OpenFOAM ``directionMixed`` patch whose ``valueFraction`` tensor is
-    ``n̂⊗n̂``.  This conserves the vorticity flux through the boundary, so a
-    velocity mismatch no longer generates spurious vorticity.  Requires the
-    ``0/U`` BC type of the coupling patch to be ``directionMixed`` (the
-    ``setup`` handler switches it automatically when this is ``"mixed"``);
-    otherwise the C++ wrapper silently falls back to fixedValue.
-
-    The solenoidal projection of ``u_donor`` (Gresho–Sani compatibility) is
-    applied in both modes — it is still needed for the normal component /
-    ``fixedFluxPressure`` pairing."""
+    """Donor velocity condition: full Dirichlet or normal-Dirichlet mixed mode."""
 
     overlap_radius_ratio: float = 1.5
-    """Particle core radius σ in units of h for overlap-region particles.
-    σ sets the deconvolution bandwidth of the Beale correction: thin vortex
-    sheets (1–2h, e.g. separated shear layers at moderate Re) are reconstructed
-    at ~56 % peak with σ=1.5h/2 iters, ~81 % with σ=1.2h/4 iters, ~93 % with
-    σ=1.0h/4 iters.  σ/h < 1 breaks particle overlap (BS field ripple) —
-    do not go below 1.0.  Default 1.5 is the smoothest/safest."""
+    """Overlap-particle core radius divided by ``h``."""
 
     def __post_init__(self) -> None:
         """Validate enum-like config fields."""
+        _valid_backends = ("ofw", "fvm")
+        if self.backend not in _valid_backends:
+            raise ValueError(f"backend must be one of {_valid_backends!r}, got {self.backend!r}.")
         _valid_donor_interior_sources = ("particles", "fvm")
         if self.donor_interior_source not in _valid_donor_interior_sources:
             raise ValueError(
@@ -296,6 +172,7 @@ class CouplerSetup:
                 "log_period": self.log_period,
             },
             "fvm_solver": {
+                "backend": self.backend,
                 "patch_name": self.patch_name,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
@@ -332,6 +209,5 @@ class CouplerSetup:
         }
 
 
-# Backward-compatible name for older setup scripts/tests.  New code should use
-# CouplerSetup to make the solver-injection boundary explicit.
+# Public compatibility alias used by older setup scripts.
 CouplerConfig = CouplerSetup

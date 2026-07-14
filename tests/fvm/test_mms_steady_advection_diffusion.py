@@ -1,15 +1,15 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
 
 def _phi_exact(x, y, z):
@@ -20,31 +20,33 @@ def _grad_phi_exact(x, y, z):
     """∇φ = [∂φ/∂x, ∂φ/∂y, ∂φ/∂z]."""
     sx, sy, sz = np.sin(np.pi * x), np.sin(np.pi * y), np.sin(np.pi * z)
     cx, cy, cz = np.cos(np.pi * x), np.cos(np.pi * y), np.cos(np.pi * z)
-    return np.column_stack([
-        np.pi * cx * sy * sz,
-        np.pi * sx * cy * sz,
-        np.pi * sx * sy * cz,
-    ])
+    return np.column_stack(
+        [
+            np.pi * cx * sy * sz,
+            np.pi * sx * cy * sz,
+            np.pi * sx * sy * cz,
+        ]
+    )
 
 
 def _source_adv_diff(x, y, z, U, nu):
     """∇·(Uφ) - ν∇²φ with φ = sin(πx)sin(πy)sin(πz)."""
     sx, sy, sz = np.sin(np.pi * x), np.sin(np.pi * y), np.sin(np.pi * z)
     cx, cy, cz = np.cos(np.pi * x), np.cos(np.pi * y), np.cos(np.pi * z)
-    div_conv = U[0] * np.pi * cx * sy * sz \
-             + U[1] * np.pi * sx * cy * sz \
-             + U[2] * np.pi * sx * sy * cz
-    lap = -3.0 * np.pi ** 2 * sx * sy * sz
+    div_conv = (
+        U[0] * np.pi * cx * sy * sz + U[1] * np.pi * sx * cy * sz + U[2] * np.pi * sx * sy * cz
+    )
+    lap = -3.0 * np.pi**2 * sx * sy * sz
     return div_conv - nu * lap
 
 
 def _l2_error(computed, exact, volumes):
     diff = computed - exact
-    return np.sqrt(np.sum(volumes * diff ** 2) / np.sum(volumes))
+    return np.sqrt(np.sum(volumes * diff**2) / np.sum(volumes))
 
 
 def _make_mms_mesh(lcar):
-    import gmsh
+    gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
     gmsh.initialize()
     try:
         model = gmsh.model
@@ -54,6 +56,7 @@ def _make_mms_mesh(lcar):
         model.mesh.setSize(model.getEntities(0), lcar)
         model.mesh.generate(3)
         from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+
         imp = GmshImporter()
         mesh = imp.get_mesh_data()
     finally:
@@ -67,9 +70,11 @@ def _setup_dirichlet_bcs(mesh, geo):
     n_int = mesh["n_interior_faces"]
     fc = geo["face_centroids"]
     phi = np.zeros(n_elem + mesh["n_faces"] - n_int)
-    phi[:n_elem] = _phi_exact(geo["element_centroids"][:, 0],
-                               geo["element_centroids"][:, 1],
-                               geo["element_centroids"][:, 2])
+    phi[:n_elem] = _phi_exact(
+        geo["element_centroids"][:, 0],
+        geo["element_centroids"][:, 1],
+        geo["element_centroids"][:, 2],
+    )
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
         b["bc_type_U"] = "fixedValue"
@@ -114,7 +119,9 @@ class TestMMSSteadyAdvectionDiffusion:
             diff_flux = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
 
             # Convection (upwind)
-            conv_flux = assemble_convection_term(phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind")
+            conv_flux = assemble_convection_term(
+                phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+            )
 
             # Combine fluxes
             flux_data = {

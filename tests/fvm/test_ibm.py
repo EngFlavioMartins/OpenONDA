@@ -15,11 +15,11 @@ Covers the transfer-operator properties the method relies on (Pinelli et al.
 import numpy as np
 import pytest
 
-from tests.fvm._structured_mesh import structured_box
-
-from source.solvers.FVM.immersed_boundary import ImmersedBody, IBMForcing
+from source.solvers.FVM.immersed_boundary import IBMForcing, ImmersedBody
 from source.solvers.FVM.immersed_boundary.forcing import roma_delta_1d
 from source.solvers.FVM.mesh import geometry
+
+from ._structured_mesh import structured_box
 
 
 def _mesh_2d(nx=48, ny=48, lx=3.0, ly=3.0, lz=0.1):
@@ -139,8 +139,11 @@ def test_cylinder_step_integration():
         case_name="ibm_smoke",
         time=TimeConfig(delta_t=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
         solver=SolverParams.pimple(
-            n_correctors=2, n_outer=1, linear_solver="spsolve",
-            convection_scheme="upwind", gradient_scheme="gauss",
+            n_correctors=2,
+            n_outer=1,
+            linear_solver="spsolve",
+            convection_scheme="upwind",
+            gradient_scheme="gauss",
         ),
         transport=TransportConfig(density=1.0, nu=0.025),  # Re = 40 on D=1
         boundaries=[

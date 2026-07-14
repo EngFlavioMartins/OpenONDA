@@ -58,6 +58,33 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Incompressible Python FVM runtime (mesh import, scalable serial pressure solve,
+# and visualization output are optional to the OpenFOAM wrapper itself).
+fvm = [
+    "gmsh>=4.11.0",
+    "pyamg>=5.0.0",
+    "pyvista>=0.42.0",
+    "vtk>=9.2.0",
+]
+
+# Complete FVM verification environment.
+fvm-test = [
+    "gmsh>=4.11.0",
+    "pyamg>=5.0.0",
+    "pyvista>=0.42.0",
+    "vtk>=9.2.0",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-benchmark>=4.0.0",
+]
+
+# Collective native-FVM sparse solves. PETSc/mpi4py must be built against the
+# same MPI implementation used by the launcher.
+fvm-parallel = [
+    "mpi4py>=3.1.0",
+    "petsc4py>=3.20.0",
+]
+
 # OpenFOAM wrapper (requires a local OpenFOAM installation)
 full = [
     "cython>=0.29.0",
@@ -117,6 +144,7 @@ all = [
     "vtk>=9.0.0",
     "plotly>=5.0.0",
     "pyamg>=4.0.0",
+    "gmsh>=4.11.0",
 ]
 
 [tool.vulture]
@@ -246,6 +274,7 @@ markers = [
     "benchmark: marks tests as performance benchmarks",
     "regression: marks tests as regression / snapshot tests",
     "fast: CPU-only tests for fast CI (deselect with '-m \"not fast\"')",
+    "mpi: collective tests that must be launched under MPI with petsc4py",
 ]
 
 [tool.coverage.run]

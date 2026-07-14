@@ -109,7 +109,7 @@ def _extract_foam_number(v) -> float | None:
     Returns:
         Float value, or ``None`` if no number could be extracted.
     """
-    if isinstance(v, (int, float)):
+    if isinstance(v, int | float):
         return float(v)
     if isinstance(v, list) and v:
         return float(v[-1])
@@ -486,11 +486,13 @@ class SolverParams:
     algorithm: Literal["SIMPLE", "PIMPLE"] = "PIMPLE"
     n_correctors: int = 2
     n_outer_correctors: int = 1
+    n_orthogonal_correctors: int = 0
     max_iter: int = 20
     tolerance: float = 1e-6
     alpha_u: float = 0.7
     alpha_p: float = 0.3
     linear_solver: str = "bicgstab"  # Defaulting to iterative for performance
+    linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
     reuse_ilu: bool = True  # Enable ILU preconditioning reuse by default
 
     # y+ patches: user can specify patches to compute y+ for (None => auto-select wall patches)
@@ -498,6 +500,14 @@ class SolverParams:
 
     # Momentum solver tunables
     momentum_tol: float = 1e-4
+    pressure_tol: float = 1e-8
+    pressure_maxiter: int = 500
+    # ``None`` makes AMG inherit the pressure tolerance / iteration limit.
+    amg_tol: float | None = None
+    amg_maxiter: int | None = None
+    amg_reuse_tol: float = 0.05
+    ilu_drop_tol: float = 1e-4
+    ilu_fill_factor: float = 10.0
     # ILU reuse heuristic: if set (e.g., 1e-3) the ILU cache will be reused only if the
     # relative change in diagonal is <= this threshold. If None, always reuse when pattern matches.
     ilu_reuse_tol: float | None = None
@@ -532,12 +542,16 @@ class SolverParams:
     def pimple(
         n_correctors: int = 2,
         n_outer: int = 1,
+        n_non_orthogonal: int = 0,
         linear_solver: str = "spsolve",
         alpha_u: float = 1.0,
         alpha_p: float = 1.0,
         convection_scheme: str = "deferred",
         gradient_scheme: str = "lsq",
         time_scheme: str = "euler_implicit",
+        momentum_tol: float = 1e-4,
+        pressure_tol: float = 1e-8,
+        pressure_maxiter: int = 500,
     ) -> "SolverParams":
         """Create PIMPLE solver parameters with transient-appropriate defaults.
 
@@ -557,12 +571,16 @@ class SolverParams:
             algorithm="PIMPLE",
             n_correctors=n_correctors,
             n_outer_correctors=n_outer,
+            n_orthogonal_correctors=n_non_orthogonal,
             linear_solver=linear_solver,
             alpha_u=alpha_u,
             alpha_p=alpha_p,
             convection_scheme=convection_scheme,
             gradient_scheme=gradient_scheme,
             time_scheme=time_scheme,
+            momentum_tol=momentum_tol,
+            pressure_tol=pressure_tol,
+            pressure_maxiter=pressure_maxiter,
         )
 
     @staticmethod
@@ -835,6 +853,26 @@ class TurbulenceConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    """Execution and sparse-linear-algebra backend selection.
+
+    ``petsc_replicated`` distributes PETSc solves while retaining a complete
+    NumPy mesh and field state on every rank.
+    """
+
+    operator_backend: Literal["numpy"] = "numpy"
+    linear_backend: Literal["scipy", "petsc"] = "scipy"
+    parallel_mode: Literal["serial", "petsc_replicated"] = "serial"
+    device: Literal["cpu"] = "cpu"
+    precision: Literal["float64"] = "float64"
+
+    @staticmethod
+    def petsc_replicated() -> "ExecutionConfig":
+        """Use replicated NumPy assembly with collective PETSc solves."""
+        return ExecutionConfig(linear_backend="petsc", parallel_mode="petsc_replicated")
+
+
+@dataclass
 class FVMConfig:
     """
     Top-level FVM configuration.
@@ -842,6 +880,7 @@ class FVMConfig:
 
     case_name: str
     mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
+    execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
     time: TimeConfig = field(default_factory=TimeConfig)
     solver: SolverParams = field(default_factory=SolverParams)
     transport: TransportConfig = field(default_factory=TransportConfig)
@@ -875,6 +914,7 @@ class FVMConfig:
 
         # Manual reconstruction of nested dataclasses
         mesh_data = data.get("mesh", {})
+        execution_data = data.get("execution", {})
         time_data = data.get("time", {})
         solver_data = data.get("solver", {})
         transport_data = data.get("transport", {})
@@ -882,6 +922,7 @@ class FVMConfig:
         turbulence_data = data.get("turbulence", None)
 
         mesh = MeshConfig(**mesh_data)
+        execution = ExecutionConfig(**execution_data)
         time = TimeConfig(**time_data)
         dynamic_mesh = DynamicMeshConfig(**dynamic_mesh_data)
 
@@ -890,13 +931,25 @@ class FVMConfig:
             "algorithm": solver_data.get("algorithm", "PIMPLE"),
             "n_correctors": solver_data.get("n_correctors", 2),
             "n_outer_correctors": solver_data.get("n_outer_correctors", 1),
+            "n_orthogonal_correctors": solver_data.get("n_orthogonal_correctors", 0),
             "max_iter": solver_data.get("max_iter", 20),
             "tolerance": solver_data.get("tolerance", 1e-6),
             "alpha_u": solver_data.get("alpha_u", 0.7),
             "alpha_p": solver_data.get("alpha_p", 0.3),
             "linear_solver": solver_data.get("linear_solver", "spsolve"),
+            "linear_failure_policy": solver_data.get("linear_failure_policy", "raise"),
+            "momentum_tol": solver_data.get("momentum_tol", 1e-4),
+            "pressure_tol": solver_data.get("pressure_tol", 1e-8),
+            "pressure_maxiter": solver_data.get("pressure_maxiter", 500),
+            "amg_tol": solver_data.get("amg_tol"),
+            "amg_maxiter": solver_data.get("amg_maxiter"),
+            "amg_reuse_tol": solver_data.get("amg_reuse_tol", 0.05),
+            "ilu_drop_tol": solver_data.get("ilu_drop_tol", 1e-4),
+            "ilu_fill_factor": solver_data.get("ilu_fill_factor", 10.0),
+            "ilu_reuse_tol": solver_data.get("ilu_reuse_tol"),
             "convection_scheme": solver_data.get("convection_scheme", "limitedLinear"),
             "time_scheme": solver_data.get("time_scheme", "euler_implicit"),
+            "gradient_scheme": solver_data.get("gradient_scheme", "lsq"),
         }
         solver = SolverParams(**solver_obj_data)
         transport = TransportConfig(**transport_data)
@@ -906,6 +959,7 @@ class FVMConfig:
         return cls(
             case_name=data["case_name"],
             mesh=mesh,
+            execution=execution,
             time=time,
             solver=solver,
             transport=transport,

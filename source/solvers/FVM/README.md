@@ -4,7 +4,8 @@
 
 ## Overview
 
-This module provides a complete finite volume method implementation for computational fluid dynamics (CFD) simulations. It is a **direct Python translation** of the uFVM MATLAB/Octave solver developed by the CFD Group at the American University of Beirut.
+This module provides finite-volume operators and experimental incompressible
+SIMPLE/PIMPLE solvers derived from the uFVM MATLAB/Octave implementation.
 
 ## Original Work
 
@@ -17,7 +18,7 @@ This Python implementation maintains the same structure, algorithms, and methodo
 
 ## Features
 
-### ✅ Production Ready
+### Verified building blocks
 - OpenFOAM mesh I/O
 - Geometric property computation
 - Gradient schemes (Gauss linear)
@@ -28,24 +29,22 @@ This Python implementation maintains the same structure, algorithms, and methodo
 - Linear system solvers (direct spsolve, iterative CG/BiCGSTAB/GMRES, pyAMG multigrid)
 - Complete scalar transport equation solver
 
-### ⚠️ Operational
+### Experimental integrated solvers
 - Momentum equation assembly
 - SIMPLE algorithm (steady-state)
-- PIMPLE algorithm (transient; hex meshes only; tetrahedral divergence known)
+- PIMPLE algorithm (transient; structured hexahedral path is most mature)
 - Smagorinsky LES turbulence model
 - Cavity flow handling
 - Non-orthogonal correction (explicit k-vector; inactive by default)
 - Force coefficient computation (Cd, Cl, Cz, Cm)
 
-### ❌ Not Implemented
+### Not implemented
 - Compressible flow
 - Multiphase flow
 
 ## Installation
 
 ```bash
-# No separate installation needed if OpenONDA is installed
-# Just import the module
 from source.solvers.FVM import equation_solver
 ```
 
@@ -94,12 +93,14 @@ solution = equation_solver.solve_scalar_equation(
 
 ## Verification
 
-All core modules have been verified against uFVM ground truth:
-- Mesh geometry: Machine precision
-- Field I/O: Exact match
-- Gradients: Verified correct
-- Diffusion: Algorithm verified
-- Matrix assembly: Residual < 1e-15
+Core operators have regression tests for geometry, field I/O, gradients,
+diffusion, matrix assembly, and manufactured solutions. The test tolerances and
+supported cases are the authoritative verification record.
+
+The integrated SIMPLE/PIMPLE solvers remain research backends. General
+unstructured, device, and distributed-memory operation must pass the readiness
+gates in `docs/plans/2026-07-fvm-3d-pimple-readiness-plan.md` before being
+described as production-ready.
 
 ## Documentation
 

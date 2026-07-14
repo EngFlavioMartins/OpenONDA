@@ -1,17 +1,19 @@
 """
 fvm_fringe.py  --  build and update the fringe-relaxation fields for the FVM.
 
-The coupler calls this to push two volume fields into OpenFOAM each run:
+The coupler calls this to push two volume fields into the Eulerian backend:
 
-  * `lambdaRelax`  (volScalarField, set ONCE): the relaxation rate, 0 in the FVM
+  * `lambdaRelax`  (scalar field, set ONCE): the relaxation rate, 0 in the FVM
     core and ramping smoothly to `lambda_max` at the numerical boundary, over the
     buffer band.  This is the FVM-side complement of the VPM-side authority weight
     eta -- where eta -> 0 (VPM takes over), lambda -> max (FVM defers to VPM).
 
-  * `Utarget`  (volVectorField, set EVERY coupling step): the VPM velocity
+  * `Utarget`  (vector field, set EVERY coupling step): the VPM velocity
     sampled at the FVM cell centres, i.e. the field the fringe relaxes toward.
 
-Both are looked up by name inside the solver (relaxationSource.H / fvOptions).
+Both are looked up by name inside the backend's momentum source: the OFW wrapper
+reads them via relaxationSource.H (fvOptions); the native FVM via
+``registered_fields`` in ``Solver._fringe_source``.
 """
 
 from __future__ import annotations
@@ -96,9 +98,9 @@ class FringeFields:
 
         u_char = float(np.linalg.norm(cfg.U_inf))
         lam_max = lambda_max_from_scales(
-            u_char, cfg.buffer_thickness, cfg.dt, A=getattr(cfg, "fringe_strength", 4.0)
+            u_char, cfg.buffer_thickness, cfg.dt, A=cfg.fringe_strength
         )
-        dead_zone = float(getattr(cfg, "dead_zone_h", 3.0)) * float(getattr(cfg, "h", 0.0))
+        dead_zone = float(cfg.dead_zone_h) * float(cfg.h)
         self.lam = build_lambda(
             self.cc,
             cfg.fvm_box,

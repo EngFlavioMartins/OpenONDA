@@ -42,6 +42,9 @@ class SolverIO:
         Args:
             time_dir: Subdirectory name for the snapshot. Defaults to current flow time.
         """
+        parallel = getattr(self.solver, "parallel", None)
+        if parallel is not None and not parallel.is_root:
+            return
         if time_dir is None:
             time_dir = f"{self.solver.flow_time:.5g}"
 
@@ -171,11 +174,11 @@ class SolverIO:
 
         # Use initial magnitude for ref_U if not explicit
         U0 = self.solver.config.initial_U
-        ref_U = np.linalg.norm(U0) if isinstance(U0, (list, np.ndarray)) else (U0 or 1.0)
+        ref_U = np.linalg.norm(U0) if isinstance(U0, list | np.ndarray) else (U0 or 1.0)
 
-        ref_area = getattr(self.solver.config.solver, 'ref_area', 1.0)
-        ref_length = getattr(self.solver.config.solver, 'ref_length', 1.0)
-        moment_centre = getattr(self.solver.config.solver, 'moment_centre', [0.0, 0.0, 0.0])
+        ref_area = getattr(self.solver.config.solver, "ref_area", 1.0)
+        ref_length = getattr(self.solver.config.solver, "ref_length", 1.0)
+        moment_centre = getattr(self.solver.config.solver, "moment_centre", [0.0, 0.0, 0.0])
 
         forces = diagnostics.compute_surface_forces(
             self.solver.U,

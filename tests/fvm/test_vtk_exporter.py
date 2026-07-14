@@ -1,19 +1,16 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+pytest.importorskip("pyvista", reason="PyVista FVM test dependency is not installed")
+pytest.importorskip("vtk", reason="VTK FVM test dependency is not installed")
+
 from source.solvers.FVM.io.vtk_exporter import VTKExporter
 
 
-@pytest.mark.skipif("not pytest.importorskip('pyvista', reason='pyvista not installed')")
 class TestVTKExporter:
-
     def test_export_scalar_and_vector(self, gmsh_unit_cube, tmp_path):
         mesh = gmsh_unit_cube
-        geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_elements"]
-        n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["element_centroids"]
 
         fields = {
             "p": np.ones(n_elem),
@@ -26,6 +23,7 @@ class TestVTKExporter:
         exporter.export(str(path), fields, interpolate_to_points=False)
 
         import pyvista as pv
+
         data = pv.read(str(path))
         assert "p" in data.cell_data
         assert "U" in data.cell_data
@@ -42,6 +40,7 @@ class TestVTKExporter:
         exporter.export(str(path), fields, interpolate_to_points=True)
 
         import pyvista as pv
+
         data = pv.read(str(path))
         assert "p" in data.point_data
 

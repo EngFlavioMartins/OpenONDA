@@ -87,15 +87,42 @@ def hand_built_3d_mesh():
 
     owners = np.array(
         [
-            0, 2, 4, 6,
-            0, 4, 1, 5,
-            0, 1, 2, 3,
-            0, 2, 4, 6,
-            1, 3, 5, 7,
-            0, 1, 4, 5,
-            2, 3, 6, 7,
-            0, 1, 2, 3,
-            4, 5, 6, 7,
+            0,
+            2,
+            4,
+            6,
+            0,
+            4,
+            1,
+            5,
+            0,
+            1,
+            2,
+            3,
+            0,
+            2,
+            4,
+            6,
+            1,
+            3,
+            5,
+            7,
+            0,
+            1,
+            4,
+            5,
+            2,
+            3,
+            6,
+            7,
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
         ],
         dtype=np.int32,
     )
@@ -126,7 +153,7 @@ def hand_built_3d_mesh():
 
 @pytest.fixture(scope="session", params=[0.5, 0.25])
 def gmsh_unit_cube(request):
-    import gmsh
+    gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
     lcar = request.param
     gmsh.initialize()
@@ -146,18 +173,8 @@ def gmsh_unit_cube(request):
     return mesh_data
 
 
-@pytest.fixture(scope="session")
-def golden_reference():
-    from pathlib import Path
-
-    import numpy as np
-
-    ref_path = Path(__file__).resolve().parent / "fixtures" / "golden_reference.npz"
-    return dict(np.load(ref_path))
-
-
 def cavity_mesh_3d(n):
-    import gmsh
+    gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
     gmsh.initialize()
     try:

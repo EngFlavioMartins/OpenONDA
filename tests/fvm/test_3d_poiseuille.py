@@ -5,9 +5,10 @@ inlet fixed‑velocity, and outlet fixed‑pressure.  Verifies basic physical
 plausibility: net forward flow, pressure drop, centre‑plane velocity peak.
 """
 
-import gmsh
 import numpy as np
 import pytest
+
+gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
 from source.solvers.FVM import (
     BoundaryConfig,

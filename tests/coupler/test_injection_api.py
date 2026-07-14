@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler import CouplerConfig, CouplerSetup, FVMVPMCoupler
+from source.coupler import CouplerSetup, FVMVPMCoupler
 
 
 # ---------------------------------------------------------------------------
@@ -76,27 +76,25 @@ class _FakeFVM:
 
 @pytest.fixture(autouse=True)
 def _stub_solver_info(monkeypatch):
-    """The master-path tail of initialize() prints Logging.solver_info(vpm);
-    stub it so the fake VPM needn't reproduce the whole logging surface."""
     import source.coupler.core.solver as solver_mod
 
-    monkeypatch.setattr(solver_mod.Logging, "solver_info", staticmethod(lambda vpm: ""))
+    monkeypatch.setattr(solver_mod, "_vpm_solver_info", lambda vpm: "")
 
 
 def _make_config(**over):
-    base = dict(
-        u_inf=[1.0, 0.0, 0.0],
-        nu=1e-3,
-        dt=0.02,
-        t_end=1.0,
-        fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
-        h=0.05,
-        buffer_thickness=0.3,
-        dead_zone_h=4.0,
-        overlap_velocity_forcing=False,
-    )
+    base = {
+        "u_inf": [1.0, 0.0, 0.0],
+        "nu": 1e-3,
+        "dt": 0.02,
+        "t_end": 1.0,
+        "fvm_box": (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        "h": 0.05,
+        "buffer_thickness": 0.3,
+        "dead_zone_h": 4.0,
+        "overlap_velocity_forcing": False,
+    }
     base.update(over)
-    return CouplerConfig(**base)
+    return CouplerSetup(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +115,7 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
     # Runtime setters stamped the reconciled FVM SUB-step + viscosity.
     # (cfg.dt is mutated to the coupling step dt_vpm during initialize; the
     # FVM marches on dt_fvm = 0.02.)
-    assert fvm._dt == pytest.approx(0.02)            # dt_fvm
+    assert fvm._dt == pytest.approx(0.02)  # dt_fvm
     assert c.dt_vpm == pytest.approx(0.1)
     assert fvm._nu == pytest.approx(1e-3)
 
@@ -139,9 +137,7 @@ def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):
 def test_master_requires_vpm(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler.from_solvers(
-        _make_config(), fvm_solver=_FakeFVM(), vpm_solver=None
-    )
+    c = FVMVPMCoupler.from_solvers(_make_config(), fvm_solver=_FakeFVM(), vpm_solver=None)
     with pytest.raises(ValueError, match="vpm_solver is None on the master"):
         c.initialize()
 
@@ -149,9 +145,7 @@ def test_master_requires_vpm(monkeypatch, tmp_path):
 def test_non_master_tolerates_none_vpm(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "1")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler.from_solvers(
-        _make_config(), fvm_solver=_FakeFVM(), vpm_solver=None
-    )
+    c = FVMVPMCoupler.from_solvers(_make_config(), fvm_solver=_FakeFVM(), vpm_solver=None)
     assert c._is_master is False
     c.initialize()
     assert c.vpm is None
@@ -170,10 +164,19 @@ def test_config_has_no_vpm_physics_fields():
     (they live in the injected SolverConfig now)."""
     cfg = _make_config()
     for gone in (
-        "viscous_scheme", "stretching_scheme", "advection_scheme",
-        "les_smagorinsky_cs", "treecode_theta", "max_particles",
-        "vpm_domain", "particles_kernel", "precision", "stabilization",
-        "samplers", "eulerian_backend", "period_multiplier",
+        "viscous_scheme",
+        "stretching_scheme",
+        "advection_scheme",
+        "les_smagorinsky_cs",
+        "treecode_theta",
+        "max_particles",
+        "vpm_domain",
+        "particles_kernel",
+        "precision",
+        "stabilization",
+        "samplers",
+        "eulerian_backend",
+        "period_multiplier",
     ):
         assert not hasattr(cfg, gone), f"{gone} should have moved to SolverConfig"
 
@@ -183,7 +186,6 @@ def test_public_api_exposes_coupler_setup_not_vpm_configs():
     solver-build classes; those belong to source.solvers.VPM.config.types."""
     import source.coupler as coupler_pkg
 
-    assert CouplerConfig is CouplerSetup
     assert not hasattr(coupler_pkg, "ViscousConfig")
     assert not hasattr(coupler_pkg, "StabilizationConfig")
 
@@ -218,9 +220,7 @@ def test_initialize_is_idempotent_and_solve_guard(monkeypatch, tmp_path):
     and solve() before initialize() fails loudly."""
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler.from_solvers(
-        _make_config(), fvm_solver=_FakeFVM(), vpm_solver=_FakeVPM(0.1)
-    )
+    c = FVMVPMCoupler.from_solvers(_make_config(), fvm_solver=_FakeFVM(), vpm_solver=_FakeVPM(0.1))
     with pytest.raises(RuntimeError, match="before initialize"):
         c.solve()
 

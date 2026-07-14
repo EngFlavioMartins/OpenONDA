@@ -25,14 +25,23 @@ _SPATIAL_CACHE: dict = {}
 
 def _sparsity_key(mesh_data):
     """Hashable key from mesh topology (owners + neighbours + n_elements)."""
+    cached = mesh_data.get("_fvm_sparsity_key")
+    if cached is not None:
+        return cached
     n = mesh_data["n_elements"]
     n_i = mesh_data["n_interior_faces"]
     own = mesh_data["owners"]
     nei = mesh_data["neighbours"]
     # Use bytes of the topology arrays + sizes
-    return (n, n_i, mesh_data["n_faces"],
-            own.tobytes() if hasattr(own, 'tobytes') else str(own),
-            nei.tobytes() if hasattr(nei, 'tobytes') else str(nei))
+    key = (
+        n,
+        n_i,
+        mesh_data["n_faces"],
+        own.tobytes() if hasattr(own, "tobytes") else str(own),
+        nei.tobytes() if hasattr(nei, "tobytes") else str(nei),
+    )
+    mesh_data["_fvm_sparsity_key"] = key
+    return key
 
 
 def assemble_matrix_from_fluxes(flux_data, mesh_data):
@@ -269,7 +278,7 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data):
 
 # Delegated linear solver implementation lives in `..solve.linear_interface`.
 # This keeps matrix assembly focused on building numerics and allows swapping solver backends.
-from ..solve.linear_interface import solve_linear_system
+from ..solve.linear_interface import normalized_residual, solve_linear_system  # noqa: F401
 
 
 def solve_diffusion_equation(

@@ -213,6 +213,8 @@ def assemble_momentum_equation(
     mdot = phi * rho[0] if len(rho) > 0 else phi
 
     results = {}
+    spatial_matrix = None
+    vol = geo_data["element_volumes"]
 
     # Assemble for each component
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
@@ -228,13 +230,24 @@ def assemble_momentum_equation(
 
         # 1. Diffusion term: ∇·(μ∇U)
         diff_flux = diffusion.assemble_diffusion_term(
-            U_comp, grad_U_comp, mu, mesh_data, geo_data, momentum_boundaries
+            U_comp,
+            grad_U_comp,
+            mu,
+            mesh_data,
+            geo_data,
+            momentum_boundaries,
+            face_flux=phi,
         )
 
         # 2. Convection term: ∇·(ρUU).  grad_U_comp feeds the gradient-based
         #    TVD limiter for high-resolution schemes (ignored by the others).
         conv_flux = convection.assemble_convection_term(
-            U_comp, mdot, mesh_data, geo_data, boundaries, scheme=convection_scheme,
+            U_comp,
+            mdot,
+            mesh_data,
+            geo_data,
+            boundaries,
+            scheme=convection_scheme,
             grad_phi=grad_U_comp,
         )
 
@@ -246,12 +259,17 @@ def assemble_momentum_equation(
             "flux_tf": diff_flux["flux_tf"] + conv_flux["flux_tf"],
         }
 
-        # 4. Assemble matrix and RHS
-        A = matrix_assembly.assemble_matrix_from_fluxes_vectorized(combined_flux, mesh_data)
+        # 4. Assemble the common implicit matrix once.  Convection,
+        # diffusion, transient, and implicit-source coefficients are identical
+        # for x/y/z; only explicit corrections and boundary values differ.
+        if spatial_matrix is None:
+            spatial_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+                combined_flux, mesh_data
+            )
+        A = spatial_matrix.copy()
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, mesh_data)
 
         # 5. Add pressure gradient to RHS: -∇p * V
-        vol = geo_data["element_volumes"]
         grad_p_comp = grad_p[:n_elements, i_comp]
         b -= grad_p_comp * vol
 
@@ -308,6 +326,7 @@ def solve_momentum_predictor(
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
+    return_diagnostics=False,
     **solver_kwargs,
 ):
     """Solve momentum equation to get predicted velocity (U*).
@@ -358,14 +377,67 @@ def solve_momentum_predictor(
 
     # Assemble momentum equations
     mom_eqs = assemble_momentum_equation(
-        U, p, phi, rho, nu, mesh_data, geo_data, boundaries, convection_scheme, dt=dt, U_old=U_old,
-        U_old_old=U_old_old, ddt_scheme=ddt_scheme,
-        source_explicit=source_explicit, source_implicit=source_implicit,
+        U,
+        p,
+        phi,
+        rho,
+        nu,
+        mesh_data,
+        geo_data,
+        boundaries,
+        convection_scheme,
+        dt=dt,
+        U_old=U_old,
+        U_old_old=U_old_old,
+        ddt_scheme=ddt_scheme,
+        source_explicit=source_explicit,
+        source_implicit=source_implicit,
     )
 
     # Solve for each component
     U_star = np.zeros((n_elements + n_boundary, 3))
     A_U = np.zeros((n_elements, 3))
+    solve_diagnostics = {}
+    linear_backend = solver_kwargs.pop("linear_backend", "scipy")
+    parallel_context = solver_kwargs.pop("parallel_context", None)
+
+    if solver == "spsolve" and linear_backend == "scipy":
+        # All three components share one matrix.  Solve a three-column RHS so
+        # SuperLU performs one factorization instead of three.
+        A_shared = mom_eqs["x"]["A"]
+        diag_old = A_shared.diagonal()
+        diag_new = diag_old / under_relaxation
+        A_shared.setdiag(diag_new)
+
+        rhs_columns = []
+        for i_comp, comp_name in enumerate(["x", "y", "z"]):
+            b = mom_eqs[comp_name]["b"]
+            source_relax = (1.0 - under_relaxation) * diag_new * U[:n_elements, i_comp]
+            rhs_columns.append(b + source_relax)
+        B = np.column_stack(rhs_columns)
+        X = matrix_assembly.solve_linear_system(A_shared, B, method="spsolve")
+        if X.ndim == 1:
+            X = X[:, np.newaxis]
+
+        for i_comp, comp_name in enumerate(["x", "y", "z"]):
+            U_star[:n_elements, i_comp] = X[:, i_comp]
+            A_U[:, i_comp] = diag_new
+            b_relaxed = B[:, i_comp]
+            x_initial = U_old[:n_elements, i_comp] if U_old is not None else np.zeros(n_elements)
+            solve_diagnostics[comp_name] = {
+                "initial_residual": matrix_assembly.normalized_residual(
+                    A_shared, x_initial, b_relaxed
+                ),
+                "final_residual": matrix_assembly.normalized_residual(
+                    A_shared, X[:, i_comp], b_relaxed
+                ),
+            }
+
+        for boundary in boundaries:
+            _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements)
+        if return_diagnostics:
+            return U_star, A_U, solve_diagnostics
+        return U_star, A_U
 
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
         A = mom_eqs[comp_name]["A"]
@@ -398,6 +470,8 @@ def solve_momentum_predictor(
 
         # Solve with optional initial guess and tuned tolerance
         solver_kwargs.pop("ilu_key", None)
+        x_initial = x0_vec if x0_vec is not None else np.zeros(n_elements)
+        initial_residual = matrix_assembly.normalized_residual(A_relaxed, x_initial, b_relaxed)
         U_comp_star = matrix_assembly.solve_linear_system(
             A_relaxed,
             b_relaxed,
@@ -406,8 +480,15 @@ def solve_momentum_predictor(
             tol=momentum_tol,
             x0=x0_vec,
             ilu_key=comp_name,
+            backend=linear_backend,
+            parallel_context=parallel_context,
             **solver_kwargs,
         )
+        final_residual = matrix_assembly.normalized_residual(A_relaxed, U_comp_star, b_relaxed)
+        solve_diagnostics[comp_name] = {
+            "initial_residual": initial_residual,
+            "final_residual": final_residual,
+        }
 
         # Store results
         U_star[:n_elements, i_comp] = U_comp_star
@@ -418,6 +499,8 @@ def solve_momentum_predictor(
     for boundary in boundaries:
         _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements)
 
+    if return_diagnostics:
+        return U_star, A_U, solve_diagnostics
     return U_star, A_U
 
 

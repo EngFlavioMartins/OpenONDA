@@ -13,15 +13,15 @@ where R(t) = A(t)·φ_exact(t) – b(t), makes one Euler‑implicit step recover
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.time_integration import assemble_transient_term_euler_implicit
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.FVM.assemble.time_integration import assemble_transient_term_euler_implicit
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
 
 def _phi_exact_t(t, x, y, z):
@@ -50,7 +50,7 @@ class TestMMSTransientDiffusion:
 
     @pytest.mark.slow
     def test_consistency(self):
-        import gmsh
+        gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
         gmsh.initialize()
         try:
@@ -82,15 +82,16 @@ class TestMMSTransientDiffusion:
             phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
 
             grad = compute_gradient_gauss_linear_vectorized(phi_full, mesh, geo)
-            diff_flux = assemble_diffusion_term(phi_full, grad,
-                                                  np.ones(n_elem), mesh, geo,
-                                                  mesh["boundary"])
+            diff_flux = assemble_diffusion_term(
+                phi_full, grad, np.ones(n_elem), mesh, geo, mesh["boundary"]
+            )
             A = assemble_matrix_from_fluxes_vectorized(diff_flux, mesh)
             b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
 
             # Transient term
             transient = assemble_transient_term_euler_implicit(
-                phi_full, phi_old, dt, 1.0, mesh, geo)
+                phi_full, phi_old, dt, 1.0, mesh, geo
+            )
             # transient → {"ac": V/dt (diagonal), "bc": V·φ_old/dt (RHS source)}
 
             # Discrete residual at φ_exact(t)
@@ -104,12 +105,10 @@ class TestMMSTransientDiffusion:
             A.setdiag(A_diag + transient["ac"])
             b_solve = b + transient["bc"] + S_mms
 
-            phi_new = solve_linear_system(A, b_solve, method="spsolve",
-                                          equation_type="scalar")
+            phi_new = solve_linear_system(A, b_solve, method="spsolve", equation_type="scalar")
 
             err = np.sqrt(np.sum(vol * (phi_new - phi_exact_new) ** 2) / np.sum(vol))
-            assert err < 1e-12, (f"Discrete-source MMS error at t={t:.2f}: "
-                                 f"{err:.2e}")
+            assert err < 1e-12, f"Discrete-source MMS error at t={t:.2f}: {err:.2e}"
 
             phi_old = phi_new
 
@@ -128,13 +127,12 @@ class TestMMSTransientDiffusion:
         phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
 
         grad = compute_gradient_gauss_linear_vectorized(phi_full, mesh, geo)
-        diff_flux = assemble_diffusion_term(phi_full, grad,
-                                              np.ones(n_elem), mesh, geo,
-                                              mesh["boundary"])
+        diff_flux = assemble_diffusion_term(
+            phi_full, grad, np.ones(n_elem), mesh, geo, mesh["boundary"]
+        )
         A = assemble_matrix_from_fluxes_vectorized(diff_flux, mesh)
         b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
-        transient = assemble_transient_term_euler_implicit(
-            phi_full, phi_old, dt, 1.0, mesh, geo)
+        transient = assemble_transient_term_euler_implicit(phi_full, phi_old, dt, 1.0, mesh, geo)
 
         R = A @ phi_exact_new - b
         S_mms = R + (vol / dt) * (phi_exact_new - phi_old)
@@ -143,7 +141,6 @@ class TestMMSTransientDiffusion:
         A.setdiag(A_diag + transient["ac"])
         b_solve = b + transient["bc"] + S_mms
 
-        phi_new = solve_linear_system(A, b_solve, method="spsolve",
-                                      equation_type="scalar")
+        phi_new = solve_linear_system(A, b_solve, method="spsolve", equation_type="scalar")
         assert phi_new.shape == (n_elem,)
         assert np.all(np.isfinite(phi_new))

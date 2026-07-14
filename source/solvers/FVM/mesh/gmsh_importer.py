@@ -1,5 +1,9 @@
-import gmsh
 import numpy as np
+
+try:
+    import gmsh
+except ImportError:  # Optional FVM mesh dependency; checked when the importer is used.
+    gmsh = None
 
 
 def _find_mesh_dimension(model) -> int:
@@ -185,6 +189,10 @@ class GmshImporter:
         finalize() to shut down the Gmsh kernel when the importer is no
         longer needed.
         """
+        if gmsh is None:
+            raise ImportError(
+                "Gmsh support requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
+            )
         if not gmsh.isInitialized():
             gmsh.initialize()
 
@@ -194,7 +202,7 @@ class GmshImporter:
         Safe to call multiple times; only the first call shuts down the
         Gmsh kernel.
         """
-        if gmsh.isInitialized():
+        if gmsh is not None and gmsh.isInitialized():
             gmsh.finalize()
 
     def load_mesh(self, filename: str):

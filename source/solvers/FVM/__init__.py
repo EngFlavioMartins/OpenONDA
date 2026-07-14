@@ -55,14 +55,15 @@ solution = equation_solver.solve_scalar_equation(
 ```
 
 **Status**:
-- ✅ Scalar transport: Production ready
-- ✅ SIMPLE solver: Operational (steady-state)
-- ✅ PIMPLE solver: Operational (hex meshes; tetrahedral divergence known)
-- ✅ Turbulence: Smagorinsky LES model (classical)
-- ❌ Compressible: Not implemented
+- Scalar transport: regression-tested reference path
+- SIMPLE/PIMPLE: experimental incompressible research solvers
+- Structured hexahedral meshes: most mature path
+- General unstructured/device/distributed execution: under development
+- Compressible flow: not implemented
 
 **Verification**:
-All core modules verified against uFVM ground truth within machine precision.
+Core operators and selected integrated cases have regression coverage. See the
+readiness plan for the remaining production gates.
 """
 
 __version__ = "1.0.0"
@@ -70,6 +71,7 @@ __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 from . import io
 from .config.types import (
     BoundaryConfig,
+    ExecutionConfig,
     FVMConfig,
     MeshConfig,
     SolverParams,
@@ -82,6 +84,7 @@ from .core.solver import Solver
 __all__ = [
     "Solver",
     "FVMConfig",
+    "ExecutionConfig",
     "MeshConfig",
     "TimeConfig",
     "SolverParams",
@@ -105,19 +108,3 @@ __all__ = [
     "cavity_utils",
     "io",
 ]
-
-# Verification status
-VERIFIED_MODULES = [
-    "mesh_io",
-    "topology",
-    "geometry",
-    "field_io",
-    "gradients",
-    "diffusion",
-    "convection",
-    "time_integration",
-    "matrix_assembly",
-    "equation_solver",
-]
-
-EXPERIMENTAL_MODULES = ["momentum", "simple_solver", "cavity_utils"]  # pimple_solver is production-ready (hex)

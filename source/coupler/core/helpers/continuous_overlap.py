@@ -72,6 +72,7 @@ RADIUS_RATIO = 1.5
 # the guard band and the CFL buffer margin.
 _M4P_SUPPORT = 2.0
 
+
 # =========================================================
 # Integral invariants
 # =========================================================
@@ -89,6 +90,7 @@ def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
         "angular_impulse": (1.0 / 3.0) * np.sum(np.cross(pos, r_x_g), axis=0),
     }
 
+
 # =========================================================
 # Geometry / CFL helpers
 # =========================================================
@@ -97,6 +99,7 @@ def required_buffer_length(u_max: float, dt: float, h: float, safety: float = 1.
     ``L_buf ≥ safety · u_max · dt + 2h`` (M4′ stencil must stay interior)."""
     return float(safety * abs(u_max) * abs(dt) + _M4P_SUPPORT * h)
 
+
 def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> float:
     """Largest ``dt`` for which the given buffer keeps the hand-off exact
     (inverse of :func:`required_buffer_length`)."""
@@ -104,6 +107,7 @@ def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> 
     if u < 1e-30:
         return float("inf")
     return float(max(l_buf - _M4P_SUPPORT * h, 0.0) / (safety * u))
+
 
 def _outflow_band_mask(
     grid_pos: np.ndarray,
@@ -167,6 +171,7 @@ def cosine_eta(
     if ramp.any():
         eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * (dist[ramp] - lo) / width))
     return eta
+
 
 # =========================================================
 # Beale/Picard iterated strength assignment (regularized deconvolution)
@@ -258,6 +263,7 @@ def beale_strength_correction(
 
     return g.reshape(-1, 3), res_pre, res_post
 
+
 # =========================================================
 # Result container
 # =========================================================
@@ -285,6 +291,7 @@ class HandoffResult:
     @property
     def n_total(self) -> int:
         return self.n_remesh_out + self.n_free
+
 
 # =========================================================
 # Pure-NumPy numerical core
@@ -552,6 +559,7 @@ def continuous_handoff(
         strength_corr_residual_post=corr_post,
     )
 
+
 # =========================================================
 # Solver-facing wrapper (reads OpenFOAM, writes the VPM field)
 # =========================================================
@@ -581,7 +589,7 @@ class ContinuousOverlapInjector:
             )
 
         # Particle core radius σ = radius_ratio·h (sets Beale deconvolution bandwidth)
-        self.radius_ratio = float(getattr(cfg, "overlap_radius_ratio", RADIUS_RATIO))
+        self.radius_ratio = float(cfg.overlap_radius_ratio)
         if self.radius_ratio < 1.0:
             logger.warning(
                 "[Handoff] overlap_radius_ratio=%.2f < 1.0 breaks particle "

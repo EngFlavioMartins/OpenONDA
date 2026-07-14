@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
@@ -30,16 +29,18 @@ class TestHandBuilt3DMesh:
         geo = compute_mesh_geometry(hand_built_3d_mesh)
         cents = geo["element_centroids"]
         assert cents.shape == (8, 3)
-        expected = np.array([
-            [-0.5, -0.5, -0.5],
-            [ 0.5, -0.5, -0.5],
-            [-0.5,  0.5, -0.5],
-            [ 0.5,  0.5, -0.5],
-            [-0.5, -0.5,  0.5],
-            [ 0.5, -0.5,  0.5],
-            [-0.5,  0.5,  0.5],
-            [ 0.5,  0.5,  0.5],
-        ])
+        expected = np.array(
+            [
+                [-0.5, -0.5, -0.5],
+                [0.5, -0.5, -0.5],
+                [-0.5, 0.5, -0.5],
+                [0.5, 0.5, -0.5],
+                [-0.5, -0.5, 0.5],
+                [0.5, -0.5, 0.5],
+                [-0.5, 0.5, 0.5],
+                [0.5, 0.5, 0.5],
+            ]
+        )
         assert np.allclose(cents, expected)
 
     def test_face_areas(self, hand_built_3d_mesh):
@@ -62,10 +63,3 @@ class TestHandBuilt3DMesh:
         assert names == {"xmin", "xmax", "ymin", "ymax", "zmin", "zmax"}
         for b in hand_built_3d_mesh["boundary"]:
             assert b["nFaces"] == 4
-
-    def test_golden_reference(self, hand_built_3d_mesh, golden_reference):
-        geo = compute_mesh_geometry(hand_built_3d_mesh)
-        assert np.allclose(geo["element_volumes"], golden_reference["element_volumes"])
-        assert np.allclose(geo["element_centroids"], golden_reference["element_centroids"])
-        assert np.allclose(geo["face_areas"], golden_reference["face_areas"])
-        assert np.allclose(geo["face_sf"], golden_reference["face_sf"])

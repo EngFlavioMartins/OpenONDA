@@ -10,9 +10,10 @@ This test verifies:
   3. Basic flow physics hold
 """
 
-import gmsh
 import numpy as np
 import pytest
+
+gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
 from source.solvers.FVM import (
     BoundaryConfig,
@@ -64,17 +65,16 @@ class TestEmptyBCQuasi3D:
             surfaces = gmsh.model.getEntities(2)
             inlets, outlets, walls, empty_faces = [], [], [], []
             x_min, x_max = 0.0, L
-            y_min, y_max = -H / 2, H / 2
             for dim, tag in surfaces:
                 xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
                 cx = (xmin + xmax) / 2
                 cy = (ymin + ymax) / 2
                 cz = (zmin + zmax) / 2
-                if abs(cx - x_min) < tol:      # x=0 face
+                if abs(cx - x_min) < tol:  # x=0 face
                     inlets.append(tag)
-                elif abs(cx - x_max) < tol:     # x=L face
+                elif abs(cx - x_max) < tol:  # x=L face
                     outlets.append(tag)
-                elif abs(cz - 0.05) < tol:      # z=0 or z=0.1 faces
+                elif abs(cz - 0.05) < tol:  # z=0 or z=0.1 faces
                     # Only classify as empty if y-span is full
                     if abs(cy) < H / 2 + tol:
                         empty_faces.append(tag)
@@ -138,9 +138,7 @@ class TestEmptyBCQuasi3D:
         # 1. Single z-layer
         cents = solver.geo_data["element_centroids"]
         z_vals = np.unique(np.round(cents[:, 2], decimals=10))
-        assert len(z_vals) == 1, (
-            f"Expected single z-layer for quasi-3D mesh, got {len(z_vals)}"
-        )
+        assert len(z_vals) == 1, f"Expected single z-layer for quasi-3D mesh, got {len(z_vals)}"
 
         # 2. Forward flow: mean Ux > 0
         assert np.mean(U[:, 0]) > 0, "Net forward flow should be positive"
@@ -157,19 +155,23 @@ class TestEmptyBCQuasi3D:
         n10 = max(1, len(p_sorted) // 10)
         p_in = np.mean(p_sorted[:n10])
         p_out = np.mean(p_sorted[-n10:])
-        assert p_in > p_out, (
-            f"Pressure should drop along duct: p_in={p_in:.4f} p_out={p_out:.4f}"
-        )
+        assert p_in > p_out, f"Pressure should drop along duct: p_in={p_in:.4f} p_out={p_out:.4f}"
 
         # 5. Surface forces are finite (for all mesh patches)
         from source.solvers.FVM.fields.diagnostics import compute_surface_forces
 
         patch_names = [b["name"] for b in mesh["boundary"]]
         result = compute_surface_forces(
-            solver.U, solver.p, NU * 1.0, 1.0,
-            mesh, solver.geo_data, mesh["boundary"],
+            solver.U,
+            solver.p,
+            NU * 1.0,
+            1.0,
+            mesh,
+            solver.geo_data,
+            mesh["boundary"],
             patch_names=patch_names,
-            ref_U=U_IN, ref_area=H * L,
+            ref_U=U_IN,
+            ref_area=H * L,
         )
         for name in patch_names:
             assert name in result, f"Missing patch '{name}' in force results"

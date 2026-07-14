@@ -5,9 +5,10 @@ Verifies clockwise primary vortex and physically reasonable centre‑plane
 velocity magnitudes.
 """
 
-import gmsh
 import numpy as np
 import pytest
+
+gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
 from source.solvers.FVM import (
     BoundaryConfig,
@@ -56,8 +57,7 @@ class Test3DLidDrivenCavity:
             tol = 1e-4
             surfaces = gmsh.model.getEntities(2)
             lid, walls = [], []
-            x_min, x_max = 0.0, L
-            y_min, y_max = 0.0, L
+            y_max = L
             for dim, tag in surfaces:
                 xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
                 if abs(ymin - y_max) < tol and abs(ymax - y_max) < tol:
@@ -84,9 +84,9 @@ class Test3DLidDrivenCavity:
             ),
             transport=TransportConfig(density=1.0, nu=NU),
             boundaries=[
-                BoundaryConfig("lid",
-                                type_U="fixedValue", value_U=[U_LID, 0.0, 0.0],
-                                type_p="zeroGradient"),
+                BoundaryConfig(
+                    "lid", type_U="fixedValue", value_U=[U_LID, 0.0, 0.0], type_p="zeroGradient"
+                ),
                 BoundaryConfig.wall("walls"),
             ],
             initial_U=[0.0, 0.0, 0.0],
@@ -119,6 +119,4 @@ class Test3DLidDrivenCavity:
         )
         if centre_mask.sum() > 0:
             mag = np.linalg.norm(U[centre_mask], axis=1).mean()
-            assert 0 < mag < U_LID, (
-                f"Centre speed {mag:.4f} should be positive and below lid speed"
-            )
+            assert 0 < mag < U_LID, f"Centre speed {mag:.4f} should be positive and below lid speed"
