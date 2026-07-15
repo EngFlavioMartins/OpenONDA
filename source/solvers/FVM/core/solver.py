@@ -705,6 +705,10 @@ class Solver(OFWInterfaceMixin):
             pressure_min=float(np.nanmin(interior_p)),
             pressure_max=float(np.nanmax(interior_p)),
             nonfinite_count=nonfinite_count,
+            kinetic_energy=diagnostics.compute_kinetic_energy(
+                self.U, self.geo_data, density=self.config.transport.density
+            ),
+            enstrophy=diagnostics.compute_enstrophy(self.U, self.mesh_data, self.geo_data),
             turbulence_min=turbulence_min,
             turbulence_max=turbulence_max,
         )

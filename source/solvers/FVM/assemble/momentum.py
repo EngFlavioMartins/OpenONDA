@@ -56,9 +56,8 @@ def _add_transient_term(
         first step (when ``U_old_old_comp`` is None), which is the standard
         self-starting BDF2 procedure.
 
-    BDF2 here assumes a constant time step; under adaptive Δt it silently
-    behaves as the constant-step formula (the variable-step weights are a
-    future refinement — see the temporal-order test).
+    BDF2 here assumes a constant time step. Configuration validation rejects
+    adaptive time stepping with BDF2 before assembly.
     """
     coeff = rho * vol / dt
     if scheme == "backward" and U_old_comp is not None and U_old_old_comp is not None:

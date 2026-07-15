@@ -6,7 +6,10 @@
     "static-mesh geometry validation",
     "serial float64 NumPy/SciPy operators",
     "structured linear and step diagnostics",
-    "BDF1/BDF2 checkpoint restart equivalence"
+    "BDF1/BDF2 checkpoint restart equivalence",
+    "translational cyclic and incompressible freestream boundaries",
+    "OpenFOAM/Gmsh first-order importer operator equivalence",
+    "three-level tetrahedral, prism, and mixed Poisson verification"
   ],
   "experimental": [
     "integrated 3D SIMPLE/PISO/PIMPLE",

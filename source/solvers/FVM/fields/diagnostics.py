@@ -82,6 +82,25 @@ def compute_continuity_error(phi, mesh_data, geo_data):
     return div
 
 
+def compute_kinetic_energy(U, geo_data, density=1.0):
+    """Return volume-integrated kinetic energy for the interior cells."""
+    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+    velocity = np.asarray(U[: len(volumes)], dtype=np.float64)
+    rho = np.asarray(density, dtype=np.float64)
+    if rho.ndim == 0:
+        rho = np.full(len(volumes), float(rho))
+    if rho.shape != volumes.shape or np.any(rho <= 0.0) or not np.all(np.isfinite(rho)):
+        raise ValueError(f"density must be finite and positive with shape {volumes.shape}")
+    return 0.5 * float(np.sum(rho * volumes * np.sum(velocity * velocity, axis=1)))
+
+
+def compute_enstrophy(U, mesh_data, geo_data):
+    """Return ``0.5 ∫ |curl(U)|² dV`` over the interior cells."""
+    vorticity = compute_vorticity(U, mesh_data, geo_data)
+    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+    return 0.5 * float(np.sum(volumes * np.sum(vorticity * vorticity, axis=1)))
+
+
 def compute_vorticity(U, mesh_data, geo_data):
     """
     Compute vorticity field: w = curl(U)

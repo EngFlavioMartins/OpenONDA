@@ -1,8 +1,8 @@
 """T0a — full-solver Taylor–Green vortex validation (decaying, analytic).
 
 Drives the *integrated* PIMPLE solver (momentum + pressure + Rhie–Chow + BDF2) on
-the 2-D decaying Taylor–Green vortex with time-varying Dirichlet-from-exact
-boundaries (via ``set_dirichlet_velocity_boundary_condition_vec``).  The
+the periodic 2-D decaying Taylor–Green vortex using translational cyclic pairs.
+The
 analytic solution on ``[0, 2π]²`` is
 
     u = e^{-2νt}( sin x cos y, −cos x sin y, 0 ),
@@ -12,11 +12,9 @@ Checks the headline DNS/LES property — the energy-conserving central scheme is
 less diffusive than upwind and tracks the analytic kinetic-energy decay, whereas
 upwind under-predicts KE (numerical dissipation).
 
-Finding (documented, not asserted as 2nd order): the *coupled* solver converges at
-~1st order here even though the momentum operator alone is 2nd order
-(``test_momentum_mms``), because boundary-face convection is hardwired to upwind
-(``assemble_convection_term_boundary``).  Fixing high-order boundary convection is
-an open numerics item.
+This is also the integrated cyclic-boundary gate: opposite-face fluxes must pair,
+the pressure solve must use its all-Neumann protocol, and no imposed outer value
+may mask a periodic boundary error.
 """
 
 import contextlib
@@ -55,8 +53,10 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
     )
     sp.time_scheme = "backward"
     bnds = [
-        BoundaryConfig(name=n, type_U="fixedValue", value_U=[0, 0, 0], type_p="zeroGradient")
-        for n in ("xmin", "xmax", "ymin", "ymax")
+        BoundaryConfig.cyclic("xmin", "xmax"),
+        BoundaryConfig.cyclic("xmax", "xmin"),
+        BoundaryConfig.cyclic("ymin", "ymax"),
+        BoundaryConfig.cyclic("ymax", "ymin"),
     ]
     bnds += [BoundaryConfig.empty("zmin"), BoundaryConfig.empty("zmax")]
     cfg = FVMConfig(
@@ -72,19 +72,17 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         s.auto_write = False
         ne = mesh["n_elements"]
         nint = mesh["n_interior_faces"]
-        cc, fc, vol = (
+        cc, vol = (
             s.geo_data["element_centroids"],
-            s.geo_data["face_centroids"],
             s.geo_data["element_volumes"],
         )
 
         s.U[:ne] = _tgv_U(cc[:, 0], cc[:, 1], 0.0, nu)
-        for b in mesh["boundary"]:
-            for j in range(b["nFaces"]):
-                fi = b["startFace"] + j
-                s.U[ne + (fi - nint)] = _tgv_U(
-                    np.array([fc[fi, 0]]), np.array([fc[fi, 1]]), 0.0, nu
-                ).ravel()
+        for face in range(nint, mesh["n_faces"]):
+            ghost = ne + face - nint
+            paired = mesh["boundary_neighbours"][face]
+            if paired >= 0:
+                s.U[ghost] = s.U[paired]
         s.U_old[:] = s.U
         s.U_old_old[:] = s.U
         ke0 = 0.5 * float(np.sum(np.sum(s.U[:ne] ** 2, axis=1) * vol))
@@ -92,11 +90,6 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         t = 0.0
         for _ in range(nsteps):
             t += dt
-            for name in ("xmin", "xmax", "ymin", "ymax"):
-                b = next(bb for bb in mesh["boundary"] if bb["name"] == name)
-                sl = slice(b["startFace"], b["startFace"] + b["nFaces"])
-                ue = _tgv_U(fc[sl, 0], fc[sl, 1], t, nu)
-                s.set_dirichlet_velocity_boundary_condition_vec(ue, name)
             s.solve_pimple(dt)
             s.advance_time()
 
@@ -128,6 +121,4 @@ class TestTaylorGreenValidation:
         rel16, *_ = _run(16, "central")
         rel24, *_ = _run(24, "central")
         order = np.log(rel16 / rel24) / np.log(24.0 / 16.0)
-        # Coupled-solver order ~1 (boundary convection is upwind); assert it at
-        # least converges.  Tightens to ~2 once high-order boundary convection lands.
         assert order > 0.7, f"observed coupled order {order:.2f} — not converging"

@@ -9,6 +9,8 @@ Converted from uFVM cfdComputeGradientGaussLinear0.m
 
 import numpy as np
 
+_LSQ_QR_CONDITION_LIMIT = 1.0e8
+
 
 def _accumulate_interior_gradients(
     grad_phi, phi, owners, neighbours, face_sf, face_weights, n_interior_faces, n_components
@@ -368,6 +370,7 @@ def compute_lsq_geometry(mesh_data, geo_data):
     M_inv = np.zeros((n_elements, 3, 3), dtype=np.float64)
     lsq_condition = np.zeros(n_elements, dtype=np.float64)
     lsq_rank = np.zeros(n_elements, dtype=np.int8)
+    lsq_solver_method = np.empty(n_elements, dtype="U3")
 
     for c in range(n_elements):
         s, e = int(offsets[c]), int(offsets[c + 1])
@@ -396,16 +399,17 @@ def compute_lsq_geometry(mesh_data, geo_data):
         M[2, 0] = M[0, 2]
         M[2, 1] = M[1, 2]
 
-        M_inv[c] = M
         lsq_condition[c] = np.linalg.cond(M)
         lsq_rank[c] = np.linalg.matrix_rank(M)
-
-    # Pseudo-inverse (stacked): on 2D single-layer meshes the out-of-plane
-    # moments vanish (empty patches are excluded from the stencil), making M
-    # exactly singular.  pinv zeroes the gradient along rank-deficient
-    # directions, which is the correct 2D behaviour; on full-rank 3D cells it
-    # equals the ordinary inverse.
-    M_inv = np.linalg.pinv(M_inv)
+        if lsq_rank[c] == 3 and lsq_condition[c] <= _LSQ_QR_CONDITION_LIMIT:
+            q, r = np.linalg.qr(M)
+            M_inv[c] = np.linalg.solve(r, q.T)
+            lsq_solver_method[c] = "qr"
+        else:
+            # SVD is deliberate for rank-deficient 2D stencils and severely
+            # conditioned 3D cells; it returns the minimum-norm gradient.
+            M_inv[c] = np.linalg.pinv(M)
+            lsq_solver_method[c] = "svd"
 
     return {
         "lsq_nei_phi_idx": nei_phi_idx,
@@ -415,6 +419,7 @@ def compute_lsq_geometry(mesh_data, geo_data):
         "lsq_M_inv": M_inv,
         "lsq_condition": lsq_condition,
         "lsq_rank": lsq_rank,
+        "lsq_solver_method": lsq_solver_method,
         "gradient_scheme": "lsq",
     }
 

@@ -127,6 +127,8 @@ def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):
     assert all(result.converged for result in record.linear_solves)
     assert record.nonfinite_count == 0
     assert np.isfinite(record.boundary_mass_balance)
+    assert np.isfinite(record.kinetic_energy) and record.kinetic_energy >= 0.0
+    assert np.isfinite(record.enstrophy) and record.enstrophy >= 0.0
 
 
 def test_acceptance_policy_uses_sustained_window(tmp_path):

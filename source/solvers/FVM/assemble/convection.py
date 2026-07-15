@@ -206,8 +206,8 @@ def assemble_convection_term_boundary(
     """
     Assemble convection term for boundary faces (1st-order upwind).
 
-    Boundary convection is first-order for every interior scheme. High-order
-    boundary reconstruction is not implemented and is listed as an accuracy gate.
+    Physical boundary values follow their mathematical condition directly.
+    Cyclic faces use the selected interior scheme and a true paired-cell column.
 
     Args:
         phi: Field values including boundary elements

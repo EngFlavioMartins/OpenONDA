@@ -90,6 +90,26 @@ def validate_topology(mesh_data):
         f"Boundary patches cover through face {expected_start}, expected {n_faces}",
     )
 
+    metadata_shapes = {
+        "source_point_ids": n_points,
+        "source_cell_ids": n_cells,
+        "cell_type_codes": n_cells,
+        "cell_families": n_cells,
+        "cell_orders": n_cells,
+        "global_cell_ids": n_cells,
+        "global_face_ids": n_faces,
+    }
+    for key, expected in metadata_shapes.items():
+        if key in mesh_data:
+            _require(
+                np.asarray(mesh_data[key]).shape == (expected,),
+                f"Mesh metadata {key!r} must have shape ({expected},)",
+            )
+    for key in ("global_cell_ids", "global_face_ids"):
+        if key in mesh_data:
+            values = np.asarray(mesh_data[key])
+            _require(len(np.unique(values)) == len(values), f"Mesh metadata {key!r} is not unique")
+
     return {
         "n_points": n_points,
         "n_cells": n_cells,
@@ -182,6 +202,9 @@ def validate_geometry(mesh_data, geo_data):
         ),
         "rank_deficient_lsq_cells": int(
             np.count_nonzero(np.asarray(geo_data.get("lsq_rank", [])) < 3)
+        ),
+        "svd_lsq_cells": int(
+            np.count_nonzero(np.asarray(geo_data.get("lsq_solver_method", [])) == "svd")
         ),
     }
 

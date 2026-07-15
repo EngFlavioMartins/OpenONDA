@@ -37,6 +37,8 @@ class StepDiagnostics:
     pressure_min: float
     pressure_max: float
     nonfinite_count: int
+    kinetic_energy: float
+    enstrophy: float
     turbulence_min: float | None = None
     turbulence_max: float | None = None
     warnings: tuple[str, ...] = field(default_factory=tuple)

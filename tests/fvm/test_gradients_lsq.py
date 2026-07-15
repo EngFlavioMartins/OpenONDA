@@ -64,6 +64,10 @@ class TestLSQOnHexMesh:
         grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem], 0.0)
 
+    def test_well_conditioned_3d_stencils_select_qr(self):
+        assert np.all(self.geo["lsq_rank"] == 3)
+        assert np.all(self.geo["lsq_solver_method"] == "qr")
+
 
 class TestLSQOnTetMesh:
     """LSQ gradient on tetrahedral meshes — where Gauss has O(1) error."""
@@ -107,3 +111,8 @@ class TestLSQOnTetMesh:
         phi = np.ones(n_elem + n_bnd)
         grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem], 0.0, atol=1e-10)
+
+    def test_solver_selection_is_reported(self):
+        methods = set(self.geo["lsq_solver_method"])
+        assert methods <= {"qr", "svd"}
+        assert methods
