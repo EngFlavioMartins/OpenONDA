@@ -25,13 +25,6 @@ COLORS = THEME.COLORS
 COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
-# Armaly, Durst, Pereira & Schoenung, J. Fluid Mech. 127 (1983), fig. 4.
-# Their Reynolds number uses the inlet-channel hydraulic diameter D = 2h and
-# the mean inlet velocity, so Re_Armaly = 2 * Re_h (this case's definition).
-# Measured primary reattachment at Re_Armaly = 150: x1/S = 4.2 (expansion
-# ratio 1.94 vs 2.0 here).  Keyed by Re_h.
-REFERENCES = {75.0: {"x_r": (3.9, 4.5)}}
-
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
@@ -39,7 +32,6 @@ def build_arg_parser():
     parser.add_argument("--figures-dir", default=str(FIGURES_DIR))
     parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=400)
-    parser.add_argument("--Re", type=float, default=75.0)
     return parser
 
 

@@ -12,14 +12,7 @@ import matplotlib.tri as mtri
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (  # noqa: E402
-    COLORMAPS,
-    COLORS,
-    REFERENCES,
-    build_arg_parser,
-    load_csv_columns,
-    save_fig,
-)
+from _common import COLORMAPS, build_arg_parser, load_csv_columns, save_fig  # noqa: E402
 
 
 def main():
@@ -54,30 +47,13 @@ def main():
     x_re = history["x_reattachment_over_h"]
     finite = np.isfinite(x_re)
     history_ax.plot(time[finite], x_re[finite], linewidth=1.2)
-    ref = REFERENCES.get(args.Re, {})
-    if "x_r" in ref:
-        history_ax.axhspan(
-            *ref["x_r"],
-            color=COLORS["reference"],
-            alpha=0.25,
-            label=f"Armaly et al. 1983: {ref['x_r'][0]:.1f}-{ref['x_r'][1]:.1f}",
-        )
-        history_ax.legend(loc="lower right", fontsize=8)
     history_ax.set_xlabel(r"$t U_b/h$")
     history_ax.set_ylabel(r"$x_r/h$")
     history_ax.set_title("Resolved near-wall reattachment estimate")
     history_ax.grid(True, alpha=0.3)
     if finite.any():
         x_final = float(x_re[finite][-1])
-        print(f"  final x_r/h = {x_final:.2f}", end="")
-        if "x_r" in ref:
-            lo, hi = ref["x_r"]
-            print(
-                f"  [Armaly et al. {lo:.1f}-{hi:.1f}: "
-                f"{'OK' if lo <= x_final <= hi else 'OUT OF BAND'}]",
-                end="",
-            )
-        print()
+        print(f"  final x_r/h = {x_final:.2f}")
     save_fig(fig, "step_comparison.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
 
