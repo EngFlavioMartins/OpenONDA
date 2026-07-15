@@ -471,6 +471,8 @@ def solve_momentum_predictor(
                 shared_result,
                 initial_residual=solve_diagnostics[comp_name]["initial_residual"],
                 final_residual=solve_diagnostics[comp_name]["final_residual"],
+                setup_seconds=shared_result.setup_seconds if i_comp == 0 else 0.0,
+                solve_seconds=shared_result.solve_seconds if i_comp == 0 else 0.0,
             )
 
         for boundary in boundaries:

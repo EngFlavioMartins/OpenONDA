@@ -259,6 +259,10 @@ class Solver(OFWInterfaceMixin):
         self.topology = MeshTopology.from_mesh_data(self.mesh_data)
         self.geometry = geometry.MeshGeometry.from_data(self.mesh_data, self.geo_data)
 
+        from ..assemble.matrix_assembly import prepare_matrix_assembly
+
+        prepare_matrix_assembly(self.mesh_data)
+
         self.cache.set_static_weights(self.cache.from_mesh_geometry(self.geo_data).static_weights)
         logging.Timer.log("  Geometry Compute")
 
@@ -466,6 +470,39 @@ class Solver(OFWInterfaceMixin):
         else:
             raise ValueError(f"Unsupported algorithm: {algo}")
         logging.Timer.log("  Algorithm Init")
+
+    def set_initial_velocity(self, values: np.ndarray) -> None:
+        """Set a cell-centred initial velocity and rebuild dependent state.
+
+        ``values`` contains one vector per interior cell. Boundary ghosts are
+        reconstructed from the configured boundary conditions, and both BDF
+        history levels and the face flux are reset to the resulting field.
+        This operation is only valid before the first time step is committed.
+        """
+        if self._n_committed or self.time_step:
+            raise RuntimeError("Initial velocity can only be set before the first time step")
+
+        n_elements = self.mesh_data["n_elements"]
+        field = np.asarray(values, dtype=np.float64)
+        if field.shape != (n_elements, 3) or not np.all(np.isfinite(field)):
+            raise ValueError(
+                f"Initial velocity must be finite with shape ({n_elements}, 3); got {field.shape}"
+            )
+
+        self.U[:n_elements] = field
+        _enforce_u_boundary_constraints(
+            self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
+        )
+        self.U_old[:] = self.U
+        self.U_old_old[:] = self.U
+
+        from ..assemble import convection
+        from ..solve import simple_solver
+
+        self.phi = convection.compute_mass_flow_rate(self.U, self.mesh_data, self.geo_data)
+        simple_solver.update_scalar_boundaries(
+            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+        )
 
     def _initialize_turbulence(self):
         """Initialise the turbulence / LES model if configured.

@@ -51,7 +51,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         source_implicit=None,
     ):
         """Perform one PIMPLE time step and return fields plus residuals."""
-        assert U_old is not None and dt is not None, "PIMPLESolver.step requires U_old and dt"
+        if U_old is None or dt is None:
+            raise ValueError("PIMPLESolver.step requires U_old and dt")
         n_elem = self.mesh_data["n_elements"]
         n_outer = int(self.params.get("n_outer_correctors", 1))
         n_corr = int(self.params["n_correctors"])

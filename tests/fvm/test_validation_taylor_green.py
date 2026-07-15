@@ -71,20 +71,12 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         s = Solver(cfg, case_dir=d, mesh_data=mesh)
         s.auto_write = False
         ne = mesh["n_elements"]
-        nint = mesh["n_interior_faces"]
         cc, vol = (
             s.geo_data["element_centroids"],
             s.geo_data["element_volumes"],
         )
 
-        s.U[:ne] = _tgv_U(cc[:, 0], cc[:, 1], 0.0, nu)
-        for face in range(nint, mesh["n_faces"]):
-            ghost = ne + face - nint
-            paired = mesh["boundary_neighbours"][face]
-            if paired >= 0:
-                s.U[ghost] = s.U[paired]
-        s.U_old[:] = s.U
-        s.U_old_old[:] = s.U
+        s.set_initial_velocity(_tgv_U(cc[:, 0], cc[:, 1], 0.0, nu))
         ke0 = 0.5 * float(np.sum(np.sum(s.U[:ne] ** 2, axis=1) * vol))
 
         t = 0.0
@@ -118,7 +110,9 @@ class TestTaylorGreenValidation:
         assert rel_c < 2e-3, f"central relL2 {rel_c:.2e} too large"
 
     def test_solver_converges_under_refinement(self):
-        rel16, *_ = _run(16, "central")
-        rel24, *_ = _run(24, "central")
-        order = np.log(rel16 / rel24) / np.log(24.0 / 16.0)
-        assert order > 0.7, f"observed coupled order {order:.2f} — not converging"
+        levels = (12, 16, 24)
+        errors = [_run(n, "central")[0] for n in levels]
+        orders = [
+            np.log(errors[i] / errors[i + 1]) / np.log(levels[i + 1] / levels[i]) for i in range(2)
+        ]
+        assert min(orders) > 1.8, f"observed coupled orders {orders} are not second-order"

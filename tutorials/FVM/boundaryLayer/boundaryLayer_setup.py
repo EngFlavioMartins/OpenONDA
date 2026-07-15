@@ -114,17 +114,24 @@ def write_profiles(solver, sol_dir, args, nu):
                 writer.writerow([station, x_col, y_i, u_i, v_i])
 
     # Skin friction from the wall-adjacent cell row: tau_w ~ mu * u1 / y1.
+    # p_wall and the top-row u_e diagnose spurious streamwise pressure
+    # gradients / confinement acceleration.
+    p = solver.p[:n]
     y1 = yc.min()
+    y_top = yc.max()
     wall = (np.abs(yc - y1) < 1e-12) & (xc > 0.0)
+    top = np.abs(yc - y_top) < 1e-12
     order = np.argsort(xc[wall])
     x_w = xc[wall][order]
     u_w = u[wall, 0][order]
+    p_w = p[wall][order]
+    u_e = np.interp(x_w, np.sort(xc[top]), u[top, 0][np.argsort(xc[top])])
     cf = 2.0 * nu * u_w / (y1 * args.u_inf**2)
     rex = args.u_inf * x_w / nu
     with open(os.path.join(sol_dir, "cf.csv"), "w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["x", "Rex", "Cf", "Cf_blasius"])
-        for row in zip(x_w, rex, cf, 0.664 / np.sqrt(rex), strict=True):
+        writer.writerow(["x", "Rex", "Cf", "Cf_blasius", "p_wall", "u_top"])
+        for row in zip(x_w, rex, cf, 0.664 / np.sqrt(rex), p_w, u_e, strict=True):
             writer.writerow(row)
 
     print(f"  Profiles written: {os.path.join(sol_dir, 'profiles.csv')}")
@@ -139,7 +146,11 @@ def main():
     parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
     parser.add_argument("--rho", type=float, default=1.0, help="Density")
     parser.add_argument("--n-plate", type=int, default=72, help="Cells along the plate")
+    parser.add_argument("--height", type=float, default=0.35, help="Domain height H")
     parser.add_argument("--dy-wall", type=float, default=0.0015, help="First wall-normal cell")
+    parser.add_argument(
+        "--dy-ratio", type=float, default=1.12, help="Wall-normal stretching ratio (1 = uniform)"
+    )
     parser.add_argument("--initial-dt", type=float, default=0.005, help="Initial dt [s]")
     parser.add_argument("--max-cfl", type=float, default=0.9, help="Target max Courant")
     parser.add_argument("--max-dt", type=float, default=0.02, help="Max dt cap [s]")
@@ -161,7 +172,11 @@ def main():
 
     print("\n--- Mesh Generation (rectilinear, in-memory) ---")
     mesh_data, _depth = flat_plate_mesh(
-        plate_length=args.plate_length, n_plate=args.n_plate, dy_wall=args.dy_wall
+        plate_length=args.plate_length,
+        height=args.height,
+        n_plate=args.n_plate,
+        dy_wall=args.dy_wall,
+        ratio=args.dy_ratio,
     )
     delta_L = 5.0 * args.plate_length / np.sqrt(args.Re)
     print(

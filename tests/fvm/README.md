@@ -24,3 +24,16 @@ dependency or device; a collected test must not silently select another backend.
 `Solver.write_run_manifest()` records the revision, dirty state, dependency
 versions, execution selection, configuration and mesh hashes, mesh provenance,
 quality metrics, and host identity for verification and benchmark artifacts.
+
+Every FVM test is assigned one primary marker during collection: `unit`,
+`verification`, `integration`, or `parallel`. Run a class directly with, for
+example, `pytest tests/fvm -m verification`. The CI workflow executes these
+classes separately and preserves JUnit reports.
+
+The scale benchmark records initialization, full-step, linear setup/solve, and
+nonlinear/operator time with host and memory metadata:
+
+```bash
+conda run -n OpenONDA python scripts/benchmarks/benchmark_fvm.py \
+  --sizes 10000 100000 --output artifacts/fvm-benchmark.json
+```

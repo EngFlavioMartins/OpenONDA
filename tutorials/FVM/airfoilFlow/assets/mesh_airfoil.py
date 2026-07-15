@@ -1,6 +1,9 @@
 import gmsh
 import numpy as np
 
+# Quasi-2D extrusion thickness (one cell); force reference area = chord * DEPTH.
+DEPTH = 0.1
+
 
 def naca0012(x, c=1.0):
     return (
@@ -24,7 +27,7 @@ def generate_mesh(output_file="airfoil.msh"):
     c = 1.0
     x_in, x_out = -5.0, 15.0
     y_min, y_max = -5.0, 5.0
-    depth = 0.1
+    depth = DEPTH
 
     x_arr = np.linspace(0, c, 60)
     yu = naca0012(x_arr, c)

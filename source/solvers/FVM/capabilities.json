@@ -9,7 +9,8 @@
     "BDF1/BDF2 checkpoint restart equivalence",
     "translational cyclic and incompressible freestream boundaries",
     "OpenFOAM/Gmsh first-order importer operator equivalence",
-    "three-level tetrahedral, prism, and mixed Poisson verification"
+    "three-level tetrahedral, prism, and mixed Poisson verification",
+    "three-level periodic Taylor-Green PIMPLE convergence and energy decay"
   ],
   "experimental": [
     "integrated 3D SIMPLE/PISO/PIMPLE",

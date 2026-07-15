@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "backend": "numpy-scipy-float64",
+  "source": {
+    "revision": "6eb6df95aeaad0e5f9acc907e40d71ff8413320e",
+    "dirty": true,
+    "note": "Measured with the pending FVM CI, initialization, and telemetry changes"
+  },
+  "host": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "python": "3.13.14",
+    "logical_cpus": 10
+  },
+  "cases": [
+    {
+      "target_cells": 10000,
+      "cells": 10000,
+      "faces": 40200,
+      "initialization_seconds": 1.2556488340487704,
+      "field_initialization_seconds": 0.03947299998253584,
+      "step_seconds": 0.38693108304869384,
+      "linear_setup_seconds": 0.0,
+      "linear_solve_seconds": 0.09552250010892749,
+      "operators_and_diagnostics_seconds": 0.29140858293976635,
+      "peak_rss_bytes": 209436672,
+      "continuity_max": 7.798729969724758e-14,
+      "cfl_max": 0.015896606815685166
+    },
+    {
+      "target_cells": 100000,
+      "cells": 99856,
+      "faces": 400056,
+      "initialization_seconds": 12.363705208990723,
+      "field_initialization_seconds": 0.38510283397044986,
+      "step_seconds": 5.614565374911763,
+      "linear_setup_seconds": 0.0,
+      "linear_solve_seconds": 3.528154499945231,
+      "operators_and_diagnostics_seconds": 2.086410874966532,
+      "peak_rss_bytes": 1109639168,
+      "continuity_max": 1.4930288107946342e-12,
+      "cfl_max": 0.050277909551378175
+    }
+  ]
+}

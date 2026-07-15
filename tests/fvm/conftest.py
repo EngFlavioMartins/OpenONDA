@@ -192,3 +192,39 @@ def cavity_mesh_3d(n):
     finally:
         gmsh.finalize()
     return mesh_data
+
+
+_INTEGRATION_MODULES = {
+    "test_3d_cube_flow.py",
+    "test_3d_lid_cavity.py",
+    "test_3d_poiseuille.py",
+    "test_bdf2_integration.py",
+    "test_empty_bc.py",
+    "test_ibm.py",
+    "test_pimple_nonorthogonal.py",
+    "test_restart_and_diagnostics.py",
+    "test_validation_cube.py",
+    "test_validation_taylor_green.py",
+}
+_PARALLEL_MODULES = {"test_parallel_execution.py", "test_petsc_parallel.py"}
+_VERIFICATION_PREFIXES = (
+    "test_gradients_",
+    "test_mms_",
+    "test_momentum_mms.py",
+    "test_temporal_order.py",
+)
+
+
+def pytest_collection_modifyitems(items):
+    """Assign every FVM test to one primary CI evidence class."""
+    for item in items:
+        filename = item.path.name
+        if filename in _PARALLEL_MODULES:
+            marker = "parallel"
+        elif filename in _INTEGRATION_MODULES:
+            marker = "integration"
+        elif filename.startswith(_VERIFICATION_PREFIXES):
+            marker = "verification"
+        else:
+            marker = "unit"
+        item.add_marker(getattr(pytest.mark, marker))

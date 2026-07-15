@@ -155,6 +155,7 @@ class ScalarEquationSolver:
             self.geo_data,
             self.boundaries,
             scheme=convection_scheme,
+            grad_phi=grad_phi,
         )
 
         # Combine fluxes
@@ -338,7 +339,13 @@ class ScalarEquationSolver:
 
             # Assemble convection
             conv_flux = convection.assemble_convection_term(
-                phi, mdot, self.mesh_data, self.geo_data, self.boundaries, scheme=convection_scheme
+                phi,
+                mdot,
+                self.mesh_data,
+                self.geo_data,
+                self.boundaries,
+                scheme=convection_scheme,
+                grad_phi=grad_phi,
             )
 
             # Assemble transient term

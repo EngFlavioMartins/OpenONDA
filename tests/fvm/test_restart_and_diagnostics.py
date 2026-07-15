@@ -125,6 +125,7 @@ def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):
     assert len(record.outer_correctors) == 1
     assert len(record.linear_solves) == 5
     assert all(result.converged for result in record.linear_solves)
+    assert sum(result.solve_seconds > 0.0 for result in record.linear_solves[:3]) == 1
     assert record.nonfinite_count == 0
     assert np.isfinite(record.boundary_mass_balance)
     assert np.isfinite(record.kinetic_energy) and record.kinetic_energy >= 0.0

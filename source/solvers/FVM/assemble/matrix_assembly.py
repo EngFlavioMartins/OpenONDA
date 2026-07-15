@@ -10,10 +10,11 @@ where A is the coefficient matrix and b is the RHS vector.
 Converted from uFVM cfdAssembleIntoGlobalMatrixFaceFluxes.m
 """
 
+from dataclasses import dataclass
 import logging
 
 import numpy as np
-from scipy.sparse import lil_matrix
+from scipy.sparse import csr_matrix, lil_matrix
 
 # Module logger and ILU cache
 logger = logging.getLogger(__name__)
@@ -21,6 +22,13 @@ _ILU_CACHE = {}
 
 # Cache for matrix sparsity patterns (keyed by mesh topology signature)
 _SPATIAL_CACHE: dict = {}
+
+
+@dataclass(frozen=True)
+class _CSRPattern:
+    indices: np.ndarray
+    indptr: np.ndarray
+    contribution_slots: np.ndarray
 
 
 def _sparsity_key(mesh_data):
@@ -149,6 +157,46 @@ def build_sparsity_pattern(mesh_data):
     return rows, cols
 
 
+def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
+    """Return cached CSR structure and face-contribution destination slots."""
+    key = (_sparsity_key(mesh_data), include_boundaries)
+    cached = _SPATIAL_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    if include_boundaries:
+        rows, cols = build_sparsity_pattern(mesh_data)
+    else:
+        n_interior = mesh_data["n_interior_faces"]
+        owners = mesh_data["owners"][:n_interior]
+        neighbours = mesh_data["neighbours"][:n_interior]
+        rows = np.concatenate([owners, owners, neighbours, neighbours])
+        cols = np.concatenate([owners, neighbours, owners, neighbours])
+
+    n_elements = mesh_data["n_elements"]
+    linear_indices = rows.astype(np.int64) * n_elements + cols
+    unique_indices, contribution_slots = np.unique(linear_indices, return_inverse=True)
+    unique_rows = unique_indices // n_elements
+    indices = np.asarray(unique_indices % n_elements, dtype=np.int32)
+    row_counts = np.bincount(unique_rows, minlength=n_elements)
+    indptr = np.empty(n_elements + 1, dtype=np.int64)
+    indptr[0] = 0
+    np.cumsum(row_counts, out=indptr[1:])
+
+    indices.setflags(write=False)
+    indptr.setflags(write=False)
+    contribution_slots = np.asarray(contribution_slots, dtype=np.int64)
+    contribution_slots.setflags(write=False)
+    pattern = _CSRPattern(indices, indptr, contribution_slots)
+    _SPATIAL_CACHE[key] = pattern
+    return pattern
+
+
+def prepare_matrix_assembly(mesh_data) -> None:
+    """Precompute the static full-face CSR structure for a mesh."""
+    _csr_pattern(mesh_data, include_boundaries=True)
+
+
 def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
     """
     Vectorized version of matrix assembly for better performance.
@@ -173,17 +221,12 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
     n_elements = mesh_data["n_elements"]
     n_interior_faces = mesh_data["n_interior_faces"]
 
-    # Slices for interior faces
-    owners = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-
     flux_cf = flux_data["flux_cf"][:n_interior_faces]
     flux_ff = flux_data["flux_ff"][:n_interior_faces]
 
     # Handle boundary faces if present
     has_boundaries = len(flux_data["flux_cf"]) > n_interior_faces
     if has_boundaries:
-        owners_b = mesh_data["owners"][n_interior_faces:]
         flux_cf_b = flux_data["flux_cf"][n_interior_faces:]
         flux_ff_b = flux_data["flux_ff"][n_interior_faces:]
         boundary_neighbours = np.asarray(
@@ -191,44 +234,25 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
         )[n_interior_faces:]
         coupled = boundary_neighbours >= 0
 
+    contributions = np.concatenate([flux_cf, flux_ff, -flux_cf, -flux_ff])
+    if has_boundaries:
+        contributions = np.concatenate([contributions, flux_cf_b, flux_ff_b[coupled]])
+
     if indices is not None:
         rows, cols = indices
-    else:
-        key = _sparsity_key(mesh_data)
-        cached = _SPATIAL_CACHE.get(key)
-        if cached is not None:
-            rows, cols = cached
-        else:
-            if has_boundaries:
-                rows = np.concatenate(
-                    [owners, owners, neighbours, neighbours, owners_b, owners_b[coupled]]
-                )
-                cols = np.concatenate(
-                    [
-                        owners,
-                        neighbours,
-                        owners,
-                        neighbours,
-                        owners_b,
-                        boundary_neighbours[coupled],
-                    ]
-                )
-            else:
-                rows = np.concatenate([owners, owners, neighbours, neighbours])
-                cols = np.concatenate([owners, neighbours, owners, neighbours])
-            _SPATIAL_CACHE[key] = (rows, cols)
+        return csr_matrix((contributions, (rows, cols)), shape=(n_elements, n_elements))
 
-    data = np.concatenate([flux_cf, flux_ff, -flux_cf, -flux_ff])
-    if has_boundaries:
-        data = np.concatenate([data, flux_cf_b, flux_ff_b[coupled]])
-
-    # Create sparse matrix from COO data
-    from scipy.sparse import coo_matrix
-
-    A_coo = coo_matrix((data, (rows, cols)), shape=(n_elements, n_elements))
-
-    # Convert to CSR and sum duplicates
-    return A_coo.tocsr()
+    pattern = _csr_pattern(mesh_data, has_boundaries)
+    data = np.bincount(
+        pattern.contribution_slots,
+        weights=contributions,
+        minlength=len(pattern.indices),
+    )
+    return csr_matrix(
+        (data, pattern.indices, pattern.indptr),
+        shape=(n_elements, n_elements),
+        copy=False,
+    )
 
 
 def assemble_rhs_from_fluxes(flux_data, mesh_data):

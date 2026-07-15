@@ -71,3 +71,8 @@ class TestMatrixAssembly:
         assert diff.max() < 1e-12, (
             f"Max diff between vectorized and loop assembly: {diff.max():.2e}"
         )
+
+        changed = {**flux_data, "flux_cf": 2.0 * flux_data["flux_cf"]}
+        second = assemble_matrix_from_fluxes_vectorized(changed, mesh)
+        np.testing.assert_allclose(A_vec.toarray(), A_loop.toarray())
+        assert second is not A_vec
