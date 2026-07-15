@@ -1,9 +1,9 @@
 import argparse
+import csv
 import importlib.util
-import os
-import numpy as np
 from pathlib import Path
-import xml.etree.ElementTree as ET
+
+import numpy as np
 
 ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
@@ -25,6 +25,13 @@ COLORS = THEME.COLORS
 COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
+# Armaly, Durst, Pereira & Schoenung, J. Fluid Mech. 127 (1983), fig. 4.
+# Their Reynolds number uses the inlet-channel hydraulic diameter D = 2h and
+# the mean inlet velocity, so Re_Armaly = 2 * Re_h (this case's definition).
+# Measured primary reattachment at Re_Armaly = 150: x1/S = 4.2 (expansion
+# ratio 1.94 vs 2.0 here).  Keyed by Re_h.
+REFERENCES = {75.0: {"x_r": (3.9, 4.5)}}
+
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
@@ -32,21 +39,21 @@ def build_arg_parser():
     parser.add_argument("--figures-dir", default=str(FIGURES_DIR))
     parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=400)
+    parser.add_argument("--Re", type=float, default=75.0)
     return parser
 
 
-def load_pvd_timesteps(solution_dir):
-    pvd_path = os.path.join(solution_dir, "stepProfile.pvd")
-    if not os.path.exists(pvd_path):
-        return []
-    tree = ET.parse(pvd_path)
-    root = tree.getroot()
-    timesteps = []
-    for ds in root.iter("DataSet"):
-        timesteps.append(
-            {"time": float(ds.get("timestep")), "file": os.path.join(solution_dir, ds.get("file"))}
-        )
-    return timesteps
+def load_csv_columns(path):
+    path = Path(path)
+    if not path.exists():
+        print(f"  WARNING: {path} not found")
+        return {}
+    data = {}
+    with open(path) as stream:
+        for row in csv.DictReader(stream):
+            for key, value in row.items():
+                data.setdefault(key, []).append(float(value))
+    return {key: np.asarray(values) for key, values in data.items()}
 
 
 def save_fig(fig, name, figures_dir, dpi=400, figure_format="png"):
