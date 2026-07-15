@@ -1,99 +1,70 @@
 #!/usr/bin/env python3
-"""Plot wake centreline u_x from the final VTU snapshot."""
+"""Instantaneous wake-centreline u_x/U from the final VTU snapshot.
+
+For the shedding regime the centreline velocity is unsteady; this plot is a
+qualitative check of the near-wake recovery, not a validation quantity (the
+validated quantities are St and mean Cd, see plot_forces.py).
+"""
 
 import sys
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORS, build_arg_parser, figure_size, save_fig, U_INF
+from _common import COLORS, U_INF, build_arg_parser, figure_size, latest_vtu, save_fig  # noqa: E402
 
 
 def main():
-    parser = build_arg_parser()
-    args = parser.parse_args()
+    args = build_arg_parser().parse_args()
 
-    solution_dir = args.solution_dir
-    figures_dir = args.figures_dir
-    dpi = args.dpi
-
-    vtu_dir = Path(solution_dir)
-    vtu_files = sorted(vtu_dir.glob("*.vtu"))
-    if not vtu_files:
-        # Try VTK subdirectory (legacy)
-        vtu_dir = Path(solution_dir) / "VTK"
-        if vtu_dir.exists():
-            vtu_files = sorted(vtu_dir.glob("*.vtu"))
-    if not vtu_files:
-        print(f"  WARNING: No VTU files found in {solution_dir}")
+    final = latest_vtu(args.solution_dir)
+    if final is None:
+        print(f"  WARNING: No VTU files found in {args.solution_dir}")
         return
-    if not vtu_files:
-        print(f"  WARNING: No VTU files found in {vtu_dir}")
-        return
+    print(f"  Reading: {final}")
+    mesh = pv.read(final)
 
-    final_vtu = vtu_files[-1]
-    print(f"  Reading: {final_vtu}")
-
-    mesh = pv.read(str(final_vtu))
-
-    points = mesh.points
-    u = mesh.point_data.get("U", None)
+    u = mesh.point_data.get("U")
     if u is None:
         print("  WARNING: No velocity field 'U' found in VTU.")
         return
+    pts = mesh.points
 
-    y_tol = 0.05
-    z_tol = 0.05
-
-    mask = (np.abs(points[:, 1]) < y_tol) & (np.abs(points[:, 2]) < z_tol) & (points[:, 0] >= 0.0)
-    if not mask.any():
-        print("  WARNING: No centreline points found.")
+    on_plane = np.abs(pts[:, 2]) < 1e-9
+    if not on_plane.any():
+        on_plane = pts[:, 2] < pts[:, 2].min() + 1e-9
+    near_axis = np.abs(pts[:, 1]) < 0.04
+    sel = on_plane & near_axis & (pts[:, 0] > 0.5)
+    if not sel.any():
+        print("  WARNING: No centreline points behind the cylinder.")
         return
 
-    x_cl = points[mask, 0]
-    ux_cl = u[mask, 0]
-    sort_idx = np.argsort(x_cl)
-    x_cl = x_cl[sort_idx]
-    ux_cl = ux_cl[sort_idx]
+    order = np.argsort(pts[sel, 0])
+    x = pts[sel, 0][order]
+    ux = u[sel, 0][order] / U_INF
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
-    ax.plot(
-        x_cl,
-        ux_cl / U_INF,
-        color=COLORS["TUDdark"],
-        linestyle="-",
-        linewidth=0.8,
-        label=f"t = {mesh.field_data.get('Time', '?')}",
-    )
-
-    face_min = ux_cl.min()
-    ax.axhline(0, color=COLORS["reference"], linestyle=":", linewidth=0.5)
-    ax.text(
-        0.97,
-        0.92,
-        f"+x face min u_x/U∞ = {face_min / U_INF:.3f}",
-        transform=ax.transAxes,
-        ha="right",
-        va="top",
-        bbox=dict(
-            boxstyle="round,pad=0.3",
-            facecolor=COLORS["LightText"],
-            edgecolor=COLORS["background_light"],
-            alpha=0.8,
-        ),
-    )
-
-    ax.set_xlabel("x [m]")
+    ax.plot(x, ux, color=COLORS["TUDdark"], linewidth=1.1)
+    ax.axhline(0.0, color=COLORS["reference"], linewidth=0.8, linestyle="--")
+    ax.set_xlabel("x / D")
     ax.set_ylabel("$u_x / U_\\infty$")
-    ax.set_title("Wake centreline velocity (y=0, z=0)")
-    ax.legend()
+    ax.set_title("Instantaneous wake centreline")
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    save_fig(fig, "cube_wake_centerline.png", figures_dir, dpi=dpi, figure_format=args.format)
+    save_fig(
+        fig, "cube_wake_centreline.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
+    )
+
+    rev = x[ux < 0.0]
+    if rev.size:
+        print(f"  instantaneous reversed-flow region extends to x/D = {rev.max():.2f}")
 
 
 if __name__ == "__main__":

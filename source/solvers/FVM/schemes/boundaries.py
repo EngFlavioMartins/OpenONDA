@@ -58,6 +58,8 @@ for _name, _fields in (
     ("inletOutlet", frozenset({"U"})),
     ("slip", frozenset({"U"})),
     ("symmetry", frozenset({"U"})),
+    ("cyclic", frozenset({"U", "p"})),
+    ("freestream", frozenset({"U", "p"})),
 ):
     BOUNDARIES.register(BoundaryOperator(_name, _fields, _ALL_OPERATORS))
 

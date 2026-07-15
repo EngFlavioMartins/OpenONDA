@@ -64,6 +64,40 @@ def test_collective_petsc_solution_matches_scipy():
     assert normalized_residual(A, actual, b) < 1e-10
 
 
+def test_collective_petsc_constant_pressure_nullspace():
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    n = 24
+    matrix = diags(
+        (-np.ones(n - 1), 2.0 * np.ones(n), -np.ones(n - 1)),
+        (-1, 0, 1),
+        format="lil",
+    )
+    matrix[0, 0] = 1.0
+    matrix[-1, -1] = 1.0
+    matrix = matrix.tocsr()
+    coordinates = np.linspace(0.0, 1.0, n)
+    expected = np.cos(2.0 * np.pi * coordinates)
+    expected -= np.mean(expected)
+    rhs = matrix @ expected
+
+    actual, info = solve_linear_system(
+        matrix,
+        rhs,
+        method="cg",
+        equation_type="pressure",
+        tol=1e-11,
+        maxiter=300,
+        backend="petsc",
+        parallel_context=context,
+        nullspace="constant",
+        return_info=True,
+    )
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-10)
+    assert info.nullspace == "constant"
+    assert info.converged
+
+
 def test_collective_pimple_step_is_rank_invariant(tmp_path):
     context = ParallelContext.create(ExecutionConfig.petsc_replicated())
     mesh = structured_box(3, 3, 3)

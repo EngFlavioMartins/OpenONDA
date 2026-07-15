@@ -34,6 +34,7 @@ class LinearSolveResult:
     backend: str
     method: str
     preconditioner: str | None
+    nullspace: str | None
     converged: bool
     reason: str
     iterations: int
@@ -141,7 +142,7 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
     return x0 + r0_norm * e, info, iterations
 
 
-def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context):
+def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context, nullspace):
     """Collectively solve a replicated SciPy system with distributed PETSc.
 
     Every rank supplies the same global CSR matrix, but inserts only the rows
@@ -189,6 +190,13 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
     mat.assemblyBegin()
     mat.assemblyEnd()
 
+    petsc_nullspace = None
+    if nullspace is not None:
+        if nullspace != "constant" or equation_type != "pressure":
+            raise ValueError("PETSc currently supports only a constant pressure null space")
+        petsc_nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
+        mat.setNullSpace(petsc_nullspace)
+
     rhs = PETSc.Vec().createMPI(n, comm=PETSc.COMM_WORLD)
     rhs_start, rhs_end = rhs.getOwnershipRange()
     if rhs_end > rhs_start:
@@ -196,6 +204,8 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
         rhs.setValues(rows, b_array[rhs_start:rhs_end])
     rhs.assemblyBegin()
     rhs.assemblyEnd()
+    if petsc_nullspace is not None:
+        petsc_nullspace.remove(rhs)
     solution = rhs.duplicate()
 
     initial = np.zeros(n, dtype=np.float64) if x0 is None else np.asarray(x0, dtype=np.float64)
@@ -225,8 +235,16 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
         method_name = "cg+gamg"
     elif requested in ksp_types:
         ksp.setType(ksp_types[requested])
-        pc.setType(PETSc.PC.Type.BJACOBI)
-        method_name = f"{requested}+bjacobi"
+        if nullspace == "constant":
+            # A one-rank block-Jacobi block is the complete singular
+            # Neumann matrix, so its local factorization fails. Point
+            # Jacobi is null-space safe and behaves consistently across
+            # communicator sizes.
+            pc.setType(PETSc.PC.Type.JACOBI)
+            method_name = f"{requested}+jacobi"
+        else:
+            pc.setType(PETSc.PC.Type.BJACOBI)
+            method_name = f"{requested}+bjacobi"
     else:
         raise ValueError(f"Unknown PETSc iterative solver {method!r}")
     ksp.setTolerances(rtol=float(tol), max_it=int(maxiter))
@@ -257,6 +275,8 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
         mode=PETSc.ScatterMode.FORWARD,
     )
     x = solution_all.getArray(readonly=True).copy()
+    if nullspace == "constant":
+        x -= np.mean(x)
     initial_residual = normalized_residual(A_csr, initial, b_array)
     final_residual = normalized_residual(A_csr, x, b_array)
     reason = str(ksp.getConvergedReason())
@@ -267,6 +287,7 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
         backend="petsc",
         method=method_name,
         preconditioner=str(ksp.getPC().getType()),
+        nullspace=nullspace,
         converged=converged,
         reason=reason,
         iterations=iterations,
@@ -283,6 +304,8 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
     solution.destroy()
     rhs.destroy()
     mat.destroy()
+    if petsc_nullspace is not None:
+        petsc_nullspace.destroy()
 
     if not info.converged:
         raise LinearSolveError(
@@ -647,6 +670,7 @@ def solve_linear_system(
     ilu_reuse_tol=None,
     backend="scipy",
     parallel_context=None,
+    nullspace=None,
     return_info=False,
     failure_policy="raise",
     **kwargs,
@@ -702,10 +726,13 @@ def solve_linear_system(
             maxiter,
             x0,
             parallel_context,
+            nullspace,
         )
         return (solution, info) if return_info else solution
     if str(backend).lower() != "scipy":
         raise ValueError(f"Unknown linear backend {backend!r}")
+    if nullspace is not None:
+        raise ValueError("Explicit null-space solves currently require the PETSc backend")
 
     initial = np.zeros_like(np.asarray(b), dtype=np.float64) if x0 is None else np.asarray(x0)
     initial_residual = normalized_residual(A, initial, b)
@@ -717,6 +744,7 @@ def solve_linear_system(
             backend="scipy",
             method=method,
             preconditioner=metadata.get("preconditioner"),
+            nullspace=None,
             converged=bool(np.isfinite(final_residual) and final_residual <= residual_limit),
             reason=str(metadata["reason"]),
             iterations=int(metadata["iterations"]),

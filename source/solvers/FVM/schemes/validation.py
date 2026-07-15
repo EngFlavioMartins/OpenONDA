@@ -56,6 +56,12 @@ def validate_solver_params(solver, time=None) -> None:
         errors.append(
             f"  linear_failure_policy must be 'raise' or 'direct_fallback'; got {failure_policy!r}"
         )
+    nullspace_policy = str(getattr(solver, "pressure_nullspace_policy", "auto")).lower()
+    if nullspace_policy not in {"auto", "reference", "petsc"}:
+        errors.append(
+            "  pressure_nullspace_policy must be 'auto', 'reference', or 'petsc'; "
+            f"got {nullspace_policy!r}"
+        )
     _check(
         getattr(solver, "convection_scheme", "deferred"),
         CONVECTION_SCHEMES,

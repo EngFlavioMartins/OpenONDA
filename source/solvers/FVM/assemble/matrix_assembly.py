@@ -32,6 +32,7 @@ def _sparsity_key(mesh_data):
     n_i = mesh_data["n_interior_faces"]
     own = mesh_data["owners"]
     nei = mesh_data["neighbours"]
+    coupled = mesh_data.get("boundary_neighbours")
     # Use bytes of the topology arrays + sizes
     key = (
         n,
@@ -39,6 +40,7 @@ def _sparsity_key(mesh_data):
         mesh_data["n_faces"],
         own.tobytes() if hasattr(own, "tobytes") else str(own),
         nei.tobytes() if hasattr(nei, "tobytes") else str(nei),
+        coupled.tobytes() if hasattr(coupled, "tobytes") else str(coupled),
     )
     mesh_data["_fvm_sparsity_key"] = key
     return key
@@ -103,6 +105,9 @@ def assemble_matrix_from_fluxes(flux_data, mesh_data):
 
         # Boundary contribution to diagonal
         A[own, own] += cf
+        boundary_neighbours = mesh_data.get("boundary_neighbours")
+        if boundary_neighbours is not None and boundary_neighbours[i_face] >= 0:
+            A[own, boundary_neighbours[i_face]] += flux_ff[i_face]
 
     # Convert to CSR format for efficient arithmetic
     return A.tocsr()
@@ -128,8 +133,16 @@ def build_sparsity_pattern(mesh_data):
     has_boundaries = mesh_data["n_faces"] > n_interior_faces
     if has_boundaries:
         owners_b = mesh_data["owners"][n_interior_faces:]
-        rows = np.concatenate([owners_i, owners_i, neighbours, neighbours, owners_b])
-        cols = np.concatenate([owners_i, neighbours, owners_i, neighbours, owners_b])
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1))
+        )[n_interior_faces:]
+        coupled = boundary_neighbours >= 0
+        rows = np.concatenate(
+            [owners_i, owners_i, neighbours, neighbours, owners_b, owners_b[coupled]]
+        )
+        cols = np.concatenate(
+            [owners_i, neighbours, owners_i, neighbours, owners_b, boundary_neighbours[coupled]]
+        )
     else:
         rows = np.concatenate([owners_i, owners_i, neighbours, neighbours])
         cols = np.concatenate([owners_i, neighbours, owners_i, neighbours])
@@ -172,6 +185,11 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
     if has_boundaries:
         owners_b = mesh_data["owners"][n_interior_faces:]
         flux_cf_b = flux_data["flux_cf"][n_interior_faces:]
+        flux_ff_b = flux_data["flux_ff"][n_interior_faces:]
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1))
+        )[n_interior_faces:]
+        coupled = boundary_neighbours >= 0
 
     if indices is not None:
         rows, cols = indices
@@ -182,8 +200,19 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
             rows, cols = cached
         else:
             if has_boundaries:
-                rows = np.concatenate([owners, owners, neighbours, neighbours, owners_b])
-                cols = np.concatenate([owners, neighbours, owners, neighbours, owners_b])
+                rows = np.concatenate(
+                    [owners, owners, neighbours, neighbours, owners_b, owners_b[coupled]]
+                )
+                cols = np.concatenate(
+                    [
+                        owners,
+                        neighbours,
+                        owners,
+                        neighbours,
+                        owners_b,
+                        boundary_neighbours[coupled],
+                    ]
+                )
             else:
                 rows = np.concatenate([owners, owners, neighbours, neighbours])
                 cols = np.concatenate([owners, neighbours, owners, neighbours])
@@ -191,7 +220,7 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
 
     data = np.concatenate([flux_cf, flux_ff, -flux_cf, -flux_ff])
     if has_boundaries:
-        data = np.concatenate([data, flux_cf_b])
+        data = np.concatenate([data, flux_cf_b, flux_ff_b[coupled]])
 
     # Create sparse matrix from COO data
     from scipy.sparse import coo_matrix

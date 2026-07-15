@@ -3,7 +3,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 SOLUTION_DIR="./solution"
 DPI=400
-RE=100
+RE=1e4
 FORMAT="png"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -18,13 +18,10 @@ FIGURES_DIR="$SCRIPT_DIR/figures"
 mkdir -p "$FIGURES_DIR"
 echo "[allplot] solution-dir : $SOLUTION_DIR"
 echo "[allplot] figures-dir  : $FIGURES_DIR"
-echo "[allplot] Re           : $RE"
 echo ""
-echo "[1/3] Forces, Strouhal number vs literature ..."
-python assets/plot_forces.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
-echo "[2/3] Vorticity street ..."
-python assets/plot_vorticity.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
-echo "[3/3] Wake centreline ..."
-python assets/plot_wake.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
+echo "[1/2] Velocity profiles vs Blasius ..."
+python assets/plot_blasius.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
+echo "[2/2] Skin friction vs Blasius ..."
+python assets/plot_cf.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
 echo ""
 echo "[allplot] Done. Figures saved to $FIGURES_DIR"

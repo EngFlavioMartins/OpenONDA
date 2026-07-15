@@ -8,6 +8,10 @@ from scipy.sparse.linalg import spsolve
 
 from source.solvers.FVM.solve import linear_interface
 from source.solvers.FVM.solve.linear_interface import normalized_residual, solve_linear_system
+from source.solvers.FVM.solve.simple_solver import (
+    _resolve_pressure_constraint,
+    assemble_pressure_correction_equation_rhie_chow,
+)
 from source.solvers.FVM.utils.cavity_utils import (
     fix_pressure_reference,
     needs_pressure_reference,
@@ -46,6 +50,48 @@ def test_reference_constraint_preserves_symmetry_and_other_equations():
     # Inputs are not mutated, which makes repeated correction assembly safe.
     assert np.allclose(A.toarray()[0], [2.0, -1.0, 0.0])
     assert np.allclose(b, [1.0, 0.0, 1.0])
+
+
+def test_nullspace_pressure_assembly_remains_singular_and_compatible(
+    hand_built_3d_mesh,
+):
+    from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+
+    mesh = hand_built_3d_mesh
+    geo = compute_mesh_geometry(mesh)
+    for boundary in mesh["boundary"]:
+        boundary["bc_type_U"] = "zeroGradient"
+        boundary["bc_type_p"] = "zeroGradient"
+    n = mesh["n_elements"]
+    n_total = n + mesh["n_faces"] - mesh["n_interior_faces"]
+    rng = np.random.default_rng(9)
+    velocity = rng.normal(scale=0.1, size=(n_total, 3))
+    pressure = np.zeros(n_total)
+    momentum_diagonal = np.full((n, 3), 2.0)
+
+    matrix, rhs, _ = assemble_pressure_correction_equation_rhie_chow(
+        velocity,
+        momentum_diagonal,
+        pressure,
+        1.0,
+        mesh,
+        geo,
+        mesh["boundary"],
+        pressure_constraint="nullspace",
+    )
+
+    np.testing.assert_allclose(matrix @ np.ones(n), 0.0, atol=1e-13)
+    assert np.sum(rhs) == pytest.approx(0.0, abs=1e-13)
+    np.testing.assert_allclose(matrix.toarray(), matrix.toarray().T, atol=1e-13)
+
+
+def test_pressure_constraint_auto_selects_backend_protocol():
+    assert _resolve_pressure_constraint({"_linear_backend": "scipy"}) == "reference"
+    assert _resolve_pressure_constraint({"_linear_backend": "petsc"}) == "nullspace"
+    with pytest.raises(ValueError, match="requires backend='petsc'"):
+        _resolve_pressure_constraint(
+            {"_linear_backend": "scipy", "pressure_nullspace_policy": "petsc"}
+        )
 
 
 def test_pressure_iterative_path_solves_current_matrix():

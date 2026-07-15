@@ -200,7 +200,9 @@ def assemble_convection_term_limited(phi, mdot, mesh_data, geo_data, grad_phi, l
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
 
-def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
+def assemble_convection_term_boundary(
+    phi, mdot, boundary_patch, mesh_data, geo_data=None, scheme="upwind", grad_phi=None
+):
     """
     Assemble convection term for boundary faces (1st-order upwind).
 
@@ -228,6 +230,55 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     owners_b = mesh_data["owners"][b_face_indices]
 
     mdot_b = mdot[b_face_indices]
+
+    if boundary_patch.get("bc_type_U") == "cyclic":
+        if geo_data is None:
+            raise ValueError("Cyclic convection requires geometric interpolation data")
+        neighbours_b = mesh_data["boundary_neighbours"][b_face_indices]
+        if np.any(neighbours_b < 0):
+            raise ValueError("Cyclic boundary faces are missing paired owner cells")
+        weights = geo_data["face_weights"][b_face_indices]
+        scheme_name = str(scheme)
+        flux_cf_upwind = np.maximum(mdot_b, 0.0)
+        flux_ff_upwind = np.minimum(mdot_b, 0.0)
+        if scheme_name == "upwind":
+            flux_cf = flux_cf_upwind
+            flux_ff = flux_ff_upwind
+            flux_vf = np.zeros_like(mdot_b)
+        elif scheme_name in {"central", "linear"}:
+            flux_cf = (1.0 - weights) * mdot_b
+            flux_ff = weights * mdot_b
+            flux_vf = np.zeros_like(mdot_b)
+        else:
+            phi_upwind = np.where(mdot_b >= 0.0, phi[owners_b], phi[neighbours_b])
+            phi_linear = (1.0 - weights) * phi[owners_b] + weights * phi[neighbours_b]
+            if scheme_name == "deferred":
+                psi = np.ones_like(mdot_b)
+            elif scheme_name.lower() == "lust":
+                psi = np.full_like(mdot_b, 0.75)
+            elif is_limited_scheme(scheme_name):
+                psi = _tvd_face_psi(
+                    phi,
+                    mdot_b,
+                    grad_phi,
+                    owners_b,
+                    neighbours_b,
+                    geo_data["face_cf_vector"][b_face_indices],
+                    scheme_name,
+                )
+            else:
+                raise ValueError(f"Unknown scheme: {scheme}")
+            flux_cf = flux_cf_upwind
+            flux_ff = flux_ff_upwind
+            flux_vf = psi * mdot_b * (phi_linear - phi_upwind)
+        flux_tf = flux_cf * phi[owners_b] + flux_ff * phi[neighbours_b] + flux_vf
+        return {
+            "flux_cf": flux_cf,
+            "flux_ff": flux_ff,
+            "flux_vf": flux_vf,
+            "flux_tf": flux_tf,
+            "face_indices": b_face_indices,
+        }
 
     # Boundary element indices
     b_elem_start = start_face - n_interior_faces
@@ -333,10 +384,16 @@ def assemble_convection_term(
 
     # Boundary faces
     for boundary in boundaries:
-        if boundary.get("bc_type_U") == "empty" or boundary.get("type") == "empty":
+        if (
+            boundary.get("bc_type_U") in ("empty", "slip", "symmetry")
+            or boundary.get("type") == "empty"
+        ):
+            # No convective flux through an impermeable plane.
             continue
 
-        b_fluxes = assemble_convection_term_boundary(phi, mdot, boundary, mesh_data)
+        b_fluxes = assemble_convection_term_boundary(
+            phi, mdot, boundary, mesh_data, geo_data, scheme=scheme, grad_phi=grad_phi
+        )
 
         indices = b_fluxes["face_indices"]
         flux_cf[indices] = b_fluxes["flux_cf"]
@@ -392,5 +449,17 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
 
     u_face_b = velocity[b_elem_indices]
     mdot[n_interior:] = np.sum(u_face_b * face_sf[n_interior:], axis=1)
+
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )
+    coupled = np.flatnonzero(boundary_neighbours >= 0)
+    if coupled.size:
+        weights_b = face_weights[coupled, np.newaxis]
+        u_face_coupled = (
+            weights_b * velocity[boundary_neighbours[coupled]]
+            + (1.0 - weights_b) * velocity[owners[coupled]]
+        )
+        mdot[coupled] = np.sum(u_face_coupled * face_sf[coupled], axis=1)
 
     return mdot

@@ -70,6 +70,12 @@ def test_invalid_linear_failure_policy_rejected():
         validate_solver_params(sp)
 
 
+def test_invalid_pressure_nullspace_policy_rejected():
+    sp = SolverParams(pressure_nullspace_policy="pin_or_guess")
+    with pytest.raises(ValueError, match="pressure_nullspace_policy"):
+        validate_solver_params(sp)
+
+
 def test_unsupported_boundary_condition_rejected():
     boundaries = [
         {"name": "inlet", "bc_type_U": "fixedValue", "bc_type_p": "zeroGradient"},

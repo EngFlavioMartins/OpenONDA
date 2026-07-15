@@ -25,6 +25,39 @@ from ..utils import cavity_utils
 from .contracts import OuterCorrectorDiagnostics
 
 
+def _resolve_pressure_constraint(params) -> str:
+    """Select the configured all-Neumann pressure treatment for this backend."""
+    policy = str(params.get("pressure_nullspace_policy", "auto")).lower()
+    backend = str(params.get("_linear_backend", "scipy")).lower()
+    if policy == "auto":
+        return "nullspace" if backend == "petsc" else "reference"
+    if policy == "petsc":
+        if backend != "petsc":
+            raise ValueError("The PETSc pressure null space requires backend='petsc'")
+        return "nullspace"
+    if policy == "reference":
+        return "reference"
+    raise ValueError(f"Unknown pressure null-space policy {policy!r}")
+
+
+def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bool:
+    """Return whether the assembled pressure operator has a constant null space."""
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    for boundary in boundaries:
+        bc_type = boundary.get("bc_type_p")
+        if bc_type == "fixedValue":
+            return False
+        if bc_type == "freestream":
+            start = boundary["startFace"]
+            nf = boundary["nFaces"]
+            ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
+            flux = np.sum(U_star[ghosts] * geo_data["face_sf"][start : start + nf], axis=1)
+            if np.any(flux >= 0.0):
+                return False
+    return True
+
+
 def _compute_rhie_chow_coefficients(volumes, A_U):
     """Compute the DU coefficients for Rhie-Chow interpolation.
 
@@ -77,6 +110,13 @@ def _compute_pressure_face_conductance(mesh_data, geo_data, DU):
         du_face[:n_interior] = w * DU[nei_i] + (1.0 - w) * DU[own_i]
     if n_faces > n_interior:
         du_face[n_interior:] = DU[owners[n_interior:]]
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )
+    coupled = np.flatnonzero(boundary_neighbours >= 0)
+    if coupled.size:
+        w = geo_data["face_weights"][coupled, np.newaxis]
+        du_face[coupled] = w * DU[boundary_neighbours[coupled]] + (1.0 - w) * DU[owners[coupled]]
 
     normal = sf / mag_sf[:, np.newaxis]
     edge = cf_vec / mag_cf[:, np.newaxis]
@@ -366,18 +406,17 @@ def _process_boundary_faces_jit(
 
         bc_code = bc_type_codes[i]
 
-        # zeroGradient pressure (inlet, wall) or noSlip
-        if bc_code == 0:
-            b_elem_idx = n_elements + (i_face - n_interior)
-            Ub0, Ub1, Ub2 = U_star[b_elem_idx, 0], U_star[b_elem_idx, 1], U_star[b_elem_idx, 2]
+        b_elem_idx = n_elements + (i_face - n_interior)
+        Ub0, Ub1, Ub2 = U_star[b_elem_idx, 0], U_star[b_elem_idx, 1], U_star[b_elem_idx, 2]
+        velocity_flux = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
+
+        # zeroGradient pressure, including the inflow side of freestream
+        if bc_code == 0 or (bc_code == 3 and velocity_flux < 0.0):
             flux_vf_out[i] = rho * (Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2)
             continue
 
-        # fixedValue pressure (outlet)
-        if bc_code == 1:
-            b_elem_idx = n_elements + (i_face - n_interior)
-            Ub0, Ub1, Ub2 = U_star[b_elem_idx, 0], U_star[b_elem_idx, 1], U_star[b_elem_idx, 2]
-
+        # fixedValue pressure, including the outflow side of freestream
+        if bc_code == 1 or bc_code == 3:
             CF0, CF1, CF2 = (
                 face_cf_vector[i_face, 0],
                 face_cf_vector[i_face, 1],
@@ -441,7 +480,7 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
     Returns
     -------
     bc_type_codes : ndarray
-        0=zeroGradient, 1=fixedValue, 2=empty
+        0=zeroGradient, 1=fixedValue, 2=empty, 3=freestream
     p_boundary_values : ndarray
         Fixed pressure value (or 0.0 if not applicable)
     boundary_face_indices : ndarray
@@ -471,6 +510,9 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
             elif bc_type_p == "empty" or bc_type == "empty":
                 bc_type_codes[idx] = 2
                 p_boundary_values[idx] = 0.0
+            elif bc_type_p == "freestream":
+                bc_type_codes[idx] = 3
+                p_boundary_values[idx] = val if val is not None else 0.0
             else:
                 bc_type_codes[idx] = 0
                 p_boundary_values[idx] = 0.0
@@ -480,7 +522,15 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
 
 
 def assemble_pressure_correction_equation_rhie_chow(
-    U_star, A_U, p, rho, mesh_data, geo_data, boundaries, alpha_u=1.0
+    U_star,
+    A_U,
+    p,
+    rho,
+    mesh_data,
+    geo_data,
+    boundaries,
+    alpha_u=1.0,
+    pressure_constraint="reference",
 ):
     """
     Assemble pressure correction equation using Modified Rhie-Chow interpolation.
@@ -619,6 +669,31 @@ def assemble_pressure_correction_equation_rhie_chow(
             flux_ff[i_face] = ff_b[i]
             flux_vf[i_face] = vf_b[i]
 
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+        )
+        cyclic_faces = np.flatnonzero(boundary_neighbours >= 0)
+        if cyclic_faces.size:
+            own_b = owners[cyclic_faces]
+            nei_b = boundary_neighbours[cyclic_faces]
+            weight_b = geo_data["face_weights"][cyclic_faces, np.newaxis]
+            sf_b = geo_data["face_sf"][cyclic_faces]
+            cf_b = geo_data["face_cf_vector"][cyclic_faces]
+            mag_cf_b = np.linalg.norm(cf_b, axis=1)
+            edge_b = cf_b / mag_cf_b[:, np.newaxis]
+            du_b = weight_b * DU[nei_b] + (1.0 - weight_b) * DU[own_b]
+            hbya_b = weight_b * U_HbyA[nei_b] + (1.0 - weight_b) * U_HbyA[own_b]
+            grad_b = weight_b * grad_p[nei_b] + (1.0 - weight_b) * grad_p[own_b]
+            orthogonal_area = np.sum(sf_b * edge_b, axis=1)
+            nonorthogonal = sf_b - orthogonal_area[:, np.newaxis] * edge_b
+            conductance_b = face_conductance[cyclic_faces]
+            flux_cf[cyclic_faces] = rho * conductance_b
+            flux_ff[cyclic_faces] = -rho * conductance_b
+            flux_hbya = rho * np.sum(hbya_b * sf_b, axis=1)
+            compact = rho * conductance_b * (p[own_b] - p[nei_b])
+            nonorthogonal_flux = rho * np.sum(nonorthogonal * du_b * grad_b, axis=1)
+            flux_vf[cyclic_faces] = flux_hbya + compact + nonorthogonal_flux
+
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
 
@@ -626,13 +701,22 @@ def assemble_pressure_correction_equation_rhie_chow(
     b_p = matrix_assembly.assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data)
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
-    if cavity_utils.needs_pressure_reference(boundaries, n_elements):
-        A_p, b_p = cavity_utils.fix_pressure_reference(A_p, b_p)
+    if _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data):
+        if pressure_constraint == "reference":
+            A_p, b_p = cavity_utils.fix_pressure_reference(A_p, b_p)
+        elif pressure_constraint == "nullspace":
+            # A finite-volume all-Neumann RHS should already be compatible;
+            # remove only accumulated roundoff before the backend projection.
+            b_p = b_p - np.mean(b_p)
+        else:
+            raise ValueError(
+                "All-Neumann pressure requires pressure_constraint='reference' or 'nullspace'"
+            )
 
     return A_p, b_p, flux_vf
 
 
-def _extend_p_prime_bcs(p_prime, mesh_data, boundaries):
+def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
     """Extend the pressure-correction array with ghost-cell values.
 
     For ``fixedValue`` pressure boundaries, the ghost value is set to
@@ -661,6 +745,14 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries):
         bc_type_p = boundary.get("bc_type_p") or boundary.get("bc_type") or boundary.get("type")
         if bc_type_p == "fixedValue":
             p_prime_ext[idx : idx + nf] = 0.0
+        elif bc_type_p == "cyclic":
+            paired = mesh_data["boundary_neighbours"][start : start + nf]
+            p_prime_ext[idx : idx + nf] = p_prime[paired]
+        elif bc_type_p == "freestream":
+            if face_flux is None:
+                raise ValueError("Freestream pressure correction requires the predicted face flux")
+            outflow = np.asarray(face_flux)[start : start + nf] >= 0.0
+            p_prime_ext[idx : idx + nf] = np.where(outflow, 0.0, p_prime[own])
         else:
             p_prime_ext[idx : idx + nf] = p_prime[own]
     return p_prime_ext
@@ -704,14 +796,24 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         rho:        Density.
     """
     for boundary in boundaries:
-        if boundary.get("bc_type_p") != "fixedValue":
-            continue
         start = boundary["startFace"]
         nf = boundary["nFaces"]
         idx = np.arange(start, start + nf)
         own = owners[idx]
         geo_diff_b = face_conductance[idx]
-        phi[idx] += rho * geo_diff_b * p_prime[own]
+        bc_type = boundary.get("bc_type_p")
+        if bc_type == "fixedValue":
+            phi[idx] += rho * geo_diff_b * p_prime[own]
+        elif bc_type == "cyclic":
+            paired = boundary.get("_paired_cells")
+            if paired is None:
+                # The mesh-level array is not part of this helper's historical
+                # signature; cyclic setup stores the same view on each patch.
+                raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
+            phi[idx] += rho * geo_diff_b * (p_prime[own] - p_prime[paired])
+        elif bc_type == "freestream":
+            outflow = phi[idx] >= 0.0
+            phi[idx] += np.where(outflow, rho * geo_diff_b * p_prime[own], 0.0)
 
 
 def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
@@ -786,6 +888,17 @@ def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, bo
     U[idx : idx + nf] = U[own]
 
 
+def _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior):
+    """Copy paired owner values into the cyclic patch ghost layer."""
+    start = boundary["startFace"]
+    nf = boundary["nFaces"]
+    idx = n_elements + (start - n_interior)
+    paired = mesh_data["boundary_neighbours"][start : start + nf]
+    if np.any(paired < 0):
+        raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
+    U[idx : idx + nf] = U[paired]
+
+
 def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
     """Apply fixedValue or noSlip velocity BC.
 
@@ -827,7 +940,9 @@ def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
         U[idx + i] = _remove_normal_component(U[own[i]], face_sf[i])
 
 
-def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_interior):
+def _update_velocity_bcs(
+    U, phi, boundaries, owners, geo_data, n_elements, n_interior, mesh_data=None
+):
     """Update all velocity boundary conditions after a pressure-correction step.
 
     Dispatches to individual BC handlers based on each patch's
@@ -852,7 +967,7 @@ def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_int
         bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
         if bc_type_u == "zeroGradient":
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
-        elif bc_type_u == "inletOutlet":
+        elif bc_type_u == "inletOutlet" or bc_type_u == "freestream":
             _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
         elif bc_type_u == "directionMixed":
             _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior)
@@ -860,6 +975,10 @@ def _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_int
             _apply_fixed_value_bc(U, boundary, n_elements, n_interior)
         elif bc_type_u in ("empty", "slip", "symmetry"):
             _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior)
+        elif bc_type_u == "cyclic":
+            if mesh_data is None:
+                raise ValueError("Cyclic boundary update requires mesh_data")
+            _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior)
 
 
 def correct_velocity_and_flux(
@@ -885,7 +1004,7 @@ def correct_velocity_and_flux(
     face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
 
     # 1. Correct Cell Velocity
-    p_prime_ext = _extend_p_prime_bcs(p_prime, mesh_data, boundaries)
+    p_prime_ext = _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=phi)
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
     grad_p_prime = _grad_fn(p_prime_ext, mesh_data, geo_data)
     if grad_p_prime.ndim == 3:
@@ -897,7 +1016,9 @@ def correct_velocity_and_flux(
     _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance, rho)
 
     # 3. Update Velocity BCs
-    _update_velocity_bcs(U, phi, boundaries, owners, geo_data, n_elements, n_interior)
+    _update_velocity_bcs(
+        U, phi, boundaries, owners, geo_data, n_elements, n_interior, mesh_data=mesh_data
+    )
 
     return U, phi
 
@@ -924,7 +1045,16 @@ def _remove_normal_component(U_owner, face_vector):
     return U_owner
 
 
-def _apply_scalar_bc(phi, indices, owners_b, bc_type, boundary, field_name):
+def _apply_scalar_bc(
+    phi,
+    indices,
+    owners_b,
+    bc_type,
+    boundary,
+    field_name,
+    paired_owners=None,
+    face_flux=None,
+):
     """Apply a boundary condition to a scalar field ghost-cell block.
 
     Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip,
@@ -942,12 +1072,25 @@ def _apply_scalar_bc(phi, indices, owners_b, bc_type, boundary, field_name):
     if bc_type in ("zeroGradient", "inlet", "outlet", "symmetry", "empty", "slip", "noSlip"):
         phi[indices] = phi[owners_b]
     elif bc_type == "fixedValue":
-        val = boundary.get(f"value_{field_name}") or boundary.get("value")
+        val = boundary.get(f"value_{field_name}")
+        if val is None:
+            val = boundary.get("value")
         if val is not None:
             phi[indices] = val
+    elif bc_type == "cyclic":
+        if paired_owners is None or np.any(paired_owners < 0):
+            raise ValueError(f"Cyclic patch {boundary.get('name')!r} is not paired")
+        phi[indices] = phi[paired_owners]
+    elif bc_type == "freestream":
+        if face_flux is None:
+            raise ValueError("Freestream scalar update requires face fluxes")
+        val = boundary.get(f"value_{field_name}")
+        if val is None:
+            val = boundary.get("value", 0.0)
+        phi[indices] = np.where(np.asarray(face_flux) >= 0.0, val, phi[owners_b])
 
 
-def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p"):
+def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_flux=None):
     """
     Update boundary values (ghost cells) for a scalar field.
 
@@ -969,12 +1112,24 @@ def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p"):
         b_elem_start = n_elements + (start - n_interior)
         b_elem_indices = np.arange(b_elem_start, b_elem_start + n_bfaces)
         owners_b = owners[start : start + n_bfaces]
+        paired = mesh_data.get("boundary_neighbours")
+        paired_owners = None if paired is None else paired[start : start + n_bfaces]
+        patch_flux = None if face_flux is None else np.asarray(face_flux)[start : start + n_bfaces]
 
         # Get BC type
         bc_type = (
             boundary.get(f"bc_type_{field_name}") or boundary.get("bc_type") or boundary.get("type")
         )
-        _apply_scalar_bc(phi, b_elem_indices, owners_b, bc_type, boundary, field_name)
+        _apply_scalar_bc(
+            phi,
+            b_elem_indices,
+            owners_b,
+            bc_type,
+            boundary,
+            field_name,
+            paired_owners=paired_owners,
+            face_flux=patch_flux,
+        )
 
 
 class SIMPLESolver:
@@ -1067,6 +1222,10 @@ class SIMPLESolver:
         )
 
         # 2. Solve pressure correction
+        pressure_constraint = _resolve_pressure_constraint(self.params)
+        has_pressure_nullspace = _pressure_requires_constraint(
+            self.boundaries, U_star, self.mesh_data, self.geo_data
+        )
         A_p, b_p, phi_star = assemble_pressure_correction_equation_rhie_chow(
             U_star,
             A_U,
@@ -1076,6 +1235,7 @@ class SIMPLESolver:
             self.geo_data,
             self.boundaries,
             alpha_u=self.params["alpha_u"],
+            pressure_constraint=pressure_constraint,
         )
 
         p_prime, pressure_result = matrix_assembly.solve_linear_system(
@@ -1088,6 +1248,11 @@ class SIMPLESolver:
             backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
+            nullspace=(
+                "constant"
+                if has_pressure_nullspace and pressure_constraint == "nullspace"
+                else None
+            ),
             return_info=True,
         )
 
@@ -1113,7 +1278,7 @@ class SIMPLESolver:
         p[: self.mesh_data["n_elements"]] += self.params["alpha_p"] * p_prime
 
         # Update pressure boundaries
-        update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p")
+        update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi)
 
         # 5. Residuals
         self.last_res_p = matrix_assembly.normalized_residual(A_p, p_prime, b_p)

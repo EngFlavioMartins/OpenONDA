@@ -151,6 +151,7 @@ def _collect_boundary_patches(
     """
     patch_info: list[dict] = []
     boundary_faces_all: set = set()
+    face_patch: dict[tuple[int, ...], str] = {}
     for dim, tag in physical_groups:
         name = model.getPhysicalName(dim, tag)
         entities = model.getEntitiesForPhysicalGroup(dim, tag)
@@ -167,6 +168,13 @@ def _collect_boundary_patches(
                     f_nodes = tags[k * num_nodes : (k + 1) * num_nodes]
                     key = tuple(sorted(node_tag_to_idx[t] for t in f_nodes))
                     if key in face_map:
+                        previous = face_patch.get(key)
+                        if previous is not None and previous != name:
+                            raise ValueError(
+                                "Gmsh boundary face belongs to multiple physical groups: "
+                                f"{previous!r} and {name!r}"
+                            )
+                        face_patch[key] = name
                         patch_face_keys.append(key)
                         boundary_faces_all.add(key)
         patch_info.append(
@@ -281,6 +289,13 @@ class GmshImporter:
         face_map, face_nodes_map = _build_face_map_from_cells(
             model, cell_types, cell_tags_list, node_tag_to_idx, cell_tag_to_idx
         )
+        non_manifold = [(key, cells) for key, cells in face_map.items() if len(cells) > 2]
+        if non_manifold:
+            key, cells = non_manifold[0]
+            raise ValueError(
+                f"Non-manifold Gmsh face with source nodes {key} is shared by "
+                f"{len(cells)} cells: {cells}"
+            )
 
         # 4. Identify Boundary Patches
         physical_groups = model.getPhysicalGroups(dim=max_dim - 1)
@@ -345,6 +360,8 @@ class GmshImporter:
             "cell_type_codes": np.asarray(cell_type_codes, dtype=np.int32),
             "cell_families": np.asarray(cell_families),
             "cell_orders": np.asarray(cell_orders, dtype=np.int8),
+            "global_cell_ids": np.asarray(all_cell_tags, dtype=np.int64),
+            "global_face_ids": np.arange(len(final_faces), dtype=np.int64),
             "provenance": {"format": "gmsh", "source": self.source_path},
         }
 

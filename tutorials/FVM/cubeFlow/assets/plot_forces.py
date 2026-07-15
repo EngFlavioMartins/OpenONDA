@@ -1,101 +1,95 @@
 #!/usr/bin/env python3
-"""Plot Cd(t), Cl(t), and FFT of Cd(t) from forces_history.csv."""
+"""Plot Cd(t), Cl(t) of the square cylinder and extract the Strouhal number,
+with reference bands from Okajima (1982), Sohankar et al. (1998), and
+Sen et al. (2011)."""
 
 import sys
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORS, build_arg_parser, figure_size, load_forces_csv, save_fig, U_INF, L_REF
+from _common import (  # noqa: E402
+    COLORS,
+    REFERENCES,
+    build_arg_parser,
+    figure_size,
+    load_forces_csv,
+    save_fig,
+    strouhal_from_lift,
+)
 
 
 def main():
-    parser = build_arg_parser()
-    args = parser.parse_args()
-
-    solution_dir = args.solution_dir
-    figures_dir = args.figures_dir
-    dpi = args.dpi
-
-    data = load_forces_csv(solution_dir)
-    if not data:
-        print("  No force data to plot.")
+    args = build_arg_parser().parse_args()
+    ref = REFERENCES.get(args.Re, {})
+    data = load_forces_csv(args.solution_dir)
+    if "cube" not in data:
+        print("  No force data on patch 'cube' to plot.")
         return
+    d = data["cube"]
+    t, cd, cl = d["time"], d["Cd"], d["Cl"]
 
-    for pname, d in data.items():
-        t = d["time"]
-        cd = d["Cd"]
-        cl = d["Cl"]
+    # Statistics over the settled part (last third).
+    i0 = 2 * len(t) // 3
+    cd_mean = float(np.mean(cd[i0:]))
+    cl_rms = float(np.sqrt(np.mean((cl[i0:] - np.mean(cl[i0:])) ** 2)))
+    st = strouhal_from_lift(t, cl)  # f*D/U with D = U = 1
 
-        fig, axes = plt.subplots(3, 1, figsize=figure_size("stacked"), sharex=False)
+    fig, axes = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
 
-        ax = axes[0]
-        ax.plot(t, cd, color=COLORS["TUDdark"], linestyle="-", linewidth=0.8)
-        cd_mean = np.mean(cd)
-        ax.axhline(cd_mean, color=COLORS["reference"], linestyle="--", linewidth=0.6)
-        ax.text(
-            0.97,
-            0.92,
-            f"mean Cd = {cd_mean:.4f}",
-            transform=ax.transAxes,
-            ha="right",
-            va="top",
-            bbox=dict(
-                boxstyle="round,pad=0.3",
-                facecolor=COLORS["LightText"],
-                edgecolor=COLORS["background_light"],
-                alpha=0.8,
-            ),
+    ax = axes[0]
+    ax.plot(t, cd, color=COLORS["TUDdark"], linewidth=0.9)
+    if "Cd" in ref:
+        ax.axhspan(
+            *ref["Cd"],
+            color=COLORS["reference"],
+            alpha=0.25,
+            label=f"literature: {ref['Cd'][0]:.2f}-{ref['Cd'][1]:.2f}",
         )
-        ax.set_ylabel("$C_d$")
-        ax.set_title(f"Drag coefficient — {pname}")
-        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+    ax.set_ylabel("$C_d$")
+    ax.set_title(f"Square cylinder forces (Re = {args.Re:g})")
+    ax.text(
+        0.02, 0.06, f"mean $C_d$ (last 1/3) = {cd_mean:.4f}", transform=ax.transAxes, fontsize=8
+    )
+    ax.grid(True, alpha=0.3)
 
-        ax = axes[1]
-        ax.plot(t, cl, color=COLORS["AccentGreen"], linestyle="-", linewidth=0.8)
-        ax.set_ylabel("$C_l$")
-        ax.set_xlabel("Time [s]")
-        ax.set_title(f"Lift coefficient — {pname}")
-        ax.grid(True, alpha=0.3)
+    ax = axes[1]
+    ax.plot(t, cl, color=COLORS["TUDdark"], linewidth=0.9)
+    label = f"$C_l$ rms = {cl_rms:.4f}"
+    if st is not None:
+        label += f",  St = {st:.4f}"
+        if "St" in ref:
+            label += f" (ref {ref['St'][0]:.3f}-{ref['St'][1]:.3f})"
+    ax.text(0.02, 0.06, label, transform=ax.transAxes, fontsize=8)
+    ax.set_ylabel("$C_l$")
+    ax.set_xlabel("t [s]")
+    ax.grid(True, alpha=0.3)
 
-        ax = axes[2]
-        dt = t[1] - t[0] if len(t) > 1 else 0.1
-        n = len(cd)
-        cd_detrend = cd - np.mean(cd)
-        fft_vals = np.fft.rfft(cd_detrend)
-        fft_freq = np.fft.rfftfreq(n, d=dt)
-        fft_mag = np.abs(fft_vals)
-        mask = fft_freq > 0
-        ax.plot(fft_freq[mask], fft_mag[mask], color=COLORS["VPMpurple"], linewidth=0.8)
-        ax.set_xlabel("Frequency [Hz]")
-        ax.set_ylabel("Magnitude")
-        ax.set_title("FFT of $C_d$ (detrended)")
-        ax.set_xlim(0, 2.0)
-        ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    save_fig(fig, "forces_cube.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
 
-        if len(fft_mag[mask]) > 0:
-            peak_idx = np.argmax(fft_mag[mask])
-            if peak_idx < len(fft_freq[mask]):
-                st = fft_freq[mask][peak_idx] * L_REF / U_INF
-                ax.text(
-                    0.97,
-                    0.92,
-                    f"St = {st:.3f}  (f = {fft_freq[mask][peak_idx]:.3f} Hz)",
-                    transform=ax.transAxes,
-                    ha="right",
-                    va="top",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor=COLORS["LightText"],
-                        edgecolor=COLORS["background_light"],
-                        alpha=0.8,
-                    ),
-                )
-
-        plt.tight_layout()
-        save_fig(fig, "cube_forces.png", figures_dir, dpi=dpi, figure_format=args.format)
+    print(f"  cube: mean Cd = {cd_mean:.4f}", end="")
+    if "Cd" in ref:
+        lo, hi = ref["Cd"]
+        print(
+            f"  [reference {lo:.2f}-{hi:.2f}: {'OK' if lo <= cd_mean <= hi else 'OUT OF BAND'}]",
+            end="",
+        )
+    if st is not None:
+        print(f", St = {st:.4f}", end="")
+        if "St" in ref:
+            lo, hi = ref["St"]
+            print(
+                f"  [reference {lo:.3f}-{hi:.3f}: {'OK' if lo <= st <= hi else 'OUT OF BAND'}]",
+                end="",
+            )
+    print()
 
 
 if __name__ == "__main__":

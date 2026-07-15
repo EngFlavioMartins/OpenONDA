@@ -238,6 +238,7 @@ class BoundaryConfig:
     # Nut (turbulent viscosity) specific BC (OpenFOAM supports 'calculated')
     type_nut: str = "calculated"
     value_nut: float = 0.0
+    neighbour_patch: str | None = None
 
     @staticmethod
     def inlet(name: str, velocity: list[float]) -> "BoundaryConfig":
@@ -272,8 +273,11 @@ class BoundaryConfig:
         return BoundaryConfig(name=name, type_U="inletOutlet", type_p="fixedValue", value_p=p)
 
     @staticmethod
-    def freestream(name: str, velocity: list[float]) -> "BoundaryConfig":
-        """Create a Dirichlet velocity / zero-gradient pressure freestream.
+    def freestream(name: str, velocity: list[float], p: float = 0.0) -> "BoundaryConfig":
+        """Create an incompressible far-field boundary.
+
+        Velocity is prescribed on inflow and extrapolated on outflow. Pressure
+        is extrapolated on inflow and fixed to *p* on outflow.
 
         Args:
             name:     Patch name.
@@ -283,7 +287,17 @@ class BoundaryConfig:
             A new :class:`BoundaryConfig` for external-flow farfield boundaries.
         """
         return BoundaryConfig(
-            name=name, type_U="fixedValue", value_U=velocity, type_p="zeroGradient"
+            name=name, type_U="freestream", value_U=velocity, type_p="freestream", value_p=p
+        )
+
+    @staticmethod
+    def cyclic(name: str, neighbour_patch: str) -> "BoundaryConfig":
+        """Create one side of a translational periodic patch pair."""
+        return BoundaryConfig(
+            name=name,
+            type_U="cyclic",
+            type_p="cyclic",
+            neighbour_patch=neighbour_patch,
         )
 
     @staticmethod
@@ -550,6 +564,7 @@ class SolverParams:
     # compatibility with existing Python configurations.
     momentum_solver: str | None = None
     pressure_solver: str | None = None
+    pressure_nullspace_policy: Literal["auto", "reference", "petsc"] = "auto"
     linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
     reuse_ilu: bool = True  # Enable ILU preconditioning reuse by default
 

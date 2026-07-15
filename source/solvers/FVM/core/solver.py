@@ -115,7 +115,13 @@ def _enforce_u_boundary_constraints(
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
             U[start:end] = U[owners_b]
-        elif bc_type == "empty":
+        elif bc_type == "cyclic":
+            faces = np.arange(boundary["startFace"], boundary["startFace"] + boundary["nFaces"])
+            paired = mesh_data["boundary_neighbours"][faces]
+            if np.any(paired < 0):
+                raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
+            U[start:end] = U[paired]
+        elif bc_type in ("empty", "slip", "symmetry"):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
@@ -190,6 +196,13 @@ class Solver(OFWInterfaceMixin):
         validate_solver_params(self.config.solver, self.config.time)
         validate_turbulence(self.config.turbulence)
         validate_acceptance_policy(self.config.acceptance)
+        if (
+            self.config.solver.pressure_nullspace_policy == "petsc"
+            and self.config.execution.linear_backend != "petsc"
+        ):
+            raise ValueError(
+                "pressure_nullspace_policy='petsc' requires execution.linear_backend='petsc'"
+            )
         if not np.isfinite(self.config.transport.density) or self.config.transport.density <= 0.0:
             raise ValueError("Transport density must be finite and positive")
         if not np.isfinite(self.config.transport.nu) or self.config.transport.nu <= 0.0:
@@ -227,6 +240,20 @@ class Solver(OFWInterfaceMixin):
         self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
         enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
+        # Boundary configuration precedes immutable backend views because coupled
+        # patches augment the operator topology and periodic geometry.
+        self.boundaries = self.mesh_data["boundary"]
+        self._setup_boundary_conditions()
+        from ..mesh.coupled import configure_cyclic_boundaries
+        from ..schemes import validate_boundary_conditions
+
+        validate_boundary_conditions(self.boundaries)
+        configure_cyclic_boundaries(self.mesh_data, self.geo_data)
+        if gs == "lsq" and np.any(self.mesh_data["boundary_neighbours"] >= 0):
+            from ..fields.gradients import compute_lsq_geometry
+
+            self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
+
         from ..mesh.topology import MeshTopology
 
         self.topology = MeshTopology.from_mesh_data(self.mesh_data)
@@ -236,11 +263,6 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.log("  Geometry Compute")
 
         # 3. Component Setup
-        self.boundaries = self.mesh_data["boundary"]
-        self._setup_boundary_conditions()
-        from ..schemes import validate_boundary_conditions
-
-        validate_boundary_conditions(self.boundaries)
         self._initialize_fields()
         self._initialize_algorithm()
         self._initialize_turbulence()
@@ -275,7 +297,9 @@ class Solver(OFWInterfaceMixin):
 
         from ..solve import simple_solver
 
-        simple_solver.update_scalar_boundaries(self.p, self.mesh_data, self.boundaries, "p")
+        simple_solver.update_scalar_boundaries(
+            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+        )
 
     @classmethod
     def from_case(cls, case_dir: str, **overrides):
@@ -370,6 +394,8 @@ class Solver(OFWInterfaceMixin):
                             "value_nut": b_cfg.value_nut,
                         }
                     )
+                    if b_cfg.neighbour_patch is not None:
+                        b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
                         b_mesh["value_U"] = velocity
                         b_mesh.pop("value_U_field", None)

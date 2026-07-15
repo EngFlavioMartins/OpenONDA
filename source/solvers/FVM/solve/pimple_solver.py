@@ -59,13 +59,16 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         alpha_p = self.params["alpha_p"]
         momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
+        pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
 
         ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
         ddt_scheme = "backward" if ts in ("backward", "bdf2") else "euler"
         if ddt_scheme == "backward" and U_old_old is None:
             ddt_scheme = "euler"  # self-starting first step
 
-        simple_solver.update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p")
+        simple_solver.update_scalar_boundaries(
+            p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi
+        )
         pressure_initial_residual = 0.0
         pressure_final_residual = 0.0
         momentum_diagnostics = {}
@@ -147,9 +150,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             self.geo_data,
                             self.boundaries,
                             alpha_u=alpha_u,
+                            pressure_constraint=pressure_constraint,
                         )
                     )
                     logging.Timer.log("    Pressure Assembly")
+                    has_pressure_nullspace = simple_solver._pressure_requires_constraint(
+                        self.boundaries, U_iter, self.mesh_data, self.geo_data
+                    )
 
                     zero_guess = np.zeros_like(b_p)
                     pressure_initial_residual = matrix_assembly.normalized_residual(
@@ -173,6 +180,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
                         failure_policy=self.params.get("linear_failure_policy", "raise"),
+                        nullspace=(
+                            "constant"
+                            if has_pressure_nullspace and pressure_constraint == "nullspace"
+                            else None
+                        ),
                         return_info=True,
                     )
                     linear_results.append(pressure_result)
@@ -198,7 +210,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
                     p[:n_elem] += alpha_p * p_prime
                     simple_solver.update_scalar_boundaries(
-                        p, self.mesh_data, self.boundaries, field_name="p"
+                        p,
+                        self.mesh_data,
+                        self.boundaries,
+                        field_name="p",
+                        face_flux=phi,
                     )
 
             simple_solver._update_velocity_bcs(
@@ -209,6 +225,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 self.geo_data,
                 n_elem,
                 self.mesh_data["n_interior_faces"],
+                mesh_data=self.mesh_data,
             )
             # Preserve updated ghost values for the next gradient assembly.
             U[:] = U_iter[:]

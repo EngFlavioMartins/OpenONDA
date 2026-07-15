@@ -43,7 +43,16 @@ def _accumulate_interior_gradients(
 
 
 def _accumulate_boundary_gradients(
-    grad_phi, phi, owners_b, sf_b, boundaries, n_interior_faces, n_elements, n_components
+    grad_phi,
+    phi,
+    owners_b,
+    sf_b,
+    boundaries,
+    n_interior_faces,
+    n_elements,
+    n_components,
+    boundary_neighbours,
+    face_weights,
 ):
     """Accumulate boundary-face flux contributions into the cell gradient.
 
@@ -71,7 +80,17 @@ def _accumulate_boundary_gradients(
         rel_end = rel_start + nf
         for i_component in range(n_components):
             for k in range(rel_start, rel_end):
-                grad_phi[owners_b[k], :, i_component] += phi[n_elements + k, i_component] * sf_b[k]
+                face = n_interior_faces + k
+                paired = boundary_neighbours[face]
+                if paired >= 0:
+                    weight = face_weights[face]
+                    face_value = (
+                        weight * phi[paired, i_component]
+                        + (1.0 - weight) * phi[owners_b[k], i_component]
+                    )
+                else:
+                    face_value = phi[n_elements + k, i_component]
+                grad_phi[owners_b[k], :, i_component] += face_value * sf_b[k]
 
 
 def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
@@ -131,6 +150,8 @@ def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
         n_interior_faces,
         n_elements,
         n_components,
+        np.asarray(mesh_data.get("boundary_neighbours", np.full(n_faces, -1))),
+        face_weights,
     )
 
     # Volume-average the cell gradients (vectorized)
@@ -138,7 +159,11 @@ def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
 
     # Boundary element gradients equal owner cell gradients
     i_boundary_elements = np.arange(n_elements, n_elements + n_boundary_faces)
-    grad_phi[i_boundary_elements, :, :] = grad_phi[owners_b, :, :]
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )[n_interior_faces:n_faces]
+    gradient_owners = np.where(boundary_neighbours >= 0, boundary_neighbours, owners_b)
+    grad_phi[i_boundary_elements, :, :] = grad_phi[gradient_owners, :, :]
 
     return grad_phi
 
@@ -229,6 +254,17 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
 
         for i_component in range(n_components):
             phi_b = phi[b_elem_indices, i_component]
+            boundary_neighbours = np.asarray(
+                mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+            )[valid_b_face_indices]
+            coupled = boundary_neighbours >= 0
+            if np.any(coupled):
+                face_weights_b = face_weights[valid_b_face_indices[coupled]]
+                owner_indices = owners[valid_b_face_indices[coupled]]
+                phi_b[coupled] = (
+                    face_weights_b * phi[boundary_neighbours[coupled], i_component]
+                    + (1.0 - face_weights_b) * phi[owner_indices, i_component]
+                )
             contribution_b = phi_b[:, np.newaxis] * sf_b[rel_indices]
             np.add.at(grad_phi[:, :, i_component], owners_b[rel_indices], contribution_b)
 
@@ -245,7 +281,13 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
     # ensuring continuity for extrapolation/interpolation (e.g. in Rhie-Chow)
     # We apply this to ALL boundary faces, including 'empty' ones.
     i_boundary_elements = np.arange(n_elements, n_elements + n_boundary_faces)
-    grad_phi[i_boundary_elements, :, :] = grad_phi[owners[n_interior_faces:n_faces], :, :]
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )[n_interior_faces:n_faces]
+    gradient_owners = np.where(
+        boundary_neighbours >= 0, boundary_neighbours, owners[n_interior_faces:n_faces]
+    )
+    grad_phi[i_boundary_elements, :, :] = grad_phi[gradient_owners, :, :]
 
     return grad_phi
 
@@ -302,6 +344,11 @@ def compute_lsq_geometry(mesh_data, geo_data):
         for j in range(nf):
             face_idx = start + j
             own = owners[face_idx]
+            boundary_neighbours = mesh_data.get("boundary_neighbours")
+            if boundary_neighbours is not None and boundary_neighbours[face_idx] >= 0:
+                stencil_nei[own].append(int(boundary_neighbours[face_idx]))
+                stencil_dr[own].append(geo_data["face_cf_vector"][face_idx])
+                continue
             bf_idx = face_idx - n_interior  # 0‑based boundary‑face number
             phi_idx = n_elements + bf_idx  # position in the phi array
             dr = face_c[face_idx] - elem_c[own]
@@ -417,7 +464,11 @@ def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
     # Boundary ghost cells: copy owner gradient (same convention as Gauss)
     owners_b = mesh_data["owners"][n_interior:n_faces]
     i_boundary = np.arange(n_elements, n_elements + n_boundary)
-    grad[i_boundary, :, :] = grad[owners_b, :, :]
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )[n_interior:n_faces]
+    gradient_owners = np.where(boundary_neighbours >= 0, boundary_neighbours, owners_b)
+    grad[i_boundary, :, :] = grad[gradient_owners, :, :]
 
     return grad
 

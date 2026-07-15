@@ -215,9 +215,40 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
     # Assemble boundary faces
     for boundary in boundaries:
         bc_type = boundary.get("bc_type", "zeroGradient")
-        if bc_type == "empty" or boundary.get("type") == "empty":
-            # Empty BC: no flux contribution
+        if bc_type in ("empty", "slip", "symmetry") or boundary.get("type") == "empty":
+            # Empty/slip/symmetry: zero diffusive flux through the plane (the
+            # ghost value mirrors the tangential velocity, so the face-normal
+            # gradient vanishes).
             continue
+
+        elif bc_type == "cyclic":
+            start = boundary["startFace"]
+            indices = np.arange(start, start + boundary["nFaces"])
+            owners_b = mesh_data["owners"][indices]
+            neighbours_b = mesh_data["boundary_neighbours"][indices]
+            if np.any(neighbours_b < 0):
+                raise ValueError("Cyclic diffusion faces are missing paired owner cells")
+            sf = geo_data["face_sf"][indices]
+            cf_vector = geo_data["face_cf_vector"][indices]
+            mag_cf = np.linalg.norm(cf_vector, axis=1)
+            e = cf_vector / mag_cf[:, None]
+            sf_dot_e = np.sum(sf * e, axis=1)
+            sf_dot_e = np.where(np.abs(sf_dot_e) < 1e-30, 1e-30, sf_dot_e)
+            ef_mag = np.sum(sf * sf, axis=1) / sf_dot_e
+            tf = sf - ef_mag[:, None] * e
+            weights = geo_data["face_weights"][indices]
+            gamma_f = weights * gamma[neighbours_b] + (1.0 - weights) * gamma[owners_b]
+            grad = grad_phi.squeeze(-1) if grad_phi.ndim == 3 else grad_phi
+            grad_f = (
+                weights[:, None] * grad[neighbours_b] + (1.0 - weights[:, None]) * grad[owners_b]
+            )
+            coefficient = gamma_f * ef_mag / mag_cf
+            flux_cf[indices] = coefficient
+            flux_ff[indices] = -coefficient
+            flux_vf[indices] = -gamma_f * np.sum(grad_f * tf, axis=1)
+            flux_tf[indices] = (
+                coefficient * phi[owners_b] - coefficient * phi[neighbours_b] + flux_vf[indices]
+            )
 
         elif bc_type in ["fixedValue", "Dirichlet", "noSlip", "directionMixed"]:
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
@@ -237,7 +268,7 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             flux_vf[indices] = b_fluxes["flux_vf"]
             flux_tf[indices] = b_fluxes["flux_tf"]
 
-        elif bc_type == "inletOutlet":
+        elif bc_type in {"inletOutlet", "freestream"}:
             # Diffusion is Dirichlet only on reverse-flow/inflow faces; it is
             # zero-gradient on outflow.  Without a signed face flux, retain the
             # conservative zero-gradient behavior.

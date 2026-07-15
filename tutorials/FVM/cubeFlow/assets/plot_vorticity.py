@@ -1,84 +1,64 @@
 #!/usr/bin/env python3
-"""Plot |ω| slice at z=0 from the final VTU snapshot."""
+"""Signed z-vorticity snapshot of the von Karman street from the final VTU."""
 
 import sys
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORMAPS, build_arg_parser, figure_size, save_fig
+from _common import build_arg_parser, figure_size, latest_vtu, save_fig  # noqa: E402
 
 
 def main():
-    parser = build_arg_parser()
-    args = parser.parse_args()
+    args = build_arg_parser().parse_args()
 
-    solution_dir = args.solution_dir
-    figures_dir = args.figures_dir
-    dpi = args.dpi
-
-    vtu_dir = Path(solution_dir)
-    vtu_files = sorted(vtu_dir.glob("*.vtu"))
-    if not vtu_files:
-        # Try VTK subdirectory (legacy)
-        vtu_dir = Path(solution_dir) / "VTK"
-        if vtu_dir.exists():
-            vtu_files = sorted(vtu_dir.glob("*.vtu"))
-    if not vtu_files:
-        print(f"  WARNING: No VTU files found in {solution_dir}")
+    final = latest_vtu(args.solution_dir)
+    if final is None:
+        print(f"  WARNING: No VTU files found in {args.solution_dir}")
         return
-    if not vtu_files:
-        print(f"  WARNING: No VTU files found in {vtu_dir}")
-        return
+    print(f"  Reading: {final}")
+    mesh = pv.read(final)
 
-    final_vtu = vtu_files[-1]
-    print(f"  Reading: {final_vtu}")
-
-    mesh = pv.read(str(final_vtu))
-
-    u = mesh.point_data.get("U", None)
-    if u is None:
-        print("  WARNING: No velocity field 'U' found in VTU.")
-        return
-
-    vort = mesh.point_data.get("vorticity", None)
+    vort = mesh.point_data.get("vorticity")
     if vort is None:
         print("  WARNING: No 'vorticity' field found in VTU.")
         return
+    wz = vort[:, 2]
+    pts = mesh.points
 
-    vort_mag = np.linalg.norm(vort, axis=1)
-
-    z_tol = 0.05
-    mask = np.abs(mesh.points[:, 2]) < z_tol
+    # Quasi-2D mesh: keep the z = 0 plane of nodes.
+    mask = np.abs(pts[:, 2]) < 1e-9
     if not mask.any():
-        print("  WARNING: No points near z=0 found.")
-        return
+        mask = pts[:, 2] < pts[:, 2].min() + 1e-9
+    x, y, wz = pts[mask, 0], pts[mask, 1], wz[mask]
 
-    slice_pts = mesh.points[mask]
-    slice_vort = vort_mag[mask]
+    # Crop to the street; symmetric levels show the alternating sign.
+    crop = (x > -3.0) & (x < 15.0) & (np.abs(y) < 4.0)
+    x, y, wz = x[crop], y[crop], wz[crop]
+    lim = np.percentile(np.abs(wz), 98)
 
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
-    sc = ax.scatter(
-        slice_pts[:, 0],
-        slice_pts[:, 1],
-        c=slice_vort,
-        s=1.0,
-        cmap=COLORMAPS["vorticity_magnitude"],
-        vmin=0,
-        vmax=np.percentile(slice_vort, 95),
+    sc = ax.tripcolor(x, y, wz, cmap="RdBu_r", vmin=-lim, vmax=lim, shading="gouraud")
+    ax.add_patch(
+        mpatches.Rectangle((-0.5, -0.5), 1.0, 1.0, facecolor="0.2", edgecolor="k", zorder=5)
     )
-    plt.colorbar(sc, ax=ax, label=r"$|\omega|$ [1/s]")
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("y [m]")
-    ax.set_title(r"$|\omega|$ at $z=0$")
+    plt.colorbar(sc, ax=ax, label=r"$\omega_z$ [1/s]")
+    ax.set_xlabel("x / D")
+    ax.set_ylabel("y / D")
+    ax.set_title(f"Von Karman street, $\\omega_z$ (Re = {args.Re:g})")
     ax.set_aspect("equal")
-    ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    save_fig(fig, "cube_vorticity_slice.png", figures_dir, dpi=dpi, figure_format=args.format)
+    save_fig(
+        fig, "cube_vorticity_street.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
+    )
 
 
 if __name__ == "__main__":

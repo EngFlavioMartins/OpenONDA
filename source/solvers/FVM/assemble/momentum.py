@@ -119,6 +119,13 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     if bc_type in ("zeroGradient", "inletOutlet", "directionMixed"):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[owners_b]
+    elif bc_type == "freestream":
+        # The boundary ghost was switched using the latest face flux before
+        # momentum assembly; preserve that per-face inflow/outflow state.
+        pass
+    elif bc_type == "cyclic":
+        paired = mesh_data["boundary_neighbours"][start_face : start_face + n_faces]
+        U_star[b_elem_indices] = U_star[paired]
     elif bc_type in ("fixedValue", "noSlip"):
         if bc_type == "noSlip":
             U_star[b_elem_indices] = [0.0, 0.0, 0.0]
@@ -130,7 +137,7 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
             )
-    elif bc_type == "empty":
+    elif bc_type in ("empty", "slip", "symmetry"):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         face_sf = geo_data["face_sf"][start_face : start_face + n_faces]
         _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf)
@@ -227,6 +234,16 @@ def assemble_momentum_equation(
     face_rho[:n_interior] = (
         weights * rho[neighbours[:n_interior]] + (1.0 - weights) * rho[owners[:n_interior]]
     )
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1, dtype=np.int32))
+    )
+    cyclic_faces = np.flatnonzero(boundary_neighbours >= 0)
+    if cyclic_faces.size:
+        weights_b = geo_data["face_weights"][cyclic_faces]
+        face_rho[cyclic_faces] = (
+            weights_b * rho[boundary_neighbours[cyclic_faces]]
+            + (1.0 - weights_b) * rho[owners[cyclic_faces]]
+        )
     mdot = np.asarray(phi) * face_rho
 
     results = {}
