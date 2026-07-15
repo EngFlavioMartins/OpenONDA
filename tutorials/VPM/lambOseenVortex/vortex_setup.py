@@ -234,6 +234,7 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
         solution_name=str(output_dir),
         backup_directory=str(output_dir),
         samplers=samplers,
+        sampler_output_format="legacy",
         clean=args.clean,
         vpm_domain_bounds=domain_bounds,
     )

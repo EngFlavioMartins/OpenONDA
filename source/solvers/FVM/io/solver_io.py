@@ -7,6 +7,8 @@ Author: OpenONDA Team
 Date: January 2026
 """
 
+from dataclasses import asdict
+import json
 import os
 import sys
 from typing import Any
@@ -48,9 +50,7 @@ class SolverIO:
         if time_dir is None:
             time_dir = f"{self.solver.flow_time:.5g}"
 
-        # Allow output_dir override if runner script wants to redirect data
-        base_dir = getattr(self, "output_dir", None) or self.case_dir
-        output_dir = os.path.join(base_dir, time_dir)
+        output_dir = os.path.join(self.case_dir, time_dir)
         os.makedirs(output_dir, exist_ok=True)
 
         print(f"  Writing legacy OpenFOAM snapshot to {output_dir}")
@@ -64,12 +64,18 @@ class SolverIO:
                 os.path.join(output_dir, field_data["name"]), self.solver.mesh_data, field_data
             )
 
-        # Log forces if a configuration is found
-        try:
-            self._maybe_log_forces()
-        except Exception as e:
-            print(f"   (Warning) Force logging failed: {e}")
-            sys.stdout.flush()
+    def write_step_diagnostics(self) -> None:
+        """Append the accepted step health record as one JSON object."""
+        parallel = getattr(self.solver, "parallel", None)
+        if parallel is not None and not parallel.is_root:
+            return
+        record = getattr(self.solver, "last_diagnostics", None)
+        if record is None:
+            return
+        output_dir = os.path.join(self.case_dir, "solution")
+        os.makedirs(output_dir, exist_ok=True)
+        with open(os.path.join(output_dir, "diagnostics.jsonl"), "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n")
 
     def _gather_fields_for_io(self) -> list[dict[str, Any]]:
         """
@@ -137,96 +143,3 @@ class SolverIO:
             )
 
         return fields
-
-    def _maybe_log_forces(self):
-        """
-        Compute and log surface forces to CSV and stdout.
-
-        Checks for the presence of ``system/forceCoefficients`` or
-        ``constant/forceCoefficients`` in the case directory. If found,
-        surface forces (pressure + viscous) are computed for patches
-        whose names contain ``"cube"`` (or all boundaries if none
-        match). Results are appended to ``forces_history.csv`` and a
-        summary line is printed to stdout.
-
-        Reference quantities (ref_U, ref_area, ref_length, moment_centre)
-        are read from the solver configuration.
-
-        Raises:
-            Exception: Propagated from
-                :func:`diagnostics.compute_surface_forces` if the force
-                evaluation fails. The caller should handle this silently
-                (the message is printed as a warning in
-                :meth:`write_results`).
-        """
-        # Detect presence of force configs in legacy locations
-        candidates = [
-            os.path.join(self.case_dir, "system/forceCoefficients"),
-            os.path.join(self.case_dir, "constant/forceCoefficients"),
-        ]
-        if not any(os.path.exists(c) for c in candidates):
-            return
-
-        # Evaluating for all 'cube' or explicitly tagged patches
-        patches = [b["name"] for b in self.solver.boundaries if "cube" in b["name"].lower()]
-        if not patches:
-            patches = [b["name"] for b in self.solver.boundaries]
-
-        # Use initial magnitude for ref_U if not explicit
-        U0 = self.solver.config.initial_U
-        ref_U = np.linalg.norm(U0) if isinstance(U0, list | np.ndarray) else (U0 or 1.0)
-
-        ref_area = getattr(self.solver.config.solver, "ref_area", 1.0)
-        ref_length = getattr(self.solver.config.solver, "ref_length", 1.0)
-        moment_centre = getattr(self.solver.config.solver, "moment_centre", [0.0, 0.0, 0.0])
-
-        forces = diagnostics.compute_surface_forces(
-            self.solver.U,
-            self.solver.p,
-            self.solver.config.transport.nu * self.solver.config.transport.density,
-            self.solver.config.transport.density,
-            self.solver.mesh_data,
-            self.solver.geo_data,
-            self.solver.boundaries,
-            patch_names=patches,
-            ref_U=float(ref_U),
-            ref_area=float(ref_area),
-            ref_length=float(ref_length),
-            moment_centre=moment_centre,
-        )
-
-        # Append to CSV
-        backup_csv = os.path.join(self.case_dir, "forces_history.csv")
-        write_header = not os.path.exists(backup_csv)
-        with open(backup_csv, "a") as fh:
-            import csv
-
-            writer = csv.writer(fh)
-            if write_header:
-                writer.writerow(["time", "step", "patch", "Fx", "Fy", "Fz", "Cd", "Cl", "Cz", "Cm"])
-            for pname, pdata in forces.items():
-                F = pdata.get("Ftot", [0, 0, 0])
-                C = pdata.get("coeffs", {})
-                writer.writerow(
-                    [
-                        self.solver.flow_time,
-                        self.solver.time_step,
-                        pname,
-                        F[0],
-                        F[1],
-                        F[2],
-                        C.get("Cd"),
-                        C.get("Cl"),
-                        C.get("Cz"),
-                        C.get("Cm"),
-                    ]
-                )
-
-        # Summary to stdout
-        for pname, pdata in forces.items():
-            F = pdata.get("Ftot", [0, 0, 0])
-            C = pdata.get("coeffs", {})
-            print(
-                f"   Forces ({pname}): Fx={F[0]:.3f}, Fy={F[1]:.3f}, Fz={F[2]:.3f} | Cd={C.get('Cd', 0):.3f} Cl={C.get('Cl', 0):.3f} Cz={C.get('Cz', 0):.3f} Cm={C.get('Cm', 0):.3f}"
-            )
-        sys.stdout.flush()

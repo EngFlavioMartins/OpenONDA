@@ -3,7 +3,7 @@
 
 Validation case for the discrete direct-forcing IBM (Pinelli et al. 2010, as
 implemented for finite-volume PISO solvers by Constant et al. — see
-docs/literature/Constant2016.pdf and docs/plans/2026-07-fvm-ibm-design.md).
+docs/literature/Constant2016.pdf).
 The cylinder is represented by Lagrangian markers on a Cartesian mesh; no
 body-fitted grid is used.
 

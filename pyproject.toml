@@ -62,6 +62,7 @@ dependencies = [
 # and visualization output are optional to the OpenFOAM wrapper itself).
 fvm = [
     "gmsh>=4.11.0",
+    "pygit2>=1.13.0",
     "pyamg>=5.0.0",
     "pyvista>=0.42.0",
     "vtk>=9.2.0",
@@ -70,6 +71,7 @@ fvm = [
 # Complete FVM verification environment.
 fvm-test = [
     "gmsh>=4.11.0",
+    "pygit2>=1.13.0",
     "pyamg>=5.0.0",
     "pyvista>=0.42.0",
     "vtk>=9.2.0",

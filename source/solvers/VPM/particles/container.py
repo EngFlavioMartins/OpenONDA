@@ -95,22 +95,12 @@ class Particles:
 
     _COPY_CHUNK_SIZE = 65_536
 
-    # Capacity policy: re-creating the Taichi fields invalidates every kernel
-    # compiled against them (a multi-second re-JIT), so grow with geometric
-    # headroom and shrink only with wide hysteresis to keep resizes rare under
-    # repeatedly changing particle counts (DVH/GBD regeneration, remeshing).
-    _CAPACITY_GROWTH = 1.5  # grow target = max(needed, growth × capacity)
-    _SHRINK_TRIGGER = 4.0  # shrink only when capacity > trigger × live count
-    _SHRINK_HEADROOM = 2.0  # shrink target = headroom × live count
-    _MIN_CAPACITY = 65_536  # ~20 MB of fields — never resize below this
-
     def __init__(self, max_particles=MAX_PARTICLES, float_dtype: str = "f32"):
         """
         Initialize the Particles class with Taichi fields.
 
         Args:
-            max_particles (int): Maximum number of particles to allocate memory for.
-                                This can be increased dynamically if needed.
+            max_particles (int): Fixed particle capacity allocated at startup.
             float_dtype (str): 'f32' (default) or 'f64' - precision for particle data
         """
         self._max_particles = max_particles
@@ -119,7 +109,6 @@ class Particles:
         self.number_of_particles = 0
         self.time_step = 0  # For cache invalidation
         self._cached_step = -1  # Track when cache was last updated
-        self._resize_callbacks = []  # Callbacks to invoke when container capacity changes
         # NumPy dtype matching Taichi float precision (avoids repeated branching)
         self._np_float_dtype = np.float32 if self.float_dtype == "f32" else np.float64
         self._host_vector_chunk = None
@@ -175,66 +164,29 @@ class Particles:
         """Sync device particle count to host."""
         self.number_of_particles = self.device_number_of_particles[None]
 
-    def _resize_fields(self, new_size):
-        self._max_particles = new_size
-
-        # Preserve global (shared) background velocity across reallocation.
-        # This value is stored in a 0-D Taichi field and would otherwise reset
-        # to zeros when fields are re-initialized.
-        old_bg = self.velocity_background[None]
-
-        # Store old data
-        old_data = self._extract_cpu_data(self.number_of_particles)
-
-        # Reinitialize fields with new size
-        self._init_taichi_fields()
-
-        # Restore global background velocity
-        self.velocity_background[None] = old_bg
-
-        # Restore old data
-        if old_data["position"].shape[0] > 0:
-            self._populate_from_numpy(**old_data)
-
-        # Notify registered listeners about the resize
-        for callback in self._resize_callbacks:
-            callback(self._max_particles)
-
     def _grow_capacity(self, needed: int) -> None:
-        """Grow field capacity to at least ``needed`` with geometric headroom.
-
-        Leaves ``_CAPACITY_GROWTH`` headroom so a sequence of growing particle
-        counts triggers O(log N) re-allocations instead of one per call.
-        """
+        """Validate that a particle insertion fits the startup allocation."""
         if needed <= self._max_particles:
             return
-        target = min(int(self._max_particles * self._CAPACITY_GROWTH), MAX_PARTICLES)
-        self._resize_fields(max(needed, target, self._MIN_CAPACITY))
+        raise ValueError(
+            f"Particle insertion requires capacity {needed}, but max_particles="
+            f"{self._max_particles}. Increase SolverConfig.max_particles before "
+            "constructing the solver; runtime Taichi field resizing is disabled "
+            "because replaced fields retain device memory."
+        )
 
     def resize(self, new_capacity: int) -> None:
         """
-        Resize the particle container to a new maximum capacity.
+        Validate a requested particle capacity without reallocating fields.
 
         Args:
             new_capacity: New maximum number of particles.
         """
-        # Ensure we don't shrink below current count (though _resize_fields handles data preservation)
-        if new_capacity < self.number_of_particles:
-            print(
-                f"(Warning) Resize capacity {new_capacity} < current count {self.number_of_particles}. Clipping may occur."
+        if new_capacity != self._max_particles:
+            raise ValueError(
+                f"Particle capacity is fixed at {self._max_particles}; create a new "
+                f"solver with max_particles={new_capacity} instead of resizing it."
             )
-
-        self._resize_fields(new_capacity)
-
-    def register_resize_callback(self, callback) -> None:
-        """
-        Register a callback to be invoked when container capacity changes.
-
-        Args:
-            callback: A callable that accepts the new max_particles capacity as argument.
-                     Typically used by PhysicsEngine to synchronize temp field sizes.
-        """
-        self._resize_callbacks.append(callback)
 
     # ---- Prefix-extraction helpers (GPU → CPU, only active prefix) ----
 
@@ -1605,13 +1557,6 @@ class Particles:
                 return
 
             self.remove_vortex_particles(indices=indices_to_remove, remove_all=False)
-            new_N = self.number_of_particles
-            # Shrink with hysteresis: keep _SHRINK_HEADROOM headroom so the next
-            # growth (e.g. DVH/GBD regeneration) does not immediately re-allocate,
-            # and only shrink at all when the capacity is far oversized.
-            shrink_target = max(int(self._SHRINK_HEADROOM * new_N), self._MIN_CAPACITY)
-            if new_N > 0 and self._max_particles > max(self._SHRINK_TRIGGER * new_N, shrink_target):
-                self._resize_fields(shrink_target)
 
     def update_circulations_masked(self, mask: np.ndarray, delta_circ: np.ndarray) -> None:
         """Apply an in-place circulation delta to a masked subset of particles.

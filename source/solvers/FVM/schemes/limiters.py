@@ -1,13 +1,13 @@
 """TVD flux limiters ψ(r) for high-resolution convection.
 
-Each limiter maps the upwind smoothness ratio ``r`` to a blend factor
-``ψ ∈ [0, 1]`` between first-order upwind (ψ = 0) and second-order linear/central
-(ψ = 1).  The face value used by the convection assembly is
+Each limiter maps the upwind smoothness ratio ``r`` to its standard TVD flux
+limiter ``ψ ∈ [0, 2]``. The face value used by the convection assembly is
 
     φ_f = φ_upwind + ψ(r) · (φ_linear − φ_upwind)
 
-so ψ = 0 recovers upwind, ψ = 1 recovers central, and a TVD ψ(r) gives a bounded
-second-order scheme.  ``r`` is built from the cell gradients in the
+so ψ = 0 recovers upwind and ψ = 1 recovers central on a midpoint face.
+Values above one are required by standard Van Leer, MUSCL, and Superbee rather
+than being silently clipped to a different scheme. ``r`` is built from the cell gradients in the
 gradient-based (NVD/TVD) form used by OpenFOAM:
 
     r = 2 (d · ∇φ_upwind) / (φ_N − φ_P) − 1
@@ -109,8 +109,11 @@ def is_limited_scheme(name: str) -> bool:
 
 
 def apply_limiter(name: str, r: np.ndarray) -> np.ndarray:
-    """Evaluate limiter ``name`` on ratio array ``r``, clipped to [0, 1]."""
+    """Evaluate the named standard limiter without altering its TVD range."""
     fn = LIMITERS.get(str(name).lower())
     if fn is None:
         raise ValueError(f"Unknown TVD limiter '{name}'. Known: {sorted(LIMITERS)}")
-    return np.clip(fn(r), 0.0, 1.0)
+    values = fn(r)
+    if not np.all(np.isfinite(values)):
+        raise FloatingPointError(f"TVD limiter {name!r} returned non-finite values")
+    return values

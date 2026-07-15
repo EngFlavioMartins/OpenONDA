@@ -19,8 +19,10 @@ from numba import njit
 import numpy as np
 
 from ..assemble import matrix_assembly, momentum
+from ..fields import diagnostics as field_diagnostics
 from ..fields import gradients
 from ..utils import cavity_utils
+from .contracts import OuterCorrectorDiagnostics
 
 
 def _compute_rhie_chow_coefficients(volumes, A_U):
@@ -95,13 +97,12 @@ def _compute_geometric_diffusion(DU_f, Sf, e, mag_CF):
 
     Returns:
         geoDiff: Orthogonal diffusion conductance D_eff * (Sf·e) / |CF|
-        nonOrth_flag: 0.0 placeholder (unused)
         k: Non-orthogonal vector Sf - (Sf·e)e
     """
     mag_Sf = np.linalg.norm(Sf)
 
     if mag_Sf < 1e-30:
-        return 0.0, 0.0, np.zeros(3)
+        return 0.0, np.zeros(3)
 
     n = Sf / mag_Sf
 
@@ -116,7 +117,7 @@ def _compute_geometric_diffusion(DU_f, Sf, e, mag_CF):
 
     k = Sf - sf_dot_e * e
 
-    return geoDiff, 0.0, k
+    return geoDiff, k
 
 
 def _process_interior_face_rhie_chow(
@@ -163,7 +164,7 @@ def _process_interior_face_rhie_chow(
     flux_interpolated = rho * np.dot(U_f, Sf)
 
     # Term II: Geometric Diffusion (Coefficient Calculation)
-    geoDiff, _, k = _compute_geometric_diffusion(DU_f, Sf, e, mag_CF)
+    geoDiff, k = _compute_geometric_diffusion(DU_f, Sf, e, mag_CF)
 
     if geoDiff > 0:
         flux_cf = rho * geoDiff  # Owner Coeff (Positive)
@@ -258,7 +259,7 @@ def _process_boundary_face_rhie_chow(
         # 1. Base Velocity Flux
         flux_vf = rho * np.dot(U_b, Sf)
 
-        geoDiff, _, k = _compute_geometric_diffusion(DU_b, Sf, e, mag_CF)
+        geoDiff, k = _compute_geometric_diffusion(DU_b, Sf, e, mag_CF)
 
         if geoDiff > 0:
             flux_cf = rho * geoDiff
@@ -1013,6 +1014,8 @@ class SIMPLESolver:
             self.params.update(params)
 
         self.residuals = []
+        self.last_linear_results = ()
+        self.last_outer_diagnostics = ()
 
     def step(
         self,
@@ -1036,7 +1039,7 @@ class SIMPLESolver:
         S = λ(Utarget − U)) forwarded to the momentum predictor.
         """
         # 1. Solve momentum predictor
-        U_star, A_U = momentum.solve_momentum_predictor(
+        U_star, A_U, momentum_diagnostics = momentum.solve_momentum_predictor(
             U,
             p,
             phi,
@@ -1046,7 +1049,7 @@ class SIMPLESolver:
             self.geo_data,
             self.boundaries,
             convection_scheme=self.params["convection_scheme"],
-            solver=self.params["linear_solver"],
+            solver=self.params.get("momentum_solver") or self.params["linear_solver"],
             under_relaxation=self.params["alpha_u"],
             dt=dt,  # Use dt if provided (e.g. for PIMPLE)
             source_explicit=source_explicit,
@@ -1054,6 +1057,13 @@ class SIMPLESolver:
             linear_backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
+            momentum_tol=self.params.get("momentum_tol", 1e-4),
+            maxiter=self.params.get("momentum_maxiter", 1000),
+            reuse_ilu=self.params.get("reuse_ilu", False),
+            ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
+            ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
+            ilu_reuse_tol=self.params.get("ilu_reuse_tol"),
+            return_diagnostics=True,
         )
 
         # 2. Solve pressure correction
@@ -1068,21 +1078,22 @@ class SIMPLESolver:
             alpha_u=self.params["alpha_u"],
         )
 
-        p_prime = matrix_assembly.solve_linear_system(
+        p_prime, pressure_result = matrix_assembly.solve_linear_system(
             A_p,
             b_p,
-            method=self.params["linear_solver"],
+            method=self.params.get("pressure_solver") or self.params["linear_solver"],
             equation_type="pressure",
             tol=self.params.get("pressure_tol", 1e-8),
             maxiter=self.params.get("pressure_maxiter", 500),
             backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
+            return_info=True,
         )
 
         # 3. Correct velocity and flux
         # Calculate residual before in-place modification of U_star
-        self.last_res_u = np.linalg.norm(
+        velocity_increment = np.linalg.norm(
             U_star[: self.mesh_data["n_elements"]] - U[: self.mesh_data["n_elements"]]
         ) / (np.linalg.norm(U[: self.mesh_data["n_elements"]]) + 1e-10)
 
@@ -1105,11 +1116,34 @@ class SIMPLESolver:
         update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p")
 
         # 5. Residuals
-        self.last_res_p = np.linalg.norm(b_p) / (
-            np.linalg.norm(p[: self.mesh_data["n_elements"]]) + 1e-10
+        self.last_res_p = matrix_assembly.normalized_residual(A_p, p_prime, b_p)
+        self.last_res_u = max(
+            (values["final_residual"] for values in momentum_diagnostics.values()),
+            default=0.0,
+        )
+        continuity = field_diagnostics.compute_continuity_error(phi, self.mesh_data, self.geo_data)
+        volumes = self.geo_data["element_volumes"]
+        continuity_max = float(np.max(np.abs(continuity) / (volumes + 1e-30)))
+        self.last_linear_results = tuple(
+            values["linear_result"] for values in momentum_diagnostics.values()
+        ) + (pressure_result,)
+        self.last_outer_diagnostics = (
+            OuterCorrectorDiagnostics(
+                index=0,
+                momentum_residual=self.last_res_u,
+                pressure_residual=self.last_res_p,
+                continuity_max=continuity_max,
+            ),
         )
 
-        return U, p, phi, {"p": self.last_res_p, "U": self.last_res_u}
+        residuals = {"p": self.last_res_p, "U": self.last_res_u, "U_increment": velocity_increment}
+        residuals.update(
+            {
+                f"U_{component}": values["final_residual"]
+                for component, values in momentum_diagnostics.items()
+            }
+        )
+        return U, p, phi, residuals
 
     def solve(self, U_init, p_init, rho=1.0, nu=0.01):
         """Solve a steady incompressible flow using the SIMPLE algorithm.

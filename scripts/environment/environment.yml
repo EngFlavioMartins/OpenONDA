@@ -22,6 +22,7 @@ dependencies:
   # Keep mpi4py, PETSc, and petsc4py in Conda so they resolve against one MPI.
   - gmsh
   - pyamg
+  - pygit2
   - mpi4py
   - petsc
   - petsc4py

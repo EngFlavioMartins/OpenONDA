@@ -41,6 +41,32 @@ class ScalarEquationSolver:
         self.n_elements = mesh_data["n_elements"]
         self._grad_fn = gradients._resolve_gradient_fn(geo_data)
 
+    def _mass_flow_rate(self, velocity, density):
+        """Return face mass flux using linearly interpolated density."""
+        density = np.asarray(density, dtype=np.float64)
+        if density.ndim == 0:
+            density = np.full(self.n_elements, float(density))
+        if density.ndim != 1 or len(density) < self.n_elements:
+            raise ValueError(
+                f"density must be scalar or contain at least {self.n_elements} cell values"
+            )
+        if not np.all(np.isfinite(density[: self.n_elements])) or np.any(
+            density[: self.n_elements] <= 0.0
+        ):
+            raise ValueError("density values must be finite and positive")
+
+        volumetric_flux = convection.compute_mass_flow_rate(velocity, self.mesh_data, self.geo_data)
+        owners = self.mesh_data["owners"]
+        neighbours = self.mesh_data["neighbours"]
+        n_interior = self.mesh_data["n_interior_faces"]
+        face_density = density[owners].copy()
+        weights = self.geo_data["face_weights"][:n_interior]
+        face_density[:n_interior] = (
+            weights * density[neighbours[:n_interior]]
+            + (1.0 - weights) * density[owners[:n_interior]]
+        )
+        return volumetric_flux * face_density
+
     def solve_steady_diffusion(self, phi_initial, gamma, solver="spsolve", **kwargs):
         """
         Solve steady diffusion equation: ∇·(γ∇φ) = 0
@@ -110,19 +136,11 @@ class ScalarEquationSolver:
             numpy.ndarray: Solution
         """
 
-        # Ensure density is array
-        density_arr: np.ndarray = (
-            np.full(self.n_elements, density) if np.isscalar(density) else np.asarray(density)
-        )
-
         # Compute gradient
         grad_phi = self._grad_fn(phi_initial, self.mesh_data, self.geo_data)
 
         # Compute mass flow rate
-        mdot = convection.compute_mass_flow_rate(velocity, self.mesh_data, self.geo_data)
-        mdot *= density_arr[
-            self.mesh_data["owners"][: self.mesh_data["n_interior_faces"]]
-        ].mean()  # Simplified
+        mdot = self._mass_flow_rate(velocity, density)
 
         # Assemble diffusion
         diff_flux = diffusion.assemble_diffusion_term(
@@ -151,10 +169,12 @@ class ScalarEquationSolver:
         A = matrix_assembly.assemble_matrix_from_fluxes_vectorized(combined_flux, self.mesh_data)
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, self.mesh_data)
 
-        phi_solution = matrix_assembly.solve_linear_system(
+        phi_interior = matrix_assembly.solve_linear_system(
             A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
         )
-
+        phi_solution = np.asarray(phi_initial, dtype=np.float64).copy()
+        phi_solution[: self.n_elements] = phi_interior
+        update_scalar_boundaries(phi_solution, self.mesh_data, self.boundaries, field_name="phi")
         return phi_solution
 
     def solve_transient_diffusion(
@@ -233,7 +253,7 @@ class ScalarEquationSolver:
                 A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
             )
             phi[: self.n_elements] = phi_new_interior
-            # Boundary values remain unchanged (phi[n_elements:] stays the same)
+            update_scalar_boundaries(phi, self.mesh_data, self.boundaries, field_name="phi")
 
             # Advance time
             integrator.advance_time()
@@ -302,10 +322,8 @@ class ScalarEquationSolver:
         phi = phi_initial.copy()
 
         # Mass flow rate (assuming steady flow for now)
-        mdot = convection.compute_mass_flow_rate(velocity, self.mesh_data, self.geo_data)
-        mdot *= density[self.mesh_data["owners"][: self.mesh_data["n_interior_faces"]]].mean()
+        mdot = self._mass_flow_rate(velocity, density)
 
-        print(f"Time loop started: {n_steps} steps")
         for _step in range(n_steps):
             # Store old field
             integrator.store_old_fields(phi=phi[: self.n_elements])
@@ -391,6 +409,9 @@ def solve_scalar_equation(equation_config, mesh_data, geo_data, boundaries):
 
     eq_type = equation_config.get("type", "steady")
     terms = equation_config.get("terms", ["diffusion"])
+    linear_options = equation_config.get("linear_options", {})
+    if not isinstance(linear_options, dict):
+        raise TypeError("linear_options must be a dictionary")
 
     if eq_type == "steady":
         if "convection" in terms:
@@ -401,12 +422,14 @@ def solve_scalar_equation(equation_config, mesh_data, geo_data, boundaries):
                 density=equation_config.get("density", 1.0),
                 convection_scheme=equation_config.get("convection_scheme", "deferred"),
                 solver=equation_config.get("solver", "spsolve"),
+                **linear_options,
             )
         else:
             return solver.solve_steady_diffusion(
                 equation_config["phi_initial"],
                 equation_config["gamma"],
                 solver=equation_config.get("solver", "spsolve"),
+                **linear_options,
             )
 
     elif eq_type == "transient":
@@ -421,6 +444,7 @@ def solve_scalar_equation(equation_config, mesh_data, geo_data, boundaries):
                 convection_scheme=equation_config.get("convection_scheme", "deferred"),
                 time_scheme=equation_config.get("time_scheme", "euler_implicit"),
                 solver=equation_config.get("solver", "spsolve"),
+                **linear_options,
             )
         else:
             return solver.solve_transient_diffusion(
@@ -431,6 +455,7 @@ def solve_scalar_equation(equation_config, mesh_data, geo_data, boundaries):
                 equation_config["n_steps"],
                 time_scheme=equation_config.get("time_scheme", "euler_implicit"),
                 solver=equation_config.get("solver", "spsolve"),
+                **linear_options,
             )
 
     else:

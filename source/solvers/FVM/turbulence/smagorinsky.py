@@ -4,7 +4,6 @@ Implements classical Smagorinsky model:
     nut = (C_s * Delta)^2 * |S|
 where |S| = sqrt(2 S_ij S_ij) and Delta = (V)^(1/3) (volume-based filter width).
 
-For now the dynamic option is placeholder (not fully implemented).
 """
 
 import numpy as np
@@ -91,12 +90,10 @@ class Smagorinsky:
         mesh_data: Mesh dictionary.
         geo_data:  Geometry dictionary (needs ``element_volumes``).
         Cs:        Smagorinsky coefficient (default 0.17).
-        dynamic:   Placeholder for dynamic procedure (not yet implemented).
     """
 
-    def __init__(self, mesh_data, geo_data, Cs=0.17, dynamic=False):
+    def __init__(self, mesh_data, geo_data, Cs=0.17):
         self.Cs = Cs
-        self.dynamic = dynamic
         self.mesh_data = mesh_data
         self.geo_data = geo_data
 
@@ -110,7 +107,7 @@ class Smagorinsky:
         vol = self.geo_data["element_volumes"]
         delta = vol ** (1.0 / 3.0)
         return {
-            "model": "Smagorinsky (Dynamic)" if self.dynamic else "Smagorinsky",
+            "model": "Smagorinsky",
             "Cs": self.Cs,
             "filter_width_min": float(np.min(delta)),
             "filter_width_max": float(np.max(delta)),
@@ -144,8 +141,9 @@ class Smagorinsky:
             S_sq = np.sum(S * S, axis=(1, 2))
             S_mag = np.sqrt(2.0 * S_sq)
         else:
-            # Fallback: compute magnitude of gradient components
-            S_mag = np.linalg.norm(grad_U_int.reshape((n_elements, -1)), axis=1)
+            raise ValueError(
+                f"Velocity gradient has shape {grad_U_int.shape}; expected ({n_elements}, 3, 3)"
+            )
 
         # Filter width Delta
         vol = geo_data["element_volumes"]
@@ -154,9 +152,6 @@ class Smagorinsky:
         Cs = self.Cs
         nut = (Cs * delta) ** 2 * S_mag
 
-        # Ensure non-negative and finite
-        nut = np.nan_to_num(nut, nan=0.0, posinf=0.0, neginf=0.0)
-        nut[nut < 0] = 0.0
-
-        # Clip excessively large nut to a reasonable multiple of molecular nu (if available)
+        if not np.all(np.isfinite(nut)) or np.any(nut < 0.0):
+            raise FloatingPointError("Smagorinsky model produced invalid eddy viscosity")
         return nut

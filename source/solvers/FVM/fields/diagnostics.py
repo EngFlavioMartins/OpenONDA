@@ -149,9 +149,8 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
     """Determine whether y+ should be computed for a given boundary.
 
     When *patch_names* is provided the boundary is selected by name.
-    Otherwise the boundary is selected if its type is ``"wall"``, its
-    velocity boundary condition is ``"fixedValue"``, or its name contains
-    ``"wall"``.
+    Otherwise the boundary is selected if its mesh type is ``"wall"`` or
+    its name contains ``"wall"``.
 
     Args:
         boundary: Boundary dictionary.  Must contain key ``"name"``, and
@@ -166,8 +165,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
     name = boundary["name"]
     if patch_names is not None:
         return name in patch_names
-    bc_type_u = boundary.get("bc_type_U")
-    return bc_type_u == "fixedValue" or boundary.get("type") == "wall" or "wall" in name.lower()
+    return boundary.get("type") == "wall" or "wall" in name.lower()
 
 
 def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
@@ -200,8 +198,8 @@ def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
     return t_faces * mag_Sf[:, np.newaxis]
 
 
-def _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length=None, moment_centre=None):
-    """Compute drag, lift, side-force, and pitching moment coefficients.
+def _compute_force_coefficients(Ftot, moment, ref_U, ref_area, rho, ref_length=None):
+    """Compute force coefficients and the z-axis pitching-moment coefficient.
 
     Coefficients are normalised by the dynamic pressure
     ``q = 0.5 * rho * ref_U**2``.
@@ -212,10 +210,8 @@ def _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length=None, mom
         ref_area: Reference area.  If zero or ``None`` all coefficients
             are set to ``0.0``.
         rho: Fluid density.
+        moment: Integrated moment vector about the requested centre.
         ref_length: Reference length for pitching moment (optional).
-            Ignored when ``None`` or ``<= 0``.
-        moment_centre: Moment centre (unused in the current simplified
-            implementation).
 
     Returns:
         dict: Dictionary with keys ``"Cd"``, ``"Cl"``, ``"Cz"``, and
@@ -227,11 +223,8 @@ def _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length=None, mom
     cl = float(Ftot[1] / (q * ref_area)) if ref_area else 0.0
     cz = float(Ftot[2] / (q * ref_area)) if ref_area else 0.0
     result = {"Cd": cd, "Cl": cl, "Cz": cz}
-    # Pitching moment Cm about moment_centre (simplified: moment arm from origin)
-    if ref_length and ref_length > 0:
-        # Simplified: use Fz as proxy for pitching moment on symmetric bodies
-        cm = float(-Ftot[2] / (q * ref_area * ref_length))  # nose-up positive
-        result["Cm"] = cm
+    if ref_length and ref_length > 0 and ref_area:
+        result["Cm"] = float(moment[2] / (q * ref_area * ref_length))
     return result
 
 
@@ -362,10 +355,10 @@ def compute_surface_forces(
         ]
 
     gradU = None
-    try:
-        mu_is_zero = _np.allclose(mu, 0.0)
-    except Exception:
-        mu_is_zero = False
+    mu_values = _np.asarray(mu)
+    if not _np.all(_np.isfinite(mu_values)):
+        raise ValueError("Dynamic viscosity must be finite")
+    mu_is_zero = _np.allclose(mu_values, 0.0)
 
     if not mu_is_zero:
         gradU = _grad(U, mesh_data, geo_data)
@@ -385,17 +378,29 @@ def compute_surface_forces(
         mag_Sf = _np.linalg.norm(Sf, axis=1)
         n_vec = Sf / (mag_Sf[:, _np.newaxis] + 1e-30)
         p_owner = p[owners_idx]
-        Fp = _np.sum(p_owner[:, _np.newaxis] * Sf, axis=0)
-        Fv = -_np.sum(
-            _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf), axis=0
-        )
+        Fp_faces = p_owner[:, _np.newaxis] * Sf
+        Fv_faces = -_compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf)
+        Fp = _np.sum(Fp_faces, axis=0)
+        Fv = _np.sum(Fv_faces, axis=0)
         Ftot = Fp + Fv
+        centre = _np.zeros(3) if moment_centre is None else _np.asarray(moment_centre, dtype=float)
+        if centre.shape != (3,):
+            raise ValueError("moment_centre must contain exactly three coordinates")
+        arm = geo_data["face_centroids"][face_idx] - centre
+        moment = _np.sum(_np.cross(arm, Fp_faces + Fv_faces), axis=0)
         has_refs = ref_U is not None and ref_area is not None and rho is not None
         coeffs = (
-            _compute_force_coefficients(Ftot, ref_U, ref_area, rho, ref_length, moment_centre)
+            _compute_force_coefficients(Ftot, moment, ref_U, ref_area, rho, ref_length)
             if has_refs
             else {}
         )
-        results[name] = {"Fp": Fp, "Fv": Fv, "Ftot": Ftot, "coeffs": coeffs, "nFaces": nf}
+        results[name] = {
+            "Fp": Fp,
+            "Fv": Fv,
+            "Ftot": Ftot,
+            "Mtot": moment,
+            "coeffs": coeffs,
+            "nFaces": nf,
+        }
 
     return results

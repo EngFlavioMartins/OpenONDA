@@ -12,9 +12,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import numpy as np
+
+from ..utils.field_samplers import SAMPLER_CSV_COLUMNS
 
 
 class SamplerExecutor:
@@ -65,7 +68,13 @@ class SamplerExecutor:
 
             seq_num = f"{solver.time_step:06d}"
             SamplerExecutor._save_output(
-                sampler, solver, name_prefix, solution_dir, seq_num, solver.flow_time
+                sampler,
+                solver,
+                name_prefix,
+                solution_dir,
+                seq_num,
+                solver.flow_time,
+                solver.time_step,
             )
 
     # ---- Helpers ----
@@ -92,22 +101,77 @@ class SamplerExecutor:
 
     @staticmethod
     def _save_output(
-        sampler, solver, name_prefix: str, solution_dir: Path, seq_num: str, flow_time: float
+        sampler,
+        solver,
+        name_prefix: str,
+        solution_dir: Path,
+        seq_num: str,
+        flow_time: float,
+        time_step: int | None = None,
     ) -> None:
-        """Save one sampler's output (VTS or CSV) and refresh its PVD file."""
+        """Persist one sampler event in the configured output format."""
         try:
-            if hasattr(sampler, "save_vtp"):
+            output_format = getattr(solver.config, "sampler_output_format", "csv")
+            if output_format == "csv":
+                SamplerExecutor._append_csv(
+                    sampler,
+                    solver,
+                    solution_dir / f"{name_prefix}.csv",
+                    flow_time,
+                    time_step,
+                )
+            elif output_format in {"vtk", "legacy"} and hasattr(sampler, "save_vtp"):
                 filename = f"{name_prefix}_{seq_num}.vts"
                 filepath = solution_dir / filename
                 sampler.save_vtp(solver, filepath, time=flow_time)
                 sampler._pvd_entries.append((flow_time, filename))
                 SamplerExecutor._write_pvd(solution_dir, name_prefix, sampler._pvd_entries)
-            else:
+            elif output_format == "vtk":
+                SamplerExecutor._append_csv(
+                    sampler,
+                    solver,
+                    solution_dir / f"{name_prefix}.csv",
+                    flow_time,
+                    time_step,
+                )
+            elif output_format == "legacy":
                 filename = f"{name_prefix}_{seq_num}.csv"
-                filepath = solution_dir / filename
-                sampler.save_csv(solver, filepath, time=flow_time)
+                sampler.save_csv(solver, solution_dir / filename, time=flow_time)
+            else:
+                raise ValueError(f"Unknown sampler_output_format {output_format!r}")
         except Exception as exc:
             print(f"(Warning) Sampler '{name_prefix}' failed: {exc}")
+
+    @staticmethod
+    def _append_csv(
+        sampler,
+        solver,
+        filepath: Path,
+        flow_time: float,
+        time_step: int | None,
+    ) -> None:
+        """Append one complete sampled field to a time-aware CSV table."""
+        data = sampler.sample(solver)
+        missing = [name for name in SAMPLER_CSV_COLUMNS if name not in data]
+        if missing:
+            raise ValueError(f"Sampler result is missing columns: {', '.join(missing)}")
+
+        lengths = {len(np.asarray(data[name])) for name in SAMPLER_CSV_COLUMNS}
+        if len(lengths) != 1:
+            raise ValueError("Sampler result columns do not all have the same length")
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not filepath.exists() or filepath.stat().st_size == 0
+        with filepath.open("a", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream)
+            if write_header:
+                writer.writerow(["flow_time", "time_step", *SAMPLER_CSV_COLUMNS])
+            step = "" if time_step is None else int(time_step)
+            for values in zip(
+                *(np.asarray(data[name]).reshape(-1) for name in SAMPLER_CSV_COLUMNS),
+                strict=True,
+            ):
+                writer.writerow([float(flow_time), step, *values])
 
     @staticmethod
     def _write_pvd(output_dir: Path, name_prefix: str, entries: list) -> None:

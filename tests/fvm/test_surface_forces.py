@@ -129,3 +129,39 @@ class TestSurfaceForces:
         fv = self._sum_forces(result, "Fv")
         assert np.allclose(fp, 0.0, atol=1e-12), f"net Fp = {fp}"
         assert np.allclose(fv, 0.0, atol=1e-12), f"net Fv = {fv}"
+
+    def test_moment_coefficient_uses_face_moment(self):
+        self._add_bc_types()
+        n_elem = self.mesh["n_elements"]
+        n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
+        U = np.zeros((n_elem + n_bnd, 3))
+        p = np.ones(n_elem + n_bnd)
+        centre = np.array([0.0, 0.25, 0.0])
+
+        result = compute_surface_forces(
+            U,
+            p,
+            0.0,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
+            patch_names=["xmax"],
+            ref_U=2.0,
+            ref_area=3.0,
+            ref_length=4.0,
+            moment_centre=centre,
+        )["xmax"]
+
+        boundary = next(item for item in self.mesh["boundary"] if item["name"] == "xmax")
+        faces = np.arange(boundary["startFace"], boundary["startFace"] + boundary["nFaces"])
+        expected_moment = np.sum(
+            np.cross(
+                self.geo["face_centroids"][faces] - centre,
+                self.geo["face_sf"][faces],
+            ),
+            axis=0,
+        )
+        np.testing.assert_allclose(result["Mtot"], expected_moment)
+        denominator = 0.5 * self.rho * 2.0**2 * 3.0 * 4.0
+        assert result["coeffs"]["Cm"] == pytest.approx(expected_moment[2] / denominator)

@@ -85,27 +85,32 @@ def save(fig, name: str, fmt: str, dpi: int) -> Path:
 
 
 def load_forces() -> dict:
-    """Load ``ibm_forces_history.csv`` for the cube body.
+    """Load the cube force history.
 
-    The IBM force log is appended to, so a file that survived several runs may
-    hold repeats; keep only the last monotonic-in-step block (the latest run).
-    Returns a dict of 1-D arrays, empty if the file is missing/empty.
+    Prefers the wall-patch integration ``forces_history.csv`` (body-fitted
+    cube — the current tutorial), falling back to ``ibm_forces_history.csv``
+    from older immersed-boundary runs.  Both logs are appended to, so keep
+    only the last monotonic-in-step block (the latest run).  Returns a dict
+    of 1-D arrays with at least ``time``, ``Cd``, ``Cl``; wall data also has
+    the pressure/viscous split (``Fpx``, ``Fvx``), IBM data has ``slip``.
     """
-    path = SOLUTION / "ibm_forces_history.csv"
-    if not path.exists():
-        return {}
-    rows = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
-    rows = np.atleast_1d(rows)
-    if rows.size == 0:
-        return {}
-    steps = rows["step"].astype(int)
-    # Last run = the final maximal run of strictly increasing step numbers.
-    start = 0
-    for i in range(1, len(steps)):
-        if steps[i] <= steps[i - 1]:
-            start = i
-    rows = rows[start:]
-    return {name: rows[name] for name in rows.dtype.names}
+    for fname in ("forces_history.csv", "ibm_forces_history.csv"):
+        path = SOLUTION / fname
+        if not path.exists():
+            continue
+        rows = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+        rows = np.atleast_1d(rows)
+        if rows.size == 0:
+            continue
+        steps = rows["step"].astype(int)
+        # Last run = the final maximal run of strictly increasing step numbers.
+        start = 0
+        for i in range(1, len(steps)):
+            if steps[i] <= steps[i - 1]:
+                start = i
+        rows = rows[start:]
+        return {name: rows[name] for name in rows.dtype.names}
+    return {}
 
 
 def load_flow_integrals() -> dict:

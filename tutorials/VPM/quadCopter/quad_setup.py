@@ -210,6 +210,7 @@ def main():
             remove_particles_by_bounds=wake_bounds,
         ),
         samplers=samplers,
+        sampler_output_format="legacy",
         processing_unit=args.processing_unit,
     )
 

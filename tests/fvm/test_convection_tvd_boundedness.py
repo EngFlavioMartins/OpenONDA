@@ -11,6 +11,7 @@ oscillation-free where central is not.
 """
 
 import numpy as np
+import pytest
 
 from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
 from source.solvers.FVM.assemble.matrix_assembly import (
@@ -19,6 +20,7 @@ from source.solvers.FVM.assemble.matrix_assembly import (
 )
 from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.schemes.limiters import apply_limiter
 
 from ._structured_mesh import structured_box
 
@@ -67,6 +69,12 @@ def _one_explicit_step(mesh, geo, mdot, phi, scheme, cfl=0.5):
 
 class TestTVDBoundedness:
     TOL = 1e-9
+
+    def test_named_limiters_keep_their_standard_compressive_range(self):
+        ratio = np.array([0.0, 0.5, 1.0, 2.0, 10.0])
+        assert apply_limiter("vanLeer", ratio)[3] == pytest.approx(4.0 / 3.0)
+        assert apply_limiter("MUSCL", ratio)[3] == pytest.approx(1.5)
+        assert apply_limiter("superbee", ratio)[3] == pytest.approx(2.0)
 
     def test_tvd_schemes_are_bounded(self):
         mesh, geo, U, mdot, phi = _setup()

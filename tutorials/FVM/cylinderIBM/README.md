@@ -2,8 +2,7 @@
 
 Validation/monitoring case for the FVM solver's discrete direct-forcing IBM
 (Pinelli et al. 2010, as implemented for FV PISO solvers by Constant et al. —
-`docs/literature/Constant2016.pdf`; design in
-`docs/plans/2026-07-fvm-ibm-design.md`).
+`docs/literature/Constant2016.pdf`).
 
 The cylinder (D = 1) is **not** in the mesh: it is a ring of Lagrangian markers
 on a rectilinear Cartesian grid (uniform spacing `h` in a core box around the

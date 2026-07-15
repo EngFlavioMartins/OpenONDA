@@ -21,6 +21,7 @@ __pycache__/
 .claude
 .github
 .mypy_cache
+.matplotlib/
 
 dist/
 build/

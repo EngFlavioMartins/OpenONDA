@@ -1,128 +1,120 @@
+"""Typed cell/face topology and connectivity helpers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
 
 
-def compute_element_topology(owners, neighbours, n_elements, n_faces, n_interior_faces, face_nodes):
-    """
-    Compute element topology (connectivity) from face-based connectivity.
+def _readonly(values, dtype=None):
+    result = np.ascontiguousarray(values, dtype=dtype)
+    result.setflags(write=False)
+    return result
 
-    Args:
-        owners (np.ndarray): Owner cell index for each face (0-based).
-        neighbours (np.ndarray): Neighbour cell index for interior faces (0-based).
-        n_elements (int): Total number of elements (cells).
-        n_faces (int): Total number of faces.
-        n_interior_faces (int): Number of interior faces.
-        face_nodes (list of np.ndarray): List of node indices for each face.
 
-    Returns:
-        dict: Dictionary containing topological data:
-            - element_faces: List of lists of face indices for each element.
-            - element_neighbours: List of lists of neighbour element indices.
-            - element_nodes: List of lists of node indices for each element.
-            - upper_anb_coeff_index: Array for upper diagonal coefficient indices.
-            - lower_anb_coeff_index: Array for lower diagonal coefficient indices.
-    """
+@dataclass(frozen=True)
+class BoundaryPatch:
+    """Stable patch identity independent of boundary operator state."""
 
-    # Initialize lists
-    element_faces = [[] for _ in range(n_elements)]
-    element_neighbours = [[] for _ in range(n_elements)]
+    name: str
+    start_face: int
+    n_faces: int
+    source_type: str | None = None
+    physical_tag: int | None = None
 
-    # Process Interior Faces
-    for face_idx in range(n_interior_faces):
-        own = owners[face_idx]
-        nei = neighbours[face_idx]
 
-        # Add neighbour connectivity
-        element_neighbours[own].append(nei)
-        element_neighbours[nei].append(own)
+@dataclass(frozen=True)
+class MeshTopology:
+    """Immutable contiguous topology used at backend boundaries."""
 
-        # Add face connectivity
-        element_faces[own].append(face_idx)
-        element_faces[nei].append(face_idx)
+    face_nodes: np.ndarray
+    face_node_offsets: np.ndarray
+    owners: np.ndarray
+    neighbours: np.ndarray
+    cell_faces: np.ndarray
+    cell_face_offsets: np.ndarray
+    patches: tuple[BoundaryPatch, ...]
+    global_cell_ids: np.ndarray
+    global_face_ids: np.ndarray
+    source_cell_ids: np.ndarray
+    cell_type_codes: np.ndarray
+    cell_orders: np.ndarray
+    topology_version: int = 1
 
-    # Process Boundary Faces
-    for face_idx in range(n_interior_faces, n_faces):
-        own = owners[face_idx]
-        element_faces[own].append(face_idx)
+    @classmethod
+    def from_mesh_data(cls, mesh_data) -> MeshTopology:
+        """Normalize the legacy mesh dictionary into immutable CSR-style arrays."""
+        faces = mesh_data["faces"]
+        face_node_offsets = np.zeros(len(faces) + 1, dtype=np.int64)
+        for index, face in enumerate(faces):
+            face_node_offsets[index + 1] = face_node_offsets[index] + len(face)
+        face_nodes = np.concatenate(faces).astype(np.int64, copy=False)
 
-    # Compute Element Nodes
-    element_nodes = [[] for _ in range(n_elements)]
-    for elem_idx in range(n_elements):
-        nodes = set()
-        for face_idx in element_faces[elem_idx]:
-            # Add all nodes of this face
-            # face_nodes[face_idx] is an array of node indices
-            nodes.update(face_nodes[face_idx])
-        element_nodes[elem_idx] = sorted(nodes)
-
-    # Compute Anb Coefficient Indices
-    # These are used for sparse matrix assembly (upper/lower triangles)
-    # uFVM logic:
-    # For each element, iterate over its faces.
-    # If face is interior:
-    #   If element is owner, this face connects to a neighbour (upper or lower depending on index?)
-    #   Actually uFVM assigns indices based on the order of faces in elementFaces.
-    #   Let's replicate uFVM logic exactly.
-
-    upper_anb_coeff_index = np.zeros(n_interior_faces, dtype=np.int32)
-    lower_anb_coeff_index = np.zeros(n_interior_faces, dtype=np.int32)
-
-    for elem_idx in range(n_elements):
-        # Wait, uFVM uses 1-based indexing for everything.
-        # "iNb = 1"
-        # "upperAnbCoeffIndex(faceIndex) = iNb"
-        # This iNb seems to be the local index of the neighbour in the element's neighbour list?
-        # Or is it the column index in the sparse row?
-        # In uFVM, sparse matrices are often constructed using these indices.
-        # Let's stick to 0-based indexing for Python, but we need to understand what this index represents.
-        # It seems to be the index into the 'coefficients' array for this element's row.
-        # Since we will likely use scipy.sparse.csr_matrix, we might not need these manual indices in the same way.
-        # But for exact reproduction of uFVM logic (if we port assembly 1-to-1), we might need them.
-        # However, uFVM's assembly often uses:
-        #   theCoefficients.upperAnbCoeff(upperAnbCoeffIndex(iFace)) = ...
-        # This implies a global array of coefficients indexed by these indices.
-        # Let's compute them 0-based.
-
-        i_nb = 0
-        for face_idx in element_faces[elem_idx]:
-            if face_idx >= n_interior_faces:
-                continue
-
-            own = owners[face_idx]
-            nei = neighbours[face_idx]
-
-            if elem_idx == own:
-                upper_anb_coeff_index[face_idx] = i_nb
-            elif elem_idx == nei:
-                lower_anb_coeff_index[face_idx] = i_nb
-
-            i_nb += 1
-
-    return {
-        "element_faces": element_faces,
-        "element_neighbours": element_neighbours,
-        "element_nodes": element_nodes,
-        "upper_anb_coeff_index": upper_anb_coeff_index,
-        "lower_anb_coeff_index": lower_anb_coeff_index,
-    }
+        element_faces = get_element_faces(
+            mesh_data["owners"],
+            mesh_data["neighbours"],
+            mesh_data["n_elements"],
+            mesh_data["n_faces"],
+        )
+        cell_face_offsets = np.zeros(mesh_data["n_elements"] + 1, dtype=np.int64)
+        for index, cell_faces in enumerate(element_faces):
+            cell_face_offsets[index + 1] = cell_face_offsets[index] + len(cell_faces)
+        flattened_cell_faces = np.concatenate(
+            [np.asarray(values, dtype=np.int64) for values in element_faces]
+        )
+        patches = tuple(
+            BoundaryPatch(
+                name=str(patch["name"]),
+                start_face=int(patch["startFace"]),
+                n_faces=int(patch["nFaces"]),
+                source_type=patch.get("type"),
+                physical_tag=patch.get("physical_tag"),
+            )
+            for patch in mesh_data["boundary"]
+        )
+        n_cells = int(mesh_data["n_elements"])
+        n_faces = int(mesh_data["n_faces"])
+        return cls(
+            face_nodes=_readonly(face_nodes, np.int64),
+            face_node_offsets=_readonly(face_node_offsets, np.int64),
+            owners=_readonly(mesh_data["owners"], np.int64),
+            neighbours=_readonly(mesh_data["neighbours"], np.int64),
+            cell_faces=_readonly(flattened_cell_faces, np.int64),
+            cell_face_offsets=_readonly(cell_face_offsets, np.int64),
+            patches=patches,
+            global_cell_ids=_readonly(
+                mesh_data.get("global_cell_ids", np.arange(n_cells)), np.int64
+            ),
+            global_face_ids=_readonly(
+                mesh_data.get("global_face_ids", np.arange(n_faces)), np.int64
+            ),
+            source_cell_ids=_readonly(
+                mesh_data.get("source_cell_ids", np.arange(n_cells)), np.int64
+            ),
+            cell_type_codes=_readonly(
+                mesh_data.get("cell_type_codes", np.full(n_cells, -1)), np.int32
+            ),
+            cell_orders=_readonly(mesh_data.get("cell_orders", np.ones(n_cells)), np.int8),
+        )
 
 
 def get_element_faces(owners, neighbours, n_elements, n_faces):
-    """
-    Helper to compute just the element_faces mapping.
+    """Build the face-index list for every cell.
+
+    ``neighbours`` contains one entry per interior face; remaining faces are
+    boundary faces and belong only to their owner cell.
     """
     n_interior_faces = len(neighbours)
     element_faces = [[] for _ in range(n_elements)]
 
-    # Process Interior Faces
-    for face_idx in range(n_interior_faces):
-        own = owners[face_idx]
-        nei = neighbours[face_idx]
-        element_faces[own].append(face_idx)
-        element_faces[nei].append(face_idx)
+    for face_index in range(n_interior_faces):
+        owner = owners[face_index]
+        neighbour = neighbours[face_index]
+        element_faces[owner].append(face_index)
+        element_faces[neighbour].append(face_index)
 
-    # Process Boundary Faces
-    for face_idx in range(n_interior_faces, n_faces):
-        own = owners[face_idx]
-        element_faces[own].append(face_idx)
+    for face_index in range(n_interior_faces, n_faces):
+        element_faces[owners[face_index]].append(face_index)
 
     return element_faces

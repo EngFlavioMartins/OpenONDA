@@ -7,6 +7,9 @@ clear, actionable message, instead of failing deep inside the first assembly
 
 from __future__ import annotations
 
+import numpy as np
+
+from .boundaries import BOUNDARIES
 from .limiters import LIMITERS
 
 # Convection (div) schemes accepted by ``assemble.convection.assemble_convection_term``.
@@ -17,6 +20,7 @@ TIME_SCHEMES = {"euler", "euler_implicit", "backward_euler", "backward", "bdf2"}
 
 # Gradient schemes resolved by ``fields.gradients._resolve_gradient_fn``.
 GRADIENT_SCHEMES = {"gauss", "lsq"}
+LINEAR_SOLVERS = {"spsolve", "bicgstab", "gmres", "cg", "amg"}
 
 # Turbulence models built by ``turbulence.create_model``.
 TURBULENCE_MODELS = {
@@ -30,17 +34,8 @@ TURBULENCE_MODELS = {
     "dynamic_smagorinsky",
 }
 
-VELOCITY_BOUNDARY_TYPES = {
-    "fixedValue",
-    "noSlip",
-    "zeroGradient",
-    "inletOutlet",
-    "directionMixed",
-    "empty",
-    "slip",
-    "symmetry",
-}
-PRESSURE_BOUNDARY_TYPES = {"fixedValue", "zeroGradient", "empty"}
+VELOCITY_BOUNDARY_TYPES = BOUNDARIES.names_for("U")
+PRESSURE_BOUNDARY_TYPES = BOUNDARIES.names_for("p")
 
 
 def _check(value, valid, label, errors):
@@ -51,6 +46,11 @@ def _check(value, valid, label, errors):
 def validate_solver_params(solver, time=None) -> None:
     """Raise ``ValueError`` if any scheme name on a ``SolverParams`` is invalid."""
     errors: list[str] = []
+    algorithm = str(getattr(solver, "algorithm", "PIMPLE")).upper()
+    if algorithm not in {"SIMPLE", "PIMPLE", "PISO"}:
+        errors.append(
+            f"  algorithm={algorithm!r} is not recognised; valid: ['PIMPLE', 'PISO', 'SIMPLE']"
+        )
     failure_policy = str(getattr(solver, "linear_failure_policy", "raise")).lower()
     if failure_policy not in {"raise", "direct_fallback"}:
         errors.append(
@@ -64,14 +64,26 @@ def validate_solver_params(solver, time=None) -> None:
     )
     _check(getattr(solver, "time_scheme", "euler_implicit"), TIME_SCHEMES, "time_scheme", errors)
     _check(getattr(solver, "gradient_scheme", "gauss"), GRADIENT_SCHEMES, "gradient_scheme", errors)
+    _check(getattr(solver, "linear_solver", "bicgstab"), LINEAR_SOLVERS, "linear_solver", errors)
+    for name in ("momentum_solver", "pressure_solver"):
+        value = getattr(solver, name, None)
+        if value is not None:
+            _check(value, LINEAR_SOLVERS, name, errors)
+    if getattr(solver, "momentum_solver", None) == "amg":
+        errors.append("  momentum_solver='amg' is unsupported; AMG is pressure-only")
     for name, minimum in (
         ("n_correctors", 1),
         ("n_outer_correctors", 1),
+        ("min_outer_correctors", 1),
         ("n_orthogonal_correctors", 0),
     ):
         value = getattr(solver, name, minimum)
         if not isinstance(value, int) or value < minimum:
             errors.append(f"  {name}={value!r} must be an integer >= {minimum}")
+    if algorithm == "PISO" and getattr(solver, "n_outer_correctors", 1) != 1:
+        errors.append("  PISO requires n_outer_correctors == 1")
+    if getattr(solver, "min_outer_correctors", 1) > getattr(solver, "n_outer_correctors", 1):
+        errors.append("  min_outer_correctors cannot exceed n_outer_correctors")
     for name in ("alpha_u", "alpha_p"):
         value = float(getattr(solver, name, 1.0))
         if not 0.0 < value <= 1.0:
@@ -80,11 +92,15 @@ def validate_solver_params(solver, time=None) -> None:
         value = float(getattr(solver, name, 1e-6))
         if not value > 0.0:
             errors.append(f"  {name}={value!r} must be > 0")
-    for name in ("pressure_maxiter",):
+    for name in ("momentum_maxiter", "pressure_maxiter"):
         value = getattr(solver, name, 1)
         if not isinstance(value, int) or value < 1:
             errors.append(f"  {name}={value!r} must be an integer >= 1")
     for name in ("amg_tol",):
+        value = getattr(solver, name, None)
+        if value is not None and float(value) <= 0.0:
+            errors.append(f"  {name}={value!r} must be > 0 when set")
+    for name in ("outer_residual_tolerance", "outer_continuity_tolerance"):
         value = getattr(solver, name, None)
         if value is not None and float(value) <= 0.0:
             errors.append(f"  {name}={value!r} must be > 0 when set")
@@ -102,6 +118,22 @@ def validate_solver_params(solver, time=None) -> None:
             "  adaptive time stepping with BDF2 is unsupported until "
             "variable-step coefficients are implemented"
         )
+    if time is not None:
+        if not float(time.delta_t) > 0.0:
+            errors.append(f"  delta_t={time.delta_t!r} must be > 0")
+        if not float(time.end_time) > float(time.start_time):
+            errors.append(
+                f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"
+            )
+        if not isinstance(time.write_interval, int) or time.write_interval < 1:
+            errors.append(f"  write_interval={time.write_interval!r} must be an integer >= 1")
+        if bool(time.adjust_timestep):
+            if not 0.0 < float(time.min_delta_t) <= float(time.max_delta_t):
+                errors.append(
+                    "  adaptive time-step bounds must satisfy 0 < min_delta_t <= max_delta_t"
+                )
+            if not float(time.max_cfl) > 0.0:
+                errors.append(f"  max_cfl={time.max_cfl!r} must be > 0")
     if errors:
         raise ValueError("Invalid solver scheme selection:\n" + "\n".join(errors))
 
@@ -114,6 +146,23 @@ def validate_turbulence(config) -> None:
         raise ValueError(
             f"Unknown turbulence model {config.model!r}; valid: {sorted(TURBULENCE_MODELS)}"
         )
+
+
+def validate_acceptance_policy(policy) -> None:
+    """Validate warning/abort threshold ordering and sustained window."""
+    errors = []
+    if not isinstance(policy.sustained_steps, int) or policy.sustained_steps < 1:
+        errors.append("  sustained_steps must be an integer >= 1")
+    for metric in ("continuity", "residual", "cfl", "velocity"):
+        warning = getattr(policy, f"{metric}_warning")
+        abort = getattr(policy, f"{metric}_abort")
+        for label, value in (("warning", warning), ("abort", abort)):
+            if value is not None and (not np.isfinite(value) or float(value) <= 0.0):
+                errors.append(f"  {metric}_{label} must be finite and > 0 when set")
+        if warning is not None and abort is not None and float(warning) > float(abort):
+            errors.append(f"  {metric}_warning cannot exceed {metric}_abort")
+    if errors:
+        raise ValueError("Invalid FVM run acceptance policy:\n" + "\n".join(errors))
 
 
 def validate_boundary_conditions(boundaries) -> None:
@@ -133,5 +182,16 @@ def validate_boundary_conditions(boundaries) -> None:
                 f"  patch {name!r}: pressure BC {type_p!r} unsupported; "
                 f"valid: {sorted(PRESSURE_BOUNDARY_TYPES)}"
             )
+        if type_u in VELOCITY_BOUNDARY_TYPES:
+            for operator in (
+                "gradient",
+                "convection",
+                "diffusion",
+                "pressure",
+                "flux",
+                "ghost",
+                "diagnostics",
+            ):
+                BOUNDARIES.require(type_u, "U", operator)
     if errors:
         raise ValueError("Unsupported FVM boundary conditions:\n" + "\n".join(errors))

@@ -334,7 +334,9 @@ class Solver:
         self.particles = Particles(max_particles=max_p, float_dtype=self.precision)
         self.physics = create_physics(
             particles_kernel=self.particles_kernel,
+            max_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
+            max_targets=getattr(final_config, "max_targets", 200000),
         )
 
         _vel_cfg = getattr(final_config, "velocity", None)
@@ -393,9 +395,6 @@ class Solver:
                     if fixed_grid_required:
                         raise
                     Logging.warning(f"Failed to configure grid max extent: {exc}")
-        self.particles.register_resize_callback(self.physics._resize_temp_fields)
-        if self._splitter is not None:
-            self.particles.register_resize_callback(self._splitter.resize)
         self.source_positions = ti.Vector.field(3, dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_radii = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
@@ -439,7 +438,6 @@ class Solver:
                 max_particles=max_p,
                 precision=self.precision,
             )
-            self.particles.register_resize_callback(self._parallel_strain_relaxation.resize)
         if stabilization.relaxation_enabled:
             from ..stabilization.strength_relaxation import StrengthRelaxation
 
@@ -816,7 +814,8 @@ class Solver:
         Logging.flow_diagnostics(self)
 
         # Export flow integrals to CSV (append one row per logging event)
-        self._export_flow_integrals_csv()
+        if getattr(self.config, "export_flow_integrals", True):
+            self._export_flow_integrals_csv()
 
         # Print turbulence information for LES/DNS models (skip for potential flow)
         if self.LES is not None:
@@ -875,7 +874,13 @@ class Solver:
     def _save_sampler_output(self, sampler, name_prefix, solution_dir, seq_num):
         """Delegate to SamplerExecutor."""
         SamplerExecutor._save_output(
-            sampler, self, name_prefix, solution_dir, seq_num, self.flow_time
+            sampler,
+            self,
+            name_prefix,
+            solution_dir,
+            seq_num,
+            self.flow_time,
+            self.time_step,
         )
 
     def _write_pvd_file(self, output_dir, name_prefix, entries):

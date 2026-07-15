@@ -34,6 +34,11 @@ class TestGmshImporter:
         assert np.all(owners[n_int:] < mesh["n_elements"])
         for f in mesh["faces"]:
             assert np.all(f >= 0)
+        assert mesh["source_point_ids"].shape == (mesh["n_points"],)
+        assert mesh["source_cell_ids"].shape == (mesh["n_elements"],)
+        assert mesh["cell_type_codes"].shape == (mesh["n_elements"],)
+        assert np.all(mesh["cell_orders"] == 1)
+        assert mesh["provenance"]["format"] == "gmsh"
 
     def test_orphan_boundary_creates_default_patch(self):
         gmsh.initialize()

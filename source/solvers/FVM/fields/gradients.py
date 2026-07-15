@@ -319,6 +319,8 @@ def compute_lsq_geometry(mesh_data, geo_data):
     nei_w2_dr = np.zeros((total, 3), dtype=np.float64)
     sum_w2dr = np.zeros((n_elements, 3), dtype=np.float64)
     M_inv = np.zeros((n_elements, 3, 3), dtype=np.float64)
+    lsq_condition = np.zeros(n_elements, dtype=np.float64)
+    lsq_rank = np.zeros(n_elements, dtype=np.int8)
 
     for c in range(n_elements):
         s, e = int(offsets[c]), int(offsets[c + 1])
@@ -348,6 +350,8 @@ def compute_lsq_geometry(mesh_data, geo_data):
         M[2, 1] = M[1, 2]
 
         M_inv[c] = M
+        lsq_condition[c] = np.linalg.cond(M)
+        lsq_rank[c] = np.linalg.matrix_rank(M)
 
     # Pseudo-inverse (stacked): on 2D single-layer meshes the out-of-plane
     # moments vanish (empty patches are excluded from the stencil), making M
@@ -362,6 +366,8 @@ def compute_lsq_geometry(mesh_data, geo_data):
         "lsq_nei_w2_dr": nei_w2_dr,
         "lsq_sum_w2dr": sum_w2dr,
         "lsq_M_inv": M_inv,
+        "lsq_condition": lsq_condition,
+        "lsq_rank": lsq_rank,
         "gradient_scheme": "lsq",
     }
 

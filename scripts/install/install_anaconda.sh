@@ -124,7 +124,7 @@ if [ -d "$REPO_ROOT/.git" ]; then
 fi
 
 echo "Verifying the environment..."
-for module in bandit gmsh mpi4py petsc4py pyamg pydantic pyvista pytest taichi vtk vulture; do
+for module in bandit gmsh mpi4py petsc4py pyamg pydantic pygit2 pyvista pytest taichi vtk vulture; do
     conda run -n "$CONDA_ENV" python -c "import $module; print('$module: OK')"
 done
 conda run -n "$CONDA_ENV" python -m pip check

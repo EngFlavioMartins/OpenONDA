@@ -14,6 +14,8 @@ Components:
 Converted from uFVM NSAssembly/Momentum modules
 """
 
+from dataclasses import replace
+
 import numpy as np
 
 from ..fields import gradients
@@ -92,7 +94,7 @@ def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
             U_star[b_idx] = U_star[own]
 
 
-def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
+def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     """Apply post-solve boundary condition to the predicted velocity field.
 
     Modifies ``U_star`` in-place at the boundary elements according to
@@ -101,8 +103,6 @@ def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
     Args:
         U_star: Predicted velocity field (n_elements + n_boundary, 3),
             modified in-place.
-        U: Old velocity field (n_elements + n_boundary, 3),
-            used as fallback for unknown bc types.
         boundary: Boundary dictionary with keys ``startFace``, ``nFaces``,
             ``bc_type_U``, and optionally ``value_U`` / ``value_U_field``.
         mesh_data: Mesh connectivity containing ``owners`` and
@@ -127,13 +127,18 @@ def _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements):
         elif "value_U" in boundary:
             U_star[b_elem_indices] = np.array(boundary["value_U"])
         else:
-            U_star[b_elem_indices] = U[b_elem_indices]
+            raise ValueError(
+                f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
+            )
     elif bc_type == "empty":
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         face_sf = geo_data["face_sf"][start_face : start_face + n_faces]
         _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf)
     else:
-        U_star[b_elem_indices] = U[b_elem_indices]
+        raise ValueError(
+            f"Unsupported momentum velocity boundary condition {bc_type!r} "
+            f"on patch {boundary.get('name')!r}"
+        )
 
 
 def assemble_momentum_equation(
@@ -207,10 +212,22 @@ def assemble_momentum_equation(
     if grad_p.ndim == 3:
         grad_p = grad_p.squeeze(-1)  # (n, 3, 1) -> (n, 3)
 
-    # Compute mass flow rate for convection (DENSITY SCALED)
-    # If phi is already rho-weighted, use as is.
-    # In OpenONDA FVM, phi is usually U.Sf. Let's ensure rho scaling.
-    mdot = phi * rho[0] if len(rho) > 0 else phi
+    if rho.shape != (n_elements,) or not np.all(np.isfinite(rho)) or np.any(rho <= 0.0):
+        raise ValueError(f"rho must be finite and positive with shape ({n_elements},)")
+    if nu.shape != (n_elements,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
+        raise ValueError(f"nu must be finite and positive with shape ({n_elements},)")
+
+    # ``phi`` is volumetric flux U·Sf. Interpolate density to each face to
+    # obtain mass flux without collapsing variable-density input to rho[0].
+    owners = mesh_data["owners"]
+    neighbours = mesh_data["neighbours"]
+    n_interior = mesh_data["n_interior_faces"]
+    face_rho = rho[owners].copy()
+    weights = geo_data["face_weights"][:n_interior]
+    face_rho[:n_interior] = (
+        weights * rho[neighbours[:n_interior]] + (1.0 - weights) * rho[owners[:n_interior]]
+    )
+    mdot = np.asarray(phi) * face_rho
 
     results = {}
     spatial_matrix = None
@@ -415,7 +432,9 @@ def solve_momentum_predictor(
             source_relax = (1.0 - under_relaxation) * diag_new * U[:n_elements, i_comp]
             rhs_columns.append(b + source_relax)
         B = np.column_stack(rhs_columns)
-        X = matrix_assembly.solve_linear_system(A_shared, B, method="spsolve")
+        X, shared_result = matrix_assembly.solve_linear_system(
+            A_shared, B, method="spsolve", return_info=True
+        )
         if X.ndim == 1:
             X = X[:, np.newaxis]
 
@@ -432,9 +451,14 @@ def solve_momentum_predictor(
                     A_shared, X[:, i_comp], b_relaxed
                 ),
             }
+            solve_diagnostics[comp_name]["linear_result"] = replace(
+                shared_result,
+                initial_residual=solve_diagnostics[comp_name]["initial_residual"],
+                final_residual=solve_diagnostics[comp_name]["final_residual"],
+            )
 
         for boundary in boundaries:
-            _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements)
+            _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements)
         if return_diagnostics:
             return U_star, A_U, solve_diagnostics
         return U_star, A_U
@@ -463,16 +487,15 @@ def solve_momentum_predictor(
         momentum_tol = solver_kwargs.get("momentum_tol", 1e-4)
         x0_vec = None
         if U_old is not None:
-            try:
-                x0_vec = U_old[:n_elements, i_comp]
-            except Exception:
-                x0_vec = None
+            if np.asarray(U_old).shape[0] < n_elements:
+                raise ValueError("U_old does not contain every interior cell")
+            x0_vec = U_old[:n_elements, i_comp]
 
         # Solve with optional initial guess and tuned tolerance
         solver_kwargs.pop("ilu_key", None)
         x_initial = x0_vec if x0_vec is not None else np.zeros(n_elements)
         initial_residual = matrix_assembly.normalized_residual(A_relaxed, x_initial, b_relaxed)
-        U_comp_star = matrix_assembly.solve_linear_system(
+        U_comp_star, linear_result = matrix_assembly.solve_linear_system(
             A_relaxed,
             b_relaxed,
             method=solver,
@@ -482,12 +505,14 @@ def solve_momentum_predictor(
             ilu_key=comp_name,
             backend=linear_backend,
             parallel_context=parallel_context,
+            return_info=True,
             **solver_kwargs,
         )
         final_residual = matrix_assembly.normalized_residual(A_relaxed, U_comp_star, b_relaxed)
         solve_diagnostics[comp_name] = {
             "initial_residual": initial_residual,
             "final_residual": final_residual,
+            "linear_result": linear_result,
         }
 
         # Store results
@@ -497,27 +522,8 @@ def solve_momentum_predictor(
         A_U[:, i_comp] = diag_new
 
     for boundary in boundaries:
-        _apply_ustar_bc(U_star, U, boundary, mesh_data, geo_data, n_elements)
+        _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements)
 
     if return_diagnostics:
         return U_star, A_U, solve_diagnostics
     return U_star, A_U
-
-
-def compute_H_operator(A_U):
-    """
-    Compute H operator for pressure correction.
-
-    H = 1 / A_U (diagonal coefficients)
-
-    Args:
-        A_U: Diagonal coefficients from momentum equation (n_elements, 3)
-
-    Returns:
-        numpy.ndarray: H operator (n_elements, 3)
-    """
-
-    # Avoid division by zero
-    H = 1.0 / (A_U + 1e-10)
-
-    return H

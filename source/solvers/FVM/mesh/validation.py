@@ -138,6 +138,35 @@ def validate_geometry(mesh_data, geo_data):
     out_of_bounds_weights = int(
         np.count_nonzero((internal_weights < 0.0) | (internal_weights > 1.0))
     )
+    owners = mesh_data["owners"]
+    neighbours = mesh_data["neighbours"]
+    centroids = np.asarray(geo_data["element_centroids"])
+    face_centroids = np.asarray(geo_data["face_centroids"])
+    interpolation_points = (1.0 - internal_weights[:, np.newaxis]) * centroids[
+        owners[:n_internal]
+    ] + internal_weights[:, np.newaxis] * centroids[neighbours]
+    centre_distance = np.linalg.norm(centroids[neighbours] - centroids[owners[:n_internal]], axis=1)
+    skewness = np.linalg.norm(face_centroids[:n_internal] - interpolation_points, axis=1) / (
+        centre_distance + 1e-30
+    )
+
+    cell_face_distances = [[] for _ in range(n_cells)]
+    for face in range(n_faces):
+        owner = int(owners[face])
+        cell_face_distances[owner].append(
+            float(np.linalg.norm(face_centroids[face] - centroids[owner]))
+        )
+        if face < n_internal:
+            neighbour = int(neighbours[face])
+            cell_face_distances[neighbour].append(
+                float(np.linalg.norm(face_centroids[face] - centroids[neighbour]))
+            )
+    aspect_ratio = np.asarray(
+        [max(values) / max(min(values), 1e-30) for values in cell_face_distances]
+    )
+
+    lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)
+    finite_lsq_condition = lsq_condition[np.isfinite(lsq_condition)]
 
     return {
         "min_volume": float(np.min(volumes)),
@@ -146,6 +175,14 @@ def validate_geometry(mesh_data, geo_data):
         "max_non_orthogonality_deg": float(np.max(non_orthogonality)),
         "mean_non_orthogonality_deg": float(np.mean(non_orthogonality)),
         "out_of_bounds_interpolation_weights": out_of_bounds_weights,
+        "max_skewness": float(np.max(skewness)) if skewness.size else 0.0,
+        "max_aspect_ratio": float(np.max(aspect_ratio)),
+        "max_lsq_condition": (
+            float(np.max(finite_lsq_condition)) if finite_lsq_condition.size else None
+        ),
+        "rank_deficient_lsq_cells": int(
+            np.count_nonzero(np.asarray(geo_data.get("lsq_rank", [])) < 3)
+        ),
     }
 
 
@@ -155,3 +192,24 @@ def validate_mesh(mesh_data, geo_data=None):
     if geo_data is not None:
         report.update(validate_geometry(mesh_data, geo_data))
     return report
+
+
+def enforce_quality_thresholds(report, mesh_config) -> None:
+    """Reject a mesh that exceeds any explicitly configured quality limit."""
+    checks = (
+        ("max_non_orthogonality_deg", mesh_config.max_non_orthogonality_deg),
+        ("max_skewness", mesh_config.max_skewness),
+        ("max_aspect_ratio", mesh_config.max_aspect_ratio),
+        ("max_lsq_condition", mesh_config.max_lsq_condition),
+    )
+    violations = []
+    for metric, limit in checks:
+        if limit is None:
+            continue
+        if not np.isfinite(limit) or float(limit) <= 0.0:
+            raise MeshValidationError(f"Configured mesh quality limit {metric} must be > 0")
+        measured = report.get(metric)
+        if measured is not None and measured > limit:
+            violations.append(f"{metric}={measured:.6g} exceeds configured limit {limit:.6g}")
+    if violations:
+        raise MeshValidationError("Mesh quality rejection: " + "; ".join(violations))

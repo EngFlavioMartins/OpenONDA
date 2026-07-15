@@ -271,8 +271,8 @@ class FVMVPMCoupler:
                 raise NotImplementedError(
                     "restart=True is not yet supported with backend='fvm': the "
                     "native FVM solver has no state save/load path yet (see "
-                    "docs/plans/2026-07-fvm-vpm-coupling-integration-plan.md, "
-                    "step C3). Run fresh, or use backend='ofw' for restarts."
+                    "the restart gate in the FVM production completion plan). "
+                    "Run fresh, or use backend='ofw' for restarts."
                 )
             (Path(coupler_setup.case_dir).absolute() / "solution").mkdir(
                 parents=True, exist_ok=True

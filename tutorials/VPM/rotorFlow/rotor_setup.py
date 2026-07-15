@@ -201,6 +201,7 @@ def main():
             traversal_block_dim=128,
         ),
         samplers=plane_samplers,
+        sampler_output_format="legacy",
         backup_file_name="rotor",
         backup_directory=backup_dir,
         solution_name=backup_dir,

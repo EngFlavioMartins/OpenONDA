@@ -1,4 +1,48 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
+
+
+def _readonly(values):
+    result = np.ascontiguousarray(values, dtype=np.float64)
+    result.setflags(write=False)
+    return result
+
+
+@dataclass(frozen=True)
+class MeshGeometry:
+    """Immutable geometry arrays and quality metrics for backend dispatch."""
+
+    points: np.ndarray
+    face_centroids: np.ndarray
+    face_area_vectors: np.ndarray
+    face_areas: np.ndarray
+    cell_centroids: np.ndarray
+    cell_volumes: np.ndarray
+    interpolation_weights: np.ndarray
+    cell_face_vectors: np.ndarray
+    wall_distance: np.ndarray
+    lsq_condition: np.ndarray | None = None
+    geometry_version: int = 1
+
+    @classmethod
+    def from_data(cls, mesh_data, geo_data) -> MeshGeometry:
+        """Create a read-only typed view without changing legacy operators."""
+        condition = geo_data.get("lsq_condition")
+        return cls(
+            points=_readonly(mesh_data["points"]),
+            face_centroids=_readonly(geo_data["face_centroids"]),
+            face_area_vectors=_readonly(geo_data["face_sf"]),
+            face_areas=_readonly(geo_data["face_areas"]),
+            cell_centroids=_readonly(geo_data["element_centroids"]),
+            cell_volumes=_readonly(geo_data["element_volumes"]),
+            interpolation_weights=_readonly(geo_data["face_weights"]),
+            cell_face_vectors=_readonly(geo_data["face_cf_vector"]),
+            wall_distance=_readonly(geo_data["wall_dist"]),
+            lsq_condition=None if condition is None else _readonly(condition),
+        )
 
 
 def compute_geometry(
@@ -84,40 +128,13 @@ def compute_geometry(
     sf_sum = np.zeros((n_faces, 3))
     area_sum = np.zeros(n_faces)
 
-    # Expand center for broadcasting
-    local_centre[:, np.newaxis, :]  # (N, 1, 3)
-
     for i in range(max_nodes):
         # Point 1: P_i
         # Point 2: P_{i+1}
-        # Handle wrap around using modulo logic requires care with padding.
-        # However, purely geometric: (P_i, P_{i+1})
-        # If P_i is valid and P_{i+1} is valid (and not the wrap-around of list end?)
-        # Let's use explicit indices for safety.
-
-        # idx2 is (i+1) % count, but we are in a padded array.
-        # easier: use padded_faces range.
-
-        # P1 is simply column i
         P1 = face_coords[:, i, :]
-
-        # P2 needs to be the next node in the ring.
-        # If i < count-1, P2 is column i+1.
-        # If i == count-1, P2 is column 0.
-        # If i >= count, triangle is invalid.
-
-        # Create an index array for the 'next' node
-        np.arange(n_faces) * max_nodes + (i + 1)
-
-        # Where i is the last node, wrap to 0
         is_last: np.ndarray = np.equal(i, counts - 1)
-        # We need to construct P2 carefully
-
-        # Let's fetch column i+1 (safe, using 0 if out of bounds)
         idx_next = i + 1
         P2_raw = face_coords[:, idx_next, :] if idx_next < max_nodes else np.zeros((n_faces, 3))
-
-        # For last nodes, P2 is column 0
         P2 = np.where(is_last[:, np.newaxis], face_coords[:, 0, :], P2_raw)
 
         # Triangle validity mask: i < counts
@@ -154,8 +171,6 @@ def compute_geometry(
 
     logging.Timer.log("    - Basic Face Geometry")
 
-    # --- Process Element Geometry ---
-    logging.Timer.start("    - Element Geometry")
     # --- Process Element Geometry ---
     logging.Timer.start("    - Element Geometry")
 
@@ -232,6 +247,7 @@ def compute_geometry(
 
     element_centroids = local_vol_centroid_sum / safe_vol[:, np.newaxis]
     element_volumes = local_vol_sum
+    logging.Timer.log("    - Element Geometry")
 
     # --- Process Secondary Face Geometry ---
     cfd_small = 1e-15  # Matches uFVM cfdSMALL?
@@ -309,21 +325,8 @@ def compute_geometry(
     }
 
 
-def compute_mesh_geometry(mesh_data, cache=None, step=0, gradient_scheme="gauss"):
-    """
-    Wrapper to compute geometry from mesh_data dict, optionally using cached weights.
-    """
-    if cache:
-        cached_weights = cache.get_weights(step)
-        if cached_weights:
-            # We still need centroids and volumes if not cached, or we assume they are.
-            # Usually centroids/volumes are needed for secondary metrics.
-            # Let's see if we should cache everything or just weights.
-            # The User said "geometric weights (e.g., face interpolation factors)".
-            # If we have cached weights, we might still need to compute centroids for a dynamic mesh
-            # unless it's a rigid motion.
-            pass
-
+def compute_mesh_geometry(mesh_data, gradient_scheme="gauss"):
+    """Compute cell and face geometry for a validated mesh dictionary."""
     # 1. We need element_faces list which is not in mesh_data usually
     # unless we derive it.
     from . import topology
@@ -342,12 +345,6 @@ def compute_mesh_geometry(mesh_data, cache=None, step=0, gradient_scheme="gauss"
         mesh_data["n_interior_faces"],
         element_faces,
     )
-
-    # If weights are cached and we are in a mode that allows it, override
-    if cache:
-        cached = cache.get_weights(step)
-        if cached:
-            geo_data.update(cached)
 
     # Pre‑compute LSQ gradient geometry if requested
     if gradient_scheme == "lsq":

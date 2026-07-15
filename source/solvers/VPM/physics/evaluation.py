@@ -119,20 +119,15 @@ class ParticleFieldEvaluation:
         self._centroid_result = ti.field(dtype=ti.f32, shape=3)
 
     def _resize_fields(self, required_size: int):
-        """Resize particle diagnostic fields if needed."""
+        """Validate that diagnostics fit the startup particle allocation."""
         if required_size <= 0:
             return
-
-        target_size = int(required_size)
-        if target_size > self.max_particles:
-            old_max = self.max_particles
-            self.max_particles = target_size
-            print(f"(Info) Resizing particle field physics from {old_max} to {self.max_particles}")
-
-            # Re-initialize per-particle fields
-            self.particle_kinetic_energy = ti.field(dtype=ti.f32, shape=self.max_particles)
-            self.particle_helicity = ti.field(dtype=ti.f32, shape=self.max_particles)
-            self.particle_enstrophy = ti.field(dtype=ti.f32, shape=self.max_particles)
+        if required_size > self.max_particles:
+            raise ValueError(
+                f"Diagnostics require {required_size} particles, but max_particles="
+                f"{self.max_particles}. Increase SolverConfig.max_particles before "
+                "constructing the solver."
+            )
 
     def __str__(self):
         """Return formatted string representation."""

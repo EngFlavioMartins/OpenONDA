@@ -169,7 +169,9 @@ def _collect_boundary_patches(
                     if key in face_map:
                         patch_face_keys.append(key)
                         boundary_faces_all.add(key)
-        patch_info.append({"name": name, "keys": patch_face_keys})
+        patch_info.append(
+            {"name": name, "keys": patch_face_keys, "physical_tag": int(tag), "dimension": dim}
+        )
     return patch_info, boundary_faces_all
 
 
@@ -195,6 +197,7 @@ class GmshImporter:
             )
         if not gmsh.isInitialized():
             gmsh.initialize()
+        self.source_path = None
 
     def finalize(self):
         """Finalize the Gmsh API.
@@ -217,6 +220,7 @@ class GmshImporter:
             gmsh.GmshException: If Gmsh cannot parse the file.
         """
         gmsh.open(filename)
+        self.source_path = str(filename)
 
     def get_mesh_data(self) -> dict:
         """Extract mesh data from the current Gmsh model.
@@ -250,6 +254,22 @@ class GmshImporter:
         # 2. Get Elements
         max_dim = _find_mesh_dimension(model)
         cell_types, cell_tags_list, _ = model.mesh.getElements(dim=max_dim)
+
+        cell_type_codes = []
+        cell_families = []
+        cell_orders = []
+        for element_type, tags in zip(cell_types, cell_tags_list, strict=True):
+            name, _dim, order, _n_nodes, _local, _n_primary = model.mesh.getElementProperties(
+                element_type
+            )
+            if int(order) != 1:
+                raise ValueError(
+                    f"Unsupported high-order Gmsh element {name!r} (type {element_type}, "
+                    f"order {order}); the FVM importer accepts first-order cells only"
+                )
+            cell_type_codes.extend([int(element_type)] * len(tags))
+            cell_families.extend([str(name)] * len(tags))
+            cell_orders.extend([int(order)] * len(tags))
 
         all_cell_tags: list = []
         for tags in cell_tags_list:
@@ -305,6 +325,8 @@ class GmshImporter:
                     "startFace": start_face,
                     "nFaces": n_faces_in_patch,
                     "type": "patch",
+                    "physical_tag": patch.get("physical_tag"),
+                    "source_dimension": patch.get("dimension"),
                 }
             )
 
@@ -318,6 +340,12 @@ class GmshImporter:
             "n_faces": len(final_faces),
             "n_interior_faces": n_internal,
             "n_elements": n_cells,
+            "source_point_ids": np.asarray(node_tags, dtype=np.int64),
+            "source_cell_ids": np.asarray(all_cell_tags, dtype=np.int64),
+            "cell_type_codes": np.asarray(cell_type_codes, dtype=np.int32),
+            "cell_families": np.asarray(cell_families),
+            "cell_orders": np.asarray(cell_orders, dtype=np.int8),
+            "provenance": {"format": "gmsh", "source": self.source_path},
         }
 
 

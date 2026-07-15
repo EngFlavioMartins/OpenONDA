@@ -12,7 +12,8 @@ Per momentum predictor the forcing is
     f_j = Σ_s F_s δ_h(x_j − X_s) ε_s           (Eulerian, acceleration)
 
 and ``ρ f`` enters the momentum equation through the existing
-``source_explicit`` hook.  See docs/plans/2026-07-fvm-ibm-design.md.
+``source_explicit`` hook. The validation reference is
+``docs/literature/Constant2016.pdf``.
 """
 
 from __future__ import annotations

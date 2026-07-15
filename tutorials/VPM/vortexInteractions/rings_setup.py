@@ -370,6 +370,7 @@ def run_case(args: argparse.Namespace) -> None:
         velocity=velocity,
         viscous=viscous,
         samplers=[(sampler, "xz_slice")],
+        sampler_output_format="legacy",
         backup_file_name=args.name,
         backup_directory=str(output_dir),
         solution_name=str(output_dir),

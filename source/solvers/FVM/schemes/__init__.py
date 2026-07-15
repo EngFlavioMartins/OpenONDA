@@ -11,6 +11,7 @@ from .validation import (
     GRADIENT_SCHEMES,
     TIME_SCHEMES,
     TURBULENCE_MODELS,
+    validate_acceptance_policy,
     validate_boundary_conditions,
     validate_solver_params,
     validate_turbulence,
@@ -25,6 +26,7 @@ __all__ = [
     "TIME_SCHEMES",
     "TURBULENCE_MODELS",
     "validate_boundary_conditions",
+    "validate_acceptance_policy",
     "validate_solver_params",
     "validate_turbulence",
 ]

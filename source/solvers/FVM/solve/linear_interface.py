@@ -14,14 +14,12 @@ import logging
 import time
 
 import numpy as np
-from scipy.sparse import diags
 from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, spsolve
 
 logger = logging.getLogger(__name__)
 logger.propagate = False  # Don't send warnings to root logger (stderr)
 _ILU_CACHE = {}
 _AMG_CACHE = {}
-_PYAMG_WARNING_SHOWN = False  # Track if pyamg warning already displayed
 _FALLBACK_WARN_COUNT = 0  # Track iterative solver fallback warnings
 
 
@@ -30,11 +28,12 @@ class LinearSolveError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class LinearSolveInfo:
+class LinearSolveResult:
     """Backend-neutral convergence record for a sparse solve."""
 
     backend: str
     method: str
+    preconditioner: str | None
     converged: bool
     reason: str
     iterations: int
@@ -42,6 +41,11 @@ class LinearSolveInfo:
     final_residual: float
     setup_seconds: float
     solve_seconds: float
+    used_fallback: bool = False
+
+
+# Compatibility for callers that imported the experimental PETSc-only name.
+LinearSolveInfo = LinearSolveResult
 
 
 def normalized_residual(A, x, b):
@@ -105,7 +109,7 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
     """
     b_norm = float(np.linalg.norm(b))
     if b_norm == 0.0:
-        return np.zeros(A.shape[0], dtype=np.float64), 0
+        return np.zeros(A.shape[0], dtype=np.float64), 0, 0
     if x0 is None:
         x0 = np.zeros(A.shape[0], dtype=np.float64)
         r0 = np.asarray(b, dtype=np.float64)
@@ -114,20 +118,27 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
         r0 = np.asarray(b, dtype=np.float64) - A @ x0
     r0_norm = float(np.linalg.norm(r0))
     if r0_norm == 0.0:
-        return x0.copy(), 0
+        return x0.copy(), 0, 0
     rtol_eff = float(np.clip(tol * b_norm / r0_norm, 1e-14, 0.99))
-    kwargs = {"rtol": rtol_eff, "maxiter": maxiter}
+    iterations = 0
+
+    def count_iteration(_value):
+        nonlocal iterations
+        iterations += 1
+
+    kwargs = {"rtol": rtol_eff, "maxiter": maxiter, "callback": count_iteration}
     if M is not None:
         kwargs["M"] = M
     # Resolved at call time so tests can monkeypatch the module attributes.
     if method == "gmres":
         solve_fn = gmres
+        kwargs["callback_type"] = "pr_norm"
     elif method == "cg":
         solve_fn = cg
     else:
         solve_fn = bicgstab
     e, info = solve_fn(A, r0 / r0_norm, **kwargs)
-    return x0 + r0_norm * e, info
+    return x0 + r0_norm * e, info, iterations
 
 
 def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context):
@@ -201,24 +212,23 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
     ksp.setOperators(mat)
     pc = ksp.getPC()
     requested = str(method).lower()
-    if equation_type == "pressure":
+    ksp_types = {
+        "bicgstab": PETSc.KSP.Type.BCGS,
+        "gmres": PETSc.KSP.Type.GMRES,
+        "cg": PETSc.KSP.Type.CG,
+    }
+    if requested == "amg":
+        if equation_type != "pressure":
+            raise ValueError("PETSc AMG is supported only for pressure equations")
         ksp.setType(PETSc.KSP.Type.CG)
         pc.setType(PETSc.PC.Type.GAMG)
         method_name = "cg+gamg"
-    else:
-        ksp_types = {
-            "bicgstab": PETSc.KSP.Type.BCGS,
-            "gmres": PETSc.KSP.Type.GMRES,
-            "cg": PETSc.KSP.Type.CG,
-            "amg": PETSc.KSP.Type.GMRES,
-        }
-        if requested not in ksp_types:
-            raise ValueError(
-                f"PETSc momentum/scalar solver must be bicgstab, gmres, cg, or amg; got {method!r}"
-            )
+    elif requested in ksp_types:
         ksp.setType(ksp_types[requested])
         pc.setType(PETSc.PC.Type.BJACOBI)
         method_name = f"{requested}+bjacobi"
+    else:
+        raise ValueError(f"Unknown PETSc iterative solver {method!r}")
     ksp.setTolerances(rtol=float(tol), max_it=int(maxiter))
     ksp.setInitialGuessNonzero(x0 is not None)
     # Allow command-line PETSc options such as ``-fvm_pressure_pc_type hypre``.
@@ -250,16 +260,21 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
     initial_residual = normalized_residual(A_csr, initial, b_array)
     final_residual = normalized_residual(A_csr, x, b_array)
     reason = str(ksp.getConvergedReason())
-    info = LinearSolveInfo(
+    converged = (
+        reason_code > 0 and np.isfinite(final_residual) and final_residual <= max(10.0 * tol, 1e-12)
+    )
+    info = LinearSolveResult(
         backend="petsc",
         method=method_name,
-        converged=reason_code > 0,
+        preconditioner=str(ksp.getPC().getType()),
+        converged=converged,
         reason=reason,
         iterations=iterations,
         initial_residual=initial_residual,
         final_residual=final_residual,
         setup_seconds=setup_seconds,
         solve_seconds=solve_seconds,
+        used_fallback=False,
     )
 
     scatter.destroy()
@@ -339,9 +354,8 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False):
 def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol, failure_policy):
     """Solve the pressure Poisson equation.
 
-    Attempts an algebraic multigrid (AMG) solve via ``pyamg``.
-    If ``pyamg`` is unavailable, falls back to
-    :func:`_cg_pressure_fallback` (CG with diagonal preconditioner).
+    Runs algebraic-multigrid-preconditioned CG via ``pyamg``. A failure
+    raises unless ``failure_policy='direct_fallback'`` was requested.
 
     Args:
         A:           Sparse matrix.
@@ -355,23 +369,47 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
     Returns:
         Solution vector.
     """
+    setup_start = time.perf_counter()
     x_early = _trivial_solution(A, b, x0, amg_tol)
     if x_early is not None:
-        return x_early
+        return x_early, {
+            "preconditioner": "pyamg",
+            "iterations": 0,
+            "reason": "initial residual satisfied tolerance",
+            "setup_seconds": time.perf_counter() - setup_start,
+            "solve_seconds": 0.0,
+            "used_fallback": False,
+        }
     try:
         import pyamg
-    except ImportError:
-        global _PYAMG_WARNING_SHOWN
-        if not _PYAMG_WARNING_SHOWN:
-            print("[INFO] pyamg not available, using CG with diagonal preconditioner for pressure")
-            _PYAMG_WARNING_SHOWN = True
-        return _cg_pressure_fallback(A, b, tol, maxiter, x0, failure_policy)
+    except ImportError as error:
+        if failure_policy == "raise":
+            raise LinearSolveError("AMG pressure solve requires pyamg") from error
+        logger.warning("pyamg unavailable; using configured direct fallback")
+        setup_seconds = time.perf_counter() - setup_start
+        solve_start = time.perf_counter()
+        x = spsolve(A, b)
+        return x, {
+            "preconditioner": "pyamg",
+            "iterations": 0,
+            "reason": "pyamg unavailable; configured direct fallback converged",
+            "setup_seconds": setup_seconds,
+            "solve_seconds": time.perf_counter() - solve_start,
+            "used_fallback": True,
+        }
 
     try:
-        t0 = time.perf_counter()
         ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol)
         M = ml.aspreconditioner(cycle="V")
-        x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0)
+        setup_seconds = time.perf_counter() - setup_start
+        solve_start = time.perf_counter()
+        iterations = 0
+
+        def count_iteration(_value):
+            nonlocal iterations
+            iterations += 1
+
+        x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0, callback=count_iteration)
         if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
             info = 0
         if info != 0:
@@ -379,59 +417,45 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
             # hierarchy ineffective without silently accepting a poor solve.
             ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True)
             M = ml.aspreconditioner(cycle="V")
-            x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0)
+            setup_seconds = time.perf_counter() - setup_start
+            x, info = cg(
+                A,
+                b,
+                M=M,
+                rtol=amg_tol,
+                maxiter=amg_maxiter,
+                x0=x0,
+                callback=count_iteration,
+            )
             if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
                 info = 0
         if info != 0:
             raise RuntimeError(f"AMG-preconditioned pressure CG did not converge (info={info})")
-        logger.info(f"pyamg pressure solve time={time.perf_counter() - t0:.3f}s")
-        return x
+        solve_seconds = time.perf_counter() - solve_start
+        logger.info("pyamg pressure solve time=%.3fs", solve_seconds)
+        return x, {
+            "preconditioner": "pyamg",
+            "iterations": iterations,
+            "reason": "AMG-preconditioned CG converged",
+            "setup_seconds": setup_seconds,
+            "solve_seconds": solve_seconds,
+            "used_fallback": False,
+        }
     except Exception as error:
-        logger.warning("AMG pressure solve failed; using Jacobi-CG fallback: %s", error)
-        return _cg_pressure_fallback(A, b, tol, maxiter, x0, failure_policy)
-
-
-def _cg_pressure_fallback(A, b, tol, maxiter, x0, failure_policy):
-    """Conjugate-gradient solve with a diagonal (Jacobi) preconditioner.
-
-    Used as the fallback for the pressure equation when AMG is not
-    available.  Falls back to ``spsolve`` if CG does not converge.
-
-    Args:
-        A:       Sparse matrix.
-        b:       Right-hand side vector.
-        tol:     Relative tolerance.
-        maxiter: Max iterations.
-        x0:      Initial guess (optional).
-
-    Returns:
-        Solution vector.
-    """
-    x_early = _trivial_solution(A, b, x0, tol)
-    if x_early is not None:
-        return x_early
-    try:
-        t0 = time.perf_counter()
-        M_inv = diags(1.0 / (A.diagonal() + 1e-16))
-        x, info = cg(A, b, M=M_inv, rtol=tol, maxiter=maxiter, x0=x0)
-        logger.info(f"CG pressure fallback time={time.perf_counter() - t0:.3f}s")
-        if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG (Jacobi)", info):
-            info = 0
-        if info != 0:
-            logger.warning(f"CG (pressure fallback) did not converge, info={info}")
-            if failure_policy == "raise":
-                raise LinearSolveError(
-                    f"Pressure CG did not converge after {maxiter} iterations (info={info})"
-                )
-            return spsolve(A, b)
-        return x
-    except Exception as e2:
         if failure_policy == "raise":
-            if isinstance(e2, LinearSolveError):
-                raise
-            raise LinearSolveError("Pressure iterative solve failed") from e2
-        logger.error("Pressure solver fallback failed", exc_info=e2)
-        return spsolve(A, b)
+            raise LinearSolveError("AMG pressure solve failed") from error
+        logger.warning("AMG pressure solve failed; using configured direct fallback: %s", error)
+        fallback_start = time.perf_counter()
+        failed_solve_seconds = fallback_start - locals().get("solve_start", fallback_start)
+        x = spsolve(A, b)
+        return x, {
+            "preconditioner": "pyamg",
+            "iterations": locals().get("iterations", 0),
+            "reason": f"AMG failed; configured direct fallback converged: {error}",
+            "setup_seconds": locals().get("setup_seconds", time.perf_counter() - setup_start),
+            "solve_seconds": failed_solve_seconds + time.perf_counter() - fallback_start,
+            "used_fallback": True,
+        }
 
 
 def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A):
@@ -500,21 +524,13 @@ def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
     Returns:
         Solution vector.
     """
-    x, info = _run_krylov(A, b, method, M, tol, maxiter, x0)
+    x, info, iterations = _run_krylov(A, b, method, M, tol, maxiter, x0)
     if info != 0 and _breakdown_converged(A, b, x, tol, method, info):
         info = 0
-    if info != 0 and method == "bicgstab":
-        # BiCGStab's recurrences can break down on systems GMRES handles
-        # without trouble; one residual-verified GMRES attempt with the same
-        # preconditioner before declaring failure.
-        x_g, info_g = _run_krylov(A, b, "gmres", M, tol, maxiter, x0)
-        if info_g == 0 or _breakdown_converged(A, b, x_g, tol, "gmres rescue", info_g):
-            logger.info("bicgstab breakdown recovered by GMRES rescue")
-            x, info = x_g, 0
     if info != 0:
         global _FALLBACK_WARN_COUNT
         _FALLBACK_WARN_COUNT += 1
-        msg = f"iterative solver did not converge (info={info}), falling back to direct spsolve"
+        msg = f"{method} did not converge (info={info})"
         logger.warning(msg)
         if _FALLBACK_WARN_COUNT <= 3 or _FALLBACK_WARN_COUNT % 50 == 0:
             print(f"  [WARNING] {msg} (occurrence #{_FALLBACK_WARN_COUNT})")
@@ -522,8 +538,9 @@ def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
             raise LinearSolveError(
                 f"{method} did not converge after {maxiter} iterations (info={info})"
             )
-        return spsolve(A, b)
-    return x
+        logger.warning("Using configured direct fallback after %s failure", method)
+        return spsolve(A, b), max(iterations, int(info) if info > 0 else 0), True, msg
+    return x, iterations, False, "Krylov solver converged"
 
 
 def _solve_with_ilu(
@@ -562,69 +579,57 @@ def _solve_with_ilu(
     Returns:
         Solution vector.
     """
+    setup_start = time.perf_counter()
     x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
-        return x_early
+        return x_early, {
+            "preconditioner": "ilu",
+            "iterations": 0,
+            "reason": "initial residual satisfied tolerance",
+            "setup_seconds": time.perf_counter() - setup_start,
+            "solve_seconds": 0.0,
+            "used_fallback": False,
+        }
     try:
-        t0 = time.perf_counter()
         A_csc = A.tocsc()
         ilu = _get_or_build_ilu(
             A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A
         )
-        logger.info(f"ILU setup time={time.perf_counter() - t0:.3f}s")
+        setup_seconds = time.perf_counter() - setup_start
+        logger.info("ILU setup time=%.3fs", setup_seconds)
 
         M = LinearOperator(A.shape, matvec=ilu.solve)  # type: ignore[call-arg]
-        t0 = time.perf_counter()
-        x = _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy)
-        logger.info(f"Iterative solver ({method}) time={time.perf_counter() - t0:.3f}s")
-        return x
-    except Exception as e:
-        logger.warning(
-            f"ILU preconditioner or iterative solver failed: {e}, trying plain iterative"
+        solve_start = time.perf_counter()
+        x, iterations, used_fallback, reason = _iterative_solve_with_M(
+            A, b, method, M, tol, maxiter, x0, failure_policy
         )
+        solve_seconds = time.perf_counter() - solve_start
+        logger.info("Iterative solver (%s) time=%.3fs", method, solve_seconds)
+        return x, {
+            "preconditioner": "ilu",
+            "iterations": iterations,
+            "reason": reason,
+            "setup_seconds": setup_seconds,
+            "solve_seconds": solve_seconds,
+            "used_fallback": used_fallback,
+        }
+    except Exception as e:
         if isinstance(e, LinearSolveError):
             raise
-        return _iterative_solve_plain(A, b, method, tol, maxiter, x0, failure_policy)
-
-
-def _iterative_solve_plain(A, b, method, tol, maxiter, x0, failure_policy):
-    """Solve with a plain iterative method (no preconditioner).
-
-    Falls back to ``spsolve`` on convergence failure or exception.
-
-    Args:
-        A:       Sparse matrix.
-        b:       Right-hand side.
-        method:  ``"bicgstab"`` or ``"gmres"``.
-        tol:     Relative tolerance.
-        maxiter: Max iterations.
-        x0:      Initial guess.
-
-    Returns:
-        Solution vector.
-    """
-    x_early = _trivial_solution(A, b, x0, tol)
-    if x_early is not None:
-        return x_early
-    try:
-        x, info = _run_krylov(A, b, method, None, tol, maxiter, x0)
-        if info != 0 and _breakdown_converged(A, b, x, tol, method, info):
-            info = 0
-        if info != 0:
-            logger.warning(f"Plain iterative solver did not converge info={info}, falling back")
-            if failure_policy == "raise":
-                raise LinearSolveError(
-                    f"Plain {method} did not converge after {maxiter} iterations (info={info})"
-                )
-            return spsolve(A, b)
-        return x
-    except Exception as e2:
         if failure_policy == "raise":
-            if isinstance(e2, LinearSolveError):
-                raise
-            raise LinearSolveError(f"Plain {method} solve failed") from e2
-        logger.error("Plain iterative solver failed, falling back to spsolve", exc_info=e2)
-        return spsolve(A, b)
+            raise LinearSolveError(f"{method} ILU setup or solve failed") from e
+        logger.warning("ILU setup failed; using configured direct fallback: %s", e)
+        setup_seconds = time.perf_counter() - setup_start
+        solve_start = time.perf_counter()
+        x = spsolve(A, b)
+        return x, {
+            "preconditioner": "ilu",
+            "iterations": 0,
+            "reason": f"ILU failed; configured direct fallback converged: {e}",
+            "setup_seconds": setup_seconds,
+            "solve_seconds": time.perf_counter() - solve_start,
+            "used_fallback": True,
+        }
 
 
 def solve_linear_system(
@@ -643,7 +648,7 @@ def solve_linear_system(
     backend="scipy",
     parallel_context=None,
     return_info=False,
-    failure_policy="direct_fallback",
+    failure_policy="raise",
     **kwargs,
 ):
     """Solve the linear system ``A·x = b``.
@@ -652,7 +657,7 @@ def solve_linear_system(
     *equation_type*:
 
     - ``"spsolve"``: direct sparse solve (scipy).
-    - ``equation_type="pressure"``: AMG (pyamg) with CG fallback.
+    - ``method="amg", equation_type="pressure"``: PyAMG-preconditioned CG.
     - ``equation_type="momentum"`` or ``"scalar"``: ILU-preconditioned
       iterative solver (BiCGSTAB / GMRES).
     - ``"cg"``, ``"gmres"``, ``"bicgstab"``: plain iterative solver.
@@ -682,6 +687,7 @@ def solve_linear_system(
     Raises:
         ValueError: If *method* is not recognised.
     """
+    method = str(method).lower()
     failure_policy = str(failure_policy).lower()
     if failure_policy not in {"raise", "direct_fallback"}:
         raise ValueError(f"Unknown linear failure policy {failure_policy!r}")
@@ -701,17 +707,54 @@ def solve_linear_system(
     if str(backend).lower() != "scipy":
         raise ValueError(f"Unknown linear backend {backend!r}")
 
-    if return_info:
-        raise ValueError("return_info is currently implemented for the PETSc backend only")
+    initial = np.zeros_like(np.asarray(b), dtype=np.float64) if x0 is None else np.asarray(x0)
+    initial_residual = normalized_residual(A, initial, b)
+
+    def finish(solution, metadata):
+        final_residual = normalized_residual(A, solution, b)
+        residual_limit = max(10.0 * tol, 1e-12)
+        result = LinearSolveResult(
+            backend="scipy",
+            method=method,
+            preconditioner=metadata.get("preconditioner"),
+            converged=bool(np.isfinite(final_residual) and final_residual <= residual_limit),
+            reason=str(metadata["reason"]),
+            iterations=int(metadata["iterations"]),
+            initial_residual=initial_residual,
+            final_residual=final_residual,
+            setup_seconds=float(metadata["setup_seconds"]),
+            solve_seconds=float(metadata["solve_seconds"]),
+            used_fallback=bool(metadata.get("used_fallback", False)),
+        )
+        if not result.converged:
+            raise LinearSolveError(
+                f"SciPy {method} returned residual {final_residual:.3e}, "
+                f"above the verified limit {residual_limit:.3e}"
+            )
+        return (solution, result) if return_info else solution
 
     if method == "spsolve":
-        return spsolve(A, b)
+        solve_start = time.perf_counter()
+        solution = spsolve(A, b)
+        return finish(
+            solution,
+            {
+                "preconditioner": None,
+                "iterations": 1,
+                "reason": "sparse direct solve completed",
+                "setup_seconds": 0.0,
+                "solve_seconds": time.perf_counter() - solve_start,
+                "used_fallback": False,
+            },
+        )
 
-    if equation_type == "pressure":
+    if method == "amg":
+        if equation_type != "pressure":
+            raise ValueError("AMG is supported only for pressure equations")
         amg_tol = kwargs.get("amg_tol", 4e-4)
         amg_maxiter = kwargs.get("amg_maxiter", maxiter)
         amg_reuse_tol = kwargs.get("amg_reuse_tol", 0.05)
-        return _solve_pressure(
+        solution, metadata = _solve_pressure(
             A,
             b,
             amg_tol,
@@ -722,9 +765,10 @@ def solve_linear_system(
             amg_reuse_tol,
             failure_policy,
         )
+        return finish(solution, metadata)
 
-    if equation_type in ("momentum", "scalar") or method in ("bicgstab", "gmres"):
-        return _solve_with_ilu(
+    if equation_type in ("momentum", "scalar") and method in ("bicgstab", "gmres", "cg"):
+        solution, metadata = _solve_with_ilu(
             A,
             b,
             method,
@@ -738,28 +782,61 @@ def solve_linear_system(
             ilu_reuse_tol,
             failure_policy,
         )
+        return finish(solution, metadata)
+
+    if method in ("bicgstab", "gmres"):
+        solution, metadata = _solve_with_ilu(
+            A,
+            b,
+            method,
+            tol,
+            maxiter,
+            x0,
+            reuse_ilu,
+            ilu_key,
+            ilu_drop_tol,
+            ilu_fill_factor,
+            ilu_reuse_tol,
+            failure_policy,
+        )
+        return finish(solution, metadata)
 
     # Generic method selector (no ILU)
-    if method == "cg":
-        x, info = cg(A, b, rtol=tol, maxiter=maxiter, x0=x0)
-        if info != 0:
-            logger.warning(f"CG did not converge, info={info}")
-    elif method == "gmres":
-        x, info = gmres(A, b, rtol=tol, maxiter=maxiter, x0=x0)
-        if info != 0:
-            logger.warning(f"GMRES did not converge, info={info}")
-    elif method == "bicgstab":
-        x, info = bicgstab(A, b, rtol=tol, maxiter=maxiter, x0=x0)
-        if info != 0:
-            logger.warning(f"BiCGSTAB did not converge, info={info}")
-    else:
+    if method not in {"cg", "gmres", "bicgstab"}:
         raise ValueError(f"Unknown solver method: {method}")
+    solve_start = time.perf_counter()
+    x, info, iterations = _run_krylov(A, b, method, None, tol, maxiter, x0)
+    solve_seconds = time.perf_counter() - solve_start
+    if info != 0:
+        logger.warning("%s did not converge, info=%s", method, info)
 
     if info != 0:
         if failure_policy == "raise":
             raise LinearSolveError(
                 f"{method} did not converge after {maxiter} iterations (info={info})"
             )
-        return spsolve(A, b)
+        fallback_start = time.perf_counter()
+        x = spsolve(A, b)
+        return finish(
+            x,
+            {
+                "preconditioner": None,
+                "iterations": max(iterations, int(info) if info > 0 else 0),
+                "reason": f"Krylov info={info}; configured direct fallback converged",
+                "setup_seconds": 0.0,
+                "solve_seconds": solve_seconds + time.perf_counter() - fallback_start,
+                "used_fallback": True,
+            },
+        )
 
-    return x
+    return finish(
+        x,
+        {
+            "preconditioner": None,
+            "iterations": iterations,
+            "reason": "Krylov solver converged",
+            "setup_seconds": 0.0,
+            "solve_seconds": solve_seconds,
+            "used_fallback": False,
+        },
+    )

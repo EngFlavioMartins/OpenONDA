@@ -200,3 +200,93 @@ def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):
     coupler = coupler_mod.FVMVPMCoupler(object(), _SerialBackend(), setup)
     with pytest.raises(RuntimeError, match="serial"):
         coupler.initialize()
+
+
+# ---------------------------------------------------------------------------
+# Body-fitted mesh: carved hole + wall patch (OpenFOAM-like topology)
+# ---------------------------------------------------------------------------
+
+HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
+
+
+def test_carved_mesh_hole_and_wall_patch():
+    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+
+    mesh = coupling_box_mesh(
+        (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5), 0.125, hole_box=HOLE, wall_patch_name="cube"
+    )
+    n_side, n_cube = 24, 8
+    assert mesh["n_elements"] == n_side**3 - n_cube**3
+    names = [b["name"] for b in mesh["boundary"]]
+    assert names == ["numericalBoundary", "cube"]
+    wall = mesh["boundary"][1]
+    assert wall["type"] == "wall"
+    assert wall["nFaces"] == 6 * n_cube**2
+    # Patches tile the boundary contiguously after the interior faces.
+    coupling = mesh["boundary"][0]
+    assert wall["startFace"] == coupling["startFace"] + coupling["nFaces"]
+    assert mesh["n_faces"] == mesh["n_interior_faces"] + coupling["nFaces"] + wall["nFaces"]
+    # Owner/neighbour indices are compact after the carve.
+    assert mesh["owners"].max() < mesh["n_elements"]
+    assert mesh["neighbours"].max() < mesh["n_elements"]
+
+    # Wall faces lie on the cube surface with outward-of-fluid normals
+    # (pointing into the hole, i.e. toward the cube centre at the origin).
+    pts = mesh["points"]
+    sl = slice(wall["startFace"], wall["startFace"] + wall["nFaces"])
+    for face in mesh["faces"][sl.start : sl.stop]:
+        p = pts[face]
+        c = p.mean(axis=0)
+        assert np.isclose(np.abs(c), 0.5).any()
+        n = np.cross(p[1] - p[0], p[2] - p[0])
+        assert np.dot(n, -c) > 0.0
+
+
+def test_carved_mesh_misaligned_hole_raises():
+    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+
+    with pytest.raises(ValueError, match="mesh plane"):
+        coupling_box_mesh((-1.5, 1.5, -1.5, 1.5, -1.5, 1.5), 0.075, hole_box=HOLE)
+
+
+def test_builder_body_fitted_cube(tmp_path):
+    import contextlib
+    import io
+
+    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
+
+    setup = _fvm_setup(
+        tmp_path,
+        grid_spacing=0.125,
+        h=0.125,
+        wall_patch_name="cube",
+        surface={"cube": {"side_length": 1.0, "center": [0.0, 0.0, 0.0]}},
+        fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        buffer_thickness=0.375,
+    )
+    fvm = build_fvm_backend(setup, quiet=True)
+
+    # No fluid cells inside the body — the coupling can never inject
+    # fictitious interior vorticity into the VPM.
+    cc = np.asarray(fvm.get_cell_center_coordinates())
+    assert np.all(np.abs(cc) < 0.5, axis=1).sum() == 0
+
+    # Wall patch reachable through the coupler contract; no-slip configured;
+    # wall-force logging on.
+    wf = np.asarray(fvm.get_boundary_face_center_coordinates("cube"))
+    assert wf.shape[0] == 6 * 8**2
+    assert fvm.config.solver.force_patches == ["cube"]
+    wall_cfg = next(b for b in fvm.config.boundaries if b.name == "cube")
+    assert wall_cfg.type_U == "fixedValue" and wall_cfg.value_U == [0.0, 0.0, 0.0]
+
+    # One PIMPLE step stays finite and generates wall vorticity.
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
+    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
+    fvm.set_dirichlet_velocity_boundary_condition_vec(u_bc, setup.patch_name)
+    with contextlib.redirect_stdout(io.StringIO()):
+        fvm.solve_pimple()
+        fvm.advance_time()
+    U = np.asarray(fvm.get_velocity_field())
+    assert np.isfinite(U).all()
+    w = np.linalg.norm(np.asarray(fvm.get_vorticity_field()), axis=1)
+    assert w.max() > 1.0

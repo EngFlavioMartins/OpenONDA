@@ -139,7 +139,7 @@ def assemble_convection_term_deferred_correction(phi, mdot, mesh_data, geo_data)
 
 
 def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter):
-    """Per-face TVD blend factor ψ ∈ [0, 1] (gradient-based NVD/TVD ratio).
+    """Per-face standard TVD limiter ψ ∈ [0, 2].
 
     r = 2 (d · ∇φ_upwind) / (φ_N − φ_P) − 1,  d = c_N − c_C (owner→neighbour).
     Extrema (φ_N ≈ φ_P) are handled by saturating r so the limiter → upwind.
@@ -204,13 +204,8 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     """
     Assemble convection term for boundary faces (1st-order upwind).
 
-    Note: a high-order outflow (linearUpwind) extrapolation was trialled here but
-    reverted — as a *deferred* (explicit) correction it lagged the single-solve
-    momentum operator and broke the temporal-order verification, while delivering
-    no measured benefit (the coupled-order cap is the Rhie–Chow discretisation,
-    not boundary convection — TGV has zero normal velocity on all faces).  Proper
-    high-order outflow convection needs an *implicit* boundary treatment and
-    belongs with the higher-order/Rhie–Chow work.
+    Boundary convection is first-order for every interior scheme. High-order
+    boundary reconstruction is not implemented and is listed as an accuracy gate.
 
     Args:
         phi: Field values including boundary elements
@@ -238,14 +233,16 @@ def assemble_convection_term_boundary(phi, mdot, boundary_patch, mesh_data):
     b_elem_start = start_face - n_interior_faces
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
 
-    # For boundary: use upwind
-    # Outflow (mdot > 0): use owner value
-    # Inflow (mdot < 0): use boundary value
-    flux_cf = np.maximum(mdot_b, 0.0)
-
-    # Neighbor contribution (inflow)
-    # This is a known value, so it goes to RHS
-    flux_ff_val = np.minimum(mdot_b, 0.0)
+    bc_type = boundary_patch.get("bc_type") or boundary_patch.get("bc_type_U")
+    if bc_type in {"fixedValue", "noSlip", "directionMixed"}:
+        # A Dirichlet face value is authoritative for either flow direction.
+        flux_cf = np.zeros_like(mdot_b)
+        flux_ff_val = mdot_b
+    else:
+        # Extrapolating conditions use the owner on outflow and the boundary
+        # ghost value on reverse flow (the inletOutlet contract).
+        flux_cf = np.maximum(mdot_b, 0.0)
+        flux_ff_val = np.minimum(mdot_b, 0.0)
 
     # Set flux_ff to 0 for matrix assembly (no neighbor column for boundary)
     flux_ff = np.zeros_like(mdot_b)
@@ -375,7 +372,6 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
 
     mdot = np.zeros(n_faces)
 
-    # Interior faces: interpolate velocity to face
     # Interior faces: interpolate velocity to face
     # u_face = w * U[nei] + (1-w) * U[own]
     u_face = (

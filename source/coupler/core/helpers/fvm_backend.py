@@ -31,12 +31,40 @@ def _cells_along(lo: float, hi: float, spacing: float, axis: str) -> int:
     return n_int
 
 
+def _plane_index(value: float, origin: float, spacing: float, n: int, what: str) -> int:
+    """Grid-plane index of a body face; the face must lie ON a mesh plane."""
+    r = (float(value) - float(origin)) / float(spacing)
+    idx = int(round(r))
+    if abs(r - idx) > 1e-6 * max(abs(r), 1.0):
+        raise ValueError(
+            f"{what} at {value:g} does not lie on a mesh plane (spacing "
+            f"{spacing:g} from origin {origin:g}). Choose grid_spacing so the "
+            "box AND the body faces are integer multiples of it — e.g. 0.0625 "
+            "for a [-1.5, 1.5] box with a cube at ±0.5."
+        )
+    if not 1 <= idx <= n - 1:
+        raise ValueError(
+            f"{what} at {value:g} must be strictly inside the box with at "
+            "least one fluid cell layer on every side."
+        )
+    return idx
+
+
 def coupling_box_mesh(
     fvm_box: tuple[float, float, float, float, float, float],
     spacing: float,
     patch_name: str = "numericalBoundary",
+    hole_box: tuple[float, float, float, float, float, float] | None = None,
+    wall_patch_name: str = "cube",
 ) -> dict:
-    """Return a uniform hex mesh whose six sides form one boundary patch."""
+    """Return a uniform hex mesh whose six sides form one coupling patch.
+
+    With ``hole_box``, the cells inside it are removed (body-fitted, like the
+    OpenFOAM/cfMesh case): the exposed faces become a second boundary patch
+    ``wall_patch_name`` of type ``wall``, where the no-slip condition is
+    applied.  The hole faces must lie exactly on mesh planes.  Points inside
+    the hole are kept but unreferenced (harmless to the solver and to VTK).
+    """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
     nx = _cells_along(x0, x1, spacing, "x")
     ny = _cells_along(y0, y1, spacing, "y")
@@ -131,9 +159,50 @@ def coupling_box_mesh(
     )
     boundary_owners = np.concatenate([o_x0, o_x1, o_y0, o_y1, o_z0, o_z1])
 
-    all_quads = np.vstack([interior_quads, boundary_quads])
-    owners = np.concatenate([interior_owners, boundary_owners])
+    # ── Optional body: carve the hole and expose its faces as a wall patch ──
+    wall_quads = np.empty((0, 4), dtype=np.int32)
+    wall_owners = np.empty(0, dtype=np.int64)
+    keep = np.ones(nx * ny * nz, dtype=bool)
+    if hole_box is not None:
+        hx0, hx1, hy0, hy1, hz0, hz1 = (float(v) for v in hole_box)
+        i0 = _plane_index(hx0, x0, dx, nx, f"{wall_patch_name} x-min face")
+        i1 = _plane_index(hx1, x0, dx, nx, f"{wall_patch_name} x-max face")
+        j0 = _plane_index(hy0, y0, dy, ny, f"{wall_patch_name} y-min face")
+        j1 = _plane_index(hy1, y0, dy, ny, f"{wall_patch_name} y-max face")
+        k0 = _plane_index(hz0, z0, dz, nz, f"{wall_patch_name} z-min face")
+        k1 = _plane_index(hz1, z0, dz, nz, f"{wall_patch_name} z-max face")
+        if i0 >= i1 or j0 >= j1 or k0 >= k1:
+            raise ValueError(f"hole_box {hole_box} has empty extent on the grid.")
+
+        ci, cj, ck = np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij")
+        in_hole = (ci >= i0) & (ci < i1) & (cj >= j0) & (cj < j1) & (ck >= k0) & (ck < k1)
+        keep[cid(ci.ravel(), cj.ravel(), ck.ravel())] = ~in_hole.ravel()
+
+        own_kept = keep[interior_owners]
+        nb_kept = keep[interior_neighbours]
+        both = own_kept & nb_kept
+        # Wall faces sit between a fluid cell and a removed cell.  Interior
+        # winding points from owner (lower cell) to neighbour (upper cell), so
+        # it already points out of the fluid when the owner survives; when the
+        # neighbour survives it becomes the owner and the ring is reversed.
+        low_side = own_kept & ~nb_kept
+        up_side = ~own_kept & nb_kept
+        wall_quads = np.vstack([interior_quads[low_side], interior_quads[up_side][:, ::-1]]).astype(
+            np.int32
+        )
+        wall_owners = np.concatenate([interior_owners[low_side], interior_neighbours[up_side]])
+        interior_quads = interior_quads[both]
+        interior_owners = interior_owners[both]
+        interior_neighbours = interior_neighbours[both]
+
+    all_quads = np.vstack([interior_quads, boundary_quads, wall_quads])
+    owners = np.concatenate([interior_owners, boundary_owners, wall_owners])
     n_interior = interior_quads.shape[0]
+
+    # Compact cell numbering after the carve (identity when there is no hole).
+    new_id = np.cumsum(keep) - 1
+    owners = new_id[owners]
+    neighbours = new_id[interior_neighbours]
 
     boundary = [
         {
@@ -143,18 +212,63 @@ def coupling_box_mesh(
             "type": "patch",
         }
     ]
+    if hole_box is not None:
+        boundary.append(
+            {
+                "name": wall_patch_name,
+                "startFace": n_interior + boundary_quads.shape[0],
+                "nFaces": wall_quads.shape[0],
+                "type": "wall",
+            }
+        )
 
     return {
         "points": points,
         "faces": list(all_quads),
         "owners": np.asarray(owners, dtype=np.int32),
-        "neighbours": np.asarray(interior_neighbours, dtype=np.int32),
+        "neighbours": np.asarray(neighbours, dtype=np.int32),
         "boundary": boundary,
-        "n_elements": nx * ny * nz,
+        "n_elements": int(keep.sum()),
         "n_faces": all_quads.shape[0],
         "n_interior_faces": n_interior,
         "n_points": points.shape[0],
     }
+
+
+def _body_hole_box(cfg) -> tuple[float, ...] | None:
+    """Axis-aligned hole bounds from CouplerSetup's OFW-style body spec.
+
+    Reads ``cfg.surface`` — e.g. ``{"cube": {"side_length": 1.0, "center":
+    [0, 0, 0]}}`` — and returns ``(x0, x1, y0, y1, z0, z1)``.  Returns ``None``
+    (no body; plain box) when ``wall_patch_name`` or ``surface`` is unset.
+    Only box-shaped bodies are supported by the in-memory mesh generator;
+    other shapes need the OFW backend (cfMesh) or a Gmsh mesh.
+    """
+    if not cfg.wall_patch_name or not cfg.surface:
+        return None
+    spec = None
+    for key in (cfg.wall_patch_name, "cube", "box"):
+        if key in cfg.surface:
+            spec = cfg.surface[key]
+            break
+    if spec is None:
+        raise ValueError(
+            f"surface={cfg.surface!r} has no entry for wall patch "
+            f"{cfg.wall_patch_name!r} (or 'cube'/'box')."
+        )
+    if "side_length" not in spec:
+        raise ValueError(
+            f"Body spec {spec!r} is not box-shaped ('side_length' missing). "
+            "The native mesh generator only carves axis-aligned boxes; use "
+            "the OFW backend (cfMesh) for general geometry."
+        )
+    side = np.asarray(spec["side_length"], dtype=float).reshape(-1)
+    if side.size == 1:
+        side = np.repeat(side, 3)
+    center = np.asarray(spec.get("center", [0.0, 0.0, 0.0]), dtype=float).reshape(3)
+    lo = center - side / 2.0
+    hi = center + side / 2.0
+    return (lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
 
 
 def box_surface_markers(
@@ -221,7 +335,21 @@ def build_fvm_backend(
             "built from an OpenFOAM case via fvm_solver(case_dir)."
         )
 
-    mesh_data = coupling_box_mesh(cfg.fvm_box, cfg.grid_spacing, cfg.patch_name)
+    # Body-fitted body from the same spec the OFW case uses: CouplerSetup's
+    # ``surface`` (e.g. {"cube": {"side_length": 1.0, "center": [0,0,0]}}) and
+    # ``wall_patch_name``.  The body is carved out of the mesh and its faces
+    # form a no-slip wall patch, matching the OpenFOAM topology — cells inside
+    # the body do not exist, so the coupler can never inject fictitious
+    # interior vorticity into the VPM.
+    hole_box = _body_hole_box(cfg)
+
+    mesh_data = coupling_box_mesh(
+        cfg.fvm_box,
+        cfg.grid_spacing,
+        cfg.patch_name,
+        hole_box=hole_box,
+        wall_patch_name=cfg.wall_patch_name or "cube",
+    )
 
     u_inf = [float(v) for v in cfg.u_inf]
     execution = execution or ExecutionConfig()
@@ -250,13 +378,27 @@ def build_fvm_backend(
         adjust_timestep=False,  # coupler owns dt (integer sub-cycle ratio)
     )
 
+    boundaries = [BoundaryConfig.freestream(cfg.patch_name, u_inf)]
+    if hole_box is not None:
+        wall = cfg.wall_patch_name or "cube"
+        boundaries.append(BoundaryConfig.wall(wall))
+        # Wall-patch force integration (Cd/Cl in solution/forces_history.csv),
+        # replacing the OFW case's OpenFOAM force function object.
+        if solver_params.force_patches is None:
+            solver_params.force_patches = [wall]
+            side = np.asarray(hole_box, dtype=float)
+            solver_params.ref_velocity = float(np.linalg.norm(u_inf)) or 1.0
+            solver_params.ref_area = float((side[3] - side[2]) * (side[5] - side[4]))
+            solver_params.ref_length = float(side[1] - side[0])
+            solver_params.force_log_interval = 1
+
     fvm_config = FVMConfig(
         case_name=f"coupled_{cfg.patch_name}",
         execution=execution,
         time=time_cfg,
         solver=solver_params,
         transport=TransportConfig(density=float(cfg.rho), nu=float(cfg.nu)),
-        boundaries=[BoundaryConfig.freestream(cfg.patch_name, u_inf)],
+        boundaries=boundaries,
         initial_U=u_inf,
     )
 

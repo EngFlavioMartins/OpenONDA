@@ -134,7 +134,26 @@ for step in range(1000):
 See `source/solvers/VPM/physics/evaluation.py` for examples of cached result
 fields.
 
-### 4.3 Race conditions
+At-point evaluations and samplers use one startup allocation sized by
+`SolverConfig.max_targets`. Set it to at least the largest query or sampler
+grid; exceeding it fails with a configuration error instead of reallocating and
+leaking device memory.
+
+When running several VPM cases sequentially in one Python process, call
+`Solver.reset_gpu()` before constructing the next solver. This invalidates every
+existing Taichi field and releases the process-global runtime allocation, so no
+objects from the previous solver may be reused afterwards.
+
+### 4.3 Output control
+
+`SolverConfig.log_mode` selects `"file"`, `"tee"`, or `"console"`. Sampler
+output defaults to one appendable CSV per sampler; use
+`sampler_output_format="vtk"` when ParaView time-series snapshots are required.
+Existing scripts that require numbered CSV snapshots can select `"legacy"`.
+Set `export_flow_integrals=False` to suppress `samples/flow_integrals.csv` while
+retaining console diagnostics.
+
+### 4.4 Race conditions
 
 Inside a `ti.kernel`, parallel `for` loops run on all threads simultaneously.
 

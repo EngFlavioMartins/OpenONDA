@@ -54,6 +54,7 @@ class PhysicsBase:
         particles_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
+        max_targets: int = 200000,
     ):
         """
         Initialize physics base with kernel type and field allocation.
@@ -63,11 +64,15 @@ class PhysicsBase:
                             Options: 'GAUSSIAN', 'SUPER_GAUSSIAN', 'WINCKELMANS'
             max_particles: Maximum number of particles for field allocation
             accumulator_dtype: Data type for accumulation (ti.f32 or ti.f64)
+            max_targets: Fixed capacity for at-point field evaluations
         """
         self.particles_kernel = particles_kernel.upper()
         self.max_particles = max_particles
         self.accumulator_dtype = accumulator_dtype
         self.np_dtype = np.float32 if accumulator_dtype == ti.f32 else np.float64
+        self.max_targets = int(max_targets)
+        if self.max_targets < 1:
+            raise ValueError("max_targets must be at least 1")
 
         # Determine compute dtype from accumulator dtype
         compute_dtype = accumulator_dtype
@@ -100,11 +105,14 @@ class PhysicsBase:
         self.reuse_tree_topology = True
 
         # Cached filtered particle fields for zone-aware BC computation
-        # Avoids memory leak in _compute_target_velocities_filtered
-        self._filtered_field_size = 0
-        self._filtered_pos = None
-        self._filtered_circ = None
-        self._filtered_rad = None
+        self._filtered_field_size = self.max_particles
+        self._filtered_pos = ti.Vector.field(
+            3, dtype=self.accumulator_dtype, shape=(self.max_particles,)
+        )
+        self._filtered_circ = ti.Vector.field(
+            3, dtype=self.accumulator_dtype, shape=(self.max_particles,)
+        )
+        self._filtered_rad = ti.field(dtype=self.accumulator_dtype, shape=(self.max_particles,))
 
         self._host_vector_chunk = None
         self._host_scalar_chunk = None
@@ -112,7 +120,7 @@ class PhysicsBase:
 
         # Initialize Taichi fields
         self._initialize_temp_fields()
-        self._initialize_target_fields()
+        self._initialize_target_fields(self.max_targets)
 
         # Bind kernel functions based on particle kernel type
         self._define_taichi_kernels()
@@ -180,34 +188,19 @@ class PhysicsBase:
         self.dstr_dt_temp3.fill(0)
 
     def _resize_temp_fields(self, N: int):
-        """
-        Resize temporary fields if needed.
-
-        Args:
-            N: Required number of particles
-        """
+        """Validate that a particle operation fits the startup allocation."""
         if self._temp_field_size >= N:
             return
-
-        # Grow by 50% to reduce frequent reallocations
-        new_size = max(N, int(self._temp_field_size * 1.5))
-        self.max_particles = new_size
-        self._initialize_temp_fields()
-        self._temp_field_size = new_size
+        raise ValueError(
+            f"Particle operation requires {N} slots, but max_particles="
+            f"{self._temp_field_size}. Increase SolverConfig.max_particles before "
+            "constructing the solver."
+        )
 
     # TARGET FIELD MANAGEMENT (for at-point evaluations)
 
     def _initialize_target_fields(self, size: int = 50000):
-        """
-        Initialize target fields for field evaluation at arbitrary points.
-
-        WARNING: Taichi fields cannot be garbage collected. Calling this method
-        repeatedly will cause memory accumulation. Use _resize_target_fields
-        which includes checks to minimize reallocations.
-
-        Args:
-            size: Initial size for target fields
-        """
+        """Allocate the fixed-capacity fields used for at-point evaluation."""
         self.target_positions = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
         self.target_velocities = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
         self.target_vorticities = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
@@ -215,31 +208,17 @@ class PhysicsBase:
             3, 3, dtype=self.accumulator_dtype, shape=(size,)
         )
         self._target_field_size = size
-        self._target_field_realloc_count = getattr(self, "_target_field_realloc_count", 0) + 1
-
-        if self._target_field_realloc_count > 1:
-            print(
-                f"[WARNING] Target field reallocation #{self._target_field_realloc_count}: "
-                f"new size={size}. Taichi fields accumulate in GPU memory."
-            )
 
     def _resize_target_fields(self, N: int):
-        """
-        Resize target fields if needed, with aggressive headroom.
-
-        Taichi fields cannot be garbage collected, so we minimize reallocations
-        by allocating 2x the required size and only reallocating when the
-        required size exceeds the current allocation.
-
-        Args:
-            N: Required number of target points
-        """
+        """Validate that an at-point query fits the startup allocation."""
         if self._target_field_size >= N:
             return
-
-        # Grow by 2x to minimize reallocations (Taichi field accumulation issue)
-        new_size = max(N * 2, 50000)  # At least 50k to handle typical sampler grids
-        self._initialize_target_fields(new_size)
+        raise ValueError(
+            f"Target query requires {N} points but max_targets="
+            f"{self._target_field_size}. Increase SolverConfig.max_targets "
+            "before constructing the solver; runtime Taichi field growth is "
+            "disabled because replaced fields retain device memory."
+        )
 
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
@@ -345,11 +324,7 @@ class PhysicsBase:
 
     def _resize_filtered_fields(self, N: int):
         """
-        Resize filtered particle fields if needed for zone-aware BC computation.
-
-        Taichi fields cannot be garbage collected, so we cache and reuse these
-        fields instead of creating new ones on each call to
-        _compute_target_velocities_filtered.
+        Validate filtered particle capacity for zone-aware field evaluation.
 
         Args:
             N: Required number of filtered particles
@@ -357,14 +332,11 @@ class PhysicsBase:
         if self._filtered_field_size >= N:
             return
 
-        # Grow by 2x to minimize reallocations
-        new_size = max(N * 2, 10000)
-        self._filtered_pos = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(new_size,))
-        self._filtered_circ = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(new_size,))
-        self._filtered_rad = ti.field(dtype=self.accumulator_dtype, shape=(new_size,))
-        self._filtered_field_size = new_size
-
-        print(f"[INFO] Resized filtered particle fields to {new_size}")
+        raise ValueError(
+            f"Filtered evaluation requires {N} particles, but max_particles="
+            f"{self._filtered_field_size}. Increase SolverConfig.max_particles "
+            "before constructing the solver."
+        )
 
     # TREECODE MANAGEMENT (for hierarchical methods)
 

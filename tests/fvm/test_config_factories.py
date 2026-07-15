@@ -90,3 +90,22 @@ class TestConfigFactories:
         assert loaded.time.delta_t == 0.1
         assert loaded.solver.algorithm == "PIMPLE"
         assert loaded.boundaries[0].name == "in"
+
+    def test_fvm_config_roundtrip_preserves_every_solver_setting(self, tmp_path):
+        solver = SolverParams(
+            reuse_ilu=False,
+            yplus_patches=["wall"],
+            force_patches=["body"],
+            ref_velocity=12.0,
+            ref_area=3.0,
+            ref_length=2.0,
+            force_log_interval=7,
+            moment_centre=[1.0, 2.0, 3.0],
+            ibm_forcing_loops=9,
+            ibm_second_solve=False,
+        )
+        config = FVMConfig(case_name="complete", solver=solver)
+        path = tmp_path / "complete.json"
+        config.save(path)
+
+        assert FVMConfig.load(path) == config

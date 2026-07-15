@@ -1,138 +1,79 @@
-# OpenONDA Finite Volume Method (FVM) Solver
+# OpenONDA finite-volume solver
 
-**Python translation of uFVM (unstructured Finite Volume Method)**
+This package provides an incompressible SIMPLE/PIMPLE/PISO solver and scalar
+finite-volume operators for OpenFOAM polyhedral meshes. The integrated solver
+is still a research backend: production use requires validation for the target
+mesh family, Reynolds number, discretisation, and parallel configuration.
 
-## Overview
-
-This module provides finite-volume operators and experimental incompressible
-SIMPLE/PIMPLE solvers derived from the uFVM MATLAB/Octave implementation.
-
-## Original Work
-
-**uFVM - unstructured Finite Volume Method**
-Developed by: CFD Group @ American University of Beirut
-Year: 2018
-Contact: cfd@aub.edu.lb
-
-This Python implementation maintains the same structure, algorithms, and methodology as the original uFVM while adapting to Python's ecosystem (NumPy, SciPy).
-
-## Features
-
-### Verified building blocks
-- OpenFOAM mesh I/O
-- Geometric property computation
-- Gradient schemes (Gauss linear)
-- Diffusion term assembly
-- Convection schemes (upwind, central, deferred correction)
-- Time integration (Euler implicit/explicit)
-- Sparse matrix assembly
-- Linear system solvers (direct spsolve, iterative CG/BiCGSTAB/GMRES, pyAMG multigrid)
-- Complete scalar transport equation solver
-
-### Experimental integrated solvers
-- Momentum equation assembly
-- SIMPLE algorithm (steady-state)
-- PIMPLE algorithm (transient; structured hexahedral path is most mature)
-- Smagorinsky LES turbulence model
-- Cavity flow handling
-- Non-orthogonal correction (explicit k-vector; inactive by default)
-- Force coefficient computation (Cd, Cl, Cz, Cm)
-
-### Not implemented
-- Compressible flow
-- Multiphase flow
-
-## Installation
-
-```bash
-from source.solvers.FVM import equation_solver
-```
-
-## Quick Start
-
-### Scalar Transport Equation
+## Public API
 
 ```python
-from source.solvers.FVM import equation_solver, mesh_io, topology, geometry
-
-# Load mesh
-mesh_data, geo_data, boundaries = load_mesh("path/to/case")
-
-# Configure equation
-config = {
-    'type': 'steady',
-    'terms': ['diffusion', 'convection'],
-    'phi_initial': phi_0,
-    'velocity': U,
-    'gamma': 0.01,
-    'rho': 1.0,
-    'convection_scheme': 'deferred',
-    'solver': 'spsolve'
-}
-
-# Solve
-solution = equation_solver.solve_scalar_equation(
-    config, mesh_data, geo_data, boundaries
+from source.solvers.FVM import (
+    BoundaryConfig,
+    ExecutionConfig,
+    FVMConfig,
+    RunAcceptancePolicy,
+    Solver,
+    SolverParams,
+    TimeConfig,
+    TransportConfig,
+    TurbulenceConfig,
 )
+
+config = FVMConfig(
+    case_name="cube",
+    time=TimeConfig.transient(dt=1e-3, duration=1.0),
+    solver=SolverParams.pimple(
+        n_correctors=2,
+        n_outer=2,
+        linear_solver="bicgstab",
+        convection_scheme="limitedLinear",
+    ),
+    transport=TransportConfig.air(),
+)
+solver = Solver(config, case_dir="path/to/case")
+solver.evolve()
+solver.save_state("solution/restart.npz")
+solver.write_run_manifest()
 ```
 
-## Modules
+`Solver.from_case(path)` requires `system/controlDict`, `system/fvSolution`,
+`system/fvSchemes`, `constant/transportProperties`, `0/U`, and `0/p`.
+It maps PIMPLE/PISO/SIMPLE correctors; U and p solver methods, tolerances, and
+iteration limits; and the time, gradient, and `div(phi,U)` schemes supported by
+the Python backend. Malformed, missing, or unsupported input raises instead of
+being replaced with defaults. Programmatic values in `FVMConfig.initial_U` and
+`initial_p` take precedence when constructing `Solver` directly.
+Separate `UFinal`/`pFinal` solver blocks and nonzero OpenFOAM `relTol` values
+are rejected because the Python driver does not implement those stopping stages.
 
-| Module | Description | uFVM Source |
-|--------|-------------|-------------|
-| `mesh_io` | OpenFOAM mesh readers | `src/mesh/cfdRead*.m` |
-| `topology` | Element connectivity | `src/mesh/cfdProcess*.m` |
-| `geometry` | Geometric properties | `src/mesh/cfdComputeGeometry.m` |
-| `field_io` | Field file parser | `src/fields/cfdRead*.m` |
-| `gradients` | Gradient computation | `src/fields/Gradient/*.m` |
-| `diffusion` | Diffusion term | `src/assemble/Scalar/cfdAssembleDiffusionTerm.m` |
-| `convection` | Convection term | `src/assemble/cfdAssembleConvectionTerm.m` |
-| `time_integration` | Time stepping | `src/assemble/cfdAssembleTransientTerm*.m` |
-| `matrix_assembly` | Matrix construction | `src/assemble/cfdAssembleIntoGlobalMatrix*.m` |
-| `equation_solver` | Complete solver | `src/solve/cfdSolveEquation.m` |
+Low-level operators are imported through their defining packages:
 
-## Verification
+```python
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.mesh.mesh_io import load_poly_mesh
+from source.solvers.FVM.solve.equation_solver import solve_scalar_equation
+```
 
-Core operators have regression tests for geometry, field I/O, gradients,
-diffusion, matrix assembly, and manufactured solutions. The test tolerances and
-supported cases are the authoritative verification record.
+Scalar solves accept backend-specific options in a `linear_options` mapping.
+The chosen linear method is not silently replaced; `linear_failure_policy`
+defaults to `"raise"`.
 
-The integrated SIMPLE/PIMPLE solvers remain research backends. General
-unstructured, device, and distributed-memory operation must pass the readiness
-gates in `docs/plans/2026-07-fvm-3d-pimple-readiness-plan.md` before being
-described as production-ready.
+## Capability status
 
-## Documentation
+Verified components are strict configuration/field parsing, static-mesh
+validation, serial float64 NumPy/SciPy operators, structured convergence and
+acceptance diagnostics, and BDF1/BDF2 restart equivalence.
 
-- `ACKNOWLEDGEMENTS.md` - Full attribution and credits
-- `__init__.py` - Module documentation
-- Individual module docstrings - Detailed API documentation
+Integrated 3D SIMPLE/PISO/PIMPLE, first-order Gmsh import, LES, IBM, FVM–VPM
+coupling, and replicated PETSc collective solves remain experimental until the
+analytical mesh-family and sustained-case release gates pass. Partitioned MPI
+and FVM accelerator operators are not implemented.
 
-## Citation
+Dynamic/ALE meshes, compressible flow, and multiphase flow are not supported.
+Configuring dynamic mesh motion raises `NotImplementedError` because conservative
+mesh-flux terms have not been implemented.
 
-If you use this code, please cite both:
-
-1. **Original uFVM**:
-   ```
-   uFVM - unstructured Finite Volume Method Solver
-   CFD Group, American University of Beirut, 2018
-   ```
-
-2. **This Translation**:
-   ```
-   OpenONDA FVM Module
-   Python translation of uFVM, 2025
-   ```
-
-## License
-
-Same license as original uFVM (check uFVM repository).
-
-## Contact
-
-**For this Python translation**: OpenONDA Project, 2025
-**For original uFVM**: cfd@aub.edu.lb
-
-## Acknowledgements
-
-Special thanks to the uFVM development team at AUB for creating an excellent educational and research tool that made this translation possible.
+See `docs/plans/2026-07-fvm-3d-pimple-readiness-plan.md` for validation gates
+and the test suite under `tests/fvm/` for the currently verified cases. The
+machine-readable status is `capabilities.json`.

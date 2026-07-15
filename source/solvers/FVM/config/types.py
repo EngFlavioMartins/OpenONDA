@@ -1,4 +1,3 @@
-import contextlib
 from dataclasses import asdict, dataclass, field
 import json
 import os
@@ -37,6 +36,11 @@ def _build_boundary_config(name: str, vals: dict) -> "BoundaryConfig":
     Returns:
         A new :class:`BoundaryConfig`.
     """
+    missing = [key for key in ("type_U", "type_p") if vals.get(key) is None]
+    if missing:
+        raise ValueError(
+            f"Boundary patch {name!r} is missing required field definitions: {', '.join(missing)}"
+        )
     b = BoundaryConfig(name=name)
     for type_attr, value_attr in (
         ("type_U", "value_U"),
@@ -118,6 +122,44 @@ def _extract_foam_number(v) -> float | None:
         if nums:
             return float(nums[-1])
     return None
+
+
+def _normalise_openfoam_linear_solver(name: str, field_name: str) -> str:
+    """Map supported OpenFOAM solver names to the FVM linear API."""
+    mapping = {
+        "gamg": "amg",
+        "pcg": "cg",
+        "cg": "cg",
+        "pbicgstab": "bicgstab",
+        "bicgstab": "bicgstab",
+        "gmres": "gmres",
+        "spsolve": "spsolve",
+    }
+    key = str(name).strip().lower()
+    if key not in mapping:
+        raise ValueError(
+            f"Unsupported OpenFOAM linear solver {name!r} for {field_name}; "
+            f"supported names: {sorted(mapping)}"
+        )
+    return mapping[key]
+
+
+def _find_supported_scheme(
+    value: str,
+    mapping: dict[str, str],
+    label: str,
+    allowed_modifiers: set[str] | None = None,
+) -> str:
+    """Resolve a supported OpenFOAM scheme token from a complete entry."""
+    tokens = [token.lower() for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*", value)]
+    allowed = set(mapping) | (allowed_modifiers or set())
+    unsupported = [token for token in tokens if token not in allowed]
+    if unsupported:
+        raise ValueError(f"Unsupported {label} modifier(s) {unsupported!r} in entry {value!r}")
+    for token in reversed(tokens):
+        if token in mapping:
+            return mapping[token]
+    raise ValueError(f"Unsupported {label} entry {value!r}; supported schemes: {sorted(mapping)}")
 
 
 def _detect_turbulence_model(data: dict, filepath: str) -> str:
@@ -324,6 +366,10 @@ class MeshConfig:
     local_refinement: dict[str, float] = field(
         default_factory=dict
     )  # patch -> size (cartesianMesh)
+    max_non_orthogonality_deg: float | None = None
+    max_skewness: float | None = None
+    max_aspect_ratio: float | None = None
+    max_lsq_condition: float | None = None
 
     @staticmethod
     def block_mesh() -> "MeshConfig":
@@ -470,6 +516,11 @@ class TimeConfig:
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"controlDict not found: {filepath}")
         data = parse_simple_dictionary(filepath)
+        missing = [key for key in ("deltaT", "endTime") if key not in data]
+        if missing:
+            raise ValueError(
+                f"controlDict {filepath!r} is missing required entries: {', '.join(missing)}"
+            )
         dt = float(data.get("deltaT", cls().delta_t))
         start = float(data.get("startTime", cls().start_time))
         end = float(data.get("endTime", cls().end_time))
@@ -483,15 +534,22 @@ class SolverParams:
     Algorithm parameters for Simple/Pimple.
     """
 
-    algorithm: Literal["SIMPLE", "PIMPLE"] = "PIMPLE"
+    algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
     n_correctors: int = 2
     n_outer_correctors: int = 1
     n_orthogonal_correctors: int = 0
+    min_outer_correctors: int = 1
+    outer_residual_tolerance: float | None = None
+    outer_continuity_tolerance: float | None = None
     max_iter: int = 20
     tolerance: float = 1e-6
     alpha_u: float = 0.7
     alpha_p: float = 0.3
     linear_solver: str = "bicgstab"  # Defaulting to iterative for performance
+    # Equation-specific methods. None inherits ``linear_solver`` for backward
+    # compatibility with existing Python configurations.
+    momentum_solver: str | None = None
+    pressure_solver: str | None = None
     linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
     reuse_ilu: bool = True  # Enable ILU preconditioning reuse by default
 
@@ -500,6 +558,7 @@ class SolverParams:
 
     # Momentum solver tunables
     momentum_tol: float = 1e-4
+    momentum_maxiter: int = 1000
     pressure_tol: float = 1e-8
     pressure_maxiter: int = 500
     # ``None`` makes AMG inherit the pressure tolerance / iteration limit.
@@ -528,6 +587,7 @@ class SolverParams:
     # Immersed boundary: multidirect residual-forcing iterations per outer
     # corrector (only used when bodies are attached via set_immersed_bodies).
     ibm_forcing_loops: int = 2
+    ibm_second_solve: bool = True
 
     # Schemes (OpenFOAM-like)
     # Default to a bounded 2nd-order TVD scheme: far less diffusive than upwind
@@ -550,8 +610,13 @@ class SolverParams:
         gradient_scheme: str = "lsq",
         time_scheme: str = "euler_implicit",
         momentum_tol: float = 1e-4,
+        momentum_maxiter: int = 1000,
         pressure_tol: float = 1e-8,
         pressure_maxiter: int = 500,
+        momentum_solver: str | None = None,
+        pressure_solver: str | None = None,
+        outer_residual_tolerance: float | None = None,
+        outer_continuity_tolerance: float | None = None,
     ) -> "SolverParams":
         """Create PIMPLE solver parameters with transient-appropriate defaults.
 
@@ -573,15 +638,46 @@ class SolverParams:
             n_outer_correctors=n_outer,
             n_orthogonal_correctors=n_non_orthogonal,
             linear_solver=linear_solver,
+            momentum_solver=momentum_solver,
+            pressure_solver=pressure_solver,
             alpha_u=alpha_u,
             alpha_p=alpha_p,
             convection_scheme=convection_scheme,
             gradient_scheme=gradient_scheme,
             time_scheme=time_scheme,
             momentum_tol=momentum_tol,
+            momentum_maxiter=momentum_maxiter,
             pressure_tol=pressure_tol,
             pressure_maxiter=pressure_maxiter,
+            outer_residual_tolerance=outer_residual_tolerance,
+            outer_continuity_tolerance=outer_continuity_tolerance,
         )
+
+    @staticmethod
+    def piso(
+        n_correctors: int = 2,
+        n_non_orthogonal: int = 0,
+        linear_solver: str = "spsolve",
+        convection_scheme: str = "deferred",
+        gradient_scheme: str = "lsq",
+        time_scheme: str = "euler_implicit",
+        momentum_solver: str | None = None,
+        pressure_solver: str | None = None,
+    ) -> "SolverParams":
+        """Create transient PISO parameters with exactly one outer corrector."""
+        params = SolverParams.pimple(
+            n_correctors=n_correctors,
+            n_outer=1,
+            n_non_orthogonal=n_non_orthogonal,
+            linear_solver=linear_solver,
+            convection_scheme=convection_scheme,
+            gradient_scheme=gradient_scheme,
+            time_scheme=time_scheme,
+            momentum_solver=momentum_solver,
+            pressure_solver=pressure_solver,
+        )
+        params.algorithm = "PISO"
+        return params
 
     @staticmethod
     def simple(
@@ -621,24 +717,152 @@ class SolverParams:
         system_dir = _resolve_system_dir(path)
         control = os.path.join(system_dir, "controlDict")
         fvsolution = os.path.join(system_dir, "fvSolution")
+        fvschemes = os.path.join(system_dir, "fvSchemes")
         params = cls()
         if os.path.exists(control):
             data = parse_simple_dictionary(control)
             dt = data.get("deltaT")
             if dt is not None:
                 params.time_scheme = "euler_implicit" if float(dt) > 0 else params.time_scheme
+            with open(control) as f:
+                content = f.read()
+            patches = _parse_yplus_patches(content)
+            if patches:
+                params.yplus_patches = patches
+        if not os.path.exists(fvsolution):
+            raise FileNotFoundError(f"fvSolution not found: {fvsolution}")
+        if not os.path.exists(fvschemes):
+            raise FileNotFoundError(f"fvSchemes not found: {fvschemes}")
+
+        from ..fields.field_io import _extract_braced_block, _strip_comments
+
+        with open(fvsolution) as f:
+            content = _strip_comments(f.read())
+
+        algorithm_blocks = []
+        for algorithm in ("PIMPLE", "PISO", "SIMPLE"):
             try:
-                with open(control) as f:
-                    content = f.read()
-                patches = _parse_yplus_patches(content)
-                if patches:
-                    params.yplus_patches = patches
-            except Exception:
-                pass
-        if os.path.exists(fvsolution):
-            data = parse_simple_dictionary(fvsolution)
-            if "linearSolver" in data:
-                params.linear_solver = data.get("linearSolver")
+                body = _extract_braced_block(content, algorithm)
+            except ValueError:
+                continue
+            algorithm_blocks.append((algorithm, body))
+        if len(algorithm_blocks) != 1:
+            names = ", ".join(name for name, _ in algorithm_blocks)
+            detail = f"found {names}" if names else "found none"
+            raise ValueError(
+                f"fvSolution must define exactly one PIMPLE/PISO/SIMPLE block; {detail}"
+            )
+        algorithm, body = algorithm_blocks[0]
+        params.algorithm = algorithm
+        entries = {key: value.strip() for key, value in re.findall(r"(\w+)\s+([^;{}]+);", body)}
+        if "nCorrectors" in entries:
+            params.n_correctors = int(entries["nCorrectors"])
+        if "nOuterCorrectors" in entries:
+            params.n_outer_correctors = int(entries["nOuterCorrectors"])
+        if "nNonOrthogonalCorrectors" in entries:
+            params.n_orthogonal_correctors = int(entries["nNonOrthogonalCorrectors"])
+
+        try:
+            solvers_body = _extract_braced_block(content, "solvers")
+        except ValueError as error:
+            raise ValueError(f"fvSolution {fvsolution!r} has no solvers dictionary") from error
+
+        selected = {}
+        for unsupported_name in ("UFinal", "pFinal"):
+            try:
+                _extract_braced_block(solvers_body, unsupported_name)
+            except ValueError:
+                continue
+            raise ValueError(
+                f"fvSolution entry {unsupported_name!r} is unsupported because the Python "
+                "solver has no separate final linear-solve stage"
+            )
+        for field_name, attribute in (("U", "momentum_solver"), ("p", "pressure_solver")):
+            try:
+                field_body = _extract_braced_block(solvers_body, field_name)
+            except ValueError:
+                continue
+            solver_match = re.search(r"\bsolver\s+(\w+)\s*;", field_body)
+            if solver_match is None:
+                raise ValueError(f"fvSolution solver entry {field_name!r} has no solver method")
+            method = _normalise_openfoam_linear_solver(solver_match.group(1), field_name)
+            setattr(params, attribute, method)
+            selected[field_name] = method
+            tolerance_match = re.search(
+                r"\btolerance\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
+            )
+            if tolerance_match:
+                setattr(
+                    params,
+                    "momentum_tol" if field_name == "U" else "pressure_tol",
+                    float(tolerance_match.group(1)),
+                )
+            reltol_match = re.search(
+                r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
+            )
+            if reltol_match and float(reltol_match.group(1)) != 0.0:
+                raise ValueError(
+                    f"fvSolution {field_name} relTol is unsupported; set relTol 0 and use tolerance"
+                )
+            maxiter_match = re.search(r"\bmaxIter\s+(\d+)\s*;", field_body)
+            if maxiter_match:
+                setattr(
+                    params,
+                    "momentum_maxiter" if field_name == "U" else "pressure_maxiter",
+                    int(maxiter_match.group(1)),
+                )
+        missing_solvers = sorted({"U", "p"} - set(selected))
+        if missing_solvers:
+            raise ValueError(
+                f"fvSolution must define explicit solver blocks for: {', '.join(missing_solvers)}"
+            )
+        params.linear_solver = selected["U"]
+
+        with open(fvschemes) as f:
+            schemes_content = _strip_comments(f.read())
+        try:
+            ddt_body = _extract_braced_block(schemes_content, "ddtSchemes")
+            grad_body = _extract_braced_block(schemes_content, "gradSchemes")
+            div_body = _extract_braced_block(schemes_content, "divSchemes")
+        except ValueError as error:
+            raise ValueError(
+                f"fvSchemes {fvschemes!r} is missing a required scheme block"
+            ) from error
+
+        ddt_match = re.search(r"\bdefault\s+([^;]+);", ddt_body)
+        grad_match = re.search(r"\bdefault\s+([^;]+);", grad_body)
+        div_match = re.search(r"div\s*\(\s*phi\s*,\s*U\s*\)\s+([^;]+);", div_body)
+        if ddt_match is None or grad_match is None or div_match is None:
+            raise ValueError(
+                "fvSchemes must define ddtSchemes/default, gradSchemes/default, "
+                "and divSchemes/div(phi,U)"
+            )
+        params.time_scheme = _find_supported_scheme(
+            ddt_match.group(1),
+            {"euler": "euler_implicit", "backward": "backward"},
+            "time",
+        )
+        params.gradient_scheme = _find_supported_scheme(
+            grad_match.group(1),
+            {"linear": "gauss", "leastsquares": "lsq"},
+            "gradient",
+            {"gauss"},
+        )
+        params.convection_scheme = _find_supported_scheme(
+            div_match.group(1),
+            {
+                "upwind": "upwind",
+                "linear": "central",
+                "limitedlinear": "limitedLinear",
+                "lust": "LUST",
+                "vanleer": "vanLeer",
+                "muscl": "MUSCL",
+                "minmod": "minmod",
+                "superbee": "superbee",
+            },
+            "convection",
+            {"bounded", "gauss"},
+        )
         return params
 
 
@@ -689,15 +913,24 @@ class TransportConfig:
             raise FileNotFoundError(f"Transport file not found: {filepath}")
 
         data = parse_simple_dictionary(filepath)
-        rho_val = _extract_foam_number(data.get("rho") or data.get("Rho")) or cls().density
+        rho_raw = data["rho"] if "rho" in data else data.get("Rho")
+        rho_val = _extract_foam_number(rho_raw) if rho_raw is not None else cls().density
+        if rho_val is None or not float(rho_val) > 0.0:
+            raise ValueError(f"Density must be positive; got {rho_raw!r}")
         nu_raw = data.get("nu")
         nu_val = _extract_foam_number(nu_raw) if nu_raw is not None else None
         if nu_val is None:
             mu_val = _extract_foam_number(data.get("mu"))
             if mu_val is not None:
-                with contextlib.suppress(Exception):
-                    nu_val = float(mu_val) / float(rho_val)
-        return cls(density=float(rho_val), nu=float(nu_val if nu_val is not None else cls().nu))
+                nu_val = float(mu_val) / float(rho_val)
+        if nu_val is None:
+            raise ValueError(
+                f"Transport file {filepath!r} must define kinematic viscosity 'nu' "
+                "or dynamic viscosity 'mu'"
+            )
+        if not float(nu_val) > 0.0:
+            raise ValueError(f"Kinematic viscosity must be positive; got {nu_val!r}")
+        return cls(density=float(rho_val), nu=float(nu_val))
 
 
 @dataclass
@@ -873,6 +1106,26 @@ class ExecutionConfig:
 
 
 @dataclass
+class RunAcceptancePolicy:
+    """Warning and abort thresholds applied to structured step diagnostics.
+
+    Abort thresholds are evaluated over ``sustained_steps`` consecutive
+    solves. Non-finite fields and failed linear solves always abort
+    immediately.
+    """
+
+    sustained_steps: int = 1
+    continuity_warning: float | None = None
+    continuity_abort: float | None = None
+    residual_warning: float | None = None
+    residual_abort: float | None = None
+    cfl_warning: float | None = None
+    cfl_abort: float | None = None
+    velocity_warning: float | None = None
+    velocity_abort: float | None = None
+
+
+@dataclass
 class FVMConfig:
     """
     Top-level FVM configuration.
@@ -881,14 +1134,15 @@ class FVMConfig:
     case_name: str
     mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
     execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
+    acceptance: "RunAcceptancePolicy" = field(default_factory=lambda: RunAcceptancePolicy())
     time: TimeConfig = field(default_factory=TimeConfig)
     solver: SolverParams = field(default_factory=SolverParams)
     transport: TransportConfig = field(default_factory=TransportConfig)
     dynamic_mesh: DynamicMeshConfig = field(default_factory=DynamicMeshConfig.static)
     boundaries: list[BoundaryConfig] = field(default_factory=list)
     turbulence: TurbulenceConfig | None = None
-    initial_U: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-    initial_p: float = 0.0
+    initial_U: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    initial_p: float | None = 0.0
 
     def save(self, filepath: str):
         """Serialise this configuration to a JSON file.
@@ -911,10 +1165,14 @@ class FVMConfig:
         """
         with open(filepath) as f:
             data = json.load(f)
+        unknown = sorted(set(data) - set(cls.__dataclass_fields__))
+        if unknown:
+            raise ValueError(f"Unknown top-level FVMConfig field(s): {', '.join(unknown)}")
 
         # Manual reconstruction of nested dataclasses
         mesh_data = data.get("mesh", {})
         execution_data = data.get("execution", {})
+        acceptance_data = data.get("acceptance", {})
         time_data = data.get("time", {})
         solver_data = data.get("solver", {})
         transport_data = data.get("transport", {})
@@ -923,35 +1181,14 @@ class FVMConfig:
 
         mesh = MeshConfig(**mesh_data)
         execution = ExecutionConfig(**execution_data)
+        acceptance = RunAcceptancePolicy(**acceptance_data)
         time = TimeConfig(**time_data)
         dynamic_mesh = DynamicMeshConfig(**dynamic_mesh_data)
 
-        # Pull extra fields that might not be in older saved configs
-        solver_obj_data = {
-            "algorithm": solver_data.get("algorithm", "PIMPLE"),
-            "n_correctors": solver_data.get("n_correctors", 2),
-            "n_outer_correctors": solver_data.get("n_outer_correctors", 1),
-            "n_orthogonal_correctors": solver_data.get("n_orthogonal_correctors", 0),
-            "max_iter": solver_data.get("max_iter", 20),
-            "tolerance": solver_data.get("tolerance", 1e-6),
-            "alpha_u": solver_data.get("alpha_u", 0.7),
-            "alpha_p": solver_data.get("alpha_p", 0.3),
-            "linear_solver": solver_data.get("linear_solver", "spsolve"),
-            "linear_failure_policy": solver_data.get("linear_failure_policy", "raise"),
-            "momentum_tol": solver_data.get("momentum_tol", 1e-4),
-            "pressure_tol": solver_data.get("pressure_tol", 1e-8),
-            "pressure_maxiter": solver_data.get("pressure_maxiter", 500),
-            "amg_tol": solver_data.get("amg_tol"),
-            "amg_maxiter": solver_data.get("amg_maxiter"),
-            "amg_reuse_tol": solver_data.get("amg_reuse_tol", 0.05),
-            "ilu_drop_tol": solver_data.get("ilu_drop_tol", 1e-4),
-            "ilu_fill_factor": solver_data.get("ilu_fill_factor", 10.0),
-            "ilu_reuse_tol": solver_data.get("ilu_reuse_tol"),
-            "convection_scheme": solver_data.get("convection_scheme", "limitedLinear"),
-            "time_scheme": solver_data.get("time_scheme", "euler_implicit"),
-            "gradient_scheme": solver_data.get("gradient_scheme", "lsq"),
-        }
-        solver = SolverParams(**solver_obj_data)
+        # Dataclass defaults provide backward compatibility for fields absent
+        # from old files.  Passing the complete dictionary preserves every
+        # supported setting and rejects misspelled or obsolete keys.
+        solver = SolverParams(**solver_data)
         transport = TransportConfig(**transport_data)
         boundaries = [BoundaryConfig(**b) for b in data.get("boundaries", [])]
         turbulence = TurbulenceConfig(**turbulence_data) if turbulence_data else None
@@ -960,6 +1197,7 @@ class FVMConfig:
             case_name=data["case_name"],
             mesh=mesh,
             execution=execution,
+            acceptance=acceptance,
             time=time,
             solver=solver,
             transport=transport,

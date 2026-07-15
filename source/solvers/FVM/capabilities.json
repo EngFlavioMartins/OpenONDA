@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "release_level": "research",
+  "verified_components": [
+    "strict configuration and field parsing",
+    "static-mesh geometry validation",
+    "serial float64 NumPy/SciPy operators",
+    "structured linear and step diagnostics",
+    "BDF1/BDF2 checkpoint restart equivalence"
+  ],
+  "experimental": [
+    "integrated 3D SIMPLE/PISO/PIMPLE",
+    "Gmsh first-order cell import",
+    "LES models",
+    "immersed boundaries",
+    "FVM-VPM coupling",
+    "replicated PETSc collective solves"
+  ],
+  "unsupported": [
+    "dynamic/ALE meshes",
+    "compressible or multiphase flow",
+    "partitioned MPI domain decomposition",
+    "FVM Taichi or GPU operators",
+    "high-order Gmsh elements",
+    "general OpenFOAM dictionary compatibility"
+  ]
+}

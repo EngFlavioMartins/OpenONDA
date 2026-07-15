@@ -1623,6 +1623,14 @@ class SolverConfig:
     max_particles: int = MAX_PARTICLES
     """Maximum number of particles allowed in the simulation. Default: 500000"""
 
+    max_targets: int = 200000
+    """Maximum points in one velocity, vorticity, gradient, or sampler query.
+
+    Taichi fields cannot be released independently. Allocate this capacity once
+    when the solver starts so changing query sizes cannot accumulate abandoned
+    device fields. Increase it before construction for larger sampler grids.
+    """
+
     # ---- COMPUTATIONAL SETTINGS ----
     processing_unit: Literal["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"] = (
         "GPU"
@@ -1646,6 +1654,21 @@ class SolverConfig:
     # ---- MONITORING AND DIAGNOSTICS ----
     logging_frequency: int = 0
     """Log flow diagnostics every N time steps (0 = disabled)."""
+
+    export_flow_integrals: bool = True
+    """Append computed global diagnostics to ``samples/flow_integrals.csv``."""
+
+    sampler_output_format: Literal["csv", "vtk", "legacy"] = "csv"
+    """Sampler persistence mode.
+
+    ``csv`` appends all samples to one table per sampler with explicit time and
+    step columns. ``vtk`` writes surface snapshots and consolidates samplers
+    without VTK support as CSV. ``legacy`` preserves the former numbered-file
+    behavior for existing post-processing scripts.
+    """
+
+    log_mode: Literal["file", "tee", "console"] = "file"
+    """Solver output destination: log file, console and file, or console only."""
 
     timing_frequency: int = 0
     """Print the cumulative runtime-profiling report every N time steps
@@ -1694,8 +1717,7 @@ class SolverConfig:
       allocation failures on Vulkan backends."""
 
     background_velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-    """Free-stream background velocity vector [ux, uy, uz] in m/s. Default: [0.0, 0.0, 0.0]"""
-    """Free-stream background velocity vector [ux, uy, uz] in m/s. Default: [0.0, 0.0, 0.0]"""
+    """Free-stream background velocity vector [ux, uy, uz] in m/s."""
 
     verbose: bool = True
     """Enable verbose output (print particle shedding info, etc.)."""
@@ -1774,6 +1796,18 @@ class SolverConfig:
         if self.timing_frequency < 0:
             raise ValueError("timing_frequency must be non-negative")
 
+        if self.max_particles < 1:
+            raise ValueError("max_particles must be at least 1")
+
+        if self.max_targets < 1:
+            raise ValueError("max_targets must be at least 1")
+
+        if self.sampler_output_format not in {"csv", "vtk", "legacy"}:
+            raise ValueError("sampler_output_format must be 'csv', 'vtk', or 'legacy'")
+
+        if self.log_mode not in {"file", "tee", "console"}:
+            raise ValueError("log_mode must be 'file', 'tee', or 'console'")
+
         # Backup frequency validation
         if self.backup_frequency < 0:
             raise ValueError("backup_frequency must be non-negative")
@@ -1832,7 +1866,12 @@ class SolverConfig:
             "stabilization": _as_dict(self.stabilization) if self.stabilization else None,
             "vlm": _as_dict(self.vlm) if self.vlm else None,
             "particles_kernel": self.particles_kernel,
+            "max_particles": self.max_particles,
+            "max_targets": self.max_targets,
             "logging_frequency": self.logging_frequency,
+            "export_flow_integrals": self.export_flow_integrals,
+            "sampler_output_format": self.sampler_output_format,
+            "log_mode": self.log_mode,
             "timing_frequency": self.timing_frequency,
             "backup_frequency": self.backup_frequency,
             "backup_file_name": self.backup_file_name,

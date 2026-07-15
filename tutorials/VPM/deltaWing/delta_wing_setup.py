@@ -197,6 +197,7 @@ def main():
             remove_particles_by_bounds=[-8.0, separation + 1.0, -2.0, 2.0, -1.5, 1.5],
         ),
         samplers=sampler_planes,
+        sampler_output_format="legacy",
     )
 
     vpm = Solver(config=solver_config)

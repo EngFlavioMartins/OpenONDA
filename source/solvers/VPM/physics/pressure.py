@@ -151,13 +151,14 @@ class PressurePhysics(PhysicsBase):
         self._pressure_field_size = size
 
     def _resize_pressure_fields(self, N: int):
-        """Resize pressure-specific fields if needed."""
+        """Validate that pressure evaluation fits the startup allocation."""
         if self._pressure_field_size >= N:
             return
-
-        new_size = max(N * 2, 50000)
-        self._initialize_pressure_fields(new_size)
-        self._pressure_field_size = new_size
+        raise ValueError(
+            f"Pressure evaluation requires {N} slots, but allocated capacity is "
+            f"{self._pressure_field_size}. Increase max_particles before constructing "
+            "the pressure evaluator."
+        )
 
     # PRESSURE GRADIENT AT TARGET POSITIONS (Main Interface)
 

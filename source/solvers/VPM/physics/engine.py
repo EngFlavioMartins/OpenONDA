@@ -35,10 +35,11 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         particles_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
+        max_targets: int = 200000,
     ):
         """Initialize the unified physics engine."""
         # Initialize base classes
-        super().__init__(particles_kernel, max_particles, accumulator_dtype)
+        super().__init__(particles_kernel, max_particles, accumulator_dtype, max_targets)
         self._init_grid_diffusion()
 
         # Optional advection velocity override: fn(pos (N,3), vel_bs (N,3)) -> (N,3).

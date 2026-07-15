@@ -27,7 +27,8 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     """Load or initialise the velocity field.
 
     If *config.initial_U* is set, tiles it across all cells.  Otherwise
-    attempts to read the ``0/U`` OpenFOAM file.  Falls back to zeros.
+    reads the ``0/U`` OpenFOAM file.  Parsing errors are fatal so a case
+    cannot silently start from a different field.
 
     Args:
         config:   FVMConfig (may have ``initial_U``).
@@ -41,20 +42,22 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     from ..fields import field_io
 
     if config.initial_U is not None:
-        return np.tile(np.array(config.initial_U), (n_total, 1)).astype(np.float64)
-    try:
-        U_data = field_io.read_field("U", os.path.join(case_dir, "0"), mesh_data)
-        return U_data["phi"].astype(np.float64)
-    except Exception:
-        return np.zeros((n_total, 3), dtype=np.float64)
+        initial = np.asarray(config.initial_U, dtype=np.float64)
+        if initial.shape != (3,) or not np.all(np.isfinite(initial)):
+            raise ValueError("initial_U must be a finite three-component vector")
+        return np.tile(initial, (n_total, 1))
+    U_data = field_io.read_field("U", os.path.join(case_dir, "0"), mesh_data)
+    values = np.asarray(U_data["phi"], dtype=np.float64)
+    if values.shape != (n_total, 3):
+        raise ValueError(f"Initial U has shape {values.shape}; expected {(n_total, 3)}")
+    return values
 
 
 def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
     """Load or initialise the pressure field.
 
     If *config.initial_p* is set, fills all cells with that value.
-    Otherwise attempts to read the ``0/p`` OpenFOAM file.  Falls back
-    to zeros.
+    Otherwise reads the ``0/p`` OpenFOAM file.  Parsing errors are fatal.
 
     Args:
         config:   FVMConfig (may have ``initial_p``).
@@ -68,12 +71,15 @@ def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     from ..fields import field_io
 
     if config.initial_p is not None:
-        return np.full(n_total, config.initial_p, dtype=np.float64)
-    try:
-        p_data = field_io.read_field("p", os.path.join(case_dir, "0"), mesh_data)
-        return p_data["phi"].astype(np.float64)
-    except Exception:
-        return np.zeros(n_total, dtype=np.float64)
+        initial = np.asarray(config.initial_p, dtype=np.float64)
+        if initial.ndim != 0 or not np.isfinite(initial):
+            raise ValueError("initial_p must be a finite scalar")
+        return np.full(n_total, float(initial), dtype=np.float64)
+    p_data = field_io.read_field("p", os.path.join(case_dir, "0"), mesh_data)
+    values = np.asarray(p_data["phi"], dtype=np.float64)
+    if values.shape != (n_total,):
+        raise ValueError(f"Initial p has shape {values.shape}; expected {(n_total,)}")
+    return values
 
 
 def _enforce_u_boundary_constraints(
@@ -157,20 +163,42 @@ class Solver(OFWInterfaceMixin):
         self.auto_write = True
         self.parallel = ParallelContext.create(self.config.execution)
         if self.config.execution.linear_backend == "petsc":
-            method = str(self.config.solver.linear_solver).lower()
-            if method not in {"bicgstab", "gmres", "cg", "amg"}:
+            methods = {
+                "momentum": self.config.solver.momentum_solver or self.config.solver.linear_solver,
+                "pressure": self.config.solver.pressure_solver or self.config.solver.linear_solver,
+            }
+            invalid = {
+                name: value
+                for name, value in methods.items()
+                if value not in {"bicgstab", "gmres", "cg", "amg"}
+            }
+            if invalid:
                 raise ValueError(
-                    "PETSc execution requires linear_solver to be bicgstab, gmres, cg, "
-                    f"or amg; got {self.config.solver.linear_solver!r}. Distributed "
+                    "PETSc execution requires iterative momentum/pressure methods "
+                    f"(bicgstab, gmres, cg, or pressure AMG); got {invalid!r}. Distributed "
                     "direct factorization is intentionally not assumed."
                 )
 
         # Fail fast on typo'd / unsupported scheme or turbulence-model names
         # (otherwise the error only surfaces deep inside the first assembly).
-        from ..schemes import validate_solver_params, validate_turbulence
+        from ..schemes import (
+            validate_acceptance_policy,
+            validate_solver_params,
+            validate_turbulence,
+        )
 
         validate_solver_params(self.config.solver, self.config.time)
         validate_turbulence(self.config.turbulence)
+        validate_acceptance_policy(self.config.acceptance)
+        if not np.isfinite(self.config.transport.density) or self.config.transport.density <= 0.0:
+            raise ValueError("Transport density must be finite and positive")
+        if not np.isfinite(self.config.transport.nu) or self.config.transport.nu <= 0.0:
+            raise ValueError("Kinematic viscosity must be finite and positive")
+        if self.config.dynamic_mesh.method != "static":
+            raise NotImplementedError(
+                "Dynamic meshes are not supported by the incompressible solver yet: "
+                "the ALE mesh-flux terms required for conservative motion are not implemented."
+            )
 
         # 0. UI Header
         logging.print_openonda_header()
@@ -185,7 +213,7 @@ class Solver(OFWInterfaceMixin):
             self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
             logging.Timer.log("  Mesh Load (Disk)")
 
-        from ..mesh.validation import validate_mesh
+        from ..mesh.validation import enforce_quality_thresholds, validate_mesh
 
         validate_mesh(self.mesh_data)
 
@@ -193,17 +221,18 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("  Geometry Compute")
         from ..mesh import cache
 
-        self.cache = cache.WeightCache(is_dynamic=(config.dynamic_mesh.method != "static"))
+        self.cache = cache.WeightCache()
         gs = getattr(self.config.solver, "gradient_scheme", "gauss")
         self.geo_data = geometry.compute_mesh_geometry(self.mesh_data, gradient_scheme=gs)
         self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
+        enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
-        if not self.cache.is_dynamic:
-            self.cache.set_static_weights(
-                self.cache.from_mesh_geometry(self.geo_data).static_weights
-            )
-        else:
-            self._precompute_dynamic_weights()
+        from ..mesh.topology import MeshTopology
+
+        self.topology = MeshTopology.from_mesh_data(self.mesh_data)
+        self.geometry = geometry.MeshGeometry.from_data(self.mesh_data, self.geo_data)
+
+        self.cache.set_static_weights(self.cache.from_mesh_geometry(self.geo_data).static_weights)
         logging.Timer.log("  Geometry Compute")
 
         # 3. Component Setup
@@ -231,6 +260,13 @@ class Solver(OFWInterfaceMixin):
         self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
         self._current_dt = self.dt
         self._last_residuals = None
+        self.last_diagnostics = None
+        self._acceptance_counts = {
+            "continuity": 0,
+            "residual": 0,
+            "cfl": 0,
+            "velocity": 0,
+        }
 
         logging.Logging.solver_summary(self)
         logging.Timer.log("Total Initialization")
@@ -248,8 +284,9 @@ class Solver(OFWInterfaceMixin):
         Assembles an :class:`FVMConfig` from the case's ``system``/``constant``/``0``
         dictionaries (reusing the ``from_*`` loaders) so the FVM is constructable
         the same way the coupler builds the OFW backend (``backend(case_dir)``).
-        Missing dictionaries fall back to defaults.  ``overrides`` are applied to
-        the assembled ``FVMConfig`` (e.g. ``case_name=...``).
+        Required case dictionaries and initial fields must exist and parse
+        successfully. ``overrides`` may replace known top-level
+        :class:`FVMConfig` fields.
         """
         from ..config.types import (
             BoundaryConfig,
@@ -262,20 +299,44 @@ class Solver(OFWInterfaceMixin):
 
         case_dir = os.path.abspath(case_dir)
 
-        def _try(fn, default):
-            try:
-                return fn()
-            except Exception:
-                return default
+        required = (
+            os.path.join("system", "controlDict"),
+            os.path.join("system", "fvSolution"),
+            os.path.join("system", "fvSchemes"),
+            os.path.join("constant", "transportProperties"),
+            os.path.join("0", "U"),
+            os.path.join("0", "p"),
+        )
+        missing = [
+            relative
+            for relative in required
+            if not os.path.isfile(os.path.join(case_dir, relative))
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"Incomplete FVM case {case_dir!r}; missing required files: {', '.join(missing)}"
+            )
+
+        turbulence_path = os.path.join(case_dir, "constant", "turbulenceProperties")
 
         cfg = FVMConfig(
             case_name=os.path.basename(case_dir.rstrip("/")) or "case",
-            time=_try(lambda: TimeConfig.from_control_dict(case_dir), TimeConfig()),
-            solver=_try(lambda: SolverParams.from_system(case_dir), SolverParams()),
-            transport=_try(lambda: TransportConfig.from_foam_file(case_dir), TransportConfig()),
-            turbulence=_try(lambda: TurbulenceConfig.from_foam_file(case_dir), None),
-            boundaries=_try(lambda: BoundaryConfig.load_from_time_dir(case_dir, "0"), []),
+            time=TimeConfig.from_control_dict(case_dir),
+            solver=SolverParams.from_system(case_dir),
+            transport=TransportConfig.from_foam_file(case_dir),
+            turbulence=(
+                TurbulenceConfig.from_foam_file(turbulence_path)
+                if os.path.isfile(turbulence_path)
+                else None
+            ),
+            boundaries=BoundaryConfig.load_from_time_dir(case_dir, "0"),
+            initial_U=None,
+            initial_p=None,
         )
+        valid_overrides = set(cfg.__dataclass_fields__)
+        unknown = sorted(set(overrides) - valid_overrides)
+        if unknown:
+            raise TypeError(f"Unknown FVMConfig override(s): {', '.join(unknown)}")
         for key, val in overrides.items():
             setattr(cfg, key, val)
         return cls(cfg, case_dir=case_dir)
@@ -293,22 +354,32 @@ class Solver(OFWInterfaceMixin):
             found = False
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
+                    velocity = np.asarray(b_cfg.value_U, dtype=np.float64)
+                    if velocity.shape not in {(3,), (b_mesh["nFaces"], 3)}:
+                        raise ValueError(
+                            f"Velocity value for patch {b_cfg.name!r} has shape {velocity.shape}; "
+                            f"expected (3,) or {(b_mesh['nFaces'], 3)}"
+                        )
                     b_mesh.update(
                         {
-                            "type": b_cfg.type_U,
+                            "type": b_mesh.get("type", b_cfg.type_U),
                             "bc_type_U": b_cfg.type_U,
-                            "value_U": np.array(b_cfg.value_U),
                             "bc_type_p": b_cfg.type_p,
                             "value_p": b_cfg.value_p,
                             "bc_type_nut": b_cfg.type_nut,
                             "value_nut": b_cfg.value_nut,
                         }
                     )
+                    if velocity.shape == (3,):
+                        b_mesh["value_U"] = velocity
+                        b_mesh.pop("value_U_field", None)
+                    else:
+                        b_mesh["value_U_field"] = velocity
                     print(f"  {b_cfg.name:<15} : {b_cfg.type_U:<12} U={b_cfg.value_U}")
                     found = True
                     break
             if not found:
-                print(f"  Warning: Boundary '{b_cfg.name}' not found in mesh.")
+                raise ValueError(f"Configured boundary {b_cfg.name!r} was not found in the mesh")
 
     def _initialize_fields(self):
         """Initialise velocity (U), pressure (p), and flux (phi) fields.
@@ -381,84 +452,43 @@ class Solver(OFWInterfaceMixin):
         self.turbulence = None
         self.nut = None
         if self.config.turbulence and self.config.turbulence.model.lower() != "none":
-            try:
-                from ..turbulence import create_model
+            from ..turbulence import create_model
 
-                self.turbulence = create_model(
-                    self.config.turbulence, self.mesh_data, self.geo_data
+            self.turbulence = create_model(self.config.turbulence, self.mesh_data, self.geo_data)
+            if self.turbulence is None:
+                raise RuntimeError(
+                    f"Turbulence model {self.config.turbulence.model!r} returned no model"
                 )
-                if self.turbulence is not None:
-                    info = self.turbulence.get_filter_info()
-                    print(f"Turbulence model: {info['model']} (coeff={info['Cs']:.3g})")
-            except Exception as e:
-                print(f"Warning: Failed to initialize turbulence: {e}")
+            info = self.turbulence.get_filter_info()
+            print(f"Turbulence model: {info['model']} (coeff={info['Cs']:.3g})")
 
         # Sync state
         self.flow_time = self.config.time.start_time
         self.time_step = 0
         self.dt = self.config.time.delta_t
 
-    def _precompute_dynamic_weights(self):
-        """Pre-compute geometric weights for every time step.
-
-        Used when mesh motion is predictable (e.g. rigid-body translation),
-        avoiding repeated geometry computation during the time loop.
-        Computes weights for each step and caches them via
-        ``self.cache.add_dynamic_step``.
-        """
-        logging.Timer.start("  Precompute Dynamic Weights")
-        config = self.config
-        dt = config.time.delta_t
-        n_steps = int((config.time.end_time - config.time.start_time) / dt)
-        orig_points = self.mesh_data["points"].copy()
-
-        for step in range(n_steps + 1):
-            t = config.time.start_time + step * dt
-            if config.dynamic_mesh.method == "rigidMotion":
-                translation = np.array(config.dynamic_mesh.velocity) * t
-                self.mesh_data["points"] = orig_points + translation
-
-            geo = geometry.compute_mesh_geometry(self.mesh_data)
-            keys_to_cache = [
-                "face_sf",
-                "face_areas",
-                "element_volumes",
-                "face_weights",
-                "face_cf_vector",
-                "face_cf",
-                "face_ff",
-                "wall_dist",
-                "wall_dist_limited",
-            ]
-            weights = {k: geo[k].copy() for k in keys_to_cache if k in geo}
-            self.cache.add_dynamic_step(weights)
-
-        self.mesh_data["points"] = orig_points
-        logging.Timer.log("  Precompute Dynamic Weights")
-
     def _effective_viscosity(self):
         """Compute the effective viscosity (molecular + turbulent).
 
-        If a turbulence model is active, computes the subgrid eddy
-        viscosity via ``self.turbulence.compute_nut(U)`` and returns
-        ``nu + nut``.  Otherwise returns the molecular viscosity only.
+        If a turbulence model is active, computes the subgrid eddy viscosity
+        and returns ``nu + nut``. Model failures propagate because silently
+        switching a configured simulation to laminar flow is unsafe.
 
         Returns:
             Effective kinematic viscosity (scalar or per-element array).
         """
         if self.turbulence is not None:
-            try:
-                self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
-                return self.config.transport.nu + self.nut
-            except Exception as e:
-                print(f"Warning: nut computation failed: {e}")
+            self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
+            if not np.all(np.isfinite(self.nut)) or np.any(self.nut < 0.0):
+                raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
+            return self.config.transport.nu + self.nut
         return self.config.transport.nu
 
     def set_immersed_bodies(self, bodies, h: float | None = None) -> "object":
         """Attach immersed bodies (discrete direct-forcing IBM) to the solver.
 
         Builds the interpolation/spreading operators (Pinelli et al. 2010,
-        Constant et al. — see docs/plans/2026-07-fvm-ibm-design.md) on the
+        Constant et al. — see docs/literature/Constant2016.pdf) on the
         live mesh and hooks them into the PIMPLE momentum predictor.  Body
         forces are appended to ``solution/ibm_forces_history.csv`` every step.
 
@@ -544,8 +574,12 @@ class Solver(OFWInterfaceMixin):
         """
         lam = self.registered_fields.get("lambdaRelax")
         ut = self.registered_fields.get("Utarget")
-        if lam is None or ut is None:
+        if lam is None and ut is None:
             return None, None
+        if lam is None or ut is None:
+            raise RuntimeError(
+                "Incomplete fringe source: lambdaRelax and Utarget must be registered together"
+            )
         n = self.mesh_data["n_elements"]
         lam = np.asarray(lam, dtype=np.float64)[:n]
         ut = np.asarray(ut, dtype=np.float64)[:n]
@@ -564,11 +598,6 @@ class Solver(OFWInterfaceMixin):
 
         step_dt = dt if dt is not None else self.dt
         self._current_dt = step_dt
-
-        if self.cache.is_dynamic:
-            cached = self.cache.get_weights(self.time_step + 1)
-            if cached:
-                self.geo_data.update(cached)
 
         nu_eff = self._effective_viscosity()
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
@@ -604,14 +633,101 @@ class Solver(OFWInterfaceMixin):
                 f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
             )
 
-        # Surface divergence loudly instead of hiding it behind a velocity clip.
-        finite = bool(np.all(np.isfinite(self.U[: self.mesh_data["n_elements"]])))
-        if not self.parallel.global_all(finite):
-            raise FloatingPointError(
-                "Non-finite velocity detected on at least one rank; aborting the "
-                "PIMPLE step instead of writing a corrupted parallel state."
-            )
+        self.last_diagnostics = self._build_step_diagnostics(step_dt, residuals)
+        self._enforce_acceptance_policy(self.last_diagnostics)
         return residuals
+
+    def _build_step_diagnostics(self, step_dt, residuals):
+        """Build the backend-neutral health record for the current solved state."""
+        from ..fields import diagnostics
+        from ..solve.contracts import StepDiagnostics
+
+        n = self.mesh_data["n_elements"]
+        interior_u = np.asarray(self.U[:n])
+        interior_p = np.asarray(self.p[:n])
+        cfl = diagnostics.compute_courant_number(
+            self.U, self.phi, step_dt, self.mesh_data, self.geo_data
+        )
+        self.cfl_max = float(np.max(cfl))
+        nonfinite_count = int(
+            np.count_nonzero(~np.isfinite(interior_u))
+            + np.count_nonzero(~np.isfinite(interior_p))
+            + np.count_nonzero(~np.isfinite(self.phi))
+        )
+        turbulence_min = None
+        turbulence_max = None
+        if self.nut is not None:
+            nonfinite_count += int(np.count_nonzero(~np.isfinite(self.nut)))
+            turbulence_min = float(np.nanmin(self.nut))
+            turbulence_max = float(np.nanmax(self.nut))
+        n_interior = self.mesh_data["n_interior_faces"]
+        linear_results = tuple(getattr(self.algorithm, "last_linear_results", ()))
+        return StepDiagnostics(
+            algorithm=self.config.solver.algorithm.upper(),
+            step=self.time_step + 1,
+            time=self.flow_time + step_dt,
+            dt=float(step_dt),
+            residuals={key: float(value) for key, value in residuals.items()},
+            outer_correctors=tuple(getattr(self.algorithm, "last_outer_diagnostics", ())),
+            linear_solves=linear_results,
+            continuity_max=self.continuity_max,
+            continuity_sum=self.continuity_sum,
+            boundary_mass_balance=float(np.sum(self.phi[n_interior:])),
+            cfl_max=self.cfl_max,
+            velocity_min=tuple(float(value) for value in np.nanmin(interior_u, axis=0)),
+            velocity_max=tuple(float(value) for value in np.nanmax(interior_u, axis=0)),
+            pressure_min=float(np.nanmin(interior_p)),
+            pressure_max=float(np.nanmax(interior_p)),
+            nonfinite_count=nonfinite_count,
+            turbulence_min=turbulence_min,
+            turbulence_max=turbulence_max,
+        )
+
+    def _enforce_acceptance_policy(self, diagnostics) -> None:
+        """Reject unhealthy solves using explicit immediate and sustained rules."""
+        from dataclasses import replace
+
+        if diagnostics.nonfinite_count:
+            raise FloatingPointError(
+                f"FVM step contains {diagnostics.nonfinite_count} non-finite field values"
+            )
+        failed = [result for result in diagnostics.linear_solves if not result.converged]
+        if failed:
+            raise RuntimeError(f"FVM step contains {len(failed)} failed linear solve(s)")
+        if diagnostics.turbulence_min is not None and diagnostics.turbulence_min < 0.0:
+            raise FloatingPointError("FVM step contains negative turbulent viscosity")
+
+        policy = self.config.acceptance
+        velocity_max = max(
+            float(np.linalg.norm(diagnostics.velocity_min)),
+            float(np.linalg.norm(diagnostics.velocity_max)),
+        )
+        metrics = {
+            "continuity": diagnostics.continuity_max,
+            "residual": max(
+                diagnostics.residuals.get("U", 0.0),
+                diagnostics.residuals.get("p", 0.0),
+            ),
+            "cfl": diagnostics.cfl_max,
+            "velocity": velocity_max,
+        }
+        warnings = []
+        for name, value in metrics.items():
+            warning = getattr(policy, f"{name}_warning")
+            abort = getattr(policy, f"{name}_abort")
+            if warning is not None and value > warning:
+                warnings.append(f"{name}={value:.6g} exceeds warning threshold {warning:.6g}")
+            if abort is not None and value > abort:
+                self._acceptance_counts[name] += 1
+            else:
+                self._acceptance_counts[name] = 0
+            if self._acceptance_counts[name] >= policy.sustained_steps:
+                raise RuntimeError(
+                    f"FVM acceptance policy rejected the step: {name}={value:.6g} "
+                    f"exceeded {abort:.6g} for {self._acceptance_counts[name]} "
+                    "consecutive solve(s)"
+                )
+        self.last_diagnostics = replace(diagnostics, warnings=tuple(warnings))
 
     def evolve(self, dt: float | None = None) -> None:
         """Advance the simulation by one full time step (= solve_pimple + advance_time).
@@ -669,6 +785,7 @@ class Solver(OFWInterfaceMixin):
         self.flow_time += self._current_dt
         step_dt = self._current_dt
         cfg_time = self.config.time
+        self.io.write_step_diagnostics()
 
         # y+ and Turbulence info
         patch_names = getattr(self.config.solver, "yplus_patches", None)
@@ -794,6 +911,35 @@ class Solver(OFWInterfaceMixin):
             else:
                 if self.time_step % cfg_time.write_interval == 0:
                     self.write_vtk()
+
+    def save_state(self, path) -> str:
+        """Atomically save a versioned restart containing the complete time state."""
+        from ..io.checkpoint import save_checkpoint
+
+        saved = None
+        if self.parallel.is_root:
+            saved = save_checkpoint(self, path)
+        self.parallel.barrier()
+        return str(saved if saved is not None else path)
+
+    def write_run_manifest(self, path=None) -> str:
+        """Write source, dependency, backend, mesh, and configuration identity."""
+        from ..io.manifest import write_manifest
+
+        destination = path or os.path.join(self.case_dir, "solution", "run_manifest.json")
+        written = None
+        if self.parallel.is_root:
+            written = write_manifest(self, destination)
+        self.parallel.barrier()
+        return str(written if written is not None else destination)
+
+    def load_state(self, path) -> None:
+        """Restore a compatible restart, rejecting mismatched meshes or configs."""
+        from ..io.checkpoint import load_checkpoint
+
+        self.parallel.barrier()
+        load_checkpoint(self, path)
+        self.parallel.barrier()
 
     def write_vtk(self, filename: str | None = None) -> None:
         """Export the current simulation state to a ``.vtu`` file with PVD time-series support.

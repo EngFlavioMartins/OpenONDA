@@ -18,6 +18,7 @@ import logging as _stdio_logging
 import os
 import platform
 import socket
+from typing import Any
 
 import numpy as np
 import taichi as ti
@@ -57,6 +58,36 @@ class _LineBufferedLogStream:
 
     def fileno(self) -> int:
         return self._file_obj.fileno()  # type: ignore[return-value]
+
+
+class _TeeLogStream(_LineBufferedLogStream):
+    """Line-buffered stream that mirrors writes to the original console."""
+
+    def __init__(self, file_obj, console_stream) -> None:
+        super().__init__(file_obj)
+        self._console_stream = console_stream
+
+    def write(self, data: str) -> int:
+        if not data:
+            return 0
+        super().write(data)
+        self._console_stream.write(data)
+        self._console_stream.flush()
+        return len(data)
+
+    def flush(self) -> None:
+        super().flush()
+        self._console_stream.flush()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._console_stream, "isatty", lambda: False)())
+
+    @property
+    def encoding(self) -> str:
+        return getattr(self._console_stream, "encoding", "utf-8")
+
+    def fileno(self) -> int:
+        return self._console_stream.fileno()
 
 
 def print_openonda_header(precision="f32"):
@@ -940,8 +971,8 @@ class Logging:
         print("-" * 60 + "\n")
 
     @staticmethod
-    def setup_output_redirection(solver: object) -> None:  # type: ignore[type-arg]
-        """Redirect solver stdout/stderr to a log file inside the backup directory.
+    def setup_output_redirection(solver: Any) -> None:
+        """Configure solver output as file-only, tee, or console-only.
 
         Naming policy:
           - backup_file_name empty/None  → solution.log
@@ -955,6 +986,17 @@ class Logging:
         from pathlib import Path as _Path
         import sys
 
+        log_mode = getattr(getattr(solver, "config", None), "log_mode", "file")
+        if log_mode == "console":
+            solver.log_file_path = None  # type: ignore[attr-defined]
+            solver._stdout_original = sys.stdout  # type: ignore[attr-defined]
+            solver._stderr_original = sys.stderr  # type: ignore[attr-defined]
+            solver._log_file_handle = None  # type: ignore[attr-defined]
+            solver._restore_output_streams = lambda: None  # type: ignore[attr-defined]
+            return
+        if log_mode not in {"file", "tee"}:
+            raise ValueError(f"Unknown log_mode {log_mode!r}")
+
         backup_name = (getattr(solver, "backup_file_name", "") or "").strip()
         log_basename = f"{_Path(backup_name).stem}.log" if backup_name else "solution.log"
         log_directory = getattr(solver, "backup_directory", None) or "solution"
@@ -966,9 +1008,19 @@ class Logging:
         solver._log_file_handle = open(  # noqa: SIM115  # type: ignore[attr-defined]
             solver.log_file_path, "w", buffering=1, encoding="utf-8"
         )
-        redirected = _LineBufferedLogStream(solver._log_file_handle)  # type: ignore[arg-type]
-        sys.stdout = redirected  # type: ignore[assignment]
-        sys.stderr = redirected  # type: ignore[assignment]
+        if log_mode == "tee":
+            sys.stdout = _TeeLogStream(  # type: ignore[assignment]
+                solver._log_file_handle,
+                solver._stdout_original,  # type: ignore[attr-defined]
+            )
+            sys.stderr = _TeeLogStream(  # type: ignore[assignment]
+                solver._log_file_handle,
+                solver._stderr_original,  # type: ignore[attr-defined]
+            )
+        else:
+            redirected = _LineBufferedLogStream(solver._log_file_handle)  # type: ignore[arg-type]
+            sys.stdout = redirected  # type: ignore[assignment]
+            sys.stderr = redirected  # type: ignore[assignment]
 
         def _restore() -> None:
             try:

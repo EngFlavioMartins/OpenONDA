@@ -368,5 +368,5 @@ def create_model(config, mesh_data, geo_data):
     if name == "smagorinsky":
         if getattr(config, "dynamic", False):
             return DynamicSmagorinsky(mesh_data, geo_data)
-        return Smagorinsky(mesh_data, geo_data, Cs=config.Cs, dynamic=False)
+        return Smagorinsky(mesh_data, geo_data, Cs=config.Cs)
     raise ValueError(f"Unknown turbulence model '{config.model}'")
