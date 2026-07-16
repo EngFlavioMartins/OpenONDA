@@ -63,6 +63,11 @@ class CouplerSetup:
     grid_spacing: float = 0.05
     """FVM cell size [m]."""
 
+    initial_U: list[float] | None = None
+    """Optional initial FVM velocity.  ``None`` uses ``u_inf``.  This is
+    intentionally independent of the VPM background velocity so a finite
+    perturbation can seed an instability without imposing it at infinity."""
+
     case_dir: str = "."
     """OpenFOAM case directory or native-FVM output root."""
 
@@ -143,6 +148,10 @@ class CouplerSetup:
         u_inf = np.asarray(self.u_inf, dtype=np.float64)
         if u_inf.shape != (3,) or not np.all(np.isfinite(u_inf)):
             raise ValueError("u_inf must be a finite three-component vector")
+        if self.initial_U is not None:
+            initial_u = np.asarray(self.initial_U, dtype=np.float64)
+            if initial_u.shape != (3,) or not np.all(np.isfinite(initial_u)):
+                raise ValueError("initial_U must be None or a finite three-component vector")
         box = np.asarray(self.fvm_box, dtype=np.float64)
         if box.shape != (6,) or not np.all(np.isfinite(box)):
             raise ValueError("fvm_box must contain six finite bounds")
@@ -217,6 +226,7 @@ class CouplerSetup:
                 "patch_name": self.patch_name,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
+                "initial_U": self.initial_U,
                 "fvm_domain": {
                     "xmin": self.fvm_box[0],
                     "xmax": self.fvm_box[1],

@@ -140,6 +140,86 @@ def _compute_pressure_face_conductance(mesh_data, geo_data, DU):
     return np.maximum(conductance, 0.0)
 
 
+def _update_fixed_flux_pressure_boundaries(
+    p, U_star, DU, mesh_data, geo_data, boundaries, grad_p=None
+):
+    """Update ``fixedFluxPressure`` face values from the normal momentum balance.
+
+    For a prescribed boundary velocity ``U_b``, the pressure gradient must make
+    the pressure-free predictor ``H/A`` deliver the same normal flux::
+
+        U_b.n = (H/A).n - D_n dp/dn.
+
+    The native solver stores boundary scalar values at face centres (rather
+    than at reflected ghost-cell centres), so the resulting normal gradient is
+    converted to a face-minus-owner pressure increment.  The increment is
+    retained on the patch and re-applied after every pressure correction; this
+    is the discrete analogue of OpenFOAM's ``fixedFluxPressure`` update.
+
+    A diagnostic replay may set ``fixed_flux_pressure_external=True`` and
+    provide ``fixed_flux_pressure_delta`` itself.  That mode is intentionally
+    explicit: it is used only to measure the cropped-stencil floor against a
+    recorded monolithic oracle.
+    """
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"]
+    face_sf = geo_data["face_sf"]
+    face_cf = geo_data["face_cf_vector"]
+    _grad_fn = gradients._resolve_gradient_fn(geo_data)
+
+    fixed_flux_patches = []
+    for boundary in boundaries:
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "ghost")
+        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
+            fixed_flux_patches.append(boundary)
+    if not fixed_flux_patches:
+        return grad_p
+
+    if grad_p is None:
+        grad_p = _grad_fn(p, mesh_data, geo_data)
+        if grad_p.ndim == 3:
+            grad_p = grad_p.squeeze(-1)
+
+    # U_star was obtained with the *current* pressure gradient.  Reconstruct
+    # H/A once from that same pair.  Iterating this formula without resolving
+    # momentum would add the new gradient repeatedly and double the requested
+    # pressure slope on every sweep.
+    U_hbya = U_star[:n_elements] + DU * grad_p[:n_elements]
+    changed = False
+    for boundary in fixed_flux_patches:
+        start = boundary["startFace"]
+        nf = boundary["nFaces"]
+        ghost = n_elements + (start - n_interior) + np.arange(nf)
+        own = owners[start : start + nf]
+        if boundary.get("fixed_flux_pressure_external", False):
+            delta = boundary.get("fixed_flux_pressure_delta")
+            if delta is not None:
+                p[ghost] = p[own] + np.asarray(delta, dtype=float)
+                changed = True
+            continue
+
+        sf = face_sf[start : start + nf]
+        mag_sf = np.linalg.norm(sf, axis=1)
+        normal = sf / mag_sf[:, np.newaxis]
+        dr = face_cf[start : start + nf]
+        normal_distance = np.einsum("ij,ij->i", dr, normal)
+        D_normal = np.einsum("ij,ij->i", DU[own], normal * normal)
+        target_normal = np.einsum("ij,ij->i", U_star[ghost], normal)
+        hbya_normal = np.einsum("ij,ij->i", U_hbya[own], normal)
+        dpdn = (hbya_normal - target_normal) / np.maximum(D_normal, 1.0e-30)
+        delta = dpdn * normal_distance
+        boundary["fixed_flux_pressure_delta"] = delta
+        p[ghost] = p[own] + delta
+        changed = True
+
+    if changed:
+        grad_p = _grad_fn(p, mesh_data, geo_data)
+        if grad_p.ndim == 3:
+            grad_p = grad_p.squeeze(-1)
+    return grad_p
+
+
 def _compute_geometric_diffusion(DU_f, Sf, e, mag_CF):
     """
     Compute anisotropic geometric diffusion term for Rhie-Chow interpolation.
@@ -409,7 +489,11 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
             elif strategy is BoundaryStrategy.FREESTREAM:
                 bc_type_codes[idx] = 3
                 p_boundary_values[idx] = val if val is not None else 0.0
-            elif strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.CYCLIC):
+            elif strategy in (
+                BoundaryStrategy.ZERO_GRADIENT,
+                BoundaryStrategy.FIXED_FLUX_PRESSURE,
+                BoundaryStrategy.CYCLIC,
+            ):
                 bc_type_codes[idx] = 0
                 p_boundary_values[idx] = 0.0
             else:
@@ -473,6 +557,9 @@ def assemble_pressure_correction_equation_rhie_chow(
     grad_p = _grad_fn(p, mesh_data, geo_data)
     if grad_p.ndim == 3:
         grad_p = grad_p.squeeze(-1)
+    grad_p = _update_fixed_flux_pressure_boundaries(
+        p, U_star, DU, mesh_data, geo_data, boundaries, grad_p=grad_p
+    )
 
     # Pre-allocate flux arrays
     flux_cf = np.zeros(n_faces)
@@ -664,7 +751,11 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
                 raise ValueError("Freestream pressure correction requires the predicted face flux")
             outflow = np.asarray(face_flux)[start : start + nf] >= 0.0
             p_prime_ext[idx : idx + nf] = np.where(outflow, 0.0, p_prime[own])
-        elif strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
+        elif strategy in (
+            BoundaryStrategy.ZERO_GRADIENT,
+            BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.EMPTY,
+        ):
             p_prime_ext[idx : idx + nf] = p_prime[own]
         else:
             raise RuntimeError(f"Unhandled pressure ghost strategy {strategy!r}")
@@ -728,7 +819,11 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         elif strategy is BoundaryStrategy.FREESTREAM:
             outflow = phi[idx] >= 0.0
             phi[idx] += np.where(outflow, rho * geo_diff_b * p_prime[own], 0.0)
-        elif strategy not in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
+        elif strategy not in (
+            BoundaryStrategy.ZERO_GRADIENT,
+            BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.EMPTY,
+        ):
             raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
 
 
@@ -993,6 +1088,12 @@ def _apply_scalar_bc(
     """
     if strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
         phi[indices] = phi[owners_b]
+    elif strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
+        delta = boundary.get("fixed_flux_pressure_delta")
+        if delta is None:
+            phi[indices] = phi[owners_b]
+        else:
+            phi[indices] = phi[owners_b] + np.asarray(delta, dtype=float)
     elif strategy is BoundaryStrategy.FIXED_VALUE:
         val = boundary.get(f"value_{field_name}")
         if val is None:

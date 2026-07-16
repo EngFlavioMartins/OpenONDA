@@ -209,6 +209,7 @@ class _GridDiffusionMixin:
 
         # Body-aware diffusion settings (optional; enabled when body STL is configured).
         self._body_mask_active: bool = False
+        self._body_box_bounds: np.ndarray | None = None
 
         # Maximum number of grid cells per spatial dimension.
         self._MAX_CELLS_PER_DIM: int = 2000
@@ -479,6 +480,23 @@ class _GridDiffusionMixin:
                 "already allocated" if self._grid_a is not None else "exceeds pre-alloc budget",
             )
 
+    def configure_grid_lattice_anchor(self, anchor, h: float) -> None:
+        """Align the fixed diffusion-grid phase with a coupled FVM lattice.
+
+        Only the origin phase changes; the pre-allocated dimensions remain
+        unchanged.  This avoids alternating between half-cell-shifted GBD and
+        handoff lattices every coupling window.
+        """
+        if self._fixed_grid_min is None:
+            return
+        a = np.asarray(anchor, dtype=np.float64).reshape(3)
+        h = float(h)
+        if not np.all(np.isfinite(a)) or not np.isfinite(h) or h <= 0.0:
+            raise ValueError("grid lattice anchor and spacing must be finite")
+        origin = np.asarray(self._fixed_grid_min, dtype=np.float64)
+        origin = a + np.floor((origin - a) / h) * h
+        self._fixed_grid_min = origin.astype(np.float32)
+
     def configure_body_mask(self, body_stl: str | None) -> None:
         """Configure optional body masking for DVH diffusion (not yet implemented).
 
@@ -487,7 +505,53 @@ class _GridDiffusionMixin:
         body_stl : Optional[str]
             STL path to a closed body surface (reserved for future use).
         """
-        self._body_mask_active = False
+        if self._body_box_bounds is None:
+            self._body_mask_active = False
+
+    def configure_body_box(self, bounds) -> None:
+        """Configure an exact axis-aligned solid mask for grid diffusion.
+
+        The mask is rebuilt on the active diffusion lattice, so it remains
+        correct for both fixed-domain and dynamically sized grids.  The GBD
+        Laplacian treats solid neighbours as the fluid centre value (zero
+        normal diffusive flux) and never regenerates particles at solid nodes.
+        """
+        b = np.asarray(bounds, dtype=np.float32).reshape(-1)
+        if b.shape != (6,) or not np.all(np.isfinite(b)):
+            raise ValueError("body box must contain six finite bounds")
+        if np.any(b[1::2] <= b[::2]):
+            raise ValueError("body box upper bounds must exceed lower bounds")
+        self._body_box_bounds = b.copy()
+        self._body_mask_active = True
+
+    def _prepare_body_mask_current_grid(
+        self, grid_min: np.ndarray, h: float, nx: int, ny: int, nz: int
+    ) -> None:
+        """Populate the active grid's solid-node mask."""
+        if (
+            not self._body_mask_active
+            or self._body_box_bounds is None
+            or self._body_mask_grid is None
+        ):
+            return
+        g = np.asarray(grid_min, dtype=np.float32).reshape(3)
+        b = self._body_box_bounds
+        self._fill_box_body_mask_kernel(
+            self._body_mask_grid,
+            float(g[0]),
+            float(g[1]),
+            float(g[2]),
+            float(h),
+            float(b[0]),
+            float(b[1]),
+            float(b[2]),
+            float(b[3]),
+            float(b[4]),
+            float(b[5]),
+            nx,
+            ny,
+            nz,
+        )
 
     # ---- DVH: DVH orchestration ----
 
@@ -885,6 +949,8 @@ class _GridDiffusionMixin:
             nz,
             N,
         )
+        self._prepare_body_mask_current_grid(grid_min_np, h, nx, ny, nz)
+        self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- Explicit Laplacian diffusion (GPU) --------------------------------
         # Bug A: when ν_eff (ν+ν_t) is supplied, use a per-node coefficient
@@ -920,6 +986,7 @@ class _GridDiffusionMixin:
                 self._current_grid,
                 self._other_grid,
                 self._nu_eff_grid,
+                self._body_mask_grid,
                 float(dt),
                 float(h),
                 nx,
@@ -931,6 +998,7 @@ class _GridDiffusionMixin:
             self._laplacian_step_gpu_kernel(
                 self._current_grid,
                 self._other_grid,
+                self._body_mask_grid,
                 alpha,
                 nx,
                 ny,
@@ -1233,6 +1301,7 @@ class _GridDiffusionMixin:
         self._dvh_scatter_circ(
             pos_np, circ_np, grid_min_np, h, nu, dt, nx, ny, nz, rd_ratio, nu_eff_np=nu_eff
         )
+        self._prepare_body_mask_current_grid(grid_min_np, h, nx, ny, nz)
         self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- ID-field scatters (nearest-node, |Γ|-weighted) -------------------
@@ -1415,6 +1484,7 @@ class _GridDiffusionMixin:
         self,
         src: ti.template(),
         dst: ti.template(),
+        body_mask: ti.template(),
         alpha: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
@@ -1430,6 +1500,9 @@ class _GridDiffusionMixin:
         cells beyond (due to headroom allocation) are left at zero.
         """
         for i, j, k in ti.ndrange(nx, ny, nz):
+            if body_mask[i, j, k] != 0:
+                dst[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+                continue
             # Neumann BC: clamp neighbour indices to the active domain
             im = ti.max(i - 1, 0)
             ip = ti.min(i + 1, nx - 1)
@@ -1438,16 +1511,15 @@ class _GridDiffusionMixin:
             km = ti.max(k - 1, 0)
             kp = ti.min(k + 1, nz - 1)
 
-            laplacian = (
-                src[ip, j, k]
-                + src[im, j, k]
-                + src[i, jp, k]
-                + src[i, jm, k]
-                + src[i, j, kp]
-                + src[i, j, km]
-                - 6.0 * src[i, j, k]
-            )
-            dst[i, j, k] = src[i, j, k] + alpha * laplacian
+            centre = src[i, j, k]
+            xp = centre if body_mask[ip, j, k] != 0 else src[ip, j, k]
+            xm = centre if body_mask[im, j, k] != 0 else src[im, j, k]
+            yp = centre if body_mask[i, jp, k] != 0 else src[i, jp, k]
+            ym = centre if body_mask[i, jm, k] != 0 else src[i, jm, k]
+            zp = centre if body_mask[i, j, kp] != 0 else src[i, j, kp]
+            zm = centre if body_mask[i, j, km] != 0 else src[i, j, km]
+            laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
+            dst[i, j, k] = centre + alpha * laplacian
 
     @ti.kernel
     def _laplacian_step_variable_gpu_kernel(
@@ -1455,6 +1527,7 @@ class _GridDiffusionMixin:
         src: ti.template(),
         dst: ti.template(),
         nu_eff_grid: ti.template(),
+        body_mask: ti.template(),
         dt: ti.f32,
         h: ti.f32,
         nx: ti.i32,
@@ -1472,6 +1545,9 @@ class _GridDiffusionMixin:
         """
         h_sq = h * h
         for i, j, k in ti.ndrange(nx, ny, nz):
+            if body_mask[i, j, k] != 0:
+                dst[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+                continue
             im = ti.max(i - 1, 0)
             ip = ti.min(i + 1, nx - 1)
             jm = ti.max(j - 1, 0)
@@ -1479,17 +1555,45 @@ class _GridDiffusionMixin:
             km = ti.max(k - 1, 0)
             kp = ti.min(k + 1, nz - 1)
 
-            laplacian = (
-                src[ip, j, k]
-                + src[im, j, k]
-                + src[i, jp, k]
-                + src[i, jm, k]
-                + src[i, j, kp]
-                + src[i, j, km]
-                - 6.0 * src[i, j, k]
-            )
+            centre = src[i, j, k]
+            xp = centre if body_mask[ip, j, k] != 0 else src[ip, j, k]
+            xm = centre if body_mask[im, j, k] != 0 else src[im, j, k]
+            yp = centre if body_mask[i, jp, k] != 0 else src[i, jp, k]
+            ym = centre if body_mask[i, jm, k] != 0 else src[i, jm, k]
+            zp = centre if body_mask[i, j, kp] != 0 else src[i, j, kp]
+            zm = centre if body_mask[i, j, km] != 0 else src[i, j, km]
+            laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
             alpha_node = nu_eff_grid[i, j, k] * dt / h_sq
             dst[i, j, k] = src[i, j, k] + alpha_node * laplacian
+
+    @ti.kernel
+    def _fill_box_body_mask_kernel(
+        self,
+        body_mask: ti.template(),
+        gmin_x: ti.f32,
+        gmin_y: ti.f32,
+        gmin_z: ti.f32,
+        h: ti.f32,
+        xmin: ti.f32,
+        xmax: ti.f32,
+        ymin: ti.f32,
+        ymax: ti.f32,
+        zmin: ti.f32,
+        zmax: ti.f32,
+        nx: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Mark open-interior box nodes as solid; surface nodes stay fluid."""
+        for i, j, k in body_mask:
+            if i < nx and j < ny and k < nz:
+                x = gmin_x + ti.cast(i, ti.f32) * h
+                y = gmin_y + ti.cast(j, ti.f32) * h
+                z = gmin_z + ti.cast(k, ti.f32) * h
+                inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
+                body_mask[i, j, k] = 1 if inside else 0
+            else:
+                body_mask[i, j, k] = 0
 
     @ti.kernel
     def _grid_norm_kernel(

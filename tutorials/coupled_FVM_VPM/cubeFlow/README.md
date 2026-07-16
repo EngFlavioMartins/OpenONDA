@@ -24,9 +24,14 @@ run directly instead: `python cube_setup.py` (a full run) or
 
 | Figure | Shows |
 |--------|-------|
-| `forces_history` | cube `Cd`, `Cl` and the pressure/viscous drag split vs `t U∞/D` |
 | `vpm_diagnostics` | far-field kinetic energy, enstrophy, particle count |
-| `hybrid_wake` | z=0 slice: sharp FVM near-field vorticity + VPM far-wake particles on one colour scale, plus the centreline velocity deficit |
+| `compare_centerline` | hybrid and fully-meshed streamwise velocity plus signed `hybrid - fully meshed` error |
+| `compare_profiles` | time-matched wake profiles and their signed reference error |
+| `compare_interface` | hybrid, fully-meshed, and signed velocity error on the FVM xmax plane |
+| `compare_forces` | `Cd`/`Cl` histories and time-matched `hybrid - fully meshed` force error |
+
+When `referenceFlow/solution/referenceFlow.pvd` is unavailable, `allplot.sh`
+falls back to the standalone `forces_history` and `hybrid_wake` diagnostics.
 
 ## Output (`solution/`)
 

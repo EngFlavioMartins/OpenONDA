@@ -1,5 +1,6 @@
 #!/bin/sh
-# Generate figures from solution/ (forces, VPM diagnostics, hybrid wake).
+# Generate figures from solution/.  If referenceFlow data are present, the
+# primary solution figures are time-matched hybrid-vs-fully-meshed comparisons.
 # Reads only what cube_setup.py wrote — safe to re-run any time after a run.
 cd "$(dirname "$0")" || exit 1
 
@@ -21,9 +22,21 @@ done
 
 export PYTHONPATH="$(cd ../../.. && pwd):${PYTHONPATH}"
 
-for script in plot_forces plot_diagnostics plot_wake; do
+for script in plot_diagnostics; do
     echo "=== ${script} ==="
     "$PYTHON" "assets/${script}.py" --format "$FORMAT" || echo "  (${script} failed; skipping)"
 done
+
+if [ -f referenceFlow/solution/referenceFlow.pvd ]; then
+    echo "=== compare_reference ==="
+    "$PYTHON" assets/compare_reference.py --format "$FORMAT" \
+        || echo "  (compare_reference failed; skipping)"
+else
+    for script in plot_forces plot_wake; do
+        echo "=== ${script} ==="
+        "$PYTHON" "assets/${script}.py" --format "$FORMAT" \
+            || echo "  (${script} failed; skipping)"
+    done
+fi
 
 echo "Figures written to figures/"

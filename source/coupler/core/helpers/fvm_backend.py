@@ -392,8 +392,8 @@ def build_fvm_backend(
     )
 
     # Coupling patch: Dirichlet velocity (the coupler overwrites the value each
-    # sub-step) + zero-gradient pressure on ALL faces — the native analog of
-    # the OFW case's fixedValue-U / fixedFluxPressure-p pair.  The donor trace
+    # sub-step) + momentum-compatible fixed-flux pressure on ALL faces.  The
+    # donor trace
     # is projected to zero net flux, so the all-Neumann pressure problem is
     # compatible and the solver pins the level at a reference cell (pRefCell
     # equivalent).  A freestream BC would instead pin p=0 on every outflow
@@ -404,7 +404,7 @@ def build_fvm_backend(
             name=cfg.patch_name,
             type_U="fixedValue",
             value_U=u_inf,
-            type_p="zeroGradient",
+            type_p="fixedFluxPressure",
         )
     ]
     if hole_box is not None:
@@ -427,7 +427,7 @@ def build_fvm_backend(
         solver=solver_params,
         transport=TransportConfig(density=float(cfg.rho), nu=float(cfg.nu)),
         boundaries=boundaries,
-        initial_U=u_inf,
+        initial_U=u_inf if cfg.initial_U is None else [float(v) for v in cfg.initial_U],
     )
 
     root = os.path.abspath(case_dir if case_dir is not None else cfg.case_dir)

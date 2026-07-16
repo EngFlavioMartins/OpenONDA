@@ -64,8 +64,15 @@ def _laplacian_step(physics, field: np.ndarray, alpha: float) -> np.ndarray:
     buf[:nx, :ny, :nz, :] = field
     physics._current_grid.from_numpy(buf)
     physics._other_grid.fill(0.0)
+    physics._body_mask_grid.fill(0)
     physics._laplacian_step_gpu_kernel(
-        physics._current_grid, physics._other_grid, alpha, nx, ny, nz
+        physics._current_grid,
+        physics._other_grid,
+        physics._body_mask_grid,
+        alpha,
+        nx,
+        ny,
+        nz,
     )
     return physics._other_grid.to_numpy()[:nx, :ny, :nz, :]
 
@@ -88,6 +95,40 @@ def test_gbd_laplacian_conserves_total_circulation(physics):
     g0 = field[..., 2].astype(np.float64).sum()
     g1 = out[..., 2].astype(np.float64).sum()
     assert abs(g1 - g0) < 1e-4 * abs(g0), f"Γ drift {abs(g1 - g0) / g0:.2e}"
+
+
+def test_gbd_box_mask_is_solid_free_and_zero_flux(physics):
+    """The solid mask must suppress regeneration in the body without making
+    the wall an absorbing circulation sink."""
+    nx = ny = nz = 20
+    grid_min = np.array([-0.5, -0.5, -0.5], dtype=np.float32)
+    physics._ensure_grid_capacity(nx, ny, nz)
+    physics.configure_body_box([-0.1, 0.1, -0.1, 0.1, -0.1, 0.1])
+    physics._prepare_body_mask_current_grid(grid_min, H, nx, ny, nz)
+    mask = physics._body_mask_grid.to_numpy()[:nx, :ny, :nz].astype(bool)
+
+    field = np.zeros((*physics._grid_shape, 3), dtype=np.float32)
+    field[:nx, :ny, :nz, 2] = 1.0
+    field[:nx, :ny, :nz, 2][mask] = 0.0
+    physics._current_grid.from_numpy(field)
+    physics._other_grid.fill(0.0)
+    physics._laplacian_step_gpu_kernel(
+        physics._current_grid,
+        physics._other_grid,
+        physics._body_mask_grid,
+        0.12,
+        nx,
+        ny,
+        nz,
+    )
+    out = physics._other_grid.to_numpy()[:nx, :ny, :nz, 2]
+    assert np.all(out[mask] == 0.0)
+    np.testing.assert_allclose(out.sum(dtype=np.float64), (~mask).sum(), atol=1e-5)
+
+    # Restore the module-scoped fixture for the remaining mask-free audits.
+    physics._body_box_bounds = None
+    physics._body_mask_active = False
+    physics._body_mask_grid.fill(0)
 
 
 def test_gbd_moment_growth_equals_6_nu_dt(physics):
@@ -396,10 +437,12 @@ def _laplacian_step_variable(physics, field, nu_eff_field, dt, h):
     nu_eff_buf[:nx, :ny, :nz] = nu_eff_field
     physics._nu_eff_grid.from_numpy(nu_eff_buf)
     physics._other_grid.fill(0.0)
+    physics._body_mask_grid.fill(0)
     physics._laplacian_step_variable_gpu_kernel(
         physics._current_grid,
         physics._other_grid,
         physics._nu_eff_grid,
+        physics._body_mask_grid,
         float(dt),
         float(h),
         nx,

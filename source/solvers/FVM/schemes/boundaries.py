@@ -19,6 +19,7 @@ class BoundaryStrategy(Enum):
     CYCLIC = auto()
     FREESTREAM = auto()
     DIRECTION_MIXED = auto()
+    FIXED_FLUX_PRESSURE = auto()
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,19 @@ BOUNDARIES.register(
         frozenset({"U"}),
         _ALL_OPERATORS,
         BoundaryStrategy.DIRECTION_MIXED,
+        coupling_only=True,
+    )
+)
+
+# Pressure partner for a prescribed-velocity boundary.  The absolute pressure
+# carries a momentum-compatible normal gradient, while the pressure correction
+# is homogeneous Neumann so that the prescribed boundary flux is not changed.
+BOUNDARIES.register(
+    BoundaryOperator(
+        "fixedFluxPressure",
+        frozenset({"p"}),
+        _ALL_OPERATORS,
+        BoundaryStrategy.FIXED_FLUX_PRESSURE,
         coupling_only=True,
     )
 )

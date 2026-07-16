@@ -146,6 +146,7 @@ def load_vpm_particles(h5_path: Path) -> dict:
             "position": p["position"][:],
             "vorticity": p["vorticity"][:],
             "circulation": p["circulation"][:],
+            "radius": p["radius"][:],
             "time": float(f["solver"].attrs["flow_time"]),
             "n": int(f["solver"].attrs["number_of_particles"]),
         }

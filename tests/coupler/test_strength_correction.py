@@ -195,9 +195,8 @@ def test_unguarded_correction_rings_into_the_body():
 
 
 def test_handoff_guard_keeps_the_body_clean():
-    """End-to-end: with inside_mesh_at_node defining the body hole, the
-    eroded-mask guard must leave the body interior at zero strength while
-    still correcting the resolved exterior field."""
+    """An exact solid mask prevents both correction and zero-strength nodes
+    from becoming particle centres inside the body."""
     box = [-0.9, 0.9, -0.9, 0.9, -0.9, 0.9]
 
     def inside_mesh_at_node(grid_pos):
@@ -212,6 +211,7 @@ def test_handoff_guard_keeps_the_body_clean():
         "h": H,
         "omega_at_node": _holed_omega,
         "inside_mesh_at_node": inside_mesh_at_node,
+        "excluded_at_node": _body_mask,
         "ramp_width": 4 * H,
         "dead_zone": 0.0,
         "buffer_length": 2 * H,
@@ -219,11 +219,58 @@ def test_handoff_guard_keeps_the_body_clean():
         "conserve": False,  # keep node strengths raw for the assertion
     }
     res = continuous_handoff(**common, strength_correction_iterations=3)
-    in_body = _body_mask(res.pos)
-    body_gamma = np.linalg.norm(res.circ[in_body], axis=1).sum() if in_body.any() else 0.0
-    total_gamma = np.linalg.norm(res.circ, axis=1).sum()
-    assert body_gamma < 1e-12 * total_gamma, (
-        f"correction injected |Γ|={body_gamma:.3e} inside the body"
-    )
+    assert not _body_mask(res.pos).any()
     # the exterior resolved field must still benefit from the correction
     assert res.strength_corr_residual_post < res.strength_corr_residual_pre
+
+
+def test_exact_body_mask_removes_preexisting_solid_particle():
+    """Regression for the cube run: inside_mesh=False means Lagrangian, not
+    solid, so removing an already-contaminated particle requires a distinct
+    exclusion mask."""
+    pos = np.array([[0.0, 0.0, 0.0], [0.45, 0.1, 0.0]])
+    circ = np.array([[0.0, 0.0, 2e-3], [0.0, 0.0, 1e-3]])
+    res = continuous_handoff(
+        pos,
+        circ,
+        [-0.9, 0.9, -0.9, 0.9, -0.9, 0.9],
+        H,
+        excluded_at_node=_body_mask,
+        buffer_length=2 * H,
+        threshold_abs=1e-12,
+        conserve=False,
+    )
+    assert res.n_excluded == 1
+    assert np.isclose(res.excluded_input_circulation_l1, 2e-3)
+    assert not _body_mask(res.pos).any()
+
+
+def test_fvm_lattice_phase_prevents_target_leak_into_body():
+    """Matched h FVM centres must land on M4' nodes, independent of the
+    dt-derived buffer length; otherwise wall circulation is spread into the
+    solid and subsequently discarded."""
+    cell_pos = np.array(
+        [
+            [BODY_HALF + 0.5 * H, 0.5 * H, 0.5 * H],
+            [BODY_HALF + 1.5 * H, 0.5 * H, 0.5 * H],
+        ]
+    )
+    cell_circ = np.array([[0.0, 0.0, 2e-3], [0.0, 0.0, 1e-3]])
+    res = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        [-0.9, 0.9, -0.9, 0.9, -0.9, 0.9],
+        H,
+        fvm_cell_pos=cell_pos,
+        fvm_cell_circ=cell_circ,
+        inside_mesh_at_node=lambda p: np.ones(len(p), dtype=bool),
+        excluded_at_node=_body_mask,
+        ramp_width=2 * H,
+        dead_zone=0.0,
+        buffer_length=0.2125,  # deliberately not an integer multiple of h
+        threshold_abs=1e-12,
+        conserve=False,
+    )
+    assert res.excluded_target_circulation_l1 < 1e-14
+    assert not _body_mask(res.pos).any()
+    np.testing.assert_allclose(res.circ.sum(axis=0), cell_circ.sum(axis=0), atol=1e-14)

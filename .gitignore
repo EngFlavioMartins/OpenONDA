@@ -98,7 +98,7 @@ processor*/
 # Solution and data directories (results → DVC, never git)
 **/solution/
 **/Solution/
-**/referenceFlow/
+# Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
 Data/
 Raw/
 data/

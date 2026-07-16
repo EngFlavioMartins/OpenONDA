@@ -428,6 +428,26 @@ class FVMVPMCoupler:
         # Build injector
         self.injector = ContinuousOverlapInjector(self)
         self.injector.setup(self.ofw)
+        if (
+            self._is_master
+            and self.injector._body_bounds is not None
+            and hasattr(self.vpm.physics, "configure_body_box")
+        ):
+            self.vpm.physics.configure_body_box(self.injector._body_bounds)
+            logger.info(
+                "[Init] VPM grid diffusion body mask enabled for box %s.",
+                self.injector._body_bounds.tolist(),
+            )
+        if (
+            self._is_master
+            and self.injector._cell_centers is not None
+            and len(self.injector._cell_centers) > 0
+            and hasattr(self.vpm.physics, "configure_grid_lattice_anchor")
+        ):
+            self.vpm.physics.configure_grid_lattice_anchor(
+                self.injector._cell_centers[0], self.config.h
+            )
+            logger.info("[Init] VPM diffusion lattice phase aligned with FVM cell centres.")
 
         # Build velocity forcing.  FVMVelocityBlend is built on ALL ranks because
         # vel_blend.update() triggers collective OFW getters; only the VPM wiring
@@ -520,6 +540,8 @@ class FVMVPMCoupler:
                 print("─" * 60)
                 print(f"STEP {step}/{n_steps}  (t={t_end:.3f}s)")
 
+                if self.vel_blend is not None:
+                    self.vel_blend.begin_diagnostics()
                 with _DisableSIGFPE(), self.vpm_redirector:
                     self.vpm.update_state()
                 import taichi as ti
@@ -629,6 +651,17 @@ class FVMVPMCoupler:
                     sum_before,
                     sum_after,
                 )
+
+                # Refresh the stored donor endpoint from the POST-injection
+                # cloud: the hand-off just rebuilt every buffer particle, so a
+                # donor trace computed from the pre-injection cloud would give
+                # the next step's interpolation a step-periodic discontinuity
+                # (measured ≈ 2% U∞ at the outflow face).  One extra exterior
+                # evaluation per coupling step removes it exactly.
+                if self.config.donor_interior_source == "fvm":
+                    self._u_bc_prev = self._donor_exterior_velocity(face_centers)
+                    if self.config.donor_bc_mode == "mixed":
+                        self._omega_bc_prev = self._last_omega_donor
                 print()
                 print(f"[Step {step:4d}] t={t_end:.3f}s | Particles: {n_after}")
                 print(
@@ -910,21 +943,30 @@ class FVMVPMCoupler:
             return np.zeros_like(targets)
 
         src, gamma, info = interior_bs.select_sources(
-            omega, centers, vols, pool_h=2.0 * float(self.config.h)
+            omega,
+            centers,
+            vols,
+            pool_h=2.0 * float(self.config.h),
+            budget_fraction=0.999,
         )
         if src.shape[0] == 0:
             return np.zeros_like(targets)
         logger.info(
             "     [Donor] FVM-interior BS sources: %d exact + %d pooled bins "
-            "(%d above the %.0e·peak floor; %.0f%% of Σ|Γ| represented)",
+            "(%d selected by %s; %.1f%% of Σ|Γ| represented)",
             src.shape[0] - info["n_pooled_bins"],
             info["n_pooled_bins"],
             info["n_above"],
-            interior_bs.FLOOR_FRACTION,
+            info["selection_mode"],
             100.0 * info["kept_fraction"],
         )
         self._validate_bs_sign_once()
-        return interior_bs.bs_velocity(targets, src, gamma, core=float(self.config.h))
+        # Use the same Gaussian blob kernel on both sides of the hand-off.
+        # The former Rosenhead cutoff changed the velocity operator abruptly
+        # when a circulation element crossed the interface, creating a
+        # non-physical step in the donor trace even when Gamma was conserved.
+        sigma = float(self.config.overlap_radius_ratio) * float(self.config.h)
+        return interior_bs.gaussian_bs_velocity(targets, src, gamma, radii=sigma)
 
     def _validate_bs_sign_once(self) -> None:
         """Check the Biot–Savart sign convention once per run."""

@@ -28,28 +28,27 @@ def build_lambda(
     lambda_max: float,
     dead_zone: float = 0.0,
 ) -> np.ndarray:
-    """Static relaxation rate per cell, respecting the hand-off dead zone.
+    """Static FVM relaxation rate complementary to particle authority ``eta``.
 
-    The fringe is the FVM-side complement of the VPM-side η weight: it forces
-    the FVM velocity toward the VPM field in the transition band.  However, the
-    dead zone (the thin strip at every FVM face where η = 0) must be excluded
-    from the fringe as well: VPM particles in the dead zone carry stale
-    (Lagrangian, uncorrected) vorticity and are not forced toward the FVM, so
-    forcing the FVM toward their velocity would introduce a spurious one-way
-    coupling at exactly the faces where the two descriptions should be
-    decoupled.
+    The old profile vanished both at the numerical boundary and in the core.
+    Together with ``eta=0`` in the dead zone this left several cell layers in
+    which neither representation controlled the solution -- precisely the
+    undamped cavity that generated the observed interface reflections.
 
-    The corrected profile uses a sin² ramp restricted to the buffer zone
-    (dead_zone < d < buffer_thickness):
+    This profile is the actual partition-of-authority complement:
 
-        λ = 0                                    d ≤ dead_zone  (dead zone)
-        λ = λ_max · sin²(π·s),  s=(d−dz)/(B−dz)  dead_zone < d < buffer_thickness
-        λ = 0                                    d ≥ buffer_thickness (FVM core)
+        lambda/lambda_max = 1 - eta
 
-    This profile is C¹ everywhere (zero value AND zero slope at both ends of
-    the ramp), peaks at the midpoint of the buffer zone, and vanishes in both
-    the dead zone and the core — matching the region where η is actively
-    transitioning (0 < η < 1) and particle corrections are meaningful.
+    It is therefore constant at full strength in the dead zone, falls with a
+    C1 cosine ramp through the overlap, and is exactly zero in the FVM core::
+
+        lambda = lambda_max                                  d <= dead_zone
+        lambda = lambda_max * 0.5 * (1 + cos(pi*s))          dead_zone < d < B
+        lambda = 0                                           d >= B
+
+    Boundary velocity and the adjacent volume forcing now approach the same
+    VPM target continuously; there is no unowned strip and no abrupt source
+    turn-on one or more cells inside the domain.
     """
     x = np.atleast_2d(cell_centres)
     xmin, xmax, ymin, ymax, zmin, zmax = fvm_box
@@ -57,16 +56,14 @@ def build_lambda(
     hi = np.array([xmax, ymax, zmax])
     d_in = np.minimum(x - lo, hi - x).min(axis=1)  # signed distance inward to nearest face
 
-    lam = np.zeros(len(d_in), dtype=np.float64)
-
     dz = max(dead_zone, 0.0)
     buf_width = max(buffer_thickness - dz, 1e-30)
+    lam = np.zeros(len(d_in), dtype=np.float64)
+    lam[d_in <= dz] = lambda_max
     active = (d_in > dz) & (d_in < buffer_thickness)
     if active.any():
         s = (d_in[active] - dz) / buf_width
-        # sin² is C¹, zero at s=0 (dead-zone edge) and s=1 (core boundary),
-        # peaks at s=0.5 (midpoint of the transition band).
-        lam[active] = lambda_max * np.sin(np.pi * s) ** 2
+        lam[active] = lambda_max * 0.5 * (1.0 + np.cos(np.pi * s))
 
     return lam
 

@@ -204,6 +204,7 @@ class HandoffResult:
     n_remesh_in: int = 0  # particles fed into the lattice
     n_remesh_out: int = 0  # particles produced from the lattice
     n_free: int = 0  # untouched free-exterior particles
+    n_excluded: int = 0  # input particles removed from a physical solid
     cfl: float = 0.0  # U_max·dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
     flux_ratio: float = 0.0  # |Γ_VPM_exit| / |Γ_FVM_exit| at the outflow band
@@ -212,6 +213,12 @@ class HandoffResult:
     # ‖ω_target − ω_σ‖/‖ω_target‖ before and after the Picard iterations)
     strength_corr_residual_pre: float = 0.0
     strength_corr_residual_post: float = 0.0
+
+    # Body-mask audit.  These are L1 sums of |Gamma| removed from actual input
+    # particles, VPM remesh support, and FVM-target remesh support.
+    excluded_input_circulation_l1: float = 0.0
+    excluded_remesh_circulation_l1: float = 0.0
+    excluded_target_circulation_l1: float = 0.0
 
     @property
     def n_total(self) -> int:
@@ -232,6 +239,7 @@ def continuous_handoff(
     fvm_cell_circ=None,
     u_inf=None,
     inside_mesh_at_node=None,
+    excluded_at_node=None,
     ramp_width: float | None = None,
     dead_zone: float = 0.0,
     buffer_length: float = 0.0,
@@ -268,6 +276,10 @@ def continuous_handoff(
     inside_mesh_at_node : callable ``grid_pos -> bool (M,)`` or None
         Mask of nodes that have FVM data (inside the mesh, outside the body).
         Nodes outside are forced η = 0 (pure Lagrangian).
+    excluded_at_node : callable ``positions -> bool (M,)`` or None
+        Exact physical-solid mask.  Unlike ``inside_mesh_at_node=False``, which
+        merely selects the Lagrangian representation, excluded positions are
+        removed from both representations and can never become particles.
     ramp_width : float
         Width of the η cosine ramp.  Defaults to ``2·dead_zone`` or ``4h``.
     dead_zone : float
@@ -319,11 +331,35 @@ def continuous_handoff(
     lo_lat = lo_active - guard
     hi_lat = hi_active + guard
 
+    # When the FVM cell centres themselves form an h-lattice (the native cube
+    # case), preserve that phase exactly.  The previous origin was determined
+    # by the dt-dependent buffer length; for dt=0.075 and h=0.05 this shifted
+    # the remesh lattice by h/4.  M4' is interpolating only at integer offsets,
+    # so the shift spread every wall-adjacent FVM circulation over the solid
+    # before the body mask could act.
+    if fvm_cell_pos is not None and len(fvm_cell_pos) > 0:
+        source_pos = np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3)
+        anchor = source_pos[0]
+        q = (source_pos - anchor) / float(h)
+        lattice_residual = np.max(np.abs(q - np.rint(q)), axis=0)
+        aligned_axes = lattice_residual < 1e-7
+        if np.any(aligned_axes):
+            shift = np.floor((lo_lat - anchor) / float(h))
+            lo_aligned = anchor + shift * float(h)
+            lo_lat[aligned_axes] = lo_aligned[aligned_axes]
+
+    excluded_input = np.zeros(n, dtype=bool)
+    if excluded_at_node is not None and n > 0:
+        excluded_input = np.asarray(excluded_at_node(pos), dtype=bool).reshape(-1)
+        if excluded_input.shape != (n,):
+            raise ValueError(f"excluded_at_node returned {excluded_input.shape}, expected ({n},)")
+    valid_input = ~excluded_input
+    excluded_input_l1 = float(np.linalg.norm(circ[excluded_input], axis=1).sum())
     if n > 0:
-        in_region = np.all((pos >= lo_active) & (pos <= hi_active), axis=1)
+        in_region = valid_input & np.all((pos >= lo_active) & (pos <= hi_active), axis=1)
     else:
         in_region = np.zeros(0, dtype=bool)
-    free_mask = ~in_region
+    free_mask = valid_input & ~in_region
 
     shape = (
         int(np.ceil((hi_lat[0] - lo_lat[0]) / h)) + 1,
@@ -333,6 +369,16 @@ def continuous_handoff(
 
     # ── P2M: conservative M4′ scatter of the in-region wake onto the lattice ──
     grid_pos, grid_circ = remesh_to_grid(pos[in_region], circ[in_region], lo_lat, h, shape)
+
+    excluded_grid = np.zeros(len(grid_pos), dtype=bool)
+    if excluded_at_node is not None:
+        excluded_grid = np.asarray(excluded_at_node(grid_pos), dtype=bool).reshape(-1)
+        if excluded_grid.shape != (len(grid_pos),):
+            raise ValueError(
+                f"excluded_at_node returned {excluded_grid.shape}, expected ({len(grid_pos)},)"
+            )
+    excluded_remesh_l1 = float(np.linalg.norm(grid_circ[excluded_grid], axis=1).sum())
+    grid_circ[excluded_grid] = 0.0
 
     # ── η partition of unity (FVM authority) ─────────────────────────────────
     if eta_fn is not None:
@@ -352,6 +398,11 @@ def continuous_handoff(
         )
     elif omega_at_node is not None:
         target = np.asarray(omega_at_node(grid_pos), dtype=np.float64).reshape(-1, 3) * (h**3)
+
+    excluded_target_l1 = 0.0
+    if target is not None and excluded_grid.any():
+        excluded_target_l1 = float(np.linalg.norm(target[excluded_grid], axis=1).sum())
+        target[excluded_grid] = 0.0
 
     # ── Blend toward the FVM target where η > 0 (under-relaxed by α) ──────────
     ok = None
@@ -395,10 +446,15 @@ def continuous_handoff(
             relax=strength_correction_relax,
         )
 
+    # Deconvolution and remeshing have non-compact physical kernels near a
+    # wall.  Re-assert the exact solid mask after every correction so no
+    # particle centre can be regenerated inside the body.
+    grid_blended[excluded_grid] = 0.0
+
     # ── Conservative prune: drop weak nodes, redistribute their moments ──────
     target_inv = _invariants(grid_pos, grid_blended)
     mag = np.linalg.norm(grid_blended, axis=1)
-    keep = mag >= threshold_abs
+    keep = (mag >= threshold_abs) & ~excluded_grid
     new_pos = grid_pos[keep]
     new_circ = grid_blended[keep]
 
@@ -470,11 +526,15 @@ def continuous_handoff(
         n_remesh_in=int(in_region.sum()),
         n_remesh_out=int(len(new_pos)),
         n_free=int(free_mask.sum()),
+        n_excluded=int(excluded_input.sum()),
         cfl=cfl,
         conservation_drift=drift,
         flux_ratio=flux_ratio,
         strength_corr_residual_pre=corr_pre,
         strength_corr_residual_post=corr_post,
+        excluded_input_circulation_l1=excluded_input_l1,
+        excluded_remesh_circulation_l1=excluded_remesh_l1,
+        excluded_target_circulation_l1=excluded_target_l1,
     )
 
 
@@ -539,6 +599,7 @@ class ContinuousOverlapInjector:
         self._cell_tree = None
         self._cell_centers: np.ndarray | None = None
         self._cell_volumes: np.ndarray | None = None
+        self._body_bounds: np.ndarray | None = None
         self.step = 0
 
     # ── setup ────────────────────────────────────────────────────────────────
@@ -552,6 +613,24 @@ class ContinuousOverlapInjector:
         # inject() is only called on master, so the None tree is never queried.
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
+
+        # For the native cube/box geometry the same exact bounds that carve
+        # the FVM mesh also define the VPM exclusion region.  A nearest-cell
+        # query cannot serve this purpose: it deliberately marks a tolerance
+        # shell inside the hole as data-less Lagrangian space, allowing old
+        # solid particles to survive forever.
+        try:
+            from source.coupler.core.helpers.fvm_backend import _body_hole_box
+
+            body = _body_hole_box(self.config)
+        except ValueError:
+            body = None
+            logger.warning(
+                "[Handoff] body geometry is not an axis-aligned box; no exact "
+                "particle exclusion mask is available from CouplerSetup.surface"
+            )
+        if body is not None:
+            self._body_bounds = np.asarray(body, dtype=np.float64)
 
         l_buf = self.buffer_length
         logger.info(
@@ -623,6 +702,16 @@ class ContinuousOverlapInjector:
             d, _ = tree.query(grid_pos)
             return d < 1.5 * h
 
+        def excluded_at_node(grid_pos):
+            if self._body_bounds is None:
+                return np.zeros(len(grid_pos), dtype=bool)
+            b = self._body_bounds
+            lo_body = b[[0, 2, 4]]
+            hi_body = b[[1, 3, 5]]
+            # The open interior is solid.  Nodes exactly on the surface may
+            # carry a boundary vortex sheet and are therefore retained.
+            return np.all((grid_pos > lo_body) & (grid_pos < hi_body), axis=1)
+
         res = continuous_handoff(
             pos,
             circ,
@@ -632,6 +721,7 @@ class ContinuousOverlapInjector:
             fvm_cell_circ=cell_circ[in_bbox],
             u_inf=self.config.U_inf,
             inside_mesh_at_node=inside_mesh_at_node,
+            excluded_at_node=excluded_at_node,
             ramp_width=self.ramp_width,
             dead_zone=self.dead_zone,
             buffer_length=self.buffer_length,
@@ -681,15 +771,28 @@ class ContinuousOverlapInjector:
                 )
 
         logger.info(
-            "[Handoff step=%d] in=%d → out=%d  free=%d  CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",
+            "[Handoff step=%d] in=%d → out=%d  free=%d  solid_removed=%d  "
+            "CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",
             self.step,
             res.n_remesh_in,
             res.n_remesh_out,
             res.n_free,
+            res.n_excluded,
             res.cfl,
             res.conservation_drift.get("circulation_rel", 0.0),
             res.flux_ratio,
         )
+        if (
+            res.excluded_input_circulation_l1 > 0.0
+            or res.excluded_remesh_circulation_l1 > 0.0
+            or res.excluded_target_circulation_l1 > 0.0
+        ):
+            logger.info(
+                "     [Body mask] removed Σ|Γ|: input=%.3e  remesh=%.3e  target=%.3e",
+                res.excluded_input_circulation_l1,
+                res.excluded_remesh_circulation_l1,
+                res.excluded_target_circulation_l1,
+            )
         if self.strength_corr_iters > 0:
             logger.info(
                 "     [Beale] mollification residual: %.1f%% → %.1f%%  (%d iters, λ=%.2f)",
