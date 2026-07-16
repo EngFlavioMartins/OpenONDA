@@ -105,6 +105,7 @@ data/
 raw/
 samples/
 postProcessing/
+/artifacts/
 
 # Log files
 log.*

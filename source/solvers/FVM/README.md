@@ -1,8 +1,8 @@
 # OpenONDA finite-volume solver
 
 This package provides a static-mesh, constant-density incompressible
-SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. It is an R3
-candidate for the configurations listed in `capabilities.json`; configurations
+SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. It is qualified at
+R3 for the configurations listed in `capabilities.json`; configurations
 outside that matrix fail during setup or remain explicitly experimental.
 
 ## Public API

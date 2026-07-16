@@ -34,15 +34,15 @@ run directly instead: `python cube_setup.py` (a full run) or
 |------|----------|
 | `coupler.log` | per-step donor BC, flux residual, fringe and injection diagnostics |
 | `vpm_solution.log` | captured solver output (FVM + VPM; see note below) |
-| `ibm_forces_history.csv` | time, Cd, Cl, marker slip for the cube (every FVM step) |
+| `forces_history.csv` | wall-integrated pressure, viscous, and total cube force |
 | `samples/flow_integrals.csv` | VPM global diagnostics (energy, enstrophy, particles) |
 | `coupled_*_*.vtu` / `.pvd` | FVM snapshots (U, p, vorticity), in lock-step with VPM backups |
 | `vpm_vpm_solution_*.h5` / `.xdmf` | VPM particle backups |
 
 ## Notes
 
-- Resolution is `FVM_SPACING = VPM_SPACING = 0.0625`: a 48³ box minus the 16³
-  cube hole = 106,496 cells. The spacing must put BOTH the box faces (±1.5)
+- Resolution is `FVM_SPACING = VPM_SPACING = 0.05`: a 60³ box minus the 20³
+  cube hole = 208,000 cells. The spacing must put both the box faces (±1.5)
   and the cube faces (±0.5) exactly on mesh planes (i.e. it must divide 0.5:
   0.1, 0.0625, 0.05, …) — the mesh generator refuses misaligned bodies.
   Refine `FVM_SPACING`/`VPM_SPACING` together; the per-step cost grows with
@@ -51,8 +51,9 @@ run directly instead: `python cube_setup.py` (a full run) or
   same one the OFW/cfMesh case consumes, so setups translate between the two
   backends unchanged.
 - The FVM uses `bicgstab` momentum + AMG (pyamg) pressure; install the `fvm`
-  extra (`pip install -e '.[fvm]'`) so pyamg is present, or it falls back to a
-  slower Jacobi-CG pressure solve.
+  extra (`pip install -e '.[fvm]'`) so PyAMG is present. Missing or failed
+  configured solvers abort unless an explicit fallback policy is selected.
 - `fvm.log`/`vpm.log` stay empty in coupled runs — the VPM's own logging
   captures process stdout, so all solver output lands in `vpm_solution.log`.
-- Restart is not yet supported with `backend="fvm"`.
+- Coupled native-FVM checkpoints restore both solvers and donor history for
+  one-rank runs. Partitioned coupled restart remains unsupported.

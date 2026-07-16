@@ -18,7 +18,7 @@ ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
 
 | Requirement | Version tested |
 |---|---|
-| OpenFOAM | v2506 (OpenCFD) |
+| OpenFOAM | optional; OFW backend only |
 | Python | 3.13 |
 | Cython | >= 0.29 |
 | NumPy | >= 1.24 |
@@ -26,11 +26,11 @@ ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
 | Taichi | 1.7.4 (required for VPM) |
 | GCC / Clang | compatible with your OpenFOAM installation |
 
-> OpenFOAM must be installed and its environment sourced before using the OFW or FVM solvers.
-> Typical source command: `source /usr/lib/openfoam/openfoam2506/etc/bashrc`
+> The native Python FVM and VPM solvers do not require OpenFOAM. The separate
+> OFW backend requires a supported Ubuntu/OpenFOAM installation.
 
 Helper install scripts for a fresh machine live in [`scripts/install/`](scripts/install/):
-`install_anaconda.sh`, `install_openfoam.sh` (OpenFOAM v2506),
+`install_anaconda.sh`, `install_openfoam.sh` (optional OFW dependency),
 `install_vulkan_sdk.sh` (GPU backend for VPM) and `install_paraview.sh`.
 
 ---
@@ -57,13 +57,13 @@ Or install all Python dependencies at once into an existing env:
 pip install -e ".[full]"
 ```
 
-### 3. Source OpenFOAM (required for FVM/OFW)
+### 3. Optional: source OpenFOAM for OFW
 
 ```bash
-source /usr/lib/openfoam/openfoam2506/etc/bashrc
+source /usr/lib/openfoam/openfoam2512/etc/bashrc
 ```
 
-### 4. Build the native solver extension
+### 4. Optional: build the OFW extension
 
 ```bash
 scripts/install/build_solvers.sh
@@ -71,8 +71,8 @@ scripts/install/build_solvers.sh
 
 This (re)compiles the **OFW** solver — the Cython/C++ extension
 (`source/solvers/OFW/fvm_solver*.so`) that links against OpenFOAM. It is the
-only compiled component: the **VPM** solver is pure Python + Taichi (JIT-compiled
-on the GPU at run time) and the **FVM-VPM coupler** is pure Python.
+only compiled component. The native **FVM** solver and **FVM-VPM coupler** are
+pure Python; **VPM** uses Python and Taichi JIT kernels.
 
 Re-run this script whenever you change anything under `source/solvers/OFW/`,
 switch OpenFOAM versions, or pull changes that touch the OFW sources — a stale
