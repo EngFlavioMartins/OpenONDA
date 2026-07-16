@@ -18,9 +18,11 @@ and ``ρ f`` enters the momentum equation through the existing
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import MatrixRankWarning, spsolve
 from scipy.spatial import cKDTree
 
 from .body import ImmersedBody
@@ -50,7 +52,7 @@ def _detect_empty_axis(mesh_data, geo_data) -> int | None:
     the extruded (non-solved) direction.
     """
     for b in mesh_data["boundary"]:
-        if b.get("type") == "empty" or b.get("bc_type_U") == "empty":
+        if b.get("bc_type_U") == "empty":
             sf = geo_data["face_sf"][b["startFace"] : b["startFace"] + b["nFaces"]]
             n = np.abs(sf).sum(axis=0)
             return int(np.argmax(n))
@@ -81,6 +83,8 @@ class IBMForcing:
             bodies = [bodies]
         if not bodies:
             raise ValueError("IBMForcing requires at least one ImmersedBody")
+        if h is not None and (not np.isfinite(h) or h <= 0.0):
+            raise ValueError("IBM grid spacing h must be finite and positive")
         self.bodies = list(bodies)
         self.mesh_data = mesh_data
         self.geo_data = geo_data
@@ -124,6 +128,8 @@ class IBMForcing:
             _, nearest = tree.query(self.X, k=1)
             h = float(np.median(dv[nearest] ** (1.0 / ndim)))
         self.h = float(h)
+        if not np.isfinite(self.h) or self.h <= 0.0:
+            raise ValueError("Inferred IBM grid spacing is not finite and positive")
 
         # --- Support search + kernel evaluation --------------------------- #
         # Kernel support is 1.5h per active axis; search a bounding sphere.
@@ -172,8 +178,16 @@ class IBMForcing:
         # Pinelli quadrature: solve A eps = 1 with A_sk = sum_j W[s,j] D[k,j],
         # so that interpolate(spread(F)) ~ F (consistency of the transfer pair).
         A = (self._W @ self._D.T).tocsr()
-        self.eps = spsolve(A.tocsc(), np.ones(ns))
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", category=MatrixRankWarning)
+            self.eps = spsolve(A.tocsc(), np.ones(ns))
+        if not np.all(np.isfinite(self.eps)):
+            raise ValueError("IBM marker quadrature system is singular or ill-conditioned")
         self._quadrature_residual = float(np.abs(A @ self.eps - 1.0).max())
+        if self._quadrature_residual > 1.0e-8:
+            raise ValueError(
+                f"IBM marker quadrature residual {self._quadrature_residual:.3e} exceeds 1e-8"
+            )
 
         # State from the last compute_force call (for force logging).
         self.last_F = np.zeros((ns, 3))

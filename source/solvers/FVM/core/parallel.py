@@ -1,10 +1,4 @@
-"""MPI execution context for the native FVM backend.
-
-The first supported collective mode is ``petsc_replicated``.  Numerical
-operators remain the deterministic NumPy reference on every rank and PETSc
-owns the distributed sparse solve.  A later partitioned mode can implement
-the same small context API without changing PIMPLE sequencing.
-"""
+"""MPI execution context for replicated and partitioned FVM execution."""
 
 from __future__ import annotations
 
@@ -50,6 +44,7 @@ class ParallelContext:
     mpi: Any | None = None
     rank: int = 0
     size: int = 1
+    partition: Any | None = None
 
     @classmethod
     def create(cls, execution, *, comm=None, mpi=None) -> ParallelContext:
@@ -59,18 +54,23 @@ class ParallelContext:
         mode = str(execution.parallel_mode).lower()
         device = str(execution.device).lower()
         precision = str(execution.precision).lower()
+        output_mode = str(execution.output_mode).lower()
 
         unsupported = []
-        if operator != "numpy":
+        if operator not in {"numpy", "numba", "taichi"}:
             unsupported.append(f"operator_backend={operator!r}")
         if linear not in {"scipy", "petsc"}:
             unsupported.append(f"linear_backend={linear!r}")
-        if mode not in {"serial", "petsc_replicated"}:
+        if mode not in {"serial", "petsc_replicated", "petsc_partitioned"}:
             unsupported.append(f"parallel_mode={mode!r}")
         if device != "cpu":
             unsupported.append(f"device={device!r}")
         if precision != "float64":
             unsupported.append(f"precision={precision!r}")
+        if output_mode not in {"synchronous", "threaded"}:
+            unsupported.append(f"output_mode={output_mode!r}")
+        if mode == "petsc_partitioned" and output_mode == "threaded":
+            unsupported.append("output_mode='threaded' with petsc_partitioned")
         if unsupported:
             raise ValueError("Unsupported FVM execution configuration: " + ", ".join(unsupported))
 
@@ -87,7 +87,7 @@ class ParallelContext:
             return cls()
 
         if linear != "petsc":
-            raise ValueError("parallel_mode='petsc_replicated' requires linear_backend='petsc'")
+            raise ValueError(f"parallel_mode={mode!r} requires linear_backend='petsc'")
 
         if comm is None or mpi is None:
             try:
@@ -115,6 +115,21 @@ class ParallelContext:
             ) from error
         return cls(mode=mode, comm=comm, mpi=mpi, rank=rank, size=size)
 
+    def with_partition(self, partition) -> ParallelContext:
+        """Return this communicator context bound to its local mesh partition."""
+        if self.mode != "petsc_partitioned":
+            raise RuntimeError("Cell partitions are valid only in petsc_partitioned mode")
+        if partition.rank != self.rank or partition.size != self.size:
+            raise ValueError("Partition rank/size does not match the communicator")
+        return ParallelContext(
+            mode=self.mode,
+            comm=self.comm,
+            mpi=self.mpi,
+            rank=self.rank,
+            size=self.size,
+            partition=partition,
+        )
+
     @property
     def is_root(self) -> bool:
         return self.rank == 0
@@ -127,6 +142,23 @@ class ParallelContext:
     def owns_replicated_output(self) -> bool:
         """Only rank zero exposes replicated fields to external consumers."""
         return self.is_root
+
+    @property
+    def is_partitioned(self) -> bool:
+        return self.mode == "petsc_partitioned"
+
+    @property
+    def n_owned(self) -> int | None:
+        if self.partition is None:
+            return None
+        return len(self.partition.owned_global_ids)
+
+    def exchange_halo(self, values) -> None:
+        """Update a local owned-plus-halo cell field in place."""
+        if self.is_partitioned:
+            if self.partition is None:
+                raise RuntimeError("Partitioned context has no cell partition")
+            self.partition.exchange_halo(values, self.comm)
 
     def barrier(self) -> None:
         if self.is_parallel:
@@ -146,6 +178,11 @@ class ParallelContext:
         if not self.is_parallel:
             return value
         return self.comm.allreduce(value, op=self.mpi.MAX)
+
+    def global_min(self, value):
+        if not self.is_parallel:
+            return value
+        return self.comm.allreduce(value, op=self.mpi.MIN)
 
     def global_all(self, value: bool) -> bool:
         if not self.is_parallel:

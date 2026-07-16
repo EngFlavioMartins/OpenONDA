@@ -13,15 +13,26 @@ ghosts), so the eddy viscosity is an analytic check rather than a smoke test:
 """
 
 import numpy as np
+import pytest
 
+from source.solvers.FVM.config.types import TurbulenceConfig
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.turbulence import WALE, DynamicSmagorinsky, Sigma, Smagorinsky
+from source.solvers.FVM.turbulence import (
+    WALE,
+    DynamicSmagorinsky,
+    Sigma,
+    Smagorinsky,
+    create_model,
+)
+from source.solvers.FVM.turbulence.les_models import _wale_operator
 
 from ._structured_mesh import structured_box
 
 
 def _field_on_mesh(mesh, geo, fn):
     """Velocity array (interior + boundary ghosts) sampled from analytic fn(x,y,z)."""
+    for patch in mesh["boundary"]:
+        patch["bc_type_U"] = "fixedValue"
     n_elem = mesh["n_elements"]
     n_int = mesh["n_interior_faces"]
     cc, fc = geo["element_centroids"], geo["face_centroids"]
@@ -90,3 +101,28 @@ class TestLESModels:
         nut = self._nut("dyn", _pure_shear)
         assert np.all(np.isfinite(nut)) and np.all(nut >= 0.0)
         assert np.max(np.abs(self._nut("dyn", _uniform))) < 1e-12
+
+    @pytest.mark.parametrize("model", ["smag", "wale", "sigma", "dyn"])
+    def test_nonfinite_velocity_is_not_silently_deactivated(self, model):
+        velocity = _field_on_mesh(self.mesh, self.geo, _uniform)
+        velocity[0, 0] = np.nan
+        with pytest.raises(FloatingPointError, match="non-finite|invalid"):
+            self.models[model].compute_nut(velocity, self.mesh, self.geo)
+
+    @pytest.mark.parametrize(
+        ("config", "attribute"),
+        [(TurbulenceConfig.wale(0.0), "Cw"), (TurbulenceConfig.sigma(0.0), "Csigma")],
+    )
+    def test_explicit_zero_coefficient_is_preserved(self, config, attribute):
+        model = create_model(config, self.mesh, self.geo)
+        assert getattr(model, attribute) == 0.0
+
+
+def test_wale_operator_has_cubic_near_wall_scaling():
+    distance = np.logspace(-5, -2, 16)
+    gradient = np.zeros((len(distance), 3, 3))
+    gradient[:, 0, 1] = 1.0
+    gradient[:, 1, 0] = distance
+    operator = _wale_operator(gradient)
+    slope = np.polyfit(np.log(distance), np.log(operator), 1)[0]
+    assert slope == pytest.approx(3.0, abs=0.02)

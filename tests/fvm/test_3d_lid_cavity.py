@@ -1,14 +1,12 @@
-"""3D lid‑driven cavity flow — regression test (structured hex mesh).
+"""Mesh-refined cubic lid-cavity comparison with published 3D data."""
 
-Top wall (y = H) moves at constant speed; all other walls no‑slip.
-Verifies clockwise primary vortex and physically reasonable centre‑plane
-velocity magnitudes.
-"""
+from __future__ import annotations
+
+import contextlib
+import io
 
 import numpy as np
 import pytest
-
-gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
 from source.solvers.FVM import (
     BoundaryConfig,
@@ -18,105 +16,87 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
 
-L = 1.0
-U_LID = 1.0
-NU = 0.01
-NX, NY, NZ = (20, 20, 3)
+from ._structured_mesh import structured_box
+
+# Albensoeder & Kuhlmann, JCP 206 (2005), 536–558,
+# doi:10.1016/j.jcp.2004.12.024. Coordinates and velocities are normalized by
+# cavity length and lid speed at Re=1000 on the z=0.5 symmetry plane.
+REFERENCE = {
+    "u_min": (-0.2803833, 0.12419),
+    "v_min": (-0.4350186, 0.90957),
+    "v_max": (0.2466511, 0.10913),
+}
 
 
-@pytest.mark.slow
-class Test3DLidDrivenCavity:
-    def test_lid_driven_cavity(self, tmp_path):
-        gmsh.initialize()
-        try:
-            gmsh.model.add("cavity")
-            gmsh.model.occ.addBox(0, 0, 0, L, L, 0.1)
-            gmsh.model.occ.synchronize()
+def _cosine_clustered_cube(level: int) -> tuple[dict, np.ndarray]:
+    mesh = structured_box(level, level, level)
+    nodes = 0.5 * (1.0 - np.cos(np.pi * np.arange(level + 1) / level))
+    for axis in range(3):
+        indices = np.rint(mesh["points"][:, axis] * level).astype(int)
+        mesh["points"][:, axis] = nodes[indices]
+    return mesh, 0.5 * (nodes[:-1] + nodes[1:])
 
-            tol = 1e-6
-            for dim, tag in gmsh.model.getEntities(1):
-                xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
-                dx, dy, dz = xmax - xmin, ymax - ymin, zmax - zmin
-                if dx > tol and dy < tol and dz < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NX)
-                elif dy > tol and dx < tol and dz < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NY)
-                elif dz > tol and dx < tol and dy < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NZ)
 
-            for surf in gmsh.model.getEntities(2):
-                gmsh.model.mesh.setTransfiniteSurface(surf[1])
-                gmsh.model.mesh.setRecombine(surf[0], surf[1])
-            for vol in gmsh.model.getEntities(3):
-                gmsh.model.mesh.setTransfiniteVolume(vol[1])
-
-            gmsh.model.mesh.generate(3)
-
-            tol = 1e-4
-            surfaces = gmsh.model.getEntities(2)
-            lid, walls = [], []
-            y_max = L
-            for dim, tag in surfaces:
-                xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
-                if abs(ymin - y_max) < tol and abs(ymax - y_max) < tol:
-                    lid.append(tag)
-                else:
-                    walls.append(tag)
-
-            gmsh.model.addPhysicalGroup(2, lid, 1, "lid")
-            gmsh.model.addPhysicalGroup(2, walls, 2, "walls")
-
-            imp = GmshImporter()
-            mesh = imp.get_mesh_data()
-        finally:
-            gmsh.finalize()
-
-        config = FVMConfig(
-            case_name="cavity",
-            time=TimeConfig.transient(dt=0.01, duration=2.0, write_interval=200),
-            solver=SolverParams.pimple(
-                n_correctors=2,
-                n_outer=1,
-                linear_solver="spsolve",
-                convection_scheme="upwind",
+def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
+    mesh, coordinates = _cosine_clustered_cube(level)
+    params = SolverParams.simple(alpha_u=0.7, alpha_p=0.3, linear_solver="spsolve")
+    params.convection_scheme = "limitedLinear"
+    config = FVMConfig(
+        case_name=f"cubic-cavity-{level}",
+        time=TimeConfig.transient(dt=0.01, duration=50.0, write_interval=10**9),
+        solver=params,
+        transport=TransportConfig(density=1.0, nu=1.0e-3),
+        boundaries=[
+            BoundaryConfig.wall("xmin"),
+            BoundaryConfig.wall("xmax"),
+            BoundaryConfig.wall("ymin"),
+            BoundaryConfig(
+                "ymax",
+                type_U="fixedValue",
+                value_U=[1.0, 0.0, 0.0],
+                type_p="zeroGradient",
             ),
-            transport=TransportConfig(density=1.0, nu=NU),
-            boundaries=[
-                BoundaryConfig(
-                    "lid", type_U="fixedValue", value_U=[U_LID, 0.0, 0.0], type_p="zeroGradient"
-                ),
-                BoundaryConfig.wall("walls"),
-            ],
-            initial_U=[0.0, 0.0, 0.0],
-            initial_p=0.0,
-        )
-
-        solver = Solver(config, str(tmp_path / "case"), mesh_data=mesh)
-        n_steps = int(2.0 / 0.01)
-        for _ in range(n_steps):
+            BoundaryConfig.wall("zmin"),
+            BoundaryConfig.wall("zmax"),
+        ],
+        initial_U=[0.0, 0.0, 0.0],
+        initial_p=0.0,
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = Solver(config, mesh_data=mesh)
+        solver.auto_write = False
+        for _ in range(5000):
             solver.evolve()
+            increment = solver.last_diagnostics.residuals["U_increment"]
+            if increment < 2.0e-5:
+                break
+        else:
+            raise AssertionError(f"cavity level {level} did not reach the nonlinear tolerance")
 
-        U = solver.U[: mesh["n_elements"]]
-        from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+    velocity = solver.U[: mesh["n_elements"]].reshape(level, level, level, 3)
+    middle = [level // 2] if level % 2 else [level // 2 - 1, level // 2]
+    u_line = velocity[np.ix_(middle, np.arange(level), middle, [0])].mean(axis=(0, 2, 3))
+    v_line = velocity[np.ix_(middle, middle, np.arange(level), [1])].mean(axis=(0, 1, 3))
+    samples = np.asarray(
+        [
+            np.interp(REFERENCE["u_min"][1], coordinates, u_line),
+            np.interp(REFERENCE["v_min"][1], coordinates, v_line),
+            np.interp(REFERENCE["v_max"][1], coordinates, v_line),
+        ]
+    )
+    return samples, increment, solver.last_diagnostics.continuity_max
 
-        geo = compute_mesh_geometry(mesh)
-        cents = geo["element_centroids"]
 
-        top = cents[:, 1] > 0.8 * L
-        bot = cents[:, 1] < 0.2 * L
-        if top.sum() > 0 and bot.sum() > 0:
-            Ux_top = np.mean(U[top, 0])
-            Ux_bot = np.mean(U[bot, 0])
-            assert Ux_top > 0, f"Near‑lid flow should be rightward: {Ux_top:.4f}"
-            assert Ux_bot < 0, f"Near‑bottom return flow should be leftward: {Ux_bot:.4f}"
+@pytest.mark.verification
+@pytest.mark.slow
+def test_cubic_lid_cavity_converges_toward_published_centerline_data():
+    reference = np.asarray([REFERENCE[name][0] for name in ("u_min", "v_min", "v_max")])
+    levels = (6, 8, 12)
+    results = [_run_cavity(level) for level in levels]
+    errors = np.asarray([np.linalg.norm(samples - reference) for samples, _, _ in results])
 
-        centre_mask = (
-            (np.abs(cents[:, 0] - 0.5 * L) < 0.15)
-            & (np.abs(cents[:, 1] - 0.5 * L) < 0.15)
-            & (np.abs(cents[:, 2] - 0.05) < 0.03)
-        )
-        if centre_mask.sum() > 0:
-            mag = np.linalg.norm(U[centre_mask], axis=1).mean()
-            assert 0 < mag < U_LID, f"Centre speed {mag:.4f} should be positive and below lid speed"
+    assert np.all(np.diff(errors) < 0.0), f"non-monotone cavity errors: {errors}"
+    assert errors[-1] < 0.22, f"finest cavity reference error is too large: {errors[-1]:.3f}"
+    assert max(result[1] for result in results) < 2.0e-5
+    assert max(result[2] for result in results) < 1.0e-10

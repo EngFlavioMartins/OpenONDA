@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import logging
 import os
@@ -99,7 +100,7 @@ class FVMVPMCoupler:
         self.coupler_setup = coupler_setup
         self.config = coupler_setup
         self._backend = coupler_setup.backend
-        self.case_dir = Path(".").absolute()
+        self.case_dir = Path(coupler_setup.case_dir).expanduser().absolute()
 
         # Injected sub-solvers.  The VPM may be None on non-master ranks.
         self._injected_fvm = fvm_solver
@@ -138,11 +139,11 @@ class FVMVPMCoupler:
         )
         self._omega_global_buffer: np.ndarray | None = None
         self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
+        self.picard_residual_history: list[dict[str, float | int | None]] = []
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
-        # ``coupler_setup.dt`` starts as dt_fvm.  During initialize(), the
-        # injected VPM time step becomes authoritative for dt_vpm and the
-        # integer sub-cycle count is derived from dt_vpm / dt_fvm.
+        # ``coupler_setup.dt`` remains the authoritative FVM sub-step. The VPM
+        # interval is stored separately and never overwrites user configuration.
         self.dt_fvm = float(coupler_setup.dt)
         self.period_multiplier = 1
         self.dt_vpm = self.dt_fvm
@@ -267,16 +268,13 @@ class FVMVPMCoupler:
         if _world_rank() != 0:
             return
         if coupler_setup.backend == "fvm":
-            if restart:
-                raise NotImplementedError(
-                    "restart=True is not yet supported with backend='fvm': the "
-                    "native FVM solver has no state save/load path yet (see "
-                    "the restart gate in the FVM production completion plan). "
-                    "Run fresh, or use backend='ofw' for restarts."
+            solution = Path(coupler_setup.case_dir).absolute() / "solution"
+            solution.mkdir(parents=True, exist_ok=True)
+            if restart and not (solution / "coupled_checkpoint" / "manifest.json").is_file():
+                raise FileNotFoundError(
+                    "Native FVM restart requested, but no coupled checkpoint exists at "
+                    f"{solution / 'coupled_checkpoint'}"
                 )
-            (Path(coupler_setup.case_dir).absolute() / "solution").mkdir(
-                parents=True, exist_ok=True
-            )
             return
         period_multiplier = 1
         if vpm_solver is not None:
@@ -324,11 +322,8 @@ class FVMVPMCoupler:
             "log_period": self.config.log_period,
             "period_multiplier": float(self.period_multiplier),
         }
-        try:
-            out_path = self.solution_dir / "run_metadata.json"
-            out_path.write_text(json.dumps(metadata, indent=2))
-        except Exception:
-            logger.warning("[Init] Failed to write run_metadata.json", exc_info=True)
+        out_path = self.solution_dir / "run_metadata.json"
+        out_path.write_text(json.dumps(metadata, indent=2))
 
     @staticmethod
     def _get_vpm_time_step(vpm) -> float:
@@ -430,11 +425,6 @@ class FVMVPMCoupler:
                     self.period_multiplier, self.dt_fvm, restart=False
                 )
 
-        # Downstream coupling components (injector hand-off buffer, fringe) size
-        # themselves on the inter-hand-off interval = dt_vpm; make cfg.dt report
-        # the coupling step from here on.  The FVM alone uses dt_fvm (above).
-        cfg.dt = self.dt_vpm
-
         # Build injector
         self.injector = ContinuousOverlapInjector(self)
         self.injector.setup(self.ofw)
@@ -456,7 +446,7 @@ class FVMVPMCoupler:
         # Build fringe — all ranks (collective getters + scatter in __init__).
         from source.coupler.core.helpers.fvm_fringe import FringeFields
 
-        self.fringe = FringeFields(cfg, self.vpm, self.ofw)
+        self.fringe = FringeFields(cfg, self.vpm, self.ofw, coupling_dt=self.dt_vpm)
 
         if self._is_master:
             logger.info("[Init] Impulsive start: zero VPM particles.")
@@ -466,7 +456,7 @@ class FVMVPMCoupler:
             self._write_run_metadata()
             print("Initialization complete.\n")
 
-    def run(self, start_step: int = 0) -> None:
+    def run(self, start_step: int = 0, restart_from=None) -> None:
         """Initialize (if not already) and run the coupling loop.
 
         Convenience wrapper = :meth:`initialize` + :meth:`solve`.  Callers who
@@ -476,6 +466,10 @@ class FVMVPMCoupler:
         """
         if self.injector is None:  # not yet initialized
             self.initialize()
+        if restart_from is not None:
+            if start_step:
+                raise ValueError("start_step and restart_from are mutually exclusive")
+            start_step = self.load_state(restart_from)
         self.solve(start_step=start_step)
 
     def solve(self, start_step: int = 0) -> None:
@@ -649,6 +643,9 @@ class FVMVPMCoupler:
             # because Foam::UPstream::barrier is a no-op in the dummy Pstream.
             if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
                 _mpi4py_comm.Barrier()
+
+            if self.config.backup_period > 0 and step % self.config.backup_period == 0:
+                self.save_state(self.solution_dir / "coupled_checkpoint", coupling_step=step)
 
         if self._is_master:
             flush_log()
@@ -990,19 +987,16 @@ class FVMVPMCoupler:
         mode = self.config.donor_bc_mode
         if mode == "mixed":
             if omega_target is None:
-                logger.warning(
-                    "     [FVM] donor_bc_mode='mixed' but omega_target is None — "
-                    "using Dirichlet for this step."
+                raise RuntimeError(
+                    "donor_bc_mode='mixed' requires a vorticity target; refusing to "
+                    "replace the configured Robin condition with Dirichlet"
                 )
-                _set_dirichlet_velocity(u_target)
-                bc_label = "dirichlet"
-            else:
-                self.ofw.set_robin_velocity_boundary_condition(
-                    np.ascontiguousarray(u_target, dtype=np.float64),
-                    np.ascontiguousarray(omega_target, dtype=np.float64),
-                    patch,
-                )
-                bc_label = "mixed (Robin: u_n Dirichlet + ω Neumann)"
+            self.ofw.set_robin_velocity_boundary_condition(
+                np.ascontiguousarray(u_target, dtype=np.float64),
+                np.ascontiguousarray(omega_target, dtype=np.float64),
+                patch,
+            )
+            bc_label = "mixed (Robin: u_n Dirichlet + ω Neumann)"
         else:
             _set_dirichlet_velocity(u_target)
             bc_label = "dirichlet"
@@ -1072,6 +1066,7 @@ class FVMVPMCoupler:
             is_final = sub == N - 1
             if is_final and n_bc > 1:
                 exterior_mask = self._outside_box_mask() if self._is_master else None
+                previous_trace = None
                 for k in range(n_bc):
                     omega_interior = self._get_vorticity_field_buffer()
                     if self._is_master:
@@ -1087,12 +1082,31 @@ class FVMVPMCoupler:
                     else:
                         u_wl = np.zeros_like(face_centers)
                         omega_wl = np.zeros_like(face_centers) if mixed else None
+                    residual = (
+                        None
+                        if previous_trace is None
+                        else float(
+                            np.linalg.norm(u_wl - previous_trace)
+                            / max(np.linalg.norm(u_wl), np.linalg.norm(previous_trace), 1e-30)
+                        )
+                    )
+                    self.picard_residual_history.append(
+                        {"substep": sub + 1, "iteration": k + 1, "residual": residual}
+                    )
+                    previous_trace = u_wl.copy()
+                    converged = (
+                        residual is not None
+                        and getattr(self.config, "bc_coupling_tolerance", None) is not None
+                        and residual <= self.config.bc_coupling_tolerance
+                    )
                     self._fvm_step(
                         patch,
                         u_wl,
-                        advance=(k == n_bc - 1),
+                        advance=(k == n_bc - 1 or converged),
                         omega_target=omega_wl if mixed else None,
                     )
+                    if converged:
+                        break
             else:
                 u_bc = (1.0 - alpha) * u_prev + alpha * u_next
                 u_bc = self._project_to_solenoidal(u_bc, face_normals, face_areas)
@@ -1153,6 +1167,7 @@ class FVMVPMCoupler:
                 elif omega_prev is not None:
                     omega_bc = omega_prev
 
+            previous_trace = None
             for k in range(n_bc):
                 t_w = time.time()
                 omega_interior = self._get_vorticity_field_buffer()
@@ -1164,6 +1179,23 @@ class FVMVPMCoupler:
                 else:
                     u_bc = u_ext
                 t_bs = time.time() - t_bs
+                residual = (
+                    None
+                    if previous_trace is None
+                    else float(
+                        np.linalg.norm(u_bc - previous_trace)
+                        / max(np.linalg.norm(u_bc), np.linalg.norm(previous_trace), 1e-30)
+                    )
+                )
+                self.picard_residual_history.append(
+                    {"substep": sub + 1, "iteration": k + 1, "residual": residual}
+                )
+                previous_trace = u_bc.copy()
+                converged = (
+                    residual is not None
+                    and getattr(self.config, "bc_coupling_tolerance", None) is not None
+                    and residual <= self.config.bc_coupling_tolerance
+                )
                 if self._is_master:
                     logger.info(
                         "     [Sub-cycle] sub=%d/%d it=%d/%d  ω-gather=%.2fs  BS+proj=%.2fs",
@@ -1181,9 +1213,11 @@ class FVMVPMCoupler:
                 self._fvm_step(
                     patch,
                     u_bc,
-                    advance=(k == n_bc - 1),
+                    advance=(k == n_bc - 1 or converged),
                     omega_target=omega_bc if mixed else None,
                 )
+                if converged:
+                    break
 
     # =========================================================
     # ETA (authority weight)
@@ -1204,6 +1238,103 @@ class FVMVPMCoupler:
     # Restart support
     # =========================================================
 
+    def _config_digest(self) -> str:
+        payload = json.dumps(self.config.to_dict(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def save_state(self, directory, *, coupling_step: int | None = None) -> Path:
+        """Write a complete native FVM--VPM checkpoint, committing its manifest last."""
+        if self._backend != "fvm":
+            raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
+        if not self._is_master:
+            return Path(directory)
+        if self.ofw is None or self.vpm is None:
+            raise RuntimeError("Initialize the coupler before saving a checkpoint")
+
+        from source.solvers.VPM.io.backup import BackupSystem
+
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        self.ofw.save_state(target / "fvm.npz")
+        BackupSystem.backup_solver(
+            self.vpm,
+            str(target / "vpm_latest"),
+            time_float32=float(self.vpm.flow_time),
+            verbose=False,
+        )
+
+        donor_tmp = target / "donor_state.npz.tmp"
+        with open(donor_tmp, "wb") as stream:
+            np.savez_compressed(
+                stream,
+                u_present=np.asarray(self._u_bc_prev is not None),
+                omega_present=np.asarray(self._omega_bc_prev is not None),
+                u=np.empty((0, 3)) if self._u_bc_prev is None else self._u_bc_prev,
+                omega=np.empty((0, 3)) if self._omega_bc_prev is None else self._omega_bc_prev,
+            )
+        os.replace(donor_tmp, target / "donor_state.npz")
+
+        inferred_step = int(self.vpm.time_step)
+        step = inferred_step if coupling_step is None else int(coupling_step)
+        manifest = {
+            "format_version": 1,
+            "backend": "fvm",
+            "config_sha256": self._config_digest(),
+            "coupling_step": step,
+            "flow_time": float(self.vpm.flow_time),
+            "fvm_time_step": int(self.ofw.time_step),
+            "vpm_time_step": int(self.vpm.time_step),
+            "period_multiplier": int(self.period_multiplier),
+            "files": ["fvm.npz", "vpm_latest.h5", "donor_state.npz"],
+        }
+        manifest_tmp = target / "manifest.json.tmp"
+        manifest_tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        os.replace(manifest_tmp, target / "manifest.json")
+        return target
+
+    def load_state(self, directory) -> int:
+        """Restore both solvers and donor history from a compatible checkpoint."""
+        if self._backend != "fvm":
+            raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
+        if not self._is_master:
+            raise NotImplementedError("Partitioned coupled restart is not qualified")
+        if self.ofw is None or self.vpm is None:
+            raise RuntimeError("Initialize the coupler before loading a checkpoint")
+
+        target = Path(directory)
+        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("format_version") != 1 or manifest.get("backend") != "fvm":
+            raise ValueError("Unsupported coupled checkpoint format or backend")
+        if manifest.get("config_sha256") != self._config_digest():
+            raise ValueError("Coupled checkpoint configuration does not match this run")
+        missing = [name for name in manifest["files"] if not (target / name).is_file()]
+        if missing:
+            raise ValueError(f"Incomplete coupled checkpoint; missing: {', '.join(missing)}")
+
+        self.ofw.load_state(target / "fvm.npz")
+        self.load_vpm_from_backup(str(target / "vpm_latest.h5"))
+        # The standalone VPM visualization backup stores time as float32; the
+        # coupled manifest retains the authoritative float64 synchronization time.
+        self.vpm.flow_time = float(manifest["flow_time"])
+        with np.load(target / "donor_state.npz", allow_pickle=False) as donor:
+            self._u_bc_prev = donor["u"].copy() if bool(donor["u_present"]) else None
+            self._omega_bc_prev = donor["omega"].copy() if bool(donor["omega_present"]) else None
+
+        expected_fvm_step = int(manifest["vpm_time_step"]) * self.period_multiplier
+        if self.ofw.time_step != expected_fvm_step:
+            raise ValueError(
+                f"Coupled checkpoint time-step mismatch: FVM={self.ofw.time_step}, "
+                f"expected {expected_fvm_step} from VPM={self.vpm.time_step}"
+            )
+        if not np.isclose(self.ofw.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
+            raise ValueError(
+                f"Coupled checkpoint time mismatch: FVM={self.ofw.flow_time}, "
+                f"VPM={self.vpm.flow_time}"
+            )
+        if self.vel_blend is not None:
+            self.vel_blend.update()
+        return int(manifest["coupling_step"])
+
     def load_vpm_from_backup(self, backup_h5_path: str) -> int:
         """Load VPM state from an H5 backup."""
         import h5py
@@ -1213,30 +1344,33 @@ class FVMVPMCoupler:
             flow_time = float(f["solver"].attrs["flow_time"])
             time_step = int(f["solver"].attrs["time_step"])
             p = f["particles"]
-            pos = p["position"][:]
-            circ = p["circulation"][:]
-            vel = p["velocity"][:]
-            rad = p["radius"][:]
-            vol = p["volume"][:]
-            visc = p["viscosity"][:]
-            visc_t = p["viscosity_turbulent"][:]
-            gid = p["group_id"][:]
+            count = int(f["solver"].attrs["number_of_particles"])
+            if count:
+                pos = p["position"][:]
+                circ = p["circulation"][:]
+                vel = p["velocity"][:]
+                rad = p["radius"][:]
+                vol = p["volume"][:]
+                visc = p["viscosity"][:]
+                visc_t = p["viscosity_turbulent"][:]
+                gid = p["group_id"][:]
 
         with self.vpm_redirector:
             self.vpm.remove_particles(remove_all=True)
-            self.vpm.add_vortex_particles(
-                position=pos,
-                velocity=vel,
-                circulation=circ,
-                radius=rad,
-                volume=vol,
-                viscosity=visc,
-                viscosity_turbulent=visc_t,
-                group_id=gid,
-            )
+            if count:
+                self.vpm.add_vortex_particles(
+                    position=pos,
+                    velocity=vel,
+                    circulation=circ,
+                    radius=rad,
+                    volume=vol,
+                    viscosity=visc,
+                    viscosity_turbulent=visc_t,
+                    group_id=gid,
+                )
             self.vpm.flow_time = flow_time
             self.vpm.time_step = time_step
 
-        n = len(pos)
+        n = count
         print(f"[Restart] Loaded {n} particles from backup (t={flow_time:.3f}s, step={time_step})")
         return time_step

@@ -1,5 +1,6 @@
 """Regression tests for fail-fast FVM configuration and field input."""
 
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,11 @@ import pytest
 from source.solvers.FVM import DynamicMeshConfig, FVMConfig, Solver
 from source.solvers.FVM.core.solver import _load_pressure_field, _load_velocity_field
 from source.solvers.FVM.fields.diagnostics import _should_compute_yplus
-from source.solvers.FVM.fields.field_io import parse_boundary_field, parse_internal_field
+from source.solvers.FVM.fields.field_io import (
+    parse_boundary_field,
+    parse_internal_field,
+    write_foam_field,
+)
 
 
 def _write_case_file(path: Path, field_class: str) -> None:
@@ -150,6 +155,25 @@ def test_internal_field_count_is_validated(tmp_path):
     path.write_text("internalField nonuniform List<scalar> 3 (1 2);")
     with pytest.raises(ValueError, match="declares 3 values; expected 2"):
         parse_internal_field(path, "volScalarField", 2)
+
+
+def test_field_writer_does_not_invent_missing_boundary_conditions(tmp_path, hand_built_3d_mesh):
+    mesh = deepcopy(hand_built_3d_mesh)
+    for patch in mesh["boundary"]:
+        for key in tuple(patch):
+            if key.startswith("bc_type"):
+                patch.pop(key)
+    n_total = mesh["n_elements"] + mesh["n_faces"] - mesh["n_interior_faces"]
+    with pytest.raises(ValueError, match="has no condition for field 'U'"):
+        write_foam_field(
+            tmp_path / "U",
+            mesh,
+            {
+                "name": "U",
+                "type": "volVectorField",
+                "phi": np.zeros((n_total, 3)),
+            },
+        )
 
 
 def test_dynamic_mesh_is_explicitly_unsupported(hand_built_3d_mesh, tmp_path):

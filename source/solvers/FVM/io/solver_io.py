@@ -1,11 +1,4 @@
-"""Standardized I/O and Diagnostics for FVM Solver.
-
-Provides tools for writing OpenFOAM-format fields, computing runtime
-diagnostics like forces and Courant numbers, and managing snapshot history.
-
-Author: OpenONDA Team
-Date: January 2026
-"""
+"""OpenFOAM-compatible field output and step diagnostics."""
 
 from dataclasses import asdict
 import json

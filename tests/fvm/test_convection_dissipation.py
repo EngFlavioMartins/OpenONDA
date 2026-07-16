@@ -47,6 +47,7 @@ def _setup():
     U = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
     U[:n_elem] = _tgv(cc[:, 0], cc[:, 1])
     for b in mesh["boundary"]:
+        b["bc_type"] = "fixedValue"
         for j in range(b["nFaces"]):
             fi = b["startFace"] + j
             gi = n_elem + (fi - n_int)

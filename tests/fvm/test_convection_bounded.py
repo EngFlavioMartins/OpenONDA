@@ -9,7 +9,7 @@ from source.solvers.FVM.assemble.matrix_assembly import (
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def conv_data(hand_built_3d_mesh):
     """Pre-compute mesh with uniform U=(1,0,0) for convection tests."""
     mesh = hand_built_3d_mesh

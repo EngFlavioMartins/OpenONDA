@@ -10,43 +10,10 @@ Based on uFVM cavity handling logic.
 
 import numpy as np
 
-
-def is_closed_cavity(boundaries):
-    """
-    Check if the case is a closed cavity (no outlet with fixed pressure).
-
-    A closed cavity has all walls with no pressure outlet, requiring
-    pressure to be fixed at a reference point.
-
-    Args:
-        boundaries: List of boundary patch dictionaries
-
-    Returns:
-        bool: True if closed cavity, False otherwise
-    """
-
-    # Check if any boundary has fixed pressure (outlet)
-    for boundary in boundaries:
-        bc_type = boundary.get("type", "")
-
-        # Common outlet types that fix pressure
-        if bc_type in ["outlet", "fixedPressure", "totalPressure"]:
-            return False
-
-        # Check if it's a pressure boundary
-        if "pressure" in bc_type.lower():
-            return False
-
-        # Check bc_type_p
-        bc_type_p = boundary.get("bc_type_p", "")
-        if bc_type_p in ["fixedValue", "totalPressure", "inletOutlet"]:
-            return False
-
-    # No pressure outlet found - this is a closed cavity
-    return True
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
 
-def needs_pressure_reference(boundaries, n_elements=None):
+def needs_pressure_reference(boundaries):
     """
     Check if the pressure system needs a reference point constraint.
 
@@ -58,20 +25,12 @@ def needs_pressure_reference(boundaries, n_elements=None):
 
     Args:
         boundaries: List of boundary patch dictionaries
-        n_elements: Deprecated and ignored; kept for API compatibility.
-
     Returns:
         bool: True if pressure reference should be applied
     """
     for boundary in boundaries:
-        bc_type_p = boundary.get("bc_type_p", "")
-        bc_type = boundary.get("type", "")
-
-        if bc_type_p in ["fixedValue", "totalPressure", "inletOutlet"] or bc_type in [
-            "outlet",
-            "fixedPressure",
-            "totalPressure",
-        ]:
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        if strategy is BoundaryStrategy.FIXED_VALUE:
             return False
     return True
 

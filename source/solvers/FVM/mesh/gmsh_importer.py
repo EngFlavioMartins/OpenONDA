@@ -6,6 +6,14 @@ except ImportError:  # Optional FVM mesh dependency; checked when the importer i
     gmsh = None
 
 
+SUPPORTED_GMSH_CELL_TYPES = {
+    4: "tetrahedron",
+    5: "hexahedron",
+    6: "prism",
+    7: "pyramid",
+}
+
+
 def _find_mesh_dimension(model) -> int:
     """Return the highest mesh dimension containing elements.
 
@@ -261,6 +269,11 @@ class GmshImporter:
 
         # 2. Get Elements
         max_dim = _find_mesh_dimension(model)
+        if max_dim != 3:
+            raise ValueError(
+                f"Unsupported Gmsh mesh dimension {max_dim}; the FVM importer requires "
+                "first-order three-dimensional volume cells"
+            )
         cell_types, cell_tags_list, _ = model.mesh.getElements(dim=max_dim)
 
         cell_type_codes = []
@@ -274,6 +287,12 @@ class GmshImporter:
                 raise ValueError(
                     f"Unsupported high-order Gmsh element {name!r} (type {element_type}, "
                     f"order {order}); the FVM importer accepts first-order cells only"
+                )
+            if int(element_type) not in SUPPORTED_GMSH_CELL_TYPES:
+                raise ValueError(
+                    f"Unsupported Gmsh volume element {name!r} (type {element_type}); "
+                    "supported first-order cell types: tetrahedron (4), hexahedron (5), "
+                    "prism (6), pyramid (7)"
                 )
             cell_type_codes.extend([int(element_type)] * len(tags))
             cell_families.extend([str(name)] * len(tags))
@@ -362,7 +381,13 @@ class GmshImporter:
             "cell_orders": np.asarray(cell_orders, dtype=np.int8),
             "global_cell_ids": np.asarray(all_cell_tags, dtype=np.int64),
             "global_face_ids": np.arange(len(final_faces), dtype=np.int64),
-            "provenance": {"format": "gmsh", "source": self.source_path},
+            "provenance": {
+                "format": "gmsh",
+                "api_version": getattr(gmsh, "__version__", "unknown"),
+                "mesh_file_version": float(gmsh.option.getNumber("Mesh.MshFileVersion")),
+                "contract": "gmsh-api-first-order-3d-v1",
+                "source": self.source_path,
+            },
         }
 
 

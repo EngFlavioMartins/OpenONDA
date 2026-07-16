@@ -239,6 +239,7 @@ class BoundaryConfig:
     type_nut: str = "calculated"
     value_nut: float = 0.0
     neighbour_patch: str | None = None
+    mesh_type: Literal["patch", "wall", "empty", "cyclic"] | None = None
 
     @staticmethod
     def inlet(name: str, velocity: list[float]) -> "BoundaryConfig":
@@ -298,6 +299,7 @@ class BoundaryConfig:
             type_U="cyclic",
             type_p="cyclic",
             neighbour_patch=neighbour_patch,
+            mesh_type="cyclic",
         )
 
     @staticmethod
@@ -319,6 +321,18 @@ class BoundaryConfig:
             value_U=[0.0, 0.0, 0.0],
             type_p="zeroGradient",
             type_nut="calculated",
+            mesh_type="wall",
+        )
+
+    @staticmethod
+    def slip(name: str) -> "BoundaryConfig":
+        """Create an impermeable, zero-shear boundary."""
+        return BoundaryConfig(
+            name=name,
+            type_U="slip",
+            type_p="zeroGradient",
+            type_nut="zeroGradient",
+            mesh_type="patch",
         )
 
     @staticmethod
@@ -336,6 +350,7 @@ class BoundaryConfig:
             value_U=[0.0, 0.0, 0.0],
             type_p="empty",
             type_nut="zeroGradient",
+            mesh_type="empty",
         )
 
     @staticmethod
@@ -1104,20 +1119,27 @@ class TurbulenceConfig:
 class ExecutionConfig:
     """Execution and sparse-linear-algebra backend selection.
 
-    ``petsc_replicated`` distributes PETSc solves while retaining a complete
-    NumPy mesh and field state on every rank.
+    ``petsc_partitioned`` stores owned cells plus one halo layer per rank and
+    assembles only owned PETSc rows. ``petsc_replicated`` remains available as
+    a compatibility/reference mode.
     """
 
-    operator_backend: Literal["numpy"] = "numpy"
+    operator_backend: Literal["numpy", "numba", "taichi"] = "numpy"
     linear_backend: Literal["scipy", "petsc"] = "scipy"
-    parallel_mode: Literal["serial", "petsc_replicated"] = "serial"
-    device: Literal["cpu"] = "cpu"
+    parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
+    device: Literal["cpu", "cuda", "metal", "vulkan"] = "cpu"
     precision: Literal["float64"] = "float64"
+    output_mode: Literal["synchronous", "threaded"] = "synchronous"
 
     @staticmethod
     def petsc_replicated() -> "ExecutionConfig":
         """Use replicated NumPy assembly with collective PETSc solves."""
         return ExecutionConfig(linear_backend="petsc", parallel_mode="petsc_replicated")
+
+    @staticmethod
+    def petsc_partitioned() -> "ExecutionConfig":
+        """Use owned-plus-halo fields and owned-row PETSc solves."""
+        return ExecutionConfig(linear_backend="petsc", parallel_mode="petsc_partitioned")
 
 
 @dataclass

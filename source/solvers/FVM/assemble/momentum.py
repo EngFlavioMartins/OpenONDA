@@ -19,6 +19,7 @@ from dataclasses import replace
 import numpy as np
 
 from ..fields import gradients
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from . import convection, diffusion, matrix_assembly
 
 
@@ -114,19 +115,24 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     b_elem_start = start_face - mesh_data["n_interior_faces"]
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
     bc_type = boundary.get("bc_type_U")
+    strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
 
-    if bc_type in ("zeroGradient", "inletOutlet", "directionMixed"):
+    if strategy in (
+        BoundaryStrategy.ZERO_GRADIENT,
+        BoundaryStrategy.INLET_OUTLET,
+        BoundaryStrategy.DIRECTION_MIXED,
+    ):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[owners_b]
-    elif bc_type == "freestream":
+    elif strategy is BoundaryStrategy.FREESTREAM:
         # The boundary ghost was switched using the latest face flux before
         # momentum assembly; preserve that per-face inflow/outflow state.
-        pass
-    elif bc_type == "cyclic":
+        return
+    elif strategy is BoundaryStrategy.CYCLIC:
         paired = mesh_data["boundary_neighbours"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[paired]
-    elif bc_type in ("fixedValue", "noSlip"):
-        if bc_type == "noSlip":
+    elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
+        if strategy is BoundaryStrategy.NO_SLIP:
             U_star[b_elem_indices] = [0.0, 0.0, 0.0]
         elif boundary.get("value_U_field") is not None:
             U_star[b_elem_indices] = boundary["value_U_field"]
@@ -136,15 +142,14 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
             )
-    elif bc_type in ("empty", "slip", "symmetry"):
+    elif strategy in (
+        BoundaryStrategy.EMPTY,
+        BoundaryStrategy.SLIP,
+        BoundaryStrategy.SYMMETRY,
+    ):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         face_sf = geo_data["face_sf"][start_face : start_face + n_faces]
         _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf)
-    else:
-        raise ValueError(
-            f"Unsupported momentum velocity boundary condition {bc_type!r} "
-            f"on patch {boundary.get('name')!r}"
-        )
 
 
 def assemble_momentum_equation(
@@ -163,6 +168,8 @@ def assemble_momentum_equation(
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
+    matrix_workspace=None,
+    operator_backend="numpy",
 ):
     """
     Assemble momentum equation for all three velocity components.
@@ -297,10 +304,15 @@ def assemble_momentum_equation(
         # for x/y/z; only explicit corrections and boundary values differ.
         if spatial_matrix is None:
             spatial_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
-                combined_flux, mesh_data
+                combined_flux,
+                mesh_data,
+                workspace=matrix_workspace,
+                backend=operator_backend,
             )
         A = spatial_matrix.copy()
-        b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, mesh_data)
+        b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
+            combined_flux, mesh_data, backend=operator_backend
+        )
 
         # 5. Add pressure gradient to RHS: -∇p * V
         grad_p_comp = grad_p[:n_elements, i_comp]
@@ -335,7 +347,7 @@ def assemble_momentum_equation(
             "A": A,
             "b": b,
             "H": H,
-            "grad_p_comp": grad_p_comp,  # Store for debug
+            "grad_p_comp": grad_p_comp,
         }
 
     return results
@@ -362,53 +374,19 @@ def solve_momentum_predictor(
     return_diagnostics=False,
     **solver_kwargs,
 ):
-    """Solve momentum equation to get predicted velocity (U*).
+    """Assemble and solve the three momentum predictors.
 
-    Assembles and solves the discretised momentum equation for each
-    velocity component, applies under-relaxation, and enforces boundary
-    conditions on the predicted field.
-
-    Args:
-        U: Current velocity field (n_elements + n_boundary, 3).
-        p: Current pressure field (n_elements + n_boundary,).
-        phi: Mass flow rate field.
-        rho: Density (scalar or array).
-        nu: Kinematic viscosity (scalar or array).
-        mesh_data: Mesh connectivity data.
-        geo_data: Geometric data.
-        boundaries: List of boundary dictionaries.
-        convection_scheme: Convection discretisation scheme
-            (``'upwind'``, ``'central'``, ``'deferred'``, etc.).
-            Defaults to ``'deferred'``.
-        solver: Linear solver method. Defaults to ``'spsolve'``.
-        under_relaxation: Under-relaxation factor for the velocity
-            update (``0 < alpha <= 1``). Defaults to ``0.7``.
-        dt: Time step size. If ``None``, steady-state mode.
-        U_old: Velocity at previous time step
-            (n_elements + n_boundary, 3).
-        U_old_old: Velocity at two time steps ago (BDF2 only).
-        ddt_scheme: Time discretisation scheme (``'euler'`` or
-            ``'backward'``).
-        source_explicit: Explicit volumetric source Su
-            (n_elements, 3). Added to RHS as ``Su * V``.
-        source_implicit: Implicit volumetric source coefficient Sp
-            (n_elements,). Added to diagonal as ``Sp * V``.
-            Must be >= 0.
-        **solver_kwargs: Additional keyword arguments forwarded to the
-            linear solver (e.g., ``momentum_tol``).
-
-    Returns:
-        tuple:
-            - **U_star** (*numpy.ndarray*) -- Predicted velocity field
-              (n_elements + n_boundary, 3).
-            - **A_U** (*numpy.ndarray*) -- Relaxed diagonal coefficients
-              (n_elements, 3), used in the pressure-correction step.
+    Returns the predicted cell-and-boundary velocity and relaxed cell
+    diagonals used by the pressure correction. ``source_explicit`` has shape
+    ``(n_cells, 3)`` and ``source_implicit`` has shape ``(n_cells,)``.
     """
 
     n_elements = mesh_data["n_elements"]
     n_boundary = mesh_data["n_faces"] - mesh_data["n_interior_faces"]
 
     # Assemble momentum equations
+    matrix_workspace = solver_kwargs.pop("matrix_workspace", None)
+    operator_backend = solver_kwargs.pop("operator_backend", "numpy")
     mom_eqs = assemble_momentum_equation(
         U,
         p,
@@ -425,6 +403,8 @@ def solve_momentum_predictor(
         ddt_scheme=ddt_scheme,
         source_explicit=source_explicit,
         source_implicit=source_implicit,
+        matrix_workspace=matrix_workspace,
+        operator_backend=operator_backend,
     )
 
     # Solve for each component
@@ -526,7 +506,11 @@ def solve_momentum_predictor(
             return_info=True,
             **solver_kwargs,
         )
-        final_residual = matrix_assembly.normalized_residual(A_relaxed, U_comp_star, b_relaxed)
+        if parallel_context is not None and parallel_context.is_partitioned:
+            initial_residual = linear_result.initial_residual
+            final_residual = linear_result.final_residual
+        else:
+            final_residual = matrix_assembly.normalized_residual(A_relaxed, U_comp_star, b_relaxed)
         solve_diagnostics[comp_name] = {
             "initial_residual": initial_residual,
             "final_residual": final_residual,
@@ -538,6 +522,9 @@ def solve_momentum_predictor(
         # Return relaxed diagonal coefficients for pressure correction
         # A_U = A_ii / alpha (matching uFVM: DU = volumes/ac where ac is relaxed)
         A_U[:, i_comp] = diag_new
+
+    if parallel_context is not None and parallel_context.is_partitioned:
+        parallel_context.exchange_halo(A_U)
 
     for boundary in boundaries:
         _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements)

@@ -24,10 +24,7 @@ def _detect_2d_mesh(mesh_data: dict) -> bool:
     Returns:
         ``True`` if any boundary patch has type ``"empty"``.
     """
-    for boundary in mesh_data.get("boundary", []):
-        if boundary.get("type") == "empty" or boundary.get("bc_type") == "empty":
-            return True
-    return False
+    return any(boundary.get("bc_type_U") == "empty" for boundary in mesh_data.get("boundary", []))
 
 
 def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
@@ -45,7 +42,7 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
         Mesh thickness (float); ``1.0`` if no empty patch found.
     """
     for boundary in mesh_data.get("boundary", []):
-        if boundary.get("type") == "empty" or boundary.get("bc_type") == "empty":
+        if boundary.get("bc_type_U") == "empty":
             start = boundary["startFace"]
             own = mesh_data["owners"][start]
             face_c = geo_data["face_centroids"][start]
@@ -93,6 +90,8 @@ class Smagorinsky:
     """
 
     def __init__(self, mesh_data, geo_data, Cs=0.17):
+        if not np.isfinite(Cs) or Cs < 0.0:
+            raise ValueError("Smagorinsky coefficient Cs must be finite and non-negative")
         self.Cs = Cs
         self.mesh_data = mesh_data
         self.geo_data = geo_data
@@ -122,8 +121,8 @@ class Smagorinsky:
         Returns:
             nut: numpy array (n_elements,)
         """
-        mesh_data = mesh_data or self.mesh_data
-        geo_data = geo_data or self.geo_data
+        mesh_data = self.mesh_data if mesh_data is None else mesh_data
+        geo_data = self.geo_data if geo_data is None else geo_data
         n_elements = mesh_data["n_elements"]
 
         # Compute velocity gradient on elements (returns gradients for interior+boundary elements)
@@ -147,7 +146,7 @@ class Smagorinsky:
 
         # Filter width Delta
         vol = geo_data["element_volumes"]
-        delta = _compute_filter_width(vol, self.mesh_data, geo_data)
+        delta = _compute_filter_width(vol, mesh_data, geo_data)
 
         Cs = self.Cs
         nut = (Cs * delta) ** 2 * S_mag

@@ -107,6 +107,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
                     failure_policy=self.params.get("linear_failure_policy", "raise"),
+                    matrix_workspace=self._momentum_matrix_workspace,
+                    operator_backend=self.params.get("_operator_backend", "numpy"),
                     return_diagnostics=True,
                 )
 
@@ -152,6 +154,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             self.boundaries,
                             alpha_u=alpha_u,
                             pressure_constraint=pressure_constraint,
+                            matrix_workspace=self._pressure_matrix_workspace,
+                            operator_backend=self.params.get("_operator_backend", "numpy"),
                         )
                     )
                     logging.Timer.log("    Pressure Assembly")
@@ -189,7 +193,14 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         return_info=True,
                     )
                     linear_results.append(pressure_result)
-                    pressure_final_residual = matrix_assembly.normalized_residual(A_p, p_prime, b_p)
+                    parallel = self.params.get("_parallel_context")
+                    if parallel is not None and parallel.is_partitioned:
+                        pressure_initial_residual = pressure_result.initial_residual
+                        pressure_final_residual = pressure_result.final_residual
+                    else:
+                        pressure_final_residual = matrix_assembly.normalized_residual(
+                            A_p, p_prime, b_p
+                        )
                     logging.Timer.log("    Pressure Solve")
 
                     logging.Timer.start("    Velocity Correction")
@@ -217,6 +228,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         field_name="p",
                         face_flux=phi,
                     )
+                    if parallel is not None and parallel.is_partitioned:
+                        parallel.exchange_halo(p[:n_elem])
 
             simple_solver._update_velocity_bcs(
                 U_iter,
@@ -230,6 +243,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             )
             # Preserve updated ghost values for the next gradient assembly.
             U[:] = U_iter[:]
+            parallel = self.params.get("_parallel_context")
+            if parallel is not None and parallel.is_partitioned:
+                parallel.exchange_halo(U[:n_elem])
 
             momentum_outer = max(
                 (values["final_residual"] for values in momentum_diagnostics.values()),
@@ -239,7 +255,18 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 phi, self.mesh_data, self.geo_data
             )
             volumes = self.geo_data["element_volumes"]
-            continuity_outer = float(np.max(np.abs(continuity) / (volumes + 1e-30)))
+            parallel = self.params.get("_parallel_context")
+            n_owned = (
+                parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
+            )
+            local_continuity = float(
+                np.max(np.abs(continuity[:n_owned]) / (volumes[:n_owned] + 1e-30))
+            )
+            continuity_outer = (
+                float(parallel.global_max(local_continuity))
+                if parallel is not None and parallel.is_partitioned
+                else local_continuity
+            )
             outer_diagnostics.append(
                 OuterCorrectorDiagnostics(
                     index=outer,
@@ -266,9 +293,14 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             comp: values["final_residual"] for comp, values in momentum_diagnostics.items()
         }
         residual_u = max(momentum_final.values(), default=0.0)
-        increment_u = np.linalg.norm(U[:n_elem] - U_old[:n_elem]) / (
-            np.linalg.norm(U[:n_elem]) + 1e-10
-        )
+        parallel = self.params.get("_parallel_context")
+        n_owned = parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
+        increment_squared = float(np.sum((U[:n_owned] - U_old[:n_owned]) ** 2))
+        velocity_squared = float(np.sum(U[:n_owned] ** 2))
+        if parallel is not None and parallel.is_partitioned:
+            increment_squared = parallel.global_sum(increment_squared)
+            velocity_squared = parallel.global_sum(velocity_squared)
+        increment_u = np.sqrt(increment_squared) / (np.sqrt(velocity_squared) + 1e-10)
 
         residuals = {
             "p": pressure_final_residual,

@@ -1,5 +1,6 @@
 """Fast-fail validation of scheme / turbulence-model names in the config."""
 
+import numpy as np
 import pytest
 
 from source.solvers.FVM.config.types import SolverParams, TurbulenceConfig
@@ -8,6 +9,8 @@ from source.solvers.FVM.schemes import (
     validate_solver_params,
     validate_turbulence,
 )
+from source.solvers.FVM.schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
 
 
 def test_default_and_factory_params_are_valid():
@@ -83,6 +86,22 @@ def test_unsupported_boundary_condition_rejected():
     ]
     with pytest.raises(ValueError, match="waveTransmissive"):
         validate_boundary_conditions(boundaries)
+
+
+def test_registry_resolves_every_claimed_operator_to_a_strategy():
+    operators = ("gradient", "convection", "diffusion", "pressure", "flux", "ghost", "diagnostics")
+    for field in ("U", "p"):
+        for name in BOUNDARIES.names_for(field):
+            for operator in operators:
+                assert isinstance(BOUNDARIES.strategy(name, field, operator), BoundaryStrategy)
+
+
+def test_direct_pressure_update_cannot_fall_back_for_unknown_bc(hand_built_3d_mesh):
+    mesh = hand_built_3d_mesh
+    boundaries = [dict(patch, bc_type_p="typoGradient") for patch in mesh["boundary"]]
+    n_total = mesh["n_elements"] + mesh["n_faces"] - mesh["n_interior_faces"]
+    with pytest.raises(ValueError, match="typoGradient.*ghost for p"):
+        update_scalar_boundaries(np.zeros(n_total), mesh, boundaries, field_name="p")
 
 
 def test_turbulence_models():

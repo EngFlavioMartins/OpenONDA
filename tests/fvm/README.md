@@ -6,12 +6,13 @@ Run the serial reference suite in the canonical environment with:
 conda run -n OpenONDA pytest -q tests/fvm tests/coupler/test_fvm_backend.py
 ```
 
-Run the replicated PETSc collective checks separately so every test process is
-launched by MPI:
+Run the PETSc checks separately at both qualified communicator sizes:
 
 ```bash
 conda run -n OpenONDA mpiexec -n 2 \
-  /opt/anaconda3/envs/OpenONDA/bin/python -m pytest -q tests/fvm/test_petsc_parallel.py
+  python -m pytest -q tests/fvm/test_petsc_parallel.py
+conda run -n OpenONDA mpiexec -n 4 \
+  python -m pytest -q tests/fvm/test_petsc_parallel.py
 ```
 
 Unit tests cover operators, configuration, parsers, and failure contracts.
@@ -37,3 +38,29 @@ nonlinear/operator time with host and memory metadata:
 conda run -n OpenONDA python scripts/benchmarks/benchmark_fvm.py \
   --sizes 10000 100000 --output artifacts/fvm-benchmark.json
 ```
+
+For the declared 1M-cell memory qualification, the benchmark automatically
+keeps the frozen direct-solver configuration through 100k cells and switches to
+BiCGSTAB/AMG above that size:
+
+```bash
+conda run -n OpenONDA python scripts/benchmarks/benchmark_fvm.py \
+  --sizes 1000000 --output artifacts/fvm-benchmark-1m.json
+```
+
+The 2026-07-15 macOS arm64 run completed one full 1M-cell PIMPLE step in
+65.3 s with 3.62 GB peak RSS and a maximum continuity defect of
+`1.11e-11`. The exact host and solver split are stored in
+`docs/benchmarks/fvm-serial-baseline-macos-arm64.json`.
+
+The partitioned weak-scaling benchmark is launched once per rank count:
+
+```bash
+mpiexec -n 4 python scripts/benchmarks/benchmark_fvm_mpi.py \
+  --cells-per-rank 512 --output artifacts/fvm-mpi-4.json
+```
+
+The measured 1/2/4/8-rank report and four-rank support limit are stored in
+`docs/benchmarks/fvm-mpi-weak-scaling-macos-arm64.json`. Backend timing and the
+decision to treat Numba/Taichi CPU as parity-only are recorded in
+`docs/benchmarks/fvm-backend-10k-macos-arm64.json`.

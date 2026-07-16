@@ -12,6 +12,8 @@ Converted from uFVM cfdAssembleDiffusionTerm.m
 
 import numpy as np
 
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+
 
 def assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data):
     """
@@ -214,14 +216,22 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
 
     # Assemble boundary faces
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type", "zeroGradient")
-        if bc_type in ("empty", "slip", "symmetry") or boundary.get("type") == "empty":
+        bc_type = boundary.get("bc_type")
+        if boundary.get("bc_type_U") is not None:
+            strategy = BOUNDARIES.strategy(boundary["bc_type_U"], "U", "diffusion")
+        else:
+            strategy = BOUNDARIES.strategy(bc_type, "scalar", "diffusion")
+        if strategy in (
+            BoundaryStrategy.EMPTY,
+            BoundaryStrategy.SLIP,
+            BoundaryStrategy.SYMMETRY,
+        ):
             # Empty/slip/symmetry: zero diffusive flux through the plane (the
             # ghost value mirrors the tangential velocity, so the face-normal
             # gradient vanishes).
             continue
 
-        elif bc_type == "cyclic":
+        elif strategy is BoundaryStrategy.CYCLIC:
             start = boundary["startFace"]
             indices = np.arange(start, start + boundary["nFaces"])
             owners_b = mesh_data["owners"][indices]
@@ -250,12 +260,16 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
                 coefficient * phi[owners_b] - coefficient * phi[neighbours_b] + flux_vf[indices]
             )
 
-        elif bc_type in ["fixedValue", "Dirichlet", "noSlip", "directionMixed"]:
+        elif strategy in (
+            BoundaryStrategy.FIXED_VALUE,
+            BoundaryStrategy.NO_SLIP,
+            BoundaryStrategy.DIRECTION_MIXED,
+        ):
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 phi, gamma, boundary, mesh_data, geo_data
             )
 
-            if bc_type == "noSlip":
+            if strategy is BoundaryStrategy.NO_SLIP:
                 # Enforce the mathematical value independently of ghost state.
                 indices = b_fluxes["face_indices"]
                 owners_b = mesh_data["owners"][indices]
@@ -268,7 +282,7 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             flux_vf[indices] = b_fluxes["flux_vf"]
             flux_tf[indices] = b_fluxes["flux_tf"]
 
-        elif bc_type in {"inletOutlet", "freestream"}:
+        elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
             # Diffusion is Dirichlet only on reverse-flow/inflow faces; it is
             # zero-gradient on outflow.  Without a signed face flux, retain the
             # conservative zero-gradient behavior.
@@ -284,11 +298,11 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             flux_vf[indices] = np.where(inflow, b_fluxes["flux_vf"], 0.0)
             flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
 
-        elif bc_type == "zeroGradient":
+        elif strategy is BoundaryStrategy.ZERO_GRADIENT:
             # Zero gradient: no flux contribution
-            pass
+            continue
 
         else:
-            raise ValueError(f"Unsupported diffusion boundary condition: {bc_type!r}")
+            raise RuntimeError(f"Unhandled diffusion boundary strategy {strategy!r}")
 
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}

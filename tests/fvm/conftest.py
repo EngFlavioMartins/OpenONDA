@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def hand_built_3d_mesh():
     points = np.array(
         [
@@ -151,7 +151,7 @@ def hand_built_3d_mesh():
     return mesh_data
 
 
-@pytest.fixture(scope="session", params=[0.5, 0.25])
+@pytest.fixture(params=[0.5, 0.25])
 def gmsh_unit_cube(request):
     gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
@@ -195,15 +195,16 @@ def cavity_mesh_3d(n):
 
 
 _INTEGRATION_MODULES = {
-    "test_3d_cube_flow.py",
     "test_3d_lid_cavity.py",
     "test_3d_poiseuille.py",
     "test_bdf2_integration.py",
     "test_empty_bc.py",
     "test_ibm.py",
+    "test_openfoam_force_reference.py",
     "test_pimple_nonorthogonal.py",
     "test_restart_and_diagnostics.py",
-    "test_validation_cube.py",
+    "test_validation_abc_flow.py",
+    "test_validation_les_decay.py",
     "test_validation_taylor_green.py",
 }
 _PARALLEL_MODULES = {"test_parallel_execution.py", "test_petsc_parallel.py"}

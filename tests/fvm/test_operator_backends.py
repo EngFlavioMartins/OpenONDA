@@ -1,0 +1,124 @@
+"""Parity gates for typed field state and accelerated CPU assembly."""
+
+from __future__ import annotations
+
+import contextlib
+import io
+
+import numpy as np
+
+from source.solvers.FVM import (
+    BoundaryConfig,
+    ExecutionConfig,
+    FieldState,
+    FVMConfig,
+    Solver,
+    SolverParams,
+    TimeConfig,
+    TransportConfig,
+)
+from source.solvers.FVM.assemble.matrix_assembly import MatrixAssemblyWorkspace
+from source.solvers.FVM.core.operators import (
+    DiscreteOperators,
+    create_discrete_operators,
+)
+
+from ._structured_mesh import structured_box
+
+
+def test_field_state_normalizes_layout_and_copies_independently():
+    state = FieldState(np.zeros((4, 3)), np.zeros(4), np.zeros(6))
+    checkpoint = state.copy()
+    state.velocity[0, 0] = 1.0
+    assert state.velocity.flags.c_contiguous
+    assert checkpoint.velocity[0, 0] == 0.0
+
+
+def test_numba_assembly_matches_numpy(hand_built_3d_mesh):
+    mesh = hand_built_3d_mesh
+    n_faces = mesh["n_faces"]
+    flux = {
+        "flux_cf": np.linspace(0.5, 1.5, n_faces),
+        "flux_ff": np.linspace(-1.0, -0.2, n_faces),
+        "flux_vf": np.sin(np.arange(n_faces, dtype=np.float64)),
+    }
+    numpy_ops = create_discrete_operators("numpy")
+    numba_ops = create_discrete_operators("numba")
+    assert isinstance(numba_ops, DiscreteOperators)
+
+    numpy_matrix = numpy_ops.assemble_matrix(
+        flux, mesh, workspace=MatrixAssemblyWorkspace.create(mesh)
+    )
+    numba_matrix = numba_ops.assemble_matrix(
+        flux, mesh, workspace=MatrixAssemblyWorkspace.create(mesh)
+    )
+    np.testing.assert_array_equal(numba_matrix.toarray(), numpy_matrix.toarray())
+    np.testing.assert_allclose(
+        numba_ops.assemble_rhs(flux, mesh),
+        numpy_ops.assemble_rhs(flux, mesh),
+        rtol=0.0,
+        atol=5e-16,
+    )
+
+
+def _run_steps(tmp_path, backend, steps=1):
+    mesh = structured_box(3, 2, 2)
+    config = FVMConfig(
+        case_name=f"pimple_{backend}",
+        execution=ExecutionConfig(operator_backend=backend),
+        time=TimeConfig.transient(dt=0.01, duration=steps * 0.01, write_interval=100),
+        solver=SolverParams.pimple(
+            n_correctors=1,
+            linear_solver="spsolve",
+            convection_scheme="upwind",
+        ),
+        transport=TransportConfig(density=1.0, nu=0.01),
+        boundaries=[
+            BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            BoundaryConfig.outlet("xmax", 0.0),
+            BoundaryConfig.wall("ymin"),
+            BoundaryConfig.wall("ymax"),
+            BoundaryConfig.wall("zmin"),
+            BoundaryConfig.wall("zmax"),
+        ],
+        initial_U=[1.0, 0.0, 0.0],
+        initial_p=0.0,
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = Solver(config, str(tmp_path / backend), mesh_data=mesh)
+        solver.auto_write = False
+        diagnostics = None
+        for _ in range(steps):
+            diagnostics = solver.solve_pimple(0.01)
+            solver.advance_time()
+    assert diagnostics is not None
+    return solver.U.copy(), solver.p.copy(), solver.phi.copy(), diagnostics
+
+
+def test_numba_one_step_matches_numpy(tmp_path):
+    numpy_result = _run_steps(tmp_path, "numpy")
+    numba_result = _run_steps(tmp_path, "numba")
+    for numba_values, numpy_values in zip(numba_result[:3], numpy_result[:3], strict=True):
+        np.testing.assert_allclose(numba_values, numpy_values, rtol=0.0, atol=1e-13)
+    assert numba_result[3].keys() == numpy_result[3].keys()
+    for key in numpy_result[3]:
+        np.testing.assert_allclose(numba_result[3][key], numpy_result[3][key], atol=1e-13)
+
+
+def test_taichi_cpu_one_step_matches_numpy(tmp_path):
+    numpy_result = _run_steps(tmp_path, "numpy")
+    taichi_result = _run_steps(tmp_path, "taichi")
+    for taichi_values, numpy_values in zip(taichi_result[:3], numpy_result[:3], strict=True):
+        np.testing.assert_allclose(taichi_values, numpy_values, rtol=0.0, atol=1e-12)
+    for key in numpy_result[3]:
+        np.testing.assert_allclose(taichi_result[3][key], numpy_result[3][key], atol=1e-12)
+
+
+def test_accelerated_backends_match_numpy_over_bdf2_history(tmp_path):
+    reference = _run_steps(tmp_path, "numpy", steps=4)
+    for backend in ("numba", "taichi"):
+        actual = _run_steps(tmp_path, backend, steps=4)
+        for values, expected in zip(actual[:3], reference[:3], strict=True):
+            np.testing.assert_allclose(values, expected, rtol=0.0, atol=2e-12)
+        for key in reference[3]:
+            np.testing.assert_allclose(actual[3][key], reference[3][key], atol=2e-12)

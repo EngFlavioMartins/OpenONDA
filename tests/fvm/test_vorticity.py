@@ -34,6 +34,8 @@ class TestVorticity:
         U = np.zeros((n_elem + n_bnd, 3))
         U[:n_elem, 0] = -cents[:, 1]
         U[:n_elem, 1] = cents[:, 0]
+        for boundary in mesh["boundary"]:
+            boundary["bc_type_U"] = "zeroGradient"
 
         # Set ghost cells to analytic velocity at face centroids
         fc = geo["face_centroids"]
@@ -70,6 +72,8 @@ class TestVorticity:
         U = np.zeros((n_elem + n_bnd, 3))
         U[:n_elem, 0] = -cents[:, 1]
         U[:n_elem, 1] = cents[:, 0]
+        for boundary in mesh["boundary"]:
+            boundary["bc_type_U"] = "zeroGradient"
 
         fc = geo["face_centroids"]
         for b in mesh["boundary"]:

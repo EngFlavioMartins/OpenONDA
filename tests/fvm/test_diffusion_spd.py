@@ -10,7 +10,7 @@ from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_ve
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def diff_data(hand_built_3d_mesh):
     """Pre-compute mesh data with zeroGradient BCs for diffusion tests."""
     mesh = hand_built_3d_mesh

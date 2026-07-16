@@ -29,6 +29,15 @@ from ..fields import gradients
 from .smagorinsky import Smagorinsky, _compute_filter_width
 
 
+def _validated_eddy_viscosity(nut: np.ndarray, model: str) -> np.ndarray:
+    """Return a valid non-negative eddy viscosity or fail the run."""
+    if not np.all(np.isfinite(nut)):
+        raise FloatingPointError(f"{model} produced non-finite eddy viscosity")
+    if np.any(nut < 0.0):
+        raise FloatingPointError(f"{model} produced negative eddy viscosity")
+    return nut
+
+
 def _velocity_gradient_tensor(U, mesh_data, geo_data):
     """Compute the velocity-gradient tensor for interior cells.
 
@@ -49,6 +58,8 @@ def _velocity_gradient_tensor(U, mesh_data, geo_data):
     n_elements = mesh_data["n_elements"]
     grad_fn = gradients._resolve_gradient_fn(geo_data)
     grad = grad_fn(U, mesh_data, geo_data)[:n_elements]  # (n, 3, 3): [c,k,i]
+    if not np.all(np.isfinite(grad)):
+        raise FloatingPointError("LES velocity gradient contains non-finite values")
     return np.transpose(grad, (0, 2, 1))  # (n, 3, 3): [c,i,j] = ∂u_i/∂x_j
 
 
@@ -56,6 +67,18 @@ def _strain_rate(g):
     """Symmetric part S_ij and its magnitude-squared S:S = S_ij S_ij."""
     S = 0.5 * (g + np.transpose(g, (0, 2, 1)))
     return S, np.sum(S * S, axis=(1, 2))
+
+
+def _wale_operator(g: np.ndarray) -> np.ndarray:
+    """Evaluate the WALE velocity-gradient invariant."""
+    _, strain_squared = _strain_rate(g)
+    gradient_squared = np.einsum("cik,ckj->cij", g, g)
+    trace = np.einsum("cii->c", gradient_squared)
+    traceless_symmetric = 0.5 * (gradient_squared + np.transpose(gradient_squared, (0, 2, 1)))
+    for axis in range(3):
+        traceless_symmetric[:, axis, axis] -= trace / 3.0
+    invariant = np.sum(traceless_symmetric * traceless_symmetric, axis=(1, 2))
+    return invariant**1.5 / (strain_squared**2.5 + invariant**1.25 + 1e-30)
 
 
 class WALE:
@@ -77,6 +100,8 @@ class WALE:
     """
 
     def __init__(self, mesh_data, geo_data, Cw=0.325):
+        if not np.isfinite(Cw) or Cw < 0.0:
+            raise ValueError("WALE coefficient Cw must be finite and non-negative")
         self.Cw = Cw
         self.mesh_data = mesh_data
         self.geo_data = geo_data
@@ -108,27 +133,15 @@ class WALE:
         Returns:
             Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
         """
-        mesh_data = mesh_data or self.mesh_data
-        geo_data = geo_data or self.geo_data
+        mesh_data = self.mesh_data if mesh_data is None else mesh_data
+        geo_data = self.geo_data if geo_data is None else geo_data
 
         g = _velocity_gradient_tensor(U, mesh_data, geo_data)
-        _, SS = _strain_rate(g)
-
-        # Traceless symmetric part of g² : Sd_ij = ½(g²_ij + g²_ji) − ⅓ δ_ij g²_kk
-        g2 = np.einsum("cik,ckj->cij", g, g)
-        trace = np.einsum("cii->c", g2)
-        Sd = 0.5 * (g2 + np.transpose(g2, (0, 2, 1)))
-        Sd[:, 0, 0] -= trace / 3.0
-        Sd[:, 1, 1] -= trace / 3.0
-        Sd[:, 2, 2] -= trace / 3.0
-        SdSd = np.sum(Sd * Sd, axis=(1, 2))
-
-        eps = 1e-30
-        op = SdSd**1.5 / (SS**2.5 + SdSd**1.25 + eps)
+        op = _wale_operator(g)
 
         delta = _compute_filter_width(geo_data["element_volumes"], mesh_data, geo_data)
         nut = (self.Cw * delta) ** 2 * op
-        return np.nan_to_num(np.clip(nut, 0.0, None), nan=0.0, posinf=0.0, neginf=0.0)
+        return _validated_eddy_viscosity(nut, "WALE")
 
 
 class Sigma:
@@ -150,6 +163,8 @@ class Sigma:
     """
 
     def __init__(self, mesh_data, geo_data, Csigma=1.35):
+        if not np.isfinite(Csigma) or Csigma < 0.0:
+            raise ValueError("sigma coefficient must be finite and non-negative")
         self.Csigma = Csigma
         self.mesh_data = mesh_data
         self.geo_data = geo_data
@@ -181,8 +196,8 @@ class Sigma:
         Returns:
             Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
         """
-        mesh_data = mesh_data or self.mesh_data
-        geo_data = geo_data or self.geo_data
+        mesh_data = self.mesh_data if mesh_data is None else mesh_data
+        geo_data = self.geo_data if geo_data is None else geo_data
 
         g = _velocity_gradient_tensor(U, mesh_data, geo_data)
         # Singular values σ1 ≥ σ2 ≥ σ3 ≥ 0 of the velocity-gradient tensor.
@@ -194,7 +209,7 @@ class Sigma:
 
         delta = _compute_filter_width(geo_data["element_volumes"], mesh_data, geo_data)
         nut = (self.Csigma * delta) ** 2 * d_sigma
-        return np.nan_to_num(np.clip(nut, 0.0, None), nan=0.0, posinf=0.0, neginf=0.0)
+        return _validated_eddy_viscosity(nut, "sigma")
 
 
 class DynamicSmagorinsky:
@@ -225,6 +240,8 @@ class DynamicSmagorinsky:
             geo_data:  Geometry dictionary.
             alpha2:    Test-to-grid filter-width ratio squared (default 4.0).
         """
+        if not np.isfinite(alpha2) or alpha2 <= 1.0:
+            raise ValueError("Dynamic Smagorinsky alpha2 must be finite and greater than one")
         self.mesh_data = mesh_data
         self.geo_data = geo_data
         self.alpha2 = alpha2
@@ -291,8 +308,8 @@ class DynamicSmagorinsky:
         Returns:
             Per-element eddy viscosity ``(n_elements,)``, clipped ≥ 0.
         """
-        mesh_data = mesh_data or self.mesh_data
-        geo_data = geo_data or self.geo_data
+        mesh_data = self.mesh_data if mesh_data is None else mesh_data
+        geo_data = self.geo_data if geo_data is None else geo_data
         n_elem = mesh_data["n_elements"]
 
         g = _velocity_gradient_tensor(U, mesh_data, geo_data)
@@ -320,11 +337,13 @@ class DynamicSmagorinsky:
         LM = np.sum(L * M, axis=(1, 2))
         MM = np.sum(M * M, axis=(1, 2))
         C = float(np.sum(LM) / (np.sum(MM) + 1e-30))  # global Lilly average
+        if not np.isfinite(C):
+            raise FloatingPointError("Dynamic Smagorinsky produced a non-finite coefficient")
         C = max(C, 0.0)  # clip backscatter for stability
         self.last_C = C
 
         nut = C * delta2 * Smag
-        return np.nan_to_num(np.clip(nut, 0.0, None), nan=0.0, posinf=0.0, neginf=0.0)
+        return _validated_eddy_viscosity(nut, "Dynamic Smagorinsky")
 
 
 def create_model(config, mesh_data, geo_data):
@@ -360,9 +379,9 @@ def create_model(config, mesh_data, geo_data):
     if name in ("none", "", "iles", "dns"):
         return None
     if name == "wale":
-        return WALE(mesh_data, geo_data, Cw=getattr(config, "Cs", 0.325) or 0.325)
+        return WALE(mesh_data, geo_data, Cw=config.Cs)
     if name == "sigma":
-        return Sigma(mesh_data, geo_data, Csigma=getattr(config, "Cs", 1.35) or 1.35)
+        return Sigma(mesh_data, geo_data, Csigma=config.Cs)
     if name in ("dynamicsmagorinsky", "dynamic_smagorinsky"):
         return DynamicSmagorinsky(mesh_data, geo_data)
     if name == "smagorinsky":

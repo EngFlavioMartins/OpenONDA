@@ -75,6 +75,35 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "FVM-VPM COUPLED SOLVER" in coupler_log
     assert coupler_log.count("[Inject]") == 2
     assert "period_multiplier=3" in coupler_log
+    checkpoint = sol / "coupled_checkpoint"
+    assert (checkpoint / "manifest.json").is_file()
+    assert (checkpoint / "fvm.npz").is_file()
+    assert (checkpoint / "vpm_latest.h5").is_file()
+    assert (checkpoint / "donor_state.npz").is_file()
+
+    expected_u = fvm.U.copy()
+    expected_p = fvm.p.copy()
+    expected_phi = fvm.phi.copy()
+    restored_vpm = VPM_Solver(
+        SolverConfig(
+            time_step_size=DT_VPM,
+            processing_unit="CPU",
+            max_particles=50_000,
+            vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            background_velocity=[1.0, 0.0, 0.0],
+        )
+    )
+    restored_fvm = build_fvm_backend(setup, quiet=True)
+    restored = FVMVPMCoupler(restored_vpm, restored_fvm, setup)
+    restored.initialize()
+    restored_step = restored.load_state(checkpoint)
+
+    assert restored_step == 2
+    assert restored_fvm.time_step == 6
+    assert restored_vpm.time_step == 2
+    np.testing.assert_allclose(restored_fvm.U, expected_u, rtol=0.0, atol=1e-13)
+    np.testing.assert_allclose(restored_fvm.p, expected_p, rtol=0.0, atol=1e-13)
+    np.testing.assert_allclose(restored_fvm.phi, expected_phi, rtol=0.0, atol=1e-13)
     # No OpenFOAM case artifacts were created anywhere.
     assert not (tmp_path / "constant").exists()
     assert not (tmp_path / "system").exists()

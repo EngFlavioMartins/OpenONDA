@@ -1,4 +1,4 @@
-# taylorGreen — periodic decaying vortex
+# taylorGreen — periodic 2D decaying vortex
 
 This case runs the incompressible PIMPLE solver on the Taylor–Green vortex in
 the periodic domain `[0, 2π]²`. The one-cell-thick mesh uses translational

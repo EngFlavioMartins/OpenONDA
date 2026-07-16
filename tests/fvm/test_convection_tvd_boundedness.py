@@ -47,8 +47,10 @@ def _setup():
         own = mesh["owners"][b["startFace"] : b["startFace"] + b["nFaces"]]
         idx = n_elem + (b["startFace"] - n_int)
         if b["name"] == "xmin":
+            b["bc_type"] = "fixedValue"
             phi[idx : idx + b["nFaces"]] = 1.0
         else:
+            b["bc_type"] = "zeroGradient"
             phi[idx : idx + b["nFaces"]] = phi[own]
     return mesh, geo, U, mdot, phi
 

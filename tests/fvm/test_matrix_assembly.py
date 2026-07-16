@@ -3,6 +3,7 @@ import numpy as np
 from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
+    MatrixAssemblyWorkspace,
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
@@ -76,3 +77,26 @@ class TestMatrixAssembly:
         second = assemble_matrix_from_fluxes_vectorized(changed, mesh)
         np.testing.assert_allclose(A_vec.toarray(), A_loop.toarray())
         assert second is not A_vec
+
+    def test_workspace_updates_csr_coefficients_in_place(self, hand_built_3d_mesh):
+        mesh = hand_built_3d_mesh
+        n_faces = mesh["n_faces"]
+        first_flux = {
+            "flux_cf": np.linspace(1.0, 2.0, n_faces),
+            "flux_ff": np.linspace(-0.5, -0.1, n_faces),
+        }
+        second_flux = {
+            "flux_cf": 3.0 * first_flux["flux_cf"],
+            "flux_ff": 2.0 * first_flux["flux_ff"],
+        }
+        workspace = MatrixAssemblyWorkspace.create(mesh)
+
+        first = assemble_matrix_from_fluxes_vectorized(first_flux, mesh, workspace=workspace)
+        first_values = first.data.copy()
+        second = assemble_matrix_from_fluxes_vectorized(second_flux, mesh, workspace=workspace)
+        reference = assemble_matrix_from_fluxes_vectorized(second_flux, mesh)
+
+        assert second is first
+        assert second.data is first.data
+        assert not np.array_equal(second.data, first_values)
+        np.testing.assert_allclose(second.toarray(), reference.toarray())

@@ -22,16 +22,22 @@ class ImmersedBody:
     """
 
     def __init__(self, name: str, X: np.ndarray, U_target: np.ndarray | None = None):
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Immersed body name must be a non-empty string")
         self.name = name
         self.X = np.atleast_2d(np.asarray(X, dtype=np.float64))
-        if self.X.shape[1] != 3:
+        if self.X.ndim != 2 or self.X.shape[1] != 3 or self.X.shape[0] == 0:
             raise ValueError(f"Marker array must be (Ns, 3), got {self.X.shape}")
+        if not np.all(np.isfinite(self.X)):
+            raise ValueError("Immersed body markers must be finite")
         if U_target is None:
             self.U_target = np.zeros_like(self.X)
         else:
             self.U_target = np.broadcast_to(
                 np.asarray(U_target, dtype=np.float64), self.X.shape
             ).copy()
+        if not np.all(np.isfinite(self.U_target)):
+            raise ValueError("Immersed body target velocity must be finite")
 
     @property
     def n_markers(self) -> int:
@@ -64,6 +70,12 @@ class ImmersedBody:
             name:     Body name for force logs.
         """
         centre = np.asarray(centre, dtype=np.float64)
+        if centre.shape != (3,) or not np.all(np.isfinite(centre)):
+            raise ValueError("Cylinder centre must be a finite 3-vector")
+        if not np.isfinite(diameter) or diameter <= 0.0:
+            raise ValueError("Cylinder diameter must be finite and positive")
+        if not np.isfinite(h) or h <= 0.0 or not np.isfinite(alpha) or alpha <= 0.0:
+            raise ValueError("Cylinder h and alpha must be finite and positive")
         n = max(int(round(np.pi * diameter / (alpha * h))), 4)
         theta = 2.0 * np.pi * np.arange(n) / n
         X = np.empty((n, 3))
@@ -83,6 +95,12 @@ class ImmersedBody:
     ) -> ImmersedBody:
         """Fibonacci-lattice sphere with ~one marker per ``(alpha h)^2`` area."""
         centre = np.asarray(centre, dtype=np.float64)
+        if centre.shape != (3,) or not np.all(np.isfinite(centre)):
+            raise ValueError("Sphere centre must be a finite 3-vector")
+        if not np.isfinite(diameter) or diameter <= 0.0:
+            raise ValueError("Sphere diameter must be finite and positive")
+        if not np.isfinite(h) or h <= 0.0 or not np.isfinite(alpha) or alpha <= 0.0:
+            raise ValueError("Sphere h and alpha must be finite and positive")
         n = max(int(round(np.pi * diameter**2 / (alpha * h) ** 2)), 8)
         k = np.arange(n) + 0.5
         phi = np.arccos(1.0 - 2.0 * k / n)
@@ -94,6 +112,45 @@ class ImmersedBody:
         X[:, 1] = centre[1] + r * np.sin(theta) * np.sin(phi)
         X[:, 2] = centre[2] + r * np.cos(phi)
         return cls(name, X)
+
+    @classmethod
+    def rectangle_z(
+        cls,
+        centre,
+        width: float,
+        height: float,
+        h: float,
+        alpha: float = 1.0,
+        name: str = "rectangle",
+    ) -> ImmersedBody:
+        """Markers on an axis-aligned rectangle extruded along z."""
+        centre = np.asarray(centre, dtype=np.float64)
+        parameters = np.asarray([width, height, h, alpha], dtype=np.float64)
+        if centre.shape != (3,) or not np.all(np.isfinite(centre)):
+            raise ValueError("Rectangle centre must be a finite 3-vector")
+        if not np.all(np.isfinite(parameters)) or np.any(parameters <= 0.0):
+            raise ValueError("Rectangle dimensions, h, and alpha must be finite and positive")
+        spacing = alpha * h
+        nx = max(int(round(width / spacing)), 1)
+        ny = max(int(round(height / spacing)), 1)
+        x = np.linspace(-0.5 * width, 0.5 * width, nx, endpoint=False)
+        y = np.linspace(-0.5 * height, 0.5 * height, ny, endpoint=False)
+        points = np.concatenate(
+            (
+                np.column_stack((x, np.full(nx, -0.5 * height))),
+                np.column_stack((np.full(ny, 0.5 * width), y)),
+                np.column_stack((-x, np.full(nx, 0.5 * height))),
+                np.column_stack((np.full(ny, -0.5 * width), -y)),
+            )
+        )
+        markers = np.column_stack(
+            (
+                points[:, 0] + centre[0],
+                points[:, 1] + centre[1],
+                np.full(len(points), centre[2]),
+            )
+        )
+        return cls(name, markers)
 
     @classmethod
     def from_points(cls, X, U_target=None, name: str = "body") -> ImmersedBody:

@@ -1,14 +1,7 @@
-#!/usr/bin/env python3
-"""Finite Volume Method (FVM) Solver Core.
-
-Main entry point for the FVM solver, providing a unified Python API
-consistent with the VPM solver.
-
-Author: OpenONDA Team
-Date: January 2026
-"""
+"""High-level incompressible FVM solver API."""
 
 import csv
+import json
 import os
 import sys
 from typing import Any
@@ -20,7 +13,9 @@ from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
 from ..mesh import geometry, mesh_io
 from ..solve import pimple_solver, simple_solver
+from .operators import create_discrete_operators
 from .parallel import ParallelContext
+from .state import FieldState
 
 
 def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
@@ -98,30 +93,45 @@ def _enforce_u_boundary_constraints(
         mesh_data:  Mesh dictionary.
         geo_data:   Geometry dictionary.
     """
+    from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
     from ..solve.simple_solver import _remove_normal_component
 
     for boundary in boundaries:
         bc_type = boundary.get("bc_type_U")
+        strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
         start = n_elements + (boundary["startFace"] - mesh_data["n_interior_faces"])
         end = start + boundary["nFaces"]
-        if bc_type == "noSlip":
+        if strategy is BoundaryStrategy.NO_SLIP:
             U[start:end] = 0.0
-        elif bc_type in ["fixedValue", "freestream"] and boundary.get("value_U_field") is not None:
+        elif (
+            strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM)
+            and boundary.get("value_U_field") is not None
+        ):
             U[start:end] = boundary["value_U_field"]
-        elif bc_type in ["fixedValue", "freestream"] and "value_U" in boundary:
+        elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM) and (
+            "value_U" in boundary
+        ):
             U[start:end] = boundary["value_U"]
-        elif bc_type in ("zeroGradient", "inletOutlet", "directionMixed"):
+        elif strategy in (
+            BoundaryStrategy.ZERO_GRADIENT,
+            BoundaryStrategy.INLET_OUTLET,
+            BoundaryStrategy.DIRECTION_MIXED,
+        ):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
             U[start:end] = U[owners_b]
-        elif bc_type == "cyclic":
+        elif strategy is BoundaryStrategy.CYCLIC:
             faces = np.arange(boundary["startFace"], boundary["startFace"] + boundary["nFaces"])
             paired = mesh_data["boundary_neighbours"][faces]
             if np.any(paired < 0):
                 raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
             U[start:end] = U[paired]
-        elif bc_type in ("empty", "slip", "symmetry"):
+        elif strategy in (
+            BoundaryStrategy.EMPTY,
+            BoundaryStrategy.SLIP,
+            BoundaryStrategy.SYMMETRY,
+        ):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
@@ -168,6 +178,7 @@ class Solver(OFWInterfaceMixin):
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         self.auto_write = True
         self.parallel = ParallelContext.create(self.config.execution)
+        self.operators = create_discrete_operators(self.config.execution.operator_backend)
         if self.config.execution.linear_backend == "petsc":
             methods = {
                 "momentum": self.config.solver.momentum_solver or self.config.solver.linear_solver,
@@ -203,6 +214,14 @@ class Solver(OFWInterfaceMixin):
             raise ValueError(
                 "pressure_nullspace_policy='petsc' requires execution.linear_backend='petsc'"
             )
+        if (
+            self.parallel.is_partitioned
+            and self.config.solver.pressure_nullspace_policy == "reference"
+        ):
+            raise ValueError(
+                "petsc_partitioned requires pressure_nullspace_policy='auto' or 'petsc'; "
+                "a rank-local reference row is not a valid global pressure constraint"
+            )
         if not np.isfinite(self.config.transport.density) or self.config.transport.density <= 0.0:
             raise ValueError("Transport density must be finite and positive")
         if not np.isfinite(self.config.transport.nu) or self.config.transport.nu <= 0.0:
@@ -218,27 +237,78 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("Total Initialization")
 
         # 1. Mesh Management
-        if mesh_data is not None:
-            self.mesh_data = mesh_data
-            logging.Timer.log("  Mesh Set (In-Memory)")
-        else:
-            logging.Timer.start("  Mesh Load (Disk)")
-            self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
-            logging.Timer.log("  Mesh Load (Disk)")
-
-        from ..mesh.validation import enforce_quality_thresholds, validate_mesh
-
-        validate_mesh(self.mesh_data)
-
-        # 2. Geometry Computation
-        logging.Timer.start("  Geometry Compute")
         from ..mesh import cache
+        from ..mesh.validation import enforce_quality_thresholds, validate_mesh
 
         self.cache = cache.WeightCache()
         gs = getattr(self.config.solver, "gradient_scheme", "gauss")
-        self.geo_data = geometry.compute_mesh_geometry(self.mesh_data, gradient_scheme=gs)
-        self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
-        enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
+        logging.Timer.start("  Geometry Compute")
+        if self.parallel.is_partitioned:
+            if any(boundary.type_U == "cyclic" for boundary in self.config.boundaries):
+                raise NotImplementedError(
+                    "Partitioned cyclic patches require periodic partition adjacency, which is "
+                    "not yet implemented"
+                )
+            if self.config.initial_U is None or self.config.initial_p is None:
+                raise NotImplementedError(
+                    "Partitioned field-file initialization is not implemented; provide explicit "
+                    "initial_U and initial_p values"
+                )
+            payloads = None
+            quality = None
+            preparation_error = None
+            if self.parallel.is_root:
+                try:
+                    if mesh_data is not None:
+                        global_mesh = mesh_data
+                        logging.Timer.log("  Mesh Set (In-Memory)")
+                    else:
+                        global_mesh = mesh_io.load_poly_mesh(self.case_dir)
+                        logging.Timer.log("  Mesh Load (Disk)")
+                    validate_mesh(global_mesh)
+                    global_geo = geometry.compute_mesh_geometry(global_mesh, gradient_scheme=gs)
+                    quality = validate_mesh(global_mesh, global_geo)
+                    enforce_quality_thresholds(quality, self.config.mesh)
+                    from ..io.checkpoint import mesh_hash
+                    from ..mesh.partition import localize_mesh_and_geometry
+
+                    payloads = [
+                        localize_mesh_and_geometry(
+                            global_mesh, global_geo, rank, self.parallel.size
+                        )
+                        for rank in range(self.parallel.size)
+                    ]
+                    global_hash = mesh_hash(global_mesh)
+                    for local_mesh, _local_geo, _partition in payloads:
+                        local_mesh["global_mesh_hash"] = global_hash
+                except Exception as error:
+                    preparation_error = {
+                        "rank": self.parallel.rank,
+                        "type": type(error).__name__,
+                        "message": str(error),
+                    }
+            preparation_error = self.parallel.bcast(preparation_error, root=0)
+            if preparation_error is not None:
+                raise RuntimeError(
+                    "Partitioned mesh preparation failed: "
+                    + json.dumps(preparation_error, sort_keys=True)
+                )
+            self.mesh_data, self.geo_data, partition = self.parallel.comm.scatter(payloads, root=0)
+            self.mesh_quality = self.parallel.bcast(quality, root=0)
+            self.parallel = self.parallel.with_partition(partition)
+            self.mesh_data["_parallel_context"] = self.parallel
+        else:
+            if mesh_data is not None:
+                self.mesh_data = mesh_data
+                logging.Timer.log("  Mesh Set (In-Memory)")
+            else:
+                logging.Timer.start("  Mesh Load (Disk)")
+                self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
+                logging.Timer.log("  Mesh Load (Disk)")
+            validate_mesh(self.mesh_data)
+            self.geo_data = geometry.compute_mesh_geometry(self.mesh_data, gradient_scheme=gs)
+            self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
+            enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
         # Boundary configuration precedes immutable backend views because coupled
         # patches augment the operator topology and periodic geometry.
@@ -268,6 +338,7 @@ class Solver(OFWInterfaceMixin):
 
         # 3. Component Setup
         self._initialize_fields()
+        self.state = FieldState(self.U, self.p, self.phi)
         self._initialize_algorithm()
         self._initialize_turbulence()
 
@@ -275,6 +346,7 @@ class Solver(OFWInterfaceMixin):
         self.io = solver_io.SolverIO(self)
         self.vtk_exporter = None
         self.pvd_manager = None
+        self._buffered_vtk_writer = None
         self.last_forces = None
         self.ibm = None
         self.forces_history_path = None
@@ -390,7 +462,6 @@ class Solver(OFWInterfaceMixin):
                         )
                     b_mesh.update(
                         {
-                            "type": b_mesh.get("type", b_cfg.type_U),
                             "bc_type_U": b_cfg.type_U,
                             "bc_type_p": b_cfg.type_p,
                             "value_p": b_cfg.value_p,
@@ -398,6 +469,10 @@ class Solver(OFWInterfaceMixin):
                             "value_nut": b_cfg.value_nut,
                         }
                     )
+                    if b_cfg.mesh_type is not None:
+                        b_mesh["type"] = b_cfg.mesh_type
+                    else:
+                        b_mesh.setdefault("type", "patch")
                     if b_cfg.neighbour_patch is not None:
                         b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
@@ -409,7 +484,11 @@ class Solver(OFWInterfaceMixin):
                     found = True
                     break
             if not found:
-                raise ValueError(f"Configured boundary {b_cfg.name!r} was not found in the mesh")
+                global_names = self.mesh_data.get("global_boundary_names", ())
+                if not self.parallel.is_partitioned or b_cfg.name not in global_names:
+                    raise ValueError(
+                        f"Configured boundary {b_cfg.name!r} was not found in the mesh"
+                    )
 
     def _initialize_fields(self):
         """Initialise velocity (U), pressure (p), and flux (phi) fields.
@@ -430,8 +509,9 @@ class Solver(OFWInterfaceMixin):
         _enforce_u_boundary_constraints(
             self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
         )
+        self.parallel.exchange_halo(self.U[:n_elements])
+        self.parallel.exchange_halo(self.p[:n_elements])
 
-        # 3. Flux (phi)
         logging.Timer.start("  Flux Init")
         from ..assemble import convection
 
@@ -456,6 +536,7 @@ class Solver(OFWInterfaceMixin):
             params = vars(self.config.solver)
         params = dict(params)
         params["_linear_backend"] = self.config.execution.linear_backend
+        params["_operator_backend"] = self.operators.name
         params["_parallel_context"] = self.parallel
         algo = self.config.solver.algorithm.upper()
 
@@ -481,6 +562,11 @@ class Solver(OFWInterfaceMixin):
         """
         if self._n_committed or self.time_step:
             raise RuntimeError("Initial velocity can only be set before the first time step")
+        if self.parallel.is_partitioned:
+            raise NotImplementedError(
+                "set_initial_velocity is not defined for distributed ownership; provide "
+                "FVMConfig.initial_U before constructing the partitioned solver"
+            )
 
         n_elements = self.mesh_data["n_elements"]
         field = np.asarray(values, dtype=np.float64)
@@ -500,6 +586,7 @@ class Solver(OFWInterfaceMixin):
         from ..solve import simple_solver
 
         self.phi = convection.compute_mass_flow_rate(self.U, self.mesh_data, self.geo_data)
+        self.state = FieldState(self.U, self.p, self.phi)
         simple_solver.update_scalar_boundaries(
             self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
         )
@@ -542,6 +629,7 @@ class Solver(OFWInterfaceMixin):
         """
         if self.turbulence is not None:
             self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
+            self.parallel.exchange_halo(self.nut[: self.mesh_data["n_elements"]])
             if not np.all(np.isfinite(self.nut)) or np.any(self.nut < 0.0):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
             return self.config.transport.nu + self.nut
@@ -570,7 +658,16 @@ class Solver(OFWInterfaceMixin):
                 "Immersed boundaries require the PIMPLE/PISO algorithm "
                 f"(configured: {self.config.solver.algorithm!r})."
             )
-        self.ibm = IBMForcing(self.mesh_data, self.geo_data, bodies, h=h)
+        body_list = [bodies] if hasattr(bodies, "U_target") else list(bodies)
+        if not body_list:
+            raise ValueError("At least one immersed body is required")
+        moving = [body.name for body in body_list if np.any(body.U_target != 0.0)]
+        if moving:
+            raise NotImplementedError(
+                "Moving immersed bodies require body-motion/ALE energy accounting, which is "
+                f"not implemented; nonzero target velocity configured for {moving}"
+            )
+        self.ibm = IBMForcing(self.mesh_data, self.geo_data, body_list, h=h)
         self.algorithm.ibm = self.ibm
         diag = self.ibm.diagnostics()
         print(
@@ -679,6 +776,7 @@ class Solver(OFWInterfaceMixin):
             source_explicit=src_exp,
             source_implicit=src_imp,
         )
+        self.state = FieldState(self.U, self.p, self.phi)
         self._last_residuals = residuals
         if self.parallel.is_root:
             logging.Logging.convergence_info(residuals)
@@ -688,8 +786,11 @@ class Solver(OFWInterfaceMixin):
         # conservation visible instead of silent.
         cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
         vol = self.geo_data["element_volumes"]
-        self.continuity_max = float(np.max(np.abs(cont) / (vol + 1e-30)))
-        self.continuity_sum = float(np.sum(np.abs(cont)))
+        n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(vol)
+        local_max = float(np.max(np.abs(cont[:n_owned]) / (vol[:n_owned] + 1e-30)))
+        local_sum = float(np.sum(np.abs(cont[:n_owned])))
+        self.continuity_max = float(self.parallel.global_max(local_max))
+        self.continuity_sum = float(self.parallel.global_sum(local_sum))
         if self.parallel.is_root:
             print(
                 f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
@@ -706,25 +807,54 @@ class Solver(OFWInterfaceMixin):
         from ..solve.contracts import StepDiagnostics
 
         n = self.mesh_data["n_elements"]
-        interior_u = np.asarray(self.U[:n])
-        interior_p = np.asarray(self.p[:n])
+        n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n
+        interior_u = np.asarray(self.U[:n_owned])
+        interior_p = np.asarray(self.p[:n_owned])
         cfl = diagnostics.compute_courant_number(
             self.U, self.phi, step_dt, self.mesh_data, self.geo_data
         )
-        self.cfl_max = float(np.max(cfl))
-        nonfinite_count = int(
+        self.cfl_max = float(self.parallel.global_max(float(np.max(cfl[:n_owned]))))
+        local_nonfinite = int(
             np.count_nonzero(~np.isfinite(interior_u))
             + np.count_nonzero(~np.isfinite(interior_p))
             + np.count_nonzero(~np.isfinite(self.phi))
         )
+        nonfinite_count = int(self.parallel.global_sum(local_nonfinite))
         turbulence_min = None
         turbulence_max = None
         if self.nut is not None:
-            nonfinite_count += int(np.count_nonzero(~np.isfinite(self.nut)))
-            turbulence_min = float(np.nanmin(self.nut))
-            turbulence_max = float(np.nanmax(self.nut))
+            nonfinite_count += int(
+                self.parallel.global_sum(int(np.count_nonzero(~np.isfinite(self.nut[:n_owned]))))
+            )
+            turbulence_min = float(self.parallel.global_min(float(np.nanmin(self.nut[:n_owned]))))
+            turbulence_max = float(self.parallel.global_max(float(np.nanmax(self.nut[:n_owned]))))
         n_interior = self.mesh_data["n_interior_faces"]
         linear_results = tuple(getattr(self.algorithm, "last_linear_results", ()))
+        velocity_min = np.asarray(
+            [self.parallel.global_min(float(value)) for value in np.nanmin(interior_u, axis=0)]
+        )
+        velocity_max = np.asarray(
+            [self.parallel.global_max(float(value)) for value in np.nanmax(interior_u, axis=0)]
+        )
+        pressure_min = float(self.parallel.global_min(float(np.nanmin(interior_p))))
+        pressure_max = float(self.parallel.global_max(float(np.nanmax(interior_p))))
+        local_ke = (
+            0.5
+            * self.config.transport.density
+            * float(
+                np.sum(
+                    self.geo_data["element_volumes"][:n_owned]
+                    * np.sum(interior_u * interior_u, axis=1)
+                )
+            )
+        )
+        vorticity = diagnostics.compute_vorticity(self.U, self.mesh_data, self.geo_data)
+        local_enstrophy = 0.5 * float(
+            np.sum(
+                self.geo_data["element_volumes"][:n_owned]
+                * np.sum(vorticity[:n_owned] * vorticity[:n_owned], axis=1)
+            )
+        )
         return StepDiagnostics(
             algorithm=self.config.solver.algorithm.upper(),
             step=self.time_step + 1,
@@ -735,17 +865,17 @@ class Solver(OFWInterfaceMixin):
             linear_solves=linear_results,
             continuity_max=self.continuity_max,
             continuity_sum=self.continuity_sum,
-            boundary_mass_balance=float(np.sum(self.phi[n_interior:])),
-            cfl_max=self.cfl_max,
-            velocity_min=tuple(float(value) for value in np.nanmin(interior_u, axis=0)),
-            velocity_max=tuple(float(value) for value in np.nanmax(interior_u, axis=0)),
-            pressure_min=float(np.nanmin(interior_p)),
-            pressure_max=float(np.nanmax(interior_p)),
-            nonfinite_count=nonfinite_count,
-            kinetic_energy=diagnostics.compute_kinetic_energy(
-                self.U, self.geo_data, density=self.config.transport.density
+            boundary_mass_balance=float(
+                self.parallel.global_sum(float(np.sum(self.phi[n_interior:])))
             ),
-            enstrophy=diagnostics.compute_enstrophy(self.U, self.mesh_data, self.geo_data),
+            cfl_max=self.cfl_max,
+            velocity_min=tuple(float(value) for value in velocity_min),
+            velocity_max=tuple(float(value) for value in velocity_max),
+            pressure_min=pressure_min,
+            pressure_max=pressure_max,
+            nonfinite_count=nonfinite_count,
+            kinetic_energy=float(self.parallel.global_sum(local_ke)),
+            enstrophy=float(self.parallel.global_sum(local_enstrophy)),
             turbulence_min=turbulence_min,
             turbulence_max=turbulence_max,
         )
@@ -856,7 +986,7 @@ class Solver(OFWInterfaceMixin):
 
         # y+ and Turbulence info
         patch_names = getattr(self.config.solver, "yplus_patches", None)
-        if self.parallel.is_root:
+        if self.parallel.is_root or self.parallel.is_partitioned:
             yplus_stats = diagnostics.compute_y_plus(
                 self.U,
                 self.config.transport.nu,
@@ -865,6 +995,11 @@ class Solver(OFWInterfaceMixin):
                 self.boundaries,
                 patch_names=patch_names,
             )
+            if self.parallel.is_partitioned:
+                yplus_stats = diagnostics.merge_partition_yplus(
+                    self.parallel.comm.allgather(yplus_stats)
+                )
+        if self.parallel.is_root:
             logging.Logging.yplus_info(yplus_stats)
 
         # Force computation and logging
@@ -873,7 +1008,7 @@ class Solver(OFWInterfaceMixin):
             force_interval = cfg_time.write_interval
 
         self._force_log_counter += 1
-        if self.parallel.is_root and (
+        if (self.parallel.is_root or self.parallel.is_partitioned) and (
             self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
         ):
             ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
@@ -898,8 +1033,13 @@ class Solver(OFWInterfaceMixin):
                 ref_length=ref_length,
                 moment_centre=getattr(self.config.solver, "moment_centre", [0, 0, 0]),
             )
+            if self.parallel.is_partitioned:
+                forces = diagnostics.merge_partition_forces(self.parallel.comm.allgather(forces))
             self.last_forces = forces
 
+        if self.parallel.is_root and (
+            self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
+        ):
             sol_dir = os.path.join(self.case_dir, "solution")
             os.makedirs(sol_dir, exist_ok=True)
             csv_path = os.path.join(sol_dir, "forces_history.csv")
@@ -968,7 +1108,7 @@ class Solver(OFWInterfaceMixin):
             logging.Logging.turbulence_info(self.nut, self.config.transport.nu)
 
         # Output control — time-based if write_interval_time is set, else step-based
-        if self.parallel.is_root and self.auto_write:
+        if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
             wrt_time = cfg_time.write_interval_time
             if wrt_time is not None:
                 self._time_since_last_write += step_dt
@@ -981,6 +1121,11 @@ class Solver(OFWInterfaceMixin):
 
     def save_state(self, path) -> str:
         """Atomically save a versioned restart containing the complete time state."""
+        self.flush_output()
+        if self.parallel.is_partitioned:
+            from ..io.partitioned import save_partitioned_solver_checkpoint
+
+            return str(save_partitioned_solver_checkpoint(self, path))
         from ..io.checkpoint import save_checkpoint
 
         saved = None
@@ -1002,6 +1147,12 @@ class Solver(OFWInterfaceMixin):
 
     def load_state(self, path) -> None:
         """Restore a compatible restart, rejecting mismatched meshes or configs."""
+        self.flush_output()
+        if self.parallel.is_partitioned:
+            from ..io.partitioned import load_partitioned_solver_checkpoint
+
+            load_partitioned_solver_checkpoint(self, path)
+            return
         from ..io.checkpoint import load_checkpoint
 
         self.parallel.barrier()
@@ -1019,20 +1170,9 @@ class Solver(OFWInterfaceMixin):
             filename: Optional output path.  If ``None``, auto-generates
                       ``solution/{case_name}_{step:06d}.vtu``.
         """
-        if not self.parallel.is_root:
+        if not self.parallel.is_root and not self.parallel.is_partitioned:
             return
         sol_dir = os.path.join(self.case_dir, "solution")
-        if self.vtk_exporter is None:
-            from ..io.vtk_exporter import VTKExporter
-
-            self.vtk_exporter = VTKExporter(self.mesh_data)
-
-        if self.pvd_manager is None:
-            from ..io.vtk_exporter import PVDManager
-
-            pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
-            self.pvd_manager = PVDManager(pvd_file)
-
         if filename is None:
             os.makedirs(sol_dir, exist_ok=True)
             # Use case_name and sequential numbering: case_name_000000.vtu
@@ -1051,11 +1191,66 @@ class Solver(OFWInterfaceMixin):
         if self.nut is not None:
             fields["nut"] = self.nut
 
-        self.vtk_exporter.export(filename, fields)
-        self.pvd_manager.add_step(self.flow_time, filename)
+        if self.parallel.is_partitioned:
+            from pathlib import Path
 
-        print(f"  Output written: {os.path.basename(filename)}")
+            from ..io.partitioned import write_partition_vtu
+
+            n_local = self.mesh_data["n_elements"]
+            stem = Path(filename).stem
+            write_partition_vtu(
+                Path(filename).parent,
+                stem,
+                self.mesh_data,
+                self.parallel.partition,
+                {name: np.asarray(values)[:n_local] for name, values in fields.items()},
+                self.parallel.comm,
+            )
+            if self.parallel.is_root:
+                print(f"  Output written: {stem}.pvtu")
+                sys.stdout.flush()
+            return
+
+        if self.config.execution.output_mode == "threaded":
+            if self._buffered_vtk_writer is None:
+                from ..io.async_output import BufferedVTKWriter
+
+                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                self._buffered_vtk_writer = BufferedVTKWriter(self.mesh_data, pvd_file)
+            self._buffered_vtk_writer.submit(filename, self.flow_time, fields)
+            action = "queued"
+        else:
+            if self.vtk_exporter is None:
+                from ..io.vtk_exporter import VTKExporter
+
+                self.vtk_exporter = VTKExporter(self.mesh_data)
+            if self.pvd_manager is None:
+                from ..io.vtk_exporter import PVDManager
+
+                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                self.pvd_manager = PVDManager(pvd_file)
+            self.vtk_exporter.export(filename, fields)
+            self.pvd_manager.add_step(self.flow_time, filename)
+            action = "written"
+
+        print(f"  Output {action}: {os.path.basename(filename)}")
         sys.stdout.flush()
+
+    def flush_output(self) -> None:
+        """Wait for buffered visualization output and surface writer failures."""
+        if self._buffered_vtk_writer is not None:
+            self._buffered_vtk_writer.flush()
+
+    def close(self) -> None:
+        """Finish background output resources owned by the solver."""
+        if self._buffered_vtk_writer is not None:
+            self._buffered_vtk_writer.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc_value, _traceback):
+        self.close()
 
     def info(self) -> None:
         """Print a summary of the current solver state.

@@ -104,6 +104,9 @@ class CouplerSetup:
     bc_coupling_iterations: int = 1
     """Donor-boundary/PIMPLE Picard iterations per FVM substep."""
 
+    bc_coupling_tolerance: float | None = None
+    """Optional relative donor-trace tolerance for early Picard convergence."""
+
     donor_interior_source: str = "particles"
     """Interior donor representation: hand-off particles or live FVM vorticity."""
 
@@ -114,7 +117,7 @@ class CouplerSetup:
     """Overlap-particle core radius divided by ``h``."""
 
     def __post_init__(self) -> None:
-        """Validate enum-like config fields."""
+        """Validate coupling inputs without rewriting them."""
         _valid_backends = ("ofw", "fvm")
         if self.backend not in _valid_backends:
             raise ValueError(f"backend must be one of {_valid_backends!r}, got {self.backend!r}.")
@@ -131,6 +134,44 @@ class CouplerSetup:
                 f"donor_bc_mode must be one of {_valid_donor_bc_modes!r}, "
                 f"got {self.donor_bc_mode!r}."
             )
+        if self.bc_coupling_iterations < 1:
+            raise ValueError("bc_coupling_iterations must be at least one")
+        if self.bc_coupling_tolerance is not None and not (
+            np.isfinite(self.bc_coupling_tolerance) and self.bc_coupling_tolerance > 0.0
+        ):
+            raise ValueError("bc_coupling_tolerance must be finite and positive when set")
+        u_inf = np.asarray(self.u_inf, dtype=np.float64)
+        if u_inf.shape != (3,) or not np.all(np.isfinite(u_inf)):
+            raise ValueError("u_inf must be a finite three-component vector")
+        box = np.asarray(self.fvm_box, dtype=np.float64)
+        if box.shape != (6,) or not np.all(np.isfinite(box)):
+            raise ValueError("fvm_box must contain six finite bounds")
+        if np.any(box[1::2] <= box[::2]):
+            raise ValueError("Each fvm_box upper bound must exceed its lower bound")
+        positive = {
+            "nu": self.nu,
+            "rho": self.rho,
+            "dt": self.dt,
+            "t_end": self.t_end,
+            "grid_spacing": self.grid_spacing,
+            "h": self.h,
+            "buffer_thickness": self.buffer_thickness,
+            "overlap_radius_ratio": self.overlap_radius_ratio,
+            "fringe_strength": self.fringe_strength,
+        }
+        invalid = [name for name, value in positive.items() if not np.isfinite(value) or value <= 0]
+        if invalid:
+            raise ValueError(f"Coupling values must be finite and positive: {', '.join(invalid)}")
+        if self.backup_period < 0 or self.log_period < 1:
+            raise ValueError("backup_period must be non-negative and log_period at least one")
+        if self.dead_zone_h < 0 or self.prune_vorticity_min < 0:
+            raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
+        if not 0.0 < self.blend_relaxation <= 1.0:
+            raise ValueError("blend_relaxation must lie in (0, 1]")
+        if self.strength_correction_iterations < 0:
+            raise ValueError("strength_correction_iterations must be non-negative")
+        if not 0.0 < self.strength_correction_relax <= 1.0:
+            raise ValueError("strength_correction_relax must lie in (0, 1]")
 
     # ── Derived properties ────────────────────────────────────────────────
     @property
@@ -203,6 +244,7 @@ class CouplerSetup:
                 "overlap_radius_ratio": self.overlap_radius_ratio,
                 "overlap_velocity_forcing": self.overlap_velocity_forcing,
                 "bc_coupling_iterations": self.bc_coupling_iterations,
+                "bc_coupling_tolerance": self.bc_coupling_tolerance,
                 "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
             },

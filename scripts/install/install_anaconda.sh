@@ -124,13 +124,11 @@ if [ -d "$REPO_ROOT/.git" ]; then
 fi
 
 echo "Verifying the environment..."
-for module in bandit gmsh mpi4py petsc4py pyamg pydantic pygit2 pyvista pytest taichi vtk vulture; do
+for module in bandit complexipy gmsh interrogate mpi4py mypy numba petsc4py pip_audit pre_commit pyamg pydantic pygit2 pytest pyvista ruff scalene skylos tach taichi ty vtk vulture; do
     conda run -n "$CONDA_ENV" python -c "import $module; print('$module: OK')"
 done
 conda run -n "$CONDA_ENV" python -m pip check
 conda run -n "$CONDA_ENV" ruff --version
-conda run -n "$CONDA_ENV" bandit --version
-conda run -n "$CONDA_ENV" vulture --version
 
 echo ""
 echo -e "${GREEN}✅ OpenONDA environment '$CONDA_ENV' is ready.${NC}"

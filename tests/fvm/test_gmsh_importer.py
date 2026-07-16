@@ -6,58 +6,32 @@ from source.solvers.FVM.assemble import diffusion, matrix_assembly
 from source.solvers.FVM.fields import gradients
 from source.solvers.FVM.mesh import geometry, mesh_io
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+from source.solvers.FVM.mesh.openfoam_writer import write_poly_mesh
 
 gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
+FIRST_ORDER_CELLS = {
+    4: [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)],
+    5: [
+        (0, 0, 0),
+        (1, 0, 0),
+        (1, 1, 0),
+        (0, 1, 0),
+        (0, 0, 1),
+        (1, 0, 1),
+        (1, 1, 1),
+        (0, 1, 1),
+    ],
+    6: [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (0, 1, 1)],
+    7: [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0.5, 0.5, 1)],
+}
 
-def _foam_header(object_name, class_name):
-    return (
-        "FoamFile\n"
-        "{\n"
-        "    version 2.0;\n"
-        "    format ascii;\n"
-        f"    class {class_name};\n"
-        f"    object {object_name};\n"
-        "}\n"
-    )
 
-
-def _write_poly_mesh(case_dir, mesh):
-    poly_mesh = case_dir / "constant" / "polyMesh"
-    poly_mesh.mkdir(parents=True)
-
-    points = "\n".join(f"({x:.17g} {y:.17g} {z:.17g})" for x, y, z in mesh["points"])
-    (poly_mesh / "points").write_text(
-        _foam_header("points", "vectorField") + f"{mesh['n_points']}\n(\n{points}\n)\n"
-    )
-    faces = "\n".join(
-        f"{len(face)}({' '.join(str(int(node)) for node in face)})" for face in mesh["faces"]
-    )
-    (poly_mesh / "faces").write_text(
-        _foam_header("faces", "faceList") + f"{mesh['n_faces']}\n(\n{faces}\n)\n"
-    )
-    owners = "\n".join(str(int(value)) for value in mesh["owners"])
-    (poly_mesh / "owner").write_text(
-        _foam_header("owner", "labelList") + f"{mesh['n_faces']}\n(\n{owners}\n)\n"
-    )
-    neighbours = "\n".join(str(int(value)) for value in mesh["neighbours"])
-    (poly_mesh / "neighbour").write_text(
-        _foam_header("neighbour", "labelList") + f"{mesh['n_interior_faces']}\n(\n{neighbours}\n)\n"
-    )
-    patches = []
-    for patch in mesh["boundary"]:
-        patches.append(
-            f"{patch['name']}\n"
-            "{\n"
-            f"    type {patch.get('type', 'patch')};\n"
-            f"    nFaces {patch['nFaces']};\n"
-            f"    startFace {patch['startFace']};\n"
-            "}"
-        )
-    patch_text = "\n".join(patches)
-    (poly_mesh / "boundary").write_text(
-        _foam_header("boundary", "polyBoundaryMesh") + f"{len(patches)}\n(\n{patch_text}\n)\n"
-    )
+def _add_discrete_cell(element_type, points):
+    gmsh.model.addDiscreteEntity(3, 1)
+    node_tags = list(range(1, len(points) + 1))
+    gmsh.model.mesh.addNodes(3, 1, node_tags, [value for point in points for value in point])
+    gmsh.model.mesh.addElementsByType(1, element_type, [1], node_tags)
 
 
 def _diffusion_solution(mesh):
@@ -79,6 +53,39 @@ def _diffusion_solution(mesh):
 
 
 class TestGmshImporter:
+    @pytest.mark.parametrize("element_type", [4, 5, 6, 7])
+    def test_every_claimed_first_order_cell_family(self, element_type):
+        gmsh.initialize()
+        try:
+            gmsh.model.add(f"first_order_{element_type}")
+            _add_discrete_cell(element_type, FIRST_ORDER_CELLS[element_type])
+            mesh = GmshImporter().get_mesh_data()
+        finally:
+            gmsh.finalize()
+
+        assert mesh["n_elements"] == 1
+        assert mesh["cell_type_codes"].tolist() == [element_type]
+        assert mesh["cell_orders"].tolist() == [1]
+        assert mesh["provenance"]["contract"] == "gmsh-api-first-order-3d-v1"
+
+    def test_high_order_volume_cell_is_rejected(self):
+        tetra10 = FIRST_ORDER_CELLS[4] + [
+            (0.5, 0, 0),
+            (0.5, 0.5, 0),
+            (0, 0.5, 0),
+            (0, 0, 0.5),
+            (0.5, 0, 0.5),
+            (0, 0.5, 0.5),
+        ]
+        gmsh.initialize()
+        try:
+            gmsh.model.add("high_order_tetra")
+            _add_discrete_cell(11, tetra10)
+            with pytest.raises(ValueError, match="high-order Gmsh element.*order 2"):
+                GmshImporter().get_mesh_data()
+        finally:
+            gmsh.finalize()
+
     def test_imported_mesh_topology(self):
         gmsh.initialize()
         try:
@@ -144,7 +151,7 @@ class TestGmshImporter:
         finally:
             gmsh.finalize()
 
-        _write_poly_mesh(tmp_path, gmsh_mesh)
+        write_poly_mesh(tmp_path, gmsh_mesh)
         foam_mesh = mesh_io.load_poly_mesh(tmp_path)
 
         assert np.array_equal(foam_mesh["points"], gmsh_mesh["points"])

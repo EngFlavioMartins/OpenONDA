@@ -79,11 +79,11 @@ def test_prepare_case_fvm_needs_no_openfoam_case(tmp_path):
     assert not (tmp_path / "0").exists()
 
 
-def test_prepare_case_fvm_restart_not_implemented(tmp_path):
+def test_prepare_case_fvm_restart_requires_complete_checkpoint(tmp_path):
     from source.coupler.core.solver import FVMVPMCoupler
 
     setup = _fvm_setup(tmp_path)
-    with pytest.raises(NotImplementedError, match="restart"):
+    with pytest.raises(FileNotFoundError, match="coupled checkpoint"):
         FVMVPMCoupler.prepare_case(setup, restart=True)
 
 

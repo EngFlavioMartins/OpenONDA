@@ -1,133 +1,103 @@
-"""3D Poiseuille duct flow — regression test (structured hex mesh).
+"""Mesh-converged laminar square-duct verification."""
 
-Drives pressure‑driven flow through a square duct with no‑slip walls,
-inlet fixed‑velocity, and outlet fixed‑pressure.  Verifies basic physical
-plausibility: net forward flow, pressure drop, centre‑plane velocity peak.
-"""
+from __future__ import annotations
 
 import numpy as np
 import pytest
 
-gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
+from source.solvers.FVM.assemble import diffusion, matrix_assembly
+from source.solvers.FVM.fields.gradients import compute_gradient_lsq_vectorized
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
-from source.solvers.FVM import (
-    BoundaryConfig,
-    FVMConfig,
-    Solver,
-    SolverParams,
-    TimeConfig,
-    TransportConfig,
-)
-from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
-
-L = 2.0
-H = 1.0
-W = 0.5
-U_IN = 1.5
-NU = 0.01
-NX, NY, NZ = 20, 10, 5
+from ._structured_mesh import structured_box
 
 
-@pytest.mark.slow
-class Test3DPoiseuille:
-    def test_pressure_driven_duct(self, tmp_path):
-        gmsh.initialize()
-        try:
-            gmsh.model.add("duct")
-            gmsh.model.occ.addBox(0, -H / 2, -W / 2, L, H, W)
-            gmsh.model.occ.synchronize()
+def square_duct_velocity(y, z, *, half_width=0.5, pressure_gradient=1.0, terms=101):
+    """Return the fully developed axial velocity for a square duct.
 
-            tol = 1e-6
-            for dim, tag in gmsh.model.getEntities(1):
-                xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
-                dx, dy, dz = xmax - xmin, ymax - ymin, zmax - zmin
-                if dx > tol and dy < tol and dz < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NX)
-                elif dy > tol and dx < tol and dz < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NY)
-                elif dz > tol and dx < tol and dy < tol:
-                    gmsh.model.mesh.setTransfiniteCurve(tag, NZ)
-
-            for surf in gmsh.model.getEntities(2):
-                gmsh.model.mesh.setTransfiniteSurface(surf[1])
-                gmsh.model.mesh.setRecombine(surf[0], surf[1])
-            for vol in gmsh.model.getEntities(3):
-                gmsh.model.mesh.setTransfiniteVolume(vol[1])
-
-            gmsh.model.mesh.generate(3)
-
-            surfaces = gmsh.model.getEntities(2)
-            inlets, outlets, walls = [], [], []
-            x_min, x_max = 0.0, L
-            y_min, y_max = -H / 2, H / 2
-            z_min, z_max = -W / 2, W / 2
-            for dim, tag in surfaces:
-                xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(dim, tag)
-                if abs(xmin - x_min) < tol and abs(xmax - x_min) < tol:
-                    inlets.append(tag)
-                elif abs(xmin - x_max) < tol and abs(xmax - x_max) < tol:
-                    outlets.append(tag)
-                elif (
-                    abs(ymin - y_min) < tol
-                    or abs(ymax - y_max) < tol
-                    or abs(zmin - z_min) < tol
-                    or abs(zmax - z_max) < tol
-                ):
-                    walls.append(tag)
-
-            gmsh.model.addPhysicalGroup(2, inlets, 1, "inlet")
-            gmsh.model.addPhysicalGroup(2, outlets, 2, "outlet")
-            gmsh.model.addPhysicalGroup(2, walls, 3, "walls")
-
-            imp = GmshImporter()
-            mesh = imp.get_mesh_data()
-        finally:
-            gmsh.finalize()
-
-        config = FVMConfig(
-            case_name="poiseuille",
-            time=TimeConfig.transient(dt=0.05, duration=1.0, write_interval=50),
-            solver=SolverParams.pimple(
-                n_correctors=2,
-                n_outer=1,
-                linear_solver="spsolve",
-                convection_scheme="upwind",
-            ),
-            transport=TransportConfig(density=1.0, nu=NU),
-            boundaries=[
-                BoundaryConfig.inlet("inlet", [U_IN, 0.0, 0.0]),
-                BoundaryConfig.outlet("outlet", 0.0),
-                BoundaryConfig.wall("walls"),
-            ],
-            initial_U=[0.0, 0.0, 0.0],
-            initial_p=0.0,
+    ``pressure_gradient`` is ``-dp/dx / mu``. Coordinates span
+    ``[-half_width, half_width]`` in both cross-stream directions.
+    """
+    y = np.asarray(y, dtype=np.float64)
+    z = np.asarray(z, dtype=np.float64)
+    velocity = np.zeros(np.broadcast_shapes(y.shape, z.shape), dtype=np.float64)
+    for mode in range(1, terms, 2):
+        sign = (-1) ** ((mode - 1) // 2)
+        wall_factor = 1.0 - np.cosh(mode * np.pi * z / (2.0 * half_width)) / np.cosh(
+            mode * np.pi / 2.0
         )
+        velocity += sign * wall_factor * np.cos(mode * np.pi * y / (2.0 * half_width)) / mode**3
+    return 16.0 * half_width**2 * pressure_gradient * velocity / np.pi**3
 
-        solver = Solver(config, str(tmp_path / "case"), mesh_data=mesh)
-        n_steps = int(1.0 / 0.05)
-        for _ in range(n_steps):
-            solver.evolve()
 
-        U = solver.U[: mesh["n_elements"]]
-        p = solver.p[: mesh["n_elements"]]
-        from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+def square_duct_bulk_velocity(*, half_width=0.5, pressure_gradient=1.0, terms=401):
+    """Return the analytical cross-section-mean velocity."""
+    odd_modes = np.arange(1, terms, 2, dtype=np.float64)
+    series = np.sum(
+        (1.0 - 2.0 * np.tanh(odd_modes * np.pi / 2.0) / (odd_modes * np.pi)) / odd_modes**4
+    )
+    return 32.0 * half_width**2 * pressure_gradient * series / np.pi**4
 
-        geo = compute_mesh_geometry(mesh)
-        cents = geo["element_centroids"]
 
-        assert np.mean(U[:, 0]) > 0, "Net forward flow should be positive"
+def _solve_duct(cross_stream_cells):
+    mesh = structured_box(2, cross_stream_cells, cross_stream_cells, lx=0.25)
+    geometry = compute_mesh_geometry(mesh, gradient_scheme="lsq")
+    n_cells = mesh["n_elements"]
+    n_interior = mesh["n_interior_faces"]
+    field = np.zeros(n_cells + mesh["n_faces"] - n_interior)
 
-        order = np.argsort(cents[:, 0])
-        p_sorted = p[order]
-        n10 = max(1, len(p_sorted) // 10)
-        p_in = np.mean(p_sorted[:n10])
-        p_out = np.mean(p_sorted[-n10:])
-        assert p_in > p_out, f"Pressure should drop: p_in={p_in:.4f} p_out={p_out:.4f}"
+    for patch in mesh["boundary"]:
+        patch["bc_type"] = "fixedValue"
+        faces = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
+        ghosts = n_cells + faces - n_interior
+        centers = geometry["face_centroids"][faces]
+        field[ghosts] = square_duct_velocity(centers[:, 1] - 0.5, centers[:, 2] - 0.5)
 
-        near_center = (np.abs(cents[:, 1]) < 0.1 * H) & (np.abs(cents[:, 2]) < 0.1 * W)
-        if near_center.sum() > 0:
-            Ux_center = np.mean(U[near_center, 0])
-            near_wall = np.abs(cents[:, 1]) > 0.4 * H
-            if near_wall.sum() > 0:
-                Ux_wall = np.mean(U[near_wall, 0])
-                assert Ux_center > Ux_wall, "Centre velocity should exceed wall velocity"
+    volumes = geometry["element_volumes"]
+    for _ in range(80):
+        gradient = compute_gradient_lsq_vectorized(field, mesh, geometry)
+        flux = diffusion.assemble_diffusion_term(
+            field, gradient, np.ones(n_cells), mesh, geometry, mesh["boundary"]
+        )
+        matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(flux, mesh)
+        rhs = matrix_assembly.assemble_rhs_from_fluxes_vectorized(flux, mesh) + volumes
+        solution = solve_linear_system(matrix, rhs, method="spsolve", equation_type="scalar")
+        change = np.linalg.norm(solution - field[:n_cells]) / max(np.linalg.norm(solution), 1e-30)
+        field[:n_cells] = 0.8 * solution + 0.2 * field[:n_cells]
+        if change < 1e-12:
+            break
+    else:
+        raise AssertionError("Square-duct non-orthogonal iteration did not converge")
+
+    centers = geometry["element_centroids"]
+    exact = square_duct_velocity(centers[:, 1] - 0.5, centers[:, 2] - 0.5)
+    profile_error = np.sqrt(np.sum(volumes * (field[:n_cells] - exact) ** 2) / np.sum(volumes))
+    numerical_bulk = np.sum(volumes * field[:n_cells]) / np.sum(volumes)
+    exact_bulk = square_duct_bulk_velocity()
+    pressure_drop_error = abs(exact_bulk / numerical_bulk - 1.0)
+    return profile_error, pressure_drop_error
+
+
+@pytest.mark.verification
+@pytest.mark.slow
+def test_square_duct_profile_converges_over_three_mesh_levels():
+    levels = np.asarray((16, 32, 64), dtype=float)
+    errors = np.asarray([_solve_duct(int(level)) for level in levels])
+    profile_errors = errors[:, 0]
+    pressure_drop_errors = errors[:, 1]
+    profile_order = np.polyfit(np.log(1.0 / levels), np.log(profile_errors), 1)[0]
+    pressure_drop_order = np.polyfit(np.log(1.0 / levels), np.log(pressure_drop_errors), 1)[0]
+
+    assert np.all(np.diff(profile_errors) < 0.0), (
+        f"non-monotone square-duct profile errors: {profile_errors}"
+    )
+    assert np.all(np.diff(pressure_drop_errors) < 0.0), (
+        f"non-monotone square-duct pressure-drop errors: {pressure_drop_errors}"
+    )
+    assert profile_order >= 1.8, (
+        f"square-duct profile order {profile_order:.3f}; errors={profile_errors}"
+    )
+    assert pressure_drop_order >= 1.8, (
+        f"square-duct pressure-drop order {pressure_drop_order:.3f}; errors={pressure_drop_errors}"
+    )

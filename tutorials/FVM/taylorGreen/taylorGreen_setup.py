@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Periodic Taylor–Green vortex validation with the PIMPLE solver."""
+"""Periodic two-dimensional Taylor–Green validation with PIMPLE."""
 
 from __future__ import annotations
 

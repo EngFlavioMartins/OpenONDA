@@ -199,5 +199,14 @@ def validate_boundary_conditions(boundaries) -> None:
                 "diagnostics",
             ):
                 BOUNDARIES.require(type_u, "U", operator)
+        if type_p in PRESSURE_BOUNDARY_TYPES:
+            for operator in (
+                "gradient",
+                "pressure",
+                "flux",
+                "ghost",
+                "diagnostics",
+            ):
+                BOUNDARIES.require(type_p, "p", operator)
     if errors:
         raise ValueError("Unsupported FVM boundary conditions:\n" + "\n".join(errors))

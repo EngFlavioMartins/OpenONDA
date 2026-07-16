@@ -9,7 +9,20 @@ Converted from uFVM cfdComputeGradientGaussLinear0.m
 
 import numpy as np
 
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+
 _LSQ_QR_CONDITION_LIMIT = 1.0e8
+
+
+def _is_empty_boundary(boundary, *, allow_source_type: bool = False) -> bool:
+    type_u = boundary.get("bc_type_U")
+    if type_u is not None:
+        strategy = BOUNDARIES.strategy(type_u, "U", "gradient")
+    elif boundary.get("bc_type") is None and allow_source_type:
+        return boundary.get("type") == "empty"
+    else:
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type"), "scalar", "gradient")
+    return strategy is BoundaryStrategy.EMPTY
 
 
 def _accumulate_interior_gradients(
@@ -73,8 +86,7 @@ def _accumulate_boundary_gradients(
         n_components:  Number of field components.
     """
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type") or boundary.get("type")
-        if bc_type == "empty":
+        if _is_empty_boundary(boundary):
             continue
         start = boundary["startFace"]
         nf = boundary["nFaces"]
@@ -158,6 +170,9 @@ def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
 
     # Volume-average the cell gradients (vectorized)
     grad_phi[:n_elements] /= element_volumes[:, np.newaxis, np.newaxis]
+    parallel = mesh_data.get("_parallel_context")
+    if parallel is not None and parallel.is_partitioned:
+        parallel.exchange_halo(grad_phi[:n_elements])
 
     # Boundary element gradients equal owner cell gradients
     i_boundary_elements = np.arange(n_elements, n_elements + n_boundary_faces)
@@ -173,8 +188,7 @@ def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
 def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
     """Compute the gradient using the Gauss linear method (vectorised).
 
-    Uses :func:`numpy.add.at` for scatter-accumulation, which is
-    significantly faster than Python loops on large meshes.  The
+    Uses deterministic ``bincount`` reductions for face accumulation. The
     algorithm and interface are identical to
     :func:`compute_gradient_gauss_linear`.
 
@@ -224,8 +238,17 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
 
         # Contribution to owners (vectorized accumulation)
         contribution = phi_f[:, np.newaxis] * sf_i  # (n_faces, 3)
-        np.add.at(grad_phi[:, :, i_component], owners_i, contribution)
-        np.add.at(grad_phi[:, :, i_component], neighbours_i, -contribution)
+        for dimension in range(3):
+            grad_phi[:n_elements, dimension, i_component] += np.bincount(
+                owners_i,
+                weights=contribution[:, dimension],
+                minlength=n_elements,
+            )
+            grad_phi[:n_elements, dimension, i_component] -= np.bincount(
+                neighbours_i,
+                weights=contribution[:, dimension],
+                minlength=n_elements,
+            )
 
     # --- BOUNDARY FACES (Vectorized) ---
     owners_b = owners[n_interior_faces:n_faces]
@@ -236,8 +259,7 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
     valid_b_face_indices = []
 
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type") or boundary.get("type")
-        if bc_type == "empty":
+        if _is_empty_boundary(boundary):
             continue
 
         start = boundary["startFace"]
@@ -268,7 +290,12 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
                     + (1.0 - face_weights_b) * phi[owner_indices, i_component]
                 )
             contribution_b = phi_b[:, np.newaxis] * sf_b[rel_indices]
-            np.add.at(grad_phi[:, :, i_component], owners_b[rel_indices], contribution_b)
+            for dimension in range(3):
+                grad_phi[:n_elements, dimension, i_component] += np.bincount(
+                    owners_b[rel_indices],
+                    weights=contribution_b[:, dimension],
+                    minlength=n_elements,
+                )
 
         # Collect indices for setting boundary gradients later
         owners_b[rel_indices]
@@ -338,8 +365,7 @@ def compute_lsq_geometry(mesh_data, geo_data):
 
     # Boundary faces (exclude empty patches)
     for patch in boundary:
-        bc_type = patch.get("bc_type") or patch.get("type")
-        if bc_type == "empty":
+        if _is_empty_boundary(patch, allow_source_type=True):
             continue
         start = patch["startFace"]
         nf = patch["nFaces"]
@@ -454,10 +480,16 @@ def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
     for ic in range(n_components):
         # RHS = Σ w²·φ_n·dr  −  φ_c · Σ w²·dr
         phi_nei = phi[nei_phi_idx, ic]
-        rhs = np.zeros((n_elements, 3), dtype=np.float64)
-        np.add.at(rhs[:, 0], owner_cell, phi_nei * nei_w2_dr[:, 0])
-        np.add.at(rhs[:, 1], owner_cell, phi_nei * nei_w2_dr[:, 1])
-        np.add.at(rhs[:, 2], owner_cell, phi_nei * nei_w2_dr[:, 2])
+        rhs = np.column_stack(
+            [
+                np.bincount(
+                    owner_cell,
+                    weights=phi_nei * nei_w2_dr[:, dimension],
+                    minlength=n_elements,
+                )
+                for dimension in range(3)
+            ]
+        )
         rhs[:, 0] -= phi[:n_elements, ic] * sum_w2dr[:, 0]
         rhs[:, 1] -= phi[:n_elements, ic] * sum_w2dr[:, 1]
         rhs[:, 2] -= phi[:n_elements, ic] * sum_w2dr[:, 2]

@@ -3,6 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum, auto
+
+
+class BoundaryStrategy(Enum):
+    """Canonical behavior selected by the boundary registry."""
+
+    FIXED_VALUE = auto()
+    ZERO_GRADIENT = auto()
+    EMPTY = auto()
+    NO_SLIP = auto()
+    INLET_OUTLET = auto()
+    SLIP = auto()
+    SYMMETRY = auto()
+    CYCLIC = auto()
+    FREESTREAM = auto()
+    DIRECTION_MIXED = auto()
 
 
 @dataclass(frozen=True)
@@ -12,6 +28,7 @@ class BoundaryOperator:
     name: str
     fields: frozenset[str]
     operators: frozenset[str]
+    strategy: BoundaryStrategy
     coupling_only: bool = False
 
 
@@ -48,21 +65,31 @@ class BoundaryRegistry:
     def names_for(self, field: str) -> set[str]:
         return {name for name, entry in self._entries.items() if field in entry.fields}
 
+    def strategy(self, name: str, field: str, operator: str) -> BoundaryStrategy:
+        """Resolve validated operator behavior without per-module name fallback."""
+        return self.require(name, field, operator).strategy
+
 
 BOUNDARIES = BoundaryRegistry()
-for _name, _fields in (
-    ("fixedValue", frozenset({"U", "p"})),
-    ("zeroGradient", frozenset({"U", "p"})),
-    ("empty", frozenset({"U", "p"})),
-    ("noSlip", frozenset({"U"})),
-    ("inletOutlet", frozenset({"U"})),
-    ("slip", frozenset({"U"})),
-    ("symmetry", frozenset({"U"})),
-    ("cyclic", frozenset({"U", "p"})),
-    ("freestream", frozenset({"U", "p"})),
+for _name, _fields, _strategy in (
+    ("fixedValue", frozenset({"U", "p", "scalar"}), BoundaryStrategy.FIXED_VALUE),
+    ("zeroGradient", frozenset({"U", "p", "scalar"}), BoundaryStrategy.ZERO_GRADIENT),
+    ("empty", frozenset({"U", "p", "scalar"}), BoundaryStrategy.EMPTY),
+    ("noSlip", frozenset({"U"}), BoundaryStrategy.NO_SLIP),
+    ("inletOutlet", frozenset({"U"}), BoundaryStrategy.INLET_OUTLET),
+    ("slip", frozenset({"U"}), BoundaryStrategy.SLIP),
+    ("symmetry", frozenset({"U"}), BoundaryStrategy.SYMMETRY),
+    ("cyclic", frozenset({"U", "p", "scalar"}), BoundaryStrategy.CYCLIC),
+    ("freestream", frozenset({"U", "p", "scalar"}), BoundaryStrategy.FREESTREAM),
 ):
-    BOUNDARIES.register(BoundaryOperator(_name, _fields, _ALL_OPERATORS))
+    BOUNDARIES.register(BoundaryOperator(_name, _fields, _ALL_OPERATORS, _strategy))
 
 BOUNDARIES.register(
-    BoundaryOperator("directionMixed", frozenset({"U"}), _ALL_OPERATORS, coupling_only=True)
+    BoundaryOperator(
+        "directionMixed",
+        frozenset({"U"}),
+        _ALL_OPERATORS,
+        BoundaryStrategy.DIRECTION_MIXED,
+        coupling_only=True,
+    )
 )

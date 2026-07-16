@@ -13,6 +13,7 @@ Converted from uFVM cfdAssembleIntoGlobalMatrixFaceFluxes.m
 from dataclasses import dataclass
 import logging
 
+from numba import njit
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 
@@ -29,6 +30,45 @@ class _CSRPattern:
     indices: np.ndarray
     indptr: np.ndarray
     contribution_slots: np.ndarray
+
+
+@dataclass
+class MatrixAssemblyWorkspace:
+    """Reusable CSR storage for a static mesh topology.
+
+    The matrix object and its structural arrays remain stable across updates;
+    only ``matrix.data`` is overwritten. Callers that need to retain an older
+    coefficient state must copy the returned matrix.
+    """
+
+    matrix: csr_matrix
+    pattern: _CSRPattern
+    include_boundaries: bool
+
+    @classmethod
+    def create(cls, mesh_data, *, include_boundaries: bool = True):
+        pattern = _csr_pattern(mesh_data, include_boundaries)
+        data = np.zeros(len(pattern.indices), dtype=np.float64)
+        matrix = csr_matrix(
+            (data, pattern.indices, pattern.indptr),
+            shape=(mesh_data["n_elements"], mesh_data["n_elements"]),
+            copy=False,
+        )
+        return cls(matrix=matrix, pattern=pattern, include_boundaries=include_boundaries)
+
+    def update(self, flux_data, mesh_data, *, backend: str = "numpy") -> csr_matrix:
+        """Overwrite coefficients and return the stable CSR matrix object."""
+        contributions = _matrix_contributions(
+            flux_data, mesh_data, include_boundaries=self.include_boundaries
+        )
+        values = _reduce_contributions(
+            self.pattern.contribution_slots,
+            contributions,
+            len(self.pattern.indices),
+            backend,
+        )
+        self.matrix.data[:] = values
+        return self.matrix
 
 
 def _sparsity_key(mesh_data):
@@ -197,7 +237,47 @@ def prepare_matrix_assembly(mesh_data) -> None:
     _csr_pattern(mesh_data, include_boundaries=True)
 
 
-def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
+def _matrix_contributions(flux_data, mesh_data, *, include_boundaries: bool) -> np.ndarray:
+    """Return face contributions in the order used by the cached CSR pattern."""
+    n_interior_faces = mesh_data["n_interior_faces"]
+    flux_cf = flux_data["flux_cf"][:n_interior_faces]
+    flux_ff = flux_data["flux_ff"][:n_interior_faces]
+    contributions = [flux_cf, flux_ff, -flux_cf, -flux_ff]
+
+    if include_boundaries:
+        flux_cf_b = flux_data["flux_cf"][n_interior_faces:]
+        flux_ff_b = flux_data["flux_ff"][n_interior_faces:]
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1))
+        )[n_interior_faces:]
+        coupled = boundary_neighbours >= 0
+        contributions.extend((flux_cf_b, flux_ff_b[coupled]))
+    return np.concatenate(contributions)
+
+
+@njit(cache=True)
+def _reduce_contributions_numba(slots, contributions, size):
+    values = np.zeros(size, dtype=np.float64)
+    for index in range(len(contributions)):
+        values[slots[index]] += contributions[index]
+    return values
+
+
+def _reduce_contributions(slots, contributions, size: int, backend: str) -> np.ndarray:
+    if backend == "numpy":
+        return np.bincount(slots, weights=contributions, minlength=size)
+    if backend == "numba":
+        return _reduce_contributions_numba(slots, contributions, size)
+    if backend == "taichi":
+        from ..core.taichi_operators import reduce_contributions
+
+        return reduce_contributions(slots, contributions, size)
+    raise ValueError(f"Unknown operator backend {backend!r}")
+
+
+def assemble_matrix_from_fluxes_vectorized(
+    flux_data, mesh_data, indices=None, workspace=None, *, backend: str = "numpy"
+):
     """
     Vectorized version of matrix assembly for better performance.
 
@@ -220,33 +300,27 @@ def assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data, indices=None):
 
     n_elements = mesh_data["n_elements"]
     n_interior_faces = mesh_data["n_interior_faces"]
-
-    flux_cf = flux_data["flux_cf"][:n_interior_faces]
-    flux_ff = flux_data["flux_ff"][:n_interior_faces]
-
-    # Handle boundary faces if present
     has_boundaries = len(flux_data["flux_cf"]) > n_interior_faces
-    if has_boundaries:
-        flux_cf_b = flux_data["flux_cf"][n_interior_faces:]
-        flux_ff_b = flux_data["flux_ff"][n_interior_faces:]
-        boundary_neighbours = np.asarray(
-            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1))
-        )[n_interior_faces:]
-        coupled = boundary_neighbours >= 0
 
-    contributions = np.concatenate([flux_cf, flux_ff, -flux_cf, -flux_ff])
-    if has_boundaries:
-        contributions = np.concatenate([contributions, flux_cf_b, flux_ff_b[coupled]])
+    if workspace is not None:
+        if indices is not None:
+            raise ValueError("indices and workspace are mutually exclusive")
+        if workspace.include_boundaries != has_boundaries:
+            raise ValueError("Matrix workspace boundary layout does not match the flux arrays")
+        return workspace.update(flux_data, mesh_data, backend=backend)
+
+    contributions = _matrix_contributions(flux_data, mesh_data, include_boundaries=has_boundaries)
 
     if indices is not None:
         rows, cols = indices
         return csr_matrix((contributions, (rows, cols)), shape=(n_elements, n_elements))
 
     pattern = _csr_pattern(mesh_data, has_boundaries)
-    data = np.bincount(
+    data = _reduce_contributions(
         pattern.contribution_slots,
-        weights=contributions,
-        minlength=len(pattern.indices),
+        contributions,
+        len(pattern.indices),
+        backend,
     )
     return csr_matrix(
         (data, pattern.indices, pattern.indptr),
@@ -301,7 +375,19 @@ def assemble_rhs_from_fluxes(flux_data, mesh_data):
     return b
 
 
-def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data):
+@njit(cache=True)
+def _assemble_rhs_numba(flux_vf, owners, neighbours, n_elements, n_interior_faces):
+    result = np.zeros(n_elements, dtype=np.float64)
+    for face in range(n_interior_faces):
+        value = flux_vf[face]
+        result[owners[face]] -= value
+        result[neighbours[face]] += value
+    for face in range(n_interior_faces, len(flux_vf)):
+        result[owners[face]] -= flux_vf[face]
+    return result
+
+
+def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = "numpy"):
     """
     Vectorized RHS assembly.
     """
@@ -313,18 +399,35 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data):
     neighbours = mesh_data["neighbours"][:n_interior_faces]
     flux_vf = flux_data["flux_vf"][:n_interior_faces]
 
-    # Initialize RHS
-    b = np.zeros(n_elements, dtype=np.float64)
+    if backend == "numba":
+        return _assemble_rhs_numba(
+            np.asarray(flux_data["flux_vf"], dtype=np.float64),
+            np.asarray(mesh_data["owners"], dtype=np.int64),
+            np.asarray(mesh_data["neighbours"], dtype=np.int64),
+            n_elements,
+            n_interior_faces,
+        )
+    if backend == "taichi":
+        from ..core.taichi_operators import assemble_rhs
 
-    # Interior faces - vectorized accumulation
-    np.add.at(b, owners, -flux_vf)
-    np.add.at(b, neighbours, flux_vf)
+        return assemble_rhs(
+            flux_data["flux_vf"],
+            mesh_data["owners"],
+            mesh_data["neighbours"],
+            n_elements,
+            n_interior_faces,
+        )
+    if backend != "numpy":
+        raise ValueError(f"Unknown operator backend {backend!r}")
+
+    b = np.bincount(owners, weights=-flux_vf, minlength=n_elements)
+    b += np.bincount(neighbours, weights=flux_vf, minlength=n_elements)
 
     # Boundary faces
     if len(flux_data["flux_vf"]) > n_interior_faces:
         owners_b = mesh_data["owners"][n_interior_faces:]
         flux_vf_b = flux_data["flux_vf"][n_interior_faces:]
-        np.add.at(b, owners_b, -flux_vf_b)
+        b += np.bincount(owners_b, weights=-flux_vf_b, minlength=n_elements)
 
     return b
 

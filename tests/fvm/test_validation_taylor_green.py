@@ -1,9 +1,8 @@
-"""T0a — full-solver Taylor–Green vortex validation (decaying, analytic).
+"""Full-solver 2D Taylor–Green vortex validation (decaying, analytic).
 
-Drives the *integrated* PIMPLE solver (momentum + pressure + Rhie–Chow + BDF2) on
-the periodic 2-D decaying Taylor–Green vortex using translational cyclic pairs.
-The
-analytic solution on ``[0, 2π]²`` is
+Drives PIMPLE (momentum, pressure, Rhie–Chow, and BDF2) on the periodic
+two-dimensional solution using translational cyclic pairs. The analytic
+solution on ``[0, 2π]²`` is
 
     u = e^{-2νt}( sin x cos y, −cos x sin y, 0 ),
     KE(t) = KE(0) · e^{-4νt}.

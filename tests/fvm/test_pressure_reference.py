@@ -20,14 +20,14 @@ from source.solvers.FVM.utils.cavity_utils import (
 
 def test_reference_needed_only_without_dirichlet_pressure():
     closed = [{"name": "walls", "nFaces": 100, "bc_type_p": "zeroGradient"}]
-    assert needs_pressure_reference(closed, n_elements=10_000)
+    assert needs_pressure_reference(closed)
 
     # A single Dirichlet patch removes the constant pressure null space,
     # irrespective of its face-count-to-cell-count ratio.
     open_case = closed + [
         {"name": "outlet", "nFaces": 1, "bc_type_p": "fixedValue", "value_p": 0.0}
     ]
-    assert not needs_pressure_reference(open_case, n_elements=10_000)
+    assert not needs_pressure_reference(open_case)
 
 
 def test_reference_constraint_preserves_symmetry_and_other_equations():

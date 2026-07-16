@@ -12,7 +12,17 @@ Converted from uFVM cfdAssembleConvectionTerm.m
 
 import numpy as np
 
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..schemes.limiters import apply_limiter, is_limited_scheme
+
+
+def _convection_boundary_strategy(boundary_patch):
+    """Resolve velocity/scalar boundary behavior without an implicit fallback."""
+    type_u = boundary_patch.get("bc_type_U")
+    if type_u is not None:
+        return BOUNDARIES.strategy(type_u, "U", "convection")
+    bc_type = boundary_patch.get("bc_type")
+    return BOUNDARIES.strategy(bc_type, "scalar", "convection")
 
 
 def assemble_convection_term_upwind(phi, mdot, mesh_data):
@@ -148,6 +158,8 @@ def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter)
         raise ValueError("Limited convection schemes require grad_phi (cell gradient).")
     if grad_phi.ndim == 3 and grad_phi.shape[2] == 1:
         grad_phi = grad_phi.squeeze(-1)
+    if not np.all(np.isfinite(phi)) or not np.all(np.isfinite(grad_phi)):
+        raise FloatingPointError("TVD convection received a non-finite field or gradient")
 
     phi_p = phi[owners]
     phi_n = phi[neighbours]
@@ -158,12 +170,12 @@ def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter)
     grad_cf = np.where(mdot_i >= 0.0, grad_cp, grad_cn)
 
     small = np.abs(gradf) < 1e-30 * np.maximum(np.abs(grad_cf), 1.0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        r = 2.0 * grad_cf / gradf - 1.0
+    r = np.full_like(gradf, -1.0, dtype=np.float64)
+    np.divide(2.0 * grad_cf, gradf, out=r, where=~small)
+    r[~small] -= 1.0
     # At an extremum (gradf→0) force upwind (r large negative → ψ=0) unless the
     # upwind gradient agrees in sign (smooth plateau → keep some blend).
     r = np.where(small, np.where(np.sign(grad_cf) == np.sign(gradf), 1000.0, -1.0), r)
-    r = np.nan_to_num(r, nan=-1.0, posinf=1000.0, neginf=-1.0)
     return apply_limiter(limiter, r)
 
 
@@ -231,7 +243,8 @@ def assemble_convection_term_boundary(
 
     mdot_b = mdot[b_face_indices]
 
-    if boundary_patch.get("bc_type_U") == "cyclic":
+    strategy = _convection_boundary_strategy(boundary_patch)
+    if strategy is BoundaryStrategy.CYCLIC:
         if geo_data is None:
             raise ValueError("Cyclic convection requires geometric interpolation data")
         neighbours_b = mesh_data["boundary_neighbours"][b_face_indices]
@@ -284,8 +297,11 @@ def assemble_convection_term_boundary(
     b_elem_start = start_face - n_interior_faces
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
 
-    bc_type = boundary_patch.get("bc_type") or boundary_patch.get("bc_type_U")
-    if bc_type in {"fixedValue", "noSlip", "directionMixed"}:
+    if strategy in (
+        BoundaryStrategy.FIXED_VALUE,
+        BoundaryStrategy.NO_SLIP,
+        BoundaryStrategy.DIRECTION_MIXED,
+    ):
         # A Dirichlet face value is authoritative for either flow direction.
         flux_cf = np.zeros_like(mdot_b)
         flux_ff_val = mdot_b
@@ -384,9 +400,11 @@ def assemble_convection_term(
 
     # Boundary faces
     for boundary in boundaries:
-        if (
-            boundary.get("bc_type_U") in ("empty", "slip", "symmetry")
-            or boundary.get("type") == "empty"
+        strategy = _convection_boundary_strategy(boundary)
+        if strategy in (
+            BoundaryStrategy.EMPTY,
+            BoundaryStrategy.SLIP,
+            BoundaryStrategy.SYMMETRY,
         ):
             # No convective flux through an impermeable plane.
             continue

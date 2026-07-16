@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-15",
+  "host": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "logical_cpus": 10,
+    "python": "3.13.14"
+  },
+  "case": {
+    "cells": 10000,
+    "faces": 40200,
+    "linear_backend": "scipy",
+    "precision": "float64"
+  },
+  "results": [
+    {
+      "operator_backend": "numpy",
+      "step_seconds": 0.781178625067696,
+      "operators_and_diagnostics_seconds": 0.5991968341404572,
+      "peak_rss_bytes": 242171904,
+      "speedup_over_numpy": 1.0
+    },
+    {
+      "operator_backend": "numba",
+      "step_seconds": 0.7970485839759931,
+      "operators_and_diagnostics_seconds": 0.6166450841119513,
+      "peak_rss_bytes": 239435776,
+      "speedup_over_numpy": 0.9800890965528132
+    },
+    {
+      "operator_backend": "taichi",
+      "device": "cpu",
+      "step_seconds": 1.3818147089332342,
+      "operators_and_diagnostics_seconds": 1.2010971669806167,
+      "peak_rss_bytes": 316407808,
+      "speedup_over_numpy": 0.5653338240686588
+    }
+  ],
+  "qualification": {
+    "numpy_cpu_float64": "reference",
+    "numba_cpu_float64": "parity-only",
+    "taichi_cpu_float64": "parity-only",
+    "accelerated_backends": [],
+    "reason": "Neither optional backend meets the 1.5x end-to-end acceleration gate."
+  }
+}

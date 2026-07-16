@@ -12,6 +12,8 @@ class TestGradientOfLinearField:
     def setup(self, hand_built_3d_mesh):
         self.mesh = hand_built_3d_mesh
         self.geo = compute_mesh_geometry(hand_built_3d_mesh)
+        for boundary in self.mesh["boundary"]:
+            boundary["bc_type"] = "fixedValue"
 
     def _set_ghost_cells(self, phi, func):
         """Set boundary ghost cells to function value at face centroids."""

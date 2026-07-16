@@ -37,6 +37,11 @@ def test_serial_context_is_default():
     assert context.is_root
 
 
+def test_unqualified_taichi_device_fails_before_solver_start():
+    with pytest.raises(ValueError, match="device='metal'"):
+        ParallelContext.create(ExecutionConfig(operator_backend="taichi", device="metal"))
+
+
 def test_serial_context_rejects_accidental_mpi_launch(monkeypatch):
     monkeypatch.setenv("OMPI_COMM_WORLD_SIZE", "4")
     assert detected_world_size() == 4

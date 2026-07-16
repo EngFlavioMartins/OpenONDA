@@ -1,116 +1,44 @@
-"""
-Moment-Conserving Correction for Particle Injection.
-=====================================================
+"""Constrained circulation correction for FVM-to-particle injection."""
 
-This module implements a constrained least-squares algorithm to adjust particle
-circulations after threshold filtering, ensuring exact conservation of global
-invariants (circulation, linear impulse, angular impulse).
-
-Mathematical Framework
-----------------------
-After filtering weak particles, we seek a small correction δΓ to each kept
-particle such that the global invariants match the original FVM field.
-
-We minimize the perturbation weighted by particle strength:
-    min Σ |δΓ_i|² / |Γ_i|
-
-Subject to conservation constraints:
-    Σ (Γ_i + δΓ_i) = Γ_target              (circulation)
-    Σ r_i × (Γ_i + δΓ_i) = I_target        (linear impulse)
-    Σ r_i × (r_i × (Γ_i + δΓ_i)) = A_target (angular impulse)
-
-Solution via Lagrange Multipliers
-----------------------------------
-The correction has the analytic form:
-    δΓ_i = w_i [λ_Γ + 0.5(r_i × λ_I) + (1/3)(r_i × (r_i × λ_A))]
-
-where w_i = |Γ_i| is the particle weight and λ = [λ_Γ, λ_I, λ_A] are
-Lagrange multipliers found by solving a 9×9 linear system.
-
-References
-----------
-- Cottet & Koumoutsakos (2000), "Vortex Methods", Chapter 8
-- Winckelmans (1993), PhD thesis on vortex particle methods
-- Barba et al. (2005), "Advances in viscous vortex methods"
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: February 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
-
-import contextlib
 from contextlib import contextmanager
 import ctypes
 import ctypes.util
 from dataclasses import dataclass
 import logging
-import signal
+from typing import Literal
 
 import numpy as np
 
 logger = logging.getLogger("coupler")
 
-# =========================================================
-# FPE guard: temporarily disable hardware FPE traps installed by OpenFOAM
-# =========================================================
-# OpenFOAM calls feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW)
-# which makes the CPU raise SIGFPE on any such exception.  LAPACK's ieeeck
-# routine intentionally divides by zero to test IEEE-754 compliance, so it
-# triggers a fatal signal when OpenFOAM's handler is active.
-#
-# The fix: temporarily call fedisableexcept() to clear the hardware FPE
-# traps around LAPACK calls (np.linalg.cond, np.linalg.lstsq, etc.), then
-# restore them.  This is done via ctypes to call the glibc functions
-# directly, which is the same mechanism OpenFOAM itself uses.
-# =========================================================
-
-# FE_* constants from <fenv.h> on Linux/glibc
+# OpenFOAM can enable glibc hardware traps that conflict with LAPACK's IEEE
+# capability probe. Preserve and restore that mask around the two LAPACK calls.
 _FE_INVALID = 0x01
 _FE_DIVBYZERO = 0x04
 _FE_OVERFLOW = 0x08
 _FE_ALL_EXCEPT = _FE_INVALID | _FE_DIVBYZERO | _FE_OVERFLOW
 
-# Try to load glibc for fenv control
 _libm = None
-try:
-    _libm_path = ctypes.util.find_library("m")
-    if _libm_path:
+_libm_path = ctypes.util.find_library("m")
+if _libm_path:
+    try:
         _libm = ctypes.CDLL(_libm_path)
-except Exception:
-    pass
+    except OSError:
+        _libm = None
 
 
 @contextmanager
 def _suspend_fpe_traps():
-    """Context manager to disable hardware FPE traps around LAPACK calls.
-
-    On Linux with glibc, uses ``fedisableexcept`` / ``feenableexcept`` to
-    temporarily clear the FE_DIVBYZERO, FE_INVALID and FE_OVERFLOW traps
-    that OpenFOAM enables.  On exit the original traps are restored.
-
-    If glibc is not available (e.g. macOS, musl), falls back to setting
-    the Python-level SIGFPE handler to SIG_DFL for the duration of the
-    block.
-    """
-    if _libm is not None and hasattr(_libm, "fedisableexcept"):
-        # fedisableexcept returns the old set of enabled traps
-        old_traps = _libm.fedisableexcept(_FE_ALL_EXCEPT)
-        try:
-            yield
-        finally:
-            # Restore exactly the traps that were active before
-            if old_traps & _FE_ALL_EXCEPT:
-                _libm.feenableexcept(old_traps & _FE_ALL_EXCEPT)
-    else:
-        old_handler = signal.getsignal(signal.SIGFPE)
-        signal.signal(signal.SIGFPE, signal.SIG_DFL)
-        try:
-            yield
-        finally:
-            if callable(old_handler) or old_handler in (signal.SIG_DFL, signal.SIG_IGN):
-                with contextlib.suppress(OSError, ValueError):
-                    signal.signal(signal.SIGFPE, old_handler)
+    """Suspend glibc FPE traps when that API is available."""
+    if _libm is None or not hasattr(_libm, "fedisableexcept"):
+        yield
+        return
+    old_traps = _libm.fedisableexcept(_FE_ALL_EXCEPT)
+    try:
+        yield
+    finally:
+        if old_traps & _FE_ALL_EXCEPT:
+            _libm.feenableexcept(old_traps & _FE_ALL_EXCEPT)
 
 
 @dataclass
@@ -130,64 +58,31 @@ def recover_invariants(
     circ: np.ndarray,
     target_invariants: dict[str, np.ndarray],
     reference_point: np.ndarray | None = None,
-    use_taichi: bool = False,
     return_stats: bool = False,
-    tolerance_ratio: float = 0.05,
     conserve_circulation: bool = True,
     conserve_linear_impulse: bool = True,
     conserve_angular_impulse: bool = True,
     volumes: np.ndarray | None = None,
-) -> np.ndarray:
+    weighting: Literal["volume", "circulation"] = "volume",
+    correction_tolerance: float = 1e-14,
+    max_condition_number: float = 1e12,
+) -> np.ndarray | tuple[np.ndarray, CorrectionStats]:
+    """Redistribute circulation to recover selected integral invariants.
+
+    ``target_invariants`` contains three-component ``circulation``,
+    ``linear_impulse`` and ``angular_impulse`` arrays. Volume weighting requires
+    one positive volume per particle. Ill-conditioned correction systems are
+    rejected using ``max_condition_number``.
     """
-    Adjust particle circulations to exactly match target invariants.
-
-    This is the main API. After threshold filtering removes weak particles,
-    this function redistributes the lost circulation/impulse onto the
-    remaining particles in a physically consistent way.
-
-    Args:
-        pos: (N, 3) Particle positions [m]
-        circ: (N, 3) Particle circulations (filtered set) [m²/s]
-        target_invariants: Dict with keys:
-            - 'circulation': (3,) Total circulation vector [m²/s]
-            - 'linear_impulse': (3,) Total linear impulse [m³/s]
-            - 'angular_impulse': (3,) Total angular impulse [m⁴/s]
-            These should be the values from the ORIGINAL full FVM field.
-        reference_point: (3,) Optional reference point for the moment correction.
-            If None, the centroid of the particles is used. Shifting the reference
-            to the centroid improves numerical conditioning and prevents
-            non-physical "moving body" effects in low-circulation regions.
-        use_taichi: Reserved for a future accelerated implementation.
-        return_stats: If True, return (corrected_circ, stats) tuple
-        tolerance_ratio: If net circulation target is less than this fraction
-             of the integrated vorticity magnitude, the correction is bypassed
-             to prevent signal destruction in non-isolated systems.
-        volumes: (N,) optional particle volumes. When provided, corrections are
-            weighted by volume (uniform redistribution per unit volume) instead
-            of by |Γ| (which piles corrections onto the strongest particles).
-            Volume weighting avoids the "moving body" artifact (coupler_design.md §WS3).
-
-    Returns:
-        circ_corrected: (N, 3) Adjusted circulations
-        stats: CorrectionStats (if return_stats=True)
-
-    Example:
-        >>> # After threshold filtering
-        >>> fvm_invariants = compute_invariants(pos_all, circ_all, radii_all)
-        >>> circ_corrected = recover_invariants(
-        ...     pos_kept, circ_kept, fvm_invariants
-        ... )
-        >>> # Now circ_corrected conserves FVM invariants exactly
-    """
-    N = len(pos)
-    if N == 0:
-        if return_stats:
-            return circ, CorrectionStats(0, 0, 0, 0, 0, 0)
-        return circ
-
-    # Validate inputs
-    if pos.shape != (N, 3) or circ.shape != (N, 3):
+    n_particles = len(pos)
+    if pos.shape != (n_particles, 3) or circ.shape != (n_particles, 3):
         raise ValueError(f"pos and circ must be (N, 3), got {pos.shape}, {circ.shape}")
+    if not np.all(np.isfinite(pos)) or not np.all(np.isfinite(circ)):
+        raise ValueError("pos and circ must contain only finite values")
+    if not np.isfinite(correction_tolerance) or correction_tolerance < 0.0:
+        raise ValueError("correction_tolerance must be finite and non-negative")
+    if not np.isfinite(max_condition_number) or max_condition_number < 1.0:
+        raise ValueError("max_condition_number must be finite and at least one")
 
     required_keys = ["circulation", "linear_impulse", "angular_impulse"]
     for key in required_keys:
@@ -195,19 +90,40 @@ def recover_invariants(
             raise ValueError(f"target_invariants missing key: {key}")
         if target_invariants[key].shape != (3,):
             raise ValueError(f"{key} must be shape (3,), got {target_invariants[key].shape}")
+        if not np.all(np.isfinite(target_invariants[key])):
+            raise ValueError(f"{key} must contain only finite values")
 
-    if use_taichi:
-        raise NotImplementedError("Taichi invariant correction is not implemented")
+    if reference_point is not None:
+        reference_point = np.asarray(reference_point, dtype=float)
+        if reference_point.shape != (3,) or not np.all(np.isfinite(reference_point)):
+            raise ValueError("reference_point must be a finite vector with shape (3,)")
+
+    if n_particles == 0:
+        active = []
+        if conserve_circulation:
+            active.append(target_invariants["circulation"])
+        if conserve_linear_impulse:
+            active.append(target_invariants["linear_impulse"])
+        if conserve_angular_impulse:
+            active.append(target_invariants["angular_impulse"])
+        residual = np.linalg.norm(np.concatenate(active)) if active else 0.0
+        if residual > correction_tolerance:
+            raise ValueError("Cannot recover non-zero invariants without particles")
+        stats = CorrectionStats(0, 0, 0, residual, 1, 0)
+        return (circ, stats) if return_stats else circ
+
     circ_corrected, stats = _recover_invariants_numpy(
         pos,
         circ,
         target_invariants,
         reference_point,
-        tolerance_ratio,
         conserve_circulation,
         conserve_linear_impulse,
         conserve_angular_impulse,
         volumes=volumes,
+        weighting=weighting,
+        correction_tolerance=correction_tolerance,
+        max_condition_number=max_condition_number,
     )
 
     if return_stats:
@@ -220,11 +136,13 @@ def _recover_invariants_numpy(
     circ: np.ndarray,
     target_invariants: dict[str, np.ndarray],
     reference_point: np.ndarray | None = None,
-    tolerance_ratio: float = 0.05,
     conserve_circulation: bool = True,
     conserve_linear_impulse: bool = True,
     conserve_angular_impulse: bool = True,
     volumes: np.ndarray | None = None,
+    weighting: Literal["volume", "circulation"] = "volume",
+    correction_tolerance: float = 1e-14,
+    max_condition_number: float = 1e12,
 ) -> tuple[np.ndarray, CorrectionStats]:
     """
     NumPy implementation of invariant recovery.
@@ -234,7 +152,6 @@ def _recover_invariants_numpy(
     """
     N = len(pos)
 
-    # Determine active constraints
     active_indices = []
     if conserve_circulation:
         active_indices.extend([0, 1, 2])
@@ -249,17 +166,13 @@ def _recover_invariants_numpy(
         logger.debug("No invariants selected for conservation.")
         return circ, CorrectionStats(0, 0, 0, 0, 1.0, N)
 
-    # Guard: cannot correct with too few particles
-    # Need at least N particles for N constraints
-    if n_constraints > N:
-        logger.debug(
-            f"Cannot correct with only {N} particles (need ≥{n_constraints} for well-posed system)"
+    if n_constraints > 3 * N:
+        raise ValueError(
+            f"Cannot conserve {n_constraints} scalar constraints with only {3 * N} "
+            "particle-circulation degrees of freedom"
         )
-        return circ, CorrectionStats(0, 0, 0, 0, 1.0, 0)
 
-    # 1. Coordinate shifting for numerical stability
     if reference_point is None:
-        # Default to vorticity centroid (weighted by circulation magnitude)
         w_mag = np.linalg.norm(circ, axis=1)
         if np.sum(w_mag) > 1e-12:
             reference_point = np.average(pos, weights=w_mag, axis=0)
@@ -268,27 +181,11 @@ def _recover_invariants_numpy(
 
     pos_rel = pos - reference_point
 
-    # 2. Invariant bypass check
-    # Only skip correction if the target is truly zero (absolute threshold).
-    # NOTE: The old check compared target_gamma_mag to sum_abs_circ (L1 norm), which
-    # always bypasses correction for bipolar vorticity fields — the vector sum is
-    # near-zero even when individual magnitudes are large. This caused the correction
-    # to be silently skipped on every step.
-    target_gamma_mag = np.linalg.norm(target_invariants["circulation"])
-    if target_gamma_mag < 1e-14:
-        logger.debug("Bypassing moment correction: target Γ is effectively zero")
-        return circ, CorrectionStats(0, 0, 0, 0, 1.0, N)
-
-    # 3. Compute current invariants of the filtered set (relative to reference_point)
-    # We compute these from scratch in the local frame to ensure consistency.
     current_Gamma = np.sum(circ, axis=0)
     x_cross_G = np.cross(pos_rel, circ)
     current_I = 0.5 * np.sum(x_cross_G, axis=0)
     current_A = (1.0 / 3.0) * np.sum(np.cross(pos_rel, x_cross_G), axis=0)
 
-    # 4. Shift target invariants to the reference_point frame
-    # Formula for Linear Impulse shift: I(R) = I(0) - 0.5 * R x Γ
-    # Formula for Angular Impulse shift: A(R) = A(0) - R x I(0) - R x I(R) + (1/3) R x (R x Γ)
     R = reference_point
     G_tgt = target_invariants["circulation"]
     I_tgt_0 = target_invariants["linear_impulse"]
@@ -296,15 +193,6 @@ def _recover_invariants_numpy(
 
     I_tgt_R = I_tgt_0 - 0.5 * np.cross(R, G_tgt)
 
-    # Derivation for A(R) shift in 3D is complex; we use the direct definition shift:
-    # A(R) = 1/3 Σ (r-R) x ((r-R) x Γ)
-    # But since we don't have the original field i.e. the individual Γ_i, we must use
-    # the shift formula for the total moments.
-    # For a vorticity distribution, the shifts are:
-    # L_1(R) = L_1(0) - R x L_0
-    # L_2(R) = L_2(0) - R x L_1(0) - R x L_1(R) + R x (R x L_0) ... but with 1/2, 1/3 factors.
-    # Correct relation for A = 1/3 Σ r x (r x ω):
-    # A(R) = A(0) - np.cross(R, I_tgt_0) - np.cross(R, I_tgt_R) + (1.0/3.0) * np.cross(R, np.cross(R, G_tgt))
     A_tgt_R = (
         A_tgt_0
         - np.cross(R, I_tgt_0)
@@ -312,38 +200,32 @@ def _recover_invariants_numpy(
         + (1.0 / 3.0) * np.cross(R, np.cross(R, G_tgt))
     )
 
-    # 5. Calculate residuals (deficits)
     R_Gamma = G_tgt - current_Gamma
     R_I = I_tgt_R - current_I
     R_A = A_tgt_R - current_A
 
-    # Check if correction is needed
-    # Select active residuals
     R_total_full = np.concatenate([R_Gamma, R_I, R_A])
     R_active = R_total_full[active_indices]
 
-    # Check if correction is needed
     residual_norm = np.linalg.norm(R_active)
-    if residual_norm < 1e-14:
-        logger.debug("No correction needed (residual < 1e-14)")
+    if residual_norm <= correction_tolerance:
         return circ, CorrectionStats(0, 0, 0, 0, 1.0, N)
 
-    # 3. Compute particle weights (avoid division by zero)
-    # WS3: volume weighting redistributes corrections uniformly per unit volume,
-    # preventing the ∝|Γ| weighting from piling corrections onto strong particles
-    # and causing "moving body" distortion (coupler_design.md §WS3).
-    if volumes is not None and len(volumes) == N:
+    if weighting == "volume":
+        if volumes is None or np.asarray(volumes).shape != (N,):
+            raise ValueError(f"volume weighting requires volumes with shape ({N},)")
         weights = np.asarray(volumes, dtype=float)
-        weights = np.maximum(weights, 1e-30)
-    else:
+        if not np.all(np.isfinite(weights)) or np.any(weights <= 0.0):
+            raise ValueError("particle volumes must be finite and positive")
+    elif weighting == "circulation":
         weights = np.linalg.norm(circ, axis=1)
+    else:
+        raise ValueError(f"Unknown invariant-correction weighting {weighting!r}")
     total_weight = np.sum(weights)
 
     if total_weight < 1e-14:
-        logger.warning("All particles have near-zero circulation - cannot correct")
-        return circ, CorrectionStats(0, 0, 0, residual_norm, np.inf, N)
+        raise ValueError("Invariant correction has zero total particle weight")
 
-    # 6. Build system matrix using 9-probe method (relative coordinates)
     M = np.zeros((9, 9))
     basis_vectors = np.eye(9)
 
@@ -353,14 +235,12 @@ def _recover_invariants_numpy(
         L_I = L_vec[3:6]
         L_A = L_vec[6:9]
 
-        # Compute induced correction for this basis vector
         term1 = L_Gamma
         term2 = 0.5 * np.cross(pos_rel, L_I)
         term3 = (1.0 / 3.0) * np.cross(pos_rel, np.cross(pos_rel, L_A))
 
         dGamma_probe = (term1 + term2 + term3) * weights[:, None]
 
-        # Project back to invariants
         res_Gamma = np.sum(dGamma_probe, axis=0)
         x_cross_dG = np.cross(pos_rel, dGamma_probe)
         res_I = 0.5 * np.sum(x_cross_dG, axis=0)
@@ -368,43 +248,25 @@ def _recover_invariants_numpy(
 
         M[:, i] = np.concatenate([res_Gamma, res_I, res_A])
 
-    # Extract submatrix for active constraints
     M_active = M[np.ix_(active_indices, active_indices)]
 
-    # 5. Guard against NaN/Inf before any LAPACK routines
     if (not np.all(np.isfinite(M_active))) or (not np.all(np.isfinite(R_active))):
-        logger.warning("Correction skipped: non-finite entries in system matrix or residuals")
-        return circ, CorrectionStats(0, 0, 0, residual_norm, np.inf, N)
+        raise FloatingPointError("Invariant correction matrix or residual contains non-finite data")
 
-    # 6. Solve the 9×9 system with FPE traps suspended.
-    #    OpenFOAM enables hardware FPE traps (feenableexcept) which conflict
-    #    with LAPACK's internal IEEE-754 compliance check (ieeeck divides by
-    #    zero on purpose).  We disable the traps for the duration of the
-    #    np.linalg calls and restore them afterward.
     with _suspend_fpe_traps():
-        # 6a. Check condition number
-        try:
-            cond = np.linalg.cond(M_active)
-            if cond > 1e12:
-                logger.warning(
-                    f"System matrix poorly conditioned (cond={cond:.2e}), skipping correction"
-                )
-                return circ, CorrectionStats(0, 0, 0, residual_norm, cond, N)
-        except Exception:
-            cond = np.inf
-            logger.warning("Correction skipped: failed to compute condition number")
-            return circ, CorrectionStats(0, 0, 0, residual_norm, cond, N)
+        cond = np.linalg.cond(M_active)
+        if not np.isfinite(cond) or cond > max_condition_number:
+            raise np.linalg.LinAlgError(
+                f"Invariant correction condition number {cond:.3e} exceeds "
+                f"{max_condition_number:.3e}"
+            )
 
-        # 6b. Solve for Lagrange multipliers via least-squares
-        try:
-            lambdas_active, _, rank, _ = np.linalg.lstsq(M_active, R_active, rcond=None)
-            if rank < n_constraints:
-                logger.warning(f"System matrix rank deficient (rank={rank}/{n_constraints})")
-        except np.linalg.LinAlgError as e:
-            logger.error(f"Failed to solve correction system: {e}")
-            return circ, CorrectionStats(0, 0, 0, residual_norm, np.inf, N)
+        lambdas_active, _, rank, _ = np.linalg.lstsq(M_active, R_active, rcond=None)
+        if rank < n_constraints:
+            raise np.linalg.LinAlgError(
+                f"Invariant correction matrix rank {rank} is below {n_constraints}"
+            )
 
-    # Map active lambdas back to full 9-component vector
     lambdas = np.zeros(9)
     lambdas[active_indices] = lambdas_active
 
@@ -412,7 +274,6 @@ def _recover_invariants_numpy(
     L_I = lambdas[3:6]
     L_A = lambdas[6:9]
 
-    # 7. Apply correction
     term1 = L_Gamma
     term2 = 0.5 * np.cross(pos_rel, L_I)
     term3 = (1.0 / 3.0) * np.cross(pos_rel, np.cross(pos_rel, L_A))
@@ -420,21 +281,18 @@ def _recover_invariants_numpy(
     correction = (term1 + term2 + term3) * weights[:, None]
     circ_corrected = circ + correction
 
-    # 8. Compute statistics
     correction_norm = np.sqrt(np.mean(np.sum(correction**2, axis=1)))
     max_correction = np.max(np.linalg.norm(correction, axis=1))
-    original_norm = np.linalg.norm(current_Gamma)
+    original_norm = np.sqrt(np.mean(np.sum(circ**2, axis=1)))
     relative_correction = correction_norm / (original_norm + 1e-16)
 
-    # Verify correction worked
     new_Gamma = np.sum(circ_corrected, axis=0)
     new_x_cross_G = np.cross(pos_rel, circ_corrected)
     new_I = 0.5 * np.sum(new_x_cross_G, axis=0)
     new_A = (1.0 / 3.0) * np.sum(np.cross(pos_rel, new_x_cross_G), axis=0)
 
-    residual_after = np.linalg.norm(
-        np.concatenate([I_tgt_R - new_I, A_tgt_R - new_A, G_tgt - new_Gamma])
-    )
+    residual_after_full = np.concatenate([G_tgt - new_Gamma, I_tgt_R - new_I, A_tgt_R - new_A])
+    residual_after = np.linalg.norm(residual_after_full[active_indices])
 
     stats = CorrectionStats(
         correction_norm=correction_norm,

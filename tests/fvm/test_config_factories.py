@@ -28,11 +28,13 @@ class TestConfigFactories:
         assert bc.type_U == "fixedValue"
         assert bc.value_U == [0.0, 0.0, 0.0]
         assert bc.type_p == "zeroGradient"
+        assert bc.mesh_type == "wall"
 
     def test_boundary_config_empty(self):
         bc = BoundaryConfig.empty("empty")
         assert bc.type_U == "empty"
         assert bc.type_p == "empty"
+        assert bc.mesh_type == "empty"
 
     def test_time_config_transient(self):
         tc = TimeConfig.transient(dt=0.1, duration=20.0)

@@ -21,6 +21,7 @@ import numpy as np
 from ..assemble import matrix_assembly, momentum
 from ..fields import diagnostics as field_diagnostics
 from ..fields import gradients
+from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from .contracts import OuterCorrectorDiagnostics
 
@@ -46,16 +47,24 @@ def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bo
     n_interior = mesh_data["n_interior_faces"]
     for boundary in boundaries:
         bc_type = boundary.get("bc_type_p")
-        if bc_type == "fixedValue":
-            return False
-        if bc_type == "freestream":
+        strategy = BOUNDARIES.strategy(bc_type, "p", "pressure")
+        if strategy is BoundaryStrategy.FIXED_VALUE:
+            local_requires_constraint = False
+            break
+        if strategy is BoundaryStrategy.FREESTREAM:
             start = boundary["startFace"]
             nf = boundary["nFaces"]
             ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
             flux = np.sum(U_star[ghosts] * geo_data["face_sf"][start : start + nf], axis=1)
             if np.any(flux >= 0.0):
-                return False
-    return True
+                local_requires_constraint = False
+                break
+    else:
+        local_requires_constraint = True
+    parallel = mesh_data.get("_parallel_context")
+    if parallel is not None and parallel.is_partitioned:
+        return parallel.global_all(local_requires_constraint)
+    return local_requires_constraint
 
 
 def _compute_rhie_chow_coefficients(volumes, A_U):
@@ -237,119 +246,6 @@ def _process_interior_face_rhie_chow(
     return flux_cf, flux_ff, flux_vf
 
 
-def _process_boundary_face_rhie_chow(
-    i_face,
-    boundary,
-    owners,
-    face_sf,
-    face_cf_vector,
-    U_star,
-    DU,
-    grad_p,
-    rho,
-    n_elements,
-    n_interior,
-    p,
-):
-    """Process a single boundary face for Rhie-Chow pressure-correction flux.
-
-    Handles three pressure BC types:
-    - ``zeroGradient`` / ``noSlip``: velocity flux only (no correction).
-    - ``fixedValue``: full Rhie-Chow with geometric diffusion and non-orthogonal
-      correction.
-    - ``empty``: zero contribution (2-D face).
-
-    Args:
-        i_face:         Global face index.
-        boundary:       Boundary patch dictionary.
-        owners:         Owner index array.
-        face_sf:        Face area vectors ``(n_faces, 3)``.
-        face_cf_vector: Centre-to-centre vectors ``(n_faces, 3)``.
-        U_star:         Predicted velocity ``(n_total, 3)``.
-        DU:             Rhie-Chow coefficients ``(n_elements, 3)``.
-        grad_p:         Pressure gradient ``(n_total, 3)``.
-        rho:            Density.
-        n_elements:     Number of interior elements.
-        n_interior:     Number of interior faces.
-        p:              Pressure field ``(n_total,)``.
-
-    Returns:
-        Tuple ``(flux_cf, flux_ff, flux_vf)``.
-    """
-    own = owners[i_face]
-    b_elem_idx = n_elements + (i_face - n_interior)
-
-    Sf = face_sf[i_face]
-    U_b = U_star[b_elem_idx]
-    bc_type_p = boundary.get("bc_type_p", "zeroGradient")
-
-    # zeroGradient pressure (inlet, wall) or noSlip: No pressure correction flux
-    if bc_type_p == "zeroGradient" or bc_type_p == "noSlip":
-        return 0.0, 0.0, rho * np.dot(U_b, Sf)
-
-    # fixedValue pressure (outlet): Include Rhie-Chow diffusion
-    if bc_type_p == "fixedValue":
-        CF = face_cf_vector[i_face]
-        e = CF / (np.linalg.norm(CF) + 1e-10)
-        mag_CF = np.linalg.norm(CF)
-
-        DU_b = DU[own]
-        grad_p_b = grad_p[own]
-
-        # 1. Base Velocity Flux
-        flux_vf = rho * np.dot(U_b, Sf)
-
-        geoDiff, k = _compute_geometric_diffusion(DU_b, Sf, e, mag_CF)
-
-        if geoDiff > 0:
-            flux_cf = rho * geoDiff
-            flux_ff = -rho * geoDiff
-
-            # 2. Interpolated Gradient Flux
-            term_interp = (
-                rho * DU_b[0] * grad_p_b[0] * Sf[0]
-                + rho * DU_b[1] * grad_p_b[1] * Sf[1]
-                + rho * DU_b[2] * grad_p_b[2] * Sf[2]
-            )
-
-            # 3. Compact Pressure Drive
-            val = boundary.get("value_p")
-            if val is None:
-                val = boundary.get("value")
-            if val is None:
-                val = 0.0
-
-            term_compact = flux_cf * p[own] + flux_ff * val
-
-            # 4. Non-Orthogonal Correction (explicit)
-            k_norm = np.linalg.norm(k)
-            if k_norm > 1e-12:
-                flux_nonortho = rho * (
-                    k[0] * DU_b[0] * grad_p_b[0]
-                    + k[1] * DU_b[1] * grad_p_b[1]
-                    + k[2] * DU_b[2] * grad_p_b[2]
-                )
-            else:
-                flux_nonortho = 0.0
-
-            # Total Flux
-            flux_vf += term_interp + term_compact + flux_nonortho
-        else:
-            flux_cf = 0.0
-            flux_ff = 0.0
-
-        return flux_cf, flux_ff, flux_vf
-
-    # Empty BC: For 2D simulations (extruded meshes), empty faces contribute
-    # NOTHING to the pressure equation — no matrix entry, no source term, no flux.
-    # This matches OpenFOAM's treatment and the behaviour of the diffusion/convection
-    # assemblers in this solver.
-    if boundary.get("bc_type_p") == "empty" or boundary.get("type") == "empty":
-        return 0.0, 0.0, 0.0
-
-    return 0.0, 0.0, 0.0
-
-
 @njit(cache=True)
 def _process_boundary_faces_jit(
     n_boundary_faces,
@@ -495,8 +391,8 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
     for boundary in boundaries:
         start = boundary["startFace"]
         nf = boundary["nFaces"]
-        bc_type_p = boundary.get("bc_type_p", "")
-        bc_type = boundary.get("type", "")
+        bc_type_p = boundary.get("bc_type_p")
+        strategy = BOUNDARIES.strategy(bc_type_p, "p", "pressure")
         val = boundary.get("value_p")
         if val is None:
             val = boundary.get("value", 0.0)
@@ -504,18 +400,20 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
         for j in range(nf):
             i_face = start + j
             boundary_face_indices[idx] = i_face
-            if bc_type_p == "fixedValue":
+            if strategy is BoundaryStrategy.FIXED_VALUE:
                 bc_type_codes[idx] = 1
                 p_boundary_values[idx] = val if val is not None else 0.0
-            elif bc_type_p == "empty" or bc_type == "empty":
+            elif strategy is BoundaryStrategy.EMPTY:
                 bc_type_codes[idx] = 2
                 p_boundary_values[idx] = 0.0
-            elif bc_type_p == "freestream":
+            elif strategy is BoundaryStrategy.FREESTREAM:
                 bc_type_codes[idx] = 3
                 p_boundary_values[idx] = val if val is not None else 0.0
-            else:
+            elif strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.CYCLIC):
                 bc_type_codes[idx] = 0
                 p_boundary_values[idx] = 0.0
+            else:
+                raise RuntimeError(f"Unhandled pressure boundary strategy {strategy!r}")
             idx += 1
 
     return bc_type_codes, p_boundary_values, boundary_face_indices
@@ -531,6 +429,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     boundaries,
     alpha_u=1.0,
     pressure_constraint="reference",
+    matrix_workspace=None,
+    operator_backend="numpy",
 ):
     """
     Assemble pressure correction equation using Modified Rhie-Chow interpolation.
@@ -697,8 +597,12 @@ def assemble_pressure_correction_equation_rhie_chow(
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
 
-    A_p = matrix_assembly.assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data)
-    b_p = matrix_assembly.assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data)
+    A_p = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+        flux_data, mesh_data, workspace=matrix_workspace, backend=operator_backend
+    )
+    b_p = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
+        flux_data, mesh_data, backend=operator_backend
+    )
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
     if _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data):
@@ -707,7 +611,13 @@ def assemble_pressure_correction_equation_rhie_chow(
         elif pressure_constraint == "nullspace":
             # A finite-volume all-Neumann RHS should already be compatible;
             # remove only accumulated roundoff before the backend projection.
-            b_p = b_p - np.mean(b_p)
+            parallel = mesh_data.get("_parallel_context")
+            if parallel is not None and parallel.is_partitioned:
+                n_owned = parallel.n_owned
+                global_sum = parallel.global_sum(float(np.sum(b_p[:n_owned])))
+                b_p = b_p - global_sum / parallel.partition.global_n_cells
+            else:
+                b_p = b_p - np.mean(b_p)
         else:
             raise ValueError(
                 "All-Neumann pressure requires pressure_constraint='reference' or 'nullspace'"
@@ -742,19 +652,22 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
         nf = boundary["nFaces"]
         idx = n_elements + (start - n_interior)
         own = owners[start : start + nf]
-        bc_type_p = boundary.get("bc_type_p") or boundary.get("bc_type") or boundary.get("type")
-        if bc_type_p == "fixedValue":
+        bc_type_p = boundary.get("bc_type_p")
+        strategy = BOUNDARIES.strategy(bc_type_p, "p", "ghost")
+        if strategy is BoundaryStrategy.FIXED_VALUE:
             p_prime_ext[idx : idx + nf] = 0.0
-        elif bc_type_p == "cyclic":
+        elif strategy is BoundaryStrategy.CYCLIC:
             paired = mesh_data["boundary_neighbours"][start : start + nf]
             p_prime_ext[idx : idx + nf] = p_prime[paired]
-        elif bc_type_p == "freestream":
+        elif strategy is BoundaryStrategy.FREESTREAM:
             if face_flux is None:
                 raise ValueError("Freestream pressure correction requires the predicted face flux")
             outflow = np.asarray(face_flux)[start : start + nf] >= 0.0
             p_prime_ext[idx : idx + nf] = np.where(outflow, 0.0, p_prime[own])
-        else:
+        elif strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
             p_prime_ext[idx : idx + nf] = p_prime[own]
+        else:
+            raise RuntimeError(f"Unhandled pressure ghost strategy {strategy!r}")
     return p_prime_ext
 
 
@@ -802,18 +715,21 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         own = owners[idx]
         geo_diff_b = face_conductance[idx]
         bc_type = boundary.get("bc_type_p")
-        if bc_type == "fixedValue":
+        strategy = BOUNDARIES.strategy(bc_type, "p", "flux")
+        if strategy is BoundaryStrategy.FIXED_VALUE:
             phi[idx] += rho * geo_diff_b * p_prime[own]
-        elif bc_type == "cyclic":
+        elif strategy is BoundaryStrategy.CYCLIC:
             paired = boundary.get("_paired_cells")
             if paired is None:
                 # The mesh-level array is not part of this helper's historical
                 # signature; cyclic setup stores the same view on each patch.
                 raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
             phi[idx] += rho * geo_diff_b * (p_prime[own] - p_prime[paired])
-        elif bc_type == "freestream":
+        elif strategy is BoundaryStrategy.FREESTREAM:
             outflow = phi[idx] >= 0.0
             phi[idx] += np.where(outflow, rho * geo_diff_b * p_prime[own], 0.0)
+        elif strategy not in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
+            raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
 
 
 def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
@@ -899,7 +815,7 @@ def _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior):
     U[idx : idx + nf] = U[paired]
 
 
-def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
+def _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy):
     """Apply fixedValue or noSlip velocity BC.
 
     Honours a per-face ``value_U_field`` (n_faces_patch, 3) when present (e.g. a
@@ -908,8 +824,7 @@ def _apply_fixed_value_bc(U, boundary, n_elements, n_interior):
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
-    bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
-    if bc_type_u == "noSlip":
+    if strategy is BoundaryStrategy.NO_SLIP:
         U[idx : idx + nf] = [0.0, 0.0, 0.0]
     elif boundary.get("value_U_field") is not None:
         U[idx : idx + nf] = boundary["value_U_field"]
@@ -965,20 +880,27 @@ def _update_velocity_bcs(
     """
     for boundary in boundaries:
         bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
-        if bc_type_u == "zeroGradient":
+        strategy = BOUNDARIES.strategy(bc_type_u, "U", "ghost")
+        if strategy is BoundaryStrategy.ZERO_GRADIENT:
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
-        elif bc_type_u == "inletOutlet" or bc_type_u == "freestream":
+        elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
             _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
-        elif bc_type_u == "directionMixed":
+        elif strategy is BoundaryStrategy.DIRECTION_MIXED:
             _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior)
-        elif bc_type_u in ("fixedValue", "noSlip"):
-            _apply_fixed_value_bc(U, boundary, n_elements, n_interior)
-        elif bc_type_u in ("empty", "slip", "symmetry"):
+        elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
+            _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy)
+        elif strategy in (
+            BoundaryStrategy.EMPTY,
+            BoundaryStrategy.SLIP,
+            BoundaryStrategy.SYMMETRY,
+        ):
             _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior)
-        elif bc_type_u == "cyclic":
+        elif strategy is BoundaryStrategy.CYCLIC:
             if mesh_data is None:
                 raise ValueError("Cyclic boundary update requires mesh_data")
             _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior)
+        else:
+            raise RuntimeError(f"Unhandled velocity ghost strategy {strategy!r}")
 
 
 def correct_velocity_and_flux(
@@ -1049,7 +971,7 @@ def _apply_scalar_bc(
     phi,
     indices,
     owners_b,
-    bc_type,
+    strategy,
     boundary,
     field_name,
     paired_owners=None,
@@ -1065,29 +987,41 @@ def _apply_scalar_bc(
         phi:        Scalar field array (mutated in place).
         indices:    Ghost-cell indices for this patch.
         owners_b:   Owner cell indices for the boundary faces.
-        bc_type:    Boundary condition type string.
+        strategy:   Validated boundary behavior.
         boundary:   Boundary patch dictionary (may contain ``value_p`` etc.).
         field_name: Field name for value lookup (e.g. ``"p"``, ``"phi"``).
     """
-    if bc_type in ("zeroGradient", "inlet", "outlet", "symmetry", "empty", "slip", "noSlip"):
+    if strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
         phi[indices] = phi[owners_b]
-    elif bc_type == "fixedValue":
+    elif strategy is BoundaryStrategy.FIXED_VALUE:
         val = boundary.get(f"value_{field_name}")
         if val is None:
             val = boundary.get("value")
-        if val is not None:
-            phi[indices] = val
-    elif bc_type == "cyclic":
+        if val is None:
+            raise ValueError(
+                f"Fixed-value {field_name} boundary {boundary.get('name')!r} has no value"
+            )
+        phi[indices] = val
+    elif strategy is BoundaryStrategy.CYCLIC:
         if paired_owners is None or np.any(paired_owners < 0):
             raise ValueError(f"Cyclic patch {boundary.get('name')!r} is not paired")
         phi[indices] = phi[paired_owners]
-    elif bc_type == "freestream":
+    elif strategy is BoundaryStrategy.FREESTREAM:
         if face_flux is None:
             raise ValueError("Freestream scalar update requires face fluxes")
         val = boundary.get(f"value_{field_name}")
         if val is None:
-            val = boundary.get("value", 0.0)
+            val = boundary.get("value")
+        if val is None:
+            raise ValueError(
+                f"Freestream {field_name} boundary {boundary.get('name')!r} has no value"
+            )
         phi[indices] = np.where(np.asarray(face_flux) >= 0.0, val, phi[owners_b])
+    else:
+        raise ValueError(
+            f"Unsupported scalar boundary strategy {strategy!r} "
+            f"for {field_name} on patch {boundary.get('name')!r}"
+        )
 
 
 def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_flux=None):
@@ -1117,14 +1051,14 @@ def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_fl
         patch_flux = None if face_flux is None else np.asarray(face_flux)[start : start + n_bfaces]
 
         # Get BC type
-        bc_type = (
-            boundary.get(f"bc_type_{field_name}") or boundary.get("bc_type") or boundary.get("type")
-        )
+        bc_type = boundary.get(f"bc_type_{field_name}") or boundary.get("bc_type")
+        registry_field = "p" if field_name == "p" else "scalar"
+        strategy = BOUNDARIES.strategy(bc_type, registry_field, "ghost")
         _apply_scalar_bc(
             phi,
             b_elem_indices,
             owners_b,
-            bc_type,
+            strategy,
             boundary,
             field_name,
             paired_owners=paired_owners,
@@ -1171,6 +1105,8 @@ class SIMPLESolver:
         self.residuals = []
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
+        self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
+        self._pressure_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
 
     def step(
         self,
@@ -1218,6 +1154,8 @@ class SIMPLESolver:
             ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
             ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
             ilu_reuse_tol=self.params.get("ilu_reuse_tol"),
+            matrix_workspace=self._momentum_matrix_workspace,
+            operator_backend=self.params.get("_operator_backend", "numpy"),
             return_diagnostics=True,
         )
 
@@ -1236,6 +1174,8 @@ class SIMPLESolver:
             self.boundaries,
             alpha_u=self.params["alpha_u"],
             pressure_constraint=pressure_constraint,
+            matrix_workspace=self._pressure_matrix_workspace,
+            operator_backend=self.params.get("_operator_backend", "numpy"),
         )
 
         p_prime, pressure_result = matrix_assembly.solve_linear_system(
@@ -1344,14 +1284,29 @@ class SIMPLESolver:
             U, p, phi, residuals = self.step(U, p, phi, rho=rho, nu=nu)
 
             residual_p = self.last_res_p
-            residual_u = self.last_res_u
+            residual_u = residuals["U_increment"]
+            continuity = self.last_outer_diagnostics[-1].continuity_max
 
-            self.residuals.append({"iter": iteration, "R_p": residual_p, "R_u": residual_u})
+            self.residuals.append(
+                {
+                    "iter": iteration,
+                    "R_p": residual_p,
+                    "R_u": residual_u,
+                    "continuity": continuity,
+                }
+            )
 
             if iteration % 10 == 0 or residual_p < self.params["tolerance"]:
-                print(f"  Iter {iteration:3d}: R_p={residual_p:.3e}, R_u={residual_u:.3e}")
+                print(
+                    f"  Iter {iteration:3d}: R_p={residual_p:.3e}, "
+                    f"ΔU={residual_u:.3e}, continuity={continuity:.3e}"
+                )
 
-            if residual_p < self.params["tolerance"] and residual_u < self.params["tolerance"]:
+            if (
+                residual_p < self.params["tolerance"]
+                and residual_u < self.params["tolerance"]
+                and continuity < self.params["tolerance"]
+            ):
                 print(f"  ✓ Converged in {iteration} iterations")
                 return U, p, phi, True
 

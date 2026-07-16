@@ -91,9 +91,8 @@ class VTKExporter:
     ):
         """Export fields to a ``.vtu`` file (VTK unstructured grid format).
 
-        Fields are stored as cell data on the internal grid.  If any
-        field array is longer than ``n_elements``, the extra entries
-        (ghost / boundary layers) are silently stripped.
+        Fields are stored as cell data. Arrays must contain exactly the cells,
+        or the cells followed by one ghost value per physical boundary face.
 
         Args:
             filename:              Output ``.vtu`` file path.
@@ -106,16 +105,25 @@ class VTKExporter:
         Returns:
             The output file path.
         """
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        directory = os.path.dirname(filename)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
 
         # Update cell data
         for name, data in fields.items():
-            # OpenONDA fields often include ghost cells for boundaries.
-            # We take only the first n_elements (internal cells).
-            if data.shape[0] > self.mesh_data["n_elements"]:
-                self._grid.cell_data[name] = data[: self.mesh_data["n_elements"]]
-            else:
-                self._grid.cell_data[name] = data
+            values = np.asarray(data)
+            n_cells = self.mesh_data["n_elements"]
+            n_with_boundary = (
+                n_cells + self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"]
+            )
+            if values.shape[0] == n_with_boundary:
+                values = values[:n_cells]
+            elif values.shape[0] != n_cells:
+                raise ValueError(
+                    f"VTK field {name!r} has {values.shape[0]} rows; expected "
+                    f"{n_cells} cells or {n_with_boundary} cells plus boundary ghosts"
+                )
+            self._grid.cell_data[name] = values
 
         if interpolate_to_points:
             # This allows ParaView to offer Point-based filters and smooth gradients
@@ -124,6 +132,25 @@ class VTKExporter:
         else:
             self._grid.save(filename)
 
+        return filename
+
+    def export_cells(self, filename: str, cell_ids, fields: dict[str, np.ndarray]):
+        """Write an explicitly selected cell partition without interpolation."""
+        ids = np.asarray(cell_ids, dtype=np.int64)
+        if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_elements"]):
+            raise ValueError("cell_ids must be valid one-dimensional global cell indices")
+        grid = self._grid.extract_cells(ids)
+        for name, data in fields.items():
+            values = np.asarray(data)
+            if values.shape[0] != len(ids):
+                raise ValueError(
+                    f"Partition field {name!r} has {values.shape[0]} rows; expected {len(ids)}"
+                )
+            grid.cell_data[name] = values
+        directory = os.path.dirname(filename)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        grid.save(filename)
         return filename
 
 

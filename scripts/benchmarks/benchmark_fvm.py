@@ -25,6 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
+    ExecutionConfig,
     FVMConfig,
     Solver,
     SolverParams,
@@ -68,17 +69,32 @@ def _git_identity() -> dict[str, str | bool | None]:
         return {"revision": None, "dirty": None}
 
 
-def _run(target_cells: int, verbose: bool) -> dict[str, float | int]:
+def _run(
+    target_cells: int,
+    verbose: bool,
+    operator_backend: str,
+    linear_solver: str,
+) -> dict[str, float | int | str]:
     n = max(4, int(round(math.sqrt(target_cells))))
     mesh = periodic_square_mesh(n)
+    selected_solver = (
+        "spsolve" if linear_solver == "auto" and target_cells <= 100_000 else linear_solver
+    )
+    if selected_solver == "auto":
+        selected_solver = "bicgstab"
     params = SolverParams.pimple(
         n_correctors=2,
         n_outer=1,
-        linear_solver="spsolve",
+        linear_solver=selected_solver,
+        momentum_solver=selected_solver,
+        pressure_solver="amg" if selected_solver != "spsolve" else "spsolve",
+        momentum_tol=1e-8,
+        pressure_tol=1e-9,
         convection_scheme="central",
     )
     config = FVMConfig(
         case_name=f"benchmark_{n}",
+        execution=ExecutionConfig(operator_backend=operator_backend),
         time=TimeConfig(delta_t=0.001, end_time=0.001, write_interval=2),
         solver=params,
         transport=TransportConfig(density=1.0, nu=0.1),
@@ -114,6 +130,8 @@ def _run(target_cells: int, verbose: bool) -> dict[str, float | int]:
         "target_cells": target_cells,
         "cells": mesh["n_elements"],
         "faces": mesh["n_faces"],
+        "momentum_solver": params.momentum_solver,
+        "pressure_solver": params.pressure_solver,
         "initialization_seconds": initialization,
         "field_initialization_seconds": field_initialization,
         "step_seconds": step,
@@ -130,6 +148,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sizes", type=int, nargs="+", default=[10_000, 100_000])
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--operator-backend", choices=("numpy", "numba", "taichi"), default="numpy")
+    parser.add_argument(
+        "--linear-solver",
+        choices=("auto", "spsolve", "bicgstab"),
+        default="auto",
+        help="auto keeps the frozen direct baseline through 100k cells and uses iterative "
+        "solves for larger memory qualifications",
+    )
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--max-regression", type=float, default=0.05)
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if any(size < 16 for size in args.sizes):
@@ -137,7 +165,7 @@ def main() -> None:
 
     report = {
         "schema_version": 1,
-        "backend": "numpy-scipy-float64",
+        "backend": f"{args.operator_backend}-scipy-float64",
         "source": _git_identity(),
         "dependencies": {"numpy": np.__version__, "scipy": scipy.__version__},
         "host": {
@@ -147,11 +175,34 @@ def main() -> None:
             "python": platform.python_version(),
             "logical_cpus": os.cpu_count(),
         },
-        "cases": [_run(size, args.verbose) for size in args.sizes],
+        "cases": [
+            _run(size, args.verbose, args.operator_backend, args.linear_solver)
+            for size in args.sizes
+        ],
     }
+    regressions = []
+    if args.baseline is not None:
+        baseline = json.loads(args.baseline.read_text())
+        baseline_cases = {case["target_cells"]: case for case in baseline["cases"]}
+        for case in report["cases"]:
+            previous = baseline_cases.get(case["target_cells"])
+            if previous is None:
+                continue
+            ratio = case["step_seconds"] / previous["step_seconds"] - 1.0
+            if ratio > args.max_regression:
+                regressions.append(
+                    {
+                        "target_cells": case["target_cells"],
+                        "step_regression": ratio,
+                        "allowed": args.max_regression,
+                    }
+                )
+    report["regressions"] = regressions
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
+    if regressions:
+        raise SystemExit("FVM benchmark exceeded the configured regression threshold")
 
 
 if __name__ == "__main__":

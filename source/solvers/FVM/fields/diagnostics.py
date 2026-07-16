@@ -168,8 +168,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
     """Determine whether y+ should be computed for a given boundary.
 
     When *patch_names* is provided the boundary is selected by name.
-    Otherwise the boundary is selected if its mesh type is ``"wall"`` or
-    its name contains ``"wall"``.
+    Otherwise the boundary is selected only when its mesh type is ``"wall"``.
 
     Args:
         boundary: Boundary dictionary.  Must contain key ``"name"``, and
@@ -184,7 +183,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
     name = boundary["name"]
     if patch_names is not None:
         return name in patch_names
-    return boundary.get("type") == "wall" or "wall" in name.lower()
+    return boundary.get("type") == "wall"
 
 
 def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
@@ -423,3 +422,52 @@ def compute_surface_forces(
         }
 
     return results
+
+
+def merge_partition_forces(parts):
+    """Sum non-overlapping patch-force fragments from all MPI ranks."""
+    merged = {}
+    for rank_forces in parts:
+        for name, values in rank_forces.items():
+            target = merged.setdefault(
+                name,
+                {
+                    "Fp": np.zeros(3),
+                    "Fv": np.zeros(3),
+                    "Ftot": np.zeros(3),
+                    "Mtot": np.zeros(3),
+                    "coeffs": {},
+                    "nFaces": 0,
+                },
+            )
+            for key in ("Fp", "Fv", "Ftot", "Mtot"):
+                target[key] += np.asarray(values[key], dtype=np.float64)
+            for key, value in values["coeffs"].items():
+                target["coeffs"][key] = target["coeffs"].get(key, 0.0) + float(value)
+            target["nFaces"] += int(values["nFaces"])
+    return merged
+
+
+def merge_partition_yplus(parts):
+    """Combine per-patch extrema and face-weighted means from MPI ranks."""
+    merged = {}
+    for rank_stats in parts:
+        for name, values in rank_stats.items():
+            count = int(values["nFaces"])
+            target = merged.setdefault(
+                name,
+                {"min": np.inf, "max": -np.inf, "weighted": 0.0, "nFaces": 0},
+            )
+            target["min"] = min(target["min"], float(values["min"]))
+            target["max"] = max(target["max"], float(values["max"]))
+            target["weighted"] += float(values["avg"]) * count
+            target["nFaces"] += count
+    return {
+        name: {
+            "min": values["min"],
+            "max": values["max"],
+            "avg": values["weighted"] / values["nFaces"],
+            "nFaces": values["nFaces"],
+        }
+        for name, values in merged.items()
+    }

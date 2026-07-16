@@ -42,5 +42,24 @@
       "continuity_max": 1.4930288107946342e-12,
       "cfl_max": 0.050277909551378175
     }
-  ]
+  ],
+  "large_memory_qualification": {
+    "date": "2026-07-15",
+    "target_cells": 1000000,
+    "cells": 1000000,
+    "faces": 4002000,
+    "operator_backend": "numpy",
+    "momentum_solver": "bicgstab",
+    "pressure_solver": "amg",
+    "initialization_seconds": 242.72018016700167,
+    "field_initialization_seconds": 7.415707084001042,
+    "step_seconds": 65.32354195904918,
+    "linear_setup_seconds": 11.15424733387772,
+    "linear_solve_seconds": 8.50813449989073,
+    "operators_and_diagnostics_seconds": 45.66116012528073,
+    "peak_rss_bytes": 3621830656,
+    "continuity_max": 1.1031089336750588e-11,
+    "cfl_max": 0.159120843552865,
+    "note": "Full iterative PIMPLE step; exact source identity is emitted by the benchmark artifact"
+  }
 }

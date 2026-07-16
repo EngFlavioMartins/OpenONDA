@@ -1,16 +1,4 @@
-"""Tests for the discrete direct-forcing IBM (immersed_boundary/).
-
-Covers the transfer-operator properties the method relies on (Pinelli et al.
-2010; Constant et al., docs/literature/Constant2016.pdf):
-
-1. the Roma kernel satisfies discrete partition of unity;
-2. interpolation reproduces constant and linear fields;
-3. the Pinelli quadrature makes spread∘interpolate reproduce constants
-   (``A ε = 1``) and smooth fields to O(h²);
-4. one forcing application drives the marker slip to ~0 in a model problem;
-5. an end-to-end coarse cylinder step produces a finite, positive drag and
-   reduces the no-slip error vs. the unforced predictor.
-"""
+"""Transfer identities and integrated reference gates for direct-forcing IBM."""
 
 import numpy as np
 import pytest
@@ -46,6 +34,27 @@ def test_roma_kernel_partition_of_unity():
     for offset in np.linspace(-0.5, 0.5, 11):
         pts = offset + np.arange(-3, 4)
         assert np.sum(roma_delta_1d(pts)) == pytest.approx(1.0, abs=1e-12)
+
+
+def test_immersed_body_rejects_invalid_marker_state():
+    with pytest.raises(ValueError, match="non-empty"):
+        ImmersedBody.from_points([[0.0, 0.0, 0.0]], name="")
+    with pytest.raises(ValueError, match="markers must be finite"):
+        ImmersedBody.from_points([[np.nan, 0.0, 0.0]])
+    with pytest.raises(ValueError, match="target velocity must be finite"):
+        ImmersedBody.from_points([[0.0, 0.0, 0.0]], U_target=[np.inf, 0.0, 0.0])
+    with pytest.raises(ValueError, match="diameter"):
+        ImmersedBody.sphere([0.0, 0.0, 0.0], diameter=0.0, h=0.1)
+    with pytest.raises(ValueError, match="finite and positive"):
+        ImmersedBody.rectangle_z([0.0, 0.0, 0.0], 1.0, 1.0, h=-0.1)
+
+
+def test_rectangle_marker_factory_has_unique_perimeter_points():
+    body = ImmersedBody.rectangle_z([1.0, 2.0, 0.05], 1.0, 0.5, h=0.1)
+    assert len(np.unique(body.X, axis=0)) == body.n_markers
+    assert np.allclose(body.X[:, 2], 0.05)
+    offsets = np.abs(body.X[:, :2] - [1.0, 2.0])
+    assert np.all((np.isclose(offsets[:, 0], 0.5)) | (np.isclose(offsets[:, 1], 0.25)))
 
 
 def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
@@ -180,3 +189,137 @@ def test_cylinder_step_integration():
         cc = solver.geo_data["element_centroids"][:n]
         wake = (np.abs(cc[:, 1] - 2.0) < 0.2) & (cc[:, 0] > 2.6) & (cc[:, 0] < 3.5)
         assert solver.U[:n][wake, 0].mean() < 0.8
+
+
+def test_solver_rejects_unqualified_moving_body_support(tmp_path):
+    from source.solvers.FVM import (
+        BoundaryConfig,
+        FVMConfig,
+        Solver,
+        SolverParams,
+        TimeConfig,
+        TransportConfig,
+    )
+
+    mesh, _ = _mesh_2d(nx=20, ny=20)
+    config = FVMConfig(
+        case_name="moving_ibm_rejected",
+        time=TimeConfig.transient(dt=0.01, duration=0.01),
+        solver=SolverParams.pimple(linear_solver="spsolve"),
+        transport=TransportConfig(nu=0.01),
+        boundaries=[
+            BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            BoundaryConfig.outlet("xmax"),
+            BoundaryConfig.wall("ymin"),
+            BoundaryConfig.wall("ymax"),
+            BoundaryConfig.empty("zmin"),
+            BoundaryConfig.empty("zmax"),
+        ],
+    )
+    solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+    moving = ImmersedBody.from_points([[1.5, 1.5, 0.05]], U_target=[0.1, 0.0, 0.0], name="moving")
+    with pytest.raises(NotImplementedError, match="energy accounting"):
+        solver.set_immersed_bodies(moving, h=0.15)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("h", (0.25, 0.125))
+def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
+    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+    from source.solvers.FVM import (
+        BoundaryConfig,
+        FVMConfig,
+        Solver,
+        SolverParams,
+        TimeConfig,
+        TransportConfig,
+    )
+
+    domain = (0.0, 6.0, 0.0, 4.0, 0.0, h)
+
+    def boundaries(with_square):
+        values = [
+            BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            BoundaryConfig.outlet("xmax", 0.0),
+            BoundaryConfig.freestream("ymin", [1.0, 0.0, 0.0]),
+            BoundaryConfig.freestream("ymax", [1.0, 0.0, 0.0]),
+            BoundaryConfig.empty("zmin"),
+            BoundaryConfig.empty("zmax"),
+        ]
+        if with_square:
+            values.append(BoundaryConfig.wall("square"))
+        return values
+
+    def config(with_square):
+        params = SolverParams.pimple(
+            n_correctors=2,
+            n_outer=1,
+            linear_solver="spsolve",
+            convection_scheme="upwind",
+            gradient_scheme="gauss",
+        )
+        params.force_patches = ["square"] if with_square else []
+        params.force_log_interval = 1
+        params.ref_velocity = 1.0
+        params.ref_area = h
+        return FVMConfig(
+            case_name="body-fitted" if with_square else "ibm",
+            time=TimeConfig.transient(dt=0.02, duration=0.16, write_interval=1000),
+            solver=params,
+            transport=TransportConfig(density=1.0, nu=0.05),
+            boundaries=boundaries(with_square),
+            initial_U=[1.0, 0.0, 0.0],
+            initial_p=0.0,
+        )
+
+    fitted_mesh = coupling_box_mesh(
+        domain,
+        h,
+        hole_box=(1.5, 2.5, 1.5, 2.5, 0.0, h),
+        wall_patch_name="square",
+    )
+    nx = round(6.0 / h)
+    ny = round(4.0 / h)
+    body_cells = round(1.0 / h)
+    z_faces = nx * ny - body_cells**2
+    counts = (ny, ny, nx, nx, z_faces, z_faces)
+    start = fitted_mesh["n_interior_faces"]
+    patches = []
+    for name, count in zip(("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"), counts, strict=True):
+        patches.append({"name": name, "startFace": start, "nFaces": count, "type": "patch"})
+        start += count
+    patches.append({**fitted_mesh["boundary"][-1], "startFace": start})
+    fitted_mesh["boundary"] = patches
+    ibm_mesh = structured_box(nx, ny, 1, 6.0, 4.0, h)
+
+    fitted = Solver(config(True), str(tmp_path / "fitted"), mesh_data=fitted_mesh)
+    immersed = Solver(config(False), str(tmp_path / "immersed"), mesh_data=ibm_mesh)
+    fitted.auto_write = False
+    immersed.auto_write = False
+    body = ImmersedBody.rectangle_z([2.0, 2.0, 0.5 * h], 1.0, 1.0, h=h, name="square")
+    ibm = immersed.set_immersed_bodies(body, h=h)
+    for _ in range(8):
+        fitted.evolve()
+        immersed.evolve()
+
+    fitted_drag = fitted.last_forces["square"]["Ftot"][0]
+    immersed_drag = ibm.body_forces(rho=1.0)["square"][0]
+
+    def wake_velocity(solver):
+        centres = solver.geo_data["element_centroids"]
+        wake = (np.abs(centres[:, 1] - 2.0) < 0.21) & (centres[:, 0] > 2.7) & (centres[:, 0] < 3.5)
+        return float(np.mean(solver.U[: solver.mesh_data["n_elements"]][wake, 0]))
+
+    fitted_wake = wake_velocity(fitted)
+    immersed_wake = wake_velocity(immersed)
+    assert fitted_drag > 0.0 and immersed_drag > 0.0
+    assert fitted_wake < 1.0 and immersed_wake < 1.0
+    force_error = abs(immersed_drag - fitted_drag) / fitted_drag
+    wake_error = abs(immersed_wake - fitted_wake)
+    limits = {
+        0.25: {"force": 0.70, "wake": 0.12, "slip": 0.23},
+        0.125: {"force": 0.03, "wake": 0.07, "slip": 0.21},
+    }[h]
+    assert force_error < limits["force"]
+    assert wake_error < limits["wake"]
+    assert ibm.last_slip < limits["slip"]

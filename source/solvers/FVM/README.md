@@ -1,9 +1,9 @@
 # OpenONDA finite-volume solver
 
-This package provides an incompressible SIMPLE/PIMPLE/PISO solver and scalar
-finite-volume operators for OpenFOAM polyhedral meshes. The integrated solver
-is still a research backend: production use requires validation for the target
-mesh family, Reynolds number, discretisation, and parallel configuration.
+This package provides a static-mesh, constant-density incompressible
+SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. It is an R3
+candidate for the configurations listed in `capabilities.json`; configurations
+outside that matrix fail during setup or remain explicitly experimental.
 
 ## Public API
 
@@ -61,19 +61,37 @@ defaults to `"raise"`.
 
 ## Capability status
 
-Verified components are strict configuration/field parsing, static-mesh
-validation, serial float64 NumPy/SciPy operators, structured convergence and
-acceptance diagnostics, and BDF1/BDF2 restart equivalence.
+The serial reference has analytical hex/tet/prism/mixed-mesh convergence,
+physical square-duct, cavity, periodic 3D flow, and LES-decay gates. A complete
+1M-cell PIMPLE step used 3.62 GB peak RSS on the documented macOS ARM host.
+Fixed-body IBM has transfer, force-balance, mesh-refinement, and body-fitted
+force/wake evidence. One-rank FVM–VPM restart and conservation are verified,
+but broader coupled cases remain experimental.
 
-Integrated 3D SIMPLE/PISO/PIMPLE, first-order Gmsh import, LES, IBM, FVM–VPM
-coupling, and replicated PETSc collective solves remain experimental until the
-analytical mesh-family and sustained-case release gates pass. Partitioned MPI
-and FVM accelerator operators are not implemented.
+`ExecutionConfig.petsc_partitioned()` runs owned-plus-halo Gauss-gradient
+PIMPLE with owned PETSc rows. Fields, global diagnostics, forces, checkpoints,
+and VTU/PVTU output are invariant in 1/2/4-rank tests. Cyclic patches,
+least-squares gradients, field-file initialization, and coupled FVM–VPM are
+rejected in this mode. The measured weak-scaling support limit is four ranks on
+the named 10-thread reference host.
+
+Numba and Taichi CPU pass matrix, RHS, one-step, and BDF2-history parity, but
+neither meets the 1.5x end-to-end acceleration gate. They are parity-only
+backends, not advertised accelerators. CUDA, Metal, Vulkan, float32, and mixed
+precision fail configuration until independent parity and timing evidence is
+available.
 
 Dynamic/ALE meshes, compressible flow, and multiphase flow are not supported.
 Configuring dynamic mesh motion raises `NotImplementedError` because conservative
 mesh-flux terms have not been implemented.
 
-See `docs/plans/2026-07-fvm-3d-pimple-readiness-plan.md` for validation gates
-and the test suite under `tests/fvm/` for the currently verified cases. The
-machine-readable status is `capabilities.json`.
+The supported mesh-input contract is deliberately narrow. OpenFOAM `polyMesh`
+input must use an ASCII `FoamFile` header with format version `2.0`; binary
+files, preprocessing directives, macros, and headerless files are rejected.
+Gmsh input is read through the installed Gmsh API and accepts only first-order
+3D tetrahedra (type 4), hexahedra (5), prisms (6), and pyramids (7). Other
+dimensions and higher-order cells fail before geometry assembly. Import
+provenance records the exact contract and runtime/API version in run manifests.
+
+The test commands and evidence files are listed in `tests/fvm/README.md`; the
+machine-readable support contract is `capabilities.json`.

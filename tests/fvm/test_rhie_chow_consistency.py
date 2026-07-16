@@ -20,6 +20,7 @@ class TestRhieChowConsistency:
         for b in mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
             b["bc_type_U"] = "zeroGradient"
+            b["bc_type_p"] = "zeroGradient"
 
         n_elem = mesh["n_elements"]
         volumes = geo["element_volumes"]

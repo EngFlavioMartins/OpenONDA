@@ -1,26 +1,18 @@
-#!/usr/bin/env python3
-"""
-Linear solver interface for the FVM solver.
-
-This module centralizes linear solver selection, ILU preconditioning and caching,
-and provides a single `solve_linear_system` function that other modules call.
-
-It is extracted from `matrix_assembly.py` to decouple matrix construction from solvers
-and to make backend swapping (PETSc, GPU solvers) simpler in the future.
-"""
+"""Sparse linear solvers and convergence telemetry."""
 
 from dataclasses import dataclass
 import logging
 import time
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, spsolve
 
 logger = logging.getLogger(__name__)
-logger.propagate = False  # Don't send warnings to root logger (stderr)
+logger.propagate = False
 _ILU_CACHE = {}
 _AMG_CACHE = {}
-_FALLBACK_WARN_COUNT = 0  # Track iterative solver fallback warnings
+_FALLBACK_WARN_COUNT = 0
 
 
 class LinearSolveError(RuntimeError):
@@ -43,10 +35,18 @@ class LinearSolveResult:
     setup_seconds: float
     solve_seconds: float
     used_fallback: bool = False
+    preconditioner_rebuilt: bool | None = None
 
 
 # Compatibility for callers that imported the experimental PETSc-only name.
 LinearSolveInfo = LinearSolveResult
+
+
+@runtime_checkable
+class LinearSolver(Protocol):
+    """Backend-neutral sparse solve contract."""
+
+    def solve(self, matrix, rhs, **_options) -> tuple[np.ndarray, LinearSolveResult]: ...
 
 
 def normalized_residual(A, x, b):
@@ -296,6 +296,7 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
         setup_seconds=setup_seconds,
         solve_seconds=solve_seconds,
         used_fallback=False,
+        preconditioner_rebuilt=True,
     )
 
     scatter.destroy()
@@ -370,8 +371,8 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False):
     if rebuild:
         hierarchy = pyamg.smoothed_aggregation_solver(A)
         _AMG_CACHE[key] = (hierarchy, diagonal.copy())
-        return hierarchy
-    return cached[0]
+        return hierarchy, True
+    return cached[0], False
 
 
 def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol, failure_policy):
@@ -422,7 +423,7 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
         }
 
     try:
-        ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol)
+        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -438,7 +439,7 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
             # hierarchy ineffective without silently accepting a poor solve.
-            ml = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True)
+            ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True)
             M = ml.aspreconditioner(cycle="V")
             setup_seconds = time.perf_counter() - setup_start
             x, info = cg(
@@ -463,6 +464,7 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
             "setup_seconds": setup_seconds,
             "solve_seconds": solve_seconds,
             "used_fallback": False,
+            "preconditioner_rebuilt": rebuilt,
         }
     except Exception as error:
         if failure_policy == "raise":
@@ -504,7 +506,7 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
     if not reuse_ilu:
         ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
         logger.info("Computed transient ILU preconditioner (not cached)")
-        return ilu
+        return ilu, True
 
     key = _cache_key_from_matrix(A_csc, ilu_key)
     cached = _ILU_CACHE.get(key)
@@ -512,7 +514,7 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
         ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
         _ILU_CACHE[key] = (ilu, A.diagonal().copy())
         logger.info("Computed and cached new ILU preconditioner")
-        return ilu
+        return ilu, True
 
     ilu_cached, diag_snapshot = cached
     if ilu_reuse_tol is not None and diag_snapshot is not None:
@@ -524,10 +526,10 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
             logger.info(f"ILU cached but matrix changed (rel_change={rel_change:.3e}), rebuilding")
             ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
             _ILU_CACHE[key] = (ilu, A.diagonal().copy())
-            return ilu
+            return ilu, True
 
     logger.info("Reusing ILU preconditioner (pattern key)")
-    return ilu_cached
+    return ilu_cached, False
 
 
 def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
@@ -615,7 +617,7 @@ def _solve_with_ilu(
         }
     try:
         A_csc = A.tocsc()
-        ilu = _get_or_build_ilu(
+        ilu, rebuilt = _get_or_build_ilu(
             A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A
         )
         setup_seconds = time.perf_counter() - setup_start
@@ -635,6 +637,7 @@ def _solve_with_ilu(
             "setup_seconds": setup_seconds,
             "solve_seconds": solve_seconds,
             "used_fallback": used_fallback,
+            "preconditioner_rebuilt": rebuilt,
         }
     except Exception as e:
         if isinstance(e, LinearSolveError):
@@ -675,41 +678,11 @@ def solve_linear_system(
     failure_policy="raise",
     **kwargs,
 ):
-    """Solve the linear system ``A·x = b``.
+    """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
 
-    Dispatches to the appropriate solver based on *method* and
-    *equation_type*:
-
-    - ``"spsolve"``: direct sparse solve (scipy).
-    - ``method="amg", equation_type="pressure"``: PyAMG-preconditioned CG.
-    - ``equation_type="momentum"`` or ``"scalar"``: ILU-preconditioned
-      iterative solver (BiCGSTAB / GMRES).
-    - ``"cg"``, ``"gmres"``, ``"bicgstab"``: plain iterative solver.
-
-    Supports initial guess ``x0``, ILU caching with diagonal-change
-    rebuild heuristic, and AMG tuning via ``**kwargs``.
-
-    Args:
-        A:               Sparse matrix ``(n, n)``.
-        b:               Right-hand side ``(n,)`` or ``(n, 1)``.
-        method:          Solver method (default ``"spsolve"``).
-        equation_type:   Optional hint for solver selection
-                         (``"pressure"``, ``"momentum"``, ``"scalar"``).
-        tol:             Relative residual tolerance for iterative solvers.
-        maxiter:         Maximum number of iterations.
-        x0:              Initial guess (optional, iterative solvers only).
-        reuse_ilu:       Whether to cache and reuse the ILU factorisation.
-        ilu_key:         User-defined ILU cache key.
-        ilu_drop_tol:    ILU drop tolerance.
-        ilu_fill_factor: ILU fill factor.
-        ilu_reuse_tol:   Diagonal change threshold for ILU rebuild.
-        **kwargs:        Additional arguments (e.g. ``amg_tol``, ``amg_maxiter``).
-
-    Returns:
-        Solution vector ``x``.
-
-    Raises:
-        ValueError: If *method* is not recognised.
+    Cached ILU/AMG setup is controlled by the reuse arguments. A direct solve
+    after iterative failure is permitted only with
+    ``failure_policy="direct_fallback"`` and is reported in returned telemetry.
     """
     method = str(method).lower()
     failure_policy = str(failure_policy).lower()
@@ -717,17 +690,31 @@ def solve_linear_system(
         raise ValueError(f"Unknown linear failure policy {failure_policy!r}")
 
     if str(backend).lower() == "petsc":
-        solution, info = _solve_petsc(
-            A,
-            b,
-            method,
-            equation_type,
-            tol,
-            maxiter,
-            x0,
-            parallel_context,
-            nullspace,
-        )
+        if parallel_context is not None and parallel_context.is_partitioned:
+            from .petsc_partitioned import solve_local_partitioned_system
+
+            solution, info = solve_local_partitioned_system(
+                A,
+                b,
+                parallel_context,
+                method=method,
+                tolerance=tol,
+                max_iterations=maxiter,
+                constant_nullspace=nullspace == "constant",
+                initial_guess=x0,
+            )
+        else:
+            solution, info = _solve_petsc(
+                A,
+                b,
+                method,
+                equation_type,
+                tol,
+                maxiter,
+                x0,
+                parallel_context,
+                nullspace,
+            )
         return (solution, info) if return_info else solution
     if str(backend).lower() != "scipy":
         raise ValueError(f"Unknown linear backend {backend!r}")
@@ -753,6 +740,7 @@ def solve_linear_system(
             setup_seconds=float(metadata["setup_seconds"]),
             solve_seconds=float(metadata["solve_seconds"]),
             used_fallback=bool(metadata.get("used_fallback", False)),
+            preconditioner_rebuilt=metadata.get("preconditioner_rebuilt"),
         )
         if not result.converged:
             raise LinearSolveError(

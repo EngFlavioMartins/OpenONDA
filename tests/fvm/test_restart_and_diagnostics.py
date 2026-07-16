@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -18,6 +19,7 @@ from source.solvers.FVM import (
     TransportConfig,
 )
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.FVM.solve.simple_solver import SIMPLESolver
 
 from ._structured_mesh import structured_box
 
@@ -108,6 +110,33 @@ def test_scipy_linear_result_discloses_solver_health():
     assert result.iterations >= 0
     assert result.final_residual < 1e-9
     assert not result.used_fallback
+
+
+def test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence(monkeypatch):
+    solver = SIMPLESolver.__new__(SIMPLESolver)
+    solver.params = {"max_iter": 2, "tolerance": 1e-3, "alpha_u": 0.7, "alpha_p": 0.3}
+    solver.mesh_data = {}
+    solver.geo_data = {}
+    solver.residuals = []
+    increments = iter((1.0, 0.1))
+
+    def step(U, p, phi, **kwargs):
+        solver.last_res_p = 1e-14
+        solver.last_res_u = 1e-14
+        solver.last_outer_diagnostics = (SimpleNamespace(continuity_max=1e-14),)
+        return U, p, phi, {"U_increment": next(increments)}
+
+    solver.step = step
+    monkeypatch.setattr(
+        "source.solvers.FVM.assemble.convection.compute_mass_flow_rate",
+        lambda *args: np.zeros(1),
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        *_, converged = solver.solve(np.zeros((1, 3)), np.zeros(1))
+
+    assert not converged
+    assert len(solver.residuals) == 2
+    assert solver.residuals[-1]["R_u"] == pytest.approx(0.1)
 
 
 def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):

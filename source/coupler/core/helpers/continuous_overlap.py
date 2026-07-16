@@ -1,54 +1,8 @@
-"""
-Continuous Overlap Transport with Conservative Hand-off.
-========================================================
+"""Conservative overlap transport from FVM cells to VPM particles.
 
-The FVM→VPM particle hand-off, built on three guarantees:
-
-  1. **Conservation (no trapping).**  Vorticity is a conserved quantity
-     (Helmholtz / Kelvin): no operation here ever discards circulation.
-     Pruning of weak particles is followed by a moment-conserving
-     redistribution (``recover_invariants``) so total circulation and
-     linear impulse are invariant under the prune.
-
-  2. **Time-step insensitivity.**  The overlap region *plus a downstream
-     buffer* is re-meshed onto a regular h-lattice every step, so particle
-     density is independent of the local convective velocity.  The buffer
-     is sized from the CFL-like criterion ``L_buf ≥ 1.5·U_max·dt + 2h`` so
-     a particle advecting at freestream speed always lands on a node that
-     still exists on the next step.
-
-  3. **Continuous interface.**  FVM authority is a single C¹ partition-of-
-     unity weight η(x): η = 1 deep inside the FVM core, ramping smoothly to
-     0 over ``ramp_width``, held at 0 in a dead-zone at every face and
-     outside the box.  The blended source
-
-         Γ_node = (1 − η)·Γ_remeshed  +  η·(ω_FVM · h³)
-
-     is C¹ across Γ, so the induced Biot–Savart velocity is continuous.
-     Exiting particles (η = 0 band) carry pure Lagrangian circulation.
-
-  After the blend, a Beale/Picard strength correction
-  (:func:`beale_strength_correction`) deconvolves the Gaussian-core
-  mollification on resolved scales, body-guarded so it never acts across
-  the wall discontinuity.
-
-References
-----------
-- Cottet & Koumoutsakos (2000), *Vortex Methods*, §5 (hybrid overlap),
-  §7 (M4′ remeshing & moment conservation).
-- Winckelmans (1993), PhD thesis — integral invariants of vortex methods.
-- Beale (1988) — iterated vortex-strength assignment.
-- Daeninck & Winckelmans (2003); Stock, Gharakhani & Stone (2010);
-  Billuart et al. (2023) — Eulerian/Lagrangian overlap coupling.
-
-The numerical core (:func:`continuous_handoff`) has no Taichi / OpenFOAM
-dependency and is unit-tested in ``tests/coupler/test_continuous_overlap.py``
-and ``tests/coupler/test_strength_correction.py``.
-:class:`ContinuousOverlapInjector` is the thin solver-facing wrapper that
-reads OpenFOAM and writes the VPM particle field.
-
-Author:  OpenONDA Team
-Date:    June 2026
+The hand-off remeshes onto a regular lattice, blends FVM and VPM circulation
+with a smooth partition of unity, and recovers selected integral invariants
+after pruning. The implementation is independent of the FVM and VPM runtimes.
 """
 
 from __future__ import annotations
@@ -63,19 +17,13 @@ from source.coupler.remesh import remesh_to_grid
 
 logger = logging.getLogger("coupler")
 
-# Particle core radius = RADIUS_RATIO × h  (overlap-region particles are on a
-# regular h-lattice, so their nominal volume is h³).
+# Particle core radius relative to the regular overlap lattice spacing.
 RADIUS_RATIO = 1.5
 
-# M4′ kernel support half-width (in cells).  A particle must stay within this
-# many cells of the lattice interior for the scatter to be exact, which sets
-# the guard band and the CFL buffer margin.
+# M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
 
 
-# =========================================================
-# Integral invariants
-# =========================================================
 def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
     """Total circulation, linear impulse and (raw) angular impulse
     (Winckelmans 1993).  Kernel-correction-free: the prune redistribution
@@ -91,9 +39,6 @@ def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
-# =========================================================
-# Geometry / CFL helpers
-# =========================================================
 def required_buffer_length(u_max: float, dt: float, h: float, safety: float = 1.5) -> float:
     """Minimum downstream buffer length for a dt-robust hand-off:
     ``L_buf ≥ safety · u_max · dt + 2h`` (M4′ stencil must stay interior)."""
@@ -173,9 +118,6 @@ def cosine_eta(
     return eta
 
 
-# =========================================================
-# Beale/Picard iterated strength assignment (regularized deconvolution)
-# =========================================================
 def beale_strength_correction(
     circ_grid: np.ndarray,
     target_circ: np.ndarray,
@@ -187,27 +129,10 @@ def beale_strength_correction(
     iterations: int,
     relax: float = 1.0,
 ) -> tuple[np.ndarray, float, float]:
-    """Iterate lattice strengths so the *mollified* particle vorticity matches
-    the FVM target at the nodes (Beale 1988).
+    """Iterate lattice strengths against Gaussian-mollified target vorticity.
 
-    Direct assignment ``Γ_node = ω_FVM·h³`` matches the *bare* circulation, but
-    the velocity the VPM induces comes from the mollified field
-
-        ω_σ(x) = Σ_p Γ_p ζ_σ(x − x_p),      ζ_σ(r) = π^{-3/2}σ^{-3} e^{-r²/σ²},
-
-    which attenuates each Fourier mode by exp(−k²σ²/4) — a systematic low-pass
-    bias (≈20 % on 0.5 D wake structures for σ = 1.5h).  The Picard iteration
-
-        Γ ← Γ + λ·η·(ω_target − ω_σ[Γ])·h³
-
-    is a regularized deconvolution: after M iterations the residual at
-    wavenumber k is (1 − e^{-k²σ²/4})^{M+1} — resolved scales converge
-    geometrically, sub-kernel scales are deliberately left untouched
-    (amplification bounded by M+1).
-
-    The η weight localizes the correction; the free Lagrangian wake (η = 0)
-    keeps its standard remeshed strengths.  Because particles sit on the
-    regular h-lattice, ω_σ is a separable Gaussian convolution — O(N)/iter.
+    The partition weight localizes the correction to FVM-controlled nodes.
+    ``iterations=0`` leaves the blended circulation unchanged.
 
     Parameters
     ----------
@@ -480,25 +405,18 @@ def continuous_handoff(
     drift: dict[str, float] = {}
     if conserve and len(new_pos) > 0:
         new_vol_tmp = np.full(len(new_pos), h**3)
-        try:
-            # Conserve the 0th moment (circulation) and 1st moment (linear
-            # impulse) — both exactly preserved by the M4′ scatter and restored
-            # linearly after the prune.  The 2nd moment (angular impulse) is
-            # deliberately NOT forced: it is not conserved by remeshing
-            # (Cottet & Koumoutsakos §7), and enforcing it on a small
-            # boundary-straddling cluster makes the Lagrange system
-            # rank-deficient and injects spurious ±circulation.
-            new_circ = recover_invariants(
-                new_pos,
-                new_circ,
-                target_inv,
-                volumes=new_vol_tmp,
-                conserve_circulation=True,
-                conserve_linear_impulse=True,
-                conserve_angular_impulse=False,
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("[Handoff] recover_invariants skipped: %s", exc)
+        # Angular impulse is intentionally excluded because the remeshing
+        # operator does not conserve that second moment.
+        new_circ = recover_invariants(
+            new_pos,
+            new_circ,
+            target_inv,
+            volumes=new_vol_tmp,
+            weighting="volume",
+            conserve_circulation=True,
+            conserve_linear_impulse=True,
+            conserve_angular_impulse=False,
+        )
         post = _invariants(new_pos, new_circ)
         ref = float(np.linalg.norm(target_inv["circulation"])) + 1e-30
         drift = {
@@ -599,7 +517,7 @@ class ContinuousOverlapInjector:
 
         # dt-robust downstream buffer, sized from U_inf and dt (CFL criterion)
         self.u_inf = float(np.linalg.norm(cfg.u_inf))
-        self.dt = float(cfg.dt)
+        self.dt = float(coupler.dt_vpm)
 
         self.blend_relaxation = float(cfg.blend_relaxation)
         self.strength_corr_iters = int(cfg.strength_correction_iterations)

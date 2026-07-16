@@ -31,22 +31,27 @@ def _cells_along(lo: float, hi: float, spacing: float, axis: str) -> int:
     return n_int
 
 
-def _plane_index(value: float, origin: float, spacing: float, n: int, what: str) -> int:
+def _plane_index(
+    value: float,
+    origin: float,
+    spacing: float,
+    n: int,
+    what: str,
+    *,
+    allow_boundary: bool = False,
+) -> int:
     """Grid-plane index of a body face; the face must lie ON a mesh plane."""
     r = (float(value) - float(origin)) / float(spacing)
     idx = int(round(r))
     if abs(r - idx) > 1e-6 * max(abs(r), 1.0):
         raise ValueError(
             f"{what} at {value:g} does not lie on a mesh plane (spacing "
-            f"{spacing:g} from origin {origin:g}). Choose grid_spacing so the "
-            "box AND the body faces are integer multiples of it — e.g. 0.0625 "
-            "for a [-1.5, 1.5] box with a cube at ±0.5."
+            f"{spacing:g} from origin {origin:g})"
         )
-    if not 1 <= idx <= n - 1:
-        raise ValueError(
-            f"{what} at {value:g} must be strictly inside the box with at "
-            "least one fluid cell layer on every side."
-        )
+    lower = 0 if allow_boundary else 1
+    upper = n if allow_boundary else n - 1
+    if not lower <= idx <= upper:
+        raise ValueError(f"{what} at {value:g} must map to a grid plane in [{lower}, {upper}]")
     return idx
 
 
@@ -165,12 +170,12 @@ def coupling_box_mesh(
     keep = np.ones(nx * ny * nz, dtype=bool)
     if hole_box is not None:
         hx0, hx1, hy0, hy1, hz0, hz1 = (float(v) for v in hole_box)
-        i0 = _plane_index(hx0, x0, dx, nx, f"{wall_patch_name} x-min face")
-        i1 = _plane_index(hx1, x0, dx, nx, f"{wall_patch_name} x-max face")
-        j0 = _plane_index(hy0, y0, dy, ny, f"{wall_patch_name} y-min face")
-        j1 = _plane_index(hy1, y0, dy, ny, f"{wall_patch_name} y-max face")
-        k0 = _plane_index(hz0, z0, dz, nz, f"{wall_patch_name} z-min face")
-        k1 = _plane_index(hz1, z0, dz, nz, f"{wall_patch_name} z-max face")
+        i0 = _plane_index(hx0, x0, dx, nx, f"{wall_patch_name} x-min face", allow_boundary=True)
+        i1 = _plane_index(hx1, x0, dx, nx, f"{wall_patch_name} x-max face", allow_boundary=True)
+        j0 = _plane_index(hy0, y0, dy, ny, f"{wall_patch_name} y-min face", allow_boundary=True)
+        j1 = _plane_index(hy1, y0, dy, ny, f"{wall_patch_name} y-max face", allow_boundary=True)
+        k0 = _plane_index(hz0, z0, dz, nz, f"{wall_patch_name} z-min face", allow_boundary=True)
+        k1 = _plane_index(hz1, z0, dz, nz, f"{wall_patch_name} z-max face", allow_boundary=True)
         if i0 >= i1 or j0 >= j1 or k0 >= k1:
             raise ValueError(f"hole_box {hole_box} has empty extent on the grid.")
 
@@ -194,6 +199,9 @@ def coupling_box_mesh(
         interior_quads = interior_quads[both]
         interior_owners = interior_owners[both]
         interior_neighbours = interior_neighbours[both]
+        outer_fluid = keep[boundary_owners]
+        boundary_quads = boundary_quads[outer_fluid]
+        boundary_owners = boundary_owners[outer_fluid]
 
     all_quads = np.vstack([interior_quads, boundary_quads, wall_quads])
     owners = np.concatenate([interior_owners, boundary_owners, wall_owners])
@@ -364,6 +372,11 @@ def build_fvm_backend(
             convection_scheme="central",
             gradient_scheme="lsq",
         )
+        # Route the Poisson solve to pyamg-preconditioned CG explicitly:
+        # pressure_solver=None would inherit bicgstab+ILU, whose per-solve ILU
+        # factorization grows superlinearly with mesh size (measured 24 s per
+        # pressure solve at 208k cells vs ~0.5 s with the cached AMG hierarchy).
+        solver_params.pressure_solver = "amg"
         # Loose ILU: the transient momentum matrix is diagonally dominant, so
         # a cheap factorization preconditions it just as well (measured 15%
         # faster per step, lower memory, identical continuity).
@@ -378,7 +391,22 @@ def build_fvm_backend(
         adjust_timestep=False,  # coupler owns dt (integer sub-cycle ratio)
     )
 
-    boundaries = [BoundaryConfig.freestream(cfg.patch_name, u_inf)]
+    # Coupling patch: Dirichlet velocity (the coupler overwrites the value each
+    # sub-step) + zero-gradient pressure on ALL faces — the native analog of
+    # the OFW case's fixedValue-U / fixedFluxPressure-p pair.  The donor trace
+    # is projected to zero net flux, so the all-Neumann pressure problem is
+    # compatible and the solver pins the level at a reference cell (pRefCell
+    # equivalent).  A freestream BC would instead pin p=0 on every outflow
+    # face, over-specifying the wake exit and injecting boundary pressure
+    # noise the coupler's donor model does not account for.
+    boundaries = [
+        BoundaryConfig(
+            name=cfg.patch_name,
+            type_U="fixedValue",
+            value_U=u_inf,
+            type_p="zeroGradient",
+        )
+    ]
     if hole_box is not None:
         wall = cfg.wall_patch_name or "cube"
         boundaries.append(BoundaryConfig.wall(wall))

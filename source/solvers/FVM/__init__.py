@@ -22,6 +22,7 @@ from .config.types import (
     TurbulenceConfig,
 )
 from .core.solver import Solver
+from .core.state import FieldState
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
@@ -44,5 +45,6 @@ __all__ = [
     "equation_solver",
     "LinearSolveResult",
     "StepDiagnostics",
+    "FieldState",
     "io",
 ]

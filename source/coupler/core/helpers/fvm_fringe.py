@@ -90,7 +90,7 @@ def lambda_max_from_scales(
 class FringeFields:
     """Owns lambda (static) and pushes Utarget each step."""
 
-    def __init__(self, cfg, vpm, ofw):
+    def __init__(self, cfg, vpm, ofw, *, coupling_dt: float):
         self.cfg = cfg
         self.vpm = vpm
         self.ofw = ofw
@@ -98,7 +98,7 @@ class FringeFields:
 
         u_char = float(np.linalg.norm(cfg.U_inf))
         lam_max = lambda_max_from_scales(
-            u_char, cfg.buffer_thickness, cfg.dt, A=cfg.fringe_strength
+            u_char, cfg.buffer_thickness, coupling_dt, A=cfg.fringe_strength
         )
         dead_zone = float(cfg.dead_zone_h) * float(cfg.h)
         self.lam = build_lambda(
