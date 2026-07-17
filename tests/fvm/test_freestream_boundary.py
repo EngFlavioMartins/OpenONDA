@@ -63,6 +63,48 @@ def test_freestream_switches_velocity_and_pressure_per_face(hand_built_3d_mesh):
     assert np.allclose(pressure[ghosts[inflow]], pressure[owners[faces[inflow]]])
 
 
+def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
+    """A characteristic donor survives pressure-correction BC refreshes."""
+    mesh, patch, geo = _freestream_patch(hand_built_3d_mesh)
+    n_cells = mesh["n_elements"]
+    n_interior = mesh["n_interior_faces"]
+    n_total = n_cells + mesh["n_faces"] - n_interior
+    owners = mesh["owners"]
+    faces = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
+    ghosts = n_cells + faces - n_interior
+    patch["value_U_field"] = np.column_stack(
+        [
+            np.linspace(0.6, 0.9, len(faces)),
+            np.linspace(-0.2, 0.2, len(faces)),
+            np.zeros(len(faces)),
+        ]
+    )
+
+    velocity = np.zeros((n_total, 3))
+    velocity[:n_cells] = [2.0, 1.0, 0.0]
+    face_flux = np.zeros(mesh["n_faces"])
+    face_flux[faces] = [-1.0, 1.0, -2.0, 2.0]
+    _update_velocity_bcs(
+        velocity,
+        face_flux,
+        [patch],
+        owners,
+        geo,
+        n_cells,
+        n_interior,
+    )
+
+    inflow = face_flux[faces] < 0.0
+    np.testing.assert_allclose(
+        velocity[ghosts[inflow]],
+        patch["value_U_field"][inflow],
+    )
+    np.testing.assert_allclose(
+        velocity[ghosts[~inflow]],
+        velocity[owners[faces[~inflow]]],
+    )
+
+
 def test_freestream_pressure_constraint_depends_on_flow_direction(hand_built_3d_mesh):
     mesh, patch, geo = _freestream_patch(hand_built_3d_mesh)
     n_cells = mesh["n_elements"]

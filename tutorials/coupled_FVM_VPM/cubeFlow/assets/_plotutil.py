@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 
@@ -12,15 +13,30 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 FIGURES = CASE_DIR / "figures"
 
-# Palette shared across the three plots (color-blind-safe, light background).
-COLORS = {
-    "fvm": "#0072B2",
-    "vpm": "#D55E00",
-    "cd": "#009E73",
-    "cl": "#CC79A7",
-    "accent": "#333333",
-    "box": "#B0B0B0",
-}
+# Use the same publication theme as coupled_OFW_VPM/cubeFlow.  Keeping one
+# source of truth matters here: the figures are intended to be visually
+# interchangeable across the native and OpenFOAM backends.
+_THEME_PATH = Path(__file__).resolve().parents[4] / "docs" / "themes" / "matplotlib_setup.py"
+_THEME_SPEC = importlib.util.spec_from_file_location("openonda_matplotlib_setup", _THEME_PATH)
+if _THEME_SPEC is None or _THEME_SPEC.loader is None:  # pragma: no cover
+    raise ImportError(f"cannot load plotting theme from {_THEME_PATH}")
+_THEME = importlib.util.module_from_spec(_THEME_SPEC)
+_THEME_SPEC.loader.exec_module(_THEME)
+_THEME.set_style()
+
+COLORS = dict(_THEME.COLORS)
+COLORS.update(
+    {
+        # Native names retained as aliases for the existing plotting helpers.
+        "fvm": COLORS["hybrid"],
+        "vpm": COLORS["vpm"],
+        "cd": COLORS["hybrid"],
+        "cl": COLORS["vpm"],
+        "accent": COLORS["DarkText"],
+        "box": COLORS["background_strong"],
+    }
+)
+COLORMAPS = dict(_THEME.COLORMAPS)
 
 
 def metadata() -> dict:
@@ -60,26 +76,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_style() -> None:
-    import matplotlib as mpl
-
-    mpl.rcParams.update(
-        {
-            "figure.dpi": 110,
-            "font.size": 9,
-            "axes.grid": True,
-            "grid.alpha": 0.25,
-            "axes.spines.top": False,
-            "axes.spines.right": False,
-            "legend.frameon": False,
-            "lines.linewidth": 1.6,
-        }
-    )
+    _THEME.set_style()
 
 
 def save(fig, name: str, fmt: str, dpi: int) -> Path:
     FIGURES.mkdir(parents=True, exist_ok=True)
     out = FIGURES / f"{name}.{fmt}"
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    _THEME.save_fig(fig, out, figure_format=fmt, dpi=dpi)
     print(f"  wrote {out.relative_to(CASE_DIR)}")
     return out
 

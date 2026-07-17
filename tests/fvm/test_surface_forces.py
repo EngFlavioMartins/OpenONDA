@@ -46,7 +46,8 @@ class TestSurfaceForces:
     def test_uniform_pressure_gives_zero_net_force(self):
         """Uniform p=1 on a closed surface → Fp = (0,0,0)."""
         self._add_bc_types()
-        p = self._build_full_field(np.ones(self.mesh["n_elements"]))
+        n_total = self.mesh["n_elements"] + (self.mesh["n_faces"] - self.mesh["n_interior_faces"])
+        p = np.ones(n_total)
         U = self._build_full_field(np.zeros((self.mesh["n_elements"], 3)), n_components=3)
         result = compute_surface_forces(
             U,
@@ -84,6 +85,61 @@ class TestSurfaceForces:
         assert np.allclose(result["xmax"]["Fp"], [4.0, 0.0, 0.0], atol=1e-12), (
             f"xmax Fp = {result['xmax']['Fp']}"
         )
+
+    def test_pressure_uses_boundary_face_value_and_kinematic_density(self):
+        """Kinematic pressure is sampled at the face and multiplied by rho."""
+        self._add_bc_types()
+        n_elem = self.mesh["n_elements"]
+        n_int = self.mesh["n_interior_faces"]
+        n_bnd = self.mesh["n_faces"] - n_int
+        p = np.ones(n_elem + n_bnd)
+        U = np.zeros((n_elem + n_bnd, 3))
+        xmax = next(b for b in self.mesh["boundary"] if b["name"] == "xmax")
+        b_start = n_elem + xmax["startFace"] - n_int
+        p[b_start : b_start + xmax["nFaces"]] = 2.0
+
+        result = compute_surface_forces(
+            U,
+            p,
+            0.0,
+            3.0,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
+            patch_names=["xmax"],
+        )
+
+        # Four unit-area faces: rho * p_face * area = 3 * 2 * 4.
+        np.testing.assert_allclose(result["xmax"]["Fp"], [24.0, 0.0, 0.0], atol=1e-12)
+
+    def test_wall_shear_matches_boundary_diffusion_flux(self):
+        """Wall traction uses the prescribed face-normal velocity gradient."""
+        self._add_bc_types()
+        n_elem = self.mesh["n_elements"]
+        n_int = self.mesh["n_interior_faces"]
+        n_bnd = self.mesh["n_faces"] - n_int
+        p = np.zeros(n_elem + n_bnd)
+        U = np.zeros((n_elem + n_bnd, 3))
+        xmax = next(b for b in self.mesh["boundary"] if b["name"] == "xmax")
+        b_start = n_elem + xmax["startFace"] - n_int
+        U[b_start : b_start + xmax["nFaces"], 1] = 1.0
+
+        result = compute_surface_forces(
+            U,
+            p,
+            self.mu,
+            self.rho,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
+            patch_names=["xmax"],
+        )
+
+        faces = np.arange(xmax["startFace"], xmax["startFace"] + xmax["nFaces"])
+        expected_shear = -self.mu * np.sum(
+            self.geo["face_areas"][faces] / self.geo["wall_dist"][faces]
+        )
+        np.testing.assert_allclose(result["xmax"]["Fv"], [0.0, expected_shear, 0.0], atol=1e-12)
 
     def test_total_force_is_pressure_plus_viscous(self):
         """Ftot = Fp + Fv (vector sum holds for any field)."""

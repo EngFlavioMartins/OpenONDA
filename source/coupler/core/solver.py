@@ -1039,6 +1039,23 @@ class FVMVPMCoupler:
                 patch,
             )
             bc_label = "mixed (Robin: u_n Dirichlet + ω Neumann)"
+        elif mode == "characteristic":
+            # Donor Dirichlet only where flow ENTERS the box; convective
+            # (owner-extrapolated, upwinded) treatment where it exits.  This
+            # breaks the deficit→ring-vorticity→Biot–Savart→deeper-deficit
+            # feedback loop of the all-face Dirichlet cut: the outflow state
+            # is set by the FVM's own transport, not by the donor's smeared
+            # self-image (measured: all-Dirichlet drives the face deficit to
+            # min u_x < 0 and blow-up by t≈2 while the monolith stays ≈0.89).
+            setter = getattr(self.ofw, "set_freestream_velocity_boundary_condition_vec", None)
+            if setter is None:
+                raise RuntimeError(
+                    "donor_bc_mode='characteristic' requires the Eulerian backend "
+                    "to provide set_freestream_velocity_boundary_condition_vec "
+                    "(native FVM backend only)."
+                )
+            setter(np.ascontiguousarray(u_target, dtype=np.float64), patch)
+            bc_label = "characteristic (donor on inflow, convective outflow)"
         else:
             _set_dirichlet_velocity(u_target)
             bc_label = "dirichlet"

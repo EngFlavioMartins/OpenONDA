@@ -133,7 +133,7 @@ class CouplerSetup:
                 f"{_valid_donor_interior_sources!r}, got "
                 f"{self.donor_interior_source!r}."
             )
-        _valid_donor_bc_modes = ("dirichlet", "mixed")
+        _valid_donor_bc_modes = ("dirichlet", "mixed", "characteristic")
         if self.donor_bc_mode not in _valid_donor_bc_modes:
             raise ValueError(
                 f"donor_bc_mode must be one of {_valid_donor_bc_modes!r}, "

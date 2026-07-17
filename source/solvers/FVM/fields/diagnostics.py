@@ -186,20 +186,39 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
     return boundary.get("type") == "wall"
 
 
-def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
+def _compute_face_viscous_forces(
+    U,
+    gradU,
+    owners_idx,
+    boundary_idx,
+    n_vec,
+    mag_Sf,
+    wall_dist,
+    mu,
+    nf,
+):
     """Compute viscous traction forces on boundary faces.
 
-    Constructs the symmetric gradient tensor from the velocity gradient at
-    the owner cell, projects it onto the face normal, multiplies by
-    viscosity and face area magnitude.
+    Corrects the reconstructed owner-cell gradient so that its face-normal
+    derivative matches the boundary diffusion operator,
+
+    ``snGrad(U) = (U_boundary - U_owner) / wall_dist``.
+
+    The resulting face stress is the incompressible OpenFOAM convention
+    ``mu * dev(twoSymm(grad(U)))``.  Returning the stress traction here keeps
+    force diagnostics consistent with the actual fixed-value wall flux rather
+    than sampling an uncorrected cell-centred gradient half a cell away.
 
     Args:
+        U: Velocity field including boundary-face values.
         gradU: Velocity gradient field ``(n_elements, 3, 3)``, or
             ``None`` (returns zero forces).
         owners_idx: Indices into *gradU* for the owner cells of the
             boundary faces ``(nf,)``.
+        boundary_idx: Indices into *U* for the boundary-face values.
         n_vec: Unit face normal vectors ``(nf, 3)``.
         mag_Sf: Face area magnitudes ``(nf,)``.
+        wall_dist: Owner-centroid to face distance normal to the face.
         mu: Dynamic viscosity — scalar ``float`` or per-element array
             ``(n_elements,)``.
         nf: Number of boundary faces (``int``).
@@ -209,10 +228,27 @@ def _compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf):
     """
     if gradU is None:
         return np.zeros((nf, 3))
-    grad_owner = gradU[owners_idx]
-    sym_grad = grad_owner + np.transpose(grad_owner, (0, 2, 1))
-    t_faces = np.einsum("fij,fj->fi", sym_grad, n_vec)
-    t_faces = t_faces * mu if np.isscalar(mu) else t_faces * mu[owners_idx][:, np.newaxis]
+
+    grad_face = np.asarray(gradU[owners_idx], dtype=np.float64).copy()
+    distance = np.asarray(wall_dist, dtype=np.float64)
+    if distance.shape != (nf,) or np.any(~np.isfinite(distance)) or np.any(distance <= 0.0):
+        raise ValueError("Boundary wall distances must be finite and positive")
+
+    # gradU[d, c] = d(U_c)/d(x_d).  Replace only its normal projection,
+    # retaining the reconstructed tangential derivatives.
+    sn_grad = (np.asarray(U[boundary_idx]) - np.asarray(U[owners_idx])) / distance[:, None]
+    reconstructed_sn_grad = np.einsum("fi,fij->fj", n_vec, grad_face)
+    grad_face += n_vec[:, :, None] * (sn_grad - reconstructed_sn_grad)[:, None, :]
+
+    two_symm = grad_face + np.transpose(grad_face, (0, 2, 1))
+    divergence = np.trace(grad_face, axis1=1, axis2=2)
+    dev_two_symm = two_symm.copy()
+    diagonal = np.arange(3)
+    dev_two_symm[:, diagonal, diagonal] -= (2.0 / 3.0) * divergence[:, None]
+
+    t_faces = np.einsum("fij,fj->fi", dev_two_symm, n_vec)
+    mu_face = float(mu) if np.isscalar(mu) else np.asarray(mu)[owners_idx, None]
+    t_faces = t_faces * mu_face
     return t_faces * mag_Sf[:, np.newaxis]
 
 
@@ -343,7 +379,7 @@ def compute_surface_forces(
 
     Args:
         U: Velocity field (n_elements + n_boundary, 3)
-        p: Pressure field (n_elements + n_boundary,)
+        p: Kinematic pressure field (n_elements + n_boundary,)
         mu: Dynamic viscosity (scalar or array)
         rho: Density (scalar)
         mesh_data: Mesh connectivity
@@ -363,7 +399,12 @@ def compute_surface_forces(
     _grad = _resolve_grad(geo_data)
 
     n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
+
+    rho_value = float(np.asarray(rho))
+    if not np.isfinite(rho_value) or rho_value <= 0.0:
+        raise ValueError("Density must be a finite positive scalar")
 
     if patch_names is None:
         patch_names = [
@@ -374,9 +415,13 @@ def compute_surface_forces(
 
     gradU = None
     mu_values = _np.asarray(mu)
-    if not _np.all(_np.isfinite(mu_values)):
-        raise ValueError("Dynamic viscosity must be finite")
-    mu_is_zero = _np.allclose(mu_values, 0.0)
+    if not _np.all(_np.isfinite(mu_values)) or _np.any(mu_values < 0.0):
+        raise ValueError("Dynamic viscosity must be finite and non-negative")
+    if mu_values.ndim > 0 and mu_values.shape != (n_elements,):
+        raise ValueError(
+            f"Dynamic viscosity must be scalar or have shape ({n_elements},), got {mu_values.shape}"
+        )
+    mu_is_zero = _np.all(mu_values == 0.0)
 
     if not mu_is_zero:
         gradU = _grad(U, mesh_data, geo_data)
@@ -392,12 +437,24 @@ def compute_surface_forces(
         nf = b["nFaces"]
         face_idx = _np.arange(start, start + nf)
         owners_idx = owners[face_idx]
+        boundary_idx = n_elements + (face_idx - n_interior)
         Sf = geo_data["face_sf"][face_idx]
         mag_Sf = _np.linalg.norm(Sf, axis=1)
         n_vec = Sf / (mag_Sf[:, _np.newaxis] + 1e-30)
-        p_owner = p[owners_idx]
-        Fp_faces = p_owner[:, _np.newaxis] * Sf
-        Fv_faces = -_compute_face_viscous_forces(gradU, owners_idx, n_vec, mag_Sf, mu, nf)
+        p_face = _np.asarray(p)[boundary_idx]
+        # ``p`` is kinematic pressure, so rho is required to recover force.
+        Fp_faces = rho_value * p_face[:, _np.newaxis] * Sf
+        Fv_faces = -_compute_face_viscous_forces(
+            U,
+            gradU,
+            owners_idx,
+            boundary_idx,
+            n_vec,
+            mag_Sf,
+            geo_data["wall_dist"][face_idx],
+            mu,
+            nf,
+        )
         Fp = _np.sum(Fp_faces, axis=0)
         Fv = _np.sum(Fv_faces, axis=0)
         Ftot = Fp + Fv

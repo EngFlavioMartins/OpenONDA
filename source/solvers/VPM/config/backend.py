@@ -263,7 +263,7 @@ def _cpu_candidates() -> list[tuple]:
     return cands or [(ti.cpu, "CPU")]
 
 
-def _build_backend_chain(preferred_backend: str) -> list[tuple]:
+def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list[tuple]:
     """Build the ordered ``[(arch, name), …]`` chain to attempt, GPUs first.
 
     The chain always tries every viable GPU for the platform **before** falling
@@ -282,6 +282,12 @@ def _build_backend_chain(preferred_backend: str) -> list[tuple]:
         - ``CUDA``               → CUDA → CPU.
         - ``GPU_METAL``/``METAL``  (non-mac) → no Metal here, treat as ``GPU``.
 
+    Precision rule: Metal has **no fp64 support**.  ``ti.init(arch=ti.metal,
+    default_fp=ti.f64)`` succeeds, but the first f64 kernel then fails SPIRV
+    codegen and aborts the process with an uncatchable C++ assertion
+    (``metal_device.mm: bind_pipeline``).  Metal is therefore excluded from
+    the chain up-front when ``precision == 'f64'``.
+
     The returned chain is de-duplicated (preserving order) and always ends with
     the CPU candidates.
     """
@@ -293,6 +299,13 @@ def _build_backend_chain(preferred_backend: str) -> list[tuple]:
 
     # macOS: the only GPU API is Metal.
     if platform.system() == "Darwin":
+        if precision == "f64":
+            print(
+                "[OpenONDA] precision='f64' is not supported by the Metal "
+                "backend (no fp64) — using the CPU backend instead.",
+                file=sys.stderr,
+            )
+            return cpu_chain
         return [(ti.metal, "METAL"), *cpu_chain]
 
     # Linux / Windows GPU ordering.
@@ -375,7 +388,10 @@ def initialize_taichi_backend(
     * **macOS** — ``GPU_METAL`` (Apple's Metal API) is used.  Any request
       for ``GPU_VULKAN``, ``GPU``, or ``CUDA`` is transparently redirected
       to Metal because neither CUDA nor Vulkan are natively available on
-      macOS.  Fallback order: Metal → CPU.
+      macOS.  Fallback order: Metal → CPU.  Exception: with
+      ``precision='f64'`` Metal is skipped entirely (no fp64 support;
+      f64 kernels abort the process at SPIRV codegen) and the chain is
+      CPU-only.
     * **Linux / Windows** — ``GPU_VULKAN`` (default), ``GPU`` / ``CUDA``
       for NVIDIA cards, or ``CPU``.  Fallback order: requested → CPU.
 
@@ -424,8 +440,11 @@ def initialize_taichi_backend(
     # Build the ordered list of (arch, name) candidates to attempt.  Every
     # viable GPU for this platform is tried before the CPU, so a transient
     # failure on the first-choice GPU API still lands on another GPU instead
-    # of silently dropping to the (much slower) CPU.
-    chain = _build_backend_chain(preferred_backend)
+    # of silently dropping to the (much slower) CPU.  Precision is forwarded
+    # so incompatible combos (e.g. f64 on Metal) are excluded up-front —
+    # their failure mode is an uncatchable process abort at kernel-compile
+    # time, not a Python exception the fallback loop could recover from.
+    chain = _build_backend_chain(preferred_backend, precision)
 
     # Clamp to a safe range.  Values above ~0.7 almost always trigger
     # 'Failed to allocate ext arr buffer' on Vulkan/CUDA.  This is a hardware

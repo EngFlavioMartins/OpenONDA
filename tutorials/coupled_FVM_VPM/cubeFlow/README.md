@@ -24,11 +24,15 @@ run directly instead: `python cube_setup.py` (a full run) or
 
 | Figure | Shows |
 |--------|-------|
+| `velocity_profiles_t<T>` | centerline/off-axis profiles and drag history, in the shared OpenONDA publication style |
+| `velocity_fields_t<T>` | hybrid FVM, fully meshed, and percentage velocity error on the common FVM plane |
+| `wake_errors_t<T>` | hybrid, fully meshed, and signed `hybrid - fully meshed` velocity/vorticity errors in the wake |
+| `compare_profiles_t<T>` | six-station wake profiles against the fully meshed reference |
 | `vpm_diagnostics` | far-field kinetic energy, enstrophy, particle count |
-| `compare_centerline` | hybrid and fully-meshed streamwise velocity plus signed `hybrid - fully meshed` error |
-| `compare_profiles` | time-matched wake profiles and their signed reference error |
-| `compare_interface` | hybrid, fully-meshed, and signed velocity error on the FVM xmax plane |
-| `compare_forces` | `Cd`/`Cl` histories and time-matched `hybrid - fully meshed` force error |
+
+The figures use the same `docs/themes/matplotlib_setup.py` style as
+`coupled_OFW_VPM/cubeFlow`: LaTeX serif typography, fixed publication sizes,
+semantic teal/purple/gray colours, inward ticks, and shared colormaps.
 
 When `referenceFlow/solution/referenceFlow.pvd` is unavailable, `allplot.sh`
 falls back to the standalone `forces_history` and `hybrid_wake` diagnostics.

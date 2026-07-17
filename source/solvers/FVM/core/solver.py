@@ -1014,8 +1014,14 @@ class Solver(OFWInterfaceMixin):
             ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
             ref_area = getattr(self.config.solver, "ref_area", 1.0)
             ref_length = getattr(self.config.solver, "ref_length", 1.0)
-            mu = self.config.transport.nu * self.config.transport.density
             rho = self.config.transport.density
+            # Use the same effective viscosity as the momentum equation.
+            # ``self.nut`` is the LES field evaluated for the just-completed
+            # step; omitting it under-reports turbulent wall traction.
+            nu_eff = self.config.transport.nu
+            if self.nut is not None:
+                nu_eff = nu_eff + self.nut[: self.mesh_data["n_elements"]]
+            mu = nu_eff * rho
 
             patches = getattr(self.config.solver, "force_patches", None)
 

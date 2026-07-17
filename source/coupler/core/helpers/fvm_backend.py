@@ -391,22 +391,41 @@ def build_fvm_backend(
         adjust_timestep=False,  # coupler owns dt (integer sub-cycle ratio)
     )
 
-    # Coupling patch: Dirichlet velocity (the coupler overwrites the value each
-    # sub-step) + momentum-compatible fixed-flux pressure on ALL faces.  The
-    # donor trace
-    # is projected to zero net flux, so the all-Neumann pressure problem is
-    # compatible and the solver pins the level at a reference cell (pRefCell
-    # equivalent).  A freestream BC would instead pin p=0 on every outflow
-    # face, over-specifying the wake exit and injecting boundary pressure
-    # noise the coupler's donor model does not account for.
-    boundaries = [
-        BoundaryConfig(
-            name=cfg.patch_name,
-            type_U="fixedValue",
-            value_U=u_inf,
-            type_p="fixedFluxPressure",
-        )
-    ]
+    # Coupling patch, selected by the coupler's donor_bc_mode:
+    #
+    # * dirichlet / mixed — Dirichlet velocity (the coupler overwrites the
+    #   value each sub-step) + momentum-compatible fixed-flux pressure on ALL
+    #   faces.  The donor trace is projected to zero net flux, so the
+    #   all-Neumann pressure problem is compatible and the solver pins the
+    #   level at a reference cell (pRefCell equivalent).
+    #
+    # * characteristic — donor velocity applied on INFLOW faces only, with
+    #   convective (owner-extrapolated) outflow and the matching per-face
+    #   freestream pressure (zero-gradient inflow / fixed p outflow).  The
+    #   all-face Dirichlet cut couples the donor's Biot–Savart self-image to
+    #   the box's own wake vorticity with loop gain ≥ 1 (measured secular
+    #   face-deficit growth 0.9 → −3 U∞ and blow-up by t≈2, against a
+    #   monolith truth of ≈0.89); letting the outflow state come from the
+    #   FVM's own transport breaks that loop.
+    if cfg.donor_bc_mode == "characteristic":
+        boundaries = [
+            BoundaryConfig(
+                name=cfg.patch_name,
+                type_U="freestream",
+                value_U=u_inf,
+                type_p="freestream",
+                value_p=0.0,
+            )
+        ]
+    else:
+        boundaries = [
+            BoundaryConfig(
+                name=cfg.patch_name,
+                type_U="fixedValue",
+                value_U=u_inf,
+                type_p="fixedFluxPressure",
+            )
+        ]
     if hole_box is not None:
         wall = cfg.wall_patch_name or "cube"
         boundaries.append(BoundaryConfig.wall(wall))

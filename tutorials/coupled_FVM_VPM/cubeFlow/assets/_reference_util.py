@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import numpy as np
+
+from _plotutil import load_vpm_particles  # noqa: F401
+
+ROOT = Path(__file__).resolve().parents[1]
+REF_DIR = ROOT / "referenceFlow"
+DT_VPM = 0.075
+
+
+def _pvd_times(pvd: Path | None) -> list[tuple[float, Path]]:
+    if pvd is None or not pvd.exists():
+        return []
+    out = []
+    for match in re.finditer(r'timestep="([^"]+)"\s+[^>]*file="([^"]+)"', pvd.read_text()):
+        out.append((float(match.group(1)), pvd.parent / match.group(2)))
+    return sorted(out)
+
+
+def nearest_vtu(pvd: Path, time: float) -> tuple[float, Path] | None:
+    entries = _pvd_times(pvd)
+    return min(entries, key=lambda item: abs(item[0] - time)) if entries else None
+
+
+def _bracket(entries: list[tuple[float, Path]], time: float):
+    if not entries:
+        raise FileNotFoundError("empty time collection")
+    lo = max((item for item in entries if item[0] <= time), default=entries[0])
+    hi = min((item for item in entries if item[0] >= time), default=entries[-1])
+    return lo, hi
+
+
+def nearest_vpm_h5(time: float, case: Path = ROOT) -> Path | None:
+    entries = _h5_times(case)
+    return min(entries, key=lambda item: abs(item[0] - time))[1] if entries else None
+
+
+def _h5_times(case: Path) -> list[tuple[float, Path]]:
+    import h5py
+
+    entries = []
+    for path in sorted((case / "solution").glob("vpm_vpm_solution_*.h5")):
+        try:
+            with h5py.File(path, "r") as handle:
+                entries.append((float(handle["solver"].attrs["flow_time"]), path))
+        except OSError:
+            continue
+    return sorted(entries)
+
+
+def sample_vtu(vtu: Path, points: np.ndarray) -> dict[str, np.ndarray]:
+    import pyvista as pv
+
+    mesh = pv.read(vtu)
+    if "U" not in mesh.point_data:
+        mesh = mesh.cell_data_to_point_data()
+    cloud = pv.PolyData(np.ascontiguousarray(points, dtype=np.float64))
+    sampled = cloud.sample(mesh, tolerance=1e-9)
+    valid = np.asarray(sampled["vtkValidPointMask"]).astype(bool)
+    fields: dict[str, np.ndarray] = {"valid": valid}
+    for name in ("U", "p", "vorticity"):
+        if name in sampled.point_data:
+            value = np.asarray(sampled[name], dtype=np.float64)
+            value[~valid] = np.nan
+            fields[name] = value
+    return fields
+
+
+def sample_pvd_at_time(pvd: Path, time: float, points: np.ndarray) -> dict[str, np.ndarray]:
+    (t0, p0), (t1, p1) = _bracket(_pvd_times(pvd), time)
+    f0 = sample_vtu(p0, points)
+    if t1 == t0:
+        return f0
+    f1 = sample_vtu(p1, points)
+    alpha = (time - t0) / (t1 - t0)
+    fields: dict[str, np.ndarray] = {}
+    for name in f0.keys() & f1.keys():
+        if name == "valid":
+            fields[name] = f0[name] & f1[name]
+        else:
+            fields[name] = (1.0 - alpha) * f0[name] + alpha * f1[name]
+    return fields
+
+
+def _constants(case: Path) -> dict:
+    meta = json.loads((case / "solution/run_metadata.json").read_text())
+    u_inf = np.asarray(meta["physics"]["u_inf"], dtype=float)
+    return {
+        "U_inf": float(np.linalg.norm(u_inf)) or 1.0,
+        "u_inf_vec": u_inf,
+        "box": meta["fvm_solver"]["fvm_domain"],
+    }
+
+
+def _particle_states(case: Path, time: float):
+    entries = _h5_times(case)
+    if not entries:
+        return []
+    lo, hi = _bracket(entries, time)
+    states = [(lo[0], load_vpm_particles(lo[1]))]
+    if hi[1] != lo[1]:
+        states.append((hi[0], load_vpm_particles(hi[1])))
+    return states
+
+
+def _vpm_velocity(states, time: float, points: np.ndarray, u_inf: np.ndarray) -> np.ndarray:
+    from source.coupler.core.helpers.interior_bs import gaussian_bs_velocity
+
+    def evaluate(state):
+        return u_inf + gaussian_bs_velocity(
+            np.asarray(points, dtype=np.float64),
+            np.asarray(state["position"], dtype=np.float64),
+            np.asarray(state["circulation"], dtype=np.float64),
+            np.asarray(state["radius"], dtype=np.float64),
+        )
+
+    value0 = evaluate(states[0][1])
+    if len(states) == 1:
+        return value0
+    value1 = evaluate(states[1][1])
+    alpha = (time - states[0][0]) / (states[1][0] - states[0][0])
+    return (1.0 - alpha) * value0 + alpha * value1
+
+
+def hybrid_u_at_time(
+    pvd: Path,
+    particle_states,
+    time: float,
+    points: np.ndarray,
+    box: dict,
+    u_inf: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    inside = (
+        (points[:, 0] >= box["xmin"])
+        & (points[:, 0] <= box["xmax"])
+        & (points[:, 1] >= box["ymin"])
+        & (points[:, 1] <= box["ymax"])
+        & (points[:, 2] >= box["zmin"])
+        & (points[:, 2] <= box["zmax"])
+    )
+    velocity = np.full((len(points), 3), np.nan)
+    if inside.any():
+        velocity[inside] = sample_pvd_at_time(pvd, time, points[inside])["U"]
+    if (~inside).any() and particle_states:
+        velocity[~inside] = _vpm_velocity(particle_states, time, points[~inside], u_inf)
+    return velocity, inside
