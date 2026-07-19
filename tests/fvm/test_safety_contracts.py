@@ -73,12 +73,12 @@ divSchemes { div(phi,U) bounded Gauss limitedLinear 1; }
     assert solver.config.initial_U is None
     assert solver.config.initial_p is None
     assert solver.config.transport.nu == pytest.approx(1e-5)
-    assert solver.config.solver.momentum_solver == "bicgstab"
-    assert solver.config.solver.pressure_solver == "amg"
-    assert solver.config.solver.n_outer_correctors == 3
-    assert solver.config.solver.time_scheme == "backward"
-    assert solver.config.solver.gradient_scheme == "lsq"
-    assert solver.config.solver.convection_scheme == "limitedLinear"
+    assert solver.config.linear.momentum_solver == "bicgstab"
+    assert solver.config.linear.pressure_solver == "amg"
+    assert solver.config.pimple.n_outer_correctors == 3
+    assert solver.config.schemes.time_scheme == "backward"
+    assert solver.config.schemes.gradient_scheme == "lsq"
+    assert solver.config.schemes.convection_scheme == "limitedLinear"
 
     with pytest.raises(TypeError, match="Unknown FVMConfig override"):
         Solver.from_case(str(tmp_path), presure_solver="cg")

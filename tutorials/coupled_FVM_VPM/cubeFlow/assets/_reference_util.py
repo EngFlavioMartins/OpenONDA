@@ -27,6 +27,37 @@ def nearest_vtu(pvd: Path, time: float) -> tuple[float, Path] | None:
     return min(entries, key=lambda item: abs(item[0] - time)) if entries else None
 
 
+# Time-match tolerance: the hybrid and reference cases are configured to write
+# snapshots at the SAME cadence (0.15 s), so coincident frames match to well
+# within this.  Comparisons are only drawn at a shared time (see matched_times).
+MATCH_TOL = 0.25 * DT_VPM
+
+
+def matched_times(hybrid_pvd: Path, reference_pvd: Path) -> list[float]:
+    """Times present in BOTH collections to within ``MATCH_TOL`` — the only
+    instants at which hybrid-vs-reference field comparisons are physically
+    valid (both sampled at the same t)."""
+    h = _pvd_times(hybrid_pvd)
+    r = _pvd_times(reference_pvd)
+    out = []
+    for th, _ in h:
+        rt = min((t for t, _ in r), key=lambda t: abs(t - th), default=None)
+        if rt is not None and abs(rt - th) <= MATCH_TOL:
+            out.append(round(0.5 * (th + rt), 6))
+    return out
+
+
+def assert_same_time(t_hybrid: float, t_reference: float) -> float:
+    """Guard used by every comparison frame: refuse to plot mismatched times."""
+    if abs(t_hybrid - t_reference) > MATCH_TOL:
+        raise ValueError(
+            f"refusing to compare hybrid t={t_hybrid:.4f} against reference "
+            f"t={t_reference:.4f} (|Δt|={abs(t_hybrid - t_reference):.4f} "
+            f"> {MATCH_TOL:.4f}); align the write cadences"
+        )
+    return 0.5 * (t_hybrid + t_reference)
+
+
 def _bracket(entries: list[tuple[float, Path]], time: float):
     if not entries:
         raise FileNotFoundError("empty time collection")

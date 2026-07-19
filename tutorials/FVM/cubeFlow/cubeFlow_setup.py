@@ -37,7 +37,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -47,19 +50,23 @@ def build_config(args, depth):
     """FVM configuration for the square-cylinder shedding case."""
     nu = args.u_inf * args.D / args.Re
 
-    solver = SolverParams.pimple(
-        n_correctors=args.n_correctors,
-        n_outer=args.n_outer,
-        linear_solver=args.linear_solver,
+    schemes = SchemesConfig(
         convection_scheme=args.convection_scheme,
-        gradient_scheme="gauss",  # exact on this orthogonal rectilinear mesh
+        gradient_scheme="gauss",
     )
-    solver.force_patches = ["cube"]
-    solver.ref_velocity = args.u_inf
-    solver.ref_area = args.D * depth  # frontal area of the extruded square
-    solver.ref_length = args.D
-    solver.moment_centre = [0.0, 0.0, 0.5 * depth]
-    solver.force_log_interval = 1  # every step: St comes from the Cl signal
+    linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    pimple = PimpleControl(
+        n_correctors=args.n_correctors,
+        n_outer_correctors=args.n_outer,
+    )
+    forces = ForcesConfig(
+        force_patches=["cube"],
+        ref_velocity=args.u_inf,
+        ref_area=args.D * depth,  # frontal area of the extruded square
+        ref_length=args.D,
+        moment_centre=[0.0, 0.0, 0.5 * depth],
+        force_log_interval=1,  # every step: St comes from the Cl signal
+    )
 
     return FVMConfig(
         case_name=args.case_name,
@@ -74,7 +81,10 @@ def build_config(args, depth):
             max_delta_t=args.max_dt,
             min_delta_t=1e-5,
         ),
-        solver=solver,
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        forces=forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[

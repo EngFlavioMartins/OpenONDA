@@ -32,7 +32,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -45,16 +48,18 @@ from mesh_rectilinear import cylinder_ibm_mesh  # noqa: E402
 def build_config(args, depth):
     """FVM configuration for the IBM cylinder case."""
     nu = args.u_inf * args.diameter / args.Re
-    solver = SolverParams.pimple(
-        n_correctors=args.n_correctors,
-        n_outer=args.n_outer,
-        linear_solver=args.linear_solver,
+    solver_schemes = SchemesConfig(
         convection_scheme=args.convection_scheme,
-        gradient_scheme="gauss",  # exact on this orthogonal rectilinear mesh
+        gradient_scheme="gauss",
     )
-    solver.ref_velocity = args.u_inf
-    solver.ref_area = args.diameter * depth  # frontal area of the extruded cylinder
-    solver.ref_length = args.diameter
+    solver_linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    solver_pimple = PimpleControl(
+        n_correctors=args.n_correctors,
+        n_outer_correctors=args.n_outer,
+    )
+    solver_forces = ForcesConfig(
+        ref_velocity=args.u_inf, ref_area=args.diameter * depth, ref_length=args.diameter
+    )
 
     return FVMConfig(
         case_name="cylinderIBM",
@@ -69,7 +74,10 @@ def build_config(args, depth):
             max_delta_t=args.max_dt,
             min_delta_t=1e-5,
         ),
-        solver=solver,
+        schemes=solver_schemes,
+        linear=solver_linear,
+        pimple=solver_pimple,
+        forces=solver_forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[

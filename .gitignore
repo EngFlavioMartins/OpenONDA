@@ -125,6 +125,7 @@ log.*
 *.vtu
 *.pvd
 *.pvtu
+*.pvsm
 
 # Mesh files
 *.msh
@@ -160,3 +161,6 @@ vpm*.json
 !tutorials/**/*.py
 !tutorials/**/*.sh
 tests/**/referenceFlow/**
+
+# direnv
+.envrc

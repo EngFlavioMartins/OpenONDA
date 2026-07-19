@@ -25,8 +25,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -148,12 +150,9 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
         case_name="petsc_pimple",
         execution=ExecutionConfig.petsc_replicated(),
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
-        solver=SolverParams.pimple(
-            n_correctors=2,
-            linear_solver="bicgstab",
-            convection_scheme="upwind",
-            pressure_tol=1e-10,
-        ),
+        schemes=SchemesConfig(convection_scheme="upwind"),
+        linear=LinearSolverConfig(linear_solver="bicgstab", pressure_tol=1e-10),
+        pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -182,15 +181,14 @@ def _pimple_config(execution, case_name):
         case_name=case_name,
         execution=execution,
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
-        solver=SolverParams.pimple(
-            n_correctors=2,
+        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
-            convection_scheme="upwind",
-            gradient_scheme="gauss",
             momentum_tol=1e-10,
             pressure_tol=1e-10,
         ),
+        pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),

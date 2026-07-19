@@ -11,10 +11,13 @@ from scipy import sparse
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
     RunAcceptancePolicy,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -25,18 +28,23 @@ from ._structured_mesh import structured_box
 
 
 def _config(time_scheme="euler_implicit", **solver_overrides):
-    solver = SolverParams.pimple(
-        n_correctors=2,
-        linear_solver="spsolve",
-        convection_scheme="upwind",
-        time_scheme=time_scheme,
-    )
+    solver_schemes = SchemesConfig(convection_scheme="upwind", time_scheme=time_scheme)
+    solver_linear = LinearSolverConfig(linear_solver="spsolve")
+    solver_pimple = PimpleControl(n_correctors=2)
     for name, value in solver_overrides.items():
-        setattr(solver, name, value)
+        for group in (solver_schemes, solver_linear, solver_pimple):
+            if hasattr(group, name):
+                setattr(group, name, value)
+                break
+        else:
+            raise AttributeError(f"no solver group owns field {name!r}")
     return FVMConfig(
         case_name="restart_contract",
         time=TimeConfig.transient(dt=0.01, duration=0.1, write_interval=100),
-        solver=solver,
+        schemes=solver_schemes,
+        linear=solver_linear,
+        pimple=solver_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
@@ -179,10 +187,10 @@ def test_acceptance_policy_uses_sustained_window(tmp_path):
 
 
 def test_piso_factory_and_validation_are_distinct():
-    piso = SolverParams.piso(n_correctors=3)
-    assert piso.algorithm == "PISO"
-    assert piso.n_correctors == 3
-    assert piso.n_outer_correctors == 1
+    piso_pimple = PimpleControl(algorithm="PISO", n_correctors=3)
+    assert piso_pimple.algorithm == "PISO"
+    assert piso_pimple.n_correctors == 3
+    assert piso_pimple.n_outer_correctors == 1
 
 
 def test_run_manifest_records_reproducibility_identity(tmp_path):

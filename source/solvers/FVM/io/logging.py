@@ -136,8 +136,8 @@ class Logging:
 
         print("CASE CONFIGURATION:")
         print(f"  Case Name                : {config.case_name}")
-        print(f"  Algorithm                : {config.solver.algorithm}")
-        print(f"  Linear Solver            : {config.solver.linear_solver}")
+        print(f"  Algorithm                : {config.pimple.algorithm}")
+        print(f"  Linear Solver            : {config.linear.linear_solver}")
 
         print("\nMESH STATISTICS:")
         print(f"  Elements (Cells)         : {mesh['n_elements']}")
@@ -151,11 +151,11 @@ class Logging:
         print("\nNUMERICAL PARAMETERS:")
         print(f"  Time Step (dt)           : {config.time.delta_t} s")
         print(f"  End Time                 : {config.time.end_time} s")
-        print(f"  Under-relaxation (U)     : {config.solver.alpha_u}")
-        print(f"  Under-relaxation (p)     : {config.solver.alpha_p}")
-        if config.solver.algorithm.upper() == "PIMPLE":
-            print(f"  Correctors               : {config.solver.n_correctors}")
-            print(f"  Outer Correctors         : {config.solver.n_outer_correctors}")
+        print(f"  Under-relaxation (U)     : {config.pimple.alpha_u}")
+        print(f"  Under-relaxation (p)     : {config.pimple.alpha_p}")
+        if config.pimple.algorithm.upper() == "PIMPLE":
+            print(f"  Correctors               : {config.pimple.n_correctors}")
+            print(f"  Outer Correctors         : {config.pimple.n_outer_correctors}")
 
         print("\nTRANSPORT PROPERTIES:")
         print(f"  Density (density)        : {config.transport.density}")

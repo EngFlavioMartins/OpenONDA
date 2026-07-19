@@ -25,9 +25,12 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -47,10 +50,9 @@ def _tgv_U(x, y, t, nu):
 def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
     """Return (relative L2 velocity error at T, KE(T), analytic KE(T), KE(0))."""
     mesh = structured_box(N, N, 1, lx=TWO_PI, ly=TWO_PI, lz=TWO_PI / N)
-    sp = SolverParams.pimple(
-        n_correctors=2, n_outer=1, linear_solver="spsolve", convection_scheme=scheme
-    )
-    sp.time_scheme = "backward"
+    sp_schemes = SchemesConfig(convection_scheme=scheme, time_scheme="backward")
+    sp_linear = LinearSolverConfig(linear_solver="spsolve")
+    sp_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
     bnds = [
         BoundaryConfig.cyclic("xmin", "xmax"),
         BoundaryConfig.cyclic("xmax", "xmin"),
@@ -61,7 +63,10 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
     cfg = FVMConfig(
         case_name="tgv",
         time=TimeConfig(delta_t=dt, end_time=dt * nsteps, write_interval=10**9),
-        solver=sp,
+        schemes=sp_schemes,
+        linear=sp_linear,
+        pimple=sp_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=bnds,
         initial_U=[0, 0, 0],

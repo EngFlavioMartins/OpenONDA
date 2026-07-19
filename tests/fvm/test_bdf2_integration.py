@@ -17,8 +17,10 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -28,15 +30,9 @@ from ._structured_mesh import structured_box
 
 def _run(scheme, n_steps=4):
     mesh = structured_box(6, 6, 1)
-    sp = SolverParams(
-        algorithm="PIMPLE",
-        n_correctors=2,
-        linear_solver="spsolve",
-        alpha_u=1.0,
-        alpha_p=1.0,
-        convection_scheme="central",
-    )
-    sp.time_scheme = scheme
+    schemes = SchemesConfig(convection_scheme="central", time_scheme=scheme)
+    linear = LinearSolverConfig(linear_solver="spsolve")
+    pimple = PimpleControl(n_correctors=2)
     walls = [BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "zmin")]
     lid = BoundaryConfig(
         name="ymax", type_U="fixedValue", value_U=[1.0, 0, 0], type_p="zeroGradient"
@@ -44,7 +40,9 @@ def _run(scheme, n_steps=4):
     cfg = FVMConfig(
         case_name="bdf2",
         time=TimeConfig(delta_t=0.05, end_time=0.25, write_interval=999),
-        solver=sp,
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
         transport=TransportConfig(density=1.0, nu=0.05),
         boundaries=walls + [lid, BoundaryConfig.empty("zmax")],
         initial_U=[0, 0, 0],

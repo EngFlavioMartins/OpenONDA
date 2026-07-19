@@ -181,8 +181,8 @@ class Solver(OFWInterfaceMixin):
         self.operators = create_discrete_operators(self.config.execution.operator_backend)
         if self.config.execution.linear_backend == "petsc":
             methods = {
-                "momentum": self.config.solver.momentum_solver or self.config.solver.linear_solver,
-                "pressure": self.config.solver.pressure_solver or self.config.solver.linear_solver,
+                "momentum": self.config.linear.momentum_solver or self.config.linear.linear_solver,
+                "pressure": self.config.linear.pressure_solver or self.config.linear.linear_solver,
             }
             invalid = {
                 name: value
@@ -198,17 +198,19 @@ class Solver(OFWInterfaceMixin):
 
         # Fail fast on typo'd / unsupported scheme or turbulence-model names
         # (otherwise the error only surfaces deep inside the first assembly).
+        from types import SimpleNamespace
+
         from ..schemes import (
             validate_acceptance_policy,
             validate_solver_params,
             validate_turbulence,
         )
 
-        validate_solver_params(self.config.solver, self.config.time)
+        validate_solver_params(SimpleNamespace(**self.config.algorithm_params()), self.config.time)
         validate_turbulence(self.config.turbulence)
         validate_acceptance_policy(self.config.acceptance)
         if (
-            self.config.solver.pressure_nullspace_policy == "petsc"
+            self.config.linear.pressure_nullspace_policy == "petsc"
             and self.config.execution.linear_backend != "petsc"
         ):
             raise ValueError(
@@ -216,7 +218,7 @@ class Solver(OFWInterfaceMixin):
             )
         if (
             self.parallel.is_partitioned
-            and self.config.solver.pressure_nullspace_policy == "reference"
+            and self.config.linear.pressure_nullspace_policy == "reference"
         ):
             raise ValueError(
                 "petsc_partitioned requires pressure_nullspace_policy='auto' or 'petsc'; "
@@ -241,7 +243,7 @@ class Solver(OFWInterfaceMixin):
         from ..mesh.validation import enforce_quality_thresholds, validate_mesh
 
         self.cache = cache.WeightCache()
-        gs = getattr(self.config.solver, "gradient_scheme", "gauss")
+        gs = getattr(self.config.schemes, "gradient_scheme", "gauss")
         logging.Timer.start("  Geometry Compute")
         if self.parallel.is_partitioned:
             if any(boundary.type_U == "cyclic" for boundary in self.config.boundaries):
@@ -391,10 +393,10 @@ class Solver(OFWInterfaceMixin):
         from ..config.types import (
             BoundaryConfig,
             FVMConfig,
-            SolverParams,
             TimeConfig,
             TransportConfig,
             TurbulenceConfig,
+            solver_configs_from_case,
         )
 
         case_dir = os.path.abspath(case_dir)
@@ -419,10 +421,14 @@ class Solver(OFWInterfaceMixin):
 
         turbulence_path = os.path.join(case_dir, "constant", "turbulenceProperties")
 
+        schemes, linear, pimple, forces = solver_configs_from_case(case_dir)
         cfg = FVMConfig(
             case_name=os.path.basename(case_dir.rstrip("/")) or "case",
             time=TimeConfig.from_control_dict(case_dir),
-            solver=SolverParams.from_system(case_dir),
+            schemes=schemes,
+            linear=linear,
+            pimple=pimple,
+            forces=forces,
             transport=TransportConfig.from_foam_file(case_dir),
             turbulence=(
                 TurbulenceConfig.from_foam_file(turbulence_path)
@@ -521,7 +527,7 @@ class Solver(OFWInterfaceMixin):
     def _initialize_algorithm(self):
         """Initialise the numerical solver algorithm.
 
-        Reads the algorithm type from ``self.config.solver.algorithm``
+        Reads the algorithm type from ``self.config.pimple.algorithm``
         and instantiates either a :class:`~solve.pimple_solver.PIMPLESolver`
         or :class:`~solve.simple_solver.SIMPLESolver`.
 
@@ -530,15 +536,11 @@ class Solver(OFWInterfaceMixin):
                         or ``"PISO"``.
         """
         logging.Timer.start("  Algorithm Init")
-        if hasattr(self.config.solver, "to_dict"):
-            params = self.config.solver.to_dict()  # type: ignore[union-attr]
-        else:
-            params = vars(self.config.solver)
-        params = dict(params)
+        params = dict(self.config.algorithm_params())
         params["_linear_backend"] = self.config.execution.linear_backend
         params["_operator_backend"] = self.operators.name
         params["_parallel_context"] = self.parallel
-        algo = self.config.solver.algorithm.upper()
+        algo = self.config.pimple.algorithm.upper()
 
         if algo in ["PIMPLE", "PISO"]:
             self.algorithm = pimple_solver.PIMPLESolver(
@@ -656,7 +658,7 @@ class Solver(OFWInterfaceMixin):
         if not hasattr(self.algorithm, "ibm"):
             raise ValueError(
                 "Immersed boundaries require the PIMPLE/PISO algorithm "
-                f"(configured: {self.config.solver.algorithm!r})."
+                f"(configured: {self.config.pimple.algorithm!r})."
             )
         body_list = [bodies] if hasattr(bodies, "U_target") else list(bodies)
         if not body_list:
@@ -683,8 +685,8 @@ class Solver(OFWInterfaceMixin):
         """Append per-body IBM forces (and Cd/Cl) to solution/ibm_forces_history.csv."""
         rho = self.config.transport.density
         forces = self.ibm.body_forces(rho=rho)
-        ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
-        ref_area = getattr(self.config.solver, "ref_area", 1.0)
+        ref_U = getattr(self.config.forces, "ref_velocity", 1.0)
+        ref_area = getattr(self.config.forces, "ref_area", 1.0)
         q = 0.5 * rho * ref_U**2 * ref_area
 
         sol_dir = os.path.join(self.case_dir, "solution")
@@ -856,7 +858,7 @@ class Solver(OFWInterfaceMixin):
             )
         )
         return StepDiagnostics(
-            algorithm=self.config.solver.algorithm.upper(),
+            algorithm=self.config.pimple.algorithm.upper(),
             step=self.time_step + 1,
             time=self.flow_time + step_dt,
             dt=float(step_dt),
@@ -985,7 +987,7 @@ class Solver(OFWInterfaceMixin):
         self.io.write_step_diagnostics()
 
         # y+ and Turbulence info
-        patch_names = getattr(self.config.solver, "yplus_patches", None)
+        patch_names = getattr(self.config.forces, "yplus_patches", None)
         if self.parallel.is_root or self.parallel.is_partitioned:
             yplus_stats = diagnostics.compute_y_plus(
                 self.U,
@@ -1001,9 +1003,13 @@ class Solver(OFWInterfaceMixin):
                 )
         if self.parallel.is_root:
             logging.Logging.yplus_info(yplus_stats)
+        # Expose the latest y+ stats so a driver (e.g. the FVM-VPM coupler,
+        # whose stdout redirection would otherwise send the print above to the
+        # VPM log) can re-log min/max to the FVM's own output.
+        self.last_yplus = yplus_stats
 
         # Force computation and logging
-        force_interval = getattr(self.config.solver, "force_log_interval", None)
+        force_interval = getattr(self.config.forces, "force_log_interval", None)
         if force_interval is None:
             force_interval = cfg_time.write_interval
 
@@ -1011,9 +1017,9 @@ class Solver(OFWInterfaceMixin):
         if (self.parallel.is_root or self.parallel.is_partitioned) and (
             self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
         ):
-            ref_U = getattr(self.config.solver, "ref_velocity", 1.0)
-            ref_area = getattr(self.config.solver, "ref_area", 1.0)
-            ref_length = getattr(self.config.solver, "ref_length", 1.0)
+            ref_U = getattr(self.config.forces, "ref_velocity", 1.0)
+            ref_area = getattr(self.config.forces, "ref_area", 1.0)
+            ref_length = getattr(self.config.forces, "ref_length", 1.0)
             rho = self.config.transport.density
             # Use the same effective viscosity as the momentum equation.
             # ``self.nut`` is the LES field evaluated for the just-completed
@@ -1023,7 +1029,7 @@ class Solver(OFWInterfaceMixin):
                 nu_eff = nu_eff + self.nut[: self.mesh_data["n_elements"]]
             mu = nu_eff * rho
 
-            patches = getattr(self.config.solver, "force_patches", None)
+            patches = getattr(self.config.forces, "force_patches", None)
 
             forces = diagnostics.compute_surface_forces(
                 self.U,
@@ -1037,7 +1043,7 @@ class Solver(OFWInterfaceMixin):
                 ref_U=ref_U,
                 ref_area=ref_area,
                 ref_length=ref_length,
-                moment_centre=getattr(self.config.solver, "moment_centre", [0, 0, 0]),
+                moment_centre=getattr(self.config.forces, "moment_centre", [0, 0, 0]),
             )
             if self.parallel.is_partitioned:
                 forces = diagnostics.merge_partition_forces(self.parallel.comm.allgather(forces))
@@ -1270,5 +1276,5 @@ class Solver(OFWInterfaceMixin):
         print(f"  Time      : {self.flow_time:.5f}")
         print(f"  Step      : {self.time_step}")
         print(f"  Cells     : {self.mesh_data['n_elements']}")
-        print(f"  Algorithm : {self.config.solver.algorithm}")
+        print(f"  Algorithm : {self.config.pimple.algorithm}")
         print("-" * 40)

@@ -1073,6 +1073,18 @@ class FVMVPMCoupler:
                 u_target[:, 0].max() / u_inf_mag,
                 "" if advance else "  (no advance — BC iteration)",
             )
+        # Re-log the FVM y+ min/max to the coupler log: the FVM's own print()
+        # (advance_time) is swallowed by the VPM stdout redirector, so the
+        # wall-resolution diagnostic would otherwise not reach the coupler /
+        # FVM log the user monitors.
+        if advance:
+            yplus = getattr(self.ofw, "last_yplus", None)
+            if yplus:
+                parts = [
+                    f"{name}: y+ min={s['min']:.2f} max={s['max']:.2f} avg={s['avg']:.2f}"
+                    for name, s in yplus.items()
+                ]
+                logger.info("     [FVM wall] %s", " | ".join(parts))
 
     def _run_fvm_substeps(
         self,
@@ -1226,17 +1238,33 @@ class FVMVPMCoupler:
                 elif omega_prev is not None:
                     omega_bc = omega_prev
 
+            # Donor warmup: while t < donor_interior_warmup_time the interior
+            # Biot–Savart term is left out (donor = exterior particles + U∞,
+            # which is also what the monolith trace looks like at early times:
+            # face min u_x stays ≈ 0.89–0.97 through t=2 in the matched
+            # oracle).  The impulsively started wall sheet on a refined mesh
+            # otherwise produces a wild trace (±1.2 U∞) whose Picard sequence
+            # runs away within the first window.
+            warmup = float(getattr(self.config, "donor_interior_warmup_time", 0.0) or 0.0)
+            interior_on = self.ofw.flow_time + 1e-12 >= warmup
+            # Picard under-relaxation of the imposed trace (standard fixed-
+            # point damping; 1.0 recovers the undamped iteration).
+            relax = float(getattr(self.config, "donor_bc_relax", 1.0) or 1.0)
+
             previous_trace = None
             for k in range(n_bc):
                 t_w = time.time()
                 omega_interior = self._get_vorticity_field_buffer()
                 t_w = time.time() - t_w
                 t_bs = time.time()
-                if self._is_master and u_ext.shape[0] > 0:
+                if self._is_master and u_ext.shape[0] > 0 and interior_on:
                     u_int = self._fvm_interior_induced_velocity(face_centers, omega=omega_interior)
                     u_bc = self._project_to_solenoidal(u_ext + u_int, face_normals, face_areas)
                 else:
                     u_bc = u_ext
+                if previous_trace is not None and relax < 1.0:
+                    u_bc = previous_trace + relax * (u_bc - previous_trace)
+                    u_bc = self._project_to_solenoidal(u_bc, face_normals, face_areas)
                 t_bs = time.time() - t_bs
                 residual = (
                     None

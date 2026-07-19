@@ -39,7 +39,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -49,16 +52,18 @@ STATIONS = (0.25, 0.5, 0.75)  # x/L sampling stations for the Blasius profiles
 
 def build_config(args, nu):
     """FVM configuration for the flat-plate case."""
-    solver = SolverParams.pimple(
-        n_correctors=args.n_correctors,
-        n_outer=args.n_outer,
-        linear_solver=args.linear_solver,
+    solver_schemes = SchemesConfig(
         convection_scheme=args.convection_scheme,
-        gradient_scheme="gauss",  # exact on this orthogonal rectilinear mesh
+        gradient_scheme="gauss",
     )
-    solver.force_patches = ["plate"]
-    solver.ref_velocity = args.u_inf
-    solver.ref_length = args.plate_length
+    solver_linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    solver_pimple = PimpleControl(
+        n_correctors=args.n_correctors,
+        n_outer_correctors=args.n_outer,
+    )
+    solver_forces = ForcesConfig(
+        force_patches=["plate"], ref_velocity=args.u_inf, ref_length=args.plate_length
+    )
 
     return FVMConfig(
         case_name=args.case_name,
@@ -73,7 +78,10 @@ def build_config(args, nu):
             max_delta_t=args.max_dt,
             min_delta_t=1e-6,
         ),
-        solver=solver,
+        schemes=solver_schemes,
+        linear=solver_linear,
+        pimple=solver_pimple,
+        forces=solver_forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar by construction (Re_x <= 1e4 << 5e5)
         boundaries=[

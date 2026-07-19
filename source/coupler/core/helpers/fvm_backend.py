@@ -55,32 +55,114 @@ def _plane_index(
     return idx
 
 
+def _grade_segment(a: float, b: float, h_wall: float, h_far: float, ratio: float, wall: str):
+    """Interior node coordinates of one graded segment (a, b), EXCLUDING both
+    endpoints.  The cell adjacent to the ``wall`` end ('lo'→a, 'hi'→b) is
+    ``h_wall``; sizes grow geometrically by ``ratio`` toward the other end,
+    capped at ``h_far``.  The final sliver is merged so the endpoints are hit
+    exactly (same scheme as the reference mesh's ``stretched``)."""
+    length = float(b) - float(a)
+    sizes = []
+    size = float(h_wall)
+    pos = 0.0
+    while length - pos > 1e-12:
+        remaining = length - pos
+        if remaining < 1.5 * size:  # absorb the sliver into the last cell
+            sizes.append(remaining)
+            break
+        sizes.append(size)
+        pos += size
+        size = min(size * ratio, h_far)
+    sizes = np.asarray(sizes, dtype=np.float64)  # small→large, from the wall end
+    # 'lo': fine cell adjacent to a; 'hi': fine cell adjacent to b (sizes run large→small from a)
+    nodes = a + np.cumsum(sizes if wall == "lo" else sizes[::-1])
+    return nodes[:-1]  # drop the far endpoint (interior nodes only)
+
+
+def wall_refined_axis(
+    lo: float,
+    hi: float,
+    wall_lo: float,
+    wall_hi: float,
+    h_wall: float,
+    h_far: float,
+    ratio: float = 1.25,
+) -> np.ndarray:
+    """1D node array on [lo, hi] with cells of size ~``h_wall`` adjacent to the
+    two body faces ``wall_lo``/``wall_hi`` (e.g. ±0.5), coarsening geometrically
+    to ``h_far`` toward ``lo``/``hi`` and through the carved body interior.
+
+    Breakpoints land EXACTLY on lo, wall_lo, wall_hi, hi so the cube carve and
+    the box faces sit on mesh planes.  Shared by the coupled box and the
+    reference core so their common region is identical cell-for-cell.
+    """
+    left = _grade_segment(lo, wall_lo, h_wall, h_far, ratio, wall="hi")
+    # Body interior: grade OUTWARD from each wall to the body midpoint (two
+    # clean half-segments).  Never union two overlapping node sets — the
+    # interleaved nodes create near-zero-width slabs that, on a tensor grid,
+    # cut through the entire domain (measured min cell 4e-4 at h_wall=0.025,
+    # collapsing the CFL time step and blowing up both solvers).
+    mid = 0.5 * (wall_lo + wall_hi)
+    body = np.concatenate(
+        [
+            _grade_segment(wall_lo, mid, h_wall, h_far, ratio, wall="lo"),
+            [mid],
+            _grade_segment(mid, wall_hi, h_wall, h_far, ratio, wall="hi"),
+        ]
+    )
+    right = _grade_segment(wall_hi, hi, h_wall, h_far, ratio, wall="lo")
+    nodes = np.concatenate([[lo], left, [wall_lo], body, [wall_hi], right, [hi]])
+    nodes = np.unique(np.round(nodes, 12))
+    d = np.diff(nodes)
+    if d.min() < 0.4 * h_wall:
+        raise ValueError(
+            f"wall_refined_axis produced a degenerate cell ({d.min():.3e} < "
+            f"0.4*h_wall={0.4 * h_wall:.3e}) — refusing to build a broken mesh."
+        )
+    return nodes
+
+
 def coupling_box_mesh(
     fvm_box: tuple[float, float, float, float, float, float],
     spacing: float,
     patch_name: str = "numericalBoundary",
     hole_box: tuple[float, float, float, float, float, float] | None = None,
     wall_patch_name: str = "cube",
+    nodes: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict:
-    """Return a uniform hex mesh whose six sides form one coupling patch.
+    """Return a hex mesh whose six sides form one coupling patch.
 
-    With ``hole_box``, the cells inside it are removed (body-fitted, like the
-    OpenFOAM/cfMesh case): the exposed faces become a second boundary patch
-    ``wall_patch_name`` of type ``wall``, where the no-slip condition is
-    applied.  The hole faces must lie exactly on mesh planes.  Points inside
-    the hole are kept but unreferenced (harmless to the solver and to VTK).
+    ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (e.g. graded,
+    wall-refined via :func:`wall_refined_axis`); otherwise a uniform grid at
+    ``spacing`` is built.  With ``hole_box``, the cells inside it are removed
+    (body-fitted, like the OpenFOAM/cfMesh case): the exposed faces become a
+    second boundary patch ``wall_patch_name`` of type ``wall``.  The hole faces
+    must lie exactly on mesh planes.
     """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
-    nx = _cells_along(x0, x1, spacing, "x")
-    ny = _cells_along(y0, y1, spacing, "y")
-    nz = _cells_along(z0, z1, spacing, "z")
-    dx, dy, dz = (x1 - x0) / nx, (y1 - y0) / ny, (z1 - z0) / nz
+    if nodes is not None:
+        xs, ys, zs = (np.asarray(a, dtype=np.float64) for a in nodes)
+        if not (
+            abs(xs[0] - x0) < 1e-9
+            and abs(xs[-1] - x1) < 1e-9
+            and abs(ys[0] - y0) < 1e-9
+            and abs(ys[-1] - y1) < 1e-9
+            and abs(zs[0] - z0) < 1e-9
+            and abs(zs[-1] - z1) < 1e-9
+        ):
+            raise ValueError("nodes endpoints must equal fvm_box bounds")
+    else:
+        nx = _cells_along(x0, x1, spacing, "x")
+        ny = _cells_along(y0, y1, spacing, "y")
+        nz = _cells_along(z0, z1, spacing, "z")
+        dx, dy, dz = (x1 - x0) / nx, (y1 - y0) / ny, (z1 - z0) / nz
+        xs = x0 + dx * np.arange(nx + 1)
+        ys = y0 + dy * np.arange(ny + 1)
+        zs = z0 + dz * np.arange(nz + 1)
+    nx, ny, nz = len(xs) - 1, len(ys) - 1, len(zs) - 1
     npx, npy = nx + 1, ny + 1
 
     # --- points -----------------------------------------------------------
-    xs = x0 + dx * np.arange(nx + 1)
-    ys = y0 + dy * np.arange(ny + 1)
-    zs = z0 + dz * np.arange(nz + 1)
     Z, Y, X = np.meshgrid(zs, ys, xs, indexing="ij")
     points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()]).astype(np.float64)
 
@@ -170,12 +252,21 @@ def coupling_box_mesh(
     keep = np.ones(nx * ny * nz, dtype=bool)
     if hole_box is not None:
         hx0, hx1, hy0, hy1, hz0, hz1 = (float(v) for v in hole_box)
-        i0 = _plane_index(hx0, x0, dx, nx, f"{wall_patch_name} x-min face", allow_boundary=True)
-        i1 = _plane_index(hx1, x0, dx, nx, f"{wall_patch_name} x-max face", allow_boundary=True)
-        j0 = _plane_index(hy0, y0, dy, ny, f"{wall_patch_name} y-min face", allow_boundary=True)
-        j1 = _plane_index(hy1, y0, dy, ny, f"{wall_patch_name} y-max face", allow_boundary=True)
-        k0 = _plane_index(hz0, z0, dz, nz, f"{wall_patch_name} z-min face", allow_boundary=True)
-        k1 = _plane_index(hz1, z0, dz, nz, f"{wall_patch_name} z-max face", allow_boundary=True)
+
+        def _line_index(coords, value, what):
+            idx = int(np.argmin(np.abs(coords - value)))
+            if abs(coords[idx] - value) > 1e-6 * max(abs(value), 1.0):
+                raise ValueError(
+                    f"{what} at {value:g} is not on a mesh plane (closest {coords[idx]:g})"
+                )
+            return idx
+
+        i0 = _line_index(xs, hx0, f"{wall_patch_name} x-min face")
+        i1 = _line_index(xs, hx1, f"{wall_patch_name} x-max face")
+        j0 = _line_index(ys, hy0, f"{wall_patch_name} y-min face")
+        j1 = _line_index(ys, hy1, f"{wall_patch_name} y-max face")
+        k0 = _line_index(zs, hz0, f"{wall_patch_name} z-min face")
+        k1 = _line_index(zs, hz1, f"{wall_patch_name} z-max face")
         if i0 >= i1 or j0 >= j1 or k0 >= k1:
             raise ValueError(f"hole_box {hole_box} has empty extent on the grid.")
 
@@ -313,7 +404,10 @@ def box_surface_markers(
 def build_fvm_backend(
     coupler_setup,
     *,
-    solver_params=None,
+    schemes=None,
+    linear=None,
+    pimple=None,
+    forces=None,
     execution=None,
     write_interval_time: float | None = None,
     case_dir: str | None = None,
@@ -328,8 +422,11 @@ def build_fvm_backend(
     from source.solvers.FVM import (
         BoundaryConfig,
         ExecutionConfig,
+        ForcesConfig,
         FVMConfig,
-        SolverParams,
+        LinearSolverConfig,
+        PimpleControl,
+        SchemesConfig,
         TimeConfig,
         TransportConfig,
     )
@@ -351,37 +448,47 @@ def build_fvm_backend(
     # interior vorticity into the VPM.
     hole_box = _body_hole_box(cfg)
 
+    # Optional boundary-layer refinement toward the body faces (matches the
+    # OFW/cfMesh case's near-cube cellSize).  Grades from wall_refinement_size
+    # at the body to grid_spacing at the coupling faces, identically on every
+    # axis; the reference case reuses wall_refined_axis over the shared region.
+    nodes = None
+    wr = getattr(cfg, "wall_refinement_size", None)
+    if wr is not None and hole_box is not None:
+        box = cfg.fvm_box
+        ratio = float(getattr(cfg, "wall_refinement_ratio", 1.25))
+        nodes = (
+            wall_refined_axis(
+                box[0], box[1], hole_box[0], hole_box[1], wr, cfg.grid_spacing, ratio
+            ),
+            wall_refined_axis(
+                box[2], box[3], hole_box[2], hole_box[3], wr, cfg.grid_spacing, ratio
+            ),
+            wall_refined_axis(
+                box[4], box[5], hole_box[4], hole_box[5], wr, cfg.grid_spacing, ratio
+            ),
+        )
+
     mesh_data = coupling_box_mesh(
         cfg.fvm_box,
         cfg.grid_spacing,
         cfg.patch_name,
         hole_box=hole_box,
         wall_patch_name=cfg.wall_patch_name or "cube",
+        nodes=nodes,
     )
 
     u_inf = [float(v) for v in cfg.u_inf]
     execution = execution or ExecutionConfig()
-    if solver_params is None:
-        # bicgstab momentum + AMG (pyamg) pressure: ~60× faster per
-        # solve_pimple than spsolve at 30³ cells.  Convergence is
-        # residual-verified in linear_interface, so degenerate solves
-        # (zero RHS, converged initial guess) no longer abort the run.
-        solver_params = SolverParams.pimple(
-            n_correctors=2,
-            linear_solver="bicgstab",
-            convection_scheme="central",
-            gradient_scheme="lsq",
-        )
-        # Route the Poisson solve to pyamg-preconditioned CG explicitly:
-        # pressure_solver=None would inherit bicgstab+ILU, whose per-solve ILU
-        # factorization grows superlinearly with mesh size (measured 24 s per
-        # pressure solve at 208k cells vs ~0.5 s with the cached AMG hierarchy).
-        solver_params.pressure_solver = "amg"
-        # Loose ILU: the transient momentum matrix is diagonally dominant, so
-        # a cheap factorization preconditions it just as well (measured 15%
-        # faster per step, lower memory, identical continuity).
-        solver_params.ilu_drop_tol = 1e-3
-        solver_params.ilu_fill_factor = 3.0
+    schemes = schemes or SchemesConfig(convection_scheme="central", gradient_scheme="lsq")
+    linear = linear or LinearSolverConfig(
+        linear_solver="bicgstab",
+        pressure_solver="amg",
+        ilu_drop_tol=1e-3,
+        ilu_fill_factor=3.0,
+    )
+    pimple = pimple or PimpleControl(n_correctors=2)
+    forces = forces or ForcesConfig()
 
     time_cfg = TimeConfig(
         delta_t=float(cfg.dt),
@@ -431,19 +538,22 @@ def build_fvm_backend(
         boundaries.append(BoundaryConfig.wall(wall))
         # Wall-patch force integration (Cd/Cl in solution/forces_history.csv),
         # replacing the OFW case's OpenFOAM force function object.
-        if solver_params.force_patches is None:
-            solver_params.force_patches = [wall]
+        if forces.force_patches is None:
+            forces.force_patches = [wall]
             side = np.asarray(hole_box, dtype=float)
-            solver_params.ref_velocity = float(np.linalg.norm(u_inf)) or 1.0
-            solver_params.ref_area = float((side[3] - side[2]) * (side[5] - side[4]))
-            solver_params.ref_length = float(side[1] - side[0])
-            solver_params.force_log_interval = 1
+            forces.ref_velocity = float(np.linalg.norm(u_inf)) or 1.0
+            forces.ref_area = float((side[3] - side[2]) * (side[5] - side[4]))
+            forces.ref_length = float(side[1] - side[0])
+            forces.force_log_interval = 1
 
     fvm_config = FVMConfig(
         case_name=f"coupled_{cfg.patch_name}",
         execution=execution,
         time=time_cfg,
-        solver=solver_params,
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        forces=forces,
         transport=TransportConfig(density=float(cfg.rho), nu=float(cfg.nu)),
         boundaries=boundaries,
         initial_U=u_inf if cfg.initial_U is None else [float(v) for v in cfg.initial_U],

@@ -18,7 +18,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -70,13 +73,9 @@ def main() -> None:
         raise ValueError("end-time must be a positive integer multiple of dt")
 
     mesh = periodic_square_mesh(args.n)
-    params = SolverParams.pimple(
-        n_correctors=2,
-        n_outer=1,
-        linear_solver="spsolve",
-        convection_scheme=args.scheme,
-    )
-    params.time_scheme = "backward"
+    params_schemes = SchemesConfig(convection_scheme=args.scheme, time_scheme="backward")
+    params_linear = LinearSolverConfig(linear_solver="spsolve")
+    params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
     boundaries = [
         BoundaryConfig.cyclic("xmin", "xmax"),
         BoundaryConfig.cyclic("xmax", "xmin"),
@@ -92,7 +91,10 @@ def main() -> None:
             end_time=args.end_time,
             write_interval=nsteps,
         ),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=args.nu),
         boundaries=boundaries,
     )

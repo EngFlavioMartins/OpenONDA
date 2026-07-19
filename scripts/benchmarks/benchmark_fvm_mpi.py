@@ -19,8 +19,10 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ExecutionConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -49,15 +51,14 @@ def main() -> None:
         case_name="partitioned-weak-scaling",
         execution=execution,
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=10**9),
-        solver=SolverParams.pimple(
-            n_correctors=2,
+        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
-            convection_scheme="upwind",
-            gradient_scheme="gauss",
             momentum_tol=1e-8,
             pressure_tol=1e-8,
         ),
+        pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),

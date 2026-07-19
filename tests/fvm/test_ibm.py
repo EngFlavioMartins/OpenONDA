@@ -137,8 +137,10 @@ def test_cylinder_step_integration():
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMConfig,
+        LinearSolverConfig,
+        PimpleControl,
+        SchemesConfig,
         Solver,
-        SolverParams,
         TimeConfig,
         TransportConfig,
     )
@@ -147,13 +149,9 @@ def test_cylinder_step_integration():
     config = FVMConfig(
         case_name="ibm_smoke",
         time=TimeConfig(delta_t=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
-        solver=SolverParams.pimple(
-            n_correctors=2,
-            n_outer=1,
-            linear_solver="spsolve",
-            convection_scheme="upwind",
-            gradient_scheme="gauss",
-        ),
+        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        linear=LinearSolverConfig(linear_solver="spsolve"),
+        pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
         transport=TransportConfig(density=1.0, nu=0.025),  # Re = 40 on D=1
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -195,8 +193,10 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMConfig,
+        LinearSolverConfig,
+        PimpleControl,
+        SchemesConfig,
         Solver,
-        SolverParams,
         TimeConfig,
         TransportConfig,
     )
@@ -205,7 +205,9 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     config = FVMConfig(
         case_name="moving_ibm_rejected",
         time=TimeConfig.transient(dt=0.01, duration=0.01),
-        solver=SolverParams.pimple(linear_solver="spsolve"),
+        schemes=SchemesConfig(),
+        linear=LinearSolverConfig(linear_solver="spsolve"),
+        pimple=PimpleControl(),
         transport=TransportConfig(nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -228,9 +230,12 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
     from source.solvers.FVM import (
         BoundaryConfig,
+        ForcesConfig,
         FVMConfig,
+        LinearSolverConfig,
+        PimpleControl,
+        SchemesConfig,
         Solver,
-        SolverParams,
         TimeConfig,
         TransportConfig,
     )
@@ -251,21 +256,22 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         return values
 
     def config(with_square):
-        params = SolverParams.pimple(
-            n_correctors=2,
-            n_outer=1,
-            linear_solver="spsolve",
-            convection_scheme="upwind",
-            gradient_scheme="gauss",
+        schemes = SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss")
+        linear = LinearSolverConfig(linear_solver="spsolve")
+        pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
+        forces = ForcesConfig(
+            force_patches=["square"] if with_square else [],
+            force_log_interval=1,
+            ref_velocity=1.0,
+            ref_area=h,
         )
-        params.force_patches = ["square"] if with_square else []
-        params.force_log_interval = 1
-        params.ref_velocity = 1.0
-        params.ref_area = h
         return FVMConfig(
             case_name="body-fitted" if with_square else "ibm",
             time=TimeConfig.transient(dt=0.02, duration=0.16, write_interval=1000),
-            solver=params,
+            schemes=schemes,
+            linear=linear,
+            pimple=pimple,
+            forces=forces,
             transport=TransportConfig(density=1.0, nu=0.05),
             boundaries=boundaries(with_square),
             initial_U=[1.0, 0.0, 0.0],

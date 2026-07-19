@@ -11,8 +11,10 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -43,16 +45,14 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
     config = FVMConfig(
         case_name=f"tgv-wale-{level}",
         time=TimeConfig.transient(dt=dt, duration=steps * dt, write_interval=10**9),
-        solver=SolverParams.pimple(
-            n_correctors=2,
-            n_outer=1,
+        schemes=SchemesConfig(convection_scheme="central", time_scheme="backward"),
+        linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="amg",
             momentum_tol=1e-8,
             pressure_tol=1e-9,
-            convection_scheme="central",
-            time_scheme="backward",
         ),
+        pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
         transport=TransportConfig(density=1.0, nu=1.0 / 1600.0),
         turbulence=TurbulenceConfig.wale(),
         boundaries=boundaries,

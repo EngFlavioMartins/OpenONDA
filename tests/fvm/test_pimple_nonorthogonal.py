@@ -7,9 +7,12 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -20,16 +23,16 @@ from ._structured_mesh import structured_box
 def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
     mesh = structured_box(4, 3, 2)
     mesh["points"][:, 0] += 0.25 * mesh["points"][:, 1]
-    params = SolverParams.pimple(
-        n_correctors=1,
-        n_non_orthogonal=1,
-        linear_solver="spsolve",
-        convection_scheme="upwind",
-    )
+    params_schemes = SchemesConfig(convection_scheme="upwind")
+    params_linear = LinearSolverConfig(linear_solver="spsolve")
+    params_pimple = PimpleControl(n_correctors=1, n_orthogonal_correctors=1)
     config = FVMConfig(
         case_name="skewed_pimple",
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),

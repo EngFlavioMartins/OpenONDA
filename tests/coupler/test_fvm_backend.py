@@ -275,7 +275,7 @@ def test_builder_body_fitted_cube(tmp_path):
     # wall-force logging on.
     wf = np.asarray(fvm.get_boundary_face_center_coordinates("cube"))
     assert wf.shape[0] == 6 * 8**2
-    assert fvm.config.solver.force_patches == ["cube"]
+    assert fvm.config.forces.force_patches == ["cube"]
     wall_cfg = next(b for b in fvm.config.boundaries if b.name == "cube")
     assert wall_cfg.type_U == "fixedValue" and wall_cfg.value_U == [0.0, 0.0, 0.0]
 

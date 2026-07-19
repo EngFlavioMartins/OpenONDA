@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+from dataclasses import fields as dataclass_fields
 import json
 import os
 import re
@@ -558,9 +559,42 @@ class TimeConfig:
 
 
 @dataclass
-class SolverParams:
-    """
-    Algorithm parameters for Simple/Pimple.
+class SchemesConfig:
+    """Discretisation schemes — OpenFOAM ``fvSchemes``."""
+
+    convection_scheme: str = "limitedLinear"
+    gradient_scheme: str = "lsq"
+    time_scheme: str = "euler_implicit"
+
+
+@dataclass
+class LinearSolverConfig:
+    """Linear solvers and tolerances — OpenFOAM ``fvSolution/solvers``."""
+
+    linear_solver: str = "bicgstab"
+    momentum_solver: str | None = None
+    pressure_solver: str | None = None
+    pressure_nullspace_policy: Literal["auto", "reference", "petsc"] = "auto"
+    linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
+    reuse_ilu: bool = True
+    momentum_tol: float = 1e-4
+    momentum_maxiter: int = 1000
+    pressure_tol: float = 1e-8
+    pressure_maxiter: int = 500
+    amg_tol: float | None = None
+    amg_maxiter: int | None = None
+    amg_reuse_tol: float = 0.05
+    ilu_drop_tol: float = 1e-4
+    ilu_fill_factor: float = 10.0
+    ilu_reuse_tol: float | None = None
+
+
+@dataclass
+class PimpleControl:
+    """Pressure-velocity coupling — OpenFOAM ``fvSolution/PIMPLE`` (or SIMPLE).
+
+    Under-relaxation defaults to 1.0 (transient PIMPLE); set alpha_u=0.7,
+    alpha_p=0.3 for steady SIMPLE.
     """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
@@ -572,183 +606,61 @@ class SolverParams:
     outer_continuity_tolerance: float | None = None
     max_iter: int = 20
     tolerance: float = 1e-6
-    alpha_u: float = 0.7
-    alpha_p: float = 0.3
-    linear_solver: str = "bicgstab"  # Defaulting to iterative for performance
-    # Equation-specific methods. None inherits ``linear_solver`` for backward
-    # compatibility with existing Python configurations.
-    momentum_solver: str | None = None
-    pressure_solver: str | None = None
-    pressure_nullspace_policy: Literal["auto", "reference", "petsc"] = "auto"
-    linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
-    reuse_ilu: bool = True  # Enable ILU preconditioning reuse by default
-
-    # y+ patches: user can specify patches to compute y+ for (None => auto-select wall patches)
-    yplus_patches: list[str] | None = None
-
-    # Momentum solver tunables
-    momentum_tol: float = 1e-4
-    momentum_maxiter: int = 1000
-    pressure_tol: float = 1e-8
-    pressure_maxiter: int = 500
-    # ``None`` makes AMG inherit the pressure tolerance / iteration limit.
-    amg_tol: float | None = None
-    amg_maxiter: int | None = None
-    amg_reuse_tol: float = 0.05
-    ilu_drop_tol: float = 1e-4
-    ilu_fill_factor: float = 10.0
-    # ILU reuse heuristic: if set (e.g., 1e-3) the ILU cache will be reused only if the
-    # relative change in diagonal is <= this threshold. If None, always reuse when pattern matches.
-    ilu_reuse_tol: float | None = None
-
-    # Force computation patches: None = auto-detect walls
-    force_patches: list[str] | None = None
-    # Reference velocity magnitude for Cd/Cl/Cz
-    ref_velocity: float = 1.0
-    # Reference area for Cd/Cl/Cz
-    ref_area: float = 1.0
-    # Reference length for Cm (pitching moment)
-    ref_length: float = 1.0
-    # Log forces every N steps (defaults to write_interval if None)
-    force_log_interval: int | None = None
-    # Moment centre for Cm computation (default [0,0,0])
-    moment_centre: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-
-    # Immersed boundary: multidirect residual-forcing iterations per outer
-    # corrector (only used when bodies are attached via set_immersed_bodies).
+    alpha_u: float = 1.0
+    alpha_p: float = 1.0
     ibm_forcing_loops: int = 2
     ibm_second_solve: bool = True
 
-    # Schemes (OpenFOAM-like)
-    # Default to a bounded 2nd-order TVD scheme: far less diffusive than upwind
-    # (the previous default) yet oscillation-free, unlike pure central.  Other
-    # options: "upwind", "central"/"linear" (energy-conserving, unbounded),
-    # "deferred", "LUST", "vanLeer", "MUSCL", "minmod", "superbee".
-    convection_scheme: str = "limitedLinear"
-    time_scheme: str = "euler_implicit"  # "euler_implicit" (BDF1) | "backward" (BDF2)
-    gradient_scheme: str = "lsq"  # "gauss" | "lsq"
 
-    @staticmethod
-    def pimple(
-        n_correctors: int = 2,
-        n_outer: int = 1,
-        n_non_orthogonal: int = 0,
-        linear_solver: str = "spsolve",
-        alpha_u: float = 1.0,
-        alpha_p: float = 1.0,
-        convection_scheme: str = "deferred",
-        gradient_scheme: str = "lsq",
-        time_scheme: str = "euler_implicit",
-        momentum_tol: float = 1e-4,
-        momentum_maxiter: int = 1000,
-        pressure_tol: float = 1e-8,
-        pressure_maxiter: int = 500,
-        momentum_solver: str | None = None,
-        pressure_solver: str | None = None,
-        outer_residual_tolerance: float | None = None,
-        outer_continuity_tolerance: float | None = None,
-    ) -> "SolverParams":
-        """Create PIMPLE solver parameters with transient-appropriate defaults.
+@dataclass
+class ForcesConfig:
+    """Wall-force / y+ diagnostics — OpenFOAM ``functionObjects/forces``."""
 
-        For transient (PIMPLE/PISO) simulations, under-relaxation should be
-        1.0 (no relaxation) unless outer correctors are used.  The default
-        ``"deferred"`` convection scheme is second-order central applied via
-        deferred correction (energy-conserving but *unbounded*); for
-        under-resolved LES prefer a bounded TVD scheme (e.g. ``"limitedLinear"``)
-        or pair ``"deferred"`` with enough correctors.
+    force_patches: list[str] | None = None
+    ref_velocity: float = 1.0
+    ref_area: float = 1.0
+    ref_length: float = 1.0
+    force_log_interval: int | None = None
+    moment_centre: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    yplus_patches: list[str] | None = None
 
-        ``time_scheme`` selects the time discretisation: ``"euler_implicit"``
-        (BDF1, first order, default) or ``"backward"`` (BDF2, second order).
-        BDF2 needs ≥1 outer/PISO corrector per step for the deferred convection
-        correction to keep pace; pair it with ``n_correctors>=2``.
-        """
-        return SolverParams(
-            algorithm="PIMPLE",
-            n_correctors=n_correctors,
-            n_outer_correctors=n_outer,
-            n_orthogonal_correctors=n_non_orthogonal,
-            linear_solver=linear_solver,
-            momentum_solver=momentum_solver,
-            pressure_solver=pressure_solver,
-            alpha_u=alpha_u,
-            alpha_p=alpha_p,
-            convection_scheme=convection_scheme,
-            gradient_scheme=gradient_scheme,
-            time_scheme=time_scheme,
-            momentum_tol=momentum_tol,
-            momentum_maxiter=momentum_maxiter,
-            pressure_tol=pressure_tol,
-            pressure_maxiter=pressure_maxiter,
-            outer_residual_tolerance=outer_residual_tolerance,
-            outer_continuity_tolerance=outer_continuity_tolerance,
-        )
 
-    @staticmethod
-    def piso(
-        n_correctors: int = 2,
-        n_non_orthogonal: int = 0,
-        linear_solver: str = "spsolve",
-        convection_scheme: str = "deferred",
-        gradient_scheme: str = "lsq",
-        time_scheme: str = "euler_implicit",
-        momentum_solver: str | None = None,
-        pressure_solver: str | None = None,
-    ) -> "SolverParams":
-        """Create transient PISO parameters with exactly one outer corrector."""
-        params = SolverParams.pimple(
-            n_correctors=n_correctors,
-            n_outer=1,
-            n_non_orthogonal=n_non_orthogonal,
-            linear_solver=linear_solver,
-            convection_scheme=convection_scheme,
-            gradient_scheme=gradient_scheme,
-            time_scheme=time_scheme,
-            momentum_solver=momentum_solver,
-            pressure_solver=pressure_solver,
-        )
-        params.algorithm = "PISO"
-        return params
+def _groups_from_flat(
+    flat: dict,
+) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "ForcesConfig"]:
+    """Distribute a flat parameter mapping into the four grouped configs."""
 
-    @staticmethod
-    def simple(
-        alpha_u: float = 0.7,
-        alpha_p: float = 0.3,
-        linear_solver: str = "spsolve",
-        gradient_scheme: str = "lsq",
-    ) -> "SolverParams":
-        """Create SIMPLE solver parameters with steady-state defaults.
+    def take(cls):
+        names = {f.name for f in dataclass_fields(cls)}
+        return cls(**{k: v for k, v in flat.items() if k in names})
 
-        Args:
-            alpha_u:        Velocity under-relaxation factor (default 0.7).
-            alpha_p:        Pressure under-relaxation factor (default 0.3).
-            linear_solver:  Linear system solver (default ``"spsolve"``).
-            gradient_scheme: Gradient scheme, ``"lsq"`` or ``"gauss"``.
+    return (
+        take(SchemesConfig),
+        take(LinearSolverConfig),
+        take(PimpleControl),
+        take(ForcesConfig),
+    )
 
-        Returns:
-            :class:`SolverParams` configured for steady SIMPLE.
-        """
-        return SolverParams(
-            algorithm="SIMPLE",
-            alpha_u=alpha_u,
-            alpha_p=alpha_p,
-            linear_solver=linear_solver,
-            gradient_scheme=gradient_scheme,
-        )
 
-    @classmethod
-    def from_system(cls, path: str) -> "SolverParams":
-        """Attempt to construct solver parameters from `system/` dictionary files.
+def solver_configs_from_case(
+    path: str,
+) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "ForcesConfig"]:
+    """Parse ``system/{controlDict,fvSolution,fvSchemes}`` into the four grouped
+    solver configs (used by :meth:`Solver.from_case`)."""
+    from types import SimpleNamespace
 
-        Args:
-            path: Case directory or directly the `system` path (e.g., 'system').
-        """
-        from ..fields.field_io import parse_simple_dictionary
+    from ..fields.field_io import parse_simple_dictionary
 
+    defaults: dict = {}
+    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl(), ForcesConfig()):
+        defaults.update(vars(group))
+    params = SimpleNamespace(**defaults)
+
+    if True:
         system_dir = _resolve_system_dir(path)
         control = os.path.join(system_dir, "controlDict")
         fvsolution = os.path.join(system_dir, "fvSolution")
         fvschemes = os.path.join(system_dir, "fvSchemes")
-        params = cls()
         if os.path.exists(control):
             data = parse_simple_dictionary(control)
             dt = data.get("deltaT")
@@ -893,7 +805,7 @@ class SolverParams:
             "convection",
             {"bounded", "gauss"},
         )
-        return params
+        return _groups_from_flat(vars(params))
 
 
 @dataclass
@@ -1173,13 +1085,23 @@ class FVMConfig:
     execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
     acceptance: "RunAcceptancePolicy" = field(default_factory=lambda: RunAcceptancePolicy())
     time: TimeConfig = field(default_factory=TimeConfig)
-    solver: SolverParams = field(default_factory=SolverParams)
+    schemes: SchemesConfig = field(default_factory=SchemesConfig)
+    linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
+    pimple: PimpleControl = field(default_factory=PimpleControl)
+    forces: ForcesConfig = field(default_factory=ForcesConfig)
     transport: TransportConfig = field(default_factory=TransportConfig)
     dynamic_mesh: DynamicMeshConfig = field(default_factory=DynamicMeshConfig.static)
     boundaries: list[BoundaryConfig] = field(default_factory=list)
     turbulence: TurbulenceConfig | None = None
     initial_U: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
     initial_p: float | None = 0.0
+
+    def algorithm_params(self) -> dict:
+        """Flat parameter dict consumed by the PIMPLE/SIMPLE algorithm layer."""
+        merged: dict = {}
+        for group in (self.schemes, self.linear, self.pimple, self.forces):
+            merged.update(vars(group))
+        return merged
 
     def save(self, filepath: str):
         """Serialise this configuration to a JSON file.
@@ -1211,7 +1133,6 @@ class FVMConfig:
         execution_data = data.get("execution", {})
         acceptance_data = data.get("acceptance", {})
         time_data = data.get("time", {})
-        solver_data = data.get("solver", {})
         transport_data = data.get("transport", {})
         dynamic_mesh_data = data.get("dynamic_mesh", {"method": "static"})
         turbulence_data = data.get("turbulence", None)
@@ -1225,7 +1146,6 @@ class FVMConfig:
         # Dataclass defaults provide backward compatibility for fields absent
         # from old files.  Passing the complete dictionary preserves every
         # supported setting and rejects misspelled or obsolete keys.
-        solver = SolverParams(**solver_data)
         transport = TransportConfig(**transport_data)
         boundaries = [BoundaryConfig(**b) for b in data.get("boundaries", [])]
         turbulence = TurbulenceConfig(**turbulence_data) if turbulence_data else None
@@ -1236,7 +1156,10 @@ class FVMConfig:
             execution=execution,
             acceptance=acceptance,
             time=time,
-            solver=solver,
+            schemes=SchemesConfig(**data.get("schemes", {})),
+            linear=LinearSolverConfig(**data.get("linear", {})),
+            pimple=PimpleControl(**data.get("pimple", {})),
+            forces=ForcesConfig(**data.get("forces", {})),
             transport=transport,
             dynamic_mesh=dynamic_mesh,
             boundaries=boundaries,

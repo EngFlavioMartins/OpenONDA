@@ -26,9 +26,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -82,21 +85,23 @@ def _run(
     )
     if selected_solver == "auto":
         selected_solver = "bicgstab"
-    params = SolverParams.pimple(
-        n_correctors=2,
-        n_outer=1,
+    params_schemes = SchemesConfig(convection_scheme="central")
+    params_linear = LinearSolverConfig(
         linear_solver=selected_solver,
         momentum_solver=selected_solver,
         pressure_solver="amg" if selected_solver != "spsolve" else "spsolve",
         momentum_tol=1e-8,
         pressure_tol=1e-9,
-        convection_scheme="central",
     )
+    params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
     config = FVMConfig(
         case_name=f"benchmark_{n}",
         execution=ExecutionConfig(operator_backend=operator_backend),
         time=TimeConfig(delta_t=0.001, end_time=0.001, write_interval=2),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.1),
         boundaries=[
             BoundaryConfig.cyclic("xmin", "xmax"),
@@ -130,8 +135,8 @@ def _run(
         "target_cells": target_cells,
         "cells": mesh["n_elements"],
         "faces": mesh["n_faces"],
-        "momentum_solver": params.momentum_solver,
-        "pressure_solver": params.pressure_solver,
+        "momentum_solver": params_linear.momentum_solver,
+        "pressure_solver": params_linear.pressure_solver,
         "initialization_seconds": initialization,
         "field_initialization_seconds": field_initialization,
         "step_seconds": step,

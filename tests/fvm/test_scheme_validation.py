@@ -1,9 +1,17 @@
 """Fast-fail validation of scheme / turbulence-model names in the config."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import SolverParams, TurbulenceConfig
+from source.solvers.FVM.config.types import (
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
+    TurbulenceConfig,
+)
 from source.solvers.FVM.schemes import (
     validate_boundary_conditions,
     validate_solver_params,
@@ -13,10 +21,29 @@ from source.solvers.FVM.schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
 
 
+def _params(**overrides):
+    """Merged solver-parameter namespace, as the solver feeds
+    ``validate_solver_params`` (union of the grouped configs' fields)."""
+    flat: dict = {}
+    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl(), ForcesConfig()):
+        flat.update(vars(group))
+    flat.update(overrides)
+    return SimpleNamespace(**flat)
+
+
+def _params_from(groups):
+    flat: dict = {}
+    for group in (*groups, ForcesConfig()):
+        flat.update(vars(group))
+    return SimpleNamespace(**flat)
+
+
 def test_default_and_factory_params_are_valid():
-    validate_solver_params(SolverParams())
-    validate_solver_params(SolverParams.pimple())
-    validate_solver_params(SolverParams.simple())
+    validate_solver_params(_params())
+    validate_solver_params(_params_from((SchemesConfig(), LinearSolverConfig(), PimpleControl())))
+    validate_solver_params(
+        _params_from((SchemesConfig(), LinearSolverConfig(), PimpleControl(algorithm="SIMPLE")))
+    )
 
 
 @pytest.mark.parametrize(
@@ -29,31 +56,27 @@ def test_default_and_factory_params_are_valid():
     ],
 )
 def test_invalid_scheme_names_rejected(field, bad):
-    sp = SolverParams()
-    setattr(sp, field, bad)
     with pytest.raises(ValueError, match="not recognised"):
-        validate_solver_params(sp)
+        validate_solver_params(_params(**{field: bad}))
 
 
 def test_known_scheme_aliases_accepted():
     for cs in ("upwind", "central", "deferred", "LUST", "limitedLinear", "vanLeer", "MUSCL"):
-        sp = SolverParams()
-        sp.convection_scheme = cs
-        validate_solver_params(sp)
+        validate_solver_params(_params(convection_scheme=cs))
     for ts in ("euler_implicit", "backward", "bdf2"):
-        sp = SolverParams()
-        sp.time_scheme = ts
-        validate_solver_params(sp)
+        validate_solver_params(_params(time_scheme=ts))
 
 
 def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
     from source.solvers.FVM import TimeConfig
 
-    sp = SolverParams.pimple(time_scheme="backward")
+    params = _params_from(
+        (SchemesConfig(time_scheme="backward"), LinearSolverConfig(), PimpleControl())
+    )
     time = TimeConfig.transient(dt=0.1, duration=1.0)
     time.adjust_timestep = True
     with pytest.raises(ValueError, match="adaptive time stepping with BDF2"):
-        validate_solver_params(sp, time)
+        validate_solver_params(params, time)
 
 
 @pytest.mark.parametrize(
@@ -61,22 +84,18 @@ def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
     [("pressure_tol", 0.0), ("momentum_tol", -1.0), ("pressure_maxiter", 0)],
 )
 def test_invalid_linear_solver_controls_rejected(field, bad):
-    sp = SolverParams()
-    setattr(sp, field, bad)
     with pytest.raises(ValueError, match=field):
-        validate_solver_params(sp)
+        validate_solver_params(_params(**{field: bad}))
 
 
 def test_invalid_linear_failure_policy_rejected():
-    sp = SolverParams(linear_failure_policy="ignore")
     with pytest.raises(ValueError, match="linear_failure_policy"):
-        validate_solver_params(sp)
+        validate_solver_params(_params(linear_failure_policy="ignore"))
 
 
 def test_invalid_pressure_nullspace_policy_rejected():
-    sp = SolverParams(pressure_nullspace_policy="pin_or_guess")
     with pytest.raises(ValueError, match="pressure_nullspace_policy"):
-        validate_solver_params(sp)
+        validate_solver_params(_params(pressure_nullspace_policy="pin_or_guess"))
 
 
 def test_unsupported_boundary_condition_rejected():

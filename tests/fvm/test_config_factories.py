@@ -1,8 +1,10 @@
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
     MeshConfig,
-    SolverParams,
+    PimpleControl,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -48,18 +50,18 @@ class TestConfigFactories:
         assert tc.end_time == 1000
         assert tc.start_time == 0
 
-    def test_solver_params_pimple(self):
-        sp = SolverParams.pimple(n_correctors=2, n_outer=1)
-        assert sp.algorithm == "PIMPLE"
-        assert sp.n_correctors == 2
-        assert sp.alpha_u == 1.0
-        assert sp.alpha_p == 1.0
+    def test_pimple_defaults(self):
+        pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
+        assert pimple.algorithm == "PIMPLE"
+        assert pimple.n_correctors == 2
+        assert pimple.alpha_u == 1.0
+        assert pimple.alpha_p == 1.0
 
-    def test_solver_params_simple(self):
-        sp = SolverParams.simple(alpha_u=0.7, alpha_p=0.3)
-        assert sp.algorithm == "SIMPLE"
-        assert sp.alpha_u == 0.7
-        assert sp.alpha_p == 0.3
+    def test_simple_control(self):
+        pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
+        assert pimple.algorithm == "SIMPLE"
+        assert pimple.alpha_u == 0.7
+        assert pimple.alpha_p == 0.3
 
     def test_transport_config_air(self):
         tc = TransportConfig.air()
@@ -81,7 +83,6 @@ class TestConfigFactories:
             case_name="test_case",
             mesh=MeshConfig.block_mesh(),
             time=TimeConfig.transient(dt=0.1, duration=10.0),
-            solver=SolverParams.pimple(),
             transport=TransportConfig.air(),
             boundaries=[BoundaryConfig.inlet("in", [1, 0, 0])],
         )
@@ -90,23 +91,26 @@ class TestConfigFactories:
         loaded = FVMConfig.load(path)
         assert loaded.case_name == "test_case"
         assert loaded.time.delta_t == 0.1
-        assert loaded.solver.algorithm == "PIMPLE"
+        assert loaded.pimple.algorithm == "PIMPLE"
         assert loaded.boundaries[0].name == "in"
 
     def test_fvm_config_roundtrip_preserves_every_solver_setting(self, tmp_path):
-        solver = SolverParams(
-            reuse_ilu=False,
-            yplus_patches=["wall"],
-            force_patches=["body"],
-            ref_velocity=12.0,
-            ref_area=3.0,
-            ref_length=2.0,
-            force_log_interval=7,
-            moment_centre=[1.0, 2.0, 3.0],
-            ibm_forcing_loops=9,
-            ibm_second_solve=False,
+        # Grouped configs: linear (fvSolution/solvers), pimple (PIMPLE/IBM),
+        # forces (functionObjects/forces) round-trip through JSON intact.
+        config = FVMConfig(
+            case_name="complete",
+            linear=LinearSolverConfig(reuse_ilu=False),
+            pimple=PimpleControl(ibm_forcing_loops=9, ibm_second_solve=False),
+            forces=ForcesConfig(
+                yplus_patches=["wall"],
+                force_patches=["body"],
+                ref_velocity=12.0,
+                ref_area=3.0,
+                ref_length=2.0,
+                force_log_interval=7,
+                moment_centre=[1.0, 2.0, 3.0],
+            ),
         )
-        config = FVMConfig(case_name="complete", solver=solver)
         path = tmp_path / "complete.json"
         config.save(path)
 

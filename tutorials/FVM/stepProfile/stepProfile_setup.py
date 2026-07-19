@@ -18,7 +18,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -108,12 +111,14 @@ def write_solution_tables(solver, solution_dir, history, step_height):
 
 
 def build_config(args, inlet_values, nu):
-    params = SolverParams.pimple(
-        n_correctors=args.n_correctors,
-        n_outer=args.n_outer,
-        linear_solver=args.linear_solver,
+    params_schemes = SchemesConfig(
         convection_scheme=args.convection_scheme,
         gradient_scheme="gauss",
+    )
+    params_linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    params_pimple = PimpleControl(
+        n_correctors=args.n_correctors,
+        n_outer_correctors=args.n_outer,
     )
     return FVMConfig(
         case_name=args.case_name,
@@ -127,7 +132,10 @@ def build_config(args, inlet_values, nu):
             max_delta_t=args.max_dt,
             min_delta_t=1e-6,
         ),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,
         boundaries=[

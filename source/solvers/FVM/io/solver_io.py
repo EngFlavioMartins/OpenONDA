@@ -114,7 +114,7 @@ class SolverIO:
             fields.append({"name": "phi", "type": "volScalarField", "phi": self.solver.phi})
 
         # Diagnostics
-        algo = self.solver.config.solver.algorithm.upper()
+        algo = self.solver.config.pimple.algorithm.upper()
         if algo in ["PISO", "PIMPLE"]:
             Co = diagnostics.compute_courant_number(
                 self.solver.U,

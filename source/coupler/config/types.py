@@ -61,7 +61,18 @@ class CouplerSetup:
     """Name of the body wall patch."""
 
     grid_spacing: float = 0.05
-    """FVM cell size [m]."""
+    """FVM cell size [m] in the coupling/outer region (matches the hand-off
+    lattice spacing ``h``)."""
+
+    wall_refinement_size: float | None = None
+    """Near-body cell size [m].  When set, the FVM box is graded so cells
+    adjacent to the body faces are ~this size (resolving the boundary layer),
+    coarsening geometrically to ``grid_spacing`` toward the coupling faces.
+    ``None`` builds a uniform box.  The reference case uses the same value over
+    the shared region so the two meshes match cell-for-cell there."""
+
+    wall_refinement_ratio: float = 1.25
+    """Geometric growth ratio of the wall-refinement grading."""
 
     initial_U: list[float] | None = None
     """Optional initial FVM velocity.  ``None`` uses ``u_inf``.  This is
@@ -111,6 +122,17 @@ class CouplerSetup:
 
     bc_coupling_tolerance: float | None = None
     """Optional relative donor-trace tolerance for early Picard convergence."""
+
+    donor_bc_relax: float = 1.0
+    """Picard under-relaxation of the imposed donor trace between coupling
+    iterations (1.0 = undamped).  Values < 1 damp the trace runaway that an
+    impulsively started wall sheet can otherwise drive on refined meshes."""
+
+    donor_interior_warmup_time: float = 0.0
+    """Flow time [s] before which the live FVM-interior Biot–Savart term is
+    excluded from the donor (exterior particles + U∞ only).  Lets the
+    impulsive-start vortex sheet establish before it is allowed to feed back
+    into its own boundary condition."""
 
     donor_interior_source: str = "particles"
     """Interior donor representation: hand-off particles or live FVM vorticity."""

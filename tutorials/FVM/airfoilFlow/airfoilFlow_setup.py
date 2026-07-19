@@ -23,7 +23,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     FVMConfig,
     Solver,
-    SolverParams,
+    ForcesConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -34,19 +37,21 @@ def build_config(args, u_vec):
     """FVM configuration for the airfoil case."""
     nu = args.u_inf * args.chord / args.Re
 
-    solver_params = SolverParams.pimple(
+    solver_params_schemes = SchemesConfig(convection_scheme=args.convection_scheme)
+    solver_params_linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    solver_params_pimple = PimpleControl(
         n_correctors=args.n_correctors,
-        n_outer=args.n_outer,
-        linear_solver=args.linear_solver,
-        convection_scheme=args.convection_scheme,
+        n_outer_correctors=args.n_outer,
+        n_orthogonal_correctors=1,
     )
-    solver_params.n_orthogonal_correctors = 1
-    solver_params.force_patches = ["airfoil"]
-    solver_params.ref_velocity = args.u_inf
-    solver_params.ref_area = args.chord * mesher.DEPTH
-    solver_params.ref_length = args.chord
-    solver_params.moment_centre = [0.25 * args.chord, 0.0, 0.0]
-    solver_params.force_log_interval = 1
+    solver_params_forces = ForcesConfig(
+        force_patches=["airfoil"],
+        ref_velocity=args.u_inf,
+        ref_area=args.chord * mesher.DEPTH,
+        ref_length=args.chord,
+        moment_centre=[0.25 * args.chord, 0.0, 0.0],
+        force_log_interval=1,
+    )
 
     tc = TimeConfig(
         delta_t=args.dt,
@@ -63,7 +68,10 @@ def build_config(args, u_vec):
     return FVMConfig(
         case_name=args.case_name,
         time=tc,
-        solver=solver_params,
+        schemes=solver_params_schemes,
+        linear=solver_params_linear,
+        pimple=solver_params_pimple,
+        forces=solver_params_forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,
         boundaries=[

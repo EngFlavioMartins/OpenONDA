@@ -15,9 +15,12 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -29,11 +32,16 @@ U_INF = 1.0
 
 def _slip_channel_solver(tmp_path):
     mesh = structured_box(8, 6, 1, lx=2.0, ly=1.0, lz=0.1)
-    sp = SolverParams.pimple(n_correctors=2, linear_solver="spsolve", convection_scheme="central")
+    sp_schemes = SchemesConfig(convection_scheme="central")
+    sp_linear = LinearSolverConfig(linear_solver="spsolve")
+    sp_pimple = PimpleControl(n_correctors=2)
     cfg = FVMConfig(
         case_name="slip_channel",
         time=TimeConfig(delta_t=0.05, end_time=1.0, write_interval=10**9),
-        solver=sp,
+        schemes=sp_schemes,
+        linear=sp_linear,
+        pimple=sp_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [U_INF, 0.0, 0.0]),

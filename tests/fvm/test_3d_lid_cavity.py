@@ -10,9 +10,12 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -40,12 +43,16 @@ def _cosine_clustered_cube(level: int) -> tuple[dict, np.ndarray]:
 
 def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
     mesh, coordinates = _cosine_clustered_cube(level)
-    params = SolverParams.simple(alpha_u=0.7, alpha_p=0.3, linear_solver="spsolve")
-    params.convection_scheme = "limitedLinear"
+    params_schemes = SchemesConfig(convection_scheme="limitedLinear")
+    params_linear = LinearSolverConfig(linear_solver="spsolve")
+    params_pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
     config = FVMConfig(
         case_name=f"cubic-cavity-{level}",
         time=TimeConfig.transient(dt=0.01, duration=50.0, write_interval=10**9),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=1.0e-3),
         boundaries=[
             BoundaryConfig.wall("xmin"),

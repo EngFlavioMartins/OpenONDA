@@ -10,9 +10,12 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    ForcesConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -43,17 +46,16 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         BoundaryConfig.cyclic("zmax", "zmin"),
     ]
     nu = 0.1
-    params = SolverParams.pimple(
-        n_correctors=2,
-        n_outer=2,
-        linear_solver="spsolve",
-        convection_scheme="central",
-        time_scheme="backward",
-    )
+    params_schemes = SchemesConfig(convection_scheme="central", time_scheme="backward")
+    params_linear = LinearSolverConfig(linear_solver="spsolve")
+    params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=2)
     config = FVMConfig(
         case_name="abc-periodic-3d",
         time=TimeConfig(delta_t=dt, end_time=steps * dt, write_interval=10**9),
-        solver=params,
+        schemes=params_schemes,
+        linear=params_linear,
+        pimple=params_pimple,
+        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=boundaries,
         initial_U=[0.0, 0.0, 0.0],

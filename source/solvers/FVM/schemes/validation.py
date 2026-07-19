@@ -44,7 +44,7 @@ def _check(value, valid, label, errors):
 
 
 def validate_solver_params(solver, time=None) -> None:
-    """Raise ``ValueError`` if any scheme name on a ``SolverParams`` is invalid."""
+    """Raise ``ValueError`` if any scheme name in the merged solver params is invalid."""
     errors: list[str] = []
     algorithm = str(getattr(solver, "algorithm", "PIMPLE")).upper()
     if algorithm not in {"SIMPLE", "PIMPLE", "PISO"}:

@@ -60,6 +60,8 @@ def vpm_vorticity(particles, pts):
     if not _HAVE_NUMBA:
         return np.full((len(pts), 3), np.nan)
     pos = np.asarray(particles["position"], np.float64)
+    if pos.shape[0] == 0:
+        return np.zeros((len(pts), 3))
     circ = np.asarray(particles["circulation"], np.float64)
     rad = np.asarray(particles["radius"], np.float64)
     zs = np.asarray(pts)[:, 2]
@@ -116,7 +118,7 @@ def _add_body(ax, colors):
             D,
             D,
             fc=colors["background_light"],
-            ec="#333333",
+            ec=colors.get("DarkText", "#333333"),
             lw=0.3,
             zorder=5,
         )

@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""Wake error-field diagnostic: VPM vs referenceFlow on z=0, for x>0.
+
+3 rows x 2 cols:
+  row 0 = VPM solution,  row 1 = reference FVM,  row 2 = error (VPM - ref)
+  col 0 = streamwise velocity u_x/Uinf,  col 1 = vorticity omega_z*D/Uinf
+
+A dashed line marks the FVM/VPM coupling interface (the +x box face) so one can
+see WHERE the error is born and how it propagates downstream into the free wake.
+
+Mirrors coupled_OFW_VPM/cubeFlow/assets/plot_wake_error_fields.py — same
+layout, scaling, titles and colorbars, fed from the native backend's VPM
+particle backups and referenceFlow VTU snapshots.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -14,35 +28,49 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from _plotutil import CASE_DIR, COLORMAPS, COLORS, run_constants, save
-from _reference_util import _pvd_times, load_vpm_particles, nearest_vpm_h5, nearest_vtu, sample_vtu
-from _frames_util import CM, D, EPS, U_INF, body_mask, hybrid_velocity, hybrid_vorticity
+from _reference_util import (
+    MATCH_TOL,
+    _pvd_times,
+    assert_same_time,
+    load_vpm_particles,
+    nearest_vpm_h5,
+    nearest_vtu,
+    sample_vtu,
+)
+from _frames_util import CM, D, EPS, U_INF, body_mask, vpm_velocity, vpm_vorticity
 
 FIG = CASE_DIR / "figures"
 REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
 CMAP_VEL = COLORMAPS["velocity"]
 CMAP_ERR = COLORMAPS["error_diverging"]
+VPM_XMAX = 10.0  # VPM domain +x bound (cube_setup.py VPM_DOMAIN)
 
 
-def fig_wake_errors(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
-    xi = np.linspace(0.0, 9.0, 240)
-    yi = np.linspace(-2.0, 2.0, 120)
-    X, Y = np.meshgrid(xi, yi)
-    pts = np.column_stack([X.ravel(), Y.ravel(), np.full(X.size, EPS)])
+def fig_wake_errors(t, ref_s, particles, box, fmt, dpi):
+    x_iface = box["xmax"]  # +x coupling face (interface)
 
-    uv = hybrid_velocity(hyb_vtu, particles, pts, box, sample_vtu)[0][:, 0].reshape(X.shape) / U_INF
-    wv = (
-        hybrid_vorticity(hyb_vtu, particles, pts, box, sample_vtu)[0][:, 2].reshape(X.shape)
-        * D
-        / U_INF
-    )
+    # Common wake grid: x>0 up to where the VPM exists; y over the clipped span.
+    xi = np.linspace(0.0, VPM_XMAX, 320)
+    yi = np.linspace(-2.0, 2.0, 160)
+    Xi, Yi = np.meshgrid(xi, yi)
+    pts = np.column_stack([Xi.ravel(), Yi.ravel(), np.full(Xi.size, EPS)])
+
+    # VPM solution from the particle backup; reference from its VTU snapshot.
+    uxv_g = vpm_velocity(particles, pts)[:, 0].reshape(Xi.shape) / U_INF
+    wv_g = vpm_vorticity(particles, pts)[:, 2].reshape(Xi.shape) * D / U_INF
     ref = sample_vtu(ref_s[1], pts)
-    ur = ref["U"][:, 0].reshape(X.shape) / U_INF
-    wr = ref["vorticity"][:, 2].reshape(X.shape) * D / U_INF
+    uxr_g = ref["U"][:, 0].reshape(Xi.shape) / U_INF
+    wr_g = ref["vorticity"][:, 2].reshape(Xi.shape) * D / U_INF
 
-    bm = body_mask(X, Y)
-    for F in (uv, ur, wv, wr):
+    # Mask out cube body interior + thin band so they're white and excluded.
+    bm = body_mask(Xi, Yi)
+    for F in (uxv_g, uxr_g, wv_g, wr_g):
         F[bm] = np.nan
 
+    eu = (uxv_g - uxr_g) * 100  # signed velocity error
+    ew = (wv_g - wr_g) * 100  # signed vorticity error
+
+    # Create the figure:
     fig, ax = plt.subplots(
         3,
         2,
@@ -52,45 +80,79 @@ def fig_wake_errors(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
         sharey=True,
         constrained_layout=True,
     )
-    lev_u = np.linspace(-0.4, 1.4, 37)
-    wmax = np.nanpercentile(np.abs(wr), 99) or 1.0
-    lev_w = np.linspace(-wmax, wmax, 37)
 
-    cu = ax[0, 0].contourf(X, Y, uv, levels=lev_u, cmap=CMAP_VEL, extend="both")
-    ax[0, 0].set_title(r"Hybrid $u_x/U_\infty$")
-    cw = ax[0, 1].contourf(X, Y, wv, levels=lev_w, cmap=COLORMAPS["vorticity"], extend="both")
-    ax[0, 1].set_title(r"Hybrid $\omega_z D/U_\infty$")
-    ax[1, 0].contourf(X, Y, ur, levels=lev_u, cmap=CMAP_VEL, extend="both")
-    ax[1, 0].set_title(rf"Reference $u_x/U_\infty$ (t={ref_s[0]:.2f})")
-    ax[1, 1].contourf(X, Y, wr, levels=lev_w, cmap=COLORMAPS["vorticity"], extend="both")
-    ax[1, 1].set_title(rf"Reference $\omega_z D/U_\infty$ (t={ref_s[0]:.2f})")
+    uvmax = np.nanpercentile(np.abs(uxr_g), 99) or 1.0
+    wvmax = np.nanpercentile(np.abs(wr_g), 99) if np.isfinite(wr_g).any() else np.nan
 
-    eu = (uv - ur) * 100
-    ew = (wv - wr) * 100
-    pu = max(np.nanpercentile(np.abs(eu), 98), 1.0)
-    pw = max(np.nanpercentile(np.abs(ew), 98), 1.0)
-    ceu = ax[2, 0].pcolormesh(X, Y, eu, cmap=CMAP_ERR, vmin=-pu, vmax=pu)
-    ax[2, 0].set_title(r"Error $\Delta u_x/U_\infty$ [\%]")
-    cew = ax[2, 1].pcolormesh(X, Y, ew, cmap=CMAP_ERR, vmin=-pw, vmax=pw)
-    ax[2, 1].set_title(r"Error $\Delta\omega_z D/U_\infty$ [\%]")
+    if not np.isfinite(wvmax) or wvmax <= 0:
+        wvmax = np.nanpercentile(np.abs(wv_g), 95)
+    eumax = np.nanpercentile(np.abs(eu), 99)
+    ewmax = np.nanpercentile(np.abs(ew), 99)
 
-    for a in ax.ravel():
-        a.axvline(box["xmax"], color="k", ls="--", lw=0.6)
-        a.set_xlim([0, 5])
-        a.set_ylim([-1.5, 1.5])
-        a.set_aspect("equal")
-    for a in ax[:, 0]:
-        a.set_ylabel(r"$y/D$", fontsize=7)
-    for a in ax[2, :]:
-        a.set_xlabel(r"$x/D$", fontsize=7)
-    fig.suptitle(f"Wake fields hybrid vs reference (z=0, t={t:.2f}s)")
-    fig.colorbar(cu, ax=ax[:2, 0].tolist(), shrink=0.7, label=r"$u_x/U_\infty$")
-    fig.colorbar(cw, ax=ax[:2, 1].tolist(), shrink=0.7, label=r"$\omega_z D/U_\infty$")
-    fig.colorbar(ceu, ax=ax[2, 0], shrink=0.9)
-    fig.colorbar(cew, ax=ax[2, 1], shrink=0.9)
+    panels = [
+        (ax[0, 0], uxv_g, -uvmax, uvmax, CMAP_VEL, r"VPM  $u_x/U_\infty$"),
+        (ax[0, 1], wv_g, -wvmax, wvmax, COLORMAPS["vorticity"], r"VPM  $\omega_z D/U_\infty$"),
+        (ax[1, 0], uxr_g, -uvmax, uvmax, CMAP_VEL, r"Reference  $u_x/U_\infty$"),
+        (
+            ax[1, 1],
+            wr_g,
+            -wvmax,
+            wvmax,
+            COLORMAPS["vorticity"],
+            r"Reference  $\omega_z D/U_\infty$",
+        ),
+        (
+            ax[2, 0],
+            eu,
+            -eumax,
+            eumax,
+            CMAP_ERR,
+            r"Error  $\Delta u_x/U_\infty$",
+        ),
+        (
+            ax[2, 1],
+            ew,
+            -ewmax,
+            ewmax,
+            CMAP_ERR,
+            r"Error  $\Delta\omega_z D/U_\infty$",
+        ),
+    ]
+    pcs = {}
+    for idx, (axis, F, vmn, vmx, cmap, title) in enumerate(panels):
+        pc = axis.pcolormesh(Xi, Yi, F, cmap=cmap, vmin=vmn, vmax=vmx, shading="auto")
+        axis.axvline(x_iface, color=COLORS["DarkText"], ls="--", lw=1.0)
+        axis.set_title(title)
+        axis.set_xlim([0, 5])
+        axis.set_ylim([-1.5, 1.5])
+        axis.set_aspect("equal")
+        pcs[idx] = pc
+
+    fig.colorbar(pcs[0], ax=[ax[0, 0], ax[1, 0]], pad=0.02, aspect=40)
+    fig.colorbar(pcs[1], ax=[ax[0, 1], ax[1, 1]], pad=0.02, aspect=40)
+    fig.colorbar(pcs[4], ax=[ax[2, 0]], pad=0.02, aspect=20)
+    fig.colorbar(pcs[5], ax=[ax[2, 1]], pad=0.02, aspect=20)
+    for axis in ax[2, :]:
+        axis.set_xlabel(r"$x/D$")
+    for axis in ax[:, 0]:
+        axis.set_ylabel(r"$y/D$")
+
+    fig.suptitle(f"Wake fields VPM vs reference (z=0, t={t:.2f}s)")
 
     save(fig, f"wake_errors_t{t:.2f}", fmt, dpi or 400)
     plt.close(fig)
+
+    # error onset diagnostics per x-band
+    for lab, m in [
+        ("x<1.5", Xi < x_iface),
+        ("1.5-3", (Xi >= x_iface) & (Xi < 3)),
+        ("x>3", Xi >= 3),
+    ]:
+        print(
+            f"  t={t:.1f} {lab:>6}: |Δu_x|mean={np.nanmean(np.abs(eu[m])):.3f}  "
+            f"|Δω|mean={np.nanmean(np.abs(ew[m])):.3f}  "
+            f"|Δω|max={np.nanmax(np.abs(ew[m])):.2f}"
+        )
 
 
 def main() -> None:
@@ -130,8 +192,12 @@ def main() -> None:
             }
         )
         ref_s = nearest_vtu(REF_PVD, t)
-        fig_wake_errors(t, hyb_vtu, ref_s, particles, box, args.format, args.dpi)
-        print(f"  wake_errors t={t:.2f} done")
+        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
+            print(f"  wake_errors t={t:.2f}: no coincident reference snapshot — skip")
+            continue
+        assert_same_time(t, ref_s[0])
+        fig_wake_errors(t, ref_s, particles, box, args.format, args.dpi)
+        print(f"  wake_errors t={t:.2f} (ref t={ref_s[0]:.2f}) done")
 
 
 if __name__ == "__main__":

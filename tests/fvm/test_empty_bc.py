@@ -18,8 +18,10 @@ gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not insta
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMConfig,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
 )
@@ -107,12 +109,9 @@ class TestEmptyBCQuasi3D:
         config = FVMConfig(
             case_name="quasi3d_duct",
             time=TimeConfig.transient(dt=0.05, duration=2.0, write_interval=100),
-            solver=SolverParams.pimple(
-                n_correctors=2,
-                n_outer=1,
-                linear_solver="spsolve",
-                convection_scheme="upwind",
-            ),
+            schemes=SchemesConfig(convection_scheme="upwind"),
+            linear=LinearSolverConfig(linear_solver="spsolve"),
+            pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
             transport=TransportConfig(density=1.0, nu=NU),
             boundaries=[
                 BoundaryConfig.inlet("inlet", [U_IN, 0.0, 0.0]),
