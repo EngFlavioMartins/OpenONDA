@@ -407,11 +407,10 @@ def compute_surface_forces(
         raise ValueError("Density must be a finite positive scalar")
 
     if patch_names is None:
-        patch_names = [
-            b["name"]
-            for b in boundaries
-            if (b.get("type") == "wall" or "wall" in b["name"].lower())
-        ]
+        # Auto-select by mesh patch type only (same rule as compute_y_plus).
+        # Selecting by substring match on the patch NAME silently included
+        # non-wall patches that merely contain "wall" in their name.
+        patch_names = [b["name"] for b in boundaries if b.get("type") == "wall"]
 
     gradU = None
     mu_values = _np.asarray(mu)
