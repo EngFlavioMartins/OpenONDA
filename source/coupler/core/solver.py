@@ -30,6 +30,7 @@ from source.coupler.core.helpers.continuous_overlap import (
 from source.coupler.core.helpers.fvm_velocity_blend import FVMVelocityBlend
 from source.coupler.core.helpers.output_redirector import OutputRedirector
 from source.coupler.core.helpers.setup import SetupHandler
+from source.coupler.core.strategy import create_coupling_strategy
 
 if TYPE_CHECKING:
     # OFW is a Linux/OpenFOAM extension and must remain a type-only import.
@@ -99,6 +100,7 @@ class FVMVPMCoupler:
             )
         self.coupler_setup = coupler_setup
         self.config = coupler_setup
+        self.coupling_strategy = create_coupling_strategy(coupler_setup.coupling_strategy)
         self._backend = coupler_setup.backend
         self.case_dir = Path(coupler_setup.case_dir).expanduser().absolute()
 
@@ -140,6 +142,12 @@ class FVMVPMCoupler:
         self._omega_global_buffer: np.ndarray | None = None
         self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
         self.picard_residual_history: list[dict[str, float | int | None]] = []
+        self._last_donor_flux_diagnostics = {
+            "raw_mismatch": 0.0,
+            "applied_correction": 0.0,
+            "corrected_mismatch": 0.0,
+        }
+        self.coupling_diagnostics: list[dict] = []
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
         # The FVM sub-step is OWNED by the injected FVM solver (native backend:
@@ -358,6 +366,28 @@ class FVMVPMCoupler:
             )
         return period_multiplier
 
+    @staticmethod
+    def _derive_coupling_step_count(t_end: float, dt_vpm: float) -> int:
+        """Return an exact integer number of VPM/coupling intervals.
+
+        ``int(t_end / dt)`` silently loses a final interval for ordinary
+        decimal values such as ``0.15 / 0.05``.  The coupled FVM and VPM must
+        finish at the same requested time, so accept roundoff around an
+        integer and reject a genuinely incompatible horizon.
+        """
+        if dt_vpm <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {dt_vpm!r}.")
+        if t_end < 0.0:
+            raise ValueError(f"Coupling end time must be non-negative, got {t_end!r}.")
+        ratio = t_end / dt_vpm
+        n_steps = int(round(ratio))
+        if not np.isclose(ratio, n_steps, rtol=1e-9, atol=1e-12):
+            raise ValueError(
+                "The coupling end time must be an integer multiple of the VPM time "
+                f"step. Got t_end={t_end:.12g}, dt_vpm={dt_vpm:.12g}, ratio={ratio:.12g}."
+            )
+        return n_steps
+
     def _derive_fvm_box(self) -> np.ndarray:
         """Bounds of the coupling patch, from the injected solver's geometry.
 
@@ -563,6 +593,8 @@ class FVMVPMCoupler:
             self._write_run_metadata()
             print("Initialization complete.\n")
 
+        self.coupling_strategy.initialize(self)
+
     def run(self, start_step: int = 0, restart_from=None) -> None:
         """Initialize (if not already) and run the coupling loop.
 
@@ -579,8 +611,21 @@ class FVMVPMCoupler:
             start_step = self.load_state(restart_from)
         self.solve(start_step=start_step)
 
+    # =========================================================
+    # Coupling strategy hooks
+    # =========================================================
+
     def solve(self, start_step: int = 0) -> None:
-        """Run the four-step coupling loop (requires :meth:`initialize` first)."""
+        """Run the selected coupling strategy after solver initialization."""
+        self.coupling_strategy.solve(self, start_step=start_step)
+
+    def _strategy_initialize(self) -> None:
+        """Initialize the current strategy without changing solver state."""
+        self._strategy_step_transfer_stats: dict[str, float | int] | None = None
+        self.coupling_diagnostics = []
+
+    def _strategy_prepare_run(self, start_step: int):
+        """Validate a run and collect the immutable interface geometry."""
         if self.injector is None:
             raise RuntimeError(
                 "solve() called before initialize(); call coupler.initialize() "
@@ -589,22 +634,13 @@ class FVMVPMCoupler:
         assert self._is_master == (self.vpm is not None)
         assert self.ofw is not None
 
-        # MPI-safety gate.  The Robin BC setter uses pstreamScatterDoubles for
-        # both velocity and vorticity arrays, making it parallel-safe on all
-        # ranks.  Non-master ranks always pass zero arrays so the C++ scatter
-        # overwrites them with rank-0's data.  Every call to _fvm_step must
-        # invoke the SAME C++ setter on all ranks (Robin or Dirichlet) to keep
-        # the MPI collectives in sync.
-
-        n_steps = int(self.t_end / self.dt)
+        n_steps = self._derive_coupling_step_count(self.t_end, self.dt)
         patch = self.config.patch_name
-
         if self._is_master:
             logger.info("=" * 60)
             logger.info("FVM-VPM COUPLED SOLVER")
             logger.info("=" * 60)
 
-        # ── All ranks: pre-fetch boundary geometry (collective gather) ────────
         face_centers = np.asarray(
             self.ofw.get_boundary_face_center_coordinates(patch), dtype=np.float64
         ).reshape(-1, 3)
@@ -612,161 +648,185 @@ class FVMVPMCoupler:
             self.ofw.get_boundary_face_normals(patch), dtype=np.float64
         ).reshape(-1, 3)
         face_areas = np.asarray(self.ofw.get_boundary_face_areas(patch), dtype=np.float64).ravel()
+        self._strategy_face_centers = face_centers
+        self._strategy_n_steps = n_steps
+        return (face_centers, face_normals, face_areas), n_steps
 
-        for step in range(1 + start_step, n_steps + 1):
-            t_end = step * self.dt
+    def _strategy_advance_vpm(self, step: int, time_end: float) -> float:
+        """Advance VPM exactly as the pre-strategy loop did."""
+        t0 = time.time()
+        if self._is_master:
+            with self.vpm_redirector:
+                self.vpm.set_background_velocity(self.config.u_inf)
+            print()
+            print("─" * 60)
+            print(f"STEP {step}/{self._strategy_n_steps}  (t={time_end:.3f}s)")
 
-            # ─────────────────────────────────────────────────────────────────
-            # STEP 0 — ADVANCE VPM (rank 0 only)
-            # ─────────────────────────────────────────────────────────────────
-            t0 = time.time()
-            if self._is_master:
-                with self.vpm_redirector:
-                    self.vpm.set_background_velocity(self.config.u_inf)
-                print()
-                print("─" * 60)
-                print(f"STEP {step}/{n_steps}  (t={t_end:.3f}s)")
-
-                if self.vel_blend is not None:
-                    self.vel_blend.begin_diagnostics()
-                with _DisableSIGFPE(), self.vpm_redirector:
-                    self.vpm.update_state()
-                import taichi as ti
-
-                ti.sync()
-
-                if self.vel_blend is not None and self.vpm.particles.number_of_particles > 0:
-                    pos_np = np.asarray(self.vpm.particles_positions, dtype=np.float64).reshape(
-                        -1, 3
-                    )
-                    vel_np = np.asarray(self.vpm.particles_velocities, dtype=np.float64).reshape(
-                        -1, 3
-                    )
-                    self.vel_blend.log_diagnostics(
-                        pos_np, vel_np, float(np.linalg.norm(self.u_inf))
-                    )
-
-            t0 = time.time() - t0
-
-            # ─────────────────────────────────────────────────────────────────
-            # STEP 1b — FRINGE: scatter lambda + Utarget (ALL ranks, collective)
-            # ─────────────────────────────────────────────────────────────────
-            t1b = time.time()
-            self.fringe.update_target()
-            t1b = time.time() - t1b
-
-            # ─────────────────────────────────────────────────────────────────
-            # STEP 1 — Donor BC (rank 0 computes; C++ scatter distributes)
-            # ─────────────────────────────────────────────────────────────────
-            t1 = time.time()
-            if self._is_master:
-                if self.config.donor_interior_source == "fvm":
-                    u_bc_next = self._donor_exterior_velocity(face_centers)
-                else:
-                    u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
-                omega_bc_next = self._last_omega_donor
-                if self._u_bc_prev is None:
-                    self._u_bc_prev = u_bc_next.copy()
-                if self._omega_bc_prev is None:
-                    self._omega_bc_prev = (
-                        omega_bc_next.copy() if omega_bc_next is not None else None
-                    )
-            else:
-                u_bc_next = np.zeros_like(face_centers)
-                _mixed = self.config.donor_bc_mode == "mixed"
-                omega_bc_next = np.zeros_like(face_centers) if _mixed else None
-                if self._u_bc_prev is None:
-                    self._u_bc_prev = np.zeros_like(face_centers)
-                if self._omega_bc_prev is None and _mixed:
-                    self._omega_bc_prev = np.zeros_like(face_centers)
-            t1 = time.time() - t1
-
-            # ─────────────────────────────────────────────────────────────────
-            # STEP 2 — FVM sub-cycle (ALL ranks, collective scatter + solve)
-            # ─────────────────────────────────────────────────────────────────
-            t2 = time.time()
-            self._run_fvm_substeps(
-                patch,
-                face_centers,
-                face_normals,
-                face_areas,
-                self._u_bc_prev,
-                u_bc_next,
-                self._omega_bc_prev,
-                omega_bc_next,
-            )
-            if self._is_master or self.config.donor_bc_mode == "mixed":
-                self._u_bc_prev = u_bc_next
-                self._omega_bc_prev = omega_bc_next
-
-            # Refresh FVM velocity snapshot: ALL ranks (collective getter).
             if self.vel_blend is not None:
-                self.vel_blend.update()
-            t2 = time.time() - t2
+                self.vel_blend.begin_diagnostics()
+            with _DisableSIGFPE(), self.vpm_redirector:
+                self.vpm.update_state()
+            import taichi as ti
 
-            # ─────────────────────────────────────────────────────────────────
-            # STEP 3 — PRE-FETCH vorticity (ALL ranks, collective getter),
-            #          then INJECT (rank 0 only, uses pre-fetched omega)
-            # ─────────────────────────────────────────────────────────────────
-            t3 = time.time()
-            omega_global = self._get_vorticity_field_buffer()
+            ti.sync()
+            if self.vel_blend is not None and self.vpm.particles.number_of_particles > 0:
+                pos_np = np.asarray(self.vpm.particles_positions, dtype=np.float64).reshape(-1, 3)
+                vel_np = np.asarray(self.vpm.particles_velocities, dtype=np.float64).reshape(-1, 3)
+                self.vel_blend.log_diagnostics(pos_np, vel_np, float(np.linalg.norm(self.u_inf)))
+        return time.time() - t0
 
-            if self._is_master:
-                eta_fn = self._build_eta_fn()
-                n_before = self.vpm.particles.number_of_particles
-                if n_before > 0:
-                    sum_before = float(
-                        np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1))
-                    )
-                else:
-                    sum_before = 0.0
+    def _strategy_transfer_vpm_to_fvm(
+        self,
+        face_centers: np.ndarray,
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+    ):
+        """Update fringe data and construct the next donor boundary trace."""
+        t_fringe = time.time()
+        self.fringe.update_target()
+        t_fringe = time.time() - t_fringe
 
-                self.injector.inject(self.ofw, self.vpm, eta_fn=eta_fn, omega=omega_global)
-                t3 = time.time() - t3
+        t_donor = time.time()
+        if self._is_master:
+            if self.config.donor_interior_source == "fvm":
+                u_bc_next = self._donor_exterior_velocity(face_centers)
+            else:
+                u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
+            omega_bc_next = self._last_omega_donor
+            if self._u_bc_prev is None:
+                self._u_bc_prev = u_bc_next.copy()
+            if self._omega_bc_prev is None:
+                self._omega_bc_prev = omega_bc_next.copy() if omega_bc_next is not None else None
+        else:
+            u_bc_next = np.zeros_like(face_centers)
+            mixed = self.config.donor_bc_mode == "mixed"
+            omega_bc_next = np.zeros_like(face_centers) if mixed else None
+            if self._u_bc_prev is None:
+                self._u_bc_prev = np.zeros_like(face_centers)
+            if self._omega_bc_prev is None and mixed:
+                self._omega_bc_prev = np.zeros_like(face_centers)
+        t_donor = time.time() - t_donor
+        return (
+            self._u_bc_prev,
+            u_bc_next,
+            self._omega_bc_prev,
+            omega_bc_next,
+            t_fringe,
+            t_donor,
+        )
 
-                n_after = self.vpm.particles.number_of_particles
-                sum_after = 0.0
-                if n_after > 0:
-                    sum_after = float(
-                        np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1))
-                    )
+    def _strategy_advance_fvm(
+        self,
+        face_centers: np.ndarray,
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+        u_bc_prev: np.ndarray,
+        u_bc_next: np.ndarray,
+        omega_bc_prev: np.ndarray | None,
+        omega_bc_next: np.ndarray | None,
+        _fringe_time: float,
+        _donor_time: float,
+    ) -> float:
+        """Run FVM sub-cycles and refresh its velocity snapshot."""
+        t_fvm = time.time()
+        self._run_fvm_substeps(
+            self.config.patch_name,
+            face_centers,
+            face_normals,
+            face_areas,
+            u_bc_prev,
+            u_bc_next,
+            omega_bc_prev,
+            omega_bc_next,
+        )
+        if self._is_master or self.config.donor_bc_mode == "mixed":
+            self._u_bc_prev = u_bc_next
+            self._omega_bc_prev = omega_bc_next
+        if self.vel_blend is not None:
+            self.vel_blend.update()
+        return time.time() - t_fvm
 
-                logger.info(
-                    "     [Inject] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
-                    n_before,
-                    n_after,
-                    sum_before,
-                    sum_after,
-                )
+    def _strategy_transfer_fvm_to_vpm(
+        self,
+        face_centers: np.ndarray,
+        _face_normals: np.ndarray,
+        _face_areas: np.ndarray,
+    ):
+        """Fetch FVM vorticity collectively, then perform the conservative hand-off."""
+        t_handoff = time.time()
+        omega_global = self._get_vorticity_field_buffer()
+        handoff_result = None
+        if self._is_master:
+            eta_fn = self._build_eta_fn()
+            n_before = self.vpm.particles.number_of_particles
+            sum_before = (
+                float(np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)))
+                if n_before > 0
+                else 0.0
+            )
+            handoff_result = self.injector.inject(
+                self.ofw, self.vpm, eta_fn=eta_fn, omega=omega_global
+            )
+            n_after = self.vpm.particles.number_of_particles
+            sum_after = (
+                float(np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)))
+                if n_after > 0
+                else 0.0
+            )
+            self._strategy_step_transfer_stats = {
+                "n_before": n_before,
+                "n_after": n_after,
+                "sum_before": sum_before,
+                "sum_after": sum_after,
+                "face_count": len(face_centers),
+            }
+        return handoff_result, time.time() - t_handoff
 
-                # Refresh the stored donor endpoint from the POST-injection
-                # cloud: the hand-off just rebuilt every buffer particle, so a
-                # donor trace computed from the pre-injection cloud would give
-                # the next step's interpolation a step-periodic discontinuity
-                # (measured ≈ 2% U∞ at the outflow face).  One extra exterior
-                # evaluation per coupling step removes it exactly.
-                if self.config.donor_interior_source == "fvm":
-                    self._u_bc_prev = self._donor_exterior_velocity(face_centers)
-                    if self.config.donor_bc_mode == "mixed":
-                        self._omega_bc_prev = self._last_omega_donor
-                print()
-                print(f"[Step {step:4d}] t={t_end:.3f}s | Particles: {n_after}")
-                print(
-                    f"     Timing: VPM={t0:.2f}s | BC={t1:.2f}s | Fringe={t1b:.2f}s | "
-                    f"FVM={t2:.2f}s | Inject={t3:.2f}s"
-                )
-                sys.stdout.flush()
-                flush_log()
+    def _strategy_apply_conservation_correction(self, handoff_result) -> None:
+        """The existing injector already applies its conservative correction."""
+        self._last_handoff_result = handoff_result
 
-            # Barrier: sync all ranks after inject so non-master cannot exit
-            # while rank 0 is still inside inject.  mpi4py MPI.Barrier is used
-            # because Foam::UPstream::barrier is a no-op in the dummy Pstream.
-            if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
-                _mpi4py_comm.Barrier()
+    def _strategy_compute_diagnostics(
+        self,
+        step: int,
+        time_end: float,
+        timing: tuple[float, float, float, float, float],
+        _handoff_result,
+    ) -> None:
+        """Emit the legacy diagnostics and synchronize a completed coupling step."""
+        t_vpm, t_fringe, t_donor, t_fvm, t_handoff = timing
+        diagnostics = self.compute_diagnostics(_handoff_result)
+        if self._is_master:
+            diagnostics.update({"step": int(step), "time": float(time_end)})
+            self.coupling_diagnostics.append(diagnostics)
+        if self._is_master:
+            stats = self._strategy_step_transfer_stats or {}
+            logger.info(
+                "     [Inject] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
+                int(stats.get("n_before", 0)),
+                int(stats.get("n_after", 0)),
+                float(stats.get("sum_before", 0.0)),
+                float(stats.get("sum_after", 0.0)),
+            )
+            if self.config.donor_interior_source == "fvm":
+                self._u_bc_prev = self._donor_exterior_velocity(self._strategy_face_centers)
+                if self.config.donor_bc_mode == "mixed":
+                    self._omega_bc_prev = self._last_omega_donor
+            print()
+            print(f"[Step {step:4d}] t={time_end:.3f}s | Particles: {int(stats.get('n_after', 0))}")
+            print(
+                f"     Timing: VPM={t_vpm:.2f}s | BC={t_donor:.2f}s | Fringe={t_fringe:.2f}s | "
+                f"FVM={t_fvm:.2f}s | Inject={t_handoff:.2f}s"
+            )
+            sys.stdout.flush()
+            flush_log()
 
-            if self.config.backup_period > 0 and step % self.config.backup_period == 0:
-                self.save_state(self.solution_dir / "coupled_checkpoint", coupling_step=step)
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            _mpi4py_comm.Barrier()
+        if self.config.backup_period > 0 and step % self.config.backup_period == 0:
+            self.save_state(self.solution_dir / "coupled_checkpoint", coupling_step=step)
 
+    def _strategy_finalize_run(self) -> None:
         if self._is_master:
             flush_log()
 
@@ -828,6 +888,11 @@ class FVMVPMCoupler:
                     face_centers, omega=fvm_omega
                 )
             else:
+                self._last_donor_flux_diagnostics = {
+                    "raw_mismatch": 0.0,
+                    "applied_correction": 0.0,
+                    "corrected_mismatch": 0.0,
+                }
                 return u_donor
         else:
             n_particles = self.vpm.particles.number_of_particles
@@ -888,6 +953,11 @@ class FVMVPMCoupler:
                 rel_flux_post,
                 delta_u_n if total_area > 0.0 else 0.0,
             )
+            self._last_donor_flux_diagnostics = {
+                "raw_mismatch": float(abs(flux_residual_raw)),
+                "applied_correction": float(abs(delta_u_n if total_area > 0.0 else 0.0)),
+                "corrected_mismatch": float(abs(flux_residual_post)),
+            }
 
         # Deficit probe on the OUTFLOW face (direction-agnostic: derived from
         # u_inf, not hard-wired to +x).
@@ -985,6 +1055,50 @@ class FVMVPMCoupler:
             return u
         eps = float(np.dot(np.einsum("ij,ij->i", u, normals), areas))
         return u - (eps / total_area) * normals
+
+    def compute_diagnostics(self, handoff_result=None) -> dict:
+        """Return finite, structured transfer/correction diagnostics.
+
+        The method is intentionally side-effect free.  Strategies decide when
+        to persist its result, which keeps diagnostics available to tests and
+        alternative coupling algorithms without tying them to log parsing.
+        """
+        result = (
+            handoff_result
+            if handoff_result is not None
+            else getattr(self, "_last_handoff_result", None)
+        )
+        zero = {
+            "circulation": 0.0,
+            "linear_impulse": 0.0,
+            "angular_impulse": 0.0,
+        }
+
+        def _finite(values):
+            out = dict(zero)
+            if values:
+                out.update({key: float(value) for key, value in values.items()})
+            if not all(np.isfinite(value) for value in out.values()):
+                raise FloatingPointError("non-finite conservation diagnostic")
+            return out
+
+        conservation = {
+            "raw_mismatch": _finite(getattr(result, "conservation_raw_mismatch", None)),
+            "applied_correction": _finite(getattr(result, "conservation_applied_correction", None)),
+            "corrected_mismatch": _finite(getattr(result, "conservation_corrected_mismatch", None)),
+        }
+        donor = {
+            key: float(getattr(self, "_last_donor_flux_diagnostics", {}).get(key, 0.0))
+            for key in ("raw_mismatch", "applied_correction", "corrected_mismatch")
+        }
+        if not all(np.isfinite(value) for value in donor.values()):
+            raise FloatingPointError("non-finite donor-flux diagnostic")
+        return {
+            "conservation": conservation,
+            "donor_flux": donor,
+            "period_multiplier": int(self.period_multiplier),
+            "handoff_particle_count": int(getattr(result, "n_total", 0)),
+        }
 
     def _outside_box_mask(self) -> np.ndarray:
         """Return a mask of VPM particles outside the FVM box."""

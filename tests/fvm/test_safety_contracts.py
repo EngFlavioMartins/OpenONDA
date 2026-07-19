@@ -197,7 +197,7 @@ def test_turbulence_failure_does_not_switch_to_laminar():
     solver.geo_data = {}
     solver.config = FVMConfig(case_name="les")
     with pytest.raises(RuntimeError, match="LES failed"):
-        solver._effective_viscosity()
+        solver.compute_effective_viscosity()
 
 
 def test_fixed_value_inlet_is_not_auto_selected_as_wall():

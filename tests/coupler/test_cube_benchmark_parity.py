@@ -24,12 +24,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-_BENCH = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/cube_benchmark_config.py"
+_BENCH = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/cube_setup.py"
 
 
 @pytest.fixture(scope="module")
 def bench():
-    spec = importlib.util.spec_from_file_location("cube_benchmark_config", _BENCH)
+    spec = importlib.util.spec_from_file_location("cube_flow_setup", _BENCH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

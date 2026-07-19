@@ -656,6 +656,25 @@ def assemble_pressure_correction_equation_rhie_chow(
             flux_ff[i_face] = ff_b[i]
             flux_vf[i_face] = vf_b[i]
 
+        # A replay experiment may supply the face flux measured by the same
+        # monolithic discretisation.  Keep it as the pressure-equation
+        # boundary flux (and, for fixedFluxPressure, through the correction)
+        # instead of reconstructing it from an interpolated boundary velocity.
+        # Normal coupled runs never populate this optional patch field.
+        for boundary in boundaries:
+            external_flux = boundary.get("external_face_flux")
+            if external_flux is None:
+                continue
+            start = int(boundary["startFace"])
+            nf = int(boundary["nFaces"])
+            field = np.asarray(external_flux, dtype=float).reshape(-1)
+            if field.shape != (nf,) or not np.all(np.isfinite(field)):
+                raise ValueError(
+                    f"External face flux for patch {boundary.get('name')!r} must have "
+                    f"shape ({nf},) and finite values"
+                )
+            flux_vf[start : start + nf] = field
+
         boundary_neighbours = np.asarray(
             mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
         )

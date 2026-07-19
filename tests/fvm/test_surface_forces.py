@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.diagnostics import compute_surface_forces
+from source.solvers.FVM.fields.diagnostics import compute_surface_face_loads, compute_surface_forces
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
@@ -163,6 +163,23 @@ class TestSurfaceForces:
         fp = self._sum_forces(result, "Fp")
         fv = self._sum_forces(result, "Fv")
         assert np.allclose(ftot, fp + fv, atol=1e-12), "Ftot != Fp + Fv"
+
+    def test_face_load_api_integrates_to_surface_force(self):
+        """The public face data used by validation matches the force total."""
+        self._add_bc_types()
+        n_elem = self.mesh["n_elements"]
+        p = self._build_full_field(np.linspace(-1.0, 1.0, n_elem))
+        U = self._build_full_field(np.ones((n_elem, 3)), n_components=3)
+        names = self._all_patch_names()
+        faces = compute_surface_face_loads(
+            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"], names
+        )
+        total = compute_surface_forces(
+            U, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"], names
+        )
+        for name in names:
+            np.testing.assert_allclose(faces[name]["pressure_force"].sum(axis=0), total[name]["Fp"])
+            np.testing.assert_allclose(faces[name]["viscous_force"].sum(axis=0), total[name]["Fv"])
 
     def test_net_pressure_coefficient(self):
         """Net force over all patches with uniform p=1 is zero → net Cd=0."""

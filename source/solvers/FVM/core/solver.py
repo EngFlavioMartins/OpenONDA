@@ -593,6 +593,30 @@ class Solver(OFWInterfaceMixin):
             self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
         )
 
+    def set_initial_state(self, velocity: np.ndarray, pressure: np.ndarray) -> None:
+        """Set a complete cell-centred initial state before the first step.
+
+        This is intentionally narrower than checkpoint loading: it supports
+        deterministic manufactured/replay starts while retaining the solver's
+        own boundary reconstruction, flux construction, and time-history
+        ownership.
+        """
+        self.set_initial_velocity(velocity)
+        n_elements = self.mesh_data["n_elements"]
+        pressure = np.asarray(pressure, dtype=np.float64).reshape(-1)
+        if pressure.shape != (n_elements,) or not np.all(np.isfinite(pressure)):
+            raise ValueError(
+                "Initial pressure must be finite with one value per interior cell; "
+                f"got {pressure.shape}, expected ({n_elements},)"
+            )
+        self.p[:n_elements] = pressure
+        from ..solve import simple_solver
+
+        simple_solver.update_scalar_boundaries(
+            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+        )
+        self.state = FieldState(self.U, self.p, self.phi)
+
     def _initialize_turbulence(self):
         """Initialise the turbulence / LES model if configured.
 
@@ -619,7 +643,7 @@ class Solver(OFWInterfaceMixin):
         self.time_step = 0
         self.dt = self.config.time.delta_t
 
-    def _effective_viscosity(self):
+    def compute_effective_viscosity(self):
         """Compute the effective viscosity (molecular + turbulent).
 
         If a turbulence model is active, computes the subgrid eddy viscosity
@@ -761,7 +785,7 @@ class Solver(OFWInterfaceMixin):
         step_dt = dt if dt is not None else self.dt
         self._current_dt = step_dt
 
-        nu_eff = self._effective_viscosity()
+        nu_eff = self.compute_effective_viscosity()
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         u_old_old_arg = self.U_old_old if self._n_committed >= 1 else None
         src_exp, src_imp = self._fringe_source()

@@ -360,6 +360,89 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
     return y_plus_stats
 
 
+def compute_surface_face_loads(
+    U,
+    p,
+    mu,
+    rho,
+    mesh_data,
+    geo_data,
+    boundaries,
+    patch_names=None,
+):
+    """Return discrete pressure and viscous loads on selected boundary faces.
+
+    The arrays use the same face values and normal-gradient reconstruction as
+    :func:`compute_surface_forces`.  ``pressure_force`` and
+    ``viscous_force`` are forces exerted on the solid, so their sum can be
+    integrated directly into a force coefficient or compared face-for-face
+    between cell-identical meshes.
+    """
+    from .gradients import _resolve_gradient_fn as _resolve_grad
+
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"]
+    rho_value = float(np.asarray(rho))
+    if not np.isfinite(rho_value) or rho_value <= 0.0:
+        raise ValueError("Density must be a finite positive scalar")
+
+    if patch_names is None:
+        patch_names = [b["name"] for b in boundaries if b.get("type") == "wall"]
+
+    mu_values = np.asarray(mu)
+    if not np.all(np.isfinite(mu_values)) or np.any(mu_values < 0.0):
+        raise ValueError("Dynamic viscosity must be finite and non-negative")
+    if mu_values.ndim > 0 and mu_values.shape != (n_elements,):
+        raise ValueError(
+            f"Dynamic viscosity must be scalar or have shape ({n_elements},), got {mu_values.shape}"
+        )
+    gradU = None
+    if not np.all(mu_values == 0.0):
+        gradU = _resolve_grad(geo_data)(U, mesh_data, geo_data)
+        if gradU.ndim == 3:
+            gradU = gradU[:n_elements]
+
+    results = {}
+    for boundary in boundaries:
+        name = boundary["name"]
+        if name not in patch_names:
+            continue
+        start = int(boundary["startFace"])
+        nf = int(boundary["nFaces"])
+        face_idx = np.arange(start, start + nf)
+        owners_idx = owners[face_idx]
+        boundary_idx = n_elements + (face_idx - n_interior)
+        sf = np.asarray(geo_data["face_sf"])[face_idx]
+        area = np.linalg.norm(sf, axis=1)
+        normal = sf / (area[:, None] + 1e-30)
+        p_face = np.asarray(p, dtype=np.float64)[boundary_idx]
+        pressure_force = rho_value * p_face[:, None] * sf
+        viscous_force = -_compute_face_viscous_forces(
+            U,
+            gradU,
+            owners_idx,
+            boundary_idx,
+            normal,
+            area,
+            geo_data["wall_dist"][face_idx],
+            mu,
+            nf,
+        )
+        traction = viscous_force / (area[:, None] + 1e-30)
+        wall_shear = traction - np.einsum("fi,fi->f", traction, normal)[:, None] * normal
+        results[name] = {
+            "face_centres": np.asarray(geo_data["face_centroids"])[face_idx].copy(),
+            "face_areas": area,
+            "normals": normal,
+            "pressure": p_face,
+            "pressure_force": pressure_force,
+            "viscous_force": viscous_force,
+            "wall_shear": wall_shear,
+        }
+    return results
+
+
 def compute_surface_forces(
     U,
     p,
@@ -392,76 +475,21 @@ def compute_surface_forces(
     Returns:
         dict: mapping patch name -> {force: [Fx,Fy,Fz], Cd: , Cl: }
     """
-    import numpy as _np
-
-    from .gradients import _resolve_gradient_fn as _resolve_grad
-
-    _grad = _resolve_grad(geo_data)
-
-    n_elements = mesh_data["n_elements"]
-    n_interior = mesh_data["n_interior_faces"]
-    owners = mesh_data["owners"]
-
-    rho_value = float(np.asarray(rho))
-    if not np.isfinite(rho_value) or rho_value <= 0.0:
-        raise ValueError("Density must be a finite positive scalar")
-
-    if patch_names is None:
-        # Auto-select by mesh patch type only (same rule as compute_y_plus).
-        # Selecting by substring match on the patch NAME silently included
-        # non-wall patches that merely contain "wall" in their name.
-        patch_names = [b["name"] for b in boundaries if b.get("type") == "wall"]
-
-    gradU = None
-    mu_values = _np.asarray(mu)
-    if not _np.all(_np.isfinite(mu_values)) or _np.any(mu_values < 0.0):
-        raise ValueError("Dynamic viscosity must be finite and non-negative")
-    if mu_values.ndim > 0 and mu_values.shape != (n_elements,):
-        raise ValueError(
-            f"Dynamic viscosity must be scalar or have shape ({n_elements},), got {mu_values.shape}"
-        )
-    mu_is_zero = _np.all(mu_values == 0.0)
-
-    if not mu_is_zero:
-        gradU = _grad(U, mesh_data, geo_data)
-        if gradU.ndim == 3:
-            gradU = gradU[:n_elements]
-
+    face_loads = compute_surface_face_loads(
+        U, p, mu, rho, mesh_data, geo_data, boundaries, patch_names=patch_names
+    )
     results = {}
-    for b in boundaries:
-        name = b["name"]
-        if name not in patch_names:
-            continue
-        start = b["startFace"]
-        nf = b["nFaces"]
-        face_idx = _np.arange(start, start + nf)
-        owners_idx = owners[face_idx]
-        boundary_idx = n_elements + (face_idx - n_interior)
-        Sf = geo_data["face_sf"][face_idx]
-        mag_Sf = _np.linalg.norm(Sf, axis=1)
-        n_vec = Sf / (mag_Sf[:, _np.newaxis] + 1e-30)
-        p_face = _np.asarray(p)[boundary_idx]
-        # ``p`` is kinematic pressure, so rho is required to recover force.
-        Fp_faces = rho_value * p_face[:, _np.newaxis] * Sf
-        Fv_faces = -_compute_face_viscous_forces(
-            U,
-            gradU,
-            owners_idx,
-            boundary_idx,
-            n_vec,
-            mag_Sf,
-            geo_data["wall_dist"][face_idx],
-            mu,
-            nf,
-        )
-        Fp = _np.sum(Fp_faces, axis=0)
-        Fv = _np.sum(Fv_faces, axis=0)
+    for name, loads in face_loads.items():
+        Fp_faces = loads["pressure_force"]
+        Fv_faces = loads["viscous_force"]
+        Fp = np.sum(Fp_faces, axis=0)
+        Fv = np.sum(Fv_faces, axis=0)
         Ftot = Fp + Fv
-        centre = _np.zeros(3) if moment_centre is None else _np.asarray(moment_centre, dtype=float)
+        centre = np.zeros(3) if moment_centre is None else np.asarray(moment_centre, dtype=float)
         if centre.shape != (3,):
             raise ValueError("moment_centre must contain exactly three coordinates")
-        arm = geo_data["face_centroids"][face_idx] - centre
-        moment = _np.sum(_np.cross(arm, Fp_faces + Fv_faces), axis=0)
+        arm = loads["face_centres"] - centre
+        moment = np.sum(np.cross(arm, Fp_faces + Fv_faces), axis=0)
         has_refs = ref_U is not None and ref_area is not None and rho is not None
         coeffs = (
             _compute_force_coefficients(Ftot, moment, ref_U, ref_area, rho, ref_length)
@@ -474,7 +502,7 @@ def compute_surface_forces(
             "Ftot": Ftot,
             "Mtot": moment,
             "coeffs": coeffs,
-            "nFaces": nf,
+            "nFaces": len(loads["face_areas"]),
         }
 
     return results

@@ -55,3 +55,27 @@ def test_vulkan_grid_diffusion_preallocates_fixed_domain_grid(monkeypatch, tmp_p
         assert solver.physics._grid_shape == (5, 5, 5)
     finally:
         reset_taichi_backend()
+
+
+def test_cpu_grid_diffusion_does_not_preallocate_the_removal_domain(tmp_path):
+    """Only Vulkan needs the fixed grid; CPU allocates around live particles."""
+    reset_taichi_backend()
+    try:
+        solver = Solver(
+            SolverConfig(
+                time_step_size=0.01,
+                processing_unit="CPU",
+                stretching=StretchingConfig.disabled(),
+                advection=AdvectionConfig(scheme="NONE"),
+                viscous=ViscousConfig.dvh(h=0.25, padding=3.0, viscosity=1.0e-3),
+                vpm_domain_bounds=[-2.0, 10.0, -2.0, 2.0, -2.0, 2.0],
+                backup_frequency=0,
+                logging_frequency=0,
+                backup_directory=str(tmp_path),
+            )
+        )
+        assert solver.processing_unit == "CPU"
+        assert solver.physics._require_fixed_grid_allocation is False
+        assert solver.physics._grid_a is None
+    finally:
+        reset_taichi_backend()

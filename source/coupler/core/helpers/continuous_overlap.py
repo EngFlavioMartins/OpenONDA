@@ -207,6 +207,14 @@ class HandoffResult:
     n_excluded: int = 0  # input particles removed from a physical solid
     cfl: float = 0.0  # U_max·dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
+    # Invariant diagnostics around the conservative prune correction.  These
+    # are deliberately separate from ``conservation_drift`` (the historical
+    # post-correction summary): validation needs to know whether a small final
+    # error came from a small raw mismatch or a large correction that happened
+    # to close it.
+    conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
+    conservation_applied_correction: dict[str, float] = field(default_factory=dict)
+    conservation_corrected_mismatch: dict[str, float] = field(default_factory=dict)
     flux_ratio: float = 0.0  # |Γ_VPM_exit| / |Γ_FVM_exit| at the outflow band
 
     # Strength-correction diagnostics (η-weighted relative residual
@@ -458,6 +466,18 @@ def continuous_handoff(
     new_pos = grid_pos[keep]
     new_circ = grid_blended[keep]
 
+    pre_correction = _invariants(new_pos, new_circ)
+    post_correction = pre_correction
+
+    def _invariant_norms(left: dict[str, np.ndarray], right: dict[str, np.ndarray]):
+        return {
+            name: float(np.linalg.norm(left[name] - right[name]))
+            for name in ("circulation", "linear_impulse", "angular_impulse")
+        }
+
+    raw_mismatch = _invariant_norms(target_inv, pre_correction)
+    applied_correction = _invariant_norms(pre_correction, post_correction)
+    corrected_mismatch = _invariant_norms(target_inv, post_correction)
     drift: dict[str, float] = {}
     if conserve and len(new_pos) > 0:
         new_vol_tmp = np.full(len(new_pos), h**3)
@@ -473,19 +493,13 @@ def continuous_handoff(
             conserve_linear_impulse=True,
             conserve_angular_impulse=False,
         )
-        post = _invariants(new_pos, new_circ)
+        post_correction = _invariants(new_pos, new_circ)
+        applied_correction = _invariant_norms(pre_correction, post_correction)
+        corrected_mismatch = _invariant_norms(target_inv, post_correction)
         ref = float(np.linalg.norm(target_inv["circulation"])) + 1e-30
         drift = {
-            "circulation": float(np.linalg.norm(target_inv["circulation"] - post["circulation"])),
-            "linear_impulse": float(
-                np.linalg.norm(target_inv["linear_impulse"] - post["linear_impulse"])
-            ),
-            "angular_impulse": float(
-                np.linalg.norm(target_inv["angular_impulse"] - post["angular_impulse"])
-            ),
-            "circulation_rel": float(
-                np.linalg.norm(target_inv["circulation"] - post["circulation"]) / ref
-            ),
+            **corrected_mismatch,
+            "circulation_rel": float(corrected_mismatch["circulation"] / ref),
         }
 
     new_vol = np.full(len(new_pos), h**3)
@@ -529,6 +543,9 @@ def continuous_handoff(
         n_excluded=int(excluded_input.sum()),
         cfl=cfl,
         conservation_drift=drift,
+        conservation_raw_mismatch=raw_mismatch,
+        conservation_applied_correction=applied_correction,
+        conservation_corrected_mismatch=corrected_mismatch,
         flux_ratio=flux_ratio,
         strength_corr_residual_pre=corr_pre,
         strength_corr_residual_post=corr_post,

@@ -62,6 +62,10 @@ class CouplerSetup:
     backend: str = "ofw"
     """Eulerian backend: wrapped OpenFOAM (``ofw``) or native Python (``fvm``)."""
 
+    coupling_strategy: str = "current"
+    """Selected coupling-operation ordering. ``"current"`` is the
+    certified legacy algorithm expressed through the strategy interface."""
+
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     """Eulerian near-field box bounds [x0, x1, y0, y1, z0, z1] [m].
     ``ofw``: required.  ``fvm``: leave None — derived from the injected FVM
@@ -151,6 +155,11 @@ class CouplerSetup:
         _valid_backends = ("ofw", "fvm")
         if self.backend not in _valid_backends:
             raise ValueError(f"backend must be one of {_valid_backends!r}, got {self.backend!r}.")
+        if self.coupling_strategy != "current":
+            raise ValueError(
+                "coupling_strategy must be 'current' until another strategy is "
+                f"implemented, got {self.coupling_strategy!r}."
+            )
         _valid_donor_interior_sources = ("particles", "fvm")
         if self.donor_interior_source not in _valid_donor_interior_sources:
             raise ValueError(
@@ -271,6 +280,7 @@ class CouplerSetup:
             },
             "fvm_solver": {
                 "backend": self.backend,
+                "coupling_strategy": self.coupling_strategy,
                 "patch_name": self.patch_name,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
