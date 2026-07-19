@@ -21,42 +21,6 @@ from source.solvers.FVM.mesh.rectilinear import (  # noqa: F401
 )
 
 
-def _body_hole_box(cfg) -> tuple[float, ...] | None:
-    """Axis-aligned hole bounds from CouplerSetup's OFW-style body spec.
-
-    Reads ``cfg.surface`` — e.g. ``{"cube": {"side_length": 1.0, "center":
-    [0, 0, 0]}}`` — and returns ``(x0, x1, y0, y1, z0, z1)``.  Returns ``None``
-    (no body; plain box) when ``wall_patch_name`` or ``surface`` is unset.
-    Only box-shaped bodies are supported by the in-memory mesh generator;
-    other shapes need the OFW backend (cfMesh) or a Gmsh mesh.
-    """
-    if not cfg.wall_patch_name or not cfg.surface:
-        return None
-    spec = None
-    for key in (cfg.wall_patch_name, "cube", "box"):
-        if key in cfg.surface:
-            spec = cfg.surface[key]
-            break
-    if spec is None:
-        raise ValueError(
-            f"surface={cfg.surface!r} has no entry for wall patch "
-            f"{cfg.wall_patch_name!r} (or 'cube'/'box')."
-        )
-    if "side_length" not in spec:
-        raise ValueError(
-            f"Body spec {spec!r} is not box-shaped ('side_length' missing). "
-            "The native mesh generator only carves axis-aligned boxes; use "
-            "the OFW backend (cfMesh) for general geometry."
-        )
-    side = np.asarray(spec["side_length"], dtype=float).reshape(-1)
-    if side.size == 1:
-        side = np.repeat(side, 3)
-    center = np.asarray(spec.get("center", [0.0, 0.0, 0.0]), dtype=float).reshape(3)
-    lo = center - side / 2.0
-    hi = center + side / 2.0
-    return (lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
-
-
 def box_surface_markers(
     center,
     side_lengths,
@@ -88,21 +52,107 @@ def box_surface_markers(
     return np.vstack([_face_grid(ax, sg) for ax in range(3) for sg in (-1.0, 1.0)])
 
 
+def coupling_patch_boundaries(
+    patch_name: str,
+    u_inf,
+    donor_bc_mode: str = "dirichlet",
+) -> list:
+    """Boundary condition for the coupling patch, per the donor mode.
+
+    * dirichlet / mixed — Dirichlet velocity (the coupler overwrites the
+      value each sub-step) + momentum-compatible fixed-flux pressure on ALL
+      faces.  The donor trace is projected to zero net flux, so the
+      all-Neumann pressure problem is compatible and the solver pins the
+      level at a reference cell (pRefCell equivalent).
+
+    * characteristic — donor velocity applied on INFLOW faces only, with
+      convective (owner-extrapolated) outflow and the matching per-face
+      freestream pressure (zero-gradient inflow / fixed p outflow).  The
+      all-face Dirichlet cut couples the donor's Biot–Savart self-image to
+      the box's own wake vorticity with loop gain ≥ 1 (measured secular
+      face-deficit growth 0.9 → −3 U∞ and blow-up by t≈2, against a
+      monolith truth of ≈0.89); letting the outflow state come from the
+      FVM's own transport breaks that loop.
+    """
+    from source.solvers.FVM import BoundaryConfig
+
+    u_inf = [float(v) for v in u_inf]
+    if donor_bc_mode == "characteristic":
+        return [
+            BoundaryConfig(
+                name=patch_name,
+                type_U="freestream",
+                value_U=u_inf,
+                type_p="freestream",
+                value_p=0.0,
+            )
+        ]
+    return [
+        BoundaryConfig(
+            name=patch_name,
+            type_U="fixedValue",
+            value_U=u_inf,
+            type_p="fixedFluxPressure",
+        )
+    ]
+
+
+def wall_patch_bounds(mesh_data: dict, wall_patch_name: str) -> np.ndarray:
+    """Axis-aligned bounds (x0, x1, y0, y1, z0, z1) of a wall patch's faces."""
+    (wall,) = [b for b in mesh_data["boundary"] if b["name"] == wall_patch_name]
+    point_ids = np.unique(
+        np.concatenate(
+            [
+                np.asarray(mesh_data["faces"][f]).ravel()
+                for f in range(wall["startFace"], wall["startFace"] + wall["nFaces"])
+            ]
+        )
+    )
+    pts = np.asarray(mesh_data["points"])[point_ids]
+    return np.array(
+        [
+            pts[:, 0].min(),
+            pts[:, 0].max(),
+            pts[:, 1].min(),
+            pts[:, 1].max(),
+            pts[:, 2].min(),
+            pts[:, 2].max(),
+        ]
+    )
+
+
 def build_fvm_backend(
-    coupler_setup,
     *,
+    mesh_data: dict,
+    case_dir: str,
+    dt: float,
+    t_end: float,
+    nu: float,
+    u_inf,
+    rho: float = 1.0,
+    patch_name: str = "numericalBoundary",
+    wall_patch_name: str | None = None,
+    donor_bc_mode: str = "dirichlet",
+    initial_U=None,
     schemes=None,
     linear=None,
     pimple=None,
     forces=None,
     execution=None,
     write_interval_time: float | None = None,
-    case_dir: str | None = None,
     quiet: bool = False,
 ):
-    """Build a native FVM solver from a :class:`CouplerSetup`.
+    """Build a complete, self-owned native FVM solver for coupled use.
 
-    ``write_interval_time=None`` disables automatic FVM output. Adaptive time
+    All physics/time/mesh inputs are explicit — this factory never reads a
+    :class:`CouplerSetup` (the coupler validates against the returned solver's
+    own configuration instead).  ``mesh_data`` must contain the coupling patch
+    ``patch_name`` (e.g. from ``coupling_box_mesh``) and, when
+    ``wall_patch_name`` is given, a body-fitted wall patch of that name, for
+    which force integration is configured automatically (Cd/Cl in
+    ``solution/forces_history.csv``).
+
+    ``write_interval_time=None`` disables automatic FVM output.  Adaptive time
     stepping is disabled because the coupler requires an integer subcycle
     ratio.
     """
@@ -119,53 +169,7 @@ def build_fvm_backend(
     )
     from source.solvers.FVM.core.solver import Solver
 
-    cfg = coupler_setup
-    if cfg.backend != "fvm":
-        raise ValueError(
-            "build_fvm_backend expects CouplerSetup(backend='fvm'); got "
-            f"backend={cfg.backend!r}. The 'ofw' backend is "
-            "built from an OpenFOAM case via fvm_solver(case_dir)."
-        )
-
-    # Body-fitted body from the same spec the OFW case uses: CouplerSetup's
-    # ``surface`` (e.g. {"cube": {"side_length": 1.0, "center": [0,0,0]}}) and
-    # ``wall_patch_name``.  The body is carved out of the mesh and its faces
-    # form a no-slip wall patch, matching the OpenFOAM topology — cells inside
-    # the body do not exist, so the coupler can never inject fictitious
-    # interior vorticity into the VPM.
-    hole_box = _body_hole_box(cfg)
-
-    # Optional boundary-layer refinement toward the body faces (matches the
-    # OFW/cfMesh case's near-cube cellSize).  Grades from wall_refinement_size
-    # at the body to grid_spacing at the coupling faces, identically on every
-    # axis; the reference case reuses wall_refined_axis over the shared region.
-    nodes = None
-    wr = getattr(cfg, "wall_refinement_size", None)
-    if wr is not None and hole_box is not None:
-        box = cfg.fvm_box
-        ratio = float(getattr(cfg, "wall_refinement_ratio", 1.25))
-        nodes = (
-            wall_refined_axis(
-                box[0], box[1], hole_box[0], hole_box[1], wr, cfg.grid_spacing, ratio
-            ),
-            wall_refined_axis(
-                box[2], box[3], hole_box[2], hole_box[3], wr, cfg.grid_spacing, ratio
-            ),
-            wall_refined_axis(
-                box[4], box[5], hole_box[4], hole_box[5], wr, cfg.grid_spacing, ratio
-            ),
-        )
-
-    mesh_data = coupling_box_mesh(
-        cfg.fvm_box,
-        cfg.grid_spacing,
-        cfg.patch_name,
-        hole_box=hole_box,
-        wall_patch_name=cfg.wall_patch_name or "cube",
-        nodes=nodes,
-    )
-
-    u_inf = [float(v) for v in cfg.u_inf]
+    u_inf = [float(v) for v in u_inf]
     execution = execution or ExecutionConfig()
     schemes = schemes or SchemesConfig(convection_scheme="central", gradient_scheme="lsq")
     linear = linear or LinearSolverConfig(
@@ -178,75 +182,40 @@ def build_fvm_backend(
     forces = forces or ForcesConfig()
 
     time_cfg = TimeConfig(
-        delta_t=float(cfg.dt),
-        end_time=float(cfg.t_end),
+        delta_t=float(dt),
+        end_time=float(t_end),
         write_interval=10**9,  # step-based writing off; time-based below
         write_interval_time=write_interval_time,
-        adjust_timestep=False,  # coupler owns dt (integer sub-cycle ratio)
+        adjust_timestep=False,  # coupler needs a fixed integer sub-cycle ratio
     )
 
-    # Coupling patch, selected by the coupler's donor_bc_mode:
-    #
-    # * dirichlet / mixed — Dirichlet velocity (the coupler overwrites the
-    #   value each sub-step) + momentum-compatible fixed-flux pressure on ALL
-    #   faces.  The donor trace is projected to zero net flux, so the
-    #   all-Neumann pressure problem is compatible and the solver pins the
-    #   level at a reference cell (pRefCell equivalent).
-    #
-    # * characteristic — donor velocity applied on INFLOW faces only, with
-    #   convective (owner-extrapolated) outflow and the matching per-face
-    #   freestream pressure (zero-gradient inflow / fixed p outflow).  The
-    #   all-face Dirichlet cut couples the donor's Biot–Savart self-image to
-    #   the box's own wake vorticity with loop gain ≥ 1 (measured secular
-    #   face-deficit growth 0.9 → −3 U∞ and blow-up by t≈2, against a
-    #   monolith truth of ≈0.89); letting the outflow state come from the
-    #   FVM's own transport breaks that loop.
-    if cfg.donor_bc_mode == "characteristic":
-        boundaries = [
-            BoundaryConfig(
-                name=cfg.patch_name,
-                type_U="freestream",
-                value_U=u_inf,
-                type_p="freestream",
-                value_p=0.0,
-            )
-        ]
-    else:
-        boundaries = [
-            BoundaryConfig(
-                name=cfg.patch_name,
-                type_U="fixedValue",
-                value_U=u_inf,
-                type_p="fixedFluxPressure",
-            )
-        ]
-    if hole_box is not None:
-        wall = cfg.wall_patch_name or "cube"
-        boundaries.append(BoundaryConfig.wall(wall))
-        # Wall-patch force integration (Cd/Cl in solution/forces_history.csv),
-        # replacing the OFW case's OpenFOAM force function object.
+    boundaries = coupling_patch_boundaries(patch_name, u_inf, donor_bc_mode)
+    if wall_patch_name is not None:
+        boundaries.append(BoundaryConfig.wall(wall_patch_name))
+        # Wall-patch force integration, replacing the OFW case's OpenFOAM
+        # force function object.  References from the body's actual bounds.
         if forces.force_patches is None:
-            forces.force_patches = [wall]
-            side = np.asarray(hole_box, dtype=float)
+            body = wall_patch_bounds(mesh_data, wall_patch_name)
+            forces.force_patches = [wall_patch_name]
             forces.ref_velocity = float(np.linalg.norm(u_inf)) or 1.0
-            forces.ref_area = float((side[3] - side[2]) * (side[5] - side[4]))
-            forces.ref_length = float(side[1] - side[0])
+            forces.ref_area = float((body[3] - body[2]) * (body[5] - body[4]))
+            forces.ref_length = float(body[1] - body[0])
             forces.force_log_interval = 1
 
     fvm_config = FVMConfig(
-        case_name=f"coupled_{cfg.patch_name}",
+        case_name=f"coupled_{patch_name}",
         execution=execution,
         time=time_cfg,
         schemes=schemes,
         linear=linear,
         pimple=pimple,
         forces=forces,
-        transport=TransportConfig(density=float(cfg.rho), nu=float(cfg.nu)),
+        transport=TransportConfig(density=float(rho), nu=float(nu)),
         boundaries=boundaries,
-        initial_U=u_inf if cfg.initial_U is None else [float(v) for v in cfg.initial_U],
+        initial_U=u_inf if initial_U is None else [float(v) for v in initial_U],
     )
 
-    root = os.path.abspath(case_dir if case_dir is not None else cfg.case_dir)
+    root = os.path.abspath(case_dir)
     if quiet:
         with contextlib.redirect_stdout(io.StringIO()):
             solver = Solver(fvm_config, case_dir=root, mesh_data=mesh_data)

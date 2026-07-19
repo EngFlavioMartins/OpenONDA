@@ -164,22 +164,21 @@ def test_face_count_conservation():
 def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
     """The tutorial builds its FVM through ``build_fvm_backend``; certify that
     the resulting solver has no IBM attached (spec: no IBM on this benchmark)."""
-    from source.coupler.config.types import CouplerSetup
     from source.coupler.core.helpers.fvm_backend import build_fvm_backend
 
-    setup = CouplerSetup(
-        backend="fvm",
-        u_inf=[1.0, 0.0, 0.0],
-        nu=1e-3,
-        dt=0.05,
-        t_end=0.1,
-        fvm_box=BOX,
-        grid_spacing=0.25,
-        wall_patch_name="cube",
-        surface={"cube": {"side_length": 1.0, "center": [0.0, 0.0, 0.0]}},
-        case_dir=str(tmp_path),
-    )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = build_fvm_backend(setup)
+        solver = build_fvm_backend(
+            mesh_data=coupling_box_mesh(BOX, 0.25, hole_box=HOLE, wall_patch_name="cube"),
+            case_dir=str(tmp_path),
+            dt=0.05,
+            t_end=0.1,
+            nu=1e-3,
+            u_inf=[1.0, 0.0, 0.0],
+            wall_patch_name="cube",
+        )
     assert solver.ibm is None
     assert getattr(solver.algorithm, "ibm", None) is None
+    # Force integration was configured from the body's actual bounds.
+    assert solver.config.forces.force_patches == ["cube"]
+    assert solver.config.forces.ref_area == pytest.approx(1.0)
+    assert solver.config.forces.ref_length == pytest.approx(1.0)

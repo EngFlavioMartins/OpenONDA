@@ -23,22 +23,33 @@ class CouplerSetup:
     between the VPM step and ``dt``.
     """
 
-    # ── Physics ───────────────────────────────────────────────────────────
+    # ── Physics (OFW case-writing only) ──────────────────────────────────
+    # With the native ``fvm`` backend the injected solvers OWN these values
+    # (FVMConfig.transport/time, VPM SolverConfig); leave them ``None`` and the
+    # coupler reads them from the solvers, raising on any inconsistency.  The
+    # ``ofw`` backend writes the OpenFOAM case dictionaries from this setup,
+    # so there they are required (single source, not duplication).
     u_inf: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
-    """Freestream velocity [m/s]."""
+    """Freestream velocity [m/s] imposed at the coupling interface (donor
+    far-field).  Must equal the VPM background velocity."""
 
-    nu: float = 1e-5
-    """Kinematic viscosity [m²/s]."""
+    nu: float | None = None
+    """Kinematic viscosity [m²/s].  ``ofw``: required.  ``fvm``: leave None
+    (owned by FVMConfig.transport; a set value must match it)."""
 
-    rho: float = 1.0
-    """Fluid density [kg/m³]."""
+    rho: float | None = None
+    """Fluid density [kg/m³].  ``ofw``: optional (defaults to 1).  ``fvm``:
+    leave None (owned by FVMConfig.transport)."""
 
-    dt: float = 0.05
-    """FVM sub-step [s].  The VPM/coupling step is read from the injected VPM
-    solver and the integer sub-cycle count is derived internally."""
+    dt: float | None = None
+    """FVM sub-step [s].  ``ofw``: required.  ``fvm``: leave None (owned by
+    FVMConfig.time; a set value must match it).  The VPM/coupling step is read
+    from the injected VPM solver and the integer sub-cycle count is derived
+    internally."""
 
-    t_end: float = 1.0
-    """Simulated end time [s]."""
+    t_end: float | None = None
+    """Simulated end time [s].  ``ofw``: required.  ``fvm``: leave None
+    (owned by FVMConfig.time)."""
 
     backup_period: int = 1
     """Steps between solution snapshots.  ``backup_period * dt`` is the write
@@ -51,8 +62,10 @@ class CouplerSetup:
     backend: str = "ofw"
     """Eulerian backend: wrapped OpenFOAM (``ofw``) or native Python (``fvm``)."""
 
-    fvm_box: tuple[float, float, float, float, float, float] = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
-    """Eulerian near-field box bounds [x0, x1, y0, y1, z0, z1] [m]."""
+    fvm_box: tuple[float, float, float, float, float, float] | None = None
+    """Eulerian near-field box bounds [x0, x1, y0, y1, z0, z1] [m].
+    ``ofw``: required.  ``fvm``: leave None — derived from the injected FVM
+    solver's coupling-patch geometry (a set value must match it)."""
 
     patch_name: str = "numericalBoundary"
     """Name of the coupling (outer) boundary patch."""
@@ -60,24 +73,14 @@ class CouplerSetup:
     wall_patch_name: str | None = "cube"
     """Name of the body wall patch."""
 
-    grid_spacing: float = 0.05
-    """FVM cell size [m] in the coupling/outer region (matches the hand-off
-    lattice spacing ``h``)."""
-
-    wall_refinement_size: float | None = None
-    """Near-body cell size [m].  When set, the FVM box is graded so cells
-    adjacent to the body faces are ~this size (resolving the boundary layer),
-    coarsening geometrically to ``grid_spacing`` toward the coupling faces.
-    ``None`` builds a uniform box.  The reference case uses the same value over
-    the shared region so the two meshes match cell-for-cell there."""
-
-    wall_refinement_ratio: float = 1.25
-    """Geometric growth ratio of the wall-refinement grading."""
+    grid_spacing: float | None = None
+    """FVM cell size [m] in the coupling/outer region.  ``ofw``: required
+    (written into meshDict).  ``fvm``: unused — the injected solver owns its
+    mesh."""
 
     initial_U: list[float] | None = None
-    """Optional initial FVM velocity.  ``None`` uses ``u_inf``.  This is
-    intentionally independent of the VPM background velocity so a finite
-    perturbation can seed an instability without imposing it at infinity."""
+    """``ofw`` only: initial velocity written into the 0/U field.  ``fvm``:
+    unused — set FVMConfig.initial_U on the injected solver instead."""
 
     case_dir: str = "."
     """OpenFOAM case directory or native-FVM output root."""
@@ -174,11 +177,12 @@ class CouplerSetup:
             initial_u = np.asarray(self.initial_U, dtype=np.float64)
             if initial_u.shape != (3,) or not np.all(np.isfinite(initial_u)):
                 raise ValueError("initial_U must be None or a finite three-component vector")
-        box = np.asarray(self.fvm_box, dtype=np.float64)
-        if box.shape != (6,) or not np.all(np.isfinite(box)):
-            raise ValueError("fvm_box must contain six finite bounds")
-        if np.any(box[1::2] <= box[::2]):
-            raise ValueError("Each fvm_box upper bound must exceed its lower bound")
+        if self.fvm_box is not None:
+            box = np.asarray(self.fvm_box, dtype=np.float64)
+            if box.shape != (6,) or not np.all(np.isfinite(box)):
+                raise ValueError("fvm_box must contain six finite bounds")
+            if np.any(box[1::2] <= box[::2]):
+                raise ValueError("Each fvm_box upper bound must exceed its lower bound")
         positive = {
             "nu": self.nu,
             "rho": self.rho,
@@ -190,9 +194,31 @@ class CouplerSetup:
             "overlap_radius_ratio": self.overlap_radius_ratio,
             "fringe_strength": self.fringe_strength,
         }
-        invalid = [name for name, value in positive.items() if not np.isfinite(value) or value <= 0]
+        invalid = [
+            name
+            for name, value in positive.items()
+            if value is not None and (not np.isfinite(value) or value <= 0)
+        ]
         if invalid:
             raise ValueError(f"Coupling values must be finite and positive: {', '.join(invalid)}")
+
+    def require_case_fields(
+        self, names: tuple[str, ...] = ("nu", "dt", "t_end", "fvm_box", "grid_spacing")
+    ) -> None:
+        """Raise unless the OFW case-writing values are all present.
+
+        Called by the paths that consume this setup as the Eulerian-case
+        source (``prepare_case`` / SetupHandler write the full case; the
+        coupler's OFW branch needs the run values); with the native ``fvm``
+        backend these fields stay ``None`` because the injected solvers own
+        them.
+        """
+        missing = [name for name in names if getattr(self, name) is None]
+        if missing:
+            raise ValueError(
+                "backend='ofw' builds the Eulerian case from CouplerSetup and "
+                f"requires: {', '.join(missing)}"
+            )
         if self.backup_period < 0 or self.log_period < 1:
             raise ValueError("backup_period must be non-negative and log_period at least one")
         if self.dead_zone_h < 0 or self.prune_vorticity_min < 0:
@@ -249,7 +275,9 @@ class CouplerSetup:
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
                 "initial_U": self.initial_U,
-                "fvm_domain": {
+                "fvm_domain": None
+                if self.fvm_box is None
+                else {
                     "xmin": self.fvm_box[0],
                     "xmax": self.fvm_box[1],
                     "ymin": self.fvm_box[2],

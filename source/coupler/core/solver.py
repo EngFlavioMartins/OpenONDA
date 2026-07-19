@@ -142,9 +142,12 @@ class FVMVPMCoupler:
         self.picard_residual_history: list[dict[str, float | int | None]] = []
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
-        # ``coupler_setup.dt`` remains the authoritative FVM sub-step. The VPM
-        # interval is stored separately and never overwrites user configuration.
-        self.dt_fvm = float(coupler_setup.dt)
+        # The FVM sub-step is OWNED by the injected FVM solver (native backend:
+        # FVMConfig.time.delta_t); ``coupler_setup.dt`` is required only for
+        # the case-writing OFW backend and is cross-checked otherwise.  The
+        # authoritative values are resolved in initialize().
+        self.dt_fvm = None if coupler_setup.dt is None else float(coupler_setup.dt)
+        self.t_end = None if coupler_setup.t_end is None else float(coupler_setup.t_end)
         self.period_multiplier = 1
         self.dt_vpm = self.dt_fvm
         self.dt = self.dt_vpm
@@ -178,16 +181,17 @@ class FVMVPMCoupler:
         return cls(vpm_solver, fvm_solver, coupler_setup)
 
     @staticmethod
-    def _validate_injected_vpm(vpm, cfg: CouplerSetup) -> None:
+    def _validate_injected_vpm(vpm, cfg: CouplerSetup, box, nu: float | None) -> None:
         """Fail-fast consistency checks between an injected VPM and the coupling
         config — the safety net that makes dependency injection safe without
         restricting which native VPM options the caller sets.
 
-        Hard errors on show-stoppers (VPM removal domain must contain the FVM
-        box, else injected near-body particles get culled every step); warnings
-        on likely-unintended mismatches (background velocity, hand-off radius).
+        Hard errors on show-stoppers: VPM removal domain must contain the FVM
+        box (else injected near-body particles get culled every step),
+        mismatched molecular viscosity, and a VPM background velocity that
+        disagrees with the interface freestream (incompatible reference
+        frames).  Warns on a mismatched hand-off radius.
         """
-        box = cfg.fvm_box
         # Hand-off radius: DVH/GBD regen rebuilds every particle with
         # σ = regen_radius_ratio·h, but the Beale correction deconvolves
         # assuming σ = overlap_radius_ratio·h.  A mismatch costs ~4× in-box
@@ -209,7 +213,7 @@ class FVMVPMCoupler:
         dom = getattr(vpm, "vpm_domain_bounds", None)
         if dom is None:
             dom = getattr(getattr(vpm, "config", None), "vpm_domain_bounds", None)
-        if dom is not None and len(dom) == 6:
+        if box is not None and dom is not None and len(dom) == 6:
             contains = (
                 dom[0] <= box[0]
                 and dom[1] >= box[1]
@@ -226,15 +230,21 @@ class FVMVPMCoupler:
                     "Widen vpm_domain_bounds (or the VPM stabilization "
                     "remove_particles_by_bounds) to enclose fvm_box."
                 )
+        vpm_nu = getattr(getattr(getattr(vpm, "config", None), "viscous", None), "viscosity", None)
+        if nu is not None and vpm_nu is not None and abs(float(vpm_nu) - float(nu)) > 1e-12:
+            raise ValueError(
+                f"Incompatible kinematic viscosity: VPM viscous.viscosity="
+                f"{float(vpm_nu):g} but the Eulerian solver uses nu={float(nu):g}. "
+                "The two solvers must model the same fluid."
+            )
         bg = getattr(vpm, "background_velocity", None)
         if bg is not None:
             bg = np.asarray(bg, dtype=np.float64).reshape(-1)
             if bg.size == 3 and not np.allclose(bg, np.asarray(cfg.u_inf), atol=1e-9):
-                logger.warning(
-                    "[Init] Injected VPM background_velocity %s != config.u_inf %s; "
-                    "the donor freestream and the VPM advection freestream disagree.",
-                    tuple(bg),
-                    tuple(cfg.u_inf),
+                raise ValueError(
+                    f"Incompatible freestream: VPM background_velocity {tuple(bg)} "
+                    f"!= coupling u_inf {tuple(cfg.u_inf)}. The donor far-field and "
+                    "the VPM advection frame must agree."
                 )
 
     @staticmethod
@@ -276,6 +286,7 @@ class FVMVPMCoupler:
                     f"{solution / 'coupled_checkpoint'}"
                 )
             return
+        coupler_setup.require_case_fields()
         period_multiplier = 1
         if vpm_solver is not None:
             vpm_dt = FVMVPMCoupler._get_vpm_time_step(vpm_solver)
@@ -347,13 +358,90 @@ class FVMVPMCoupler:
             )
         return period_multiplier
 
+    def _derive_fvm_box(self) -> np.ndarray:
+        """Bounds of the coupling patch, from the injected solver's geometry.
+
+        The patch faces lie exactly on the six box planes, so the per-axis
+        min/max of the face centroids reproduce the box bounds to round-off.
+        Collective (all ranks) — the face-geometry getter gathers globally.
+        """
+        fc = np.asarray(
+            self.ofw.get_boundary_face_center_coordinates(self.config.patch_name),
+            dtype=np.float64,
+        ).reshape(-1, 3)
+        if fc.shape[0] == 0:
+            raise ValueError(
+                f"Coupling patch {self.config.patch_name!r} has no faces on the "
+                "injected Eulerian solver."
+            )
+        return np.array(
+            [
+                fc[:, 0].min(),
+                fc[:, 0].max(),
+                fc[:, 1].min(),
+                fc[:, 1].max(),
+                fc[:, 2].min(),
+                fc[:, 2].max(),
+            ]
+        )
+
+    def _resolve_eulerian_ownership(self) -> None:
+        """Resolve dt / t_end / nu / fvm_box between the coupling setup and
+        the injected Eulerian solver.
+
+        Native ``fvm`` backend: the injected solver's :class:`FVMConfig` OWNS
+        these values.  CouplerSetup entries are optional cross-checks — a set
+        value that contradicts the solver raises (nothing is silently
+        overwritten), an unset one is filled from the solver so downstream
+        coupling components keep a single consistent view.
+
+        OFW backend: the OpenFOAM case was written from CouplerSetup
+        (``prepare_case``), so the setup remains the source and the runtime
+        setters stamp the wrapper exactly as the case dictionaries say.
+        """
+        cfg = self.config
+        if self._backend == "fvm":
+            fvm_cfg = self.ofw.config
+            owned = {
+                "dt": float(fvm_cfg.time.delta_t),
+                "t_end": float(fvm_cfg.time.end_time),
+                "nu": float(fvm_cfg.transport.nu),
+            }
+            for name, mine in (("dt", self.dt_fvm), ("t_end", self.t_end), ("nu", cfg.nu)):
+                theirs = owned[name]
+                if mine is not None and abs(float(mine) - theirs) > 1e-12 * max(abs(theirs), 1.0):
+                    raise ValueError(
+                        f"CouplerSetup.{name}={mine!r} contradicts the injected FVM "
+                        f"solver's {name}={theirs!r}. The FVM solver owns this value; "
+                        "leave the CouplerSetup field unset (None)."
+                    )
+            self.dt_fvm = owned["dt"]
+            self.t_end = owned["t_end"]
+            if cfg.nu is None:
+                cfg.nu = owned["nu"]  # coupling components read cfg.nu
+            box = self._derive_fvm_box()
+            if cfg.fvm_box is not None and not np.allclose(
+                np.asarray(cfg.fvm_box, dtype=np.float64), box, atol=1e-9
+            ):
+                raise ValueError(
+                    f"CouplerSetup.fvm_box={tuple(cfg.fvm_box)} contradicts the "
+                    f"injected solver's coupling-patch bounds {tuple(box)}. Leave "
+                    "fvm_box unset (None); it is derived from the mesh."
+                )
+            if cfg.fvm_box is None:
+                cfg.fvm_box = tuple(float(v) for v in box)
+        else:
+            cfg.require_case_fields(("nu", "dt", "t_end", "fvm_box"))
+            self.ofw.set_time_step(self.dt_fvm)
+            self.ofw.set_kinematic_viscosity(cfg.nu)
+
     def initialize(self) -> None:
         """Adopt the injected solvers, derive sub-cycling, and build coupling
         components.
 
-        ``CouplerSetup.dt`` configures the FVM step.  The injected VPM solver's
-        ``time_step_size`` configures the coupling/VPM step.  After both
-        solvers have their time steps set, the coupler derives
+        The injected FVM solver's configuration owns the FVM step (native
+        backend); the injected VPM solver's ``time_step_size`` configures the
+        coupling/VPM step.  After both are known, the coupler derives
         ``period_multiplier = round(dt_vpm / dt_fvm)`` internally.
 
         Idempotent: a second call is a no-op (the coupling components are built
@@ -363,24 +451,10 @@ class FVMVPMCoupler:
             return  # already initialized
         cfg = self.config
 
-        # Adopt the injected VPM (None on non-master).  Validation checks it is
-        # mutually consistent with the coupling config (domain ⊇ box, hand-off
-        # radius, freestream) — the VPM is already built, so the coupler can no
-        # longer silently fix a mismatch; it fails/warns instead.
-        self.vpm = self._injected_vpm if self._is_master else None
-        if self._is_master:
-            if self.vpm is None:
-                raise ValueError(
-                    "from_solvers: vpm_solver is None on the master rank. "
-                    "Build the VPM on the master (FVMVPMCoupler.is_master_rank())."
-                )
-            self._validate_injected_vpm(self.vpm, cfg)
-            logger.info("[Init] Using injected VPM solver.")
-
-        # Adopt the injected FVM (all ranks), built by the caller from a case
-        # prepared via ``prepare_case``.  The runtime setters stamp dt_fvm and
-        # nu so the setup remains the single source of truth even if the case
-        # dictionaries differed.
+        # Adopt the injected FVM (all ranks), built by the caller.  Ownership:
+        # the FVM solver owns its physics/time configuration; the coupler
+        # resolves the values it needs from it (native backend) or stamps the
+        # wrapper from the case-writing setup (OFW backend).
         self.ofw = self._injected_fvm
 
         # Serial-backend guard: a serial Eulerian backend under mpirun would
@@ -398,8 +472,21 @@ class FVMVPMCoupler:
                 "backend or launch one process."
             )
 
-        self.ofw.set_time_step(self.dt_fvm)
-        self.ofw.set_kinematic_viscosity(cfg.nu)
+        self._resolve_eulerian_ownership()
+
+        # Adopt the injected VPM (None on non-master).  Validation checks it is
+        # mutually consistent with the resolved Eulerian values (domain ⊇ box,
+        # viscosity, freestream frame, hand-off radius) — the VPM is already
+        # built, so the coupler never silently fixes a mismatch; it raises.
+        self.vpm = self._injected_vpm if self._is_master else None
+        if self._is_master:
+            if self.vpm is None:
+                raise ValueError(
+                    "from_solvers: vpm_solver is None on the master rank. "
+                    "Build the VPM on the master (FVMVPMCoupler.is_master_rank())."
+                )
+            self._validate_injected_vpm(self.vpm, cfg, cfg.fvm_box, cfg.nu)
+            logger.info("[Init] Using injected VPM solver.")
 
         # Derive sub-cycling only after both solvers have been configured.
         vpm_dt = float(self.dt_fvm)
@@ -509,7 +596,7 @@ class FVMVPMCoupler:
         # invoke the SAME C++ setter on all ranks (Robin or Dirichlet) to keep
         # the MPI collectives in sync.
 
-        n_steps = int(self.config.t_end / self.dt)
+        n_steps = int(self.t_end / self.dt)
         patch = self.config.patch_name
 
         if self._is_master:

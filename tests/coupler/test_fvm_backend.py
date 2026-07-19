@@ -32,14 +32,10 @@ BOX = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 
 
 def _fvm_setup(tmp_path, **overrides):
+    """Coupling-only setup: physics/time/mesh live on the injected solvers."""
     kwargs = {
         "backend": "fvm",
         "u_inf": [1.0, 0.0, 0.0],
-        "nu": 0.01,
-        "dt": 0.05,
-        "t_end": 0.3,
-        "fvm_box": BOX,
-        "grid_spacing": 0.25,
         "h": 0.25,
         "buffer_thickness": 0.25,
         "dead_zone_h": 0.5,
@@ -48,6 +44,23 @@ def _fvm_setup(tmp_path, **overrides):
     }
     kwargs.update(overrides)
     return CouplerSetup(**kwargs)
+
+
+def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_name=None):
+    from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
+
+    return build_fvm_backend(
+        mesh_data=coupling_box_mesh(
+            box, spacing, hole_box=hole_box, wall_patch_name=wall_patch_name or "cube"
+        ),
+        case_dir=str(tmp_path),
+        dt=0.05,
+        t_end=0.3,
+        nu=0.01,
+        u_inf=[1.0, 0.0, 0.0],
+        wall_patch_name=wall_patch_name,
+        quiet=True,
+    )
 
 
 def test_coupler_imports_without_ofw():
@@ -112,18 +125,49 @@ def test_coupling_box_mesh_rejects_non_conforming_spacing():
 
 @pytest.fixture(scope="module")
 def built_backend(tmp_path_factory):
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
-
     tmp = tmp_path_factory.mktemp("fvm_backend")
     setup = _fvm_setup(tmp)
-    return setup, build_fvm_backend(setup, quiet=True)
+    return setup, _build_backend(tmp)
 
 
-def test_build_rejects_ofw_setup(tmp_path):
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
+def test_ofw_setup_requires_case_fields(tmp_path):
+    """The OFW backend writes the case from CouplerSetup, so the Eulerian-case
+    values are required there — and only there (the native backend leaves them
+    to the injected solvers)."""
+    from source.coupler.core.solver import FVMVPMCoupler
 
-    with pytest.raises(ValueError, match="backend"):
-        build_fvm_backend(_fvm_setup(tmp_path, backend="ofw"))
+    with pytest.raises(ValueError, match="requires"):
+        FVMVPMCoupler.prepare_case(CouplerSetup(backend="ofw", case_dir=str(tmp_path)))
+
+
+def test_fvm_setup_rejects_contradicting_physics(tmp_path):
+    """A CouplerSetup value that contradicts the injected FVM solver's own
+    configuration raises instead of being silently reconciled."""
+    from source.coupler.core.solver import FVMVPMCoupler
+
+    fvm = _build_backend(tmp_path)  # dt=0.05, nu=0.01
+    setup = _fvm_setup(tmp_path, dt=0.99)
+    coupler = FVMVPMCoupler(object(), fvm, setup)
+    coupler.ofw = fvm
+    with pytest.raises(ValueError, match="owns this value"):
+        coupler._resolve_eulerian_ownership()
+
+
+def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
+    """With coupling-only CouplerSetup the coupler adopts dt/t_end/nu from the
+    injected solver and derives fvm_box from the coupling-patch geometry."""
+    from source.coupler.core.solver import FVMVPMCoupler
+
+    fvm = _build_backend(tmp_path)
+    setup = _fvm_setup(tmp_path)
+    assert setup.dt is None and setup.nu is None and setup.fvm_box is None
+    coupler = FVMVPMCoupler(object(), fvm, setup)
+    coupler.ofw = fvm
+    coupler._resolve_eulerian_ownership()
+    assert coupler.dt_fvm == 0.05
+    assert coupler.t_end == 0.3
+    assert setup.nu == 0.01
+    assert np.allclose(setup.fvm_box, BOX, atol=1e-12)
 
 
 def test_contract_methods_present(built_backend):
@@ -151,7 +195,7 @@ def test_boundary_geometry_matches_coupler_expectations(built_backend):
     # Every face centre lies on the box surface.
     on_surf = np.zeros(n_faces, dtype=bool)
     for ax in range(3):
-        lo, hi = setup.fvm_box[2 * ax], setup.fvm_box[2 * ax + 1]
+        lo, hi = BOX[2 * ax], BOX[2 * ax + 1]
         on_surf |= np.isclose(fc[:, ax], lo) | np.isclose(fc[:, ax], hi)
     assert on_surf.all()
 
@@ -253,18 +297,19 @@ def test_builder_body_fitted_cube(tmp_path):
     import contextlib
     import io
 
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
-
     setup = _fvm_setup(
         tmp_path,
-        grid_spacing=0.125,
         h=0.125,
         wall_patch_name="cube",
-        surface={"cube": {"side_length": 1.0, "center": [0.0, 0.0, 0.0]}},
-        fvm_box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
         buffer_thickness=0.375,
     )
-    fvm = build_fvm_backend(setup, quiet=True)
+    fvm = _build_backend(
+        tmp_path,
+        spacing=0.125,
+        box=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        hole_box=HOLE,
+        wall_patch_name="cube",
+    )
 
     # No fluid cells inside the body — the coupling can never inject
     # fictitious interior vorticity into the VPM.

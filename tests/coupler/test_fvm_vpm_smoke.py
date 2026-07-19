@@ -18,18 +18,14 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     from source.coupler import CouplerSetup, FVMVPMCoupler
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
+    from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
     from source.solvers.VPM import Solver as VPM_Solver
     from source.solvers.VPM import SolverConfig
 
+    # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
         backend="fvm",
         u_inf=[1.0, 0.0, 0.0],
-        nu=0.01,
-        dt=DT_FVM,
-        t_end=2 * DT_VPM,  # two coupling steps
-        fvm_box=(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5),
-        grid_spacing=H,
         h=H,
         buffer_thickness=2 * H,
         dead_zone_h=1.0,
@@ -47,8 +43,19 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         )
     )
 
+    def make_fvm():
+        return build_fvm_backend(
+            mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
+            case_dir=".",
+            dt=DT_FVM,
+            t_end=2 * DT_VPM,  # two coupling steps
+            nu=0.01,
+            u_inf=setup.u_inf,
+            quiet=True,
+        )
+
     FVMVPMCoupler.prepare_case(setup, vpm_solver=vpm)
-    fvm = build_fvm_backend(setup, quiet=True)
+    fvm = make_fvm()
     coupler = FVMVPMCoupler(vpm, fvm, setup)
     coupler.run()
 
@@ -93,7 +100,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             background_velocity=[1.0, 0.0, 0.0],
         )
     )
-    restored_fvm = build_fvm_backend(setup, quiet=True)
+    restored_fvm = make_fvm()
     restored = FVMVPMCoupler(restored_vpm, restored_fvm, setup)
     restored.initialize()
     restored_step = restored.load_state(checkpoint)

@@ -92,6 +92,7 @@ def _make_config(**over):
         "buffer_thickness": 0.3,
         "dead_zone_h": 4.0,
         "overlap_velocity_forcing": False,
+        "wall_patch_name": None,  # the fakes expose no wall patch
     }
     base.update(over)
     return CouplerSetup(**base)

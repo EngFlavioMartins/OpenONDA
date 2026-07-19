@@ -614,23 +614,42 @@ class ContinuousOverlapInjector:
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
 
-        # For the native cube/box geometry the same exact bounds that carve
-        # the FVM mesh also define the VPM exclusion region.  A nearest-cell
-        # query cannot serve this purpose: it deliberately marks a tolerance
-        # shell inside the hole as data-less Lagrangian space, allowing old
-        # solid particles to survive forever.
-        try:
-            from source.coupler.core.helpers.fvm_backend import _body_hole_box
-
-            body = _body_hole_box(self.config)
-        except ValueError:
-            body = None
-            logger.warning(
-                "[Handoff] body geometry is not an axis-aligned box; no exact "
-                "particle exclusion mask is available from CouplerSetup.surface"
-            )
-        if body is not None:
-            self._body_bounds = np.asarray(body, dtype=np.float64)
+        # For an axis-aligned body the same exact bounds that carve the FVM
+        # mesh also define the VPM exclusion region.  A nearest-cell query
+        # cannot serve this purpose: it deliberately marks a tolerance shell
+        # inside the hole as data-less Lagrangian space, allowing old solid
+        # particles to survive forever.  The bounds come from the injected
+        # solver's wall-patch geometry (single owner), and are used only when
+        # every wall face lies on one of the six bounding planes (i.e. the
+        # body really is an axis-aligned box).
+        wall = self.config.wall_patch_name
+        if wall:
+            wf = np.asarray(
+                fvm.get_boundary_face_center_coordinates(wall), dtype=np.float64
+            ).reshape(-1, 3)
+            if wf.shape[0] > 0:
+                bounds = np.array(
+                    [
+                        wf[:, 0].min(),
+                        wf[:, 0].max(),
+                        wf[:, 1].min(),
+                        wf[:, 1].max(),
+                        wf[:, 2].min(),
+                        wf[:, 2].max(),
+                    ]
+                )
+                on_planes = np.zeros(len(wf), dtype=bool)
+                for ax in range(3):
+                    on_planes |= np.isclose(wf[:, ax], bounds[2 * ax], atol=1e-9)
+                    on_planes |= np.isclose(wf[:, ax], bounds[2 * ax + 1], atol=1e-9)
+                if on_planes.all():
+                    self._body_bounds = bounds
+                else:
+                    logger.warning(
+                        "[Handoff] wall patch %r is not an axis-aligned box; no "
+                        "exact particle exclusion mask is available",
+                        wall,
+                    )
 
         l_buf = self.buffer_length
         logger.info(
