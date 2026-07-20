@@ -54,7 +54,7 @@ in that file; all its tests now pass with real values.  Rubric class:
 `pyproject.toml`/requirements, yet the codebase carries two version-specific
 workarounds (1.7.x Vulkan field-lifetime; 1.7.x variable-bound nested-atomic
 codegen → Numba DVH scatter).  A silent upgrade re-exposes both.  Recommend
-`taichi>=1.7,<1.8` (or `==1.7.4`).
+`taichi==1.7.3`.
 
 **M2 — f32 accumulation in the fused flow-integrals kernel.**  Energy /
 enstrophy / dissipation accumulate in `accumulator_dtype` (f32 by default on

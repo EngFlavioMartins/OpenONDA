@@ -27,10 +27,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
@@ -44,7 +41,7 @@ keywords = [
     "Cython",
     "external coupling"
 ]
-requires-python = ">=3.10"
+requires-python = "==3.11.*"
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
@@ -102,6 +99,7 @@ dev = [
     "hypothesis>=6.0.0",
     "ruff>=0.9.0",
     "mypy>=1.0.0",
+    "pyrefly>=1.1.0",
     "complexipy>=0.1.0",
     "vulture>=2.0.0",
     "tach>=0.1.0",
@@ -136,6 +134,7 @@ all = [
     "pytest-cov>=2.10.0",
     "ruff>=0.9.0",
     "ty>=0.0.1",
+    "pyrefly>=1.1.0",
     "skylos>=0.1.0",
     "pre-commit>=2.10.0",
     "sphinx>=4.0.0",
@@ -168,6 +167,9 @@ openonda-test = "OpenONDA.utilities.scripts_helper:run_tests"
 [tool.setuptools.dynamic]
 version = {attr = "source.version.__version__"}
 
+[tool.setuptools]
+py-modules = ["openonda_bootstrap"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["source*"]
@@ -181,7 +183,7 @@ exclude = ["tests*", "docs*", "examples*"]
 # Development tools configuration
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 exclude = [
     ".git",
     "__pycache__",
@@ -218,7 +220,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 implicit_optional = true
 warn_unused_ignores = false
@@ -240,7 +242,7 @@ ignore_errors = true
 [tool.ty]
 
 [tool.ty.environment]
-python-version = "3.10"
+python-version = "3.11"
 root = ["source/"]
 
 [tool.ty.rules]
@@ -263,6 +265,26 @@ unknown-argument = "ignore"
 unsupported-operator = "ignore"
 invalid-return-type = "ignore"
 missing-argument = "ignore"
+
+# ── Pyrefly (fast type checker, used in the agentic type-check loop) ──────────
+# `pyrefly check` at the repo root type-checks the actively-maintained Python:
+# the FVM solver, the coupler, and shared utilities. The VPM subtree is
+# intentionally excluded because its Taichi DSL is not statically typeable — the
+# same reason [tool.ty] / [tool.mypy] suppress it. See AGENTS.md for how agents
+# (Claude Code, Codex/ChatGPT) are expected to use this.
+[tool.pyrefly]
+project-includes = [
+    "source/solvers/FVM",
+    "source/coupler",
+    "source/utilities",
+]
+project-excludes = [
+    "**/__pycache__",
+    "**/*.pyx",
+    "source/solvers/OFW/build",
+]
+search-path = ["."]
+python-version = "3.11"
 
 [tool.pytest.ini_options]
 minversion = "6.0"

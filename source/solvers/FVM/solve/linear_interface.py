@@ -15,6 +15,15 @@ _AMG_CACHE = {}
 _FALLBACK_WARN_COUNT = 0
 
 
+def _emit_warning(log_sink, message, *args) -> None:
+    """Route a user-facing warning through the active FVM logger."""
+    text = message % args if args else message
+    if log_sink is None:
+        logger.warning(text)
+    else:
+        log_sink.warning(text)
+
+
 class LinearSolveError(RuntimeError):
     """Raised when a configured linear backend does not converge."""
 
@@ -375,7 +384,18 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False):
     return cached[0], False
 
 
-def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol, failure_policy):
+def _solve_pressure(
+    A,
+    b,
+    amg_tol,
+    amg_maxiter,
+    tol,
+    maxiter,
+    x0,
+    amg_reuse_tol,
+    failure_policy,
+    log_sink,
+):
     """Solve the pressure Poisson equation.
 
     Runs algebraic-multigrid-preconditioned CG via ``pyamg``. A failure
@@ -409,7 +429,10 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
     except ImportError as error:
         if failure_policy == "raise":
             raise LinearSolveError("AMG pressure solve requires pyamg") from error
-        logger.warning("pyamg unavailable; using configured direct fallback")
+        _emit_warning(
+            log_sink,
+            "pyamg unavailable; using configured direct fallback",
+        )
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
         x = spsolve(A, b)
@@ -469,7 +492,11 @@ def _solve_pressure(A, b, amg_tol, amg_maxiter, tol, maxiter, x0, amg_reuse_tol,
     except Exception as error:
         if failure_policy == "raise":
             raise LinearSolveError("AMG pressure solve failed") from error
-        logger.warning("AMG pressure solve failed; using configured direct fallback: %s", error)
+        _emit_warning(
+            log_sink,
+            "AMG pressure solve failed; using configured direct fallback: %s",
+            error,
+        )
         fallback_start = time.perf_counter()
         failed_solve_seconds = fallback_start - locals().get("solve_start", fallback_start)
         x = spsolve(A, b)
@@ -532,7 +559,17 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
     return ilu_cached, False
 
 
-def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
+def _iterative_solve_with_M(
+    A,
+    b,
+    method,
+    M,
+    tol,
+    maxiter,
+    x0,
+    failure_policy,
+    log_sink,
+):
     """Run an iterative solver (BiCGSTAB or GMRES) with a preconditioner.
 
     Falls back to ``spsolve`` if the solver does not converge.
@@ -556,14 +593,22 @@ def _iterative_solve_with_M(A, b, method, M, tol, maxiter, x0, failure_policy):
         global _FALLBACK_WARN_COUNT
         _FALLBACK_WARN_COUNT += 1
         msg = f"{method} did not converge (info={info})"
-        logger.warning(msg)
         if _FALLBACK_WARN_COUNT <= 3 or _FALLBACK_WARN_COUNT % 50 == 0:
-            print(f"  [WARNING] {msg} (occurrence #{_FALLBACK_WARN_COUNT})")
+            _emit_warning(
+                log_sink,
+                "%s (occurrence #%d)",
+                msg,
+                _FALLBACK_WARN_COUNT,
+            )
         if failure_policy == "raise":
             raise LinearSolveError(
                 f"{method} did not converge after {maxiter} iterations (info={info})"
             )
-        logger.warning("Using configured direct fallback after %s failure", method)
+        _emit_warning(
+            log_sink,
+            "Using configured direct fallback after %s failure",
+            method,
+        )
         return spsolve(A, b), max(iterations, int(info) if info > 0 else 0), True, msg
     return x, iterations, False, "Krylov solver converged"
 
@@ -581,6 +626,7 @@ def _solve_with_ilu(
     ilu_fill_factor,
     ilu_reuse_tol,
     failure_policy,
+    log_sink,
 ):
     """Solve a linear system with ILU-preconditioned iterative solver.
 
@@ -626,7 +672,15 @@ def _solve_with_ilu(
         M = LinearOperator(A.shape, matvec=ilu.solve)  # type: ignore[call-arg]
         solve_start = time.perf_counter()
         x, iterations, used_fallback, reason = _iterative_solve_with_M(
-            A, b, method, M, tol, maxiter, x0, failure_policy
+            A,
+            b,
+            method,
+            M,
+            tol,
+            maxiter,
+            x0,
+            failure_policy,
+            log_sink,
         )
         solve_seconds = time.perf_counter() - solve_start
         logger.info("Iterative solver (%s) time=%.3fs", method, solve_seconds)
@@ -644,7 +698,11 @@ def _solve_with_ilu(
             raise
         if failure_policy == "raise":
             raise LinearSolveError(f"{method} ILU setup or solve failed") from e
-        logger.warning("ILU setup failed; using configured direct fallback: %s", e)
+        _emit_warning(
+            log_sink,
+            "ILU setup failed; using configured direct fallback: %s",
+            e,
+        )
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
         x = spsolve(A, b)
@@ -676,6 +734,7 @@ def solve_linear_system(
     nullspace=None,
     return_info=False,
     failure_policy="raise",
+    log_sink=None,
     **kwargs,
 ):
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
@@ -780,6 +839,7 @@ def solve_linear_system(
             x0,
             amg_reuse_tol,
             failure_policy,
+            log_sink,
         )
         return finish(solution, metadata)
 
@@ -797,6 +857,7 @@ def solve_linear_system(
             ilu_fill_factor,
             ilu_reuse_tol,
             failure_policy,
+            log_sink,
         )
         return finish(solution, metadata)
 
@@ -814,6 +875,7 @@ def solve_linear_system(
             ilu_fill_factor,
             ilu_reuse_tol,
             failure_policy,
+            log_sink,
         )
         return finish(solution, metadata)
 
@@ -824,7 +886,7 @@ def solve_linear_system(
     x, info, iterations = _run_krylov(A, b, method, None, tol, maxiter, x0)
     solve_seconds = time.perf_counter() - solve_start
     if info != 0:
-        logger.warning("%s did not converge, info=%s", method, info)
+        _emit_warning(log_sink, "%s did not converge, info=%s", method, info)
 
     if info != 0:
         if failure_policy == "raise":

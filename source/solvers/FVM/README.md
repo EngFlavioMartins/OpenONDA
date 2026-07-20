@@ -10,17 +10,18 @@ outside that matrix fail during setup or remain explicitly experimental.
 ```python
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
+    setup_fvm_solver,
 )
 
-config = FVMConfig(
+setup = FVMSetup(
     case_name="cube",
+    cores=4,
     time=TimeConfig.transient(dt=1e-3, duration=1.0),
     schemes=SchemesConfig(
         convection_scheme="limitedLinear",
@@ -37,7 +38,7 @@ config = FVMConfig(
         BoundaryConfig.outlet("outlet", 0.0),
     ],
 )
-solver = Solver(config, case_dir="path/to/case")
+solver = setup_fvm_solver(setup, case_dir="path/to/case", mesh=build_mesh)
 solver.evolve()
 solver.save_state("solution/restart.npz")
 solver.write_run_manifest()
@@ -48,8 +49,8 @@ solver.write_run_manifest()
 It maps PIMPLE/PISO/SIMPLE correctors; U and p solver methods, tolerances, and
 iteration limits; and the time, gradient, and `div(phi,U)` schemes supported by
 the Python backend. Malformed, missing, or unsupported input raises instead of
-being replaced with defaults. Programmatic values in `FVMConfig.initial_U` and
-`initial_p` take precedence when constructing `Solver` directly.
+being replaced with defaults. Programmatic values in `FVMSetup.initial_U` and
+`initial_p` take precedence when constructing the solver.
 Separate `UFinal`/`pFinal` solver blocks and nonzero OpenFOAM `relTol` values
 are rejected because the Python driver does not implement those stopping stages.
 
@@ -74,13 +75,14 @@ Fixed-body IBM has transfer, force-balance, mesh-refinement, and body-fitted
 force/wake evidence. One-rank FVM–VPM restart and conservation are verified,
 but broader coupled cases remain experimental.
 
-`ExecutionConfig.petsc_partitioned()` runs owned-plus-halo PIMPLE with owned
-PETSc rows and either Gauss or least-squares gradients. Fields, global
-diagnostics, forces, checkpoints, and raw-cell VTU/PVTU output are invariant in
-the collective MPI tests. Cyclic patches, field-file initialization, and
-coupled FVM–VPM remain serial-only. The reference cube can opt into this path
-with `OPENONDA_FVM_MPI_RANKS=<ranks> ./allrun.sh` from its `referenceFlow`
-directory.
+`FVMSetup(cores=N, ...)` is the public parallel interface.
+`setup_fvm_solver(...)` internally selects owned-plus-halo PIMPLE, owned PETSc
+rows, rank-local fields, and VTU/PVTU output when `N > 1`. Fields, global
+diagnostics, forces, and checkpoints are invariant in the collective MPI
+tests. Cyclic patches and field-file initialization remain serial-only. The
+same setup API is used by standalone FVM and coupled FVM–VPM cases; invoking
+`python run_setup.py` selects the canonical environment and launches any
+required worker processes internally.
 
 Numba and Taichi CPU pass matrix, RHS, one-step, and BDF2-history parity, but
 neither meets the 1.5x end-to-end acceleration gate. They are parity-only

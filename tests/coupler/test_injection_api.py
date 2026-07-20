@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler import CouplerSetup, FVMVPMCoupler
+from source.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +158,60 @@ def test_is_master_rank(monkeypatch):
     assert FVMVPMCoupler.is_master_rank() is True
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "3")
     assert FVMVPMCoupler.is_master_rank() is False
+
+
+def test_physics_first_coupler_factory(monkeypatch):
+    setup = _make_config()
+    vpm = object()
+    fvm = object()
+    prepared = []
+    result = object()
+
+    monkeypatch.setattr(
+        FVMVPMCoupler,
+        "prepare_case",
+        lambda value, *, vpm_solver: prepared.append((value, vpm_solver)),
+    )
+    monkeypatch.setattr(
+        FVMVPMCoupler,
+        "from_solvers",
+        lambda value, *, fvm_solver, vpm_solver: result,
+    )
+
+    assert setup_coupler(vpm, fvm, setup) is result
+    assert prepared == [(setup, vpm)]
+
+
+def test_coupler_factory_infers_native_backend(monkeypatch, tmp_path):
+    from source.solvers.FVM import FVMSetup
+
+    class _NativeFVM:
+        config = FVMSetup(case_name="native")
+        case_dir = str(tmp_path)
+
+    captured = []
+    monkeypatch.setattr(
+        FVMVPMCoupler,
+        "prepare_case",
+        lambda value, *, vpm_solver: captured.append(value),
+    )
+    monkeypatch.setattr(
+        FVMVPMCoupler,
+        "from_solvers",
+        lambda value, *, fvm_solver, vpm_solver: object(),
+    )
+
+    setup_coupler(object(), _NativeFVM(), CouplerSetup())
+
+    assert captured[0].backend == "fvm"
+    assert captured[0].case_dir == str(tmp_path)
+
+
+def test_vpm_factory_hides_distributed_root_ownership(monkeypatch):
+    from source.solvers.VPM import VPMSetup, setup_vpm_solver
+
+    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "2")
+    assert setup_vpm_solver(VPMSetup()) is None
 
 
 def test_config_has_no_vpm_physics_fields():

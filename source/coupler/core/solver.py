@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import hashlib
 import json
 import logging
@@ -120,10 +120,14 @@ class FVMVPMCoupler:
             self.vpm_redirector = OutputRedirector(
                 logfile=str(self.solution_dir / "vpm.log"), append=True
             )
-            eulerian_log = "fvm.log" if self._backend == "fvm" else "ofw.log"
-            self.ofw_redirector = OutputRedirector(
-                logfile=str(self.solution_dir / eulerian_log), append=True
-            )
+            if self._backend == "fvm":
+                # The native solver owns solution/fvm.log through its rank-aware
+                # logger. Redirecting stdout here would duplicate every line.
+                self.ofw_redirector = OutputRedirector()
+            else:
+                self.ofw_redirector = OutputRedirector(
+                    logfile=str(self.solution_dir / "ofw.log"), append=True
+                )
         else:
             self.vpm_redirector = OutputRedirector()  # no-op
             self.ofw_redirector = OutputRedirector()  # no-op
@@ -151,7 +155,7 @@ class FVMVPMCoupler:
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
         # The FVM sub-step is OWNED by the injected FVM solver (native backend:
-        # FVMConfig.time.delta_t); ``coupler_setup.dt`` is required only for
+        # FVMSetup.time.delta_t); ``coupler_setup.dt`` is required only for
         # the case-writing OFW backend and is cross-checked otherwise.  The
         # authoritative values are resolved in initialize().
         self.dt_fvm = None if coupler_setup.dt is None else float(coupler_setup.dt)
@@ -179,7 +183,7 @@ class FVMVPMCoupler:
         The FVM case must already reflect ``coupler_setup`` before the FVM
         solver reads it, so the canonical flow is::
 
-            vpm = VPM_Solver(SolverConfig(...)) if is_master else None
+            vpm = setup_vpm_solver(VPMSetup(...))
             FVMVPMCoupler.prepare_case(coupler_setup, vpm_solver=vpm)  # all ranks
             fvm = fvm_solver(case_dir)                                 # all ranks
             coupler = FVMVPMCoupler.from_solvers(
@@ -331,7 +335,7 @@ class FVMVPMCoupler:
 
     def _write_run_metadata(self) -> None:
         metadata = {
-            "generated_utc": datetime.now(timezone.utc).isoformat(),
+            "generated_utc": datetime.now(UTC).isoformat(),
             "case_dir": str(self.case_dir),
             **self.config.to_dict(),
             "dt_fvm": float(self.dt_fvm),
@@ -399,27 +403,36 @@ class FVMVPMCoupler:
             self.ofw.get_boundary_face_center_coordinates(self.config.patch_name),
             dtype=np.float64,
         ).reshape(-1, 3)
-        if fc.shape[0] == 0:
-            raise ValueError(
-                f"Coupling patch {self.config.patch_name!r} has no faces on the "
-                "injected Eulerian solver."
-            )
-        return np.array(
-            [
-                fc[:, 0].min(),
-                fc[:, 0].max(),
-                fc[:, 1].min(),
-                fc[:, 1].max(),
-                fc[:, 2].min(),
-                fc[:, 2].max(),
-            ]
-        )
+        box = None
+        error = None
+        if self._is_master:
+            if fc.shape[0] == 0:
+                error = (
+                    f"Coupling patch {self.config.patch_name!r} has no faces on the "
+                    "injected Eulerian solver."
+                )
+            else:
+                box = np.array(
+                    [
+                        fc[:, 0].min(),
+                        fc[:, 0].max(),
+                        fc[:, 1].min(),
+                        fc[:, 1].max(),
+                        fc[:, 2].min(),
+                        fc[:, 2].max(),
+                    ]
+                )
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            error, box = _mpi4py_comm.bcast((error, box) if self._is_master else None, root=0)
+        if error is not None:
+            raise ValueError(error)
+        return np.asarray(box, dtype=np.float64)
 
     def _resolve_eulerian_ownership(self) -> None:
         """Resolve dt / t_end / nu / fvm_box between the coupling setup and
         the injected Eulerian solver.
 
-        Native ``fvm`` backend: the injected solver's :class:`FVMConfig` OWNS
+        Native ``fvm`` backend: the injected solver's :class:`FVMSetup` OWNS
         these values.  CouplerSetup entries are optional cross-checks — a set
         value that contradicts the solver raises (nothing is silently
         overwritten), an unset one is filled from the solver so downstream
@@ -1274,10 +1287,9 @@ class FVMVPMCoupler:
                 u_target[:, 0].max() / u_inf_mag,
                 "" if advance else "  (no advance — BC iteration)",
             )
-        # Re-log the FVM y+ min/max to the coupler log: the FVM's own print()
-        # (advance_time) is swallowed by the VPM stdout redirector, so the
-        # wall-resolution diagnostic would otherwise not reach the coupler /
-        # FVM log the user monitors.
+        # Mirror the FVM y+ min/max to the coupler diagnostics as a compact
+        # cross-solver health signal. The native FVM logger retains the full
+        # wall-resolution section in solution/fvm.log.
         if advance:
             yplus = getattr(self.ofw, "last_yplus", None)
             if yplus:

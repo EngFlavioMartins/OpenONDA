@@ -551,10 +551,17 @@ class TimeConfig:
             raise ValueError(
                 f"controlDict {filepath!r} is missing required entries: {', '.join(missing)}"
             )
-        dt = float(data.get("deltaT", cls().delta_t))
-        start = float(data.get("startTime", cls().start_time))
-        end = float(data.get("endTime", cls().end_time))
-        w = int(data.get("writeInterval", cls().write_interval))
+
+        def number(name: str, default: float | int) -> float:
+            value = _extract_foam_number(data.get(name, default))
+            if value is None:
+                raise ValueError(f"controlDict {filepath!r} entry {name!r} must be numeric")
+            return value
+
+        dt = number("deltaT", cls().delta_t)
+        start = number("startTime", cls().start_time)
+        end = number("endTime", cls().end_time)
+        w = int(number("writeInterval", cls().write_interval))
         return cls(delta_t=dt, start_time=start, end_time=end, write_interval=w)
 
 
@@ -664,8 +671,9 @@ def solver_configs_from_case(
         if os.path.exists(control):
             data = parse_simple_dictionary(control)
             dt = data.get("deltaT")
-            if dt is not None:
-                params.time_scheme = "euler_implicit" if float(dt) > 0 else params.time_scheme
+            dt_value = _extract_foam_number(dt)
+            if dt_value is not None:
+                params.time_scheme = "euler_implicit" if dt_value > 0 else params.time_scheme
             with open(control) as f:
                 content = f.read()
             patches = _parse_yplus_patches(content)
@@ -1075,12 +1083,13 @@ class RunAcceptancePolicy:
 
 
 @dataclass
-class FVMConfig:
+class FVMSetup:
     """
     Top-level FVM configuration.
     """
 
     case_name: str
+    cores: int = 1
     mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
     execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
     acceptance: "RunAcceptancePolicy" = field(default_factory=lambda: RunAcceptancePolicy())
@@ -1095,6 +1104,18 @@ class FVMConfig:
     turbulence: TurbulenceConfig | None = None
     initial_U: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
     initial_p: float | None = 0.0
+
+    def __post_init__(self) -> None:
+        """Validate user-facing process settings.
+
+        Parallel backend selection is deliberately deferred to
+        :func:`source.solvers.FVM.setup_fvm_solver`; case files only choose a
+        core count.
+        """
+        if isinstance(self.cores, bool) or not isinstance(self.cores, int):
+            raise TypeError("cores must be an integer")
+        if self.cores < 1:
+            raise ValueError("cores must be at least one")
 
     def algorithm_params(self) -> dict:
         """Flat parameter dict consumed by the PIMPLE/SIMPLE algorithm layer."""
@@ -1120,13 +1141,13 @@ class FVMConfig:
             filepath: Path to a JSON file produced by :meth:`save`.
 
         Returns:
-            A new :class:`FVMConfig` instance.
+            A new :class:`FVMSetup` instance.
         """
         with open(filepath) as f:
             data = json.load(f)
         unknown = sorted(set(data) - set(cls.__dataclass_fields__))
         if unknown:
-            raise ValueError(f"Unknown top-level FVMConfig field(s): {', '.join(unknown)}")
+            raise ValueError(f"Unknown top-level FVMSetup field(s): {', '.join(unknown)}")
 
         # Manual reconstruction of nested dataclasses
         mesh_data = data.get("mesh", {})
@@ -1152,6 +1173,7 @@ class FVMConfig:
 
         return cls(
             case_name=data["case_name"],
+            cores=data.get("cores", 1),
             mesh=mesh,
             execution=execution,
             acceptance=acceptance,
@@ -1167,3 +1189,7 @@ class FVMConfig:
             initial_U=data.get("initial_U", [0.0, 0.0, 0.0]),
             initial_p=data.get("initial_p", 0.0),
         )
+
+
+# Backward-compatible name for existing cases and serialized configurations.
+FVMConfig = FVMSetup

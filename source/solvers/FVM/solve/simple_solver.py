@@ -15,6 +15,8 @@ Algorithm:
 Converted from uFVM solve/ modules
 """
 
+from typing import Any
+
 from numba import njit
 import numpy as np
 
@@ -1287,6 +1289,7 @@ class SIMPLESolver:
             linear_backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
+            log_sink=self.params.get("_logger"),
             momentum_tol=self.params.get("momentum_tol", 1e-4),
             maxiter=self.params.get("momentum_maxiter", 1000),
             reuse_ilu=self.params.get("reuse_ilu", False),
@@ -1327,6 +1330,7 @@ class SIMPLESolver:
             backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
+            log_sink=self.params.get("_logger"),
             nullspace=(
                 "constant"
                 if has_pressure_nullspace and pressure_constraint == "nullspace"
@@ -1408,11 +1412,20 @@ class SIMPLESolver:
         """
         U = U_init.copy()
         p = p_init.copy()
+        logger: Any = self.params.get("_logger")
 
-        print("\\nSIMPLE Solver")
-        print(f"  Max iterations: {self.params['max_iter']}")
-        print(f"  Tolerance: {self.params['tolerance']}")
-        print(f"  Under-relaxation: U={self.params['alpha_u']}, p={self.params['alpha_p']}")
+        if logger is not None:
+            logger.section(
+                "SIMPLE SOLVER",
+                [
+                    ("Maximum iterations", str(self.params["max_iter"])),
+                    ("Tolerance", f"{self.params['tolerance']:.3e}"),
+                    (
+                        "Under-relaxation",
+                        f"U={self.params['alpha_u']}, p={self.params['alpha_p']}",
+                    ),
+                ],
+            )
 
         # Initialize Flux (phi) if not provided
         from ..assemble import convection
@@ -1435,8 +1448,10 @@ class SIMPLESolver:
                 }
             )
 
-            if iteration % 10 == 0 or residual_p < self.params["tolerance"]:
-                print(
+            if logger is not None and (
+                iteration % 10 == 0 or residual_p < self.params["tolerance"]
+            ):
+                logger.message(
                     f"  Iter {iteration:3d}: R_p={residual_p:.3e}, "
                     f"ΔU={residual_u:.3e}, continuity={continuity:.3e}"
                 )
@@ -1446,8 +1461,10 @@ class SIMPLESolver:
                 and residual_u < self.params["tolerance"]
                 and continuity < self.params["tolerance"]
             ):
-                print(f"  ✓ Converged in {iteration} iterations")
+                if logger is not None:
+                    logger.info(f"SIMPLE converged in {iteration} iterations")
                 return U, p, phi, True
 
-        print(f"  ✗ Did not converge in {self.params['max_iter']} iterations")
+        if logger is not None:
+            logger.warning(f"SIMPLE did not converge in {self.params['max_iter']} iterations")
         return U, p, phi, False

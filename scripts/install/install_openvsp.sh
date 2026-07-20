@@ -2,9 +2,7 @@
 # install_openvsp.sh - Wire OpenVSP into the OpenONDA conda workflow.
 #
 # OpenVSP binary releases are tied to the Python version they were built with.
-# The current official OpenVSP 3.51.0 package needs Python 3.13.  The
-# FVM/VPM environment intentionally uses Python 3.10 for Taichi compatibility,
-# so install_anaconda.sh skips this optional component there.
+# OpenONDA and the official OpenVSP package use the same Python 3.11 ABI.
 #
 # Usage:
 #   scripts/install/install_openvsp.sh
@@ -15,7 +13,7 @@ set -euo pipefail
 
 CONDA_ENV="${OPENONDA_CONDA_ENV:-OpenONDA}"
 OPENVSP_VERSION="${OPENVSP_VERSION:-3.51.0}"
-OPENVSP_ROOT="${OPENVSP_ROOT:-$HOME/.local/share/openonda/OpenVSP-${OPENVSP_VERSION}}"
+OPENVSP_ROOT="${OPENVSP_ROOT:-$HOME/.local/share/openonda/OpenVSP-${OPENVSP_VERSION}-Python3.11}"
 OPENVSP_ARCHIVE_URL="${OPENVSP_ARCHIVE_URL:-}"
 
 if ! command -v conda >/dev/null 2>&1; then
@@ -28,11 +26,11 @@ official_download_url() {
     arch="$(uname -m)"
 
     if [ "$os" = "Darwin" ] && [ "$arch" = "arm64" ]; then
-        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-14-ARM64-Python3.13.zip"
+        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-14-ARM64-Python3.11.zip"
         return
     fi
     if [ "$os" = "Darwin" ] && [ "$arch" = "x86_64" ]; then
-        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-15-intel-X64-Python3.13.zip"
+        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-15-intel-X64-Python3.11.zip"
         return
     fi
     if [ "$os" = "Linux" ] && [ "$arch" = "x86_64" ] && [ -r /etc/os-release ]; then
@@ -126,8 +124,8 @@ check_openvsp_tree() {
 install_python_api() {
     openonda_python="$(conda run -n "$CONDA_ENV" which python)"
     python_version="$($openonda_python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-    if [ "$python_version" != "3.13" ]; then
-        echo "ERROR: OpenVSP ${OPENVSP_VERSION} requires Python 3.13; '$CONDA_ENV' uses $python_version." >&2
+    if [ "$python_version" != "3.11" ]; then
+        echo "ERROR: OpenVSP ${OPENVSP_VERSION} requires Python 3.11; '$CONDA_ENV' uses $python_version." >&2
         exit 1
     fi
 

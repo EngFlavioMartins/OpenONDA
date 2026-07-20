@@ -1562,7 +1562,7 @@ class VLMSolverConfig:
 
 
 @dataclass
-class SolverConfig:
+class VPMSetup:
     """
     Configuration dataclass for the VPM solver.
 
@@ -2095,6 +2095,10 @@ class SolverConfig:
         return "\n".join(lines)
 
 
+# Backward-compatible name for existing cases and serialized configurations.
+SolverConfig = VPMSetup
+
+
 # =========================================================
 # UTILITY DECORATORS AND HELPERS
 # =========================================================
@@ -2524,6 +2528,7 @@ def SetFlowModel(psys, flow_model: str):
 
 
 __all__ = [
+    "VPMSetup",
     "SolverConfig",
     "SolverState",
     "ParticlesState",

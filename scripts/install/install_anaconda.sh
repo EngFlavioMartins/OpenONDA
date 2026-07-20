@@ -114,19 +114,17 @@ echo "Installing OpenONDA in editable mode..."
 conda run -n "$CONDA_ENV" python -m pip install --no-deps -e "$REPO_ROOT"
 
 if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
-    PYTHON_VERSION="$(conda run -n "$CONDA_ENV" python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-    if [ "$PYTHON_VERSION" = "3.13" ]; then
-        echo "Installing OpenVSP and its Python API..."
-        "$OPENVSP_INSTALLER"
-    else
-        echo "Skipping OpenVSP: its official binary requires Python 3.13; this FVM/VPM environment uses Python $PYTHON_VERSION."
-        echo "Set OPENONDA_INSTALL_OPENVSP=0 to silence this message."
-    fi
+    echo "Installing OpenVSP and its Python API..."
+    "$OPENVSP_INSTALLER"
 fi
 
 if [ -d "$REPO_ROOT/.git" ]; then
-    echo "Installing pre-commit hooks..."
-    conda run -n "$CONDA_ENV" pre-commit install --install-hooks
+    if conda run -n "$CONDA_ENV" pre-commit --version >/dev/null 2>&1; then
+        echo "Installing pre-commit hooks..."
+        conda run -n "$CONDA_ENV" pre-commit install --install-hooks
+    else
+        echo "Skipping pre-commit hooks: development tooling is not installed."
+    fi
 fi
 
 echo "Verifying the solver environment..."
@@ -135,8 +133,48 @@ for module in gmsh h5py mpi4py numba petsc4py pyamg pydantic pygit2 pytest pyvis
 done
 conda run -n "$CONDA_ENV" python -m pip check
 conda run -n "$CONDA_ENV" ruff --version
+conda run -n "$CONDA_ENV" pyrefly --version
 conda run -n "$CONDA_ENV" mpiexec --version
+
+# ── Make new shells open the project env by default (instead of base) ─────────
+configure_default_env() {
+    local env_name="$1"
+    echo ""
+    echo "Configuring '$env_name' as the default environment for new shells..."
+
+    # Stop Conda from auto-activating 'base' when a shell starts.
+    conda config --set auto_activate_base false || true
+
+    local marker_begin="# >>> OpenONDA default env >>>"
+    local marker_end="# <<< OpenONDA default env <<<"
+    local rc
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+        [ -f "$rc" ] || continue
+        if grep -qF "$marker_begin" "$rc"; then
+            echo "  $rc already configured — skipping."
+            continue
+        fi
+        if [ ! -w "$rc" ]; then
+            # e.g. a dotfile left root-owned by an earlier sudo edit.
+            echo -e "  ${YELLOW}⚠ $rc is not writable (owner $(stat -f '%Su' "$rc" 2>/dev/null || echo '?')).${NC}"
+            echo "    Fix ownership, then add the activation line manually:"
+            echo "      sudo chown \"$(id -un)\" \"$rc\""
+            echo "      printf '\\nconda activate %s\\n' \"$env_name\" >> \"$rc\""
+            continue
+        fi
+        {
+            printf '\n%s\n' "$marker_begin"
+            printf '# Managed by scripts/install/install_anaconda.sh — activate the project env by default.\n'
+            printf 'conda activate %s\n' "$env_name"
+            printf '%s\n' "$marker_end"
+        } >> "$rc"
+        echo "  Added default activation of '$env_name' to $rc."
+    done
+}
+
+configure_default_env "$CONDA_ENV"
 
 echo ""
 echo -e "${GREEN}✅ OpenONDA environment '$CONDA_ENV' is ready.${NC}"
-echo "Activate it with: conda activate $CONDA_ENV"
+echo "New terminals will open '$CONDA_ENV' automatically."
+echo "Activate it in this shell with: conda activate $CONDA_ENV"

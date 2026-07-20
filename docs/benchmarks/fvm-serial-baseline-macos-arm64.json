@@ -10,7 +10,7 @@
     "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
     "machine": "arm64",
     "processor": "arm",
-    "python": "3.13.14",
+    "runtime_note": "Historical result predates the canonical runtime",
     "logical_cpus": 10
   },
   "cases": [

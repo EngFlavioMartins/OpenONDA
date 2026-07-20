@@ -13,6 +13,7 @@ _MPI_SIZE_ENV = (
     "PMI_SIZE",
     "PMIX_SIZE",
     "MV2_COMM_WORLD_SIZE",
+    "SLURM_NTASKS",
 )
 
 

@@ -5,7 +5,7 @@
 # OpenONDA — Hybrid VPM-FVM Solver with Python Interface
 
 [![DOI](https://zenodo.org/badge/947793258.svg)](https://doi.org/10.5281/zenodo.15111460)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 OpenONDA is a Computational Fluid Dynamics (CFD) framework that integrates a GPU-accelerated Vortex Particle Method (VPM), a pure-Python Finite Volume Method (FVM), and an OpenFOAM-Python interface (OFW) under a unified Python API.
@@ -19,11 +19,11 @@ ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
 | Requirement | Version tested |
 |---|---|
 | OpenFOAM | optional; OFW backend only |
-| Python | 3.13 |
+| Python | 3.11 |
 | Cython | >= 0.29 |
 | NumPy | >= 1.24 |
 | SciPy | >= 1.10 |
-| Taichi | 1.7.4 (required for VPM) |
+| Taichi | 1.7.3 (required for VPM) |
 | GCC / Clang | compatible with your OpenFOAM installation |
 
 > The native Python FVM and VPM solvers do not require OpenFOAM. The separate
@@ -44,22 +44,27 @@ git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 ```
 
-### 2. Create and activate a Python environment
+### 2. Install the canonical Python environment
 
 ```bash
-conda env create -f scripts/environment/environment.yml
-conda activate OpenONDA
+scripts/install/install_anaconda.sh
 ```
 
-The FVM–VPM cube tutorial also accepts an existing `OpenONDA-VPM` environment.
-To update that named environment with the distributed FVM dependencies, run
-`OPENONDA_CONDA_ENV=OpenONDA-VPM scripts/install/install_anaconda.sh`.
+The repository supports one canonical environment named `OpenONDA`. The case
+launchers automatically select it when they are started from another Python
+interpreter.
 
-Or install all Python dependencies at once into an existing env:
+For example, the fully meshed cube reference is run with:
 
 ```bash
-pip install -e ".[full]"
+cd tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow
+python run_setup.py
 ```
+
+The `cores` value in each case's `FVM_SETUP` is the complete parallel setting.
+`setup_fvm_solver(...)` selects and launches the distributed backend
+internally, so no external `mpiexec` command or environment activation is
+required.
 
 ### 3. Optional: source OpenFOAM for OFW
 

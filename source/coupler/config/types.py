@@ -18,14 +18,14 @@ import numpy as np
 class CouplerSetup:
     """Coupling and Eulerian-case parameters for an FVM-VPM run.
 
-    VPM-specific physics remains in the injected VPM ``SolverConfig``. The
+    VPM-specific physics remains in the injected ``VPMSetup``. The
     coupler derives its VPM step from that solver and requires an integer ratio
     between the VPM step and ``dt``.
     """
 
     # ── Physics (OFW case-writing only) ──────────────────────────────────
     # With the native ``fvm`` backend the injected solvers OWN these values
-    # (FVMConfig.transport/time, VPM SolverConfig); leave them ``None`` and the
+    # (FVMSetup.transport/time, VPMSetup); leave them ``None`` and the
     # coupler reads them from the solvers, raising on any inconsistency.  The
     # ``ofw`` backend writes the OpenFOAM case dictionaries from this setup,
     # so there they are required (single source, not duplication).
@@ -35,21 +35,21 @@ class CouplerSetup:
 
     nu: float | None = None
     """Kinematic viscosity [m²/s].  ``ofw``: required.  ``fvm``: leave None
-    (owned by FVMConfig.transport; a set value must match it)."""
+    (owned by FVMSetup.transport; a set value must match it)."""
 
     rho: float | None = None
     """Fluid density [kg/m³].  ``ofw``: optional (defaults to 1).  ``fvm``:
-    leave None (owned by FVMConfig.transport)."""
+    leave None (owned by FVMSetup.transport)."""
 
     dt: float | None = None
     """FVM sub-step [s].  ``ofw``: required.  ``fvm``: leave None (owned by
-    FVMConfig.time; a set value must match it).  The VPM/coupling step is read
+    FVMSetup.time; a set value must match it).  The VPM/coupling step is read
     from the injected VPM solver and the integer sub-cycle count is derived
     internally."""
 
     t_end: float | None = None
     """Simulated end time [s].  ``ofw``: required.  ``fvm``: leave None
-    (owned by FVMConfig.time)."""
+    (owned by FVMSetup.time)."""
 
     backup_period: int = 1
     """Steps between solution snapshots.  ``backup_period * dt`` is the write
@@ -84,7 +84,7 @@ class CouplerSetup:
 
     initial_U: list[float] | None = None
     """``ofw`` only: initial velocity written into the 0/U field.  ``fvm``:
-    unused — set FVMConfig.initial_U on the injected solver instead."""
+    unused — set FVMSetup.initial_U on the injected solver instead."""
 
     case_dir: str = "."
     """OpenFOAM case directory or native-FVM output root."""
@@ -298,7 +298,7 @@ class CouplerSetup:
                 "surface": self.surface,
             },
             # Coupling-interface geometry (the injected VPM's physics lives in
-            # its own SolverConfig, not here).  The acceptance scripts read
+            # its own VPMSetup, not here).  The acceptance scripts read
             # h / buffer_thickness / dead_zone_h from this block.
             "vpm_solver": {
                 "particle_spacing": self.h,

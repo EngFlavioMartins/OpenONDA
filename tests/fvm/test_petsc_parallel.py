@@ -203,6 +203,75 @@ def _pimple_config(execution, case_name):
     )
 
 
+def test_partitioned_solver_header_is_printed_once(tmp_path):
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    execution = ExecutionConfig.petsc_partitioned()
+    mesh = structured_box(2, 2, 2)
+    stdout = io.StringIO()
+
+    with contextlib.redirect_stdout(stdout):
+        solver = Solver(
+            _pimple_config(execution, "single-header"),
+            str(tmp_path / "single-header"),
+            mesh_data=mesh if context.is_root else None,
+        )
+        solver.close()
+
+    local_count = stdout.getvalue().count("FVM Solver: Finite Volume Method")
+    counts = context.comm.allgather(local_count)
+    assert counts == [1] + [0] * (context.size - 1)
+
+
+def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    execution = ExecutionConfig.petsc_partitioned()
+    mesh = structured_box(2, 2, 2)
+    case_dir = Path(
+        context.bcast(
+            str(tmp_path / "root-owned-output") if context.is_root else None,
+            root=0,
+        )
+    )
+    stdout = io.StringIO()
+
+    with contextlib.redirect_stdout(stdout):
+        solver = Solver(
+            _pimple_config(execution, "root-owned-output"),
+            str(case_dir),
+            mesh_data=mesh if context.is_root else None,
+        )
+        solver.auto_write = False
+        solver.evolve(0.01)
+        solver.close()
+
+    outputs = context.comm.allgather(stdout.getvalue())
+    markers = (
+        "FVM Solver: Finite Volume Method",
+        "FVM SOLVER INFO",
+        "BOUNDARY CONDITIONS",
+        "Time-step: 1",
+        "SOLVER CONVERGENCE",
+        "CONSERVATION",
+        "Time for this step:",
+    )
+    for marker in markers:
+        assert marker in outputs[0]
+        assert all(marker not in output for output in outputs[1:])
+
+    context.barrier()
+    if context.is_root:
+        diagnostics = case_dir / "solution" / "diagnostics.jsonl"
+        forces = case_dir / "solution" / "forces_history.csv"
+        assert len(diagnostics.read_text(encoding="utf-8").splitlines()) == 1
+        force_lines = forces.read_text(encoding="utf-8").splitlines()
+        assert force_lines[0].startswith("time,step,dt,patch,")
+        assert len(force_lines) == 5
+        fvm_log = (case_dir / "solution" / "fvm.log").read_text(encoding="utf-8")
+        for marker in markers:
+            assert fvm_log.count(marker) == 1
+        assert "Step completed in" not in fvm_log
+
+
 def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     replicated_execution = ExecutionConfig.petsc_replicated()
     replicated_context = ParallelContext.create(replicated_execution)
@@ -270,6 +339,118 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         np.testing.assert_allclose(
             partitioned_forces[patch]["Ftot"], expected["Ftot"], rtol=1e-7, atol=2e-8
         )
+
+
+def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_path):
+    """The coupler sees one root-owned global field, never rank-local fragments."""
+    replicated_execution = ExecutionConfig.petsc_replicated()
+    context = ParallelContext.create(replicated_execution)
+    mesh = structured_box(5, 4, 3)
+    with contextlib.redirect_stdout(io.StringIO()):
+        reference = Solver(
+            _pimple_config(replicated_execution, "coupling-interface-reference"),
+            str(tmp_path / "coupling-interface-reference"),
+            mesh_data=mesh,
+        )
+        actual = Solver(
+            _pimple_config(
+                ExecutionConfig.petsc_partitioned(),
+                "coupling-interface-partitioned",
+            ),
+            str(tmp_path / "coupling-interface-partitioned"),
+            mesh_data=mesh if context.is_root else None,
+        )
+
+    partition = actual.parallel.partition
+    n_owned = len(partition.owned_global_ids)
+    global_ids = partition.owned_global_ids.astype(np.float64)
+    actual.U[:n_owned] = np.column_stack((global_ids, global_ids**2, -global_ids))
+    actual.parallel.exchange_halo(actual.U[: actual.mesh_data["n_elements"]])
+
+    velocity = actual.get_velocity_field()
+    centers = actual.get_cell_center_coordinates()
+    volumes = actual.get_cell_volumes()
+    reference_centers = reference.get_cell_center_coordinates()
+    reference_volumes = reference.get_cell_volumes()
+    expected_n = mesh["n_elements"] if context.is_root else 0
+    assert velocity.shape == (expected_n, 3)
+    assert centers.shape == (expected_n, 3)
+    assert volumes.shape == (expected_n,)
+    if context.is_root:
+        expected_ids = np.arange(mesh["n_elements"], dtype=np.float64)
+        np.testing.assert_array_equal(
+            velocity,
+            np.column_stack((expected_ids, expected_ids**2, -expected_ids)),
+        )
+        np.testing.assert_allclose(centers, reference_centers)
+        np.testing.assert_allclose(volumes, reference_volumes)
+
+    velocity_buffer = np.empty((expected_n, 3), dtype=np.float64)
+    assert actual.get_velocity_field_into(velocity_buffer) is velocity_buffer
+    np.testing.assert_array_equal(velocity_buffer, velocity)
+
+    patch = "ymin"
+    face_centers = actual.get_boundary_face_center_coordinates(patch)
+    face_normals = actual.get_boundary_face_normals(patch)
+    face_areas = actual.get_boundary_face_areas(patch)
+    reference_face_centers = reference.get_boundary_face_center_coordinates(patch)
+    if context.is_root:
+        np.testing.assert_allclose(face_centers, reference_face_centers)
+        assert face_normals.shape == face_centers.shape
+        assert face_areas.shape == (len(face_centers),)
+    else:
+        assert face_centers.shape == (0, 3)
+        assert face_normals.shape == (0, 3)
+        assert face_areas.shape == (0,)
+
+    # Repeated coupling calls reuse the immutable rank/face layout.
+    np.testing.assert_array_equal(actual.get_boundary_face_center_coordinates(patch), face_centers)
+
+    target = face_centers + np.array([0.25, -0.5, 0.75]) if context.is_root else np.empty((0, 3))
+    actual.set_dirichlet_velocity_boundary_condition_vec(target, patch)
+    boundary = actual._optional_patch(patch)
+    local_face_ids = np.empty(0, dtype=np.int64)
+    if boundary is not None:
+        start = boundary["startFace"]
+        stop = start + boundary["nFaces"]
+        local_face_ids = actual.mesh_data["global_face_ids"][start:stop]
+    ids_by_rank = actual.parallel.comm.allgather(local_face_ids)
+    sorted_face_ids = np.sort(np.concatenate(ids_by_rank))
+    expected_patch_values = (
+        [target[np.searchsorted(sorted_face_ids, rank_ids)] for rank_ids in ids_by_rank]
+        if context.is_root
+        else None
+    )
+    expected_local = actual.parallel.comm.scatter(expected_patch_values, root=0)
+    if boundary is not None:
+        np.testing.assert_allclose(boundary["value_U_field"], expected_local)
+    else:
+        assert expected_local.shape == (0, 3)
+
+    scalar_global = np.linspace(0.0, 1.0, mesh["n_elements"]) if context.is_root else np.empty(0)
+    vector_global = (
+        np.column_stack((scalar_global, 2.0 * scalar_global, -scalar_global))
+        if context.is_root
+        else np.empty((0, 3))
+    )
+    actual.set_cell_scalar_field("lambdaRelax", scalar_global)
+    actual.set_cell_vector_field(
+        "Utarget",
+        vector_global[:, 0],
+        vector_global[:, 1],
+        vector_global[:, 2],
+    )
+    cell_ids_by_rank = actual.parallel.comm.gather(partition.local_global_ids, root=0)
+    expected_scalar_payloads = (
+        [scalar_global[rank_ids] for rank_ids in cell_ids_by_rank] if context.is_root else None
+    )
+    expected_vector_payloads = (
+        [vector_global[rank_ids] for rank_ids in cell_ids_by_rank] if context.is_root else None
+    )
+    expected_scalar = actual.parallel.comm.scatter(expected_scalar_payloads, root=0)
+    expected_vector = actual.parallel.comm.scatter(expected_vector_payloads, root=0)
+    np.testing.assert_allclose(actual.registered_fields["lambdaRelax"], expected_scalar)
+    np.testing.assert_allclose(actual.registered_fields["Utarget"], expected_vector)
 
 
 def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):

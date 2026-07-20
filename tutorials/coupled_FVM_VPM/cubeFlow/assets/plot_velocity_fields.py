@@ -36,7 +36,7 @@ FIG = CASE_DIR / "figures"
 REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
 CMAP_VEL = COLORMAPS["velocity"]
 CMAP_ERR = COLORMAPS["error"]
-H_MESH = 0.05  # VPM/FVM spacing (cube_setup.py FVM_SPACING)
+H_MESH = 0.05  # VPM/FVM spacing (run_setup.py H_CORE)
 
 
 def _add_body_patch(ax):

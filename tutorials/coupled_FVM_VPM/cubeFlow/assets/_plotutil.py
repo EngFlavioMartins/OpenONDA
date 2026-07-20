@@ -54,7 +54,7 @@ def run_constants() -> dict:
     return {
         "U_inf": float(np.linalg.norm(u_inf)) or 1.0,
         "u_inf_vec": u_inf,
-        "D": 1.0,  # cube side length (CUBE_SIDE in cube_setup.py)
+        "D": 1.0,  # cube side length (CUBE_SIDE in run_setup.py)
         "nu": float(phys.get("nu", 1e-3)),
         "box": box
         or {
@@ -130,6 +130,12 @@ def load_flow_integrals() -> dict:
 
 
 def latest_vtu() -> Path | None:
+    # Parallel FVM output is a PVTU collection plus one VTU piece per rank.
+    # Always sample the collection; selecting the lexicographically last piece
+    # would silently plot only one partition of the domain.
+    collections = sorted(SOLUTION.glob("coupled_*_*.pvtu"))
+    if collections:
+        return collections[-1]
     files = sorted(SOLUTION.glob("coupled_*_*.vtu"))
     return files[-1] if files else None
 

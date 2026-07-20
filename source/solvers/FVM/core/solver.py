@@ -3,7 +3,6 @@
 import csv
 import json
 import os
-import sys
 from typing import Any
 
 import numpy as np
@@ -235,6 +234,10 @@ class Solver(OFWInterfaceMixin):
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         self.auto_write = True
         self.parallel = ParallelContext.create(self.config.execution)
+        self.logger = logging.Logging(
+            self.case_dir,
+            enabled=self.parallel.is_root,
+        )
         self.operators = create_discrete_operators(self.config.execution.operator_backend)
         if self.config.execution.linear_backend == "petsc":
             methods = {
@@ -292,7 +295,7 @@ class Solver(OFWInterfaceMixin):
             )
 
         # 0. UI Header
-        logging.print_openonda_header()
+        self.logger.header(self.config.execution.precision.replace("float", "f"))
         logging.Timer.start("Total Initialization")
 
         # 1. Mesh Management
@@ -301,7 +304,7 @@ class Solver(OFWInterfaceMixin):
         self._topology = None
         self._geometry = None
         gs = getattr(self.config.schemes, "gradient_scheme", "gauss")
-        logging.Timer.start("  Geometry Compute")
+        logging.Timer.start("Geometry Compute")
         if self.parallel.is_partitioned:
             if any(boundary.type_U == "cyclic" for boundary in self.config.boundaries):
                 raise NotImplementedError(
@@ -319,13 +322,27 @@ class Solver(OFWInterfaceMixin):
             if self.parallel.is_root:
                 try:
                     if mesh_data is not None:
+                        logging.Timer.start("Mesh Set (In-Memory)")
                         global_mesh = mesh_data
-                        logging.Timer.log("  Mesh Set (In-Memory)")
+                        logging.Timer.log(
+                            "Mesh Set (In-Memory)",
+                            sink=self.logger,
+                            detailed=True,
+                        )
                     else:
+                        logging.Timer.start("Mesh Load (Disk)")
                         global_mesh = mesh_io.load_poly_mesh(self.case_dir)
-                        logging.Timer.log("  Mesh Load (Disk)")
+                        logging.Timer.log(
+                            "Mesh Load (Disk)",
+                            sink=self.logger,
+                            detailed=True,
+                        )
                     validate_mesh(global_mesh)
-                    global_geo = geometry.compute_mesh_geometry(global_mesh, gradient_scheme=gs)
+                    global_geo = geometry.compute_mesh_geometry(
+                        global_mesh,
+                        gradient_scheme=gs,
+                        logger=self.logger,
+                    )
                     quality = validate_mesh(global_mesh, global_geo)
                     enforce_quality_thresholds(quality, self.config.mesh)
                     from ..io.checkpoint import mesh_hash
@@ -358,14 +375,27 @@ class Solver(OFWInterfaceMixin):
             self.mesh_data["_parallel_context"] = self.parallel
         else:
             if mesh_data is not None:
+                logging.Timer.start("Mesh Set (In-Memory)")
                 self.mesh_data = mesh_data
-                logging.Timer.log("  Mesh Set (In-Memory)")
+                logging.Timer.log(
+                    "Mesh Set (In-Memory)",
+                    sink=self.logger,
+                    detailed=True,
+                )
             else:
-                logging.Timer.start("  Mesh Load (Disk)")
+                logging.Timer.start("Mesh Load (Disk)")
                 self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
-                logging.Timer.log("  Mesh Load (Disk)")
+                logging.Timer.log(
+                    "Mesh Load (Disk)",
+                    sink=self.logger,
+                    detailed=True,
+                )
             validate_mesh(self.mesh_data)
-            self.geo_data = geometry.compute_mesh_geometry(self.mesh_data, gradient_scheme=gs)
+            self.geo_data = geometry.compute_mesh_geometry(
+                self.mesh_data,
+                gradient_scheme=gs,
+                logger=self.logger,
+            )
             self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
             enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
@@ -387,7 +417,11 @@ class Solver(OFWInterfaceMixin):
 
         prepare_matrix_assembly(self.mesh_data)
 
-        logging.Timer.log("  Geometry Compute")
+        logging.Timer.log(
+            "Geometry Compute",
+            sink=self.logger,
+            detailed=True,
+        )
 
         # 3. Component Setup
         self._initialize_fields()
@@ -420,10 +454,8 @@ class Solver(OFWInterfaceMixin):
             "velocity": 0,
         }
 
-        logging.Logging.solver_summary(self)
-        logging.Timer.log("Total Initialization")
-        print()
-        sys.stdout.flush()
+        initialization_time = logging.Timer.stop("Total Initialization")
+        self.logger.log_solver_info(self, initialization_time)
 
         from ..solve import simple_solver
 
@@ -507,7 +539,6 @@ class Solver(OFWInterfaceMixin):
         type and value for U, p, and nut.  Patches not found in the mesh
         trigger a warning.
         """
-        print("\nBoundary Conditions Setup:")
         for b_cfg in self.config.boundaries:
             found = False
             for b_mesh in self.boundaries:
@@ -538,7 +569,6 @@ class Solver(OFWInterfaceMixin):
                         b_mesh.pop("value_U_field", None)
                     else:
                         b_mesh["value_U_field"] = velocity
-                    print(f"  {b_cfg.name:<15} : {b_cfg.type_U:<12} U={b_cfg.value_U}")
                     found = True
                     break
             if not found:
@@ -570,11 +600,11 @@ class Solver(OFWInterfaceMixin):
         self.parallel.exchange_halo(self.U[:n_elements])
         self.parallel.exchange_halo(self.p[:n_elements])
 
-        logging.Timer.start("  Flux Init")
+        logging.Timer.start("Flux Init")
         from ..assemble import convection
 
         self.phi = convection.compute_mass_flow_rate(self.U, self.mesh_data, self.geo_data)
-        logging.Timer.log("  Flux Init")
+        logging.Timer.log("Flux Init", sink=self.logger, detailed=True)
 
     def _initialize_algorithm(self):
         """Initialise the numerical solver algorithm.
@@ -587,11 +617,12 @@ class Solver(OFWInterfaceMixin):
             ValueError: If the algorithm is not ``"SIMPLE"``, ``"PIMPLE"``,
                         or ``"PISO"``.
         """
-        logging.Timer.start("  Algorithm Init")
+        logging.Timer.start("Algorithm Init")
         params = dict(self.config.algorithm_params())
         params["_linear_backend"] = self.config.execution.linear_backend
         params["_operator_backend"] = self.operators.name
         params["_parallel_context"] = self.parallel
+        params["_logger"] = self.logger
         algo = self.config.pimple.algorithm.upper()
 
         if algo in ["PIMPLE", "PISO"]:
@@ -604,7 +635,7 @@ class Solver(OFWInterfaceMixin):
             )
         else:
             raise ValueError(f"Unsupported algorithm: {algo}")
-        logging.Timer.log("  Algorithm Init")
+        logging.Timer.log("Algorithm Init", sink=self.logger, detailed=True)
 
     def set_initial_velocity(self, values: np.ndarray) -> None:
         """Set a cell-centred initial velocity and rebuild dependent state.
@@ -687,8 +718,6 @@ class Solver(OFWInterfaceMixin):
                 raise RuntimeError(
                     f"Turbulence model {self.config.turbulence.model!r} returned no model"
                 )
-            info = self.turbulence.get_filter_info()
-            print(f"Turbulence model: {info['model']} (coeff={info['Cs']:.3g})")
 
         # Sync state
         self.flow_time = self.config.time.start_time
@@ -748,7 +777,7 @@ class Solver(OFWInterfaceMixin):
         self.ibm = IBMForcing(self.mesh_data, self.geo_data, body_list, h=h)
         self.algorithm.ibm = self.ibm
         diag = self.ibm.diagnostics()
-        print(
+        self.logger.info(
             f"Immersed boundary: {diag['n_markers']} markers, h={diag['h']:.4g}, "
             f"alpha={ {k: round(v, 3) for k, v in diag['alpha'].items()} }, "
             f"kernel sums [{diag['kernel_row_sum_min']:.3f}, "
@@ -759,6 +788,8 @@ class Solver(OFWInterfaceMixin):
 
     def _log_ibm_forces(self, step_dt: float) -> None:
         """Append per-body IBM forces (and Cd/Cl) to solution/ibm_forces_history.csv."""
+        if not self.parallel.is_root:
+            return
         rho = self.config.transport.density
         forces = self.ibm.body_forces(rho=rho)
         ref_U = getattr(self.config.forces, "ref_velocity", 1.0)
@@ -798,7 +829,7 @@ class Solver(OFWInterfaceMixin):
         for name, F in forces.items():
             msg += f" {name}: Cd={F[0] / q:.4f} Cl={F[1] / q:.4f}"
         msg += f" | slip={slip:.2e}"
-        print(msg)
+        self.logger.message(msg)
 
     def _fringe_source(self):
         """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − U) from
@@ -857,8 +888,7 @@ class Solver(OFWInterfaceMixin):
         self._invalidate_derived_fields()
         self.state = FieldState(self.U, self.p, self.phi)
         self._last_residuals = residuals
-        if self.parallel.is_root:
-            logging.Logging.convergence_info(residuals)
+        self.logger.convergence_info(residuals)
 
         # Continuity (incompressibility) diagnostic: a divergence-free solution
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
@@ -870,11 +900,7 @@ class Solver(OFWInterfaceMixin):
         local_sum = float(np.sum(np.abs(cont[:n_owned])))
         self.continuity_max = float(self.parallel.global_max(local_max))
         self.continuity_sum = float(self.parallel.global_sum(local_sum))
-        if self.parallel.is_root:
-            print(
-                f"  continuity: max|div U| = {self.continuity_max:.3e} 1/s, "
-                f"sum|imbalance| = {self.continuity_sum:.3e} m3/s"
-            )
+        self.logger.continuity_info(self.continuity_max, self.continuity_sum)
 
         self.last_diagnostics = self._build_step_diagnostics(step_dt, residuals)
         self._enforce_acceptance_policy(self.last_diagnostics)
@@ -1022,8 +1048,8 @@ class Solver(OFWInterfaceMixin):
             )
 
         step_dt = dt if dt is not None else self.dt
-        logging.Timer.start(f"  Step {self.time_step + 1}")
-        logging.Logging.step_info(self.flow_time + step_dt, self.time_step + 1, step_dt)
+        logging.Timer.start(f"Step {self.time_step + 1}")
+        self.logger.step_info(self.flow_time + step_dt, self.time_step + 1, step_dt)
 
         self.solve_pimple(step_dt)
 
@@ -1032,17 +1058,18 @@ class Solver(OFWInterfaceMixin):
             Co_field = diagnostics.compute_courant_number(
                 self.U, self.phi, step_dt, self.mesh_data, self.geo_data
             )
-            self.cfl_max = float(np.max(Co_field))
-            print(
-                f"  max Co = {self.cfl_max:.3f}  dt = {step_dt:.6f} s  (target Co <= {cfg_time.max_cfl})"
+            n_owned = (
+                self.parallel.n_owned
+                if self.parallel.is_partitioned
+                else self.mesh_data["n_elements"]
             )
-            sys.stdout.flush()
+            self.cfl_max = float(self.parallel.global_max(float(np.max(Co_field[:n_owned]))))
+            self.logger.courant_info(self.cfl_max, step_dt, cfg_time.max_cfl)
 
         self.advance_time()
 
-        elapsed = logging.Timer.log(f"  Step {self.time_step}")
-        print(f"\nStep completed in {elapsed:.3f} s")
-        sys.stdout.flush()
+        elapsed = logging.Timer.stop(f"Step {self.time_step}")
+        self.logger.step_timing(elapsed)
 
     def advance_time(self) -> None:
         """Commit the solved field as the new time level and advance the clock
@@ -1062,6 +1089,7 @@ class Solver(OFWInterfaceMixin):
 
         # y+ and Turbulence info
         patch_names = getattr(self.config.forces, "yplus_patches", None)
+        yplus_stats = {}
         if self.parallel.is_root or self.parallel.is_partitioned:
             yplus_stats = diagnostics.compute_y_plus(
                 self.U,
@@ -1075,11 +1103,8 @@ class Solver(OFWInterfaceMixin):
                 yplus_stats = diagnostics.merge_partition_yplus(
                     self.parallel.comm.allgather(yplus_stats)
                 )
-        if self.parallel.is_root:
-            logging.Logging.yplus_info(yplus_stats)
-        # Expose the latest y+ stats so a driver (e.g. the FVM-VPM coupler,
-        # whose stdout redirection would otherwise send the print above to the
-        # VPM log) can re-log min/max to the FVM's own output.
+        self.logger.yplus_info(yplus_stats)
+        # Expose the latest y+ stats for coupled-driver health diagnostics.
         self.last_yplus = yplus_stats
 
         # Force computation and logging
@@ -1088,6 +1113,7 @@ class Solver(OFWInterfaceMixin):
             force_interval = cfg_time.write_interval
 
         self._force_log_counter += 1
+        forces = {}
         if (self.parallel.is_root or self.parallel.is_partitioned) and (
             self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
         ):
@@ -1181,18 +1207,13 @@ class Solver(OFWInterfaceMixin):
                             C.get("Cm"),
                         ]
                     )
-            log_msg = f"  Forces logged: {len(forces)} patch(es)"
-            for pname, fdata in forces.items():
-                C = fdata.get("coeffs", {})
-                log_msg += f" | {pname}: Cd={C.get('Cd', 0):.4f} Cl={C.get('Cl', 0):.4f}"
-            print(log_msg)
-            sys.stdout.flush()
+            self.logger.force_info(forces)
 
         if self.parallel.is_root and self.ibm is not None:
             self._log_ibm_forces(step_dt)
 
         if self.parallel.is_root and self.turbulence and self.nut is not None:
-            logging.Logging.turbulence_info(self.nut, self.config.transport.nu)
+            self.logger.turbulence_info(self.nut, self.config.transport.nu)
 
         # Output control — time-based if write_interval_time is set, else step-based
         if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
@@ -1296,8 +1317,7 @@ class Solver(OFWInterfaceMixin):
                 if self.pvd_manager is None:
                     self.pvd_manager = PVDManager(pvd_file)
                 self.pvd_manager.add_step(self.flow_time, str(collection))
-                print(f"  Output written: {stem}.pvtu")
-                sys.stdout.flush()
+                self.logger.output_info(f"Output written: {stem}.pvtu")
             return
 
         if self.config.execution.output_mode == "threaded":
@@ -1322,18 +1342,19 @@ class Solver(OFWInterfaceMixin):
             self.pvd_manager.add_step(self.flow_time, filename)
             action = "written"
 
-        print(f"  Output {action}: {os.path.basename(filename)}")
-        sys.stdout.flush()
+        self.logger.output_info(f"Output {action}: {os.path.basename(filename)}")
 
     def flush_output(self) -> None:
         """Wait for buffered visualization output and surface writer failures."""
         if self._buffered_vtk_writer is not None:
             self._buffered_vtk_writer.flush()
+        self.logger.flush()
 
     def close(self) -> None:
         """Finish background output resources owned by the solver."""
         if self._buffered_vtk_writer is not None:
             self._buffered_vtk_writer.close()
+        self.logger.close()
 
     def __enter__(self):
         return self
@@ -1347,11 +1368,4 @@ class Solver(OFWInterfaceMixin):
         Displays case name, flow time, time step, cell count, and
         active algorithm.
         """
-        print("-" * 40)
-        print("FVM Solver Information")
-        print(f"  Case      : {self.config.case_name}")
-        print(f"  Time      : {self.flow_time:.5f}")
-        print(f"  Step      : {self.time_step}")
-        print(f"  Cells     : {self.mesh_data['n_elements']}")
-        print(f"  Algorithm : {self.config.pimple.algorithm}")
-        print("-" * 40)
+        self.logger.solver_state(self)

@@ -15,6 +15,7 @@ from .config.types import (
     ExecutionConfig,
     ForcesConfig,
     FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     MeshConfig,
     PimpleControl,
@@ -27,6 +28,7 @@ from .config.types import (
 )
 from .core.solver import Solver
 from .core.state import FieldState
+from .factory import setup_fvm_solver
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
@@ -37,6 +39,8 @@ __all__ = [
     "Solver",
     "__version__",
     "FVMConfig",
+    "FVMSetup",
+    "setup_fvm_solver",
     "ExecutionConfig",
     "MeshConfig",
     "RunAcceptancePolicy",

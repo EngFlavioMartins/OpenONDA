@@ -20,6 +20,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from .config.types import CouplerConfig, CouplerSetup
+from .factory import setup_coupler
 
 
 def __getattr__(name: str):
@@ -34,4 +35,5 @@ __all__ = [
     "CouplerConfig",
     "CouplerSetup",
     "FVMVPMCoupler",
+    "setup_coupler",
 ]

@@ -46,7 +46,16 @@ class MeshGeometry:
 
 
 def compute_geometry(
-    points, faces, owners, neighbours, n_elements, n_faces, n_interior_faces, element_faces
+    points,
+    faces,
+    owners,
+    neighbours,
+    n_elements,
+    n_faces,
+    n_interior_faces,
+    element_faces,
+    *,
+    logger=None,
 ):
     """
     Compute geometric properties of the mesh.
@@ -93,7 +102,7 @@ def compute_geometry(
     # --- Process Basic Face Geometry ---
     from ..io import logging
 
-    logging.Timer.start("    - Basic Face Geometry")
+    logging.Timer.start("Basic Face Geometry")
 
     # 1. Convert faces to a compact padded array.  Rectilinear meshes already
     # store fixed-width quads contiguously, so avoid rebuilding them through a
@@ -176,10 +185,14 @@ def compute_geometry(
     face_sf = sf_sum
     face_areas = area_sum
 
-    logging.Timer.log("    - Basic Face Geometry")
+    logging.Timer.log(
+        "Basic Face Geometry",
+        sink=logger,
+        detailed=True,
+    )
 
     # --- Process Element Geometry ---
-    logging.Timer.start("    - Element Geometry")
+    logging.Timer.start("Element Geometry")
 
     # 1. Convert element faces to a padded array.  ``compute_mesh_geometry``
     # passes CSR connectivity so this avoids a million-element list-of-lists
@@ -266,7 +279,11 @@ def compute_geometry(
 
     element_centroids = local_vol_centroid_sum / safe_vol[:, np.newaxis]
     element_volumes = local_vol_sum
-    logging.Timer.log("    - Element Geometry")
+    logging.Timer.log(
+        "Element Geometry",
+        sink=logger,
+        detailed=True,
+    )
 
     # --- Process Secondary Face Geometry ---
     cfd_small = 1e-15  # Matches uFVM cfdSMALL?
@@ -344,7 +361,7 @@ def compute_geometry(
     }
 
 
-def compute_mesh_geometry(mesh_data, gradient_scheme="gauss"):
+def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, logger=None):
     """Compute cell and face geometry for a validated mesh dictionary."""
     # Build and retain compact cell-to-face CSR connectivity.  It is shared by
     # the typed topology and VTK exporter, and avoids repeatedly materialising
@@ -372,6 +389,7 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss"):
         mesh_data["n_faces"],
         mesh_data["n_interior_faces"],
         (element_faces, cell_face_offsets),
+        logger=logger,
     )
 
     # Pre‑compute LSQ gradient geometry if requested

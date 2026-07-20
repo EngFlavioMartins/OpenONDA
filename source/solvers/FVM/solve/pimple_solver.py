@@ -75,6 +75,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         momentum_diagnostics = {}
         linear_results = []
         outer_diagnostics = []
+        logger = self.params.get("_logger")
 
         for outer in range(n_outer):
 
@@ -107,21 +108,26 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
                     failure_policy=self.params.get("linear_failure_policy", "raise"),
+                    log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
                     operator_backend=self.params.get("_operator_backend", "numpy"),
                     return_diagnostics=True,
                 )
 
-            logging.Timer.start("    Momentum Predictor")
+            logging.Timer.start("Momentum Predictor")
             U_star, A_U, momentum_diagnostics = _solve_predictor(source_explicit)
             linear_results.extend(
                 values["linear_result"] for values in momentum_diagnostics.values()
             )
-            logging.Timer.log("    Momentum Predictor")
+            logging.Timer.log(
+                "Momentum Predictor",
+                sink=logger,
+                detailed=True,
+            )
 
             ibm = getattr(self, "ibm", None)
             if ibm is not None:
-                logging.Timer.start("    IBM Forcing")
+                logging.Timer.start("IBM Forcing")
                 n_loops = int(self.params.get("ibm_forcing_loops", 2))
                 if bool(self.params["ibm_second_solve"]):
                     src_ibm = rho * ibm.compute_force(U_star, dt)
@@ -135,14 +141,18 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 else:
                     ibm.begin_step()
                     ibm.multidirect_correct(U_star, dt, n_iter=max(n_loops, 2))
-                logging.Timer.log("    IBM Forcing")
+                logging.Timer.log(
+                    "IBM Forcing",
+                    sink=logger,
+                    detailed=True,
+                )
 
             U_iter = U_star.copy()
 
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
                 for non_ortho in range(n_non_ortho + 1):
-                    logging.Timer.start("    Pressure Correction")
+                    logging.Timer.start("Pressure Assembly")
                     A_p, b_p, phi_star = (
                         simple_solver.assemble_pressure_correction_equation_rhie_chow(
                             U_iter,
@@ -158,7 +168,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             operator_backend=self.params.get("_operator_backend", "numpy"),
                         )
                     )
-                    logging.Timer.log("    Pressure Assembly")
+                    logging.Timer.log(
+                        "Pressure Assembly",
+                        sink=logger,
+                        detailed=True,
+                    )
                     has_pressure_nullspace = simple_solver._pressure_requires_constraint(
                         self.boundaries, U_iter, self.mesh_data, self.geo_data
                     )
@@ -167,7 +181,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     pressure_initial_residual = matrix_assembly.normalized_residual(
                         A_p, zero_guess, b_p
                     )
-                    logging.Timer.start("    Pressure Solve")
+                    logging.Timer.start("Pressure Solve")
                     pressure_tol = float(self.params.get("pressure_tol", 1e-8))
                     pressure_maxiter = int(self.params.get("pressure_maxiter", 500))
                     amg_tol = self.params.get("amg_tol")
@@ -185,6 +199,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
                         failure_policy=self.params.get("linear_failure_policy", "raise"),
+                        log_sink=logger,
                         nullspace=(
                             "constant"
                             if has_pressure_nullspace and pressure_constraint == "nullspace"
@@ -201,9 +216,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         pressure_final_residual = matrix_assembly.normalized_residual(
                             A_p, p_prime, b_p
                         )
-                    logging.Timer.log("    Pressure Solve")
+                    logging.Timer.log(
+                        "Pressure Solve",
+                        sink=logger,
+                        detailed=True,
+                    )
 
-                    logging.Timer.start("    Velocity Correction")
+                    logging.Timer.start("Velocity Correction")
                     U_iter, corrected_phi = simple_solver.correct_velocity_and_flux(
                         U_iter,
                         phi_star.copy(),
@@ -218,7 +237,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     if non_ortho == n_non_ortho:
                         phi = corrected_phi
 
-                    logging.Timer.log("    Velocity Correction")
+                    logging.Timer.log(
+                        "Velocity Correction",
+                        sink=logger,
+                        detailed=True,
+                    )
 
                     p[:n_elem] += alpha_p * p_prime
                     simple_solver.update_scalar_boundaries(

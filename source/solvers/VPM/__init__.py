@@ -1,7 +1,7 @@
 """
 OpenONDA Vortex Particle Method (VPM) solver package.
 
-Public API: Solver, SolverConfig, StabilizationConfig, VelocityConfig,
+Public API: Solver, VPMSetup, StabilizationConfig, VelocityConfig,
 ForceConfig, ParticleDistributor, and PanelSolver.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
@@ -32,8 +32,19 @@ The module is organized into several sub-packages:
 """
 
 from .boundary_elements.panels.solver.panel_solver import PanelSolver
-from .config.types import ForceConfig, SolverConfig, StabilizationConfig, VelocityConfig
+from .config.types import (
+    AdvectionConfig,
+    ForceConfig,
+    SolverConfig,
+    StabilizationConfig,
+    StretchingConfig,
+    TurbulenceConfig,
+    VelocityConfig,
+    ViscousConfig,
+    VPMSetup,
+)
 from .core.solver import Solver
+from .factory import setup_vpm_solver
 from .particles.distribution import ParticleDistributor
 
 # VLM module (optional import)
@@ -48,6 +59,12 @@ except ImportError:
 __all__ = [
     "Solver",
     "SolverConfig",
+    "VPMSetup",
+    "setup_vpm_solver",
+    "AdvectionConfig",
+    "StretchingConfig",
+    "TurbulenceConfig",
+    "ViscousConfig",
     "StabilizationConfig",
     "VelocityConfig",
     "ForceConfig",

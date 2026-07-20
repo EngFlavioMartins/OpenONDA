@@ -3,7 +3,6 @@
 from dataclasses import asdict
 import json
 import os
-import sys
 from typing import Any
 
 import numpy as np
@@ -46,8 +45,7 @@ class SolverIO:
         output_dir = os.path.join(self.case_dir, time_dir)
         os.makedirs(output_dir, exist_ok=True)
 
-        print(f"  Writing legacy OpenFOAM snapshot to {output_dir}")
-        sys.stdout.flush()
+        self.solver.logger.output_info(f"Writing legacy OpenFOAM snapshot to {output_dir}")
 
         # Prepare fields for IO (include ghost cells via owner copy)
         fields_to_write = self._gather_fields_for_io()
@@ -120,7 +118,7 @@ class SolverIO:
             vort = self.solver._vorticity_field()
             fields.append({"name": "Co", "type": "volScalarField", "phi": _extend(Co)})
             fields.append({"name": "vorticity", "type": "volVectorField", "phi": _extend(vort)})
-            print(f"    - Max Co: {np.max(Co):.3f}")
+            self.solver.logger.info(f"Maximum Courant number: {np.max(Co):.3e}")
 
         if hasattr(self.solver, "nut") and self.solver.nut is not None:
             fields.append(

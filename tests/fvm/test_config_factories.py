@@ -1,3 +1,5 @@
+import pytest
+
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
     ForcesConfig,
@@ -9,6 +11,7 @@ from source.solvers.FVM.config.types import (
     TransportConfig,
     TurbulenceConfig,
 )
+from source.solvers.FVM.factory import _runtime_setup
 
 
 class TestConfigFactories:
@@ -81,6 +84,7 @@ class TestConfigFactories:
     def test_fvm_config_roundtrip_json(self, tmp_path):
         config = FVMConfig(
             case_name="test_case",
+            cores=3,
             mesh=MeshConfig.block_mesh(),
             time=TimeConfig.transient(dt=0.1, duration=10.0),
             transport=TransportConfig.air(),
@@ -90,6 +94,7 @@ class TestConfigFactories:
         config.save(path)
         loaded = FVMConfig.load(path)
         assert loaded.case_name == "test_case"
+        assert loaded.cores == 3
         assert loaded.time.delta_t == 0.1
         assert loaded.pimple.algorithm == "PIMPLE"
         assert loaded.boundaries[0].name == "in"
@@ -115,3 +120,24 @@ class TestConfigFactories:
         config.save(path)
 
         assert FVMConfig.load(path) == config
+
+    def test_fvm_setup_validates_cores(self):
+        with pytest.raises(ValueError, match="at least one"):
+            FVMConfig(case_name="invalid", cores=0)
+        with pytest.raises(TypeError, match="integer"):
+            FVMConfig(case_name="invalid", cores=True)
+
+    def test_cores_select_partitioned_petsc_internally(self):
+        user_setup = FVMConfig(case_name="parallel", cores=4)
+        runtime_setup = _runtime_setup(user_setup)
+
+        assert user_setup.execution.parallel_mode == "serial"
+        assert runtime_setup.execution.parallel_mode == "petsc_partitioned"
+        assert runtime_setup.execution.linear_backend == "petsc"
+
+    def test_physics_first_name_is_canonical(self):
+        from source.solvers.FVM import FVMSetup
+
+        setup = FVMSetup(case_name="named")
+        assert type(setup).__name__ == "FVMSetup"
+        assert FVMConfig is FVMSetup

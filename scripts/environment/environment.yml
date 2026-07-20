@@ -3,10 +3,9 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  # Taichi 1.7.x, used by the VPM/cubeFlow backend, is validated here on
-  # Python 3.10.  Keeping the Conda recipe aligned with the runnable tutorial
-  # environment avoids a solver that installs successfully but cannot import.
-  - python=3.10
+  # Python 3.11 is the single supported runtime across FVM, VPM/Taichi,
+  # PETSc/MPI, visualization, and the official OpenVSP Python package.
+  - python=3.11
   - pip
   # Build toolchain (needed to compile the OFW Cython/C++ extension)
   - c-compiler
@@ -37,6 +36,10 @@ dependencies:
   # not the production FVM/VPM environment used to run a case.
   - pytest>=8
   - ruff>=0.9
+  # Fast type checker for the agentic type-check loop (see AGENTS.md / pyproject
+  # [tool.pyrefly]). Used by Claude Code and Codex/ChatGPT to catch signature and
+  # Optional-handling regressions in FVM/coupler changes before they land.
+  - pyrefly>=1.1
   - pip:
     # Keep Pydantic and its compiled core under one package manager.
     - pydantic==2.13.4

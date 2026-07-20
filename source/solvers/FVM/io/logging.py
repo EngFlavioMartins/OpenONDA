@@ -1,384 +1,423 @@
-"""
-Logging module for FVM solver.
-==============================
+"""Rank-aware console and file logging for the native FVM solver."""
 
-Author: OpenONDA Team
-Date: January 2026
-"""
+from __future__ import annotations
 
 from datetime import datetime
 import getpass
 import os
+from pathlib import Path
 import platform
 import socket
 import sys
+import time
+from typing import Any, TextIO
+
+import numpy as np
 
 from source.version import __version__
 
+_BAR_WIDTH = 80
 
-def print_openonda_header(precision="f64"):
-    """
-    Print the OpenONDA solver header banner in OpenFOAM style.
 
-    Displays version, build architecture, precision, execution info,
-    hostname, user, and PID in a formatted box.
-
-    Args:
-        precision (str): Floating-point precision label (e.g., ``"f64"``).
-            Defaults to ``"f64"``.
-
-    Example:
-        >>> print_openonda_header("f64")
-    """
+def format_openonda_header(precision: str | None = "f64") -> str:
+    """Return the OpenONDA FVM startup banner."""
     now = datetime.now()
-    date_str = now.strftime("%b %d %Y")
-    time_str = now.strftime("%H:%M:%S")
-
     try:
         hostname = socket.gethostname()
     except Exception:
         hostname = "unknown"
-
     try:
         username = getpass.getuser()
     except Exception:
         username = "unknown"
 
-    # Get Python and platform info
-    python_version = platform.python_version()
-    system_info = f"{platform.system()}; python={python_version}; arch={platform.machine()}"
-
-    pid = os.getpid()
-
+    system_info = (
+        f"{platform.system()}; python={platform.python_version()}; arch={platform.machine()}"
+    )
     width = 91
-
-    s = "\n/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /\n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "   ░██████                                      ░██████   ░███    ░██ ░███████      ░███    \n"
-    s += "  ░██   ░██                                    ░██   ░██  ░████   ░██ ░██   ░██    ░██░██   \n"
-    s += " ░██     ░██ ░████████   ░███████  ░████████  ░██     ░██ ░██░██  ░██ ░██    ░██  ░██  ░██  \n"
-    s += " ░██     ░██ ░██    ░██ ░██    ░██ ░██    ░██ ░██     ░██ ░██ ░██ ░██ ░██    ░██ ░█████████ \n"
-    s += " ░██     ░██ ░██    ░██ ░█████████ ░██    ░██ ░██     ░██ ░██  ░██░██ ░██    ░██ ░██    ░██ \n"
-    s += "  ░██   ░██  ░███   ░██ ░██        ░██    ░██  ░██   ░██  ░██   ░████ ░██   ░██  ░██    ░██ \n"
-    s += "   ░██████   ░██░█████   ░███████  ░██    ░██   ░██████   ░██    ░███ ░███████   ░██    ░██ \n"
-    s += "             ░██                                                                            \n"
-    s += "             ░██                                                                            \n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "| O pen       | " + "".ljust(width - 16) + "|\n"
-    s += (
+    lines = [
+        "",
+        "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
+        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
+        "   ░██████                                      ░██████   ░███    ░██ ░███████      ░███    ",
+        "  ░██   ░██                                    ░██   ░██  ░████   ░██ ░██   ░██    ░██░██   ",
+        " ░██     ░██ ░████████   ░███████  ░████████  ░██     ░██ ░██░██  ░██ ░██    ░██  ░██  ░██  ",
+        " ░██     ░██ ░██    ░██ ░██    ░██ ░██    ░██ ░██     ░██ ░██ ░██ ░██ ░██    ░██ ░█████████ ",
+        " ░██     ░██ ░██    ░██ ░█████████ ░██    ░██ ░██     ░██ ░██  ░██░██ ░██    ░██ ░██    ░██ ",
+        "  ░██   ░██  ░███   ░██ ░██        ░██    ░██  ░██   ░██  ░██   ░████ ░██   ░██  ░██    ░██ ",
+        "   ░██████   ░██░█████   ░███████  ░██    ░██   ░██████   ░██    ░███ ░███████   ░██    ░██ ",
+        "             ░██                                                                            ",
+        "             ░██                                                                            ",
+        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
+        "| O pen       | " + "".ljust(width - 16) + "|",
         "| O perator   | "
         + "OpenONDA: Operator for Numerical Design & Aerodynamics.".ljust(width - 16)
-        + "|\n"
-    )
-    s += "| N umer.     | " + f"Version: {__version__}".ljust(width - 16) + "|\n"
-    s += (
-        "| D esign     | "
-        + "Website: https://github.com/EngFlavioMartins".ljust(width - 16)
-        + "|\n"
-    )
-    s += "| A erodyn.   | " + "FVM Solver: Finite Volume Method".ljust(width - 16) + "|\n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += f"Build  : OpenONDA={__version__}\n"
-    s += f"Arch   : {system_info}\n"
+        + "|",
+        "| N umer.     | " + f"Version: {__version__}".ljust(width - 16) + "|",
+        "| D esign     | " + "Website: https://github.com/EngFlavioMartins".ljust(width - 16) + "|",
+        "| A erodyn.   | " + "FVM Solver: Finite Volume Method".ljust(width - 16) + "|",
+        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
+        f"Build  : OpenONDA={__version__}",
+        f"Arch   : {system_info}",
+    ]
     if precision is not None:
-        s += f"Precision: {precision}\n"
-    s += "Exec   : FVM Solver\n"
-    s += f"Date   : {date_str}\n"
-    s += f"Time   : {time_str}\n"
-    s += f"Host   : {hostname}\n"
-    s += f"User   : {username}\n"
-    s += f"PID    : {pid}\n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /\n"
+        lines.append(f"Precision: {precision}")
+    lines.extend(
+        [
+            "Exec   : FVM Solver",
+            f"Date   : {now:%b %d %Y}",
+            f"Time   : {now:%H:%M:%S}",
+            f"Host   : {hostname}",
+            f"User   : {username}",
+            f"PID    : {os.getpid()}",
+            "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
+            "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
+        ]
+    )
+    return "\n".join(lines)
 
-    print(s)
-    sys.stdout.flush()
+
+def print_openonda_header(precision: str | None = "f64") -> None:
+    """Print the FVM banner to the current console.
+
+    Kept as a compatibility helper; production solver output goes through
+    :class:`Logging`.
+    """
+    print(format_openonda_header(precision), flush=True)
 
 
 class Logging:
-    """
-    Centralised logging class for FVM solver output.
+    """Single FVM output sink and VPM-style formatter.
 
-    Provides static methods to print solver initialisation summaries,
-    per-step information, convergence residuals, wall y+ statistics,
-    and turbulence diagnostics.
-
-    All methods print directly to stdout and flush immediately to
-    ensure progress is visible in real-time (e.g. in CI or remote runs).
+    Rank zero tees messages to the live console and ``solution/fvm.log``.
+    Worker ranks use a disabled instance, so call sites do not need their own
+    MPI print guards. The console stream is resolved at emission time, which
+    keeps pytest capture and user redirection working.
     """
 
-    @staticmethod
-    def solver_summary(solver):
-        """
-        Print a detailed FVM solver initialisation summary.
+    def __init__(
+        self,
+        case_dir: str | Path,
+        *,
+        enabled: bool = True,
+        filename: str = "fvm.log",
+        console: bool = True,
+    ) -> None:
+        self.enabled = bool(enabled)
+        self.console = bool(console)
+        self._file: TextIO | None = None
+        self._closed = False
+        self._step_wall_time = 0.0
+        self.log_file_path: Path | None = None
 
-        Reports case configuration (algorithm, linear solver), mesh
-        statistics (cells, faces, boundaries), numerical parameters
-        (time step, relaxation factors), transport properties, and
-        turbulence-model settings.
-
-        Args:
-            solver: The FVM solver instance. Expected to have:
-                ``solver.config`` with ``case_name``, ``solver``,
-                ``time``, ``transport``, and optionally ``turbulence``;
-                ``solver.mesh_data`` with ``n_elements``, ``n_faces``,
-                ``n_interior_faces``, and ``boundary``.
-
-        Example:
-            >>> Logging.solver_summary(solver)
-        """
-        print("-" * 60)
-        print("FVM SOLVER INITIALIZATION SUMMARY")
-        print("-" * 60)
-
-        config = solver.config
-        mesh = solver.mesh_data
-
-        print("CASE CONFIGURATION:")
-        print(f"  Case Name                : {config.case_name}")
-        print(f"  Algorithm                : {config.pimple.algorithm}")
-        print(f"  Linear Solver            : {config.linear.linear_solver}")
-
-        print("\nMESH STATISTICS:")
-        print(f"  Elements (Cells)         : {mesh['n_elements']}")
-        print(f"  Faces                    : {mesh['n_faces']}")
-        print(f"  Interior Faces           : {mesh['n_interior_faces']}")
-        print(f"  Boundary Faces           : {mesh['n_faces'] - mesh['n_interior_faces']}")
-        print(f"  Boundaries               : {len(mesh['boundary'])}")
-        for b in mesh["boundary"]:
-            print(f"    - {b['name']:<15} : {b['nFaces']} faces ({b['type']})")
-
-        print("\nNUMERICAL PARAMETERS:")
-        print(f"  Time Step (dt)           : {config.time.delta_t} s")
-        print(f"  End Time                 : {config.time.end_time} s")
-        print(f"  Under-relaxation (U)     : {config.pimple.alpha_u}")
-        print(f"  Under-relaxation (p)     : {config.pimple.alpha_p}")
-        if config.pimple.algorithm.upper() == "PIMPLE":
-            print(f"  Correctors               : {config.pimple.n_correctors}")
-            print(f"  Outer Correctors         : {config.pimple.n_outer_correctors}")
-
-        print("\nTRANSPORT PROPERTIES:")
-        print(f"  Density (density)        : {config.transport.density}")
-        print(f"  Viscosity (nu)           : {config.transport.nu}")
-
-        # Turbulence model
-        if hasattr(config, "turbulence") and config.turbulence is not None:
-            turb = config.turbulence
-            print("")
-            print("TURBULENCE MODEL:")
-            print(f"  Model                    : {turb.model}")
-            print(f"  Smagorinsky C_s         : {turb.Cs}")
-            print(f"  Dynamic                  : {turb.dynamic}")
-        else:
-            print("")
-            print("TURBULENCE MODEL:")
-            print("  Status: Not initialized")
-
-        print("-" * 60)
-        print()
-        sys.stdout.flush()
-
-    @staticmethod
-    def step_info(time, step, dt):
-        """
-        Print the current time-step header.
-
-        Args:
-            time (float): Current flow time in seconds.
-            step (int): Current time-step index (1-based).
-            dt (float): Current time-step size in seconds.
-
-        Example:
-            >>> Logging.step_info(0.015, 150, 0.0001)
-            >>> [Time-step: 150] Flow time: 0.015 s (dt = 0.0001 s)
-        """
-        print(f"\n>>> [Time-step: {step:d}] Flow time: {time:.5g} s (dt = {dt:.5g} s)")
-
-    @staticmethod
-    def convergence_info(residuals):
-        """
-        Print formatted convergence residuals for the current iteration.
-
-        Each field and its associated residual value is printed using
-        scientific notation.
-
-        Args:
-            residuals (dict): Dictionary mapping field names (str) to
-                residual values (float), e.g. ``{"U_x": 1.2e-4, "p": 3.5e-6}``.
-
-        Returns:
-            None
-
-        Example:
-            >>> Logging.convergence_info({"U_x": 1.2e-4, "p": 3.5e-6})
-              Convergence residuals:
-                U_x        : 1.200e-04
-                p          : 3.500e-06
-        """
-        if not residuals:
-            return
-
-        print("  Convergence residuals:")
-        for field, res in residuals.items():
-            print(f"    {field:<10} : {res:.3e}")
-        sys.stdout.flush()
-
-    @staticmethod
-    def yplus_info(yplus_stats):
-        """
-        Print y+ statistics for wall boundaries.
-
-        For each wall patch, the minimum, maximum, and average y+ values
-        are displayed. This is useful for verifying near-wall mesh
-        resolution (target values depend on the turbulence model).
-
-        Args:
-            yplus_stats (dict): Dictionary mapping patch names (str) to
-                dicts with keys ``"min"``, ``"max"``, ``"avg"`` (float),
-                e.g. ``{"lower_wall": {"min": 0.5, "max": 2.1, "avg": 1.3}}``.
-
-        Returns:
-            None
-
-        Example:
-            >>> Logging.yplus_info({"wall": {"min": 0.3, "max": 1.8, "avg": 1.1}})
-              y+ statistics:
-                wall           : min=0.30, max=1.80, avg=1.10
-        """
-        if not yplus_stats:
-            return
-
-        print("  y+ statistics:")
-        for name, stats in yplus_stats.items():
-            print(
-                f"    {name:<15} : min={stats['min']:.2f}, max={stats['max']:.2f}, avg={stats['avg']:.2f}"
+        if self.enabled:
+            solution_dir = Path(case_dir).resolve() / "solution"
+            solution_dir.mkdir(parents=True, exist_ok=True)
+            self.log_file_path = solution_dir / filename
+            self._file = self.log_file_path.open(
+                "w",
+                buffering=1,
+                encoding="utf-8",
             )
 
+    def message(self, text: str = "", *, flush: bool = False) -> None:
+        """Emit one complete message to every configured sink."""
+        if not self.enabled or self._closed:
+            return
+        if self.console:
+            print(text, file=sys.stdout, flush=flush)
+        if self._file is not None:
+            print(text, file=self._file, flush=True)
+
+    def info(self, text: str, *, flush: bool = False) -> None:
+        """Emit an informational message."""
+        self.message(f"[INFO] {text}", flush=flush)
+
+    def warning(self, text: str, *, flush: bool = True) -> None:
+        """Emit a warning message."""
+        self.message(f"(Warning) {text}", flush=flush)
+
+    def header(self, precision: str | None = "f64") -> None:
+        """Emit the OpenONDA FVM startup banner."""
+        self.message(format_openonda_header(precision), flush=True)
+
     @staticmethod
-    def turbulence_info(nut, nu_molecular):
-        """
-        Print turbulence diagnostics for the turbulent viscosity field.
+    def _section(title: str, items: list[tuple[str, str]]) -> list[str]:
+        lines = ["", "-" * 60, title, "-" * 60]
+        label_width = max((len(label) for label, _value in items), default=0)
+        lines.extend(f"  {label:<{label_width}}  : {value}" for label, value in items)
+        return lines
 
-        Computes and prints the minimum, maximum, and mean of the
-        turbulent viscosity (nut), as well as the ratio nut/nu_molecular
-        to assess the relative importance of turbulent vs. molecular
-        diffusion.
+    def section(self, title: str, items: list[tuple[str, str]]) -> None:
+        """Emit one consistently formatted information section."""
+        self.message("\n".join(self._section(title, items)))
 
-        Args:
-            nut (np.ndarray | None): Turbulent viscosity field
-                (1-D array of shape ``(n_cells,)``). If ``None`` or
-                empty the method returns immediately.
-            nu_molecular (float): Molecular kinematic viscosity (m^2/s).
-                Used to compute the nut/nu ratio.
+    @staticmethod
+    def solver_info(solver: Any, initialization_time: float) -> str:
+        """Return a comprehensive FVM initialization report."""
+        config = solver.config
+        mesh = solver.mesh_data
+        parallel = solver.parallel
+        partition = getattr(parallel, "partition", None)
 
-        Returns:
-            None
+        lines = ["", "=" * _BAR_WIDTH, "FVM SOLVER INFO", "=" * _BAR_WIDTH]
+        lines.extend(
+            Logging._section(
+                "CONFIGURATION",
+                [
+                    ("Case Name", str(config.case_name)),
+                    ("Algorithm", str(config.pimple.algorithm).upper()),
+                    ("Execution Mode", str(config.execution.parallel_mode)),
+                    ("MPI Ranks", str(parallel.size)),
+                    ("Operator Backend", str(config.execution.operator_backend)),
+                    ("Linear Backend", str(config.execution.linear_backend)),
+                ],
+            )
+        )
 
-        Example:
-            >>> Logging.turbulence_info(solver.nut, 1.5e-5)
-              Turbulence diagnostics:
-                nut [m2/s] - Min: 1.000e-06, Max: 5.000e-04, Mean: 2.500e-05
-                nut/nu ratio: [6.667e-02, 3.333e+01]
-        """
+        if partition is None:
+            mesh_items = [
+                ("Cells", f"{int(mesh['n_elements']):,}"),
+                ("Faces", f"{int(mesh['n_faces']):,}"),
+                ("Interior Faces", f"{int(mesh['n_interior_faces']):,}"),
+                ("Boundary Patches", str(len(mesh["boundary"]))),
+            ]
+        else:
+            mesh_items = [
+                ("Global Cells", f"{int(partition.global_n_cells):,}"),
+                ("Rank 0 Owned Cells", f"{int(parallel.n_owned):,}"),
+                ("Rank 0 Local Faces", f"{int(mesh['n_faces']):,}"),
+                ("Configured Patches", str(len(config.boundaries))),
+            ]
+        lines.extend(Logging._section("MESH", mesh_items))
+
+        linear_method = config.linear.linear_solver
+        pressure_method = config.linear.pressure_solver or linear_method
+        momentum_method = config.linear.momentum_solver or linear_method
+        lines.extend(
+            Logging._section(
+                "NUMERICS",
+                [
+                    ("Time Step Size", f"{config.time.delta_t:.3e} s"),
+                    ("End Time", f"{config.time.end_time:.3e} s"),
+                    ("Time Scheme", str(config.schemes.time_scheme)),
+                    ("Convection Scheme", str(config.schemes.convection_scheme)),
+                    ("Gradient Scheme", str(config.schemes.gradient_scheme)),
+                    ("Momentum Solver", str(momentum_method)),
+                    ("Pressure Solver", str(pressure_method)),
+                    ("Correctors", str(config.pimple.n_correctors)),
+                    ("Outer Correctors", str(config.pimple.n_outer_correctors)),
+                ],
+            )
+        )
+        turbulence = config.turbulence
+        turbulence_name = "DNS / laminar" if turbulence is None else str(turbulence.model)
+        lines.extend(
+            Logging._section(
+                "PHYSICS",
+                [
+                    ("Density", f"{config.transport.density:.6g} kg/m³"),
+                    ("Kinematic Viscosity", f"{config.transport.nu:.6e} m²/s"),
+                    ("Turbulence Model", turbulence_name),
+                ],
+            )
+        )
+        boundary_items = [
+            (
+                boundary.name,
+                f"U={boundary.type_U}, p={boundary.type_p}, value={boundary.value_U}",
+            )
+            for boundary in config.boundaries
+        ]
+        lines.extend(Logging._section("BOUNDARY CONDITIONS", boundary_items))
+        log_path = getattr(solver, "logger", None)
+        log_file_path = getattr(log_path, "log_file_path", None)
+        lines.extend(
+            Logging._section(
+                "MONITORING & I/O",
+                [
+                    ("Solution Directory", str(Path(solver.case_dir) / "solution")),
+                    ("Log File", str(log_file_path or "disabled")),
+                    ("Initialization Time", f"{initialization_time:.3e} s"),
+                ],
+            )
+        )
+        lines.extend(["", "=" * _BAR_WIDTH, ""])
+        return "\n".join(lines)
+
+    def log_solver_info(self, solver: Any, initialization_time: float) -> None:
+        """Emit the formatted initialization report."""
+        self.message(self.solver_info(solver, initialization_time), flush=True)
+
+    def solver_state(self, solver: Any) -> None:
+        """Emit the current high-level solver state."""
+        self.section(
+            "FVM SOLVER STATE",
+            [
+                ("Case", str(solver.config.case_name)),
+                ("Time", f"{solver.flow_time:.5f} s"),
+                ("Step", str(solver.time_step)),
+                ("Local Cells", f"{solver.mesh_data['n_elements']:,}"),
+                ("Algorithm", str(solver.config.pimple.algorithm)),
+            ],
+        )
+
+    def step_info(self, flow_time: float, step: int, dt: float) -> None:
+        """Emit a VPM-style time-step header."""
+        self.message(
+            f"\nTime-step: {step:d}   Flow time: {flow_time:.2E} s   dt: {dt:.2E} s",
+            flush=True,
+        )
+
+    def convergence_info(self, residuals: dict[str, float] | None) -> None:
+        """Emit the nonlinear and linear convergence record."""
+        if not residuals:
+            return
+        labels = {
+            "p": "Pressure residual",
+            "p_initial": "Pressure initial residual",
+            "U": "Velocity residual",
+            "U_increment": "Velocity increment",
+            "U_x": "Velocity-x residual",
+            "U_y": "Velocity-y residual",
+            "U_z": "Velocity-z residual",
+        }
+        ordered = [
+            key
+            for key in ("U", "U_increment", "U_x", "U_y", "U_z", "p", "p_initial")
+            if key in residuals
+        ]
+        ordered.extend(key for key in residuals if key not in ordered)
+        items = [(labels.get(key, key), f"{float(residuals[key]):.3e}") for key in ordered]
+        self.section("SOLVER CONVERGENCE", items)
+
+    def continuity_info(self, maximum: float, total: float) -> None:
+        """Emit global mass-conservation diagnostics."""
+        self.section(
+            "CONSERVATION",
+            [
+                ("Maximum |div U|", f"{maximum:.3e} 1/s"),
+                ("Boundary imbalance", f"{total:.3e} m³/s"),
+            ],
+        )
+
+    def courant_info(self, maximum: float, dt: float, target: float) -> None:
+        """Emit the global Courant-number state."""
+        self.message(
+            f"  Maximum Courant number   : {maximum:.3e} (dt={dt:.3e} s, target≤{target:.3e})"
+        )
+
+    def yplus_info(self, yplus_stats: dict[str, dict[str, float]] | None) -> None:
+        """Emit wall-resolution diagnostics."""
+        if not yplus_stats:
+            return
+        items = [
+            (
+                name,
+                f"min={stats['min']:.3e}, max={stats['max']:.3e}, mean={stats['avg']:.3e}",
+            )
+            for name, stats in yplus_stats.items()
+        ]
+        self.section("WALL RESOLUTION (y+)", items)
+
+    def turbulence_info(self, nut: np.ndarray | None, nu_molecular: float) -> None:
+        """Emit turbulent-viscosity diagnostics."""
         if nut is None:
             return
-        import numpy as _np
-
-        nut_arr = _np.asarray(nut)
-        if nut_arr.size == 0:
+        values = np.asarray(nut)
+        if values.size == 0:
             return
+        minimum = float(np.min(values))
+        maximum = float(np.max(values))
+        mean = float(np.mean(values))
+        ratio_min = minimum / nu_molecular if nu_molecular > 0 else float("inf")
+        ratio_max = maximum / nu_molecular if nu_molecular > 0 else float("inf")
+        self.section(
+            "TURBULENCE DIAGNOSTICS",
+            [
+                ("nut minimum", f"{minimum:.3e} m²/s"),
+                ("nut maximum", f"{maximum:.3e} m²/s"),
+                ("nut mean", f"{mean:.3e} m²/s"),
+                ("nut/nu range", f"[{ratio_min:.3e}, {ratio_max:.3e}]"),
+            ],
+        )
 
-        nut_min = float(_np.min(nut_arr))
-        nut_max = float(_np.max(nut_arr))
-        nut_mean = float(_np.mean(nut_arr))
-        ratio_min = nut_min / nu_molecular if nu_molecular > 0 else float("inf")
-        ratio_max = nut_max / nu_molecular if nu_molecular > 0 else float("inf")
+    def force_info(self, forces: dict[str, Any]) -> None:
+        """Emit force coefficients for every configured patch."""
+        if not forces:
+            return
+        items = []
+        for patch, values in forces.items():
+            coefficients = values.get("coeffs", {})
+            items.append(
+                (
+                    patch,
+                    f"Cd={float(coefficients.get('Cd', 0.0)):.4f}, "
+                    f"Cl={float(coefficients.get('Cl', 0.0)):.4f}, "
+                    f"Cm={float(coefficients.get('Cm', 0.0)):.4f}",
+                )
+            )
+        self.section("AERODYNAMIC LOADS", items)
 
-        print("  Turbulence diagnostics:")
-        print(f"    nut [m2/s] - Min: {nut_min:.3e}, Max: {nut_max:.3e}, Mean: {nut_mean:.3e}")
-        print(f"    nut/nu ratio: [{ratio_min:.3e}, {ratio_max:.3e}]")
-        sys.stdout.flush()
+    def output_info(self, text: str) -> None:
+        """Emit one visualization/checkpoint output event."""
+        self.info(text, flush=True)
+
+    def timing(self, name: str, elapsed: float, *, detailed: bool = False) -> None:
+        """Emit a timing line, optionally gated by ``FVM_DETAILED_TIMING``."""
+        if detailed and os.environ.get("FVM_DETAILED_TIMING", "0") != "1":
+            return
+        self.message(f"  {name:<28}: {elapsed:.3e} s")
+
+    def step_timing(self, elapsed: float) -> None:
+        """Emit VPM-style current and cumulative wall times."""
+        self._step_wall_time += elapsed
+        self.message(f"{'Time for this step:':<25}{elapsed:.3e} s")
+        self.message(
+            f"{'Total simulation time:':<25}{self._step_wall_time:.3e} s",
+            flush=True,
+        )
+
+    def flush(self) -> None:
+        """Flush the file sink."""
+        if self._file is not None and not self._closed:
+            self._file.flush()
+
+    def close(self) -> None:
+        """Flush and close the file sink. This method is idempotent."""
+        if self._closed:
+            return
+        self.flush()
+        if self._file is not None:
+            self._file.close()
+        self._closed = True
 
 
 class Timer:
-    """
-    Lightweight wall-clock timer utility for profiling FVM solver
-    components.
+    """Named wall-clock timers whose output is routed through :class:`Logging`."""
 
-    Uses ``time.time()`` for high-resolution wall-clock measurements.
-    Timers are stored in a class-level dictionary keyed by name, which
-    allows multiple named timers to run concurrently.
-
-    Example:
-        >>> Timer.start("assembly")
-        >>> ...  # build matrices
-        >>> elapsed = Timer.stop("assembly")
-        >>> Timer.log("assembly")
-    """
-
-    _timers = {}
+    _timers: dict[str, float] = {}
 
     @staticmethod
-    def start(name):
-        """
-        Start (or restart) a named timer.
-
-        Records ``time.time()`` in the class-level ``_timers`` dict.
-        If the timer already exists its reference is overwritten.
-
-        Args:
-            name (str): Unique identifier for the timer.
-
-        Example:
-            >>> Timer.start("assemble_matrix")
-        """
-        import time
-
-        Timer._timers[name] = time.time()
+    def start(name: str) -> None:
+        """Start or restart a named timer."""
+        Timer._timers[name] = time.perf_counter()
 
     @staticmethod
-    def stop(name):
-        """
-        Stop a named timer and return the elapsed wall-clock time.
-
-        Args:
-            name (str): Timer identifier previously passed to
-                :meth:`start`.
-
-        Returns:
-            float: Elapsed time in seconds. Returns ``0.0`` if the
-            timer has not been started.
-
-        Example:
-            >>> elapsed = Timer.stop("assemble_matrix")
-            >>> print(f"Assembly took {elapsed:.3f} s")
-        """
-        import time
-
-        if name in Timer._timers:
-            elapsed = time.time() - Timer._timers[name]
-            return elapsed
-        return 0.0
+    def stop(name: str) -> float:
+        """Stop a named timer and return its elapsed seconds."""
+        started = Timer._timers.pop(name, None)
+        return 0.0 if started is None else time.perf_counter() - started
 
     @staticmethod
-    def log(name):
-        """
-        Stop a named timer, print the elapsed time, and return it.
-
-        Convenience wrapper around :meth:`stop` that also prints the
-        result to stdout.
-
-        Args:
-            name (str): Timer identifier to stop and log.
-
-        Returns:
-            float: Elapsed time in seconds (same as :meth:`stop`).
-
-        Example:
-            >>> Timer.log("solve_system")
-                - solve_system        : 0.423 s
-        """
+    def log(
+        name: str,
+        *,
+        sink: Any | None = None,
+        detailed: bool = False,
+    ) -> float:
+        """Stop a timer and optionally emit it through the configured sink."""
         elapsed = Timer.stop(name)
-        if elapsed > 0:
-            print(f"    - {name:<20}: {elapsed:.3f} s")
+        if sink is not None and elapsed > 0.0:
+            sink.timing(name.strip(" -"), elapsed, detailed=detailed)
         return elapsed
