@@ -124,3 +124,43 @@ class TestRhieChowConsistency:
         conductance = _compute_pressure_face_conductance(mesh, geo, DU)
         assert conductance.shape == (mesh["n_faces"],)
         assert np.all(conductance > 0.0)
+
+    def test_assembly_workspace_reuses_exact_conductance_for_correction(
+        self, hand_built_3d_mesh, monkeypatch
+    ):
+        """The production path must not recalculate Rhie--Chow conductance."""
+        import source.solvers.FVM.solve.simple_solver as simple
+
+        mesh = hand_built_3d_mesh
+        geo = compute_mesh_geometry(mesh)
+        for boundary in mesh["boundary"]:
+            boundary["bc_type_U"] = "zeroGradient"
+            boundary["bc_type_p"] = "zeroGradient"
+        n = mesh["n_elements"]
+        nb = mesh["n_faces"] - mesh["n_interior_faces"]
+        U = np.zeros((n + nb, 3))
+        p = np.zeros(n + nb)
+        A_U = np.full((n, 3), 2.0)
+        calls = 0
+        original = simple._compute_pressure_face_conductance
+
+        def counted(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(simple, "_compute_pressure_face_conductance", counted)
+        _A, _b, phi, workspace = simple.assemble_pressure_correction_equation_rhie_chow(
+            U, A_U, p, 1.0, mesh, geo, mesh["boundary"], return_workspace=True
+        )
+        simple.correct_velocity_and_flux(
+            U.copy(),
+            np.array(phi, copy=True),
+            np.zeros(n),
+            A_U,
+            mesh,
+            geo,
+            mesh["boundary"],
+            workspace=workspace,
+        )
+        assert calls == 1

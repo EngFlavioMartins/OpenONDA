@@ -93,7 +93,6 @@ def _enforce_u_boundary_constraints(
         geo_data:   Geometry dictionary.
     """
     from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
-    from ..solve.simple_solver import _remove_normal_component
 
     for boundary in boundaries:
         bc_type = boundary.get("bc_type_U")
@@ -137,8 +136,16 @@ def _enforce_u_boundary_constraints(
             face_sf = geo_data["face_sf"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
             ]
-            for i in range(len(owners_b)):
-                U[start + i] = _remove_normal_component(U[owners_b[i]], face_sf[i])
+            owner_velocity = U[owners_b]
+            magnitudes = np.linalg.norm(face_sf, axis=1)
+            valid = magnitudes > 1e-10
+            projected = owner_velocity.copy()
+            if np.any(valid):
+                normals = face_sf[valid] / magnitudes[valid, np.newaxis]
+                projected[valid] -= (
+                    np.sum(owner_velocity[valid] * normals, axis=1)[:, np.newaxis] * normals
+                )
+            U[start:end] = projected
 
 
 class Solver(OFWInterfaceMixin):
@@ -269,6 +276,16 @@ class Solver(OFWInterfaceMixin):
         validate_solver_params(SimpleNamespace(**self.config.algorithm_params()), self.config.time)
         validate_turbulence(self.config.turbulence)
         validate_acceptance_policy(self.config.acceptance)
+        if self.parallel.is_partitioned and self.config.turbulence is not None:
+            turbulence_name = self.config.turbulence.model.lower()
+            if self.config.turbulence.dynamic or turbulence_name in {
+                "dynamicsmagorinsky",
+                "dynamic_smagorinsky",
+            }:
+                raise NotImplementedError(
+                    "Dynamic Smagorinsky is not qualified for petsc_partitioned execution: "
+                    "its Germano average must be reduced over owned cells globally."
+                )
         if (
             self.config.linear.pressure_nullspace_policy == "petsc"
             and self.config.execution.linear_backend != "petsc"
@@ -299,13 +316,19 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("Total Initialization")
 
         # 1. Mesh Management
-        from ..mesh.validation import enforce_quality_thresholds, validate_mesh
+        from ..mesh.validation import (
+            enforce_quality_thresholds,
+            validate_geometry,
+            validate_topology,
+        )
 
         self._topology = None
         self._geometry = None
         gs = getattr(self.config.schemes, "gradient_scheme", "gauss")
         logging.Timer.start("Geometry Compute")
         if self.parallel.is_partitioned:
+            comm = self.parallel.comm
+            assert comm is not None
             if any(boundary.type_U == "cyclic" for boundary in self.config.boundaries):
                 raise NotImplementedError(
                     "Partitioned cyclic patches require periodic partition adjacency, which is "
@@ -316,9 +339,11 @@ class Solver(OFWInterfaceMixin):
                     "Partitioned field-file initialization is not implemented; provide explicit "
                     "initial_U and initial_p values"
                 )
-            payloads = None
             quality = None
             preparation_error = None
+            global_mesh = None
+            global_geo = None
+            global_hash = None
             if self.parallel.is_root:
                 try:
                     if mesh_data is not None:
@@ -337,26 +362,18 @@ class Solver(OFWInterfaceMixin):
                             sink=self.logger,
                             detailed=True,
                         )
-                    validate_mesh(global_mesh)
+                    validate_topology(global_mesh)
                     global_geo = geometry.compute_mesh_geometry(
                         global_mesh,
                         gradient_scheme=gs,
+                        compute_lsq=False,
                         logger=self.logger,
                     )
-                    quality = validate_mesh(global_mesh, global_geo)
+                    quality = validate_geometry(global_mesh, global_geo)
                     enforce_quality_thresholds(quality, self.config.mesh)
                     from ..io.checkpoint import mesh_hash
-                    from ..mesh.partition import localize_mesh_and_geometry
 
-                    payloads = [
-                        localize_mesh_and_geometry(
-                            global_mesh, global_geo, rank, self.parallel.size
-                        )
-                        for rank in range(self.parallel.size)
-                    ]
                     global_hash = mesh_hash(global_mesh)
-                    for local_mesh, _local_geo, _partition in payloads:
-                        local_mesh["global_mesh_hash"] = global_hash
                 except Exception as error:
                     preparation_error = {
                         "rank": self.parallel.rank,
@@ -369,7 +386,55 @@ class Solver(OFWInterfaceMixin):
                     "Partitioned mesh preparation failed: "
                     + json.dumps(preparation_error, sort_keys=True)
                 )
-            self.mesh_data, self.geo_data, partition = self.parallel.comm.scatter(payloads, root=0)
+
+            # Scatter would force rank zero to retain one complete localized
+            # payload per rank.  Send one payload at a time instead; every
+            # receiver participates in the following error broadcast before
+            # it starts solver construction, so a late localization failure
+            # cannot leave a peer in an incompatible collective.
+            distribution_error = None
+            local_payload = None
+            if self.parallel.is_root:
+                from ..mesh.partition import localize_mesh_and_geometry
+
+                assert (
+                    global_mesh is not None and global_geo is not None and global_hash is not None
+                )
+                for rank in range(self.parallel.size):
+                    try:
+                        payload = localize_mesh_and_geometry(
+                            global_mesh, global_geo, rank, self.parallel.size
+                        )
+                        payload[0]["global_mesh_hash"] = global_hash
+                    except Exception as error:
+                        distribution_error = {
+                            "rank": rank,
+                            "type": type(error).__name__,
+                            "message": str(error),
+                        }
+                        if rank == 0:
+                            local_payload = None
+                        for destination in range(max(rank, 1), self.parallel.size):
+                            comm.send((False, distribution_error), dest=destination, tag=9131)
+                        break
+                    if rank == 0:
+                        local_payload = payload
+                    else:
+                        comm.send((True, payload), dest=rank, tag=9131)
+            else:
+                received_ok, received_payload = comm.recv(source=0, tag=9131)
+                if received_ok:
+                    local_payload = received_payload
+                else:
+                    distribution_error = received_payload
+            distribution_error = self.parallel.bcast(distribution_error, root=0)
+            if distribution_error is not None:
+                raise RuntimeError(
+                    "Partitioned payload distribution failed: "
+                    + json.dumps(distribution_error, sort_keys=True)
+                )
+            assert local_payload is not None
+            self.mesh_data, self.geo_data, partition = local_payload
             self.mesh_quality = self.parallel.bcast(quality, root=0)
             self.parallel = self.parallel.with_partition(partition)
             self.mesh_data["_parallel_context"] = self.parallel
@@ -390,14 +455,13 @@ class Solver(OFWInterfaceMixin):
                     sink=self.logger,
                     detailed=True,
                 )
-            validate_mesh(self.mesh_data)
+            validate_topology(self.mesh_data)
             self.geo_data = geometry.compute_mesh_geometry(
                 self.mesh_data,
                 gradient_scheme=gs,
+                compute_lsq=False,
                 logger=self.logger,
             )
-            self.mesh_quality = validate_mesh(self.mesh_data, self.geo_data)
-            enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
         # Boundary configuration precedes immutable backend views because coupled
         # patches augment the operator topology and periodic geometry.
@@ -412,6 +476,17 @@ class Solver(OFWInterfaceMixin):
             from ..fields.gradients import compute_lsq_geometry
 
             self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
+
+        # LSQ must be built after periodic topology is installed.  Non-cyclic
+        # meshes also reach this point exactly once, rather than during base
+        # geometry and again after boundary setup.
+        if gs == "lsq" and "lsq_M_inv" not in self.geo_data:
+            from ..fields.gradients import compute_lsq_geometry
+
+            self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
+
+        self.mesh_quality = validate_geometry(self.mesh_data, self.geo_data)
+        enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
 
         from ..assemble.matrix_assembly import prepare_matrix_assembly
 
@@ -1367,6 +1442,9 @@ class Solver(OFWInterfaceMixin):
         """Finish background output resources owned by the solver."""
         if self._buffered_vtk_writer is not None:
             self._buffered_vtk_writer.close()
+        algorithm_close = getattr(self.algorithm, "close", None)
+        if algorithm_close is not None:
+            algorithm_close()
         self.logger.close()
 
     def __enter__(self):

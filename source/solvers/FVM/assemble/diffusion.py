@@ -73,7 +73,10 @@ def assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data):
 
     # Interpolate gamma to faces (linear interpolation using geometric weights)
     weights = geo_data["face_weights"][:n_interior_faces]
-    gamma_f = weights * gamma[neighbours] + (1 - weights) * gamma[owners]
+    if np.isscalar(gamma):
+        gamma_f = float(gamma)
+    else:
+        gamma_f = weights * gamma[neighbours] + (1 - weights) * gamma[owners]
 
     # Handle scalar field gradients: squeeze if shape is (n, 3, 1)
     if grad_phi.ndim == 3 and grad_phi.shape[2] == 1:
@@ -144,7 +147,7 @@ def assemble_diffusion_term_boundary_fixed_value(phi, gamma, boundary_patch, mes
     wall_dist = geo_data["wall_dist"][b_face_indices]
 
     # Interpolate gamma to boundary
-    gamma_b = gamma[owners_b]  # Use owner cell value
+    gamma_b = float(gamma) if np.isscalar(gamma) else gamma[owners_b]
 
     # Geometric diffusion for boundary: |Sf| / wall_distance
     mag_sf_b = np.linalg.norm(sf_b, axis=1)
@@ -247,7 +250,11 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             ef_mag = np.sum(sf * sf, axis=1) / sf_dot_e
             tf = sf - ef_mag[:, None] * e
             weights = geo_data["face_weights"][indices]
-            gamma_f = weights * gamma[neighbours_b] + (1.0 - weights) * gamma[owners_b]
+            gamma_f = (
+                float(gamma)
+                if np.isscalar(gamma)
+                else weights * gamma[neighbours_b] + (1.0 - weights) * gamma[owners_b]
+            )
             grad = grad_phi.squeeze(-1) if grad_phi.ndim == 3 else grad_phi
             grad_f = (
                 weights[:, None] * grad[neighbours_b] + (1.0 - weights[:, None]) * grad[owners_b]

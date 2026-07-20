@@ -18,12 +18,8 @@ from numba import njit
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 
-# Module logger and ILU cache
+# Module logger
 logger = logging.getLogger(__name__)
-_ILU_CACHE = {}
-
-# Cache for matrix sparsity patterns (keyed by mesh topology signature)
-_SPATIAL_CACHE: dict = {}
 _WORKSPACE_IDS = count()
 
 
@@ -78,29 +74,6 @@ class MatrixAssemblyWorkspace:
         )
         self.matrix.data[:] = values
         return self.matrix
-
-
-def _sparsity_key(mesh_data):
-    """Hashable key from mesh topology (owners + neighbours + n_elements)."""
-    cached = mesh_data.get("_fvm_sparsity_key")
-    if cached is not None:
-        return cached
-    n = mesh_data["n_elements"]
-    n_i = mesh_data["n_interior_faces"]
-    own = mesh_data["owners"]
-    nei = mesh_data["neighbours"]
-    coupled = mesh_data.get("boundary_neighbours")
-    # Use bytes of the topology arrays + sizes
-    key = (
-        n,
-        n_i,
-        mesh_data["n_faces"],
-        own.tobytes() if hasattr(own, "tobytes") else str(own),
-        nei.tobytes() if hasattr(nei, "tobytes") else str(nei),
-        coupled.tobytes() if hasattr(coupled, "tobytes") else str(coupled),
-    )
-    mesh_data["_fvm_sparsity_key"] = key
-    return key
 
 
 def assemble_matrix_from_fluxes(flux_data, mesh_data):
@@ -207,9 +180,14 @@ def build_sparsity_pattern(mesh_data):
 
 
 def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
-    """Return cached CSR structure and face-contribution destination slots."""
-    key = (_sparsity_key(mesh_data), include_boundaries)
-    cached = _SPATIAL_CACHE.get(key)
+    """Return mesh-owned CSR structure and contribution destination slots.
+
+    Static mesh topology is immutable during a solve.  Keeping the pattern on
+    that mesh gives it the correct lifetime and avoids retaining topology-byte
+    copies for every solver ever constructed in this process.
+    """
+    patterns = mesh_data.setdefault("_fvm_csr_patterns", {})
+    cached = patterns.get(include_boundaries)
     if cached is not None:
         return cached
 
@@ -237,7 +215,7 @@ def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
     contribution_slots = np.asarray(contribution_slots, dtype=np.int64)
     contribution_slots.setflags(write=False)
     pattern = _CSRPattern(indices, indptr, contribution_slots)
-    _SPATIAL_CACHE[key] = pattern
+    patterns[include_boundaries] = pattern
     return pattern
 
 

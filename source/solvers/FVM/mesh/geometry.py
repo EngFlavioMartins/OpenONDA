@@ -288,63 +288,43 @@ def compute_geometry(
     # --- Process Secondary Face Geometry ---
     cfd_small = 1e-15  # Matches uFVM cfdSMALL?
 
-    # Interior Faces
-    for i_face in range(n_interior_faces):
-        sf = face_sf[i_face]
-        area = face_areas[i_face]
-        n = sf / area  # Unit normal
-
-        own = owners[i_face]
-        nei = neighbours[i_face]
-
+    # Interior faces.  These operations used to be two Python face loops and
+    # dominate geometry setup for structured meshes; every expression below is
+    # the same owner/neighbour formula evaluated in bulk.
+    if n_interior_faces:
+        interior = slice(0, n_interior_faces)
+        own = owners[interior]
+        nei = neighbours[interior]
+        normals = face_sf[interior] / face_areas[interior, np.newaxis]
         c_own = element_centroids[own]
         c_nei = element_centroids[nei]
-        c_face = face_centroids[i_face]
+        c_face = face_centroids[interior]
+        cf = c_face - c_own
+        ff = c_face - c_nei
+        face_cf_vector[interior] = c_nei - c_own
+        face_cf[interior] = cf
+        face_ff[interior] = ff
+        cf_dot_n = np.sum(cf * normals, axis=1)
+        ff_dot_n = np.sum(ff * normals, axis=1)
+        denominator = cf_dot_n - ff_dot_n
+        weights = np.full(n_interior_faces, 0.5, dtype=np.float64)
+        np.divide(cf_dot_n, denominator, out=weights, where=np.abs(denominator) >= 1e-20)
+        face_weights[interior] = weights
 
-        face_cf_vector[i_face] = c_nei - c_own
-        face_cf[i_face] = c_face - c_own
-        face_ff[i_face] = c_face - c_nei
-
-        # Weighting factor
-        # w = (Cf . n) / (Cf . n - Ff . n)
-        # Note: Ff . n should be negative (Ff points against normal)
-        # So denominator is |Cf_n| + |Ff_n| = distance between centers projected on normal
-
-        cf_dot_n = np.dot(face_cf[i_face], n)
-        ff_dot_n = np.dot(face_ff[i_face], n)
-
-        if abs(cf_dot_n - ff_dot_n) < 1e-20:
-            face_weights[i_face] = 0.5
-        else:
-            face_weights[i_face] = cf_dot_n / (cf_dot_n - ff_dot_n)
-
-    # Boundary Faces
-    for i_face in range(n_interior_faces, n_faces):
-        sf = face_sf[i_face]
-        area = face_areas[i_face]
-        n = sf / area
-
-        own = owners[i_face]
-        c_own = element_centroids[own]
-        c_face = face_centroids[i_face]
-
-        # For boundary faces, neighbour is virtual or not used in same way
-        # uFVM sets:
-        # faceCF = faceCentroid - elementCentroid(own)
-        # faceCf = faceCentroid - elementCentroid(own)
-        # faceWeights = 1
-
-        vec = c_face - c_own
-        face_cf_vector[i_face] = vec
-        face_cf[i_face] = vec
-        # face_ff is left as 0 or undefined? uFVM doesn't set it for boundary faces in the loop
-
-        face_weights[i_face] = 1.0
-
-        # Wall distance
-        dist = np.dot(vec, n)
-        wall_dist[i_face] = max(dist, cfd_small)
-        wall_dist_limited[i_face] = max(wall_dist[i_face], 0.05 * np.linalg.norm(vec))
+    # Boundary faces use a virtual neighbour at the face centroid.
+    if n_faces > n_interior_faces:
+        boundary = slice(n_interior_faces, n_faces)
+        own = owners[boundary]
+        vec = face_centroids[boundary] - element_centroids[own]
+        normals = face_sf[boundary] / face_areas[boundary, np.newaxis]
+        face_cf_vector[boundary] = vec
+        face_cf[boundary] = vec
+        face_weights[boundary] = 1.0
+        distance = np.sum(vec * normals, axis=1)
+        wall_dist[boundary] = np.maximum(distance, cfd_small)
+        wall_dist_limited[boundary] = np.maximum(
+            wall_dist[boundary], 0.05 * np.linalg.norm(vec, axis=1)
+        )
 
     return {
         "face_centroids": face_centroids,
@@ -361,8 +341,13 @@ def compute_geometry(
     }
 
 
-def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, logger=None):
-    """Compute cell and face geometry for a validated mesh dictionary."""
+def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=True, logger=None):
+    """Compute cell and face geometry for a validated mesh dictionary.
+
+    ``compute_lsq=False`` is an initialization ordering tool.  It lets the
+    caller install cyclic neighbour topology before constructing LSQ stencils,
+    avoiding a discarded pre-periodic LSQ pass.
+    """
     # Build and retain compact cell-to-face CSR connectivity.  It is shared by
     # the typed topology and VTK exporter, and avoids repeatedly materialising
     # a Python list for every cell.
@@ -393,7 +378,7 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, logger=None):
     )
 
     # Pre‑compute LSQ gradient geometry if requested
-    if gradient_scheme == "lsq":
+    if gradient_scheme == "lsq" and compute_lsq:
         from ..fields.gradients import compute_lsq_geometry
 
         geo_data.update(compute_lsq_geometry(mesh_data, geo_data))

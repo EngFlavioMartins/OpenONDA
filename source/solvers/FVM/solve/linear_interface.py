@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 logger.propagate = False
 _ILU_CACHE = {}
 _AMG_CACHE = {}
+_MAX_TRANSIENT_CACHE_ENTRIES = 16
+_AMG_BUILD_SEED = 0
 _FALLBACK_WARN_COUNT = 0
 
 
@@ -354,20 +356,39 @@ def _cache_key_from_matrix(A_csc, ilu_key=None):
     return ("pattern", A_csc.shape, A_csc.indptr.tobytes(), A_csc.indices.tobytes())
 
 
-def _amg_cache_key(A):
+def _amg_cache_key(A, amg_key=None):
     """Return a topology-only key for an AMG hierarchy."""
+    if amg_key is not None:
+        return ("key", amg_key, A.shape)
     csr = A.tocsr()
     return (csr.shape, csr.indptr.tobytes(), csr.indices.tobytes())
 
 
-def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False):
+def clear_linear_solver_caches(cache_namespace=None) -> None:
+    """Clear transient global preconditioner entries, optionally by namespace.
+
+    Production solvers pass a short workspace namespace and call this from
+    their lifecycle.  The bounded global fallback remains for standalone
+    compatibility calls that have no owner.
+    """
+    if cache_namespace is None:
+        _ILU_CACHE.clear()
+        _AMG_CACHE.clear()
+        return
+    for cache in (_ILU_CACHE, _AMG_CACHE):
+        stale = [key for key in cache if len(key) > 1 and key[1] == cache_namespace]
+        for key in stale:
+            cache.pop(key, None)
+
+
+def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False, amg_key=None):
     """Build or reuse an AMG hierarchy as a preconditioner.
 
     Reusing the hierarchy directly as a solver would solve its stale level-0
     matrix.  Instead callers apply it as a preconditioner to CG operating on
     the current matrix, preserving the exact current linear system.
     """
-    key = _amg_cache_key(A)
+    key = _amg_cache_key(A, amg_key)
     cached = _AMG_CACHE.get(key)
     diagonal = A.diagonal()
     rebuild = force_rebuild or cached is None
@@ -378,7 +399,14 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False):
         )
         rebuild = relative_change > reuse_tol
     if rebuild:
-        hierarchy = pyamg.smoothed_aggregation_solver(A)
+        _rng_state = np.random.get_state()
+        np.random.seed(_AMG_BUILD_SEED)
+        try:
+            hierarchy = pyamg.smoothed_aggregation_solver(A)
+        finally:
+            np.random.set_state(_rng_state)
+        if len(_AMG_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES and key not in _AMG_CACHE:
+            _AMG_CACHE.pop(next(iter(_AMG_CACHE)))
         _AMG_CACHE[key] = (hierarchy, diagonal.copy())
         return hierarchy, True
     return cached[0], False
@@ -395,6 +423,7 @@ def _solve_pressure(
     amg_reuse_tol,
     failure_policy,
     log_sink,
+    amg_key,
 ):
     """Solve the pressure Poisson equation.
 
@@ -446,7 +475,7 @@ def _solve_pressure(
         }
 
     try:
-        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol)
+        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, amg_key=amg_key)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -462,7 +491,9 @@ def _solve_pressure(
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
             # hierarchy ineffective without silently accepting a poor solve.
-            ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True)
+            ml, rebuilt = _get_or_build_amg(
+                A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True, amg_key=amg_key
+            )
             M = ml.aspreconditioner(cycle="V")
             setup_seconds = time.perf_counter() - setup_start
             x, info = cg(
@@ -539,6 +570,8 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
     cached = _ILU_CACHE.get(key)
     if cached is None:
         ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
+        if len(_ILU_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES:
+            _ILU_CACHE.pop(next(iter(_ILU_CACHE)))
         _ILU_CACHE[key] = (ilu, A.diagonal().copy())
         logger.info("Computed and cached new ILU preconditioner")
         return ilu, True
@@ -732,6 +765,8 @@ def solve_linear_system(
     backend="scipy",
     parallel_context=None,
     nullspace=None,
+    partitioned_workspace=None,
+    amg_key=None,
     return_info=False,
     failure_policy="raise",
     log_sink=None,
@@ -761,6 +796,7 @@ def solve_linear_system(
                 max_iterations=maxiter,
                 constant_nullspace=nullspace == "constant",
                 initial_guess=x0,
+                workspace=partitioned_workspace,
             )
         else:
             solution, info = _solve_petsc(
@@ -840,6 +876,7 @@ def solve_linear_system(
             amg_reuse_tol,
             failure_policy,
             log_sink,
+            amg_key,
         )
         return finish(solution, metadata)
 

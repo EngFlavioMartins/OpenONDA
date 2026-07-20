@@ -125,4 +125,6 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
             )
         geo_data["face_weights"][coupled] = weights
 
-    mesh_data.pop("_fvm_sparsity_key", None)
+    # Cyclic pairing adds off-diagonal boundary couplings.  Invalidate the
+    # mesh-owned sparse pattern so assembly sees the completed topology.
+    mesh_data.pop("_fvm_csr_patterns", None)

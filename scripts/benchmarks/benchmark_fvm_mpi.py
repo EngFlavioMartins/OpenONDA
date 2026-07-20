@@ -14,6 +14,7 @@ import tempfile
 import time
 
 from mpi4py import MPI
+import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
@@ -38,12 +39,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cells-per-rank", type=int, default=512)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--warmup-steps", type=int, default=1)
+    parser.add_argument("--measured-steps", type=int, default=3)
     args = parser.parse_args()
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
     if args.cells_per_rank < 64 or args.cells_per_rank % 64:
         raise ValueError("cells-per-rank must be a multiple of 64 and at least 64")
+    if args.warmup_steps < 0 or args.measured_steps < 1:
+        raise ValueError("warmup-steps must be >= 0 and measured-steps must be >= 1")
     nx_per_rank = args.cells_per_rank // 64
     mesh = structured_box(nx_per_rank * size, 8, 8) if rank == 0 else None
     execution = ExecutionConfig.petsc_partitioned()
@@ -68,7 +73,10 @@ def main() -> None:
             BoundaryConfig.slip("zmin"),
             BoundaryConfig.slip("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        # A zero field with a nonzero inlet gives the pressure and momentum
+        # solvers meaningful work; the previous uniform stream was an exact
+        # state and mostly measured launcher overhead.
+        initial_U=[0.0, 0.0, 0.0],
         initial_p=0.0,
     )
     with tempfile.TemporaryDirectory(prefix=f"openonda-mpi-r{rank}-") as case_dir:
@@ -78,20 +86,47 @@ def main() -> None:
             solver = Solver(config, case_dir, mesh_data=mesh)
             solver.auto_write = False
         initialization = time.perf_counter() - started
-        comm.Barrier()
-        started = time.perf_counter()
-        with contextlib.redirect_stdout(io.StringIO()):
-            solver.solve_pimple(0.01)
-        step = time.perf_counter() - started
+        for _ in range(args.warmup_steps):
+            comm.Barrier()
+            with contextlib.redirect_stdout(io.StringIO()):
+                solver.solve_pimple(0.01)
+        samples = []
+        linear_samples = []
+        for _ in range(args.measured_steps):
+            comm.Barrier()
+            started = time.perf_counter()
+            with contextlib.redirect_stdout(io.StringIO()):
+                solver.solve_pimple(0.01)
+            samples.append(comm.allreduce(time.perf_counter() - started, op=MPI.MAX))
+            linear = solver.last_diagnostics.linear_solves
+            linear_samples.append(
+                {
+                    "setup_seconds_max": comm.allreduce(
+                        sum(result.setup_seconds for result in linear), op=MPI.MAX
+                    ),
+                    "solve_seconds_max": comm.allreduce(
+                        sum(result.solve_seconds for result in linear), op=MPI.MAX
+                    ),
+                    "iterations_max": comm.allreduce(
+                        sum(result.iterations for result in linear), op=MPI.MAX
+                    ),
+                }
+            )
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "backend": "numpy-petsc-partitioned-float64",
         "ranks": size,
         "cells_per_rank": args.cells_per_rank,
         "global_cells": args.cells_per_rank * size,
         "initialization_seconds_max": comm.allreduce(initialization, op=MPI.MAX),
-        "step_seconds_max": comm.allreduce(step, op=MPI.MAX),
+        "warmup_steps": args.warmup_steps,
+        "measured_steps": args.measured_steps,
+        "step_seconds_max_samples": samples,
+        "step_seconds_max_median": float(np.median(samples)),
+        "step_seconds_max_minimum": float(np.min(samples)),
+        "step_seconds_max_maximum": float(np.max(samples)),
+        "linear_samples": linear_samples,
         "peak_rss_bytes_max": comm.allreduce(_peak_rss_bytes(), op=MPI.MAX),
         "continuity_max": solver.last_diagnostics.continuity_max,
         "host": {

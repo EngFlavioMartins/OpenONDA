@@ -170,20 +170,21 @@ def validate_geometry(mesh_data, geo_data):
         centre_distance + 1e-30
     )
 
-    cell_face_distances = [[] for _ in range(n_cells)]
-    for face in range(n_faces):
-        owner = int(owners[face])
-        cell_face_distances[owner].append(
-            float(np.linalg.norm(face_centroids[face] - centroids[owner]))
+    # Reduce owner and neighbour face distances directly into cell extrema.
+    # This avoids one Python list object per cell during large-mesh validation.
+    minimum_distance = np.full(n_cells, np.inf, dtype=np.float64)
+    maximum_distance = np.zeros(n_cells, dtype=np.float64)
+    owner_distance = np.linalg.norm(face_centroids - centroids[owners], axis=1)
+    np.minimum.at(minimum_distance, owners, owner_distance)
+    np.maximum.at(maximum_distance, owners, owner_distance)
+    if n_internal:
+        neighbour_distance = np.linalg.norm(
+            face_centroids[:n_internal] - centroids[neighbours], axis=1
         )
-        if face < n_internal:
-            neighbour = int(neighbours[face])
-            cell_face_distances[neighbour].append(
-                float(np.linalg.norm(face_centroids[face] - centroids[neighbour]))
-            )
-    aspect_ratio = np.asarray(
-        [max(values) / max(min(values), 1e-30) for values in cell_face_distances]
-    )
+        np.minimum.at(minimum_distance, neighbours, neighbour_distance)
+        np.maximum.at(maximum_distance, neighbours, neighbour_distance)
+    _require(np.all(np.isfinite(minimum_distance)), "Mesh cell has no adjacent face")
+    aspect_ratio = maximum_distance / np.maximum(minimum_distance, 1e-30)
 
     lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)
     finite_lsq_condition = lsq_condition[np.isfinite(lsq_condition)]

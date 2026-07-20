@@ -53,6 +53,7 @@ def test_parallel_launch_uses_environment_mpi_and_caps_threads(monkeypatch, tmp_
 
     assert captured["command"][:4] == ["/env/bin/mpiexec", "-n", "4", "/env/bin/python"]
     assert captured["environment"]["_OPENONDA_MPI_CHILD"] == "1"
+    assert captured["environment"]["PMIX_MCA_pif_base_retain_loopback"] == "1"
     for name in bootstrap._THREAD_VARIABLES:
         assert captured["environment"][name] == "1"
 

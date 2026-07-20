@@ -84,14 +84,19 @@ def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
         owners_b: Owner element indices for each boundary face.
         face_sf: Face surface area vectors for each boundary face.
     """
-    for b_idx, own, sf in zip(b_elem_indices, owners_b, face_sf, strict=False):
-        norm_sf = np.linalg.norm(sf)
-        if norm_sf > 1e-10:
-            n_hat = sf / norm_sf
-            U_owner = U_star[own]
-            U_star[b_idx] = U_owner - np.dot(U_owner, n_hat) * n_hat
-        else:
-            U_star[b_idx] = U_star[own]
+    # Empty/slip planes commonly account for O(n) faces in pseudo-2D cases.
+    # Keep this path in ndarray operations: the scalar formulation below is
+    # identical to the former per-face loop, including its degenerate-face
+    # fallback.
+    owner_velocity = U_star[owners_b]
+    magnitudes = np.linalg.norm(face_sf, axis=1)
+    valid = magnitudes > 1e-10
+    projected = owner_velocity.copy()
+    if np.any(valid):
+        normals = face_sf[valid] / magnitudes[valid, np.newaxis]
+        normal_velocity = np.sum(owner_velocity[valid] * normals, axis=1)
+        projected[valid] -= normal_velocity[:, np.newaxis] * normals
+    U_star[b_elem_indices] = projected
 
 
 def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
@@ -205,13 +210,27 @@ def assemble_momentum_equation(
 
     n_elements = mesh_data["n_elements"]
 
-    # Ensure rho and nu are arrays
-    if np.isscalar(rho):
-        rho = np.full(n_elements, rho)
-    if np.isscalar(nu):
-        nu = np.full(n_elements, nu)
+    rho_is_scalar = np.isscalar(rho)
+    nu_is_scalar = np.isscalar(nu)
+    if rho_is_scalar:
+        rho = float(rho)
+        if not np.isfinite(rho) or rho <= 0.0:
+            raise ValueError("rho must be finite and positive")
+    else:
+        rho = np.asarray(rho, dtype=np.float64)
+        if rho.shape != (n_elements,) or not np.all(np.isfinite(rho)) or np.any(rho <= 0.0):
+            raise ValueError(f"rho must be finite and positive with shape ({n_elements},)")
+    if nu_is_scalar:
+        nu = float(nu)
+        if not np.isfinite(nu) or nu <= 0.0:
+            raise ValueError("nu must be finite and positive")
+    else:
+        nu = np.asarray(nu, dtype=np.float64)
+        if nu.shape != (n_elements,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
+            raise ValueError(f"nu must be finite and positive with shape ({n_elements},)")
 
-    # Dynamic viscosity: μ = ρnu
+    # Dynamic viscosity: μ = ρν.  Preserve scalar transport coefficients so
+    # large laminar runs do not allocate two redundant cell arrays.
     mu = rho * nu
 
     # Resolve gradient scheme
@@ -225,32 +244,30 @@ def assemble_momentum_equation(
     if grad_p.ndim == 3:
         grad_p = grad_p.squeeze(-1)  # (n, 3, 1) -> (n, 3)
 
-    if rho.shape != (n_elements,) or not np.all(np.isfinite(rho)) or np.any(rho <= 0.0):
-        raise ValueError(f"rho must be finite and positive with shape ({n_elements},)")
-    if nu.shape != (n_elements,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
-        raise ValueError(f"nu must be finite and positive with shape ({n_elements},)")
-
     # ``phi`` is volumetric flux U·Sf. Interpolate density to each face to
     # obtain mass flux without collapsing variable-density input to rho[0].
-    owners = mesh_data["owners"]
-    neighbours = mesh_data["neighbours"]
-    n_interior = mesh_data["n_interior_faces"]
-    face_rho = rho[owners].copy()
-    weights = geo_data["face_weights"][:n_interior]
-    face_rho[:n_interior] = (
-        weights * rho[neighbours[:n_interior]] + (1.0 - weights) * rho[owners[:n_interior]]
-    )
-    boundary_neighbours = np.asarray(
-        mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1, dtype=np.int32))
-    )
-    cyclic_faces = np.flatnonzero(boundary_neighbours >= 0)
-    if cyclic_faces.size:
-        weights_b = geo_data["face_weights"][cyclic_faces]
-        face_rho[cyclic_faces] = (
-            weights_b * rho[boundary_neighbours[cyclic_faces]]
-            + (1.0 - weights_b) * rho[owners[cyclic_faces]]
+    if rho_is_scalar:
+        mdot = np.asarray(phi) * rho
+    else:
+        owners = mesh_data["owners"]
+        neighbours = mesh_data["neighbours"]
+        n_interior = mesh_data["n_interior_faces"]
+        face_rho = rho[owners].copy()
+        weights = geo_data["face_weights"][:n_interior]
+        face_rho[:n_interior] = (
+            weights * rho[neighbours[:n_interior]] + (1.0 - weights) * rho[owners[:n_interior]]
         )
-    mdot = np.asarray(phi) * face_rho
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1, dtype=np.int32))
+        )
+        cyclic_faces = np.flatnonzero(boundary_neighbours >= 0)
+        if cyclic_faces.size:
+            weights_b = geo_data["face_weights"][cyclic_faces]
+            face_rho[cyclic_faces] = (
+                weights_b * rho[boundary_neighbours[cyclic_faces]]
+                + (1.0 - weights_b) * rho[owners[cyclic_faces]]
+            )
+        mdot = np.asarray(phi) * face_rho
 
     results = {}
     spatial_matrix = None
@@ -413,6 +430,7 @@ def solve_momentum_predictor(
     solve_diagnostics = {}
     linear_backend = solver_kwargs.pop("linear_backend", "scipy")
     parallel_context = solver_kwargs.pop("parallel_context", None)
+    partitioned_workspace = solver_kwargs.pop("partitioned_workspace", None)
 
     if solver == "spsolve" and linear_backend == "scipy":
         # All three components share one matrix.  Solve a three-column RHS so
@@ -510,6 +528,7 @@ def solve_momentum_predictor(
             ilu_key=shared_ilu_key,
             backend=linear_backend,
             parallel_context=parallel_context,
+            partitioned_workspace=partitioned_workspace,
             return_info=True,
             **solver_kwargs,
         )

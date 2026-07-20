@@ -36,6 +36,27 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         self.ibm = None
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
+        self._partitioned_linear_workspaces = {}
+
+    def _partitioned_workspace(self, equation: str):
+        """Return the solver-owned PETSc workspace for a partitioned equation."""
+        parallel = self.params.get("_parallel_context")
+        if parallel is None or not parallel.is_partitioned:
+            return None
+        workspace = self._partitioned_linear_workspaces.get(equation)
+        if workspace is None:
+            from .petsc_partitioned import PartitionedLinearWorkspace
+
+            workspace = PartitionedLinearWorkspace(parallel)
+            self._partitioned_linear_workspaces[equation] = workspace
+        return workspace
+
+    def close(self) -> None:
+        """Release collectively-owned persistent PETSc workspaces."""
+        for workspace in self._partitioned_linear_workspaces.values():
+            workspace.close()
+        self._partitioned_linear_workspaces.clear()
+        super().close()
 
     def step(
         self,
@@ -107,6 +128,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
+                    partitioned_workspace=self._partitioned_workspace("momentum"),
                     failure_policy=self.params.get("linear_failure_policy", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
@@ -152,8 +174,22 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
                 for non_ortho in range(n_non_ortho + 1):
+                    # Coupling can intentionally replace a patch type between
+                    # calls.  Keep cached indexing only while that structural
+                    # contract is unchanged.
+                    if (
+                        self._pressure_boundary_layout.signature
+                        != simple_solver._pressure_boundary_signature(self.boundaries)
+                    ):
+                        self._pressure_boundary_layout = (
+                            simple_solver.build_pressure_boundary_layout(
+                                self.boundaries,
+                                self.mesh_data["n_interior_faces"],
+                                self.mesh_data["n_faces"],
+                            )
+                        )
                     logging.Timer.start("Pressure Assembly")
-                    A_p, b_p, phi_star = (
+                    A_p, b_p, phi_star, pressure_workspace = (
                         simple_solver.assemble_pressure_correction_equation_rhie_chow(
                             U_iter,
                             A_U,
@@ -166,6 +202,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             pressure_constraint=pressure_constraint,
                             matrix_workspace=self._pressure_matrix_workspace,
                             operator_backend=self.params.get("_operator_backend", "numpy"),
+                            boundary_layout=self._pressure_boundary_layout,
+                            return_workspace=True,
                         )
                     )
                     logging.Timer.log(
@@ -196,6 +234,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         amg_tol=pressure_tol if amg_tol is None else float(amg_tol),
                         amg_maxiter=(pressure_maxiter if amg_maxiter is None else int(amg_maxiter)),
                         amg_reuse_tol=float(self.params.get("amg_reuse_tol", 0.05)),
+                        amg_key=("pressure", self._pressure_matrix_workspace.cache_namespace),
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
                         failure_policy=self.params.get("linear_failure_policy", "raise"),
@@ -205,6 +244,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             if has_pressure_nullspace and pressure_constraint == "nullspace"
                             else None
                         ),
+                        partitioned_workspace=self._partitioned_workspace("pressure"),
                         return_info=True,
                     )
                     linear_results.append(pressure_result)
@@ -225,7 +265,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     logging.Timer.start("Velocity Correction")
                     U_iter, corrected_phi = simple_solver.correct_velocity_and_flux(
                         U_iter,
-                        phi_star.copy(),
+                        phi_star,
                         p_prime,
                         A_U,
                         self.mesh_data,
@@ -233,6 +273,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.boundaries,
                         rho=rho,
                         alpha_u=alpha_u,
+                        workspace=pressure_workspace,
                     )
                     if non_ortho == n_non_ortho:
                         phi = corrected_phi

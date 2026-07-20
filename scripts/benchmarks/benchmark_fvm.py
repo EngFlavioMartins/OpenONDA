@@ -72,12 +72,37 @@ def _git_identity() -> dict[str, str | bool | None]:
         return {"revision": None, "dirty": None}
 
 
+def _linear_telemetry(results):
+    """Summarize backend-neutral linear telemetry for one solved step."""
+    return {
+        "linear_setup_seconds": float(sum(result.setup_seconds for result in results)),
+        "linear_solve_seconds": float(sum(result.solve_seconds for result in results)),
+        "linear_iterations": int(sum(result.iterations for result in results)),
+        "preconditioner_rebuilds": int(
+            sum(bool(result.preconditioner_rebuilt) for result in results)
+        ),
+    }
+
+
+def _summary(samples: list[float]) -> dict[str, float | list[float]]:
+    values = np.asarray(samples, dtype=np.float64)
+    return {
+        "samples": [float(value) for value in values],
+        "median": float(np.median(values)),
+        "minimum": float(np.min(values)),
+        "maximum": float(np.max(values)),
+    }
+
+
 def _run(
     target_cells: int,
     verbose: bool,
     operator_backend: str,
     linear_solver: str,
-) -> dict[str, float | int | str]:
+    warmup_steps: int,
+    measured_steps: int,
+    cold_one_step: bool,
+) -> dict:
     n = max(4, int(round(math.sqrt(target_cells))))
     mesh = periodic_square_mesh(n)
     selected_solver = (
@@ -124,13 +149,33 @@ def _run(
         solver.set_initial_velocity(_velocity(solver.geo_data["element_centroids"]))
         field_initialization = time.perf_counter() - start
 
-        start = time.perf_counter()
-        solver.evolve()
-        step = time.perf_counter() - start
-        linear_results = solver.last_diagnostics.linear_solves
+        step_samples = []
+        telemetry_samples = []
+        first_step = None
+        total_steps = 1 if cold_one_step else warmup_steps + measured_steps
+        for index in range(total_steps):
+            start = time.perf_counter()
+            solver.evolve()
+            elapsed = time.perf_counter() - start
+            telemetry = _linear_telemetry(solver.last_diagnostics.linear_solves)
+            if index == 0:
+                first_step = {"seconds": elapsed, **telemetry}
+            if not cold_one_step and index >= warmup_steps:
+                step_samples.append(elapsed)
+                telemetry_samples.append(telemetry)
 
-    linear_setup = float(sum(result.setup_seconds for result in linear_results))
-    linear_solve = float(sum(result.solve_seconds for result in linear_results))
+    warmed = _summary(step_samples) if step_samples else None
+    linear_setup = (
+        float(np.median([sample["linear_setup_seconds"] for sample in telemetry_samples]))
+        if telemetry_samples
+        else float(first_step["linear_setup_seconds"])
+    )
+    linear_solve = (
+        float(np.median([sample["linear_solve_seconds"] for sample in telemetry_samples]))
+        if telemetry_samples
+        else float(first_step["linear_solve_seconds"])
+    )
+    step = warmed["median"] if warmed is not None else first_step["seconds"]
     return {
         "target_cells": target_cells,
         "cells": mesh["n_elements"],
@@ -139,10 +184,16 @@ def _run(
         "pressure_solver": params_linear.pressure_solver,
         "initialization_seconds": initialization,
         "field_initialization_seconds": field_initialization,
+        "cold_one_step": bool(cold_one_step),
+        "warmup_steps": 0 if cold_one_step else warmup_steps,
+        "measured_steps": 1 if cold_one_step else measured_steps,
+        "first_step": first_step,
+        "warmed_step": warmed,
+        # Compatibility aliases retain the former one-number consumer API.
         "step_seconds": step,
         "linear_setup_seconds": linear_setup,
         "linear_solve_seconds": linear_solve,
-        "operators_and_diagnostics_seconds": max(step - linear_setup - linear_solve, 0.0),
+        "operators_and_diagnostics_seconds": max(float(step) - linear_setup - linear_solve, 0.0),
         "peak_rss_bytes": _peak_rss_bytes(),
         "continuity_max": solver.last_diagnostics.continuity_max,
         "cfl_max": solver.last_diagnostics.cfl_max,
@@ -163,15 +214,35 @@ def main() -> None:
     )
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--max-regression", type=float, default=0.05)
+    parser.add_argument("--warmup-steps", type=int, default=1)
+    parser.add_argument("--measured-steps", type=int, default=5)
+    parser.add_argument(
+        "--cold-one-step",
+        action="store_true",
+        help="measure one first-use step only; incompatible with warmed throughput claims",
+    )
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="permit a development-only report from a dirty source tree",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if any(size < 16 for size in args.sizes):
         raise ValueError("Each benchmark size must contain at least 16 cells")
+    if args.warmup_steps < 0 or args.measured_steps < 1:
+        raise ValueError("warmup-steps must be >= 0 and measured-steps must be >= 1")
+    source = _git_identity()
+    if source["dirty"] and not args.allow_dirty:
+        raise SystemExit(
+            "Refusing official benchmark from dirty source; pass --allow-dirty for development"
+        )
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "official": not bool(source["dirty"]),
         "backend": f"{args.operator_backend}-scipy-float64",
-        "source": _git_identity(),
+        "source": source,
         "dependencies": {"numpy": np.__version__, "scipy": scipy.__version__},
         "host": {
             "platform": platform.platform(),
@@ -181,7 +252,15 @@ def main() -> None:
             "logical_cpus": os.cpu_count(),
         },
         "cases": [
-            _run(size, args.verbose, args.operator_backend, args.linear_solver)
+            _run(
+                size,
+                args.verbose,
+                args.operator_backend,
+                args.linear_solver,
+                args.warmup_steps,
+                args.measured_steps,
+                args.cold_one_step,
+            )
             for size in args.sizes
         ],
     }

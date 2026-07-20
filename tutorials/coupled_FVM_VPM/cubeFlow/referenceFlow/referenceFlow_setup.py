@@ -1,4 +1,8 @@
-"""Fully meshed FVM reference for flow past a cube at Re = 1000."""
+"""Fully meshed FVM reference for flow past a cube at Re = 1000.
+
+The mesh is built beforehand by ``assets/create_mesh.py`` and read from
+``constant/polyMesh/``; this file holds only the case physics and run loop.
+"""
 
 from __future__ import annotations
 
@@ -30,93 +34,23 @@ from source.solvers.FVM import (  # noqa: E402
     TransportConfig,
     setup_fvm_solver,
 )
-from source.solvers.FVM.mesh.rectilinear import (  # noqa: E402
-    box_mesh_3d,
-    stretched,
-    wall_refined_axis,
-)
 
 
 CASE_DIR = Path(__file__).resolve().parent
+MESH = str(CASE_DIR / "constant" / "mesh.msh")  # built by assets/create_mesh.py
 
 # Physical problem
 CUBE_SIDE = 1.0
-CUBE_BOX = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.02, 0.0)
 
-# Common-region discretisation: identical to the hybrid FVM mesh
-CORE_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-H_CORE = 0.05
-WALL_REFINE = 0.025
-WALL_RATIO = 1.25
+# Time integration
 DT_FVM = 0.0125
 T_END = 7.5
 WRITE_INTERVAL = 0.15
-
-# Fully meshed far field
-X_BOUNDS = (-4.75, 11.0)
-YZ_BOUNDS = (-4.75, 4.75)
-WAKE_END = 5.5
-WAKE_H_MAX = 0.14
-STRETCH_RATIO = 1.18
-H_MAX = 0.5
-
-
-def reference_mesh(
-    h: float = H_CORE,
-    wall_refinement: float = WALL_REFINE,
-) -> tuple[dict, tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """Build the far-field mesh around the common body-fitted core."""
-    core_axis = wall_refined_axis(
-        CORE_BOX[0],
-        CORE_BOX[1],
-        CUBE_BOX[0],
-        CUBE_BOX[1],
-        wall_refinement,
-        h,
-        WALL_RATIO,
-    )
-
-    def extend(nodes, lower, upper, *, wake=False):
-        left = stretched(CORE_BOX[0], lower, h, STRETCH_RATIO, H_MAX)[::-1]
-        if wake:
-            plateau = stretched(CORE_BOX[1], WAKE_END, h, 1.06, WAKE_H_MAX)
-            outer_h = float(plateau[-1] - plateau[-2])
-            right = np.concatenate(
-                [
-                    plateau,
-                    stretched(float(plateau[-1]), upper, outer_h, STRETCH_RATIO, H_MAX),
-                ]
-            )
-        else:
-            right = stretched(CORE_BOX[1], upper, h, STRETCH_RATIO, H_MAX)
-        return np.concatenate([left, nodes, right])
-
-    xs = extend(core_axis, X_BOUNDS[0], X_BOUNDS[1], wake=True)
-    ys = extend(core_axis, YZ_BOUNDS[0], YZ_BOUNDS[1])
-    zs = ys.copy()
-    mesh = box_mesh_3d(
-        xs,
-        ys,
-        zs,
-        hole_box=CUBE_BOX,
-        wall_patch_name="cube",
-    )
-    return mesh, (xs, ys, zs)
-
-
-def production_mesh() -> dict:
-    mesh, (xs, ys, zs) = reference_mesh()
-    print(
-        f"referenceFlow mesh: {mesh['n_elements']} cells "
-        f"({len(xs) - 1} x {len(ys) - 1} x {len(zs) - 1} minus cube), "
-        f"x=[{xs[0]:.2f}, {xs[-1]:.2f}], y,z=[{ys[0]:.2f}, {ys[-1]:.2f}]"
-    )
-    return mesh
 
 
 FVM_SETUP = FVMSetup(
@@ -179,7 +113,7 @@ FVM_SETUP = FVMSetup(
 
 
 def main() -> None:
-    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=production_mesh)
+    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
     solver.write_vtk()
     while solver.flow_time < FVM_SETUP.time.end_time:
         solver.evolve()

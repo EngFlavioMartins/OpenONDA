@@ -12,6 +12,7 @@ import contextlib
 import io
 
 import numpy as np
+import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
@@ -85,3 +86,35 @@ def test_slip_ghosts_are_tangential(tmp_path):
         ghosts = solver.U[start : start + patch["nFaces"]]
         # y is the slip-plane normal on these patches.
         assert np.allclose(ghosts[:, 1], 0.0, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "face_sf",
+    [
+        np.array([[2.0, -1.0, 3.0], [-4.0, 2.0, 1.0], [0.0, 0.0, 0.0]]),
+    ],
+)
+def test_vectorized_projection_preserves_tangential_velocity_and_degenerate_fallback(face_sf):
+    """Both production projection paths retain the scalar BC contract."""
+    from source.solvers.FVM.assemble.momentum import _apply_empty_bc_ustar
+    from source.solvers.FVM.solve.simple_solver import _apply_slip_bc
+
+    owners = np.array([1, 0, 1], dtype=np.int64)
+    interior = np.array([[2.0, 3.0, -1.0], [-4.0, 1.0, 5.0]])
+    U = np.vstack((interior, np.zeros((3, 3))))
+    boundary_indices = np.array([2, 3, 4], dtype=np.int64)
+
+    _apply_empty_bc_ustar(U, boundary_indices, owners, face_sf)
+    expected = interior[owners].copy()
+    valid = np.linalg.norm(face_sf, axis=1) > 1e-10
+    normal = face_sf[valid] / np.linalg.norm(face_sf[valid], axis=1)[:, np.newaxis]
+    expected[valid] -= np.sum(expected[valid] * normal, axis=1)[:, np.newaxis] * normal
+    assert np.allclose(U[boundary_indices], expected, rtol=0.0, atol=1e-14)
+    assert np.allclose(U[boundary_indices[~valid]], interior[owners[~valid]])
+    assert np.allclose(np.sum(U[boundary_indices[valid]] * normal, axis=1), 0.0, atol=1e-14)
+
+    boundary = {"startFace": 0, "nFaces": 3}
+    geo = {"face_sf": face_sf}
+    U_slip = np.vstack((interior, np.zeros((3, 3))))
+    _apply_slip_bc(U_slip, boundary, owners, geo, n_elements=2, n_interior=0)
+    assert np.allclose(U_slip[2:], expected, rtol=0.0, atol=1e-14)

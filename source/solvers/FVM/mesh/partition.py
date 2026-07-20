@@ -176,6 +176,8 @@ class HaloSchedule:
 
     send_global_ids: tuple[np.ndarray, ...]
     receive_global_ids: tuple[np.ndarray, ...]
+    send_local_indices: tuple[np.ndarray, ...]
+    receive_local_indices: tuple[np.ndarray, ...]
 
     @property
     def neighbor_ranks(self) -> tuple[int, ...]:
@@ -256,17 +258,25 @@ class CellPartition:
         ghosts = np.asarray(sorted(ghost_set), dtype=np.int64)
         send = tuple(np.asarray(sorted(values), dtype=np.int64) for values in send_sets)
         receive = tuple(np.asarray(sorted(values), dtype=np.int64) for values in receive_sets)
+        local_global_ids = np.concatenate((owned, ghosts))
+        lookup = {int(global_id): index for index, global_id in enumerate(local_global_ids)}
+        send_local = tuple(
+            np.asarray([lookup[int(cell)] for cell in ids], dtype=np.int64) for ids in send
+        )
+        receive_local = tuple(
+            np.asarray([lookup[int(cell)] for cell in ids], dtype=np.int64) for ids in receive
+        )
         return cls(
             rank=rank,
             size=size,
             global_n_cells=n_cells,
             owned_global_ids=owned,
             ghost_global_ids=ghosts,
-            local_global_ids=np.concatenate((owned, ghosts)),
+            local_global_ids=local_global_ids,
             local_face_global_ids=local_faces,
             processor_face_global_ids=processor_faces,
             physical_boundary_face_global_ids=physical_faces,
-            halo=HaloSchedule(send, receive),
+            halo=HaloSchedule(send, receive, send_local, receive_local),
         )
 
     def global_to_local(self, global_ids) -> np.ndarray:
@@ -283,27 +293,45 @@ class CellPartition:
         return positions
 
     def exchange_halo(self, local_field: np.ndarray, comm) -> None:
-        """Collectively update ghost values using one object exchange per rank."""
+        """Update ghost values with numeric nonblocking neighbor messages.
+
+        The schedule stores local indices, so the steady path neither maps
+        global IDs nor builds an all-rank Python payload list.  ``mpi4py``
+        infers the explicit MPI datatype from the contiguous NumPy buffers;
+        object and strided fields are rejected rather than silently pickled.
+        """
         values = np.asarray(local_field)
         if values.shape[0] != len(self.local_global_ids):
             raise ValueError("local_field leading dimension must match local_global_ids")
-        payload = []
-        for global_ids in self.halo.send_global_ids:
-            local_ids = (
-                self.global_to_local(global_ids) if len(global_ids) else np.empty(0, dtype=int)
-            )
-            payload.append(values[local_ids].copy())
-        received = comm.alltoall(payload)
-        for rank, global_ids in enumerate(self.halo.receive_global_ids):
-            if len(global_ids):
-                incoming = np.asarray(received[rank])
-                expected_shape = (len(global_ids), *values.shape[1:])
-                if incoming.shape != expected_shape:
-                    raise RuntimeError(
-                        f"Halo payload from rank {rank} has shape {incoming.shape}; "
-                        f"expected {expected_shape}"
-                    )
-                values[self.global_to_local(global_ids)] = incoming
+        if values.dtype.hasobject or not (
+            np.issubdtype(values.dtype, np.number) or np.issubdtype(values.dtype, np.bool_)
+        ):
+            raise TypeError("Halo exchange requires a numeric NumPy dtype")
+        if not values.flags.c_contiguous:
+            raise ValueError("Halo exchange requires a C-contiguous field array")
+
+        receives: list[tuple[np.ndarray, np.ndarray]] = []
+        requests = []
+        for rank in self.halo.neighbor_ranks:
+            receive_indices = self.halo.receive_local_indices[rank]
+            if len(receive_indices):
+                incoming = np.empty((len(receive_indices), *values.shape[1:]), dtype=values.dtype)
+                receives.append((receive_indices, incoming))
+                requests.append(comm.Irecv(incoming, source=rank, tag=9107))
+        # Keep gathered sends alive until Wait completes.  Advanced indexing
+        # necessarily materializes the packing buffer, but it is numeric and
+        # bounded by the interface rather than an all-rank object collective.
+        send_buffers = []
+        for rank in self.halo.neighbor_ranks:
+            send_indices = self.halo.send_local_indices[rank]
+            if len(send_indices):
+                outgoing = np.ascontiguousarray(values[send_indices])
+                send_buffers.append(outgoing)
+                requests.append(comm.Isend(outgoing, dest=rank, tag=9107))
+        for request in requests:
+            request.Wait()
+        for receive_indices, incoming in receives:
+            values[receive_indices] = incoming
 
 
 def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):

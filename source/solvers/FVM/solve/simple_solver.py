@@ -15,7 +15,8 @@ Algorithm:
 Converted from uFVM solve/ modules
 """
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal, overload
 
 from numba import njit
 import numpy as np
@@ -26,6 +27,28 @@ from ..fields import gradients
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from .contracts import OuterCorrectorDiagnostics
+
+
+@dataclass(frozen=True)
+class PressureBoundaryLayout:
+    """Immutable boundary-face indexing used by pressure assembly.
+
+    Patch values are intentionally excluded: coupling and freestream updates
+    may change them between correctors.  The layout only captures topology and
+    resolved boundary behaviour, which are stable for an algorithm instance.
+    """
+
+    signature: tuple[tuple[int, int, str], ...]
+    face_indices: np.ndarray
+    type_codes: np.ndarray
+
+
+@dataclass(frozen=True)
+class PressureCorrectionWorkspace:
+    """Dynamic Rhie--Chow data shared by assembly and its correction."""
+
+    DU: np.ndarray
+    face_conductance: np.ndarray
 
 
 def _resolve_pressure_constraint(params) -> str:
@@ -452,8 +475,68 @@ def _process_boundary_faces_jit(
     return flux_cf_out, flux_ff_out, flux_vf_out
 
 
-def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
-    """Pre-compute flat arrays for JIT boundary-face processing.
+def _pressure_boundary_signature(boundaries) -> tuple[tuple[int, int, str], ...]:
+    """Return the structural part of the pressure-boundary configuration."""
+    signature = []
+    for boundary in boundaries:
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        signature.append((int(boundary["startFace"]), int(boundary["nFaces"]), strategy.name))
+    return tuple(signature)
+
+
+def build_pressure_boundary_layout(boundaries, n_interior, n_faces) -> PressureBoundaryLayout:
+    """Build immutable, vectorized pressure boundary-face metadata."""
+    n_bnd = n_faces - n_interior
+    codes = np.empty(n_bnd, dtype=np.int32)
+    face_indices = np.arange(n_interior, n_faces, dtype=np.int32)
+    for boundary in boundaries:
+        start = int(boundary["startFace"])
+        nf = int(boundary["nFaces"])
+        local = slice(start - n_interior, start - n_interior + nf)
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        if strategy is BoundaryStrategy.FIXED_VALUE:
+            code = 1
+        elif strategy is BoundaryStrategy.EMPTY:
+            code = 2
+        elif strategy is BoundaryStrategy.FREESTREAM:
+            code = 3
+        elif strategy in (
+            BoundaryStrategy.ZERO_GRADIENT,
+            BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.CYCLIC,
+        ):
+            code = 0
+        else:
+            raise RuntimeError(f"Unhandled pressure boundary strategy {strategy!r}")
+        codes[local] = code
+    return PressureBoundaryLayout(_pressure_boundary_signature(boundaries), face_indices, codes)
+
+
+def _pressure_boundary_values(boundaries, n_interior, n_faces) -> np.ndarray:
+    """Read dynamic pressure values without rebuilding face topology."""
+    values = np.zeros(n_faces - n_interior, dtype=np.float64)
+    for boundary in boundaries:
+        start = int(boundary["startFace"])
+        nf = int(boundary["nFaces"])
+        local = slice(start - n_interior, start - n_interior + nf)
+        field = boundary.get("value_p_field")
+        if field is not None:
+            field_values = np.asarray(field, dtype=np.float64)
+            if field_values.shape != (nf,):
+                raise ValueError(
+                    f"Per-face pressure value for patch {boundary.get('name')!r} "
+                    f"must have shape ({nf},), got {field_values.shape}"
+                )
+            values[local] = field_values
+        else:
+            val = boundary.get("value_p", boundary.get("value", 0.0))
+            if val is not None:
+                values[local] = val
+    return values
+
+
+def _build_boundary_face_arrays(boundaries, n_interior, n_faces, layout=None):
+    """Return pressure boundary arrays, preserving the legacy helper API.
 
     Returns
     -------
@@ -464,45 +547,26 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces):
     boundary_face_indices : ndarray
         Global face index for each boundary face
     """
-    n_bnd = n_faces - n_interior
-    bc_type_codes = np.empty(n_bnd, dtype=np.int32)
-    p_boundary_values = np.empty(n_bnd, dtype=np.float64)
-    boundary_face_indices = np.empty(n_bnd, dtype=np.int32)
+    signature = _pressure_boundary_signature(boundaries)
+    if layout is None or layout.signature != signature:
+        layout = build_pressure_boundary_layout(boundaries, n_interior, n_faces)
+    return (
+        layout.type_codes,
+        _pressure_boundary_values(boundaries, n_interior, n_faces),
+        layout.face_indices,
+    )
 
-    idx = 0
-    for boundary in boundaries:
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
-        bc_type_p = boundary.get("bc_type_p")
-        strategy = BOUNDARIES.strategy(bc_type_p, "p", "pressure")
-        val = boundary.get("value_p")
-        if val is None:
-            val = boundary.get("value", 0.0)
 
-        for j in range(nf):
-            i_face = start + j
-            boundary_face_indices[idx] = i_face
-            if strategy is BoundaryStrategy.FIXED_VALUE:
-                bc_type_codes[idx] = 1
-                p_boundary_values[idx] = val if val is not None else 0.0
-            elif strategy is BoundaryStrategy.EMPTY:
-                bc_type_codes[idx] = 2
-                p_boundary_values[idx] = 0.0
-            elif strategy is BoundaryStrategy.FREESTREAM:
-                bc_type_codes[idx] = 3
-                p_boundary_values[idx] = val if val is not None else 0.0
-            elif strategy in (
-                BoundaryStrategy.ZERO_GRADIENT,
-                BoundaryStrategy.FIXED_FLUX_PRESSURE,
-                BoundaryStrategy.CYCLIC,
-            ):
-                bc_type_codes[idx] = 0
-                p_boundary_values[idx] = 0.0
-            else:
-                raise RuntimeError(f"Unhandled pressure boundary strategy {strategy!r}")
-            idx += 1
+@overload
+def assemble_pressure_correction_equation_rhie_chow(
+    *args: Any, return_workspace: Literal[False] = False, **kwargs: Any
+) -> tuple[Any, Any, np.ndarray]: ...
 
-    return bc_type_codes, p_boundary_values, boundary_face_indices
+
+@overload
+def assemble_pressure_correction_equation_rhie_chow(
+    *args: Any, return_workspace: Literal[True], **kwargs: Any
+) -> tuple[Any, Any, np.ndarray, PressureCorrectionWorkspace]: ...
 
 
 def assemble_pressure_correction_equation_rhie_chow(
@@ -517,6 +581,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     pressure_constraint="reference",
     matrix_workspace=None,
     operator_backend="numpy",
+    boundary_layout=None,
+    return_workspace=False,
 ):
     """
     Assemble pressure correction equation using Modified Rhie-Chow interpolation.
@@ -633,7 +699,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     n_boundary_faces = n_faces - n_interior
     if n_boundary_faces > 0:
         bc_codes, p_vals, bnd_face_idx = _build_boundary_face_arrays(
-            boundaries, n_interior, n_faces
+            boundaries, n_interior, n_faces, layout=boundary_layout
         )
         cf_b, ff_b, vf_b = _process_boundary_faces_jit(
             n_boundary_faces,
@@ -652,11 +718,9 @@ def assemble_pressure_correction_equation_rhie_chow(
             bnd_face_idx,
             face_conductance,
         )
-        for i in range(n_boundary_faces):
-            i_face = bnd_face_idx[i]
-            flux_cf[i_face] = cf_b[i]
-            flux_ff[i_face] = ff_b[i]
-            flux_vf[i_face] = vf_b[i]
+        flux_cf[bnd_face_idx] = cf_b
+        flux_ff[bnd_face_idx] = ff_b
+        flux_vf[bnd_face_idx] = vf_b
 
         # A replay experiment may supply the face flux measured by the same
         # monolithic discretisation.  Keep it as the pressure-equation
@@ -731,6 +795,8 @@ def assemble_pressure_correction_equation_rhie_chow(
                 "All-Neumann pressure requires pressure_constraint='reference' or 'nullspace'"
             )
 
+    if return_workspace:
+        return A_p, b_p, flux_vf, PressureCorrectionWorkspace(DU, face_conductance)
     return A_p, b_p, flux_vf
 
 
@@ -982,8 +1048,18 @@ def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
     idx = n_elements + (start - n_interior)
     own = owners[start : start + nf]
     face_sf = geo_data["face_sf"][start : start + nf]
-    for i in range(nf):
-        U[idx + i] = _remove_normal_component(U[own[i]], face_sf[i])
+    # This is deliberately the same array expression as the predictor's
+    # empty-boundary update.  In particular, a degenerate face retains the
+    # owner value as the old scalar helper did.
+    owner_velocity = U[own]
+    magnitudes = np.linalg.norm(face_sf, axis=1)
+    valid = magnitudes > 1e-10
+    projected = owner_velocity.copy()
+    if np.any(valid):
+        normals = face_sf[valid] / magnitudes[valid, np.newaxis]
+        normal_velocity = np.sum(owner_velocity[valid] * normals, axis=1)
+        projected[valid] -= normal_velocity[:, np.newaxis] * normals
+    U[idx : idx + nf] = projected
 
 
 def _update_velocity_bcs(
@@ -1035,7 +1111,16 @@ def _update_velocity_bcs(
 
 
 def correct_velocity_and_flux(
-    U, phi, p_prime, A_U, mesh_data, geo_data, boundaries, rho=1.0, alpha_u=1.0
+    U,
+    phi,
+    p_prime,
+    A_U,
+    mesh_data,
+    geo_data,
+    boundaries,
+    rho=1.0,
+    alpha_u=1.0,
+    workspace: PressureCorrectionWorkspace | None = None,
 ):
     """
     Apply pressure correction to velocity and persistent flux.
@@ -1050,11 +1135,15 @@ def correct_velocity_and_flux(
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
 
-    volumes = geo_data["element_volumes"]
-    # Restore un-relaxed diagonal for DU consistency
-    A_U_physical = A_U * alpha_u
-    DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
-    face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
+    if workspace is None:
+        volumes = geo_data["element_volumes"]
+        # Restore un-relaxed diagonal for DU consistency.
+        A_U_physical = A_U * alpha_u
+        DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
+        face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
+    else:
+        DU = workspace.DU
+        face_conductance = workspace.face_conductance
 
     # 1. Correct Cell Velocity
     p_prime_ext = _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=phi)
@@ -1248,6 +1337,19 @@ class SIMPLESolver:
         # face-sized contribution buffer on large meshes.
         self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
         self._pressure_matrix_workspace = self._momentum_matrix_workspace
+        self._pressure_boundary_layout = build_pressure_boundary_layout(
+            boundaries,
+            mesh_data["n_interior_faces"],
+            mesh_data["n_faces"],
+        )
+
+    def close(self) -> None:
+        """Release solver-owned transient preconditioner cache entries."""
+        from .linear_interface import clear_linear_solver_caches
+
+        namespace = self._momentum_matrix_workspace.cache_namespace
+        clear_linear_solver_caches(("momentum", namespace))
+        clear_linear_solver_caches(("pressure", namespace))
 
     def step(
         self,

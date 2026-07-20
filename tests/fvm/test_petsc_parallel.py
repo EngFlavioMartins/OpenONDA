@@ -42,6 +42,7 @@ from source.solvers.FVM.solve.linear_interface import (  # noqa: E402
 )
 from source.solvers.FVM.solve.petsc_partitioned import (  # noqa: E402
     OwnedRowsCSR,
+    PartitionedLinearWorkspace,
     solve_owned_rows,
 )
 
@@ -84,6 +85,41 @@ def test_owned_row_petsc_solution_matches_scipy():
     np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-11)
     assert result.converged
     assert result.backend == "petsc-partitioned"
+
+
+def test_partitioned_workspace_reuses_allocations_and_closes_collectively():
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    n = 19
+    matrix = diags((-np.ones(n - 1), 3.0 * np.ones(n), -np.ones(n - 1)), (-1, 0, 1), format="csr")
+    rhs = np.linspace(0.5, 1.5, n)
+    system = OwnedRowsCSR.from_global(matrix, rhs, context.rank, context.size)
+    workspace = PartitionedLinearWorkspace(context)
+    try:
+        first, _ = workspace.solve(
+            system,
+            method="cg",
+            tolerance=1e-11,
+            max_iterations=200,
+            constant_nullspace=False,
+            initial_guess=None,
+        )
+        matrix_id = id(workspace.matrix)
+        ksp_id = id(workspace.ksp)
+        second, _ = workspace.solve(
+            system,
+            method="cg",
+            tolerance=1e-11,
+            max_iterations=200,
+            constant_nullspace=False,
+            initial_guess=first,
+        )
+        assert id(workspace.matrix) == matrix_id
+        assert id(workspace.ksp) == ksp_id
+        np.testing.assert_allclose(second, first, rtol=1e-11, atol=1e-12)
+    finally:
+        workspace.close()
+    assert workspace.matrix is None
+    assert workspace.ksp is None
 
 
 def test_collective_petsc_solution_matches_scipy():

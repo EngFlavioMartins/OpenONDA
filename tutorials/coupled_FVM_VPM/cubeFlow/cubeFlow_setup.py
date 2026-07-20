@@ -1,4 +1,8 @@
-"""Hybrid FVM–VPM simulation of flow past a cube at Re = 1000."""
+"""Hybrid FVM–VPM simulation of flow past a cube at Re = 1000.
+
+The FVM mesh is built beforehand by ``assets/create_mesh.py`` and read from
+``constant/polyMesh/``; this file holds only the case physics and coupling.
+"""
 
 from __future__ import annotations
 
@@ -32,10 +36,6 @@ from source.solvers.FVM import (  # noqa: E402
     TransportConfig,
     setup_fvm_solver,
 )
-from source.solvers.FVM.mesh.rectilinear import (  # noqa: E402
-    coupling_box_mesh,
-    wall_refined_axis,
-)
 from source.solvers.VPM import (  # noqa: E402
     AdvectionConfig,
     StabilizationConfig,
@@ -49,21 +49,18 @@ from source.solvers.VPM import (  # noqa: E402
 
 
 CASE_DIR = Path(__file__).resolve().parent
+MESH = str(CASE_DIR / "constant" / "mesh.msh")  # built by assets/create_mesh.py
 
 # Physical problem
 CUBE_SIDE = 1.0
-CUBE_BOX = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
+CORE_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)  # FVM common-region extent
 U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.02, 0.0)
 
-# Common FVM discretisation
-CORE_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-H_CORE = 0.05
-WALL_REFINE = 0.025
-WALL_RATIO = 1.25
+# Time integration
 DT_FVM = 0.0125
 T_END = 7.5
 WRITE_INTERVAL = 0.15
@@ -75,26 +72,6 @@ VPM_DOMAIN = (-2.0, 10.0, -2.0, 2.0, -2.0, 2.0)
 MAX_PARTICLES = 1_000_000
 OVERLAP_RADIUS_RATIO = 1.0
 BACKUP_PERIOD = round(WRITE_INTERVAL / DT_VPM)
-
-
-def hybrid_mesh() -> dict:
-    """Body-fitted common-region mesh with one outer coupling patch."""
-    axis = wall_refined_axis(
-        CORE_BOX[0],
-        CORE_BOX[1],
-        CUBE_BOX[0],
-        CUBE_BOX[1],
-        WALL_REFINE,
-        H_CORE,
-        WALL_RATIO,
-    )
-    return coupling_box_mesh(
-        CORE_BOX,
-        H_CORE,
-        hole_box=CUBE_BOX,
-        wall_patch_name="cube",
-        nodes=(axis, axis, axis),
-    )
 
 
 FVM_SETUP = FVMSetup(
@@ -209,7 +186,7 @@ COUPLER_SETUP = CouplerSetup(
 
 
 def main() -> None:
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=hybrid_mesh)
+    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
     vpm_solver = setup_vpm_solver(VPM_SETUP)
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
     coupled_solver.run()

@@ -25,6 +25,47 @@ def _load(name: str, path: Path):
     return module
 
 
+def _small_coupled_mesh(core_box):
+    """A coarse gmsh box-minus-cube mesh (numericalBoundary + cube), like the
+    hybrid case's mesher but small enough to build inside a test."""
+    gmsh = pytest.importorskip("gmsh", reason="hybrid parity solver needs Gmsh")
+    from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+
+    x0, x1, y0, y1, z0, z1 = core_box
+    gmsh.initialize()
+    try:
+        gmsh.model.add("hybrid_parity")
+        box = gmsh.model.occ.addBox(x0, y0, z0, x1 - x0, y1 - y0, z1 - z0)
+        cube = gmsh.model.occ.addBox(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
+        fluid = gmsh.model.occ.cut([(3, box)], [(3, cube)])[0][0][1]
+        gmsh.model.occ.synchronize()
+        outer, wall = [], []
+        for dim, tag in gmsh.model.getBoundary([(3, fluid)], oriented=False):
+            cx, cy, cz = gmsh.model.occ.getCenterOfMass(dim, tag)
+            on_outer = (
+                abs(cx - x0) < 1e-6
+                or abs(cx - x1) < 1e-6
+                or abs(cy - y0) < 1e-6
+                or abs(cy - y1) < 1e-6
+                or abs(cz - z0) < 1e-6
+                or abs(cz - z1) < 1e-6
+            )
+            (outer if on_outer else wall).append(tag)
+        gmsh.model.setPhysicalName(2, gmsh.model.addPhysicalGroup(2, outer), "numericalBoundary")
+        gmsh.model.setPhysicalName(2, gmsh.model.addPhysicalGroup(2, wall), "cube")
+        gmsh.model.addPhysicalGroup(3, [fluid])
+        gmsh.option.setNumber("Mesh.MeshSizeMax", 0.5)
+        gmsh.model.mesh.generate(3)
+        importer = GmshImporter()
+        try:
+            return importer.get_mesh_data()
+        finally:
+            importer.finalize()
+    finally:
+        if gmsh.isInitialized():
+            gmsh.finalize()
+
+
 @pytest.fixture(scope="module")
 def bench():
     return _load("hybrid_cube_setup", _CASE)
@@ -42,7 +83,9 @@ def hybrid_solver(bench, tmp_path_factory):
     case_dir = tmp_path_factory.mktemp("hybrid_parity")
     serial_setup = replace(bench.FVM_SETUP, cores=1)
     with contextlib.redirect_stdout(io.StringIO()):
-        return Solver(serial_setup, case_dir=str(case_dir), mesh_data=bench.hybrid_mesh())
+        return Solver(
+            serial_setup, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.CORE_BOX)
+        )
 
 
 def test_common_fvm_settings_identical(bench, reference):
