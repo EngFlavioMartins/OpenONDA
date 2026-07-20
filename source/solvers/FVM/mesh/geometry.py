@@ -95,15 +95,22 @@ def compute_geometry(
 
     logging.Timer.start("    - Basic Face Geometry")
 
-    # 1. Convert faces list to padded array
-    max_nodes = max(len(f) for f in faces)
-    padded_faces = np.full((n_faces, max_nodes), -1, dtype=np.int32)
-    counts = np.zeros(n_faces, dtype=np.int32)
-
-    for i, f in enumerate(faces):
-        n_f = len(f)
-        padded_faces[i, :n_f] = f
-        counts[i] = n_f
+    # 1. Convert faces to a compact padded array.  Rectilinear meshes already
+    # store fixed-width quads contiguously, so avoid rebuilding them through a
+    # Python loop.
+    face_array = faces if isinstance(faces, np.ndarray) else None
+    if face_array is not None and face_array.ndim == 2:
+        padded_faces = np.ascontiguousarray(face_array, dtype=np.int32)
+        max_nodes = padded_faces.shape[1]
+        counts = np.full(n_faces, max_nodes, dtype=np.int32)
+    else:
+        max_nodes = max(len(f) for f in faces)
+        padded_faces = np.full((n_faces, max_nodes), -1, dtype=np.int32)
+        counts = np.zeros(n_faces, dtype=np.int32)
+        for i, f in enumerate(faces):
+            n_f = len(f)
+            padded_faces[i, :n_f] = f
+            counts[i] = n_f
 
     # 2. Get coordinates (n_faces, max_nodes, 3)
     # Mask invalid nodes with 0 or first point (doesn't matter if masked later,
@@ -174,15 +181,27 @@ def compute_geometry(
     # --- Process Element Geometry ---
     logging.Timer.start("    - Element Geometry")
 
-    # 1. Convert element_faces (list of lists) to padded array
-    max_faces = max(len(f) for f in element_faces)
-    padded_elem_faces = np.full((n_elements, max_faces), -1, dtype=np.int32)
-    elem_counts = np.zeros(n_elements, dtype=np.int32)
-
-    for i, f in enumerate(element_faces):
-        n_f = len(f)
-        padded_elem_faces[i, :n_f] = f
-        elem_counts[i] = n_f
+    # 1. Convert element faces to a padded array.  ``compute_mesh_geometry``
+    # passes CSR connectivity so this avoids a million-element list-of-lists
+    # on large structured meshes while retaining generic legacy support.
+    if isinstance(element_faces, tuple):
+        cell_faces, cell_face_offsets = element_faces
+        elem_counts = np.diff(cell_face_offsets).astype(np.int32, copy=False)
+        max_faces = int(np.max(elem_counts, initial=0))
+        padded_elem_faces = np.full((n_elements, max_faces), -1, dtype=np.int32)
+        if len(cell_faces):
+            rows = np.repeat(np.arange(n_elements), elem_counts)
+            starts = np.repeat(cell_face_offsets[:-1], elem_counts)
+            columns = np.arange(len(cell_faces)) - starts
+            padded_elem_faces[rows, columns] = cell_faces
+    else:
+        max_faces = max(len(f) for f in element_faces)
+        padded_elem_faces = np.full((n_elements, max_faces), -1, dtype=np.int32)
+        elem_counts = np.zeros(n_elements, dtype=np.int32)
+        for i, f in enumerate(element_faces):
+            n_f = len(f)
+            padded_elem_faces[i, :n_f] = f
+            elem_counts[i] = n_f
 
     # 2. Get face centroids (N_elem, max_faces, 3)
     safe_elem_faces = padded_elem_faces.copy()
@@ -327,13 +346,22 @@ def compute_geometry(
 
 def compute_mesh_geometry(mesh_data, gradient_scheme="gauss"):
     """Compute cell and face geometry for a validated mesh dictionary."""
-    # 1. We need element_faces list which is not in mesh_data usually
-    # unless we derive it.
+    # Build and retain compact cell-to-face CSR connectivity.  It is shared by
+    # the typed topology and VTK exporter, and avoids repeatedly materialising
+    # a Python list for every cell.
     from . import topology
 
-    element_faces = topology.get_element_faces(
-        mesh_data["owners"], mesh_data["neighbours"], mesh_data["n_elements"], mesh_data["n_faces"]
-    )
+    element_faces = mesh_data.get("cell_faces")
+    cell_face_offsets = mesh_data.get("cell_face_offsets")
+    if element_faces is None or cell_face_offsets is None:
+        element_faces, cell_face_offsets = topology.build_cell_face_csr(
+            mesh_data["owners"],
+            mesh_data["neighbours"],
+            mesh_data["n_elements"],
+            mesh_data["n_faces"],
+        )
+        mesh_data["cell_faces"] = element_faces
+        mesh_data["cell_face_offsets"] = cell_face_offsets
 
     geo_data = compute_geometry(
         mesh_data["points"],
@@ -343,7 +371,7 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss"):
         mesh_data["n_elements"],
         mesh_data["n_faces"],
         mesh_data["n_interior_faces"],
-        element_faces,
+        (element_faces, cell_face_offsets),
     )
 
     # Pre‑compute LSQ gradient geometry if requested

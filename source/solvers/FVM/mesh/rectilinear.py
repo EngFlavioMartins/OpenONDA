@@ -310,9 +310,31 @@ def box_mesh_3d(
     owners = new_id[owners]
     neighbours = new_id[interior_neighbours]
 
+    # A rectilinear mesh has fixed-width quad faces and hex cells.  Keeping
+    # that information as contiguous arrays is materially cheaper than a
+    # Python list containing one tiny ndarray per face (the reference cube
+    # case has several million faces).  ``faces`` remains indexable exactly
+    # as before, so generic FVM operators and mesh readers stay compatible.
+    cell_ids = np.flatnonzero(keep)
+    cell_i = cell_ids % nx
+    cell_j = (cell_ids // nx) % ny
+    cell_k = cell_ids // (nx * ny)
+    cell_vertices = np.column_stack(
+        (
+            pid(cell_i, cell_j, cell_k),
+            pid(cell_i + 1, cell_j, cell_k),
+            pid(cell_i + 1, cell_j + 1, cell_k),
+            pid(cell_i, cell_j + 1, cell_k),
+            pid(cell_i, cell_j, cell_k + 1),
+            pid(cell_i + 1, cell_j, cell_k + 1),
+            pid(cell_i + 1, cell_j + 1, cell_k + 1),
+            pid(cell_i, cell_j + 1, cell_k + 1),
+        )
+    ).astype(np.int32, copy=False)
+
     return {
         "points": points,
-        "faces": list(all_quads),
+        "faces": np.ascontiguousarray(all_quads, dtype=np.int32),
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(neighbours, dtype=np.int32),
         "boundary": boundary,
@@ -320,6 +342,11 @@ def box_mesh_3d(
         "n_faces": all_quads.shape[0],
         "n_interior_faces": n_interior,
         "n_points": points.shape[0],
+        # Gmsh element type 5 = 8-node hexahedron.  The explicit vertices let
+        # VTK write compact native hex cells instead of reconstructing every
+        # cell as a general polyhedron.
+        "cell_vertices": np.ascontiguousarray(cell_vertices),
+        "cell_type_codes": np.full(int(keep.sum()), 5, dtype=np.int32),
     }
 
 

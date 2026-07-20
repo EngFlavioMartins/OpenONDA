@@ -114,8 +114,14 @@ echo "Installing OpenONDA in editable mode..."
 conda run -n "$CONDA_ENV" python -m pip install --no-deps -e "$REPO_ROOT"
 
 if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
-    echo "Installing OpenVSP and its Python API..."
-    "$OPENVSP_INSTALLER"
+    PYTHON_VERSION="$(conda run -n "$CONDA_ENV" python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    if [ "$PYTHON_VERSION" = "3.13" ]; then
+        echo "Installing OpenVSP and its Python API..."
+        "$OPENVSP_INSTALLER"
+    else
+        echo "Skipping OpenVSP: its official binary requires Python 3.13; this FVM/VPM environment uses Python $PYTHON_VERSION."
+        echo "Set OPENONDA_INSTALL_OPENVSP=0 to silence this message."
+    fi
 fi
 
 if [ -d "$REPO_ROOT/.git" ]; then
@@ -123,12 +129,13 @@ if [ -d "$REPO_ROOT/.git" ]; then
     conda run -n "$CONDA_ENV" pre-commit install --install-hooks
 fi
 
-echo "Verifying the environment..."
-for module in bandit complexipy gmsh interrogate mpi4py mypy numba petsc4py pip_audit pre_commit pyamg pydantic pygit2 pytest pyvista ruff scalene skylos tach taichi ty vtk vulture; do
+echo "Verifying the solver environment..."
+for module in gmsh h5py mpi4py numba petsc4py pyamg pydantic pygit2 pytest pyvista ruff scipy taichi vtk; do
     conda run -n "$CONDA_ENV" python -c "import $module; print('$module: OK')"
 done
 conda run -n "$CONDA_ENV" python -m pip check
 conda run -n "$CONDA_ENV" ruff --version
+conda run -n "$CONDA_ENV" mpiexec --version
 
 echo ""
 echo -e "${GREEN}✅ OpenONDA environment '$CONDA_ENV' is ready.${NC}"

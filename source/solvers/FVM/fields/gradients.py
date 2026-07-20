@@ -465,6 +465,7 @@ def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
     n_total = phi.shape[0]
     n_components = phi.shape[1]
     n_elements = mesh_data["n_elements"]
+    n_owned = int(mesh_data.get("_n_owned", n_elements))
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     n_boundary = n_faces - n_interior
@@ -477,26 +478,35 @@ def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
 
     grad = np.zeros((n_total, 3, n_components), dtype=np.float64)
 
+    owned_stencil = owner_cell < n_owned
+    owner_owned = owner_cell[owned_stencil]
+    nei_owned = nei_phi_idx[owned_stencil]
+    w2dr_owned = nei_w2_dr[owned_stencil]
+
     for ic in range(n_components):
         # RHS = Σ w²·φ_n·dr  −  φ_c · Σ w²·dr
-        phi_nei = phi[nei_phi_idx, ic]
+        phi_nei = phi[nei_owned, ic]
         rhs = np.column_stack(
             [
                 np.bincount(
-                    owner_cell,
-                    weights=phi_nei * nei_w2_dr[:, dimension],
-                    minlength=n_elements,
+                    owner_owned,
+                    weights=phi_nei * w2dr_owned[:, dimension],
+                    minlength=n_owned,
                 )
                 for dimension in range(3)
             ]
         )
-        rhs[:, 0] -= phi[:n_elements, ic] * sum_w2dr[:, 0]
-        rhs[:, 1] -= phi[:n_elements, ic] * sum_w2dr[:, 1]
-        rhs[:, 2] -= phi[:n_elements, ic] * sum_w2dr[:, 2]
+        rhs[:, 0] -= phi[:n_owned, ic] * sum_w2dr[:n_owned, 0]
+        rhs[:, 1] -= phi[:n_owned, ic] * sum_w2dr[:n_owned, 1]
+        rhs[:, 2] -= phi[:n_owned, ic] * sum_w2dr[:n_owned, 2]
 
         # grad = M⁻¹ · rhs   (vectorised 3×3 matmul)
-        g = M_inv @ rhs[..., np.newaxis]  # (n, 3, 1)
-        grad[:n_elements, :, ic] = g.squeeze(-1)
+        g = M_inv[:n_owned] @ rhs[..., np.newaxis]
+        grad[:n_owned, :, ic] = g.squeeze(-1)
+
+    parallel = mesh_data.get("_parallel_context")
+    if parallel is not None and parallel.is_partitioned:
+        parallel.exchange_halo(grad[:n_elements])
 
     # Boundary ghost cells: copy owner gradient (same convention as Gauss)
     owners_b = mesh_data["owners"][n_interior:n_faces]

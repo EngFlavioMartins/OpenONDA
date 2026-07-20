@@ -461,6 +461,14 @@ def solve_momentum_predictor(
             return U_star, A_U, solve_diagnostics
         return U_star, A_U
 
+    requested_ilu_key = solver_kwargs.pop("ilu_key", None)
+    shared_ilu_key = requested_ilu_key
+    if shared_ilu_key is None and matrix_workspace is not None:
+        # The three momentum components share this static matrix topology.  A
+        # workspace namespace scopes the cache to one solver instance while
+        # allowing x/y/z to reuse one ILU factorisation.
+        shared_ilu_key = ("momentum", matrix_workspace.cache_namespace)
+
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
         A = mom_eqs[comp_name]["A"]
         b = mom_eqs[comp_name]["b"]
@@ -490,7 +498,6 @@ def solve_momentum_predictor(
             x0_vec = U_old[:n_elements, i_comp]
 
         # Solve with optional initial guess and tuned tolerance
-        solver_kwargs.pop("ilu_key", None)
         x_initial = x0_vec if x0_vec is not None else np.zeros(n_elements)
         initial_residual = matrix_assembly.normalized_residual(A_relaxed, x_initial, b_relaxed)
         U_comp_star, linear_result = matrix_assembly.solve_linear_system(
@@ -500,7 +507,7 @@ def solve_momentum_predictor(
             equation_type="momentum",
             tol=momentum_tol,
             x0=x0_vec,
-            ilu_key=comp_name,
+            ilu_key=shared_ilu_key,
             backend=linear_backend,
             parallel_context=parallel_context,
             return_info=True,

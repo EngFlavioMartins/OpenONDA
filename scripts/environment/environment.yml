@@ -3,7 +3,10 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.13
+  # Taichi 1.7.x, used by the VPM/cubeFlow backend, is validated here on
+  # Python 3.10.  Keeping the Conda recipe aligned with the runnable tutorial
+  # environment avoids a solver that installs successfully but cannot import.
+  - python=3.10
   - pip
   # Build toolchain (needed to compile the OFW Cython/C++ extension)
   - c-compiler
@@ -24,43 +27,24 @@ dependencies:
   - pyamg
   - pygit2
   - mpi4py
+  - openmpi
   - petsc
   - petsc4py
   # Visualization dependencies (hard to build via pip)
   - pyvista
   - vtk
-  # Tests and repository checks. Local pre-commit hooks use the executables
-  # from this environment, so vulture and bandit must not be omitted.
+  # Runtime validation. Development-only tooling belongs in the project extras,
+  # not the production FVM/VPM environment used to run a case.
   - pytest>=8
-  - pytest-cov
-  - pytest-timeout
-  - pytest-benchmark
-  - hypothesis
   - ruff>=0.9
-  - mypy
-  - vulture>=2
-  - bandit>=1.7
-  - pre-commit
-  - pip-audit
   - pip:
-    # Keep Pydantic and its compiled core under one package manager. Several
-    # pip-only development tools depend on Pydantic and may otherwise replace
-    # only half of Conda's matched pair.
+    # Keep Pydantic and its compiled core under one package manager.
     - pydantic==2.13.4
     - pydantic-core==2.46.4
     # Conda's Gmsh package supplies the native binary on macOS ARM but does not
     # install the Python API used by the mesh reader and its tests.
     - gmsh==4.15.2
     # GPU backend for the VPM solver (pip-only; pinned to the tested release).
-    # On NVIDIA driver 580+ the CUDA backend is buggy with 1.7.4 — run the VPM
+    # On NVIDIA driver 580+ the CUDA backend is buggy with 1.7.x — run the VPM
     # tutorials with OPENONDA_PROCESSING_UNIT=GPU_VULKAN (see tutorial allrun.sh).
-    - taichi==1.7.4
-    # Data Version Control for simulation results (see docs/data_management.md).
-    - dvc
-    # Additional development checks from the pyproject dev/all extras.
-    - complexipy>=0.1.0
-    - tach>=0.1.0
-    - interrogate>=1.5.0
-    - scalene>=1.5.0
-    - ty>=0.0.1
-    - skylos>=0.1.0
+    - taichi==1.7.3

@@ -101,7 +101,20 @@ def compute_enstrophy(U, mesh_data, geo_data):
     return 0.5 * float(np.sum(volumes * np.sum(vorticity * vorticity, axis=1)))
 
 
-def compute_vorticity(U, mesh_data, geo_data):
+def vorticity_from_gradient(grad_U, n_elements: int | None = None):
+    """Return curl(U) from an already reconstructed velocity gradient."""
+    gradient = np.asarray(grad_U, dtype=np.float64)
+    if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
+        raise ValueError("Velocity gradient must have shape (n, 3, 3)")
+    n = gradient.shape[0] if n_elements is None else int(n_elements)
+    vorticity = np.empty((n, 3), dtype=np.float64)
+    vorticity[:, 0] = gradient[:n, 1, 2] - gradient[:n, 2, 1]
+    vorticity[:, 1] = gradient[:n, 2, 0] - gradient[:n, 0, 2]
+    vorticity[:, 2] = gradient[:n, 0, 1] - gradient[:n, 1, 0]
+    return vorticity
+
+
+def compute_vorticity(U, mesh_data, geo_data, *, gradient=None):
     """
     Compute vorticity field: w = curl(U)
 
@@ -113,34 +126,13 @@ def compute_vorticity(U, mesh_data, geo_data):
     Returns:
         vorticity: Vorticity field (n_elements, 3)
     """
-    # 1. Compute velocity gradient grad(U)
-    # grad_U shape: (n_total, 3, 3) where grad_U[i, j, k] is dU_k/dx_j
-    _grad_fn = gradients._resolve_gradient_fn(geo_data)
-    grad_U = _grad_fn(U, mesh_data, geo_data)
-
-    n_elements = mesh_data["n_elements"]
-
-    # 2. Extract components
-    # grad_U[:, 0, 0] = dUx/dx
-    # grad_U[:, 1, 0] = dUx/dy
-    # grad_U[:, 2, 0] = dUx/dz
-    # grad_U[:, 0, 1] = dUy/dx
-    # grad_U[:, 1, 1] = dUy/dy
-    # grad_U[:, 2, 1] = dUy/dz
-    # grad_U[:, 0, 2] = dUz/dx
-    # grad_U[:, 1, 2] = dUz/dy
-    # grad_U[:, 2, 2] = dUz/dz
-
-    vorticity = np.zeros((n_elements, 3))
-
-    # wx = dUz/dy - dUy/dz
-    vorticity[:, 0] = grad_U[:n_elements, 1, 2] - grad_U[:n_elements, 2, 1]
-    # wy = dUx/dz - dUz/dx
-    vorticity[:, 1] = grad_U[:n_elements, 2, 0] - grad_U[:n_elements, 0, 2]
-    # wz = dUy/dx - dUx/dy
-    vorticity[:, 2] = grad_U[:n_elements, 0, 1] - grad_U[:n_elements, 1, 0]
-
-    return vorticity
+    # grad_U[i, j, k] is dU_k/dx_j.  Solvers commonly need this same
+    # expensive reconstruction for wall loads and VTK in one time state, so
+    # accepting a supplied gradient prevents duplicate full-domain work.
+    if gradient is None:
+        _grad_fn = gradients._resolve_gradient_fn(geo_data)
+        gradient = _grad_fn(U, mesh_data, geo_data)
+    return vorticity_from_gradient(gradient, mesh_data["n_elements"])
 
 
 def _normalize_patch_names(patch_names):
@@ -369,6 +361,7 @@ def compute_surface_face_loads(
     geo_data,
     boundaries,
     patch_names=None,
+    gradient=None,
 ):
     """Return discrete pressure and viscous loads on selected boundary faces.
 
@@ -399,7 +392,9 @@ def compute_surface_face_loads(
         )
     gradU = None
     if not np.all(mu_values == 0.0):
-        gradU = _resolve_grad(geo_data)(U, mesh_data, geo_data)
+        gradU = (
+            gradient if gradient is not None else _resolve_grad(geo_data)(U, mesh_data, geo_data)
+        )
         if gradU.ndim == 3:
             gradU = gradU[:n_elements]
 
@@ -456,6 +451,7 @@ def compute_surface_forces(
     ref_area=None,
     ref_length=None,
     moment_centre=None,
+    gradient=None,
 ):
     """
     Compute surface forces (pressure + viscous) on boundary patches.
@@ -476,7 +472,15 @@ def compute_surface_forces(
         dict: mapping patch name -> {force: [Fx,Fy,Fz], Cd: , Cl: }
     """
     face_loads = compute_surface_face_loads(
-        U, p, mu, rho, mesh_data, geo_data, boundaries, patch_names=patch_names
+        U,
+        p,
+        mu,
+        rho,
+        mesh_data,
+        geo_data,
+        boundaries,
+        patch_names=patch_names,
+        gradient=gradient,
     )
     results = {}
     for name, loads in face_loads.items():

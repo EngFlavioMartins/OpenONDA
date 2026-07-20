@@ -272,6 +272,40 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         )
 
 
+def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
+    """The production cube uses LSQ gradients, not the Gauss fallback."""
+    replicated_execution = ExecutionConfig.petsc_replicated()
+    context = ParallelContext.create(replicated_execution)
+    mesh = structured_box(5, 4, 3)
+    reference_config = _pimple_config(replicated_execution, "replicated-lsq")
+    reference_config.schemes.gradient_scheme = "lsq"
+    with contextlib.redirect_stdout(io.StringIO()):
+        reference = Solver(
+            reference_config,
+            str(tmp_path / "replicated-lsq"),
+            mesh_data=mesh,
+        )
+        reference.auto_write = False
+        reference.solve_pimple(0.01)
+
+    partitioned_config = _pimple_config(ExecutionConfig.petsc_partitioned(), "partitioned-lsq")
+    partitioned_config.schemes.gradient_scheme = "lsq"
+    with contextlib.redirect_stdout(io.StringIO()):
+        actual = Solver(
+            partitioned_config,
+            str(tmp_path / "partitioned-lsq"),
+            mesh_data=mesh if context.is_root else None,
+        )
+        actual.auto_write = False
+        actual.solve_pimple(0.01)
+
+    n_owned = actual.parallel.n_owned
+    velocity = np.concatenate(actual.parallel.comm.allgather(actual.U[:n_owned].copy()))
+    pressure = np.concatenate(actual.parallel.comm.allgather(actual.p[:n_owned].copy()))
+    np.testing.assert_allclose(velocity, reference.U[: mesh["n_elements"]], atol=3e-9)
+    np.testing.assert_allclose(pressure, reference.p[: mesh["n_elements"]], atol=3e-9)
+
+
 def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
     execution = ExecutionConfig.petsc_partitioned()
     context = ParallelContext.create(execution)
@@ -306,3 +340,6 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         assert (Path(shared_root) / "partitioned-state.pvtu").exists()
         for rank in range(context.size):
             assert (Path(shared_root) / f"partitioned-state-rank-{rank:05d}.vtu").exists()
+        collection = tmp_path / "run" / "solution" / "partitioned-restart.pvd"
+        assert collection.exists()
+        assert "partitioned-state.pvtu" in collection.read_text()

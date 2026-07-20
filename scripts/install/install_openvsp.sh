@@ -2,8 +2,9 @@
 # install_openvsp.sh - Wire OpenVSP into the OpenONDA conda workflow.
 #
 # OpenVSP binary releases are tied to the Python version they were built with.
-# OpenVSP 3.51.0 and the OpenONDA environment both use Python 3.13, so the
-# official OpenVSP Python package is installed directly into OpenONDA.
+# The current official OpenVSP 3.51.0 package needs Python 3.13.  The
+# FVM/VPM environment intentionally uses Python 3.10 for Taichi compatibility,
+# so install_anaconda.sh skips this optional component there.
 #
 # Usage:
 #   scripts/install/install_openvsp.sh

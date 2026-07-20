@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from ...FVM.fields import diagnostics, field_io
+from ...FVM.fields import field_io
 
 
 class SolverIO:
@@ -116,16 +116,8 @@ class SolverIO:
         # Diagnostics
         algo = self.solver.config.pimple.algorithm.upper()
         if algo in ["PISO", "PIMPLE"]:
-            Co = diagnostics.compute_courant_number(
-                self.solver.U,
-                self.solver.phi,
-                self.solver.dt,
-                self.solver.mesh_data,
-                self.solver.geo_data,
-            )
-            vort = diagnostics.compute_vorticity(
-                self.solver.U, self.solver.mesh_data, self.solver.geo_data
-            )
+            Co = self.solver._courant_field(self.solver._current_dt)
+            vort = self.solver._vorticity_field()
             fields.append({"name": "Co", "type": "volScalarField", "phi": _extend(Co)})
             fields.append({"name": "vorticity", "type": "volVectorField", "phi": _extend(vort)})
             print(f"    - Max Co: {np.max(Co):.3f}")

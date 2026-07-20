@@ -161,6 +161,63 @@ class Solver(OFWInterfaceMixin):
         auto_write (bool): If True, automatically writes results based on writeInterval.
     """
 
+    @property
+    def topology(self):
+        """Build the immutable topology view only for consumers that request it."""
+        if self._topology is None:
+            from ..mesh.topology import MeshTopology
+
+            self._topology = MeshTopology.from_mesh_data(self.mesh_data)
+        return self._topology
+
+    @property
+    def geometry(self):
+        """Build the typed geometry facade lazily without duplicating solver state."""
+        if self._geometry is None:
+            self._geometry = geometry.MeshGeometry.from_data(self.mesh_data, self.geo_data)
+        return self._geometry
+
+    def _invalidate_derived_fields(self) -> None:
+        self._derived_fields.clear()
+
+    def _velocity_gradient(self):
+        """Return the cached gradient for the current solved field state."""
+        from ..fields import gradients
+
+        gradient = self._derived_fields.get("velocity_gradient")
+        if gradient is None:
+            gradient = gradients._resolve_gradient_fn(self.geo_data)(
+                self.U, self.mesh_data, self.geo_data
+            )
+            self._derived_fields["velocity_gradient"] = gradient
+        return gradient
+
+    def _courant_field(self, dt: float):
+        from ..fields import diagnostics
+
+        key = ("courant", float(dt))
+        courant = self._derived_fields.get(key)
+        if courant is None:
+            courant = diagnostics.compute_courant_number(
+                self.U, self.phi, dt, self.mesh_data, self.geo_data
+            )
+            self._derived_fields[key] = courant
+        return courant
+
+    def _vorticity_field(self):
+        from ..fields import diagnostics
+
+        vorticity = self._derived_fields.get("vorticity")
+        if vorticity is None:
+            vorticity = diagnostics.compute_vorticity(
+                self.U,
+                self.mesh_data,
+                self.geo_data,
+                gradient=self._velocity_gradient(),
+            )
+            self._derived_fields["vorticity"] = vorticity
+        return vorticity
+
     def __init__(
         self,
         config: FVMConfig,
@@ -239,10 +296,10 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("Total Initialization")
 
         # 1. Mesh Management
-        from ..mesh import cache
         from ..mesh.validation import enforce_quality_thresholds, validate_mesh
 
-        self.cache = cache.WeightCache()
+        self._topology = None
+        self._geometry = None
         gs = getattr(self.config.schemes, "gradient_scheme", "gauss")
         logging.Timer.start("  Geometry Compute")
         if self.parallel.is_partitioned:
@@ -326,16 +383,10 @@ class Solver(OFWInterfaceMixin):
 
             self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
 
-        from ..mesh.topology import MeshTopology
-
-        self.topology = MeshTopology.from_mesh_data(self.mesh_data)
-        self.geometry = geometry.MeshGeometry.from_data(self.mesh_data, self.geo_data)
-
         from ..assemble.matrix_assembly import prepare_matrix_assembly
 
         prepare_matrix_assembly(self.mesh_data)
 
-        self.cache.set_static_weights(self.cache.from_mesh_geometry(self.geo_data).static_weights)
         logging.Timer.log("  Geometry Compute")
 
         # 3. Component Setup
@@ -361,6 +412,7 @@ class Solver(OFWInterfaceMixin):
         self._current_dt = self.dt
         self._last_residuals = None
         self.last_diagnostics = None
+        self._derived_fields: dict[object, np.ndarray] = {}
         self._acceptance_counts = {
             "continuity": 0,
             "residual": 0,
@@ -802,6 +854,7 @@ class Solver(OFWInterfaceMixin):
             source_explicit=src_exp,
             source_implicit=src_imp,
         )
+        self._invalidate_derived_fields()
         self.state = FieldState(self.U, self.p, self.phi)
         self._last_residuals = residuals
         if self.parallel.is_root:
@@ -829,16 +882,13 @@ class Solver(OFWInterfaceMixin):
 
     def _build_step_diagnostics(self, step_dt, residuals):
         """Build the backend-neutral health record for the current solved state."""
-        from ..fields import diagnostics
         from ..solve.contracts import StepDiagnostics
 
         n = self.mesh_data["n_elements"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n
         interior_u = np.asarray(self.U[:n_owned])
         interior_p = np.asarray(self.p[:n_owned])
-        cfl = diagnostics.compute_courant_number(
-            self.U, self.phi, step_dt, self.mesh_data, self.geo_data
-        )
+        cfl = self._courant_field(step_dt)
         self.cfl_max = float(self.parallel.global_max(float(np.max(cfl[:n_owned]))))
         local_nonfinite = int(
             np.count_nonzero(~np.isfinite(interior_u))
@@ -874,7 +924,7 @@ class Solver(OFWInterfaceMixin):
                 )
             )
         )
-        vorticity = diagnostics.compute_vorticity(self.U, self.mesh_data, self.geo_data)
+        vorticity = self._vorticity_field()
         local_enstrophy = 0.5 * float(
             np.sum(
                 self.geo_data["element_volumes"][:n_owned]
@@ -1068,6 +1118,7 @@ class Solver(OFWInterfaceMixin):
                 ref_area=ref_area,
                 ref_length=ref_length,
                 moment_centre=getattr(self.config.forces, "moment_centre", [0, 0, 0]),
+                gradient=self._velocity_gradient(),
             )
             if self.parallel.is_partitioned:
                 forces = diagnostics.merge_partition_forces(self.parallel.comm.allgather(forces))
@@ -1214,15 +1265,11 @@ class Solver(OFWInterfaceMixin):
             # Use case_name and sequential numbering: case_name_000000.vtu
             filename = os.path.join(sol_dir, f"{self.config.case_name}_{self.time_step:06d}.vtu")
 
-        from ..fields import diagnostics
-
         fields = {
             "U": self.U,
             "p": self.p,
-            "Co": diagnostics.compute_courant_number(
-                self.U, self.phi, self.dt, self.mesh_data, self.geo_data
-            ),
-            "vorticity": diagnostics.compute_vorticity(self.U, self.mesh_data, self.geo_data),
+            "Co": self._courant_field(self._current_dt),
+            "vorticity": self._vorticity_field(),
         }
         if self.nut is not None:
             fields["nut"] = self.nut
@@ -1234,7 +1281,7 @@ class Solver(OFWInterfaceMixin):
 
             n_local = self.mesh_data["n_elements"]
             stem = Path(filename).stem
-            write_partition_vtu(
+            collection = write_partition_vtu(
                 Path(filename).parent,
                 stem,
                 self.mesh_data,
@@ -1243,6 +1290,12 @@ class Solver(OFWInterfaceMixin):
                 self.parallel.comm,
             )
             if self.parallel.is_root:
+                from ..io.vtk_exporter import PVDManager
+
+                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                if self.pvd_manager is None:
+                    self.pvd_manager = PVDManager(pvd_file)
+                self.pvd_manager.add_step(self.flow_time, str(collection))
                 print(f"  Output written: {stem}.pvtu")
                 sys.stdout.flush()
             return

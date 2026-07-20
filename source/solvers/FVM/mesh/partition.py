@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -56,6 +56,16 @@ class CellPartition:
     processor_face_global_ids: np.ndarray
     physical_boundary_face_global_ids: np.ndarray
     halo: HaloSchedule
+    _global_to_local: dict[int, int] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # Halo exchange happens several times per PIMPLE correction.  Keep the
+        # map rather than rebuilding a Python dictionary for every exchange.
+        object.__setattr__(
+            self,
+            "_global_to_local",
+            {int(global_id): index for index, global_id in enumerate(self.local_global_ids)},
+        )
 
     @classmethod
     def from_mesh_data(cls, mesh_data, rank: int, size: int) -> CellPartition:
@@ -116,8 +126,9 @@ class CellPartition:
     def global_to_local(self, global_ids) -> np.ndarray:
         """Map global cell IDs into the owned-then-ghost local layout."""
         requested = np.asarray(global_ids, dtype=np.int64)
-        lookup = {int(global_id): index for index, global_id in enumerate(self.local_global_ids)}
-        positions = np.asarray([lookup.get(int(value), -1) for value in requested], dtype=np.int64)
+        positions = np.asarray(
+            [self._global_to_local.get(int(value), -1) for value in requested], dtype=np.int64
+        )
         if np.any(positions < 0):
             missing = requested[positions < 0]
             raise KeyError(
@@ -151,8 +162,7 @@ class CellPartition:
 
 def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
     """Build an owned-plus-halo mesh view with compact point connectivity."""
-    if geo_data.get("gradient_scheme", "gauss") != "gauss":
-        raise NotImplementedError("Partitioned execution currently supports Gauss gradients")
+    gradient_scheme = geo_data.get("gradient_scheme", "gauss")
     partition = CellPartition.from_mesh_data(mesh_data, rank, size)
     n_global_cells = int(mesh_data["n_elements"])
     n_global_faces = int(mesh_data["n_faces"])
@@ -172,12 +182,19 @@ def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
         raise RuntimeError("Localized face references a cell outside the owned/halo view")
 
     global_faces = mesh_data["faces"]
-    used_points = np.unique(
-        np.concatenate([np.asarray(global_faces[index], dtype=np.int64) for index in face_ids])
-    )
+    face_array = global_faces if isinstance(global_faces, np.ndarray) else None
+    if face_array is not None and face_array.ndim == 2:
+        selected_faces = np.asarray(face_array[face_ids], dtype=np.int64)
+        used_points = np.unique(selected_faces)
+    else:
+        selected_faces = [np.asarray(global_faces[index], dtype=np.int64) for index in face_ids]
+        used_points = np.unique(np.concatenate(selected_faces))
     point_lookup = np.full(len(mesh_data["points"]), -1, dtype=np.int64)
     point_lookup[used_points] = np.arange(len(used_points))
-    faces = [point_lookup[np.asarray(global_faces[index], dtype=np.int64)] for index in face_ids]
+    if isinstance(selected_faces, np.ndarray):
+        faces = np.ascontiguousarray(point_lookup[selected_faces], dtype=np.int32)
+    else:
+        faces = [point_lookup[face] for face in selected_faces]
 
     face_position = {int(global_id): local for local, global_id in enumerate(face_ids)}
     boundaries = []
@@ -215,6 +232,7 @@ def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
         ),
         "global_boundary_names": tuple(str(patch["name"]) for patch in mesh_data["boundary"]),
         "partition": partition,
+        "_n_owned": len(partition.owned_global_ids),
     }
     for key, default, dtype in (
         ("cell_type_codes", -1, np.int32),
@@ -223,9 +241,14 @@ def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
         values = np.asarray(mesh_data.get(key, np.full(n_global_cells, default)), dtype=dtype)
         local_mesh[key] = np.ascontiguousarray(values[local_cell_ids])
 
-    local_geo = {"gradient_scheme": "gauss"}
+    if "cell_vertices" in mesh_data:
+        local_mesh["cell_vertices"] = np.ascontiguousarray(
+            point_lookup[np.asarray(mesh_data["cell_vertices"])[local_cell_ids]], dtype=np.int32
+        )
+
+    local_geo = {"gradient_scheme": gradient_scheme}
     for key, values in geo_data.items():
-        if key == "gradient_scheme":
+        if key == "gradient_scheme" or key.startswith("lsq_"):
             continue
         array = np.asarray(values)
         if array.ndim > 0 and array.shape[0] == n_global_faces:
@@ -234,4 +257,11 @@ def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
             local_geo[key] = np.ascontiguousarray(array[local_cell_ids])
         else:
             local_geo[key] = deepcopy(values)
+    if gradient_scheme == "lsq":
+        # Recompute stencils in the compact local indexing.  Every owned cell
+        # contains all of its adjacent faces; ghost-cell gradients are filled
+        # by halo exchange after the owned reconstruction.
+        from ..fields.gradients import compute_lsq_geometry
+
+        local_geo.update(compute_lsq_geometry(local_mesh, local_geo))
     return local_mesh, local_geo, partition

@@ -51,6 +51,10 @@ conda env create -f scripts/environment/environment.yml
 conda activate OpenONDA
 ```
 
+The FVM–VPM cube tutorial also accepts an existing `OpenONDA-VPM` environment.
+To update that named environment with the distributed FVM dependencies, run
+`OPENONDA_CONDA_ENV=OpenONDA-VPM scripts/install/install_anaconda.sh`.
+
 Or install all Python dependencies at once into an existing env:
 
 ```bash

@@ -44,35 +44,54 @@ class VTKExporter:
     def _initialize_grid(self) -> pv.UnstructuredGrid:
         """Construct a :class:`pyvista.UnstructuredGrid` from mesh data.
 
-        Groups faces by cell (using owner/neighbour connectivity) and
-        builds VTK polyhedron cells.  Handles arbitrary polyhedra
-        (hexahedra, tetrahedra, prisms, etc.).
+        Uses native VTK hexahedra whenever explicit cell vertices are
+        available.  Other meshes fall back to general polyhedra.
 
         Returns:
             A fully constructed :class:`pyvista.UnstructuredGrid`.
         """
         points = self.mesh_data["points"]
+        cell_vertices = self.mesh_data.get("cell_vertices")
+        cell_types = self.mesh_data.get("cell_type_codes")
+        if (
+            cell_vertices is not None
+            and cell_types is not None
+            and np.asarray(cell_vertices).shape == (self.mesh_data["n_elements"], 8)
+            and np.all(np.asarray(cell_types) == 5)  # Gmsh's 8-node hex code
+        ):
+            vertices = np.asarray(cell_vertices, dtype=np.int64)
+            cells = np.empty((len(vertices), 9), dtype=np.int64)
+            cells[:, 0] = 8
+            cells[:, 1:] = vertices
+            return pv.UnstructuredGrid(
+                cells.ravel(),
+                np.full(len(vertices), pv.CellType.HEXAHEDRON, dtype=np.uint8),
+                points,
+            )
+
         faces = self.mesh_data["faces"]
         owners = self.mesh_data["owners"]
         neighbours = self.mesh_data["neighbours"]
         n_cells = self.mesh_data["n_elements"]
-        n_internal = self.mesh_data["n_interior_faces"]
 
         # Group faces by cell
-        cell_faces = [[] for _ in range(n_cells)]
-        for f_idx in range(len(faces)):
-            own = owners[f_idx]
-            cell_faces[own].append(f_idx)
-            if f_idx < n_internal:
-                nei = neighbours[f_idx]
-                cell_faces[nei].append(f_idx)
+        cell_faces = self.mesh_data.get("cell_faces")
+        cell_face_offsets = self.mesh_data.get("cell_face_offsets")
+        if cell_faces is None or cell_face_offsets is None:
+            from ..mesh.topology import build_cell_face_csr
+
+            cell_faces, cell_face_offsets = build_cell_face_csr(
+                owners, neighbours, n_cells, self.mesh_data["n_faces"]
+            )
+            self.mesh_data["cell_faces"] = cell_faces
+            self.mesh_data["cell_face_offsets"] = cell_face_offsets
 
         # VTK Polyhedron format:
         # [num_faces, num_nodes_f1, n1, n2, ..., num_nodes_f2, n1, n2, ...]
         cells = []
         cell_types = []
         for c_idx in range(n_cells):
-            f_indices = cell_faces[c_idx]
+            f_indices = cell_faces[cell_face_offsets[c_idx] : cell_face_offsets[c_idx + 1]]
             cell_data = [len(f_indices)]
             for f_idx in f_indices:
                 f_nodes = faces[f_idx]
@@ -87,7 +106,7 @@ class VTKExporter:
         return grid
 
     def export(
-        self, filename: str, fields: dict[str, np.ndarray], interpolate_to_points: bool = True
+        self, filename: str, fields: dict[str, np.ndarray], interpolate_to_points: bool = False
     ):
         """Export fields to a ``.vtu`` file (VTK unstructured grid format).
 
@@ -97,10 +116,13 @@ class VTKExporter:
         Args:
             filename:              Output ``.vtu`` file path.
             fields:                Dict mapping field name → array.
-            interpolate_to_points: If ``True`` (default), converts cell
+            interpolate_to_points: If ``True``, converts cell
                                    data to point data via
                                    :meth:`pyvista.DataSetFilters.cell_data_to_point_data`
-                                   for smoother visualisation in ParaView.
+                                   for smoother visualisation in ParaView.  The
+                                   default keeps raw finite-volume cell data;
+                                   cubeFlow's comparison loaders explicitly
+                                   support this representation.
 
         Returns:
             The output file path.

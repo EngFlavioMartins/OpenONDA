@@ -1240,8 +1240,12 @@ class SIMPLESolver:
         self.residuals = []
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
+        # Momentum copies its assembled spatial matrix before component solves,
+        # and pressure assembly happens only afterwards.  One static-topology
+        # workspace therefore serves both phases and avoids retaining a second
+        # face-sized contribution buffer on large meshes.
         self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
-        self._pressure_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
+        self._pressure_matrix_workspace = self._momentum_matrix_workspace
 
     def step(
         self,

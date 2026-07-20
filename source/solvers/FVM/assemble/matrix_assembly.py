@@ -10,7 +10,8 @@ where A is the coefficient matrix and b is the RHS vector.
 Converted from uFVM cfdAssembleIntoGlobalMatrixFaceFluxes.m
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from itertools import count
 import logging
 
 from numba import njit
@@ -23,6 +24,7 @@ _ILU_CACHE = {}
 
 # Cache for matrix sparsity patterns (keyed by mesh topology signature)
 _SPATIAL_CACHE: dict = {}
+_WORKSPACE_IDS = count()
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,8 @@ class MatrixAssemblyWorkspace:
     matrix: csr_matrix
     pattern: _CSRPattern
     include_boundaries: bool
+    contributions: np.ndarray
+    cache_namespace: int = field(default_factory=lambda: next(_WORKSPACE_IDS))
 
     @classmethod
     def create(cls, mesh_data, *, include_boundaries: bool = True):
@@ -54,12 +58,17 @@ class MatrixAssemblyWorkspace:
             shape=(mesh_data["n_elements"], mesh_data["n_elements"]),
             copy=False,
         )
-        return cls(matrix=matrix, pattern=pattern, include_boundaries=include_boundaries)
+        return cls(
+            matrix=matrix,
+            pattern=pattern,
+            include_boundaries=include_boundaries,
+            contributions=np.empty(len(pattern.contribution_slots), dtype=np.float64),
+        )
 
     def update(self, flux_data, mesh_data, *, backend: str = "numpy") -> csr_matrix:
         """Overwrite coefficients and return the stable CSR matrix object."""
-        contributions = _matrix_contributions(
-            flux_data, mesh_data, include_boundaries=self.include_boundaries
+        contributions = _fill_matrix_contributions(
+            self.contributions, flux_data, mesh_data, include_boundaries=self.include_boundaries
         )
         values = _reduce_contributions(
             self.pattern.contribution_slots,
@@ -253,6 +262,47 @@ def _matrix_contributions(flux_data, mesh_data, *, include_boundaries: bool) -> 
         coupled = boundary_neighbours >= 0
         contributions.extend((flux_cf_b, flux_ff_b[coupled]))
     return np.concatenate(contributions)
+
+
+def _fill_matrix_contributions(target, flux_data, mesh_data, *, include_boundaries: bool):
+    """Fill a reusable contribution buffer in cached-CSR ordering.
+
+    Matrix updates occur for every momentum/pressure correction.  Reusing the
+    buffer avoids allocating and concatenating four full interior-face arrays
+    on each update while preserving the exact coefficient ordering.
+    """
+    n_interior = mesh_data["n_interior_faces"]
+    flux_cf = np.asarray(flux_data["flux_cf"])
+    flux_ff = np.asarray(flux_data["flux_ff"])
+    cursor = 0
+    for values, sign in (
+        (flux_cf[:n_interior], 1.0),
+        (flux_ff[:n_interior], 1.0),
+        (flux_cf[:n_interior], -1.0),
+        (flux_ff[:n_interior], -1.0),
+    ):
+        end = cursor + len(values)
+        if sign == 1.0:
+            target[cursor:end] = values
+        else:
+            np.negative(values, out=target[cursor:end])
+        cursor = end
+    if include_boundaries:
+        values = flux_cf[n_interior:]
+        end = cursor + len(values)
+        target[cursor:end] = values
+        cursor = end
+        boundary_neighbours = np.asarray(
+            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1))
+        )[n_interior:]
+        coupled = boundary_neighbours >= 0
+        values = flux_ff[n_interior:][coupled]
+        end = cursor + len(values)
+        target[cursor:end] = values
+        cursor = end
+    if cursor != len(target):
+        raise RuntimeError("Matrix contribution buffer does not match cached sparsity pattern")
+    return target
 
 
 @njit(cache=True)

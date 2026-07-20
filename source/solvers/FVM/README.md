@@ -10,26 +10,32 @@ outside that matrix fail during setup or remain explicitly experimental.
 ```python
 from source.solvers.FVM import (
     BoundaryConfig,
-    ExecutionConfig,
     FVMConfig,
-    RunAcceptancePolicy,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
     Solver,
-    SolverParams,
     TimeConfig,
     TransportConfig,
-    TurbulenceConfig,
 )
 
 config = FVMConfig(
     case_name="cube",
     time=TimeConfig.transient(dt=1e-3, duration=1.0),
-    solver=SolverParams.pimple(
-        n_correctors=2,
-        n_outer=2,
-        linear_solver="bicgstab",
+    schemes=SchemesConfig(
         convection_scheme="limitedLinear",
+        gradient_scheme="lsq",
     ),
-    transport=TransportConfig.air(),
+    linear=LinearSolverConfig(
+        momentum_solver="bicgstab",
+        pressure_solver="amg",
+    ),
+    pimple=PimpleControl(n_correctors=2, n_outer_correctors=2),
+    transport=TransportConfig(density=1.0, nu=1.5e-5),
+    boundaries=[
+        BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
+        BoundaryConfig.outlet("outlet", 0.0),
+    ],
 )
 solver = Solver(config, case_dir="path/to/case")
 solver.evolve()
@@ -68,12 +74,13 @@ Fixed-body IBM has transfer, force-balance, mesh-refinement, and body-fitted
 force/wake evidence. One-rank FVM–VPM restart and conservation are verified,
 but broader coupled cases remain experimental.
 
-`ExecutionConfig.petsc_partitioned()` runs owned-plus-halo Gauss-gradient
-PIMPLE with owned PETSc rows. Fields, global diagnostics, forces, checkpoints,
-and VTU/PVTU output are invariant in 1/2/4-rank tests. Cyclic patches,
-least-squares gradients, field-file initialization, and coupled FVM–VPM are
-rejected in this mode. The measured weak-scaling support limit is four ranks on
-the named 10-thread reference host.
+`ExecutionConfig.petsc_partitioned()` runs owned-plus-halo PIMPLE with owned
+PETSc rows and either Gauss or least-squares gradients. Fields, global
+diagnostics, forces, checkpoints, and raw-cell VTU/PVTU output are invariant in
+the collective MPI tests. Cyclic patches, field-file initialization, and
+coupled FVM–VPM remain serial-only. The reference cube can opt into this path
+with `OPENONDA_FVM_MPI_RANKS=<ranks> ./allrun.sh` from its `referenceFlow`
+directory.
 
 Numba and Taichi CPU pass matrix, RHS, one-step, and BDF2-history parity, but
 neither meets the 1.5x end-to-end acceleration gate. They are parity-only

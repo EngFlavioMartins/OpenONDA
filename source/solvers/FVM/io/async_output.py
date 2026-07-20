@@ -20,6 +20,10 @@ class BufferedVTKWriter:
         self._pending: Future | None = None
         self._closed = False
         self._lock = Lock()
+        # The worker is single-threaded, so these objects are constructed once
+        # on that worker and safely reused for every snapshot.
+        self._exporter: VTKExporter | None = None
+        self._pvd: PVDManager | None = None
 
     def submit(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
         """Queue one immutable snapshot, waiting for the previous write if needed."""
@@ -36,9 +40,12 @@ class BufferedVTKWriter:
             )
 
     def _write_snapshot(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
-        exporter = VTKExporter(self._mesh_data)
-        exporter.export(filename, fields)
-        PVDManager(self._pvd_path).add_step(time, filename)
+        if self._exporter is None:
+            self._exporter = VTKExporter(self._mesh_data)
+        if self._pvd is None:
+            self._pvd = PVDManager(self._pvd_path)
+        self._exporter.export(filename, fields)
+        self._pvd.add_step(time, filename)
 
     def flush(self) -> None:
         """Wait for pending output and propagate any writer exception."""

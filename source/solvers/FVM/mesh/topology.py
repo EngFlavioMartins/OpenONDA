@@ -13,6 +13,40 @@ def _readonly(values, dtype=None):
     return result
 
 
+def build_cell_face_csr(owners, neighbours, n_elements, n_faces):
+    """Return cell-to-face connectivity as compact CSR arrays.
+
+    This replaces the former list-of-lists construction.  On the cubeFlow
+    reference mesh that list alone created more than a million Python lists;
+    CSR keeps the same topology in two numeric arrays and is also directly
+    usable by geometry and VTK code.
+    """
+    owners = np.asarray(owners)
+    neighbours = np.asarray(neighbours)
+    n_interior = len(neighbours)
+    face_ids = np.arange(n_faces, dtype=np.int32)
+    cells = np.concatenate(
+        (
+            owners[:n_interior],
+            neighbours,
+            owners[n_interior:],
+        )
+    )
+    faces = np.concatenate(
+        (
+            face_ids[:n_interior],
+            face_ids[:n_interior],
+            face_ids[n_interior:],
+        )
+    )
+    order = np.argsort(cells, kind="stable")
+    counts = np.bincount(cells, minlength=n_elements)
+    offsets = np.empty(n_elements + 1, dtype=np.int64)
+    offsets[0] = 0
+    np.cumsum(counts, out=offsets[1:])
+    return np.ascontiguousarray(faces[order], dtype=np.int32), offsets
+
+
 @dataclass(frozen=True)
 class BoundaryPatch:
     """Stable patch identity independent of boundary operator state."""
@@ -46,23 +80,26 @@ class MeshTopology:
     def from_mesh_data(cls, mesh_data) -> MeshTopology:
         """Normalize the legacy mesh dictionary into immutable CSR-style arrays."""
         faces = mesh_data["faces"]
-        face_node_offsets = np.zeros(len(faces) + 1, dtype=np.int64)
-        for index, face in enumerate(faces):
-            face_node_offsets[index + 1] = face_node_offsets[index] + len(face)
-        face_nodes = np.concatenate(faces).astype(np.int64, copy=False)
+        face_array = faces if isinstance(faces, np.ndarray) else None
+        if face_array is not None and face_array.ndim == 2:
+            face_nodes = np.ascontiguousarray(face_array.ravel(), dtype=np.int32)
+            nodes_per_face = face_array.shape[1]
+            face_node_offsets = np.arange(len(face_array) + 1, dtype=np.int64) * nodes_per_face
+        else:
+            face_node_offsets = np.zeros(len(faces) + 1, dtype=np.int64)
+            for index, face in enumerate(faces):
+                face_node_offsets[index + 1] = face_node_offsets[index] + len(face)
+            face_nodes = np.concatenate(faces).astype(np.int32, copy=False)
 
-        element_faces = get_element_faces(
-            mesh_data["owners"],
-            mesh_data["neighbours"],
-            mesh_data["n_elements"],
-            mesh_data["n_faces"],
-        )
-        cell_face_offsets = np.zeros(mesh_data["n_elements"] + 1, dtype=np.int64)
-        for index, cell_faces in enumerate(element_faces):
-            cell_face_offsets[index + 1] = cell_face_offsets[index] + len(cell_faces)
-        flattened_cell_faces = np.concatenate(
-            [np.asarray(values, dtype=np.int64) for values in element_faces]
-        )
+        flattened_cell_faces = mesh_data.get("cell_faces")
+        cell_face_offsets = mesh_data.get("cell_face_offsets")
+        if flattened_cell_faces is None or cell_face_offsets is None:
+            flattened_cell_faces, cell_face_offsets = build_cell_face_csr(
+                mesh_data["owners"],
+                mesh_data["neighbours"],
+                mesh_data["n_elements"],
+                mesh_data["n_faces"],
+            )
         patches = tuple(
             BoundaryPatch(
                 name=str(patch["name"]),
@@ -76,11 +113,11 @@ class MeshTopology:
         n_cells = int(mesh_data["n_elements"])
         n_faces = int(mesh_data["n_faces"])
         return cls(
-            face_nodes=_readonly(face_nodes, np.int64),
+            face_nodes=_readonly(face_nodes, np.int32),
             face_node_offsets=_readonly(face_node_offsets, np.int64),
-            owners=_readonly(mesh_data["owners"], np.int64),
-            neighbours=_readonly(mesh_data["neighbours"], np.int64),
-            cell_faces=_readonly(flattened_cell_faces, np.int64),
+            owners=_readonly(mesh_data["owners"], np.int32),
+            neighbours=_readonly(mesh_data["neighbours"], np.int32),
+            cell_faces=_readonly(flattened_cell_faces, np.int32),
             cell_face_offsets=_readonly(cell_face_offsets, np.int64),
             patches=patches,
             global_cell_ids=_readonly(
