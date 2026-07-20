@@ -1,0 +1,107 @@
+name: Nightly (full environment)
+
+# The heavy, slow, and inherently-flaky evidence that should NOT gate a pull
+# request: the full conda/PETSc/MPI environment, collective MPI runs, the whole
+# FVM suite (including slow integration + validation physics), and the canonical
+# install entry point. Runs once a day and on demand. Nothing here blocks a
+# merge; read the uploaded JUnit artifacts for the real pass/fail detail.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # 04:00 UTC daily
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash -el {0}
+
+permissions:
+  contents: read
+
+jobs:
+  fvm-full:
+    name: Full FVM suite (informational)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: OpenONDA
+          environment-file: scripts/environment/environment.yml
+          miniforge-version: latest
+          use-mamba: true
+      - run: python -m pip install --no-deps -e .
+      - name: Whole FVM suite incl. slow + integration/validation
+        # Informational: known-imperfect validation physics must not turn the
+        # nightly permanently red. Triage the JUnit artifact; convert genuine
+        # known failures to xfail(reason=…) so this can become blocking later.
+        continue-on-error: true
+        run: >-
+          python -m pytest tests/fvm
+          -m "not mpi and not openfoam"
+          --junitxml=fvm-full.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fvm-full
+          path: fvm-full.xml
+
+  petsc-mpi:
+    name: PETSc/MPI collective (informational)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ranks: [2, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: OpenONDA
+          environment-file: scripts/environment/environment.yml
+          miniforge-version: latest
+          use-mamba: true
+      - run: python -m pip install --no-deps -e .
+      - name: mpiexec -n ${{ matrix.ranks }}
+        # MPI oversubscription on shared runners is timing-sensitive; keep it
+        # informational rather than a hard gate.
+        continue-on-error: true
+        run: >-
+          mpiexec --oversubscribe -n ${{ matrix.ranks }}
+          python scripts/run_fvm_mpi_tests.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fvm-petsc-mpi-${{ matrix.ranks }}
+          path: artifacts/
+
+  canonical-install:
+    name: Canonical install entry point
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: base
+          miniforge-version: latest
+      - name: Install through scripts/install/install_anaconda.sh
+        env:
+          OPENONDA_CONDA_ENV: OpenONDA-clean
+          OPENONDA_INSTALL_OPENVSP: "0"
+          PRE_COMMIT_ALLOW_NO_CONFIG: "1"
+        run: scripts/install/install_anaconda.sh -y
+      - name: Non-hardware FVM + coupler evidence on the clean install
+        run: >-
+          conda run -n OpenONDA-clean pytest tests/fvm tests/coupler
+          -m "not mpi and not openfoam"
+          --junitxml=clean-install.xml
+      - name: Archive exact environment
+        if: always()
+        run: conda list -n OpenONDA-clean --explicit > clean-install-conda-explicit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canonical-clean-install
+          path: |
+            clean-install.xml
+            clean-install-conda-explicit.txt
