@@ -25,7 +25,8 @@ def _runtime_setup(setup: FVMSetup) -> FVMSetup:
         parallel_mode="petsc_partitioned",
         output_mode="synchronous",
     )
-    return replace(setup, execution=execution)
+    output = replace(setup.output, asynchronous=False)
+    return replace(setup, execution=execution, output=output)
 
 
 def _materialize_mesh(mesh: MeshSource | None, *, is_root: bool) -> dict[str, Any] | None:

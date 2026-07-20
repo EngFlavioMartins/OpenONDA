@@ -1,7 +1,12 @@
+from html import escape, unescape
 import os
+from pathlib import Path
+import tempfile
 from typing import Any
 
 import numpy as np
+
+from ..config.types import OutputSetup
 
 try:
     import pyvista as pv
@@ -13,6 +18,30 @@ else:
     # Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
     vtk.vtkObject.GlobalWarningDisplayOff()
 
+_pyvista: Any = pv
+_vtk: Any = vtk
+
+
+def atomic_write_text(path: str | Path, content: str) -> None:
+    """Atomically publish a UTF-8 metadata file after durable temporary output."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=target.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+        raise
+
 
 class VTKExporter:
     """
@@ -23,7 +52,11 @@ class VTKExporter:
         - mesh_data elements -> VTK Cells (Polyhedron)
     """
 
-    def __init__(self, mesh_data: dict[str, Any]):
+    def __init__(
+        self,
+        mesh_data: dict[str, Any],
+        output: OutputSetup | None = None,
+    ):
         """Initialise the VTK exporter.
 
         Builds a :class:`pyvista.UnstructuredGrid` from the mesh data
@@ -34,14 +67,55 @@ class VTKExporter:
                        ``owners``, ``neighbours``, ``n_elements``,
                        ``n_interior_faces``).
         """
-        if pv is None or vtk is None:
+        if _pyvista is None or _vtk is None:
             raise ImportError(
                 "VTK export requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
             )
         self.mesh_data = mesh_data
+        self.output = output or OutputSetup()
         self._grid = self._initialize_grid()
 
-    def _initialize_grid(self) -> pv.UnstructuredGrid:
+    def _field_array(self, data: np.ndarray) -> np.ndarray:
+        """Return a contiguous array matching the qualified output precision."""
+        values = np.asarray(data)
+        if np.issubdtype(values.dtype, np.floating):
+            values = values.astype(np.float64, copy=False)
+        return np.ascontiguousarray(values)
+
+    def _write_grid(self, filename: str, grid) -> None:
+        """Write one valid appended-binary VTU and publish it atomically."""
+        target = Path(filename)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{target.stem}.",
+            suffix=".tmp.vtu",
+            dir=target.parent,
+        )
+        os.close(descriptor)
+        try:
+            writer = _vtk.vtkXMLUnstructuredGridWriter()
+            writer.SetFileName(temporary)
+            writer.SetInputData(grid)
+            writer.SetDataModeToAppended()
+            writer.EncodeAppendedDataOn()
+            writer.SetHeaderTypeToUInt64()
+            if self.output.compression == "lz4":
+                writer.SetCompressorTypeToLZ4()
+            elif self.output.compression == "zlib":
+                writer.SetCompressorTypeToZLib()
+            else:
+                writer.SetCompressorTypeToNone()
+            if writer.Write() != 1:
+                raise OSError(f"VTK failed to write {target}")
+            with open(temporary, "rb") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        except BaseException:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+            raise
+
+    def _initialize_grid(self) -> Any:
         """Construct a :class:`pyvista.UnstructuredGrid` from mesh data.
 
         Uses native VTK hexahedra whenever explicit cell vertices are
@@ -63,9 +137,9 @@ class VTKExporter:
             cells = np.empty((len(vertices), 9), dtype=np.int64)
             cells[:, 0] = 8
             cells[:, 1:] = vertices
-            return pv.UnstructuredGrid(
+            return _pyvista.UnstructuredGrid(
                 cells.ravel(),
-                np.full(len(vertices), pv.CellType.HEXAHEDRON, dtype=np.uint8),
+                np.full(len(vertices), _pyvista.CellType.HEXAHEDRON, dtype=np.uint8),
                 points,
             )
 
@@ -100,13 +174,18 @@ class VTKExporter:
 
             cells.append(len(cell_data))
             cells.extend(cell_data)
-            cell_types.append(pv.CellType.POLYHEDRON)
+            cell_types.append(_pyvista.CellType.POLYHEDRON)
 
-        grid = pv.UnstructuredGrid(cells, cell_types, points)
+        grid = _pyvista.UnstructuredGrid(cells, cell_types, points)
         return grid
 
     def export(
-        self, filename: str, fields: dict[str, np.ndarray], interpolate_to_points: bool = False
+        self,
+        filename: str,
+        fields: dict[str, np.ndarray],
+        interpolate_to_points: bool = False,
+        *,
+        point_fields: dict[str, np.ndarray] | None = None,
     ):
         """Export fields to a ``.vtu`` file (VTK unstructured grid format).
 
@@ -131,9 +210,9 @@ class VTKExporter:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
-        # Update cell data
+        self._grid.cell_data.clear()
         for name, data in fields.items():
-            values = np.asarray(data)
+            values = self._field_array(data)
             n_cells = self.mesh_data["n_elements"]
             n_with_boundary = (
                 n_cells + self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"]
@@ -147,12 +226,22 @@ class VTKExporter:
                 )
             self._grid.cell_data[name] = values
 
+        self._grid.point_data.clear()
+        for name, data in (point_fields or {}).items():
+            values = self._field_array(data)
+            if values.shape[0] != self._grid.n_points:
+                raise ValueError(
+                    f"VTK point field {name!r} has {values.shape[0]} rows; "
+                    f"expected {self._grid.n_points} points"
+                )
+            self._grid.point_data[name] = values
+
         if interpolate_to_points:
             # This allows ParaView to offer Point-based filters and smooth gradients
             point_grid = self._grid.cell_data_to_point_data()
-            point_grid.save(filename)
+            self._write_grid(filename, point_grid)
         else:
-            self._grid.save(filename)
+            self._write_grid(filename, self._grid)
 
         return filename
 
@@ -161,9 +250,11 @@ class VTKExporter:
         ids = np.asarray(cell_ids, dtype=np.int64)
         if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_elements"]):
             raise ValueError("cell_ids must be valid one-dimensional global cell indices")
+        self._grid.cell_data.clear()
+        self._grid.point_data.clear()
         grid = self._grid.extract_cells(ids)
         for name, data in fields.items():
-            values = np.asarray(data)
+            values = self._field_array(data)
             if values.shape[0] != len(ids):
                 raise ValueError(
                     f"Partition field {name!r} has {values.shape[0]} rows; expected {len(ids)}"
@@ -172,7 +263,7 @@ class VTKExporter:
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        grid.save(filename)
+        self._write_grid(filename, grid)
         return filename
 
 
@@ -207,7 +298,7 @@ class PVDManager:
                 r'<DataSet timestep="(.+?)" group="" part="0" file="(.+?)"/>', content
             )
             for time, fpath in matches:
-                self.entries.append((float(time), fpath))
+                self.entries.append((float(time), unescape(fpath)))
 
     def add_step(self, time: float, vtu_file: str):
         """Register a time step and re-write the ``.pvd`` file.
@@ -225,14 +316,17 @@ class PVDManager:
 
     def write(self):
         """Write the ``.pvd`` collection file."""
-        with open(self.filename, "w") as f:
-            f.write('<?xml version="1.0"?>\n')
-            f.write('<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n')
-            f.write("  <Collection>\n")
-            for time, fpath in self.entries:
-                f.write(f'    <DataSet timestep="{time}" group="" part="0" file="{fpath}"/>\n')
-            f.write("  </Collection>\n")
-            f.write("</VTKFile>\n")
+        lines = [
+            '<?xml version="1.0"?>',
+            '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
+            "  <Collection>",
+        ]
+        lines.extend(
+            f'    <DataSet timestep="{time}" group="" part="0" file="{escape(fpath, quote=True)}"/>'
+            for time, fpath in self.entries
+        )
+        lines.extend(["  </Collection>", "</VTKFile>"])
+        atomic_write_text(self.filename, "\n".join(lines) + "\n")
 
 
 def write_vtu(filename: str, mesh_data: dict[str, Any], fields: dict[str, np.ndarray]):

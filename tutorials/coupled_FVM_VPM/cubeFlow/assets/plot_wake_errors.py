@@ -43,7 +43,7 @@ FIG = CASE_DIR / "figures"
 REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
 CMAP_VEL = COLORMAPS["velocity"]
 CMAP_ERR = COLORMAPS["error_diverging"]
-VPM_XMAX = 10.0  # VPM domain +x bound (run_setup.py VPM_DOMAIN)
+VPM_XMAX = 10.0  # VPM domain +x bound (cubeFlow_setup.py VPM_DOMAIN)
 
 
 def fig_wake_errors(t, ref_s, particles, box, fmt, dpi):

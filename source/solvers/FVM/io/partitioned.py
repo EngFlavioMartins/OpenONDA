@@ -10,7 +10,8 @@ import tempfile
 
 import numpy as np
 
-from .vtk_exporter import VTKExporter
+from ..config.types import OutputSetup
+from .vtk_exporter import VTKExporter, atomic_write_text
 
 PARTITIONED_CHECKPOINT_VERSION = 1
 
@@ -179,6 +180,27 @@ def reconstruct_partition_checkpoint(directory) -> dict[str, np.ndarray]:
     return fields
 
 
+def _vtk_xml_type(values: np.ndarray) -> str:
+    """Return the VTK XML scalar type used by :class:`VTKExporter`."""
+    dtype = np.asarray(values).dtype
+    if np.issubdtype(dtype, np.floating):
+        return "Float64"
+    if np.issubdtype(dtype, np.signedinteger):
+        return f"Int{dtype.itemsize * 8}"
+    if np.issubdtype(dtype, np.unsignedinteger):
+        return f"UInt{dtype.itemsize * 8}"
+    raise TypeError(f"VTK output does not support field dtype {dtype}")
+
+
+def _field_components(values: np.ndarray) -> int:
+    array = np.asarray(values)
+    if array.ndim == 1:
+        return 1
+    if array.ndim == 2:
+        return int(array.shape[1])
+    raise ValueError("VTK fields must be one-dimensional scalars or two-dimensional vectors")
+
+
 def write_partition_vtu(
     directory,
     stem: str,
@@ -186,26 +208,80 @@ def write_partition_vtu(
     partition,
     fields: dict[str, np.ndarray],
     comm,
+    *,
+    output: OutputSetup | None = None,
+    exporter: VTKExporter | None = None,
 ) -> Path:
-    """Write one owned-cell VTU per rank and a root PVTU collection."""
+    """Atomically publish one rank piece and a root parallel collection.
+
+    With one visualization ghost layer, each piece contains owned cells
+    followed by face-adjacent halo cells marked with ``vtkGhostType``.  This
+    lets ParaView's cell-to-point conversion remain smooth across partitions
+    without changing the solver's ownership or numerical halo policy.
+    """
     if not stem or Path(stem).name != stem:
         raise ValueError("stem must be a non-empty filename component")
+    output = output or OutputSetup()
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
     n_owned = len(partition.owned_global_ids)
-    owned_fields = {}
+    local_count = len(partition.local_global_ids)
+    local_fields = {}
     for name, values in fields.items():
         array = np.asarray(values)
-        if array.shape[0] != len(partition.local_global_ids):
+        if array.shape[0] != local_count:
             raise ValueError(f"Field {name!r} does not match the local partition")
-        owned_fields[name] = array[:n_owned]
+        _field_components(array)
+        local_fields[name] = np.ascontiguousarray(array).copy()
 
     piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"
-    if mesh_data["n_elements"] == partition.global_n_cells:
-        cell_ids = partition.owned_global_ids
+    if output.ghost_layers == 1:
+        if len(partition.ghost_global_ids):
+            for values in local_fields.values():
+                partition.exchange_halo(values, comm)
+        piece_fields = dict(local_fields)
+        ghost_types = np.zeros(local_count, dtype=np.uint8)
+        # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only for
+        # parallel filters and prevents duplicate contributions.
+        ghost_types[n_owned:] = 1
+        piece_fields["vtkGhostType"] = ghost_types
+        piece_fields["GlobalCellIds"] = np.ascontiguousarray(
+            partition.local_global_ids,
+            dtype=np.int64,
+        )
+        visualization_mesh = mesh_data.get("_visualization_mesh")
+        if visualization_mesh is None:
+            if mesh_data["n_elements"] != local_count:
+                raise ValueError("Partitioned ghost output requires a visualization mesh")
+            visualization_mesh = mesh_data
+        point_fields = {
+            "GlobalPointIds": np.ascontiguousarray(
+                visualization_mesh.get(
+                    "global_point_ids",
+                    np.arange(len(visualization_mesh["points"])),
+                ),
+                dtype=np.int64,
+            )
+        }
+        writer = exporter or VTKExporter(visualization_mesh, output)
+        writer.export(
+            str(target / piece_name),
+            piece_fields,
+            point_fields=point_fields,
+        )
     else:
-        cell_ids = np.arange(n_owned, dtype=np.int64)
-    VTKExporter(mesh_data).export_cells(str(target / piece_name), cell_ids, owned_fields)
+        piece_fields = {name: values[:n_owned] for name, values in local_fields.items()}
+        piece_fields["GlobalCellIds"] = np.ascontiguousarray(
+            partition.owned_global_ids,
+            dtype=np.int64,
+        )
+        if mesh_data["n_elements"] == partition.global_n_cells:
+            cell_ids = partition.owned_global_ids
+        else:
+            cell_ids = np.arange(n_owned, dtype=np.int64)
+        export_mesh = mesh_data.get("_visualization_mesh", mesh_data)
+        writer = exporter or VTKExporter(export_mesh, output)
+        writer.export_cells(str(target / piece_name), cell_ids, piece_fields)
     comm.Barrier()
 
     collection = target / f"{stem}.pvtu"
@@ -213,27 +289,36 @@ def write_partition_vtu(
         lines = [
             '<?xml version="1.0"?>',
             '<VTKFile type="PUnstructuredGrid" version="0.1" byte_order="LittleEndian">',
-            '  <PUnstructuredGrid GhostLevel="0">',
+            f'  <PUnstructuredGrid GhostLevel="{output.ghost_layers}">',
             "    <PCellData>",
         ]
-        for name, values in owned_fields.items():
-            components = values.shape[1] if values.ndim == 2 else 1
+        for name, values in piece_fields.items():
+            components = _field_components(values)
             lines.append(
-                f'      <PDataArray type="Float64" Name="{escape(name)}" '
+                f'      <PDataArray type="{_vtk_xml_type(values)}" Name="{escape(name)}" '
                 f'NumberOfComponents="{components}"/>'
+            )
+        lines.append("    </PCellData>")
+        if output.ghost_layers == 1:
+            lines.extend(
+                [
+                    "    <PPointData>",
+                    '      <PDataArray type="Int64" Name="GlobalPointIds" NumberOfComponents="1"/>',
+                    "    </PPointData>",
+                ]
             )
         lines.extend(
             [
-                "    </PCellData>",
                 "    <PPoints>",
                 '      <PDataArray type="Float64" NumberOfComponents="3"/>',
                 "    </PPoints>",
             ]
         )
         lines.extend(
-            f'    <Piece Source="{stem}-rank-{rank:05d}.vtu"/>' for rank in range(partition.size)
+            f'    <Piece Source="{escape(f"{stem}-rank-{rank:05d}.vtu", quote=True)}"/>'
+            for rank in range(partition.size)
         )
         lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
-        collection.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        atomic_write_text(collection, "\n".join(lines) + "\n")
     comm.Barrier()
     return collection

@@ -7,15 +7,22 @@ from threading import Lock
 
 import numpy as np
 
+from ..config.types import OutputSetup
 from .vtk_exporter import PVDManager, VTKExporter
 
 
 class BufferedVTKWriter:
     """Serialize VTU/PVD output on one worker while bounding queued memory."""
 
-    def __init__(self, mesh_data, pvd_path: str):
+    def __init__(
+        self,
+        mesh_data,
+        pvd_path: str,
+        output: OutputSetup | None = None,
+    ):
         self._mesh_data = mesh_data
         self._pvd_path = pvd_path
+        self._output = output or OutputSetup()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fvm-vtk")
         self._pending: Future | None = None
         self._closed = False
@@ -41,7 +48,7 @@ class BufferedVTKWriter:
 
     def _write_snapshot(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
         if self._exporter is None:
-            self._exporter = VTKExporter(self._mesh_data)
+            self._exporter = VTKExporter(self._mesh_data, self._output)
         if self._pvd is None:
             self._pvd = PVDManager(self._pvd_path)
         self._exporter.export(filename, fields)

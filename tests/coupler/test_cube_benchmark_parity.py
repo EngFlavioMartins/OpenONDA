@@ -11,9 +11,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-_CASE = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/run_setup.py"
+_CASE = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/cubeFlow_setup.py"
 _REFERENCE = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/run_setup.py"
+    Path(__file__).parents[2]
+    / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
 
 
@@ -55,6 +56,7 @@ def test_common_fvm_settings_identical(bench, reference):
     assert hybrid.transport == fully_meshed.transport
     assert hybrid.forces == fully_meshed.forces
     assert hybrid.execution == fully_meshed.execution
+    assert hybrid.output == fully_meshed.output
     assert hybrid.time.delta_t == fully_meshed.time.delta_t
     assert hybrid.time.start_time == fully_meshed.time.start_time
     assert hybrid.time.end_time == fully_meshed.time.end_time

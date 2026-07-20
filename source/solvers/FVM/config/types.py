@@ -1063,6 +1063,40 @@ class ExecutionConfig:
 
 
 @dataclass
+class OutputSetup:
+    """ParaView visualization output policy.
+
+    Finite-volume fields remain cell-centred in the file. ParaView can derive
+    smooth display values with its ``Cell Data to Point Data`` filter without
+    changing the authoritative solver output.
+    """
+
+    format: Literal["vtk_xml"] = "vtk_xml"
+    data_location: Literal["cell"] = "cell"
+    encoding: Literal["appended"] = "appended"
+    compression: Literal["lz4", "none", "zlib"] = "lz4"
+    precision: Literal["float64"] = "float64"
+    asynchronous: bool = True
+    ghost_layers: Literal[0, 1] = 1
+
+    def __post_init__(self) -> None:
+        if self.format != "vtk_xml":
+            raise ValueError("Only format='vtk_xml' is currently supported")
+        if self.data_location != "cell":
+            raise ValueError("FVM visualization output must remain cell-centred")
+        if self.encoding != "appended":
+            raise ValueError("Only safe appended-binary VTK encoding is supported")
+        if self.compression not in {"lz4", "none", "zlib"}:
+            raise ValueError("compression must be 'lz4', 'none', or 'zlib'")
+        if self.precision != "float64":
+            raise ValueError("Only float64 visualization output is currently qualified")
+        if not isinstance(self.asynchronous, bool):
+            raise TypeError("asynchronous must be a boolean")
+        if self.ghost_layers not in {0, 1}:
+            raise ValueError("ghost_layers must be zero or one")
+
+
+@dataclass
 class RunAcceptancePolicy:
     """Warning and abort thresholds applied to structured step diagnostics.
 
@@ -1092,6 +1126,7 @@ class FVMSetup:
     cores: int = 1
     mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
     execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
+    output: "OutputSetup" = field(default_factory=lambda: OutputSetup())
     acceptance: "RunAcceptancePolicy" = field(default_factory=lambda: RunAcceptancePolicy())
     time: TimeConfig = field(default_factory=TimeConfig)
     schemes: SchemesConfig = field(default_factory=SchemesConfig)
@@ -1152,6 +1187,7 @@ class FVMSetup:
         # Manual reconstruction of nested dataclasses
         mesh_data = data.get("mesh", {})
         execution_data = data.get("execution", {})
+        output_data = data.get("output", {})
         acceptance_data = data.get("acceptance", {})
         time_data = data.get("time", {})
         transport_data = data.get("transport", {})
@@ -1160,6 +1196,7 @@ class FVMSetup:
 
         mesh = MeshConfig(**mesh_data)
         execution = ExecutionConfig(**execution_data)
+        output = OutputSetup(**output_data)
         acceptance = RunAcceptancePolicy(**acceptance_data)
         time = TimeConfig(**time_data)
         dynamic_mesh = DynamicMeshConfig(**dynamic_mesh_data)
@@ -1176,6 +1213,7 @@ class FVMSetup:
             cores=data.get("cores", 1),
             mesh=mesh,
             execution=execution,
+            output=output,
             acceptance=acceptance,
             time=time,
             schemes=SchemesConfig(**data.get("schemes", {})),

@@ -9,8 +9,9 @@ from source.solvers.FVM.io import async_output
 class _Exporter:
     writes = []
 
-    def __init__(self, mesh_data):
+    def __init__(self, mesh_data, output=None):
         self.mesh_data = mesh_data
+        self.output = output
 
     def export(self, filename, fields):
         self.writes.append((filename, fields["p"].copy()))

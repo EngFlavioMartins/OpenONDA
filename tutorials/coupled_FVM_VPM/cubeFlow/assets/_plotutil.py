@@ -54,7 +54,7 @@ def run_constants() -> dict:
     return {
         "U_inf": float(np.linalg.norm(u_inf)) or 1.0,
         "u_inf_vec": u_inf,
-        "D": 1.0,  # cube side length (CUBE_SIDE in run_setup.py)
+        "D": 1.0,  # cube side length (CUBE_SIDE in cubeFlow_setup.py)
         "nu": float(phys.get("nu", 1e-3)),
         "box": box
         or {

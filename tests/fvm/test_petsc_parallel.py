@@ -35,6 +35,7 @@ from source.solvers.FVM import (  # noqa: E402
 from source.solvers.FVM.core.parallel import ParallelContext  # noqa: E402
 from source.solvers.FVM.fields import diagnostics  # noqa: E402
 from source.solvers.FVM.mesh.partition import CellPartition  # noqa: E402
+from source.solvers.FVM.mesh.rectilinear import box_mesh_3d  # noqa: E402
 from source.solvers.FVM.solve.linear_interface import (  # noqa: E402
     normalized_residual,
     solve_linear_system,
@@ -249,9 +250,9 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
         "FVM Solver: Finite Volume Method",
         "FVM SOLVER INFO",
         "BOUNDARY CONDITIONS",
-        "Time-step: 1",
-        "SOLVER CONVERGENCE",
-        "CONSERVATION",
+        "TIME STEP  (step 1,",
+        "Solver Convergence",
+        "Conservation",
         "Time for this step:",
     )
     for marker in markers:
@@ -490,7 +491,13 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
 def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
     execution = ExecutionConfig.petsc_partitioned()
     context = ParallelContext.create(execution)
-    mesh = structured_box(4, 3, 3)
+    mesh = box_mesh_3d(
+        np.linspace(0.0, 1.0, 5),
+        np.linspace(0.0, 1.0, 4),
+        np.linspace(0.0, 1.0, 4),
+    )
+    mesh["boundary"][0]["name"] = "xmin"
+    mesh["boundary"][1]["name"] = "xmax"
     shared_root = context.bcast(str(tmp_path) if context.is_root else None)
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(
@@ -502,6 +509,26 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         solver.solve_pimple(0.01)
         solver.advance_time()
         solver.write_vtk(f"{shared_root}/partitioned-state.vtu")
+        import pyvista as pv
+
+        piece = pv.read(
+            Path(shared_root) / f"partitioned-state-rank-{solver.parallel.partition.rank:05d}.vtu"
+        )
+        partition = solver.parallel.partition
+        assert piece.n_cells == len(partition.local_global_ids)
+        np.testing.assert_array_equal(
+            piece.cell_data["GlobalCellIds"],
+            partition.local_global_ids,
+        )
+        assert np.count_nonzero(piece.cell_data["vtkGhostType"]) == len(partition.ghost_global_ids)
+        assert "GlobalPointIds" in piece.point_data
+        assert "U" not in piece.point_data
+        smooth = piece.cell_data_to_point_data()
+        assert np.all(np.isfinite(smooth.point_data["U"]))
+        if solver.parallel.is_root:
+            parallel = pv.read(Path(shared_root) / "partitioned-state.pvtu")
+            assert parallel.n_cells >= mesh["n_elements"]
+            assert "U" in parallel.cell_data
         solver.save_state(f"{shared_root}/partitioned-checkpoint")
 
         restored = Solver(
@@ -524,3 +551,5 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         collection = tmp_path / "run" / "solution" / "partitioned-restart.pvd"
         assert collection.exists()
         assert "partitioned-state.pvtu" in collection.read_text()
+        parallel_text = (Path(shared_root) / "partitioned-state.pvtu").read_text()
+        assert 'GhostLevel="1"' in parallel_text

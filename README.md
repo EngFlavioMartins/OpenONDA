@@ -58,7 +58,7 @@ For example, the fully meshed cube reference is run with:
 
 ```bash
 cd tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow
-python run_setup.py
+python referenceFlow_setup.py
 ```
 
 The `cores` value in each case's `FVM_SETUP` is the complete parallel setting.

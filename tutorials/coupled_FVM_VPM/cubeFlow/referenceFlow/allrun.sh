@@ -4,4 +4,4 @@ set -eu
 cd "$(dirname "$0")" || exit 1
 
 ./allclean.sh
-python run_setup.py
+python referenceFlow_setup.py

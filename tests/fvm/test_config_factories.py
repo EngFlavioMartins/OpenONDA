@@ -6,6 +6,7 @@ from source.solvers.FVM.config.types import (
     FVMConfig,
     LinearSolverConfig,
     MeshConfig,
+    OutputSetup,
     PimpleControl,
     TimeConfig,
     TransportConfig,
@@ -105,6 +106,11 @@ class TestConfigFactories:
         config = FVMConfig(
             case_name="complete",
             linear=LinearSolverConfig(reuse_ilu=False),
+            output=OutputSetup(
+                compression="none",
+                asynchronous=False,
+                ghost_layers=0,
+            ),
             pimple=PimpleControl(ibm_forcing_loops=9, ibm_second_solve=False),
             forces=ForcesConfig(
                 yplus_patches=["wall"],
@@ -134,6 +140,32 @@ class TestConfigFactories:
         assert user_setup.execution.parallel_mode == "serial"
         assert runtime_setup.execution.parallel_mode == "petsc_partitioned"
         assert runtime_setup.execution.linear_backend == "petsc"
+        assert user_setup.output.asynchronous
+        assert not runtime_setup.output.asynchronous
+
+    def test_output_setup_is_cell_centred_appended_lz4_by_default(self):
+        output = OutputSetup()
+
+        assert output.data_location == "cell"
+        assert output.encoding == "appended"
+        assert output.compression == "lz4"
+        assert output.precision == "float64"
+        assert output.asynchronous
+        assert output.ghost_layers == 1
+
+    @pytest.mark.parametrize(
+        ("keyword", "value"),
+        (
+            ("data_location", "point"),
+            ("encoding", "ascii"),
+            ("compression", "unsupported"),
+            ("precision", "float32"),
+            ("ghost_layers", 2),
+        ),
+    )
+    def test_output_setup_rejects_unqualified_modes(self, keyword, value):
+        with pytest.raises((TypeError, ValueError)):
+            OutputSetup(**{keyword: value})
 
     def test_physics_first_name_is_canonical(self):
         from source.solvers.FVM import FVMSetup

@@ -12,6 +12,7 @@ from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
     LinearSolverConfig,
+    OutputSetup,
     PimpleControl,
     SchemesConfig,
     TimeConfig,
@@ -22,6 +23,11 @@ from source.solvers.FVM import (
 setup = FVMSetup(
     case_name="cube",
     cores=4,
+    output=OutputSetup(
+        compression="lz4",
+        asynchronous=True,
+        ghost_layers=1,
+    ),
     time=TimeConfig.transient(dt=1e-3, duration=1.0),
     schemes=SchemesConfig(
         convection_scheme="limitedLinear",
@@ -77,11 +83,15 @@ but broader coupled cases remain experimental.
 
 `FVMSetup(cores=N, ...)` is the public parallel interface.
 `setup_fvm_solver(...)` internally selects owned-plus-halo PIMPLE, owned PETSc
-rows, rank-local fields, and VTU/PVTU output when `N > 1`. Fields, global
+rows, rank-local fields, and VTU/PVTU output when `N > 1`. Visualization is
+written as cell-centred, appended-binary VTK XML with LZ4 compression. Parallel
+pieces include one marked overlap layer by default, so ParaView's
+**Cell Data to Point Data** filter remains smooth across rank boundaries.
+Fields, global
 diagnostics, forces, and checkpoints are invariant in the collective MPI
 tests. Cyclic patches and field-file initialization remain serial-only. The
 same setup API is used by standalone FVM and coupled FVM–VPM cases; invoking
-`python run_setup.py` selects the canonical environment and launches any
+`python <case_name>_setup.py` selects the canonical environment and launches any
 required worker processes internally.
 
 Numba and Taichi CPU pass matrix, RHS, one-step, and BDF2-history parity, but

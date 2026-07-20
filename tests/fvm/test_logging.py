@@ -74,9 +74,9 @@ def test_solver_tees_vpm_style_output_to_solution_log(tmp_path):
         "CONFIGURATION",
         "BOUNDARY CONDITIONS",
         "MONITORING & I/O",
-        "Time-step: 1",
-        "SOLVER CONVERGENCE",
-        "CONSERVATION",
+        "TIME STEP  (step 1,",
+        "Solver Convergence",
+        "Conservation",
         "Time for this step:",
         "Total simulation time:",
     ):

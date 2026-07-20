@@ -17,6 +17,9 @@ import numpy as np
 from source.version import __version__
 
 _BAR_WIDTH = 80
+# Minimum width of the per-step diagnostics frame (matches the VPM solver's
+# ``flow_diagnostics`` block, which uses a 62-column minimum).
+_STEP_BAR_MIN = 64
 
 
 def format_openonda_header(precision: str | None = "f64") -> str:
@@ -108,6 +111,10 @@ class Logging:
         self._file: TextIO | None = None
         self._closed = False
         self._step_wall_time = 0.0
+        # Open per-step diagnostics block: {step, flow_time, dt, sections}.
+        # Sections are buffered here and rendered as one VPM-style framed block
+        # by :meth:`step_timing`, so every colon aligns across the whole step.
+        self._step: dict[str, Any] | None = None
         self.log_file_path: Path | None = None
 
         if self.enabled:
@@ -151,6 +158,55 @@ class Logging:
     def section(self, title: str, items: list[tuple[str, str]]) -> None:
         """Emit one consistently formatted information section."""
         self.message("\n".join(self._section(title, items)))
+
+    # -- Per-step diagnostics block (VPM ``flow_diagnostics`` style) -----------
+
+    def _step_section(self, title: str, items: list[tuple[str, str]]) -> None:
+        """Add a section to the open step block, or emit it immediately.
+
+        When a step block is open (between :meth:`step_info` and
+        :meth:`step_timing`) the section is buffered so the whole step renders
+        as one aligned, framed block. Outside a step it falls back to the
+        stand-alone :meth:`section` layout.
+        """
+        if not items:
+            return
+        if self._step is not None:
+            self._step["sections"].append((title, list(items)))
+        else:
+            self.section(title, items)
+
+    def _render_step_block(self) -> str:
+        """Render the open step block as a single VPM-style framed report."""
+        step = self._step
+        assert step is not None
+        title = (
+            f" TIME STEP  (step {step['step']}, "
+            f"t = {step['flow_time']:.3e} s, Δt = {step['dt']:.3e} s)"
+        )
+        width = max(len(title), _STEP_BAR_MIN)
+        bar = "=" * width
+        sep = "-" * width
+        # One label width across every section so all colons line up.
+        label_width = max(
+            (len(label) for _title, items in step["sections"] for label, _value in items),
+            default=0,
+        )
+        lines = ["", bar, title, bar]
+        for index, (section_title, items) in enumerate(step["sections"]):
+            if index > 0:
+                lines.append(sep)
+            lines.append(f"  {section_title}")
+            lines.append(sep)
+            lines.extend(f"  {label:<{label_width}}  : {value}" for label, value in items)
+        lines.append(bar)
+        return "\n".join(lines)
+
+    def _flush_step_block(self) -> None:
+        """Render and clear the open step block (no-op when none is open)."""
+        if self._step is not None and self._step["sections"]:
+            self.message(self._render_step_block())
+        self._step = None
 
     @staticmethod
     def solver_info(solver: Any, initialization_time: float) -> str:
@@ -238,6 +294,15 @@ class Logging:
                 [
                     ("Solution Directory", str(Path(solver.case_dir) / "solution")),
                     ("Log File", str(log_file_path or "disabled")),
+                    ("Visualization", "VTK XML, cell-centred, appended binary"),
+                    ("Output Compression", str(config.output.compression).upper()),
+                    (
+                        "Output Scheduling",
+                        "asynchronous"
+                        if config.output.asynchronous and not parallel.is_partitioned
+                        else "synchronous",
+                    ),
+                    ("Visualization Ghost Layers", str(config.output.ghost_layers)),
                     ("Initialization Time", f"{initialization_time:.3e} s"),
                 ],
             )
@@ -263,11 +328,21 @@ class Logging:
         )
 
     def step_info(self, flow_time: float, step: int, dt: float) -> None:
-        """Emit a VPM-style time-step header."""
-        self.message(
-            f"\nTime-step: {step:d}   Flow time: {flow_time:.2E} s   dt: {dt:.2E} s",
-            flush=True,
-        )
+        """Open a new VPM-style per-step diagnostics block.
+
+        The step header, convergence, conservation, wall-resolution and load
+        sections are collected and rendered together by :meth:`step_timing` as
+        one ``=``-framed block whose title carries the step and time — matching
+        the VPM solver's ``flow_diagnostics`` output.
+        """
+        # Flush any block left open by an aborted step so nothing is dropped.
+        self._flush_step_block()
+        self._step = {
+            "step": int(step),
+            "flow_time": float(flow_time),
+            "dt": float(dt),
+            "sections": [],
+        }
 
     def convergence_info(self, residuals: dict[str, float] | None) -> None:
         """Emit the nonlinear and linear convergence record."""
@@ -289,12 +364,12 @@ class Logging:
         ]
         ordered.extend(key for key in residuals if key not in ordered)
         items = [(labels.get(key, key), f"{float(residuals[key]):.3e}") for key in ordered]
-        self.section("SOLVER CONVERGENCE", items)
+        self._step_section("Solver Convergence", items)
 
     def continuity_info(self, maximum: float, total: float) -> None:
         """Emit global mass-conservation diagnostics."""
-        self.section(
-            "CONSERVATION",
+        self._step_section(
+            "Conservation",
             [
                 ("Maximum |div U|", f"{maximum:.3e} 1/s"),
                 ("Boundary imbalance", f"{total:.3e} m³/s"),
@@ -303,8 +378,9 @@ class Logging:
 
     def courant_info(self, maximum: float, dt: float, target: float) -> None:
         """Emit the global Courant-number state."""
-        self.message(
-            f"  Maximum Courant number   : {maximum:.3e} (dt={dt:.3e} s, target≤{target:.3e})"
+        self._step_section(
+            "Time Control",
+            [("Maximum Courant number", f"{maximum:.3e}  (target ≤ {target:.3e})")],
         )
 
     def yplus_info(self, yplus_stats: dict[str, dict[str, float]] | None) -> None:
@@ -318,7 +394,7 @@ class Logging:
             )
             for name, stats in yplus_stats.items()
         ]
-        self.section("WALL RESOLUTION (y+)", items)
+        self._step_section("Wall Resolution (y+)", items)
 
     def turbulence_info(self, nut: np.ndarray | None, nu_molecular: float) -> None:
         """Emit turbulent-viscosity diagnostics."""
@@ -332,8 +408,8 @@ class Logging:
         mean = float(np.mean(values))
         ratio_min = minimum / nu_molecular if nu_molecular > 0 else float("inf")
         ratio_max = maximum / nu_molecular if nu_molecular > 0 else float("inf")
-        self.section(
-            "TURBULENCE DIAGNOSTICS",
+        self._step_section(
+            "Turbulence Diagnostics",
             [
                 ("nut minimum", f"{minimum:.3e} m²/s"),
                 ("nut maximum", f"{maximum:.3e} m²/s"),
@@ -357,7 +433,7 @@ class Logging:
                     f"Cm={float(coefficients.get('Cm', 0.0)):.4f}",
                 )
             )
-        self.section("AERODYNAMIC LOADS", items)
+        self._step_section("Aerodynamic Loads", items)
 
     def output_info(self, text: str) -> None:
         """Emit one visualization/checkpoint output event."""
@@ -370,7 +446,8 @@ class Logging:
         self.message(f"  {name:<28}: {elapsed:.3e} s")
 
     def step_timing(self, elapsed: float) -> None:
-        """Emit VPM-style current and cumulative wall times."""
+        """Render the buffered step block, then the wall-time footer."""
+        self._flush_step_block()
         self._step_wall_time += elapsed
         self.message(f"{'Time for this step:':<25}{elapsed:.3e} s")
         self.message(
@@ -387,6 +464,9 @@ class Logging:
         """Flush and close the file sink. This method is idempotent."""
         if self._closed:
             return
+        # Render any step block left open by an aborted run before closing, so
+        # the last step's diagnostics are never lost on shutdown.
+        self._flush_step_block()
         self.flush()
         if self._file is not None:
             self._file.close()

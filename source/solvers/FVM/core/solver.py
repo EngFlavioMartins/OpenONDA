@@ -1299,9 +1299,13 @@ class Solver(OFWInterfaceMixin):
             from pathlib import Path
 
             from ..io.partitioned import write_partition_vtu
+            from ..io.vtk_exporter import VTKExporter
 
             n_local = self.mesh_data["n_elements"]
             stem = Path(filename).stem
+            if self.vtk_exporter is None:
+                export_mesh = self.mesh_data.get("_visualization_mesh", self.mesh_data)
+                self.vtk_exporter = VTKExporter(export_mesh, self.config.output)
             collection = write_partition_vtu(
                 Path(filename).parent,
                 stem,
@@ -1309,6 +1313,8 @@ class Solver(OFWInterfaceMixin):
                 self.parallel.partition,
                 {name: np.asarray(values)[:n_local] for name, values in fields.items()},
                 self.parallel.comm,
+                output=self.config.output,
+                exporter=self.vtk_exporter,
             )
             if self.parallel.is_root:
                 from ..io.vtk_exporter import PVDManager
@@ -1320,19 +1326,26 @@ class Solver(OFWInterfaceMixin):
                 self.logger.output_info(f"Output written: {stem}.pvtu")
             return
 
-        if self.config.execution.output_mode == "threaded":
+        asynchronous = (
+            self.config.output.asynchronous or self.config.execution.output_mode == "threaded"
+        )
+        if asynchronous:
             if self._buffered_vtk_writer is None:
                 from ..io.async_output import BufferedVTKWriter
 
                 pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
-                self._buffered_vtk_writer = BufferedVTKWriter(self.mesh_data, pvd_file)
+                self._buffered_vtk_writer = BufferedVTKWriter(
+                    self.mesh_data,
+                    pvd_file,
+                    self.config.output,
+                )
             self._buffered_vtk_writer.submit(filename, self.flow_time, fields)
             action = "queued"
         else:
             if self.vtk_exporter is None:
                 from ..io.vtk_exporter import VTKExporter
 
-                self.vtk_exporter = VTKExporter(self.mesh_data)
+                self.vtk_exporter = VTKExporter(self.mesh_data, self.config.output)
             if self.pvd_manager is None:
                 from ..io.vtk_exporter import PVDManager
 

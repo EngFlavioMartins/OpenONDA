@@ -8,6 +8,152 @@ from dataclasses import dataclass, field
 import numpy as np
 
 
+def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict:
+    """Build complete, compact cells for owned-plus-ghost visualization.
+
+    The solver's localized mesh contains exactly the faces needed to advance
+    owned cells.  That is intentionally insufficient to draw complete halo
+    cells.  Visualization therefore gets a separate topology assembled from
+    the global cell-to-face connectivity during the one-time localization.
+    """
+    from .topology import build_cell_face_csr
+
+    n_global_cells = int(mesh_data["n_elements"])
+    global_cell_vertices = mesh_data.get("cell_vertices")
+    global_cell_types = np.asarray(
+        mesh_data.get("cell_type_codes", np.full(n_global_cells, -1)),
+        dtype=np.int32,
+    )
+    if (
+        global_cell_vertices is not None
+        and np.asarray(global_cell_vertices).ndim == 2
+        and np.asarray(global_cell_vertices).shape[1] == 8
+        and np.all(global_cell_types[cell_ids] == 5)
+    ):
+        selected_vertices = np.asarray(global_cell_vertices, dtype=np.int64)[cell_ids]
+        used_points, compact_vertices = np.unique(
+            selected_vertices,
+            return_inverse=True,
+        )
+        return {
+            "points": np.ascontiguousarray(np.asarray(mesh_data["points"])[used_points]),
+            "faces": np.empty((0, 0), dtype=np.int32),
+            "owners": np.empty(0, dtype=np.int64),
+            "neighbours": np.empty(0, dtype=np.int64),
+            "n_elements": len(cell_ids),
+            "n_faces": 0,
+            "n_interior_faces": 0,
+            "boundary": [],
+            "cell_faces": np.empty(0, dtype=np.int32),
+            "cell_face_offsets": np.zeros(len(cell_ids) + 1, dtype=np.int64),
+            "cell_vertices": np.ascontiguousarray(
+                compact_vertices.reshape((-1, 8)),
+                dtype=np.int32,
+            ),
+            "cell_type_codes": np.ascontiguousarray(global_cell_types[cell_ids]),
+            "cell_orders": np.ascontiguousarray(
+                np.asarray(
+                    mesh_data.get("cell_orders", np.ones(n_global_cells)),
+                    dtype=np.int8,
+                )[cell_ids]
+            ),
+            "global_point_ids": np.ascontiguousarray(used_points),
+            "global_face_ids": np.empty(0, dtype=np.int64),
+            "global_cell_ids": np.ascontiguousarray(cell_ids),
+            "source_cell_ids": np.ascontiguousarray(
+                np.asarray(mesh_data.get("source_cell_ids", np.arange(n_global_cells)))[cell_ids]
+            ),
+        }
+
+    cell_faces = mesh_data.get("cell_faces")
+    cell_face_offsets = mesh_data.get("cell_face_offsets")
+    if cell_faces is None or cell_face_offsets is None:
+        cell_faces, cell_face_offsets = build_cell_face_csr(
+            mesh_data["owners"],
+            mesh_data["neighbours"],
+            n_global_cells,
+            mesh_data["n_faces"],
+        )
+    cell_faces = np.asarray(cell_faces, dtype=np.int64)
+    cell_face_offsets = np.asarray(cell_face_offsets, dtype=np.int64)
+    counts = np.diff(cell_face_offsets)[cell_ids]
+    selected_offsets = np.empty(len(cell_ids) + 1, dtype=np.int64)
+    selected_offsets[0] = 0
+    np.cumsum(counts, out=selected_offsets[1:])
+
+    if selected_offsets[-1]:
+        starts = cell_face_offsets[cell_ids]
+        entry_starts = np.repeat(starts, counts)
+        local_starts = np.repeat(selected_offsets[:-1], counts)
+        entries = entry_starts + np.arange(selected_offsets[-1]) - local_starts
+        selected_global_faces = cell_faces[entries]
+        global_face_ids, selected_cell_faces = np.unique(
+            selected_global_faces,
+            return_inverse=True,
+        )
+    else:
+        global_face_ids = np.empty(0, dtype=np.int64)
+        selected_cell_faces = np.empty(0, dtype=np.int64)
+
+    source_faces = mesh_data["faces"]
+    face_array = source_faces if isinstance(source_faces, np.ndarray) else None
+    if face_array is not None and face_array.ndim == 2:
+        selected_faces = np.asarray(face_array[global_face_ids], dtype=np.int64)
+        used_points = (
+            np.unique(selected_faces) if selected_faces.size else np.empty(0, dtype=np.int64)
+        )
+    else:
+        selected_faces = [
+            np.asarray(source_faces[index], dtype=np.int64) for index in global_face_ids
+        ]
+        used_points = (
+            np.unique(np.concatenate(selected_faces))
+            if selected_faces
+            else np.empty(0, dtype=np.int64)
+        )
+    point_lookup = np.full(len(mesh_data["points"]), -1, dtype=np.int64)
+    point_lookup[used_points] = np.arange(len(used_points))
+    if isinstance(selected_faces, np.ndarray):
+        faces = np.ascontiguousarray(point_lookup[selected_faces], dtype=np.int32)
+    else:
+        faces = [
+            np.ascontiguousarray(point_lookup[face], dtype=np.int32) for face in selected_faces
+        ]
+
+    visualization = {
+        "points": np.ascontiguousarray(np.asarray(mesh_data["points"])[used_points]),
+        "faces": faces,
+        # The exporter consumes the explicit cell-face CSR below.  These
+        # placeholders keep the ordinary mesh schema intact.
+        "owners": np.zeros(len(global_face_ids), dtype=np.int64),
+        "neighbours": np.empty(0, dtype=np.int64),
+        "n_elements": len(cell_ids),
+        "n_faces": len(global_face_ids),
+        "n_interior_faces": len(global_face_ids),
+        "boundary": [],
+        "cell_faces": np.ascontiguousarray(selected_cell_faces, dtype=np.int32),
+        "cell_face_offsets": selected_offsets,
+        "global_point_ids": np.ascontiguousarray(used_points),
+        "global_face_ids": np.ascontiguousarray(global_face_ids),
+        "global_cell_ids": np.ascontiguousarray(cell_ids),
+        "source_cell_ids": np.ascontiguousarray(
+            np.asarray(mesh_data.get("source_cell_ids", np.arange(n_global_cells)))[cell_ids]
+        ),
+    }
+    for key, default, dtype in (
+        ("cell_type_codes", -1, np.int32),
+        ("cell_orders", 1, np.int8),
+    ):
+        values = np.asarray(mesh_data.get(key, np.full(n_global_cells, default)), dtype=dtype)
+        visualization[key] = np.ascontiguousarray(values[cell_ids])
+    if "cell_vertices" in mesh_data:
+        visualization["cell_vertices"] = np.ascontiguousarray(
+            point_lookup[np.asarray(mesh_data["cell_vertices"])[cell_ids]],
+            dtype=np.int32,
+        )
+    return visualization
+
+
 def ownership_ranges(n_cells: int, n_ranks: int) -> np.ndarray:
     """Return balanced contiguous global-cell ownership offsets."""
     if n_cells < 1 or n_ranks < 1:
@@ -233,6 +379,7 @@ def localize_mesh_and_geometry(mesh_data, geo_data, rank: int, size: int):
         "global_boundary_names": tuple(str(patch["name"]) for patch in mesh_data["boundary"]),
         "partition": partition,
         "_n_owned": len(partition.owned_global_ids),
+        "_visualization_mesh": _visualization_mesh(mesh_data, local_cell_ids),
     }
     for key, default, dtype in (
         ("cell_type_codes", -1, np.int32),
