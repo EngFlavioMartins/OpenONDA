@@ -51,6 +51,73 @@ class TestVTKExporter:
         data = pv.read(str(path))
         assert "p" in data.point_data
 
+    @staticmethod
+    def _graded_box_with_linear_field():
+        """A graded box plus a field that is exactly linear in space."""
+        from source.solvers.FVM.mesh.rectilinear import box_mesh_3d
+
+        axis = np.array([0.0, 0.05, 0.14, 0.30, 0.58, 1.0])
+        mesh = box_mesh_3d(axis, np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+        points = np.asarray(mesh["points"])
+        centroids = points[np.asarray(mesh["cell_vertices"])].mean(axis=1)
+        faces = mesh["faces"]
+        face_centroids = np.array(
+            [
+                points[np.asarray(faces[f])].mean(axis=0)
+                for f in range(mesh["n_interior_faces"], mesh["n_faces"])
+            ]
+        )
+
+        def linear(p):
+            return 2.0 * p[:, 0] - 3.0 * p[:, 1] + 0.5 * p[:, 2] + 1.0
+
+        field = np.concatenate([linear(centroids), linear(face_centroids)])
+        return mesh, points, centroids, field, linear
+
+    def test_boundary_weighted_point_data_is_linearly_exact(self, tmp_path):
+        """Wall values must survive interpolation, on a graded mesh.
+
+        A plain cell-to-point average sees only interior cells, so it
+        cannot reproduce a boundary condition at the wall, and its
+        unweighted stencil is biased wherever the mesh is graded.
+        """
+        import pyvista as pv
+
+        mesh, points, centroids, field, linear = self._graded_box_with_linear_field()
+
+        path = tmp_path / "graded.vtu"
+        setup = OutputSetup(asynchronous=False, point_interpolation="boundary_weighted")
+        VTKExporter(mesh, setup).export(str(path), {"phi": field})
+        data = pv.read(str(path))
+
+        exact = linear(points)
+        assert data.point_data["phi"] == pytest.approx(exact, abs=1e-10)
+        # Cell data stays the authoritative finite-volume result.
+        assert data.cell_data["phi"] == pytest.approx(linear(centroids))
+
+        # The stock filter is materially wrong on the same mesh.
+        plain = pv.read(str(path))
+        plain.point_data.clear()
+        stock = plain.cell_data_to_point_data().point_data["phi"]
+        assert np.abs(np.asarray(stock) - exact).max() > 1e-2
+
+    def test_point_interpolation_is_opt_in(self, tmp_path):
+        """The default output stays purely cell-centred."""
+        import pyvista as pv
+
+        mesh, _points, _centroids, field, _linear = self._graded_box_with_linear_field()
+
+        path = tmp_path / "plain.vtu"
+        VTKExporter(mesh, OutputSetup(asynchronous=False)).export(str(path), {"phi": field})
+
+        data = pv.read(str(path))
+        assert "phi" in data.cell_data
+        assert "phi" not in data.point_data
+
+    def test_rejects_unknown_point_interpolation(self):
+        with pytest.raises(ValueError, match="point_interpolation"):
+            OutputSetup(point_interpolation="idw")
+
     def test_export_writes_vtu(self, gmsh_unit_cube, tmp_path):
         mesh = gmsh_unit_cube
         fields = {"p": np.ones(mesh["n_elements"])}

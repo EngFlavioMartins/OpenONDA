@@ -301,6 +301,14 @@ class Solver(OFWInterfaceMixin):
                 "petsc_partitioned requires pressure_nullspace_policy='auto' or 'petsc'; "
                 "a rank-local reference row is not a valid global pressure constraint"
             )
+        if self.parallel.is_partitioned and self.config.output.point_interpolation != "none":
+            raise ValueError(
+                "output.point_interpolation='boundary_weighted' is not qualified for "
+                "petsc_partitioned execution: the partitioned writer drops the boundary "
+                "ghost values the interpolation needs, and a rank's processor-interface "
+                "faces are not physical boundaries. Run serially to write interpolated "
+                "point data, or use ParaView's Cell Data to Point Data filter instead"
+            )
         if not np.isfinite(self.config.transport.density) or self.config.transport.density <= 0.0:
             raise ValueError("Transport density must be finite and positive")
         if not np.isfinite(self.config.transport.nu) or self.config.transport.nu <= 0.0:

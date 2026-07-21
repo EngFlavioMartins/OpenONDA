@@ -28,6 +28,34 @@ def _find_mesh_dimension(model) -> int:
     return max(dims) if dims else 3
 
 
+def _hexahedral_cell_vertices(cell_types, cell_node_tags_list, node_tag_to_idx: dict):
+    """Return per-cell vertex indices for a uniformly hexahedral mesh.
+
+    Recombined Gmsh meshes are frequently pure hexahedra.  Recording the
+    explicit cell corners lets the VTK exporter emit native
+    ``VTK_HEXAHEDRON`` cells instead of falling back to the general
+    ``VTK_POLYHEDRON`` representation, which ParaView interpolates and
+    renders far better.  Gmsh's 8-node hexahedron uses the same corner
+    ordering as VTK, so the connectivity is copied without permutation.
+
+    Args:
+        cell_types:          Gmsh element type codes returned by ``getElements``.
+        cell_node_tags_list: Flat node-tag arrays, one per element type.
+        node_tag_to_idx:     Mapping from Gmsh node tag to point index.
+
+    Returns:
+        An ``(n_cells, 8)`` array of point indices, or ``None`` when the
+        mesh is not uniformly hexahedral.
+    """
+    if len(cell_types) != 1 or int(cell_types[0]) != 5:
+        return None
+    node_tags = np.asarray(cell_node_tags_list[0])
+    if node_tags.size % 8:
+        return None
+    lookup = np.vectorize(node_tag_to_idx.__getitem__, otypes=[np.int64])
+    return np.ascontiguousarray(lookup(node_tags).reshape(-1, 8), dtype=np.int32)
+
+
 def _register_face_nodes(
     nodes_slice, face_map: dict, face_nodes_map: dict, node_tag_to_idx: dict, cell_idx: int
 ) -> None:
@@ -274,7 +302,7 @@ class GmshImporter:
                 f"Unsupported Gmsh mesh dimension {max_dim}; the FVM importer requires "
                 "first-order three-dimensional volume cells"
             )
-        cell_types, cell_tags_list, _ = model.mesh.getElements(dim=max_dim)
+        cell_types, cell_tags_list, cell_node_tags_list = model.mesh.getElements(dim=max_dim)
 
         cell_type_codes = []
         cell_families = []
@@ -364,7 +392,7 @@ class GmshImporter:
                 }
             )
 
-        return {
+        mesh_data = {
             "points": points,
             "faces": final_faces,
             "owners": np.array(owners, dtype=np.int32),
@@ -389,6 +417,12 @@ class GmshImporter:
                 "source": self.source_path,
             },
         }
+
+        cell_vertices = _hexahedral_cell_vertices(cell_types, cell_node_tags_list, node_tag_to_idx)
+        if cell_vertices is not None:
+            mesh_data["cell_vertices"] = cell_vertices
+
+        return mesh_data
 
 
 if __name__ == "__main__":

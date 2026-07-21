@@ -1069,6 +1069,13 @@ class OutputSetup:
     Finite-volume fields remain cell-centred in the file. ParaView can derive
     smooth display values with its ``Cell Data to Point Data`` filter without
     changing the authoritative solver output.
+
+    That filter averages interior cells only, so it cannot show the applied
+    boundary condition at a wall.  Setting ``point_interpolation`` to
+    ``'boundary_weighted'`` additionally writes an OpenFOAM-style
+    ``volPointInterpolation`` of each field as point data: inverse-distance
+    weighted from the surrounding cells, and taken from the boundary faces
+    at boundary points.  Cell data remains authoritative and untouched.
     """
 
     format: Literal["vtk_xml"] = "vtk_xml"
@@ -1078,6 +1085,7 @@ class OutputSetup:
     precision: Literal["float64"] = "float64"
     asynchronous: bool = True
     ghost_layers: Literal[0, 1] = 1
+    point_interpolation: Literal["none", "boundary_weighted"] = "none"
 
     def __post_init__(self) -> None:
         if self.format != "vtk_xml":
@@ -1094,6 +1102,8 @@ class OutputSetup:
             raise TypeError("asynchronous must be a boolean")
         if self.ghost_layers not in {0, 1}:
             raise ValueError("ghost_layers must be zero or one")
+        if self.point_interpolation not in {"none", "boundary_weighted"}:
+            raise ValueError("point_interpolation must be 'none' or 'boundary_weighted'")
 
 
 @dataclass

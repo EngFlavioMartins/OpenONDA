@@ -4,6 +4,7 @@ from scipy.sparse.linalg import spsolve
 
 from source.solvers.FVM.assemble import diffusion, matrix_assembly
 from source.solvers.FVM.fields import gradients
+from source.solvers.FVM.io.vtk_exporter import VTKExporter
 from source.solvers.FVM.mesh import geometry, mesh_io
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
 from source.solvers.FVM.mesh.openfoam_writer import write_poly_mesh
@@ -67,6 +68,46 @@ class TestGmshImporter:
         assert mesh["cell_type_codes"].tolist() == [element_type]
         assert mesh["cell_orders"].tolist() == [1]
         assert mesh["provenance"]["contract"] == "gmsh-api-first-order-3d-v1"
+
+    def test_hexahedral_mesh_exports_native_vtk_hexahedra(self, tmp_path):
+        """Recombined hex meshes must not degrade to VTK_POLYHEDRON.
+
+        ParaView interpolates and renders polyhedra far worse than native
+        hexahedra, so a uniformly hexahedral import has to carry the
+        explicit cell corners the exporter's fast path needs.
+        """
+        pyvista = pytest.importorskip("pyvista")
+        gmsh.initialize()
+        try:
+            gmsh.model.add("hexahedral_cell_vertices")
+            _add_discrete_cell(5, FIRST_ORDER_CELLS[5])
+            mesh = GmshImporter().get_mesh_data()
+        finally:
+            gmsh.finalize()
+
+        assert mesh["cell_vertices"].shape == (1, 8)
+
+        target = tmp_path / "hexahedron.vtu"
+        VTKExporter(mesh).export(str(target), {"p": np.zeros(1)})
+        grid = pyvista.read(target)
+
+        assert grid.celltypes.tolist() == [pyvista.CellType.HEXAHEDRON]
+        assert list(grid.cell_data) == ["p"]
+        # A permuted corner ordering would collapse or invert the unit cube.
+        assert grid.volume == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("element_type", [4, 6, 7])
+    def test_non_hexahedral_mesh_keeps_polyhedral_export(self, element_type):
+        """Mixed and non-hex families stay on the general polyhedron path."""
+        gmsh.initialize()
+        try:
+            gmsh.model.add(f"no_cell_vertices_{element_type}")
+            _add_discrete_cell(element_type, FIRST_ORDER_CELLS[element_type])
+            mesh = GmshImporter().get_mesh_data()
+        finally:
+            gmsh.finalize()
+
+        assert "cell_vertices" not in mesh
 
     def test_high_order_volume_cell_is_rejected(self):
         tetra10 = FIRST_ORDER_CELLS[4] + [

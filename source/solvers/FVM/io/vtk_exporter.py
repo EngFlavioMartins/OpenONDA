@@ -74,6 +74,7 @@ class VTKExporter:
         self.mesh_data = mesh_data
         self.output = output or OutputSetup()
         self._grid = self._initialize_grid()
+        self._point_operators: dict[bool, dict[str, np.ndarray]] = {}
 
     def _field_array(self, data: np.ndarray) -> np.ndarray:
         """Return a contiguous array matching the qualified output precision."""
@@ -179,6 +180,176 @@ class VTKExporter:
         grid = _pyvista.UnstructuredGrid(cells, cell_types, points)
         return grid
 
+    def _cell_vertex_incidence(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(cell_index, point_index)`` pairs for every cell corner."""
+        cell_vertices = self.mesh_data.get("cell_vertices")
+        n_cells = int(self.mesh_data["n_elements"])
+        if cell_vertices is not None:
+            vertices = np.asarray(cell_vertices, dtype=np.int64)
+            if vertices.ndim == 2 and vertices.shape[0] == n_cells:
+                cells = np.repeat(np.arange(n_cells, dtype=np.int64), vertices.shape[1])
+                return cells, vertices.ravel()
+
+        faces = self.mesh_data["faces"]
+        cell_faces = self.mesh_data["cell_faces"]
+        cell_face_offsets = self.mesh_data["cell_face_offsets"]
+        cells_out: list[np.ndarray] = []
+        points_out: list[np.ndarray] = []
+        for cell in range(n_cells):
+            face_ids = cell_faces[cell_face_offsets[cell] : cell_face_offsets[cell + 1]]
+            corners = np.unique(np.concatenate([np.asarray(faces[f]) for f in face_ids]))
+            cells_out.append(np.full(len(corners), cell, dtype=np.int64))
+            points_out.append(corners.astype(np.int64))
+        return np.concatenate(cells_out), np.concatenate(points_out)
+
+    def _boundary_face_incidence(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(boundary_face_index, point_index)`` pairs for patch faces."""
+        faces = self.mesh_data["faces"]
+        n_interior = int(self.mesh_data["n_interior_faces"])
+        n_faces = int(self.mesh_data["n_faces"])
+        faces_out: list[np.ndarray] = []
+        points_out: list[np.ndarray] = []
+        for local, face in enumerate(range(n_interior, n_faces)):
+            nodes = np.asarray(faces[face], dtype=np.int64)
+            faces_out.append(np.full(len(nodes), local, dtype=np.int64))
+            points_out.append(nodes)
+        if not faces_out:
+            empty = np.empty(0, dtype=np.int64)
+            return empty, empty
+        return np.concatenate(faces_out), np.concatenate(points_out)
+
+    @staticmethod
+    def _inverse_distance(points: np.ndarray, targets: np.ndarray) -> np.ndarray:
+        """Inverse point-to-centroid distance, guarded against coincidence."""
+        distances = np.linalg.norm(points - targets, axis=1)
+        return 1.0 / np.maximum(distances, np.finfo(np.float64).tiny)
+
+    def _centroids(self, owner_ids: np.ndarray, node_ids: np.ndarray, count: int) -> np.ndarray:
+        """Average the given nodes into one centroid per owning entity."""
+        points = np.asarray(self.mesh_data["points"], dtype=np.float64)
+        centroids = np.zeros((count, 3), dtype=np.float64)
+        for axis in range(3):
+            centroids[:, axis] = np.bincount(
+                owner_ids, weights=points[node_ids, axis], minlength=count
+            )
+        occurrences = np.bincount(owner_ids, minlength=count)
+        return centroids / np.maximum(occurrences, 1)[:, None]
+
+    def _point_interpolation_operator(self, use_boundary: bool) -> dict[str, np.ndarray]:
+        """Build a linearly exact cell/boundary → point interpolation.
+
+        Serves the same role as OpenFOAM's ``volPointInterpolation``: each
+        mesh point receives a weighted combination of the surrounding
+        finite-volume values, and points lying on a boundary take their
+        value from the adjacent boundary faces alone so that the applied
+        boundary condition appears at the wall.  A plain
+        :meth:`~pyvista.DataSetFilters.cell_data_to_point_data` averages
+        interior cells only and cannot reproduce that.
+
+        Rather than inverse-distance averaging, the weights come from a
+        distance-weighted least-squares fit of a linear function through
+        the surrounding values, evaluated at the point.  That reproduces
+        any linear field exactly, which plain averaging does not do on a
+        graded or unstructured mesh -- the bias there is what makes
+        refinement transitions read as a see-saw.
+
+        Args:
+            use_boundary: Whether boundary-face values are available to
+                          supply the boundary points.
+
+        Returns:
+            Cached ``point``/``source``/``weight`` arrays; the weights of
+            each point already sum to one.
+        """
+        cached = self._point_operators.get(use_boundary)
+        if cached is not None:
+            return cached
+
+        points = np.asarray(self.mesh_data["points"], dtype=np.float64)
+        n_points = len(points)
+        n_cells = int(self.mesh_data["n_elements"])
+
+        cell_ids, cell_points = self._cell_vertex_incidence()
+        cell_centroids = self._centroids(cell_ids, cell_points, n_cells)
+
+        face_ids, face_points = self._boundary_face_incidence()
+        n_boundary = int(self.mesh_data["n_faces"]) - int(self.mesh_data["n_interior_faces"])
+
+        if use_boundary and len(face_ids):
+            # Boundary faces join the stencil rather than replacing the
+            # adjacent cells.  A linear fit is not biased by the extra
+            # interior samples the way a plain average would be, and the
+            # wider stencil keeps corner points full rank.
+            face_centroids = self._centroids(face_ids, face_points, n_boundary)
+            row = np.concatenate([cell_points, face_points])
+            source = np.concatenate([cell_ids, n_cells + face_ids])
+            origin = np.concatenate([cell_centroids[cell_ids], face_centroids[face_ids]])
+        else:
+            row = cell_points
+            source = cell_ids
+            origin = cell_centroids[cell_ids]
+
+        # Distance-weighted least squares for f(x) ~ a + b.(x - p); the
+        # interpolated value at the point is the constant term a.
+        offset = origin - points[row]
+        weight = self._inverse_distance(origin, points[row])
+        basis = np.empty((len(row), 4), dtype=np.float64)
+        basis[:, 0] = 1.0
+        basis[:, 1:] = offset
+
+        normal = np.zeros((n_points, 4, 4), dtype=np.float64)
+        for i in range(4):
+            for j in range(4):
+                normal[:, i, j] = np.bincount(
+                    row, weights=weight * basis[:, i] * basis[:, j], minlength=n_points
+                )
+        # A pseudo-inverse keeps coplanar boundary stencils well posed: the
+        # wall-normal term is simply undetermined, and the constant is not.
+        constant_row = np.linalg.pinv(normal, hermitian=True)[:, 0, :]
+        weight = weight * np.einsum("ij,ij->i", constant_row[row], basis)
+
+        # A rank-deficient stencil leaves the pseudo-inverse free to shrink
+        # the constant term, so renormalise: reproducing a uniform field
+        # exactly matters more than the linear term it may cost.
+        totals = np.bincount(row, weights=weight, minlength=n_points)
+        weight = weight / np.where(np.abs(totals[row]) > 1.0e-12, totals[row], 1.0)
+
+        operator = {
+            "row": row,
+            "source": source,
+            "weight": weight,
+            "n_points": np.asarray(n_points),
+        }
+        self._point_operators[use_boundary] = operator
+        return operator
+
+    def _interpolate_to_points(self, values: np.ndarray, n_cells: int) -> np.ndarray:
+        """Scatter cell (and boundary-face) values onto the mesh points.
+
+        Args:
+            values:  Cell values, optionally followed by one value per
+                     physical boundary face.
+            n_cells: Number of physical cells at the head of *values*.
+
+        Returns:
+            One interpolated value per mesh point.
+        """
+        operator = self._point_interpolation_operator(values.shape[0] > n_cells)
+        n_points = int(operator["n_points"])
+        row = operator["row"]
+        source = operator["source"]
+        weight = operator["weight"]
+
+        if values.ndim == 1:
+            return np.bincount(row, weights=weight * values[source], minlength=n_points)
+
+        result = np.empty((n_points, values.shape[1]), dtype=np.float64)
+        for component in range(values.shape[1]):
+            result[:, component] = np.bincount(
+                row, weights=weight * values[source, component], minlength=n_points
+            )
+        return result
+
     def export(
         self,
         filename: str,
@@ -210,6 +381,9 @@ class VTKExporter:
         if directory:
             os.makedirs(directory, exist_ok=True)
 
+        smooth = self.output.point_interpolation == "boundary_weighted"
+        interpolated: dict[str, np.ndarray] = {}
+
         self._grid.cell_data.clear()
         for name, data in fields.items():
             values = self._field_array(data)
@@ -217,16 +391,22 @@ class VTKExporter:
             n_with_boundary = (
                 n_cells + self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"]
             )
-            if values.shape[0] == n_with_boundary:
-                values = values[:n_cells]
-            elif values.shape[0] != n_cells:
+            if values.shape[0] != n_cells and values.shape[0] != n_with_boundary:
                 raise ValueError(
                     f"VTK field {name!r} has {values.shape[0]} rows; expected "
                     f"{n_cells} cells or {n_with_boundary} cells plus boundary ghosts"
                 )
+            # Interpolate before discarding the ghosts: the boundary values
+            # are precisely what a cell-to-point filter cannot reconstruct.
+            if smooth and np.issubdtype(values.dtype, np.floating):
+                interpolated[name] = self._interpolate_to_points(values, n_cells)
+            if values.shape[0] == n_with_boundary:
+                values = values[:n_cells]
             self._grid.cell_data[name] = values
 
         self._grid.point_data.clear()
+        for name, values in interpolated.items():
+            self._grid.point_data[name] = self._field_array(values)
         for name, data in (point_fields or {}).items():
             values = self._field_array(data)
             if values.shape[0] != self._grid.n_points:
@@ -304,7 +484,10 @@ class PVDManager:
         """Register a time step and re-write the ``.pvd`` file.
 
         The *vtu_file* path is stored as relative to the ``.pvd`` file
-        location for portability.
+        location for portability.  Both paths must be expressed against
+        the same base: callers build them from a shared solution
+        directory, so a relative *vtu_file* is resolved against the
+        process working directory exactly as ``self.filename`` was.
 
         Args:
             time:     Simulation time for this snapshot.
