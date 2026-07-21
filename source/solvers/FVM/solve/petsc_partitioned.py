@@ -141,6 +141,7 @@ class PartitionedLinearWorkspace:
         if constant_nullspace:
             self.nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
             matrix.setNullSpace(self.nullspace)
+            matrix.setNearNullSpace(self.nullspace)
         ksp = PETSc.KSP().create(comm=PETSc.COMM_WORLD)
         ksp.setOperators(matrix)
         methods = {
