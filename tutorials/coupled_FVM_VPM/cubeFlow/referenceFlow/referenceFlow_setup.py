@@ -45,12 +45,12 @@ U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
-INITIAL_U = (1.0, 0.02, 0.0)
-
-# Time integration
+INITIAL_U = (1.0, 0.00, 0.0)
 DT_FVM = 0.0125
-T_END = 7.5
-WRITE_INTERVAL = 0.15
+T_END = 40.0
+WRITE_INTERVAL = 0.5
+
+PERTURBATION = 1.0e-3
 
 
 FVM_SETUP = FVMSetup(
@@ -74,9 +74,9 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="limitedLinear",
+        convection_scheme="lust",
         gradient_scheme="lsq",
-        time_scheme="euler_implicit",
+        time_scheme="backward",
     ),
     linear=LinearSolverConfig(
         linear_solver="bicgstab",
@@ -112,8 +112,26 @@ FVM_SETUP = FVMSetup(
 )
 
 
+def _break_symmetry(solver) -> None:
+    """Seed a small transverse kick in the near wake.
+
+    Everything about this case is symmetric about y = 0, so the antisymmetric
+    shedding mode has nothing to grow from except round-off.  One localised
+    perturbation gives it a seed; it is orders of magnitude below the wake
+    velocities and leaves the mean flow untouched.
+    """
+    centroids = solver.geo_data["element_centroids"]
+    n_cells = solver.mesh_data["n_elements"]
+    x, y, z = centroids[:n_cells, 0], centroids[:n_cells, 1], centroids[:n_cells, 2]
+
+    near_wake = (x > 0.5) & (x < 2.5) & (np.abs(y) < 1.0) & (np.abs(z) < 1.0)
+    kick = PERTURBATION * np.linalg.norm(U_INF) * np.sign(z + 1e-12) * np.exp(-((x - 1.0) ** 2))
+    solver.U[:n_cells, 1] += np.where(near_wake, kick, 0.0)
+
+
 def main() -> None:
     solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
+    _break_symmetry(solver)
     solver.write_vtk()
     while solver.flow_time < FVM_SETUP.time.end_time:
         solver.evolve()
