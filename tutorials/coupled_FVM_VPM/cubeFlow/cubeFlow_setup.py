@@ -49,7 +49,7 @@ from source.solvers.VPM import (  # noqa: E402
 
 
 CASE_DIR = Path(__file__).resolve().parent
-MESH = str(CASE_DIR / "constant" / "mesh.msh")  # built by assets/create_mesh.py
+MESH = str(CASE_DIR / "assets" / "mesh.msh")  # built by assets/create_mesh.py
 
 # Physical problem
 CUBE_SIDE = 1.0

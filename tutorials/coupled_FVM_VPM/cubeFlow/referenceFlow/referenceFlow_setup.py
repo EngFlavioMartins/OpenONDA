@@ -37,7 +37,7 @@ from source.solvers.FVM import (  # noqa: E402
 
 
 CASE_DIR = Path(__file__).resolve().parent
-MESH = str(CASE_DIR / "constant" / "mesh.msh")  # built by assets/create_mesh.py
+MESH = str(CASE_DIR / "assets" / "mesh.msh")  # built by assets/create_mesh.py
 
 # Physical problem
 CUBE_SIDE = 1.0
@@ -45,11 +45,10 @@ U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
-INITIAL_U = (1.0, 0.00, 0.0)
+INITIAL_U = (1.0, 0.0, 0.0)
 DT_FVM = 0.0125
 T_END = 40.0
-WRITE_INTERVAL = 0.5
-
+WRITE_INTERVAL = 0.15
 PERTURBATION = 1.0e-3
 
 
@@ -113,13 +112,7 @@ FVM_SETUP = FVMSetup(
 
 
 def _break_symmetry(solver) -> None:
-    """Seed a small transverse kick in the near wake.
-
-    Everything about this case is symmetric about y = 0, so the antisymmetric
-    shedding mode has nothing to grow from except round-off.  One localised
-    perturbation gives it a seed; it is orders of magnitude below the wake
-    velocities and leaves the mean flow untouched.
-    """
+    """Seed a small transverse kick in the near wake."""
     centroids = solver.geo_data["element_centroids"]
     n_cells = solver.mesh_data["n_elements"]
     x, y, z = centroids[:n_cells, 0], centroids[:n_cells, 1], centroids[:n_cells, 2]
