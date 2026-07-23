@@ -73,6 +73,34 @@ def normalized_residual(A, x, b):
     return float(np.linalg.norm(residual) / scale)
 
 
+def deviation_norm_factor(A, b, x0):
+    """OpenFOAM-style residual normalization: the deviation from the mean state.
+
+    ``||b||`` carries the transport of whatever mean the solution rides on.
+    For x-momentum in a unit free stream that bulk term is orders of magnitude
+    larger than the near-wall dynamics, so any ``tol * ||b||`` convergence test
+    is satisfied while the boundary layer is entirely unsolved -- with a warm
+    initial guess the Krylov solve then exits at iteration zero and the flow
+    freezes into an unphysical steady state (no separation, no shedding).
+
+    This is the L2 analog of OpenFOAM's ``normFactor``: with
+    ``xRef = mean(x0)``,
+
+        normFactor = ||A x0 - A xRef|| + ||b - A xRef||
+
+    which reduces exactly to ``||b||`` when ``x0`` is absent or zero-mean, and
+    otherwise measures the part of the equation the solve is actually expected
+    to resolve.
+    """
+    b = np.asarray(b, dtype=np.float64)
+    if x0 is None:
+        return max(float(np.linalg.norm(b)), 1e-30)
+    x0 = np.asarray(x0, dtype=np.float64)
+    reference = A @ np.full(A.shape[0], float(x0.mean()))
+    factor = float(np.linalg.norm(A @ x0 - reference)) + float(np.linalg.norm(b - reference))
+    return max(factor, 1e-30)
+
+
 def _trivial_solution(A, b, x0, tol):
     """Residual-verified early exit: zero RHS or an already-converged ``x0``.
 
@@ -83,8 +111,12 @@ def _trivial_solution(A, b, x0, tol):
     """
     if float(np.linalg.norm(b)) == 0.0:
         return np.zeros(A.shape[0], dtype=np.float64)
-    if x0 is not None and normalized_residual(A, x0, b) <= tol:
-        return np.asarray(x0, dtype=np.float64)
+    if x0 is not None:
+        # Deviation-normalized test: ``tol * ||b||`` would accept a warm guess
+        # whose entire error is the (mean-flow-dominated) small-scale physics.
+        residual = float(np.linalg.norm(np.asarray(b) - A @ np.asarray(x0)))
+        if residual <= tol * deviation_norm_factor(A, b, x0):
+            return np.asarray(x0, dtype=np.float64)
     return None
 
 
@@ -116,8 +148,10 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
     ``x0 + ||r0|| e``.  The unit-normalized RHS keeps the recurrence scalars
     (rho, omega) away from underflow on tiny-scale systems — SciPy otherwise
     reports breakdown (``info=-10``) on RHS vectors that are pure assembly
-    roundoff (~1e-19).  ``tol`` keeps its meaning ``||b - A x|| <= tol ||b||``
-    via the rescaled effective tolerance.
+    roundoff (~1e-19).  ``tol`` targets ``||b - A x|| <= tol * normFactor``
+    with the deviation-based ``normFactor`` (see
+    :func:`deviation_norm_factor`), so a mean-flow-inflated ``||b||`` cannot
+    mask unresolved small-scale physics.
     """
     b_norm = float(np.linalg.norm(b))
     if b_norm == 0.0:
@@ -131,7 +165,7 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
     r0_norm = float(np.linalg.norm(r0))
     if r0_norm == 0.0:
         return x0.copy(), 0, 0
-    rtol_eff = float(np.clip(tol * b_norm / r0_norm, 1e-14, 0.99))
+    rtol_eff = float(np.clip(tol * deviation_norm_factor(A, b, x0) / r0_norm, 1e-14, 0.99))
     iterations = 0
 
     def count_iteration(_value):
@@ -258,7 +292,12 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
             method_name = f"{requested}+bjacobi"
     else:
         raise ValueError(f"Unknown PETSc iterative solver {method!r}")
-    ksp.setTolerances(rtol=float(tol), max_it=int(maxiter))
+    # PETSc's default test is relative to ||b||; rescale so ``tol`` targets the
+    # deviation-based normFactor and a warm guess cannot satisfy the tolerance
+    # on the strength of the mean flow alone (see deviation_norm_factor).
+    b_norm = max(float(np.linalg.norm(b_array)), 1e-30)
+    rtol_eff = float(np.clip(tol * deviation_norm_factor(A_csr, b_array, x0) / b_norm, 1e-14, tol))
+    ksp.setTolerances(rtol=rtol_eff, max_it=int(maxiter))
     ksp.setInitialGuessNonzero(x0 is not None)
     # Allow command-line PETSc options such as ``-fvm_pressure_pc_type hypre``.
     prefix = "fvm_pressure_" if equation_type == "pressure" else "fvm_momentum_"

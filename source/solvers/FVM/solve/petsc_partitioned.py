@@ -224,7 +224,29 @@ class PartitionedLinearWorkspace:
         self.solution.assemblyBegin()
         self.solution.assemblyEnd()
         self.ksp.setOperators(self.matrix)
-        self.ksp.setTolerances(rtol=tolerance, max_it=max_iterations)
+        # PETSc's convergence test is relative to ||b||, which carries the
+        # transport of the solution's mean (for x-momentum in a free stream it
+        # dwarfs the near-wall dynamics).  Rescale so ``tolerance`` targets the
+        # deviation-based OpenFOAM-style normFactor instead; otherwise a warm
+        # initial guess terminates at iteration zero and the flow freezes.
+        rhs_norm_pre = max(float(self.rhs.norm()), 1e-30)
+        rtol_eff = tolerance
+        if initial_guess is not None:
+            n_global = float(system.global_size)
+            x_mean = float(self.solution.sum()) / max(n_global, 1.0)
+            reference = self.rhs.duplicate()
+            uniform = self.rhs.duplicate()
+            uniform.set(x_mean)
+            self.matrix.mult(uniform, reference)
+            self.matrix.mult(self.solution, self.residual)
+            self.residual.axpy(-1.0, reference)
+            deviation = float(self.residual.norm())
+            reference.aypx(-1.0, self.rhs)  # reference := b - A(x_mean)
+            norm_factor = max(deviation + float(reference.norm()), 1e-30)
+            rtol_eff = float(np.clip(tolerance * norm_factor / rhs_norm_pre, 1e-14, tolerance))
+            reference.destroy()
+            uniform.destroy()
+        self.ksp.setTolerances(rtol=rtol_eff, max_it=max_iterations)
         self.ksp.setInitialGuessNonzero(initial_guess is not None)
         # Coefficients are dynamic.  PETSc's default KSP policy rebuilds the
         # PC after a numeric matrix update; do not call version-specific API
