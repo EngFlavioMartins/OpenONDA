@@ -269,6 +269,11 @@ def assemble_convection_term_boundary(
                 psi = np.ones_like(mdot_b)
             elif scheme_name.lower() == "lust":
                 psi = np.full_like(mdot_b, 0.75)
+            elif scheme_name.lower() == "linearupwind":
+                # The translated-stencil gradient correction is not built for
+                # cyclic pairs; a central correction is the closest 2nd-order
+                # target on these faces.
+                psi = np.ones_like(mdot_b)
             elif is_limited_scheme(scheme_name):
                 psi = _tvd_face_psi(
                     phi,
@@ -336,6 +341,50 @@ def assemble_convection_term_boundary(
     }
 
 
+def assemble_convection_term_gradient_upwind(
+    phi, mdot, mesh_data, geo_data, grad_phi, linear_blend
+):
+    """OpenFOAM ``linearUpwind``/``LUST`` in deferred-correction form.
+
+    The face target is ``linear_blend * φ_linear + (1 - linear_blend) *
+    φ_linearUpwind`` with ``φ_linearUpwind = φ_up + (∇φ)_up · (x_f - x_up)``
+    — OpenFOAM's second-order upwind-biased value (``Gauss linearUpwind
+    grad(U)``); ``linear_blend = 0.75`` reproduces ``Gauss LUST grad(U)``.
+
+    The implicit part stays first-order upwind (bounded, diagonally
+    dominant); the explicit correction carries the difference to the target.
+    Blending toward first-order upwind instead (a constant ψ on the
+    central-vs-upwind correction) adds ``(1-blend)·|U|h/2`` of numerical
+    viscosity, which in a bluff-body wake is several times the physical ν
+    and suppresses vortex shedding entirely.
+    """
+    if grad_phi is None:
+        raise ValueError("linearUpwind/LUST convection requires grad_phi (cell gradient)")
+    if grad_phi.ndim == 3 and grad_phi.shape[2] == 1:
+        grad_phi = grad_phi.squeeze(-1)
+
+    n_interior_faces = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"][:n_interior_faces]
+    neighbours = mesh_data["neighbours"][:n_interior_faces]
+    mdot_i = mdot[:n_interior_faces]
+    weights = geo_data["face_weights"][:n_interior_faces]
+
+    upwind_is_owner = mdot_i >= 0.0
+    upwind = np.where(upwind_is_owner, owners, neighbours)
+    to_face = geo_data["face_centroids"][:n_interior_faces] - geo_data["element_centroids"][upwind]
+
+    phi_upwind = phi[upwind]
+    phi_linear_upwind = phi_upwind + np.sum(grad_phi[upwind] * to_face, axis=1)
+    phi_linear = weights * phi[neighbours] + (1.0 - weights) * phi[owners]
+    phi_target = linear_blend * phi_linear + (1.0 - linear_blend) * phi_linear_upwind
+
+    flux_cf = np.maximum(mdot_i, 0.0)
+    flux_ff = np.minimum(mdot_i, 0.0)
+    flux_vf = mdot_i * (phi_target - phi_upwind)
+    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
+    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+
+
 def assemble_convection_term(
     phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred", grad_phi=None
 ):
@@ -381,10 +430,15 @@ def assemble_convection_term(
             phi, mdot, mesh_data, geo_data
         )
     elif s in ("LUST", "lust"):
-        # 0.75 linear + 0.25 upwind: constant blend ψ = 0.75 (low-dissipation,
-        # still slightly stabilised relative to pure central).
-        interior_fluxes = assemble_convection_term_limited(
-            phi, mdot, mesh_data, geo_data, grad_phi, limiter=None, psi=0.75
+        # OpenFOAM ``Gauss LUST grad(U)``: 0.75 linear + 0.25 linearUpwind
+        # (second-order, gradient-corrected — NOT first-order upwind).
+        interior_fluxes = assemble_convection_term_gradient_upwind(
+            phi, mdot, mesh_data, geo_data, grad_phi, linear_blend=0.75
+        )
+    elif s in ("linearUpwind", "linearupwind"):
+        # OpenFOAM ``Gauss linearUpwind grad(U)``: second-order upwind-biased.
+        interior_fluxes = assemble_convection_term_gradient_upwind(
+            phi, mdot, mesh_data, geo_data, grad_phi, linear_blend=0.0
         )
     elif is_limited_scheme(s):
         interior_fluxes = assemble_convection_term_limited(

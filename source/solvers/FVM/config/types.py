@@ -805,6 +805,7 @@ def solver_configs_from_case(
                 "linear": "central",
                 "limitedlinear": "limitedLinear",
                 "lust": "LUST",
+                "linearupwind": "linearUpwind",
                 "vanleer": "vanLeer",
                 "muscl": "MUSCL",
                 "minmod": "minmod",

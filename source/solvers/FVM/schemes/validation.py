@@ -13,7 +13,9 @@ from .boundaries import BOUNDARIES
 from .limiters import LIMITERS
 
 # Convection (div) schemes accepted by ``assemble.convection.assemble_convection_term``.
-CONVECTION_SCHEMES = {"upwind", "central", "linear", "deferred", "lust"} | set(LIMITERS)
+CONVECTION_SCHEMES = {"upwind", "central", "linear", "deferred", "lust", "linearupwind"} | set(
+    LIMITERS
+)
 
 # Time (ddt) schemes resolved in ``solve.pimple_solver`` / ``assemble.momentum``.
 TIME_SCHEMES = {"euler", "euler_implicit", "backward_euler", "backward", "bdf2"}
