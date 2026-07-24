@@ -65,8 +65,11 @@ DT_FVM = 0.0125
 T_END = 40.0
 WRITE_INTERVAL = 0.15
 
-# VPM and overlap discretisation
-DT_VPM = 0.075
+# VPM and overlap discretisation.  DT_VPM must be an integer multiple of
+# DT_FVM, stay within the VPM CFL limit (U∞·DT_VPM/VPM_SPACING ≤ 1 ⇒ ≤ 0.05),
+# and divide both T_END and WRITE_INTERVAL so the coupling and backup cadences
+# land exactly.  0.05 (period_multiplier 4, backup every 3) is the largest such.
+DT_VPM = 0.05
 VPM_SPACING = 0.05
 VPM_DOMAIN = (-2.0, 10.0, -2.0, 2.0, -2.0, 2.0)
 MAX_PARTICLES = 1_000_000
@@ -175,7 +178,7 @@ COUPLER_SETUP = CouplerSetup(
     overlap_velocity_forcing=False,
     strength_correction_iterations=1,
     strength_correction_relax=1.0,
-    donor_bc_mode="characteristic",
+    donor_bc_mode="dirichlet",
     donor_interior_source="fvm",
     bc_coupling_iterations=2,
     donor_bc_relax=0.5,
