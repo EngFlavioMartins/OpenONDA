@@ -1546,16 +1546,26 @@ class FVMVPMCoupler:
         """Write a complete native FVM--VPM checkpoint, committing its manifest last."""
         if self._backend != "fvm":
             raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
+        if self.ofw is None:
+            raise RuntimeError("Initialize the coupler before saving a checkpoint")
+
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+
+        # The FVM checkpoint is COLLECTIVE under a partitioned backend: every
+        # rank writes its own partition piece and joins a closing barrier.  It
+        # must run on all ranks, so it precedes the master-only remainder --
+        # returning early on the workers here deadlocks rank 0 in that barrier
+        # while the workers advance to the next step's barrier.
+        self.ofw.save_state(target / "fvm.npz")
+
         if not self._is_master:
-            return Path(directory)
-        if self.ofw is None or self.vpm is None:
+            return target
+        if self.vpm is None:
             raise RuntimeError("Initialize the coupler before saving a checkpoint")
 
         from source.solvers.VPM.io.backup import BackupSystem
 
-        target = Path(directory)
-        target.mkdir(parents=True, exist_ok=True)
-        self.ofw.save_state(target / "fvm.npz")
         BackupSystem.backup_solver(
             self.vpm,
             str(target / "vpm_latest"),
