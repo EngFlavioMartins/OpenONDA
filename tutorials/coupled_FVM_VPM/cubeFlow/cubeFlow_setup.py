@@ -58,11 +58,11 @@ U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
-INITIAL_U = (1.0, 0.02, 0.0)
+INITIAL_U = (1.0, 0.0, 0.0)
 
 # Time integration
 DT_FVM = 0.0125
-T_END = 7.5
+T_END = 40.0
 WRITE_INTERVAL = 0.15
 
 # VPM and overlap discretisation
@@ -95,9 +95,9 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="limitedLinear",
+        convection_scheme="lust",
         gradient_scheme="lsq",
-        time_scheme="euler_implicit",
+        time_scheme="backward",
     ),
     linear=LinearSolverConfig(
         linear_solver="bicgstab",
