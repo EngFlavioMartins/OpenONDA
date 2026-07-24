@@ -557,6 +557,82 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces, layout=None):
     )
 
 
+def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces):
+    """Rescale adjustable outflow boundary fluxes so the net is zero.
+
+    This is OpenFOAM's ``adjustPhi``.  An incompressible domain requires
+    ``∮ phi·dS = 0``; otherwise the pressure Poisson problem is incompatible
+    and the solver leaves a residual divergence (a checkerboard, typically at
+    the outflow).  Faces whose velocity is *fixed* (``fixedValue`` inlet,
+    ``noSlip`` wall) carry a prescribed flux and cannot absorb the mismatch;
+    faces whose velocity *floats* (``freestream``, ``zeroGradient``,
+    ``inletOutlet``) can.  The net imbalance is removed by a single
+    multiplicative scaling of the floating **outflow** faces, exactly matching
+    the mass the fixed faces admit.
+
+    When the boundary flux already balances (a standalone inlet/pressure-outlet
+    case), the scale factor is unity and this is a no-op — so it never
+    perturbs cases that were already conservative.  The reduction is global so
+    a partitioned coupling patch spread over several ranks is balanced once,
+    not per rank.
+
+    ``flux_vf`` is mutated in place.
+    """
+    floating = (
+        BoundaryStrategy.FREESTREAM,
+        BoundaryStrategy.ZERO_GRADIENT,
+        BoundaryStrategy.INLET_OUTLET,
+    )
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )
+
+    net_local = 0.0
+    outflow_local = 0.0
+    adjustable_slices: list[tuple[int, int, np.ndarray]] = []
+    for boundary in boundaries:
+        start = int(boundary["startFace"])
+        nf = int(boundary["nFaces"])
+        if nf == 0:
+            continue
+        patch_flux = flux_vf[start : start + nf]
+        # Cyclic faces pair internally and never carry net domain flux.
+        if np.any(boundary_neighbours[start : start + nf] >= 0):
+            continue
+        net_local += float(np.sum(patch_flux))
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "flux")
+        if strategy in floating:
+            # Scale exactly the faces the pressure matrix treats as
+            # adjustable: the assembly's own classification when present.
+            mask = boundary.get("_freestream_outflow")
+            outflow = (patch_flux > 0.0) if mask is None else mask & (patch_flux > 0.0)
+            outflow_local += float(np.sum(patch_flux[outflow]))
+            adjustable_slices.append((start, nf, outflow))
+
+    parallel = mesh_data.get("_parallel_context")
+    if parallel is not None and parallel.is_partitioned:
+        net = float(parallel.global_sum(net_local))
+        outflow_total = float(parallel.global_sum(outflow_local))
+    else:
+        net, outflow_total = net_local, outflow_local
+
+    # Already balanced (relative test, dimensionless): nothing to do.
+    if abs(net) <= 1e-11 * outflow_total:
+        return flux_vf
+    # Not enough floating outflow to absorb the imbalance without reversing a
+    # face; leave it for the pressure solve rather than manufacture backflow.
+    if outflow_total <= abs(net):
+        return flux_vf
+
+    # Scale the floating outflow faces so their total drops by exactly `net`.
+    scale = (outflow_total - net) / outflow_total
+    for start, nf, outflow in adjustable_slices:
+        patch = flux_vf[start : start + nf]
+        patch[outflow] *= scale
+        flux_vf[start : start + nf] = patch
+    return flux_vf
+
+
 @overload
 def assemble_pressure_correction_equation_rhie_chow(
     *args: Any, return_workspace: Literal[False] = False, **kwargs: Any
@@ -701,6 +777,26 @@ def assemble_pressure_correction_equation_rhie_chow(
         bc_codes, p_vals, bnd_face_idx = _build_boundary_face_arrays(
             boundaries, n_interior, n_faces, layout=boundary_layout
         )
+
+        # Authoritative freestream inflow/outflow switch for THIS assembly:
+        # the same ghost-velocity flux the JIT thresholds below.  Every later
+        # stage of the correction (p' ghost extension, boundary-flux
+        # correction, velocity/pressure ghost updates) must reuse this mask.
+        # Re-deriving the switch from the evolving flux field lets grazing
+        # faces (u·n ≈ 0, e.g. the lateral sides of a coupling box) change
+        # class between assembly and correction, injecting boundary flux the
+        # pressure matrix never saw — which surfaces as a divergence
+        # checkerboard anchored at the patch corners.
+        for boundary in boundaries:
+            strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+            if strategy is BoundaryStrategy.FREESTREAM:
+                start = int(boundary["startFace"])
+                nf = int(boundary["nFaces"])
+                ghost = U_star[
+                    n_elements + (start - n_interior) : n_elements + (start - n_interior) + nf
+                ]
+                sf_patch = geo_data["face_sf"][start : start + nf]
+                boundary["_freestream_outflow"] = np.einsum("ij,ij->i", ghost, sf_patch) >= 0.0
         cf_b, ff_b, vf_b = _process_boundary_faces_jit(
             n_boundary_faces,
             n_interior,
@@ -765,6 +861,12 @@ def assemble_pressure_correction_equation_rhie_chow(
             compact = rho * conductance_b * (p[own_b] - p[nei_b])
             nonorthogonal_flux = rho * np.sum(nonorthogonal * du_b * grad_b, axis=1)
             flux_vf[cyclic_faces] = flux_hbya + compact + nonorthogonal_flux
+
+    # 3b. Enforce global continuity of the predicted boundary flux (adjustPhi)
+    # so the pressure Poisson problem is compatible.  A no-op when the boundary
+    # flux already balances, so conservative inlet/outlet cases are untouched.
+    if n_boundary_faces > 0:
+        adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces)
 
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
@@ -834,9 +936,13 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
             paired = mesh_data["boundary_neighbours"][start : start + nf]
             p_prime_ext[idx : idx + nf] = p_prime[paired]
         elif strategy is BoundaryStrategy.FREESTREAM:
-            if face_flux is None:
-                raise ValueError("Freestream pressure correction requires the predicted face flux")
-            outflow = np.asarray(face_flux)[start : start + nf] >= 0.0
+            outflow = boundary.get("_freestream_outflow")
+            if outflow is None:
+                if face_flux is None:
+                    raise ValueError(
+                        "Freestream pressure correction requires the predicted face flux"
+                    )
+                outflow = np.asarray(face_flux)[start : start + nf] >= 0.0
             p_prime_ext[idx : idx + nf] = np.where(outflow, 0.0, p_prime[own])
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
@@ -904,7 +1010,9 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
                 raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
             phi[idx] += rho * geo_diff_b * (p_prime[own] - p_prime[paired])
         elif strategy is BoundaryStrategy.FREESTREAM:
-            outflow = phi[idx] >= 0.0
+            outflow = boundary.get("_freestream_outflow")
+            if outflow is None:
+                outflow = phi[idx] >= 0.0
             phi[idx] += np.where(outflow, rho * geo_diff_b * p_prime[own], 0.0)
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
@@ -942,7 +1050,9 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
                 f"Uniform inlet velocity for patch {boundary.get('name')!r} "
                 f"must have shape (3,), got {inlet_val.shape}"
             )
-    outflow = phi[start : start + nf] >= 0.0
+    outflow = boundary.get("_freestream_outflow")
+    if outflow is None:
+        outflow = phi[start : start + nf] >= 0.0
     U[idx : idx + nf] = np.where(outflow[:, np.newaxis], U[own], inlet_val)
 
 
@@ -1233,8 +1343,11 @@ def _apply_scalar_bc(
             raise ValueError(f"Cyclic patch {boundary.get('name')!r} is not paired")
         phi[indices] = phi[paired_owners]
     elif strategy is BoundaryStrategy.FREESTREAM:
-        if face_flux is None:
-            raise ValueError("Freestream scalar update requires face fluxes")
+        outflow = boundary.get("_freestream_outflow")
+        if outflow is None:
+            if face_flux is None:
+                raise ValueError("Freestream scalar update requires face fluxes")
+            outflow = np.asarray(face_flux) >= 0.0
         val = boundary.get(f"value_{field_name}")
         if val is None:
             val = boundary.get("value")
@@ -1242,7 +1355,7 @@ def _apply_scalar_bc(
             raise ValueError(
                 f"Freestream {field_name} boundary {boundary.get('name')!r} has no value"
             )
-        phi[indices] = np.where(np.asarray(face_flux) >= 0.0, val, phi[owners_b])
+        phi[indices] = np.where(outflow, val, phi[owners_b])
     else:
         raise ValueError(
             f"Unsupported scalar boundary strategy {strategy!r} "
