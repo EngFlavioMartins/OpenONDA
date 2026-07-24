@@ -47,7 +47,6 @@ from source.solvers.VPM import (  # noqa: E402
     setup_vpm_solver,
 )
 
-
 CASE_DIR = Path(__file__).resolve().parent
 MESH = str(CASE_DIR / "assets" / "mesh.msh")  # built by assets/create_mesh.py
 
@@ -65,10 +64,6 @@ DT_FVM = 0.0125
 T_END = 40.0
 WRITE_INTERVAL = 0.15
 
-# VPM and overlap discretisation.  DT_VPM must be an integer multiple of
-# DT_FVM, stay within the VPM CFL limit (U∞·DT_VPM/VPM_SPACING ≤ 1 ⇒ ≤ 0.05),
-# and divide both T_END and WRITE_INTERVAL so the coupling and backup cadences
-# land exactly.  0.05 (period_multiplier 4, backup every 3) is the largest such.
 DT_VPM = 0.05
 VPM_SPACING = 0.05
 VPM_DOMAIN = (-2.0, 10.0, -2.0, 2.0, -2.0, 2.0)
@@ -144,7 +139,7 @@ VPM_SETUP = VPMSetup(
         padding=3.0,
         viscosity=NU,
         threshold_mode="relative_max",
-        threshold=1e-3,
+        threshold=5e-3,
         regen_radius_ratio=OVERLAP_RADIUS_RATIO,
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
@@ -179,7 +174,7 @@ COUPLER_SETUP = CouplerSetup(
     strength_correction_iterations=1,
     strength_correction_relax=1.0,
     donor_bc_mode="dirichlet",
-    donor_interior_source="fvm",
+    donor_interior_source="particles",
     bc_coupling_iterations=2,
     donor_bc_relax=0.5,
     donor_interior_warmup_time=0.45,
