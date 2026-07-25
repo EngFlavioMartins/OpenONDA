@@ -151,7 +151,11 @@ VPM_SETUP = VPMSetup(
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
-    turbulence=TurbulenceConfig.dns(),
+    # Matches the OFW reference case.  DNS applies no subgrid dissipation and
+    # assumes the particle spacing resolves every scale; at h = 0.05 and
+    # Re = 1000 the wake is under-resolved, so subgrid energy piles up and the
+    # vortical structures break down instead of convecting coherently.
+    turbulence=TurbulenceConfig.les_smagorinsky(),
     velocity=VelocityConfig.treecode(theta=0.3),
     stabilization=replace(
         StabilizationConfig.disabled(),
