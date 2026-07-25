@@ -5,6 +5,8 @@
 # method changes between cases.
 set -euo pipefail
 
+./allclean.sh
+
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
     || command -v python3 \
     || command -v python)}"

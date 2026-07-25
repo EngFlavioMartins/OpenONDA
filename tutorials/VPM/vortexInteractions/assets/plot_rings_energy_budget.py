@@ -177,10 +177,6 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
 
     e0 = float(energy[0]) if abs(float(energy[0])) > 1e-30 else 1.0
 
-    # Objective-aligned diagnostics.  For an unbounded viscous flow energy can
-    # only decay, so any dE/dt > 0 is spurious injection.  The cumulative
-    # spurious energy ∫₀ᵗ max(dE/dt, 0) dt / E₀ is a monotone curve that stays
-    # flat at zero for a run that never violates dE/dt ≤ 0.
     spurious_rate = np.clip(dE_poly, 0.0, None)
     cum_spurious = np.zeros_like(t)
     if len(t) > 1:

@@ -96,11 +96,15 @@ def main():
         n_stations=23,
         chord_stations=7,
     )
-    generate_rotorflow_openvsp_blade(
-        output_dir="./assets/openvsp",
-        json_path=blade_file,
-        design=blade_design,
-    )
+
+    if Path(blade_file).exists():
+        print(f"Using cached VLM blade surface: {blade_file} (skipping OpenVSP regeneration)")
+    else:
+        generate_rotorflow_openvsp_blade(
+            output_dir="./assets/openvsp",
+            json_path=blade_file,
+            design=blade_design,
+        )
 
     # ================================================
     # 4. Configure VLM Solver
@@ -168,22 +172,36 @@ def main():
 
     stretching = StretchingConfig.transposed()
 
-    stabilization = StabilizationConfig(
-        parallel_strain_enabled=True,
-        parallel_strain_f=0.0,
-        parallel_strain_g=1.0 / 3.0,
-        # ISR blend relaxation is the second net — it drains runaway |Γ|.
-        relaxation_enabled=True,
-        relaxation_mode="blend",  # try also 'pedrizzetti'
-        remove_particles_by_bounds=[
-            -2.0 * rotor_radius,
-            20.0 * rotor_radius,
-            -2.0 * rotor_radius,
-            2.0 * rotor_radius,
-            -2.0 * rotor_radius,
-            2.0 * rotor_radius,
-        ],
+    stabilization = StabilizationConfig.energy_budget(
+        frequency=2,
+        gain=0.5,
+        tolerance=0.1,
+        r_max=0.4,
+        r_seed=0.002,
+        r_inject=0.15,
+        smoothing=0.7,
+        max_log_change=0.7,
+        deconv=0,
     )
+    # rVPM parallel-strain correction (first net) + conservative per-stage
+    # stretching limiter (common integration safeguard).
+    stabilization.parallel_strain_enabled = True
+    stabilization.parallel_strain_f = 0.0
+    stabilization.parallel_strain_g = 1.0 / 3.0
+    stabilization.stretching_limiter_enabled = True
+    stabilization.stretching_limiter_parallel_increment = 0.04
+    stabilization.stretching_limiter_rotation_increment = 0.12
+    stabilization.stretching_limiter_conserve = True
+    stabilization.stretching_limiter_constraint = "both"
+    # Drop particles convected past the validation planes / out of the box.
+    stabilization.remove_particles_by_bounds = [
+        -2.0 * rotor_radius,
+        20.0 * rotor_radius,
+        -2.0 * rotor_radius,
+        2.0 * rotor_radius,
+        -2.0 * rotor_radius,
+        2.0 * rotor_radius,
+    ]
 
     viscous = ViscousConfig(scheme="CS")
 

@@ -318,10 +318,6 @@ def build_stabilization_config(
         stabilization.stretching_limiter_project_step_invariants = True
         stabilization.stretching_limiter_project_step_angular_impulse = True
 
-        # LES/rVPM/constant-relaxation need a dormant escape path when a
-        # genuinely under-resolved cascade survives stage limiting.  The wide
-        # dead band leaves resolved/reference dynamics untouched; the filter
-        # turns on only after a sustained energy-budget violation.
         if args.stabilization in {"les", "rvpm", "relax", "remesh", "projection", "split"}:
             stabilization.energy_budget_enabled = True
             stabilization.energy_budget_frequency = 5
@@ -341,10 +337,6 @@ def build_stabilization_config(
             stabilization.relaxation_constraint = "both"
 
         if args.stabilization in {"remesh", "projection"}:
-            # Repeated interpolation already changes the high-wavenumber
-            # representability error, for which ADM can overshoot. Use the raw
-            # representable-field target for an unconditionally more
-            # dissipative emergency response between topology rebuilds.
             stabilization.relaxation_deconv = 0
             stabilization.energy_budget_gain = 0.5
             stabilization.energy_budget_tolerance = 0.2
@@ -354,21 +346,13 @@ def build_stabilization_config(
             stabilization.energy_budget_max_log_change = 0.7
 
         if args.stabilization == "energy":
-            # Governor tuned to enforce dE/dt <= 0 rather than merely track the
-            # (core-spreading-deflated) enstrophy target: measure every 2 steps
-            # for low lag, ramp fast, and — via r_inject — hammer the relaxation
-            # to real authority the instant a window shows energy rising.  The
-            # back-off still returns r -> 0 in monotone-decay phases, so resolved
-            # dynamics are left untouched.
+            stabilization.relaxation_deconv = 0
             stabilization.energy_budget_frequency = 2
             stabilization.energy_budget_gain = 0.5
             stabilization.energy_budget_tolerance = 0.1
             stabilization.energy_budget_r_max = 0.4
             stabilization.energy_budget_r_seed = 0.002
             stabilization.energy_budget_r_inject = 0.15
-            # Light smoothing so the factor is released promptly once monotone
-            # decay resumes — heavy smoothing pins r at r_max after a burst and
-            # over-dissipates resolved circulation.
             stabilization.energy_budget_smoothing = 0.7
             stabilization.energy_budget_max_log_change = 0.7
 
@@ -399,9 +383,6 @@ def ring_centers_and_strengths(
     if gamma1 * gamma2 >= 0.0:
         return [[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]], [gamma1, gamma2]
 
-    # Start close enough that the head-on collision and the post-collision
-    # radial expansion both occur inside the run window (the old 8R gap left the
-    # rings still ~1 diameter apart at the last step, so nothing collided).
     ring_separation = 2.5 * (2.0 * RING_RADIUS)
     return [[0.5 * ring_separation, 0.0, 0.0], [-0.5 * ring_separation, 0.0, 0.0]], [
         gamma1,
