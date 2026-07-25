@@ -54,17 +54,29 @@ def create_super_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def q_(density: ti.template()) -> ti.template():  # type: ignore
-        err_term = err_func(density * ONE_OVER_SQRT2)
-        exp_term = SQRT_2_OVER_PI * density * ti.exp(-density * density / 2.0)
-        poly_term = 1.0 - density * density / 2.0
-        result = err_term - poly_term * exp_term
+        result = 0.0
+        if density < 1e-4:
+            rho_sq = density * density
+            result = SQRT_2_OVER_PI * (
+                (5.0 / 6.0) * density * rho_sq - (7.0 / 20.0) * density * rho_sq * rho_sq
+            )
+        else:
+            err_term = err_func(density * ONE_OVER_SQRT2)
+            exp_term = SQRT_2_OVER_PI * density * ti.exp(-density * density / 2.0)
+            poly_term = 1.0 - density * density / 2.0
+            result = err_term - poly_term * exp_term
         return ti.cast(result * ONE_OVER_FOUR_PI, dtype)
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
-        erf_term = err_func(density * ONE_OVER_SQRT2) / density
-        decay_term = ONE_OVER_TWO_PI_POW_1p05 * ti.exp(-density * density / 2.0)
-        result = erf_term + decay_term
+        result = 0.0
+        if density < 1e-4:
+            result = 1.5 * SQRT_2_OVER_PI - (5.0 / 12.0) * SQRT_2_OVER_PI * density**2
+        else:
+            safe_density = ti.max(density, 1e-12)
+            erf_term = err_func(density * ONE_OVER_SQRT2) / safe_density
+            decay_term = ONE_OVER_TWO_PI_POW_1p05 * ti.exp(-density * density / 2.0)
+            result = erf_term + decay_term
         return ti.cast(result * ONE_OVER_FOUR_PI, dtype)
 
     @ti.func

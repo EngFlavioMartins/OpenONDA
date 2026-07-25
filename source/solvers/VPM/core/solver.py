@@ -304,18 +304,6 @@ class Solver:
         self.precision = getattr(final_config, "precision", "f32")
         if self.precision not in ("f32", "f64"):
             raise ValueError(f"precision must be 'f32' or 'f64', got '{self.precision}'")
-        stab = self.stabilization_config
-        max_p_init = getattr(final_config, "max_particles", MAX_PARTICLES)
-        self._splitter = None
-        if stab.max_core_radius is not None:
-            from ..stabilization.splitting import ParticleSplitter
-
-            self._splitter = ParticleSplitter(precision=self.precision, max_particles=max_p_init)
-        self._remesher = None
-        if stab.remeshing_frequency is not None:
-            from ..stabilization.conservative_remesh import ConservativeRemesher
-
-            self._remesher = ConservativeRemesher(precision=self.precision)
         self.processing_unit = initialize_taichi_backend(
             self.processing_unit,
             debug_mode,
@@ -327,6 +315,21 @@ class Solver:
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
+
+        # Adaptation helpers may allocate Taichi fields in their constructors,
+        # so they must be created only after the backend is initialized.
+        stab = self.stabilization_config
+        max_p_init = getattr(final_config, "max_particles", MAX_PARTICLES)
+        self._splitter = None
+        if stab.max_core_radius is not None or stab.max_particle_strength is not None:
+            from ..stabilization.splitting import ParticleSplitter
+
+            self._splitter = ParticleSplitter(precision=self.precision, max_particles=max_p_init)
+        self._remesher = None
+        if stab.remeshing_frequency is not None:
+            from ..stabilization.conservative_remesh import ConservativeRemesher
+
+            self._remesher = ConservativeRemesher(precision=self.precision)
 
     def _init_particles_and_physics(self, final_config: SolverConfig) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
@@ -425,7 +428,26 @@ class Solver:
         # Strength relaxation — Winckelmans/Pedrizzetti direction projection.
         self._strength_relaxation = None
         self._parallel_strain_relaxation = None
+        self._stretching_limiter = None
         stabilization = final_config.stabilization
+        if stabilization.stretching_limiter_enabled:
+            from ..stabilization.stretching_limiter import (
+                ConservativeStretchingLimiter,
+            )
+
+            self._stretching_limiter = ConservativeStretchingLimiter(
+                max_parallel_increment=(stabilization.stretching_limiter_parallel_increment),
+                max_rotation_increment=(stabilization.stretching_limiter_rotation_increment),
+                conserve=stabilization.stretching_limiter_conserve,
+                constraint=stabilization.stretching_limiter_constraint,
+                project_step_invariants=(stabilization.stretching_limiter_project_step_invariants),
+                project_step_angular_impulse=(
+                    stabilization.stretching_limiter_project_step_angular_impulse
+                ),
+                max_particles=max_p,
+                precision=self.precision,
+            )
+            self.physics.stretching_rate_limiter = self._stretching_limiter
         if stabilization.parallel_strain_enabled:
             from ..stabilization.parallel_strain import ParallelStrainRelaxation
 
@@ -464,7 +486,11 @@ class Solver:
                 gain=stabilization.energy_budget_gain,
                 tolerance=stabilization.energy_budget_tolerance,
                 r_max=stabilization.energy_budget_r_max,
+                r_seed=stabilization.energy_budget_r_seed,
                 frequency=stabilization.energy_budget_frequency,
+                smoothing=stabilization.energy_budget_smoothing,
+                max_log_change=stabilization.energy_budget_max_log_change,
+                r_inject=stabilization.energy_budget_r_inject,
             )
 
     def _init_diagnostics_and_solvers(self, final_config: SolverConfig) -> None:
@@ -689,6 +715,12 @@ class Solver:
             if self.panel_solver is not None:
                 with self.profiler.section("Panel coupling"):
                     self._advance_panel()
+
+            # The adaptive free-vortex projection targets invariants over the
+            # complete advection/diffusion/stretching update, not merely over
+            # the stretching substep.
+            if self._stretching_limiter is not None:
+                self._stretching_limiter.begin_solver_step(self.particles)
 
             # 1. VELOCITY & GRADIENTS (At t_n)
             _adv = (self.config.advection.scheme if self.config.advection else "RK3").upper()
@@ -2242,6 +2274,8 @@ class Solver:
     def _apply_stretching_with_relaxation(self, dt: float) -> None:
         """Vortex stretching followed by the strength-relaxation projection, once per dt."""
         if self.stretching_enabled:
+            if self._stretching_limiter is not None:
+                self._stretching_limiter.begin_stretching(self.particles)
             if self._parallel_strain_relaxation is not None:
                 self._parallel_strain_relaxation.snapshot(self.particles)
 
@@ -2270,8 +2304,29 @@ class Solver:
             if self._parallel_strain_relaxation is not None:
                 self._parallel_strain_relaxation.apply(self.particles)
                 ti.sync()
-        if self._strength_relaxation is not None:
+        relaxation_due = (
+            self._energy_budget_governor is None
+            or self.time_step % self._energy_budget_governor.frequency == 0
+        )
+        if self._strength_relaxation is not None and relaxation_due:
             self._strength_relaxation.apply(self.particles, dt)
+            ti.sync()
+        if self._stretching_limiter is not None:
+            limiter_diag = self._stretching_limiter.finish_solver_step(self.particles)
+            if (
+                limiter_diag["n_limited"] > 0
+                and self.logging_frequency > 0
+                and self.time_step % self.logging_frequency == 0
+            ):
+                Logging.message(
+                    "\t[StretchLimiter] "
+                    f"limited={limiter_diag['n_limited']} "
+                    f"stage_hits={limiter_diag['limited_stage_count']} "
+                    f"max_parallel_dt={limiter_diag['max_parallel_increment']:.3e} "
+                    f"max_rotation_dt={limiter_diag['max_rotation_increment']:.3e} "
+                    f"rate_conserve_rel={limiter_diag['rate_conserve_rel']:.3e} "
+                    f"step_project_rel={limiter_diag['step_project_rel']:.3e}"
+                )
             ti.sync()
 
     def _apply_viscous_diffusion(self, dt: float) -> None:
@@ -2406,14 +2461,20 @@ class Solver:
             return
 
         adaptation_performed = False
+        budget_reset_needed = False
         cfg = self.stabilization_config
 
         # 1. Particle Splitting (1-to-2, transverse to the vorticity direction)
         _split_diag_data = None
-        if self._splitter is not None and cfg.max_core_radius is not None:
-            max_radius = cfg.max_core_radius
+        if self._splitter is not None:
+            max_radius = cfg.max_core_radius if cfg.max_core_radius is not None else float("inf")
+            max_strength = cfg.max_particle_strength
 
-            if self._splitter.needs_splitting(self.particles, max_radius):
+            if self._splitter.needs_splitting(
+                self.particles,
+                max_radius,
+                max_strength,
+            ):
                 if cfg.split_diagnostics_enabled:
                     # Expensive debug path: downloads full particle fields.
                     self.physics.compute_vorticities(self.particles)
@@ -2423,7 +2484,11 @@ class Solver:
                     _vort_pre = self.particles.vorticity_cpu().copy()
                     _mask_split = _rad_pre > max_radius
 
-                stats = self._splitter.split(self.particles, max_radius)
+                stats = self._splitter.split(
+                    self.particles,
+                    max_radius,
+                    max_strength,
+                )
                 Logging.message(
                     f"(Stabilization) Splitting: {stats.particles_split} particles -> {stats.particles_created} children "
                     f"({stats.particles_total_after} total)"
@@ -2436,6 +2501,7 @@ class Solver:
         if cfg.remove_particles_by_bounds is not None:
             self.remove_particles_by_bounds(cfg.remove_particles_by_bounds, invert_selection=True)
             adaptation_performed = True
+            budget_reset_needed = True
 
         # 3. Conservative Remeshing (periodic remesh + delta correction)
         if cfg.remeshing_frequency is not None and self.time_step % cfg.remeshing_frequency == 0:
@@ -2446,9 +2512,13 @@ class Solver:
                 rel_threshold=cfg.remeshing_relative_threshold,
                 abs_threshold=cfg.remeshing_absolute_threshold,
                 conserve_impulse=cfg.remeshing_conserve_impulse,
+                conserve_energy=cfg.remeshing_conserve_energy,
                 delta_correction=cfg.remeshing_delta_correction,
                 impulse_constraint=cfg.remeshing_impulse_constraint,
                 particle_radius=cfg.remeshing_radius,
+                preserve_radius_profile=cfg.remeshing_preserve_radius_profile,
+                max_particles=cfg.remeshing_max_particles,
+                max_particle_growth=cfg.remeshing_max_particle_growth,
                 project_solenoidal=cfg.remeshing_project_solenoidal,
                 projection_padding=cfg.remeshing_projection_padding,
             )
@@ -2456,14 +2526,22 @@ class Solver:
             # logged CSV row is consistent with the particle distribution used next step.
             self._update_all_flow_integrals()
             adaptation_performed = True
+            budget_reset_needed = True
 
         # 4. Remove weak particles (only if not already done by grid reinit or remesh)
         elif cfg.weak_threshold_percent is not None and cfg.max_core_radius is None:
             self.remove_weak_particles(percent=cfg.weak_threshold_percent, per_group=cfg.per_group)
             adaptation_performed = True
+            budget_reset_needed = True
 
         # Update vorticity field if any adaptation was performed
         if adaptation_performed:
+            # A topology rebuild changes the discrete energy functional even
+            # when its conserved moments are restored. Start a fresh budget
+            # measurement window so that this jump is not interpreted as
+            # physical production/dissipation by the feedback controller.
+            if budget_reset_needed and self._energy_budget_governor is not None:
+                self._energy_budget_governor.reset()
             self.physics.compute_vorticities(self.particles)
             if _split_diag_data is not None:
                 self._diagnose_split(*_split_diag_data)

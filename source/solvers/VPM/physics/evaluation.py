@@ -288,7 +288,6 @@ class ParticleFieldEvaluation:
                 pos_i = positions[i]
                 str_i = strengths[i]
                 radii_i = radii[i]
-                cutoff_radius = DEFAULT_CUTOFF_RADIUS_FACTOR * radii_i
 
                 local_energy = ti.cast(0.0, self.accumulator_dtype)
                 local_helicity = ti.cast(0.0, self.accumulator_dtype)
@@ -303,11 +302,10 @@ class ParticleFieldEvaluation:
                     # Unbounded domain: direct distance
                     r_ij = pos_i - pos_j
                     r_mag = r_ij.norm()
+                    sigma = 0.5 * (radii_i + radii_j)
+                    r_sigma = r_mag / sigma
 
-                    if r_mag > EPSILON and r_mag <= cutoff_radius:
-                        sigma = 0.5 * (radii_i + radii_j)
-                        r_sigma = r_mag / sigma
-
+                    if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
                         # Enstrophy = ∫|ω|² with ω = Σ Γ ζ_σ.  Two Gaussian blobs
                         # of width σ convolve to width σ√2, so the regularised
                         # enstrophy kernel must be evaluated at σ_ens = σ√2 (not
@@ -315,32 +313,22 @@ class ParticleFieldEvaluation:
                         # the dE/dt = −ν∫|ω|² balance.  Energy/helicity keep σ.
                         sigma_ens = sigma * 1.4142135623730951
                         zeta_val = zeta_(r_mag / sigma_ens) / sigma_ens**3
-                        q_val = q_(r_sigma)
                         g_val = g_(r_sigma) / sigma
 
                         # Accumulate pairwise contributions (explicit cast avoids
                         # implicit f32↔f64 promotion warnings from Taichi JIT)
                         _acc = self.accumulator_dtype
                         local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
-                        local_helicity += ti.cast(
-                            q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3, _acc
-                        )
+                        if r_mag > EPSILON:
+                            q_val = q_(r_sigma)
+                            local_helicity += ti.cast(
+                                q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
+                                _acc,
+                            )
                         pair_enstrophy = ti.cast(zeta_val * str_i.dot(str_j), _acc)
                         pair_nu = ti.cast(0.5 * (viscosities_eff[i] + viscosities_eff[j]), _acc)
                         local_enstrophy += pair_enstrophy
                         local_dissipation -= pair_nu * pair_enstrophy
-
-                # Self-interaction (i == j, r = 0): dominant for the peaked
-                # enstrophy kernel; the regularised ∫|ω|² (and −ν∫|ω|²) include
-                # each blob's self-overlap, which the pairwise loop skips.  Uses
-                # the same σ_ens = σ√2 convolution width as the pairwise term.
-                sigma_ens_self = radii_i * 1.4142135623730951
-                self_zeta = zeta_(ti.cast(0.0, ti.f32)) / (
-                    sigma_ens_self * sigma_ens_self * sigma_ens_self
-                )
-                self_ens = ti.cast(self_zeta * str_i.dot(str_i), self.accumulator_dtype)
-                local_enstrophy += self_ens
-                local_dissipation -= ti.cast(viscosities_eff[i], self.accumulator_dtype) * self_ens
 
                 # Atomic accumulation of local sums
                 ti.atomic_add(results[None].energy, local_energy)
@@ -376,10 +364,9 @@ class ParticleFieldEvaluation:
 
                     r_ij = pos_i - pos_j
                     r_mag = ti.sqrt(r_ij.dot(r_ij))
-                    cutoff_radius = DEFAULT_CUTOFF_RADIUS_FACTOR * radii_j
+                    r_sigma = r_mag / sigma
 
-                    if r_mag > EPSILON and r_mag <= cutoff_radius:
-                        r_sigma = r_mag / sigma
+                    if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
                         g_val = g_(r_sigma) / sigma
                         energy_sum += g_val * str_j.dot(str_i) * 0.5
 
@@ -440,16 +427,15 @@ class ParticleFieldEvaluation:
                 str_i = strengths[i]
                 pos_i = positions[i]
                 radii_i = radii[i]
-                cutoff_radius = DEFAULT_CUTOFF_RADIUS_FACTOR * radii_i
 
                 for j in range(N):
                     r_ij = pos_i - positions[j]
                     r_mag = ti.sqrt(r_ij.dot(r_ij))
+                    sigma = 0.5 * (radii_i + radii[j])
+                    r_sigma = r_mag / sigma
 
-                    if r_mag > EPSILON and r_mag <= cutoff_radius:
+                    if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
                         str_j = strengths[j]
-                        sigma = 0.5 * (radii_i + radii[j])
-                        r_sigma = r_mag / sigma
                         zeta_val = zeta_(r_sigma) / sigma**3
                         enstrophy_local += zeta_val * str_i.dot(str_j)
 

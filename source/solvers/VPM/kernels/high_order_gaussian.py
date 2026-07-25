@@ -64,12 +64,12 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
     def q_(density: ti.template()) -> ti.template():  # type: ignore
         # q(ρ) = [erf(ρ) + (2/√π) ρ (ρ²−1) exp(−ρ²)] / (4π)
         # Small-ρ Taylor fallback to avoid catastrophic cancellation:
-        #   ≈ (2/√π) [ (4/3) ρ³ − (6/5) ρ⁵ ] / (4π)
+        #   ≈ (2/√π) [ (5/3) ρ³ − (7/5) ρ⁵ ] / (4π)
         rho_sq = density * density
         res = 0.0
         if density < 1e-4:
             series = TWO_OVER_SQRT_PI * (
-                (4.0 / 3.0) * density * rho_sq - (6.0 / 5.0) * density * rho_sq * rho_sq
+                (5.0 / 3.0) * density * rho_sq - (7.0 / 5.0) * density * rho_sq * rho_sq
             )
             res = series * ONE_OVER_FOUR_PI
         else:
@@ -80,9 +80,18 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
-        # g(ρ) = erf(ρ) / (4π ρ)  — robust approximation consistent with plain Gaussian
-        erf_term = err_func(density) / (density + 1e-12)
-        return ti.cast(erf_term * ONE_OVER_FOUR_PI, dtype)
+        # Integrating -g'(ρ) = q(ρ)/ρ² gives
+        # g(ρ) = [erf(ρ)/ρ + exp(-ρ²)/sqrt(pi)]/(4π).
+        # This extra Gaussian term is required by the corrected q kernel.
+        res = 0.0
+        if density < 1e-4:
+            res = 1.5 * TWO_OVER_SQRT_PI - (5.0 / 6.0) * TWO_OVER_SQRT_PI * density**2
+        else:
+            safe_density = ti.max(density, 1e-12)
+            res = err_func(density) / safe_density + 0.5 * TWO_OVER_SQRT_PI * ti.exp(
+                -density * density
+            )
+        return ti.cast(res * ONE_OVER_FOUR_PI, dtype)
 
     @ti.func
     def diffusivity_constant_():

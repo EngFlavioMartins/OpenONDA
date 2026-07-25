@@ -110,9 +110,22 @@ def VortexRingVPM(
     seed: int = 42,
     max_modes: int = 24,
     anti_diffuse_flag: bool = False,
+    perturbation_model: str = "solenoidal",
 ):
     """
-    Initialize vortex ring with optional Widnall instability perturbation.
+    Initialize a vortex ring with an optional Widnall-type perturbation.
+
+    ``perturbation_model="solenoidal"`` displaces the ring centreline and
+    adds the radial vorticity component required for the vorticity to remain
+    divergence-free.  In cylindrical coordinates about the x-axis,
+
+        R_c(theta) = R (1 + epsilon_W g(theta))
+        omega = W [e_theta + R_c'(theta) / rho e_rho]
+
+    is the curl of an axial vector potential, so ``div(omega) = 0`` in the
+    continuum.  ``"legacy"`` retains the old radial-coordinate modulation for
+    reproducing historical tutorial results; that field is not solenoidal
+    when ``epsilon_W`` is non-zero.
 
     Returns:
     --------
@@ -121,6 +134,12 @@ def VortexRingVPM(
     strengths : (N,3) ndarray
     """
     num_particles = len(positions)
+    perturbation_model = perturbation_model.lower()
+    if perturbation_model not in {"solenoidal", "legacy"}:
+        raise ValueError("perturbation_model must be 'solenoidal' or 'legacy'")
+    if max_modes < 1:
+        raise ValueError("max_modes must be at least 1")
+
     t_shift = avg_particle_radius**2 / (viscosity * 4.0) if anti_diffuse_flag else 0.0
 
     t0 = ring_thickness**2 / (4 * viscosity)
@@ -133,25 +152,37 @@ def VortexRingVPM(
     Z = positions[:, 2] - ring_center[2]
     theta = np.arctan2(Z, Y)
 
-    np.random.seed(seed)
-    phases = 2 * np.pi * np.random.rand(max_modes)
+    rng = np.random.RandomState(seed)
+    phases = 2 * np.pi * rng.rand(max_modes)
     g_theta = np.zeros_like(theta)
+    dg_dtheta = np.zeros_like(theta)
     for n in range(1, max_modes + 1):
         g_theta += np.cos(n * theta + phases[n - 1])
+        dg_dtheta -= n * np.sin(n * theta + phases[n - 1])
     g_theta /= np.sqrt(max_modes)
+    dg_dtheta /= np.sqrt(max_modes)
 
     radial_dist = np.sqrt(Y**2 + Z**2)
-    radial_dist_perturbed = radial_dist * (1 + epsilon_W * g_theta)
-    Y = radial_dist_perturbed * np.cos(theta)
-    Z = radial_dist_perturbed * np.sin(theta)
-    core_dist = np.sqrt((radial_dist_perturbed - ring_radius) ** 2 + X**2)
+    if perturbation_model == "legacy":
+        radial_dist_perturbed = radial_dist * (1 + epsilon_W * g_theta)
+        core_dist = np.sqrt((radial_dist_perturbed - ring_radius) ** 2 + X**2)
+        centerline_slope = np.zeros_like(theta)
+    else:
+        centerline_radius = ring_radius * (1.0 + epsilon_W * g_theta)
+        centerline_slope = ring_radius * epsilon_W * dg_dtheta
+        core_dist = np.sqrt((radial_dist - centerline_radius) ** 2 + X**2)
 
     omega_mag = (ring_strength / (np.pi * actual_ring_thickness_sq)) * np.exp(
         -(core_dist**2) / actual_ring_thickness_sq
     )
     vorticities = np.zeros_like(positions)
-    vorticities[:, 1] = -omega_mag * np.sin(theta)
-    vorticities[:, 2] = omega_mag * np.cos(theta)
+    omega_radial = np.zeros_like(omega_mag)
+    away_from_axis = radial_dist > 1.0e-12
+    omega_radial[away_from_axis] = (
+        omega_mag[away_from_axis] * centerline_slope[away_from_axis] / radial_dist[away_from_axis]
+    )
+    vorticities[:, 1] = -omega_mag * np.sin(theta) + omega_radial * np.cos(theta)
+    vorticities[:, 2] = omega_mag * np.cos(theta) + omega_radial * np.sin(theta)
 
     velocities = np.zeros_like(positions)
     viscosities = np.full(num_particles, viscosity)

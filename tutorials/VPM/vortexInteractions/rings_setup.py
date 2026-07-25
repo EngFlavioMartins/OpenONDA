@@ -61,11 +61,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--gamma2", type=float, default=GAMMA_REF, help="Ring 2 circulation [m2/s]."
     )
-    parser.add_argument("--name", default="leapfrog_les", help="Output sub-directory name.")
-    parser.add_argument("--dt", type=float, default=2.0e-2, help="Time-step size [s].")
-    parser.add_argument("--num-steps", type=int, default=360, help="Number of time steps.")
+    parser.add_argument("--name", default="leapfrog_adaptive", help="Output sub-directory name.")
+    parser.add_argument("--dt", type=float, default=1.0e-2, help="Time-step size [s].")
+    parser.add_argument("--num-steps", type=int, default=720, help="Number of time steps.")
     parser.add_argument(
-        "--particle-spacing", type=float, default=0.035, help="Particle spacing [m]."
+        "--particle-spacing", type=float, default=0.045, help="Particle spacing [m]."
     )
     parser.add_argument("--output-root", default="solution", help="Parent output directory.")
     parser.add_argument("--backup-frequency", type=int, default=20, help="Backup interval [steps].")
@@ -74,9 +74,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--processing-unit",
-        default="CUDA",
+        default="GPU",
         choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
-        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
+        help="Compute backend. GPU selects Metal on macOS and CUDA/Vulkan elsewhere.",
+    )
+    parser.add_argument(
+        "--allow-cpu-fallback",
+        action="store_true",
+        help="Allow a requested GPU backend to fall back to CPU instead of failing the case.",
     )
     parser.add_argument(
         "--device-memory-fraction",
@@ -92,9 +97,51 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stabilization",
-        choices=["les", "rvpm", "relax", "remesh", "projection", "split", "energy"],
-        default="les",
-        help="Stabilization variant. 'les' is the unstabilized LES baseline.",
+        choices=[
+            "control",
+            "les",
+            "rvpm",
+            "relax",
+            "remesh",
+            "projection",
+            "split",
+            "energy",
+            "adaptive",
+        ],
+        default="adaptive",
+        help=(
+            "'control' is the true unstabilized baseline (no stage limiter, no "
+            "energy-budget ADM). Every other choice, including 'les', additionally "
+            "runs the common RK-stage safeguard and the dormant energy-budget "
+            "escape filter — so 'les' is NOT unstabilized. Use 'control' as the "
+            "reference for what the safeguards and each named stabilizer change."
+        ),
+    )
+    parser.add_argument(
+        "--disable-stage-safety",
+        action="store_true",
+        help=(
+            "Disable the common conservative RK-stage safety limiter. "
+            "Useful only for reproducing historical blow-ups."
+        ),
+    )
+    parser.add_argument(
+        "--epsilon-w",
+        type=float,
+        default=0.05,
+        help="Dimensionless Widnall centreline-perturbation amplitude.",
+    )
+    parser.add_argument(
+        "--perturbation-model",
+        choices=["solenoidal", "legacy"],
+        default="solenoidal",
+        help="Use the divergence-free perturbation or reproduce the historical field.",
+    )
+    parser.add_argument(
+        "--perturbation-modes",
+        type=int,
+        default=24,
+        help="Number of azimuthal perturbation modes.",
     )
     parser.add_argument(
         "--parallel-strain-f",
@@ -111,20 +158,65 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--relaxation-factor",
         type=float,
-        default=0.3,
-        help="Constant factor for strength relaxation.",
+        default=0.01,
+        help="Constant factor for conservative ADM residual relaxation.",
+    )
+    parser.add_argument(
+        "--adaptive-parallel-increment",
+        type=float,
+        default=0.04,
+        help="Maximum positive S_parallel*dt admitted by the adaptive limiter.",
+    )
+    parser.add_argument(
+        "--adaptive-rotation-increment",
+        type=float,
+        default=0.12,
+        help="Maximum strength-vector rotation admitted per adaptive RK stage.",
+    )
+    parser.add_argument(
+        "--adaptive-budget-r-max",
+        type=float,
+        default=0.02,
+        help="Maximum windowed ADM-relaxation factor for adaptive stabilization.",
     )
     parser.add_argument(
         "--remesh-frequency",
         type=int,
-        default=20,
-        help="Remeshing interval for remesh/projection variants.",
+        default=100,
+        help=(
+            "Remeshing interval for remesh/projection variants. "
+            "The longer interval avoids repeated M4 support dilation."
+        ),
+    )
+    parser.add_argument(
+        "--remesh-relative-threshold",
+        type=float,
+        default=0.005,
+        help="Relative deposited-circulation cutoff for sparse remeshing.",
+    )
+    parser.add_argument(
+        "--remesh-max-particles",
+        type=int,
+        default=30000,
+        help="Maximum particles retained by a remesh/projection rebuild.",
+    )
+    parser.add_argument(
+        "--remesh-max-particle-growth",
+        type=float,
+        default=1.5,
+        help="Maximum rebuilt/previous particle-count ratio for one event.",
     )
     parser.add_argument(
         "--split-radius",
         type=float,
         default=0.16,
         help="Core-radius threshold for particle splitting.",
+    )
+    parser.add_argument(
+        "--split-strength",
+        type=float,
+        default=0.5,
+        help="Particle-circulation threshold for particle splitting [m3/s].",
     )
     parser.add_argument(
         "--viscous",
@@ -163,41 +255,124 @@ def build_viscous_config(scheme: str, particle_spacing: float) -> ViscousConfig:
 def build_stabilization_config(
     args: argparse.Namespace, particle_spacing: float
 ) -> StabilizationConfig:
-    """Return exactly one benchmark stabilizer for the requested variant."""
-    if args.stabilization == "les":
+    """Return one benchmark stabilizer plus the common integration safeguard."""
+    if args.stabilization == "control":
+        # True unstabilized baseline: no stage limiter, no energy-budget ADM,
+        # no relaxation. Exposes the raw spurious-stretching instability so the
+        # effect of the safeguards and every named stabilizer can be measured
+        # against it. Returns before the common-safeguard block below.
         return StabilizationConfig.disabled()
-    if args.stabilization == "rvpm":
-        return StabilizationConfig.parallel_strain_relaxation(
+    if args.stabilization == "les":
+        stabilization = StabilizationConfig.disabled()
+    elif args.stabilization == "rvpm":
+        stabilization = StabilizationConfig.parallel_strain_relaxation(
             f=args.parallel_strain_f,
             g=args.parallel_strain_g,
         )
-    if args.stabilization == "relax":
-        return StabilizationConfig.strength_relaxation(
-            mode="pedrizzetti",
+    elif args.stabilization == "relax":
+        stabilization = StabilizationConfig.strength_relaxation(
+            mode="blend",
             gate="constant",
             factor=args.relaxation_factor,
             conserve=True,
             constraint="both",
+            deconv=1,
         )
-    if args.stabilization == "energy":
-        return StabilizationConfig.energy_budget()
-    if args.stabilization == "split":
-        return StabilizationConfig.particle_splitting(
+    elif args.stabilization == "energy":
+        stabilization = StabilizationConfig.energy_budget()
+    elif args.stabilization == "adaptive":
+        stabilization = StabilizationConfig.adaptive_rvpm(
+            parallel_increment=args.adaptive_parallel_increment,
+            rotation_increment=args.adaptive_rotation_increment,
+            budget_r_max=args.adaptive_budget_r_max,
+        )
+    elif args.stabilization == "split":
+        stabilization = StabilizationConfig.particle_splitting(
             radius=args.split_radius,
+            max_strength=args.split_strength,
             weak_threshold_percent=0.5,
         )
+    else:
+        project = args.stabilization == "projection"
+        stabilization = StabilizationConfig.conservative_remeshing(
+            frequency=args.remesh_frequency,
+            spacing=particle_spacing,
+            relative_threshold=args.remesh_relative_threshold,
+            absolute_threshold=0.0,
+            conserve_impulse=True,
+            conserve_energy=True,
+            delta_correction=False,
+            radius=2.0 * particle_spacing,
+            preserve_radius_profile=True,
+            max_particles=args.remesh_max_particles,
+            max_particle_growth=args.remesh_max_particle_growth,
+            project_solenoidal=project,
+        )
 
-    project = args.stabilization == "projection"
-    return StabilizationConfig.conservative_remeshing(
-        frequency=args.remesh_frequency,
-        spacing=particle_spacing,
-        relative_threshold=0.01,
-        absolute_threshold=1.0e-8,
-        conserve_impulse=True,
-        delta_correction=False,
-        radius=particle_spacing,
-        project_solenoidal=project,
-    )
+    if not args.disable_stage_safety:
+        stabilization.stretching_limiter_enabled = True
+        stabilization.stretching_limiter_parallel_increment = args.adaptive_parallel_increment
+        stabilization.stretching_limiter_rotation_increment = args.adaptive_rotation_increment
+        stabilization.stretching_limiter_conserve = True
+        stabilization.stretching_limiter_constraint = "both"
+        stabilization.stretching_limiter_project_step_invariants = True
+        stabilization.stretching_limiter_project_step_angular_impulse = True
+
+        # LES/rVPM/constant-relaxation need a dormant escape path when a
+        # genuinely under-resolved cascade survives stage limiting.  The wide
+        # dead band leaves resolved/reference dynamics untouched; the filter
+        # turns on only after a sustained energy-budget violation.
+        if args.stabilization in {"les", "rvpm", "relax", "remesh", "projection", "split"}:
+            stabilization.energy_budget_enabled = True
+            stabilization.energy_budget_frequency = 5
+            stabilization.energy_budget_gain = 0.25
+            stabilization.energy_budget_tolerance = 0.5
+            stabilization.energy_budget_r_max = 0.05
+            stabilization.energy_budget_r_seed = 0.001
+            stabilization.energy_budget_smoothing = 0.25
+            stabilization.energy_budget_max_log_change = 0.35
+            stabilization.relaxation_enabled = True
+            stabilization.relaxation_mode = "blend"
+            stabilization.relaxation_deconv = 1
+            stabilization.relaxation_gate = "constant"
+            if args.stabilization != "relax":
+                stabilization.relaxation_factor = 0.0
+            stabilization.relaxation_conserve = True
+            stabilization.relaxation_constraint = "both"
+
+        if args.stabilization in {"remesh", "projection"}:
+            # Repeated interpolation already changes the high-wavenumber
+            # representability error, for which ADM can overshoot. Use the raw
+            # representable-field target for an unconditionally more
+            # dissipative emergency response between topology rebuilds.
+            stabilization.relaxation_deconv = 0
+            stabilization.energy_budget_gain = 0.5
+            stabilization.energy_budget_tolerance = 0.2
+            stabilization.energy_budget_r_max = 0.3
+            stabilization.energy_budget_r_seed = 0.002
+            stabilization.energy_budget_smoothing = 0.4
+            stabilization.energy_budget_max_log_change = 0.7
+
+        if args.stabilization == "energy":
+            # Governor tuned to enforce dE/dt <= 0 rather than merely track the
+            # (core-spreading-deflated) enstrophy target: measure every 2 steps
+            # for low lag, ramp fast, and — via r_inject — hammer the relaxation
+            # to real authority the instant a window shows energy rising.  The
+            # back-off still returns r -> 0 in monotone-decay phases, so resolved
+            # dynamics are left untouched.
+            stabilization.energy_budget_frequency = 2
+            stabilization.energy_budget_gain = 0.5
+            stabilization.energy_budget_tolerance = 0.1
+            stabilization.energy_budget_r_max = 0.4
+            stabilization.energy_budget_r_seed = 0.002
+            stabilization.energy_budget_r_inject = 0.15
+            # Light smoothing so the factor is released promptly once monotone
+            # decay resumes — heavy smoothing pins r at r_max after a burst and
+            # over-dissipates resolved circulation.
+            stabilization.energy_budget_smoothing = 0.7
+            stabilization.energy_budget_max_log_change = 0.7
+
+    return stabilization
 
 
 def make_surface_sampler(
@@ -224,7 +399,10 @@ def ring_centers_and_strengths(
     if gamma1 * gamma2 >= 0.0:
         return [[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]], [gamma1, gamma2]
 
-    ring_separation = 4.0 * (2.0 * RING_RADIUS)
+    # Start close enough that the head-on collision and the post-collision
+    # radial expansion both occur inside the run window (the old 8R gap left the
+    # rings still ~1 diameter apart at the last step, so nothing collided).
+    ring_separation = 2.5 * (2.0 * RING_RADIUS)
     return [[0.5 * ring_separation, 0.0, 0.0], [-0.5 * ring_separation, 0.0, 0.0]], [
         gamma1,
         gamma2,
@@ -238,6 +416,9 @@ def initialize_vortex_rings(
     radii: np.ndarray,
     gamma1: float,
     gamma2: float,
+    epsilon_w: float,
+    perturbation_model: str,
+    perturbation_modes: int,
 ) -> None:
     centers, strengths = ring_centers_and_strengths(gamma1, gamma2)
 
@@ -251,8 +432,10 @@ def initialize_vortex_rings(
             avg_particle_radius=float(radii.mean()),
             positions=positions,
             volumes=volumes,
-            epsilon_W=0.05,
+            epsilon_W=epsilon_w,
+            max_modes=perturbation_modes,
             anti_diffuse_flag=True,
+            perturbation_model=perturbation_model,
         )
 
         solver.add_vortex_particles(
@@ -267,7 +450,12 @@ def initialize_vortex_rings(
         solver.remove_weak_particles(percent=0.1, per_group=True)
 
 
-def write_manifest(args: argparse.Namespace, case_label: str, output_dir: Path) -> None:
+def write_manifest(
+    args: argparse.Namespace,
+    case_label: str,
+    output_dir: Path,
+    actual_processing_unit: str,
+) -> None:
     manifest = {
         "case": output_dir.name,
         "family": case_label,
@@ -277,15 +465,29 @@ def write_manifest(args: argparse.Namespace, case_label: str, output_dir: Path) 
         "stretching_mode": "TRANSPOSED",
         "stretching_scheme": "RK3",
         "viscous_scheme": args.viscous,
-        "processing_unit": args.processing_unit,
+        "processing_unit": actual_processing_unit,
+        "processing_unit_requested": args.processing_unit,
         "device_memory_fraction": args.device_memory_fraction,
         "dt": args.dt,
         "num_steps": args.num_steps,
         "particle_spacing": args.particle_spacing,
+        "epsilon_W": args.epsilon_w,
+        "perturbation_model": args.perturbation_model,
+        "perturbation_modes": args.perturbation_modes,
         "gamma1": args.gamma1,
         "gamma2": args.gamma2,
         "parallel_strain_f": args.parallel_strain_f,
         "parallel_strain_g": args.parallel_strain_g,
+        "adaptive_parallel_increment": args.adaptive_parallel_increment,
+        "adaptive_rotation_increment": args.adaptive_rotation_increment,
+        "adaptive_budget_r_max": args.adaptive_budget_r_max,
+        "remesh_frequency": args.remesh_frequency,
+        "remesh_relative_threshold": args.remesh_relative_threshold,
+        "remesh_preserve_radius_profile": (args.stabilization in {"remesh", "projection"}),
+        "remesh_max_particles": args.remesh_max_particles,
+        "remesh_max_particle_growth": args.remesh_max_particle_growth,
+        "split_strength": args.split_strength,
+        "stage_safety_enabled": not args.disable_stage_safety,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -319,8 +521,26 @@ def run_case(args: argparse.Namespace) -> None:
         raise ValueError("--device-memory-fraction must be between 0.1 and 0.7.")
     if args.remesh_frequency <= 0:
         raise ValueError("--remesh-frequency must be positive.")
+    if not 0.0 < args.remesh_relative_threshold < 1.0:
+        raise ValueError("--remesh-relative-threshold must be in (0, 1).")
+    if args.remesh_max_particles <= 0:
+        raise ValueError("--remesh-max-particles must be positive.")
+    if args.remesh_max_particle_growth < 1.0:
+        raise ValueError("--remesh-max-particle-growth must be at least one.")
     if args.split_radius <= 0.0:
         raise ValueError("--split-radius must be positive.")
+    if args.split_strength <= 0.0:
+        raise ValueError("--split-strength must be positive.")
+    if args.epsilon_w < 0.0:
+        raise ValueError("--epsilon-w must be non-negative.")
+    if args.perturbation_modes < 1:
+        raise ValueError("--perturbation-modes must be at least 1.")
+    if args.adaptive_parallel_increment <= 0.0:
+        raise ValueError("--adaptive-parallel-increment must be positive.")
+    if args.adaptive_rotation_increment <= 0.0:
+        raise ValueError("--adaptive-rotation-increment must be positive.")
+    if not 0.0 < args.adaptive_budget_r_max <= 1.0:
+        raise ValueError("--adaptive-budget-r-max must be in (0, 1].")
 
     # ================================================
     # 3. Create Initial Particle Distribution
@@ -378,16 +598,31 @@ def run_case(args: argparse.Namespace) -> None:
         logging_frequency=args.logging_frequency,
         timing_frequency=40,
     )
-    write_manifest(args, case_label, output_dir)
-
     solver = Solver(config=solver_config)
+    requested_gpu = args.processing_unit.upper() != "CPU"
+    if requested_gpu and solver.processing_unit == "CPU" and not args.allow_cpu_fallback:
+        raise RuntimeError(
+            f"Requested GPU backend {args.processing_unit!r}, but Taichi initialized CPU. "
+            "Use --processing-unit CPU explicitly or --allow-cpu-fallback."
+        )
+    write_manifest(args, case_label, output_dir, solver.processing_unit)
     # Plot scripts read flow diagnostics from the log; skip duplicate CSV output here.
     solver._export_flow_integrals_csv = lambda: None
 
     # ================================================
     # 5. Initialize Two Vortex Rings
     # ================================================
-    initialize_vortex_rings(solver, positions, volumes, radii, gamma1, gamma2)
+    initialize_vortex_rings(
+        solver,
+        positions,
+        volumes,
+        radii,
+        gamma1,
+        gamma2,
+        args.epsilon_w,
+        args.perturbation_model,
+        args.perturbation_modes,
+    )
     solver.info()
 
     # ================================================

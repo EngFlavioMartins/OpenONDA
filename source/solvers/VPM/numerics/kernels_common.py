@@ -75,12 +75,12 @@ def _make_compute_vorticities_kernel(zeta_):
                 strength_j = strengths[j]
                 r_ij = pos_i - pos_j
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
-
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + radii[j])
-                    r_sigma = r_mag / sigma
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        vort += zeta_(r_sigma) / (sigma * sigma * sigma) * strength_j
+                sigma = 0.5 * (radii_i + radii[j])
+                r_sigma = r_mag / sigma
+                if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    # Unlike velocity, regularised vorticity has a finite,
+                    # physically essential self contribution at r = 0.
+                    vort += zeta_(r_sigma) / (sigma * sigma * sigma) * strength_j
 
             vorticities[i] = vort
 
@@ -110,10 +110,10 @@ def _make_kinetic_energy_kernel(g_):
                 sigma = 0.5 * (radii[i] + radii[j])
                 r_ij = pos_i - pos_j
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
-                if r_mag > EPSILON:
-                    r_sigma = r_mag / sigma
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        energy_sum += g_(r_sigma) / sigma * str_j.dot(str_i) * 0.5
+                r_sigma = r_mag / sigma
+                if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    # g(0) is finite: retain the continuum blob self energy.
+                    energy_sum += g_(r_sigma) / sigma * str_j.dot(str_i) * 0.5
 
             kinetic_energy[i] = energy_sum
 
@@ -140,14 +140,11 @@ def _make_enstrophy_kernel(zeta_):
             for j in range(N):
                 r_ij = pos_i - positions[j]
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
-                if r_mag > EPSILON:
-                    str_j = strengths[j]
-                    sigma = 0.5 * (radii_i + radii[j])
-                    r_sigma = r_mag / sigma
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        enstrophy_local += (
-                            zeta_(r_sigma) / (sigma * sigma * sigma) * str_i.dot(str_j)
-                        )
+                str_j = strengths[j]
+                sigma = 0.5 * (radii_i + radii[j])
+                r_sigma = r_mag / sigma
+                if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    enstrophy_local += zeta_(r_sigma) / (sigma * sigma * sigma) * str_i.dot(str_j)
             enstrophy[i] = enstrophy_local
 
     return compute_enstrophy_kernel
@@ -287,10 +284,10 @@ def _make_target_vorticity_kernel(zeta_):
                 strength_j = strengths[j]
                 r_ij = target_pos - pos_j
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
-                if r_mag > EPSILON:
-                    sigma = radii[j]
-                    r_sigma = r_mag / sigma
-                    vort += zeta_(r_sigma) / (sigma * sigma * sigma) * strength_j
+                sigma = radii[j]
+                r_sigma = r_mag / sigma
+                # A target may coincide with a source: zeta(0) is finite.
+                vort += zeta_(r_sigma) / (sigma * sigma * sigma) * strength_j
             target_vorticities[i] = vort
 
     return compute_target_vorticity_kernel

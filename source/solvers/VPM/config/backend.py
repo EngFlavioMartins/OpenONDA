@@ -252,14 +252,16 @@ def _resolve_gpu_backend() -> tuple:
     return (ti.vulkan, "VULKAN")
 
 
-# CPU candidates, tried last.  Newer Taichi uses ti.x64; older exposes ti.cpu.
+# CPU candidates, tried last.  ``ti.cpu`` is the native host architecture
+# (arm64 on Apple Silicon); trying the exported ``ti.x64`` alias first on an
+# arm64 host produces a misleading fallback warning.
 def _cpu_candidates() -> list[tuple]:
     """Ordered list of CPU ``(arch, name)`` pairs to try as the final fallback."""
     cands: list[tuple] = []
-    if hasattr(ti, "x64"):
-        cands.append((ti.x64, "CPU"))
     if hasattr(ti, "cpu"):
         cands.append((ti.cpu, "CPU"))
+    if hasattr(ti, "x64") and ti.x64 != getattr(ti, "cpu", None):
+        cands.append((ti.x64, "CPU"))
     return cands or [(ti.cpu, "CPU")]
 
 

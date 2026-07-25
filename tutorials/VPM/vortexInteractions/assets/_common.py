@@ -86,6 +86,31 @@ def legend_handle_style(style: dict) -> dict:
     return _theme().legend_handle_style(style)
 
 
+def compact_case_legend_handles(include_families: bool = True) -> list:
+    """Build a non-redundant method/family legend for comparison sweeps."""
+    from matplotlib.lines import Line2D
+
+    theme = _theme()
+    handles = []
+    for variant in theme.VARIANT_ORDER:
+        style = case_style(f"leapfrog_{variant}", include_family=False)
+        style["linestyle"] = "-"
+        handles.append(Line2D([0], [0], **legend_handle_style(style)))
+    if include_families:
+        for family in ("leapfrog", "collide"):
+            handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    color=theme.PALETTE["black"],
+                    linestyle=theme.FAMILY_LINESTYLE[family],
+                    linewidth=theme.LINE_WIDTH,
+                    label=theme.FAMILY_LABEL[family],
+                )
+            )
+    return handles
+
+
 def mark_every(name: str = "default") -> int:
     """Return the shared marker cadence for a plot kind."""
     return _theme().MARK_EVERY[name]
@@ -126,6 +151,13 @@ _BLOWUP_RE = re.compile(
     rf"BLOWUP CHECK\s+step=(?P<step>\d+)\s+time=(?P<time>{_FLOAT_RE})\s+"
     rf"max_gamma=(?P<max_gamma>{_FLOAT_RE})\s+threshold=(?P<threshold>{_FLOAT_RE})"
     rf"(?:\s+n_particles=(?P<n_particles>\d+))?"
+)
+# Circulation discarded when a remesh/projection rebuild is capped or thresholded.
+# ``discarded_strength_fraction`` is the fraction of the *candidate* strength
+# dropped at one event — the direct signal that a stabilizer is destroying
+# vorticity to stay under a particle budget rather than resolving the flow.
+_REMESH_DISCARD_RE = re.compile(
+    rf"\[RemeshBudget\].*?discarded_strength_fraction=(?P<frac>{_FLOAT_RE})"
 )
 
 
@@ -257,7 +289,10 @@ def read_log_diagnostics(case_dir) -> pd.DataFrame:
         if active is None:
             continue
 
-        if "Total Circulation (Σ|Γ|)" in line:
+        if "Number of Particles" in line:
+            value = _first_float_after_colon(line)
+            active["n_particles"] = int(value) if value is not None else np.nan
+        elif "Total Circulation (Σ|Γ|)" in line:
             active["sum_gamma_magnitude"] = _first_float_after_colon(line)
         elif "Total Circulation (ΣΓ)" in line:
             values = _vector_after_colon(line)
@@ -364,6 +399,33 @@ def read_integrals(case_dir):
         return None
     df = _trim_to_last_monotone_segment(df.reset_index(drop=True))
     return df
+
+
+def read_remesh_discards(case_dir) -> np.ndarray:
+    """Return the per-event discarded-circulation fractions from the case log.
+
+    Each entry is the fraction of candidate strength dropped at one remesh/
+    projection rebuild (empty for methods that never remesh).  The compounded
+    destroyed fraction ``1 - prod(1 - f_i)`` summarises how much real vorticity
+    a run threw away to stay under its particle budget.
+    """
+    log_path = _latest_log(case_dir)
+    if log_path is None:
+        return np.array([])
+    fracs = [
+        float(m.group("frac"))
+        for line in log_path.open(encoding="utf-8", errors="replace")
+        if (m := _REMESH_DISCARD_RE.search(line))
+    ]
+    return np.array(fracs, dtype=float)
+
+
+def compounded_discarded_fraction(case_dir) -> float:
+    """Fraction of circulation destroyed by capped/thresholded rebuilds."""
+    fracs = read_remesh_discards(case_dir)
+    if fracs.size == 0:
+        return 0.0
+    return float(1.0 - np.prod(1.0 - np.clip(fracs, 0.0, 1.0)))
 
 
 # -- H5 helpers ----------------------------------------------------------------
@@ -496,8 +558,20 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 # -- Figure helpers ------------------------------------------------------------
 
 
-def save_fig(fig, path, dpi: int | None = None, figure_format: str = "png") -> None:
-    _theme().save_fig(fig, path, figure_format=figure_format, dpi=dpi)
+def save_fig(
+    fig,
+    path,
+    dpi: int | None = None,
+    figure_format: str = "png",
+    tight_rect: tuple[float, float, float, float] | None = None,
+) -> None:
+    _theme().save_fig(
+        fig,
+        path,
+        figure_format=figure_format,
+        dpi=dpi,
+        tight_rect=tight_rect,
+    )
 
 
 def read_csv(assets_dir, fname: str, xcol: str, ycol: str):

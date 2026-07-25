@@ -62,8 +62,8 @@ def test_mutual_induction_symmetry(kernel_name, backend, solver_for_backend):
     vel_at_2 = solver.compute_target_velocities(
         np.array([[0.5, 0.0, 0.0]]), include_freestream=False
     )
-    # u_y should be equal (symmetric)
-    assert abs(vel_at_1[0, 1] - vel_at_2[0, 1]) / (abs(vel_at_1[0, 1]) + 1e-12) < 0.01, (
+    # u_y must be equal and opposite by reflection symmetry.
+    assert abs(vel_at_1[0, 1] + vel_at_2[0, 1]) / (abs(vel_at_1[0, 1]) + 1e-12) < 0.01, (
         f"{kernel_name}/{backend}: mutual induction not symmetric: "
         f"u_y(A)={vel_at_1[0, 1]:.6e}, u_y(B)={vel_at_2[0, 1]:.6e}"
     )
@@ -89,7 +89,8 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
     )
     omega_two = solver.compute_target_vorticities(np.array([[0.0, 0.0, 0.0]]))
 
-    # Single blob at same position
+    # Single blob at the same distance from the midpoint as either member
+    # of the symmetric pair.
     solver1 = solver_for_backend(
         time_step_size=0.01,
         particles_kernel=kernel_name,
@@ -98,7 +99,7 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
         advection=AdvectionConfig(scheme="NONE"),
     )
     solver1.add_vortex_particles(
-        position=np.array([[0.0, 0.0, 0.0]]),
+        position=np.array([[0.5, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
         circulation=np.array([[0.0, 0.0, 1.0]]),
         radius=np.array([_SIGMA]),
@@ -132,6 +133,7 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
         gamma2=[0.0, 0.0, 1.0],
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     ke_two = solver.total_kinetic_energy
 
     # Self-energy of one blob (same as test_single_blob)
@@ -151,12 +153,14 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
         viscosity=np.array([0.0]),
     )
     solver1.update_state()
+    solver1._update_all_flow_integrals()
     ke_one = solver1.total_kinetic_energy
 
     # Total KE of two blobs = 2*self + cross-term
-    # cross-term must be positive
-    assert ke_two > 2.0 * ke_one * 0.5, (
-        f"{kernel_name}/{backend}: KE_two={ke_two:.6e} not > self_energy={ke_one:.6e}"
+    # and the separated pair's positive cross-term is smaller than the two
+    # self terms for this geometry.
+    assert 2.0 * ke_one < ke_two < 4.0 * ke_one, (
+        f"{kernel_name}/{backend}: KE_two={ke_two:.6e}, self_energy={ke_one:.6e}"
     )
 
 
@@ -178,6 +182,7 @@ def test_helicity_parallel_zero(kernel_name, backend, solver_for_backend):
         gamma2=[0.0, 0.0, 1.0],
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     assert abs(solver.total_helicity) < 1e-5, (
         f"{kernel_name}/{backend}: helicity of parallel vortices = {solver.total_helicity:.3e} (must be 0)"
     )
@@ -188,7 +193,7 @@ def test_helicity_parallel_zero(kernel_name, backend, solver_for_backend):
 )
 def test_helicity_orthogonal_nonzero(kernel_name, backend, solver_for_backend):
     """
-    Two orthogonal vortices (Γ₁=(1,0,0), Γ₂=(0,1,0)) have non-zero helicity.
+    Two orthogonal vortices with separation parallel to Γ₁×Γ₂ have non-zero helicity.
 
     Failure → helicity kernel vanishes identically.
     """
@@ -197,10 +202,11 @@ def test_helicity_orthogonal_nonzero(kernel_name, backend, solver_for_backend):
         kernel_name,
         pos1=[0.0, 0.0, 0.0],
         pos2=[1.0, 0.0, 0.0],
-        gamma1=[1.0, 0.0, 0.0],
-        gamma2=[0.0, 1.0, 0.0],
+        gamma1=[0.0, 1.0, 0.0],
+        gamma2=[0.0, 0.0, 1.0],
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     assert abs(solver.total_helicity) > 1e-6, (
         f"{kernel_name}/{backend}: helicity of orthogonal vortices = {solver.total_helicity:.3e} (must be nonzero)"
     )
@@ -225,6 +231,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
         gamma2=[0.0, 0.0, 1.0],
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     ens_two = solver.total_enstrophy
 
     solver1 = solver_for_backend(
@@ -243,6 +250,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
         viscosity=np.array([0.0]),
     )
     solver1.update_state()
+    solver1._update_all_flow_integrals()
     ens_one = solver1.total_enstrophy
 
     assert ens_two > ens_one, (
@@ -255,8 +263,9 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
 )
 def test_strain_rate_pure_shear(kernel_name, backend, solver_for_backend):
     """
-    Two counter-rotating vortices (vortex dipole) produce a pure shear at the
-    midpoint: S_xy is maximum, S_xx = S_yy = S_zz = 0.
+    Two co-rotating vortices produce a pure shear at the midpoint: S_xy is
+    nonzero while S_xx = S_yy = S_zz = 0. A counter-rotating dipole would
+    instead have zero midpoint gradient by reflection symmetry.
 
     Failure → wrong velocity gradient kernel or symmetry violation.
     """
@@ -266,7 +275,7 @@ def test_strain_rate_pure_shear(kernel_name, backend, solver_for_backend):
         pos1=[-0.5, 0.0, 0.0],
         pos2=[0.5, 0.0, 0.0],
         gamma1=[0.0, 0.0, 1.0],
-        gamma2=[0.0, 0.0, -1.0],
+        gamma2=[0.0, 0.0, 1.0],
     )
     grad = solver.compute_target_velocity_gradients(np.array([[0.0, 0.0, 0.0]])).reshape(1, 3, 3)
     S = 0.5 * (grad[0] + grad[0].T)

@@ -50,7 +50,11 @@ def _q_gaussian(rho):
 def _g_gaussian(rho):
     """g(ρ) = erf(ρ)/(4πρ)"""
     rho = np.asarray(rho)
-    return erf(rho) / (4.0 * pi * (rho + 1e-12))
+    return np.where(
+        rho < 1e-4,
+        (1.0 / pi**1.5) * (0.5 - rho**2 / 6.0),
+        np.vectorize(erf)(rho) / (4.0 * pi * rho),
+    )
 
 
 def _zeta_high_order_gaussian(rho):
@@ -70,9 +74,11 @@ def _q_high_order_gaussian(rho):
 
 
 def _g_high_order_gaussian(rho):
-    """g(ρ) = erf(ρ)/(4πρ) — same asymptotic as plain Gaussian."""
+    """g(ρ) = [erf(ρ)/ρ + exp(−ρ²)/√π]/(4π)."""
     rho = np.asarray(rho)
-    return erf(rho) / (4.0 * pi * (rho + 1e-12))
+    small = (3.0 / (4.0 * pi**1.5)) - 5.0 * rho**2 / (12.0 * pi**1.5)
+    full = (np.vectorize(erf)(rho) / rho + np.exp(-(rho**2)) / sqrt(pi)) / (4.0 * pi)
+    return np.where(rho < 1e-4, small, full)
 
 
 def _zeta_super_gaussian(rho):
@@ -89,11 +95,14 @@ def _q_super_gaussian(rho):
 
 
 def _g_super_gaussian(rho):
-    """g(ρ) = [erf(ρ/√2)/ρ + exp(−ρ²/2)/(2π)^{3/2}] / (4π)"""
+    """g(ρ) = [erf(ρ/√2)/ρ + exp(−ρ²/2)/√(2π)] / (4π)."""
     rho = np.asarray(rho)
-    return (
-        erf(rho / sqrt(2.0)) / (rho + 1e-12) + np.exp(-(rho**2) / 2.0) / ((2.0 * pi) ** 1.5)
-    ) / (4.0 * pi)
+    c = sqrt(2.0 / pi)
+    small = (1.5 * c - (5.0 / 12.0) * c * rho**2) / (4.0 * pi)
+    full = (np.vectorize(erf)(rho / sqrt(2.0)) / rho + np.exp(-(rho**2) / 2.0) / sqrt(2.0 * pi)) / (
+        4.0 * pi
+    )
+    return np.where(rho < 1e-4, small, full)
 
 
 def _zeta_winckelmans(rho):

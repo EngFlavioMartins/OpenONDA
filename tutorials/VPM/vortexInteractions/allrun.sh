@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Vortex-ring interactions — LES stabilizer benchmark.
 # Runs leapfrogging and head-on collision cases with the same LES/transposed/RK3
-# solver core.  Only the stabilization method changes between cases.
+# solver core and conservative RK-stage safeguard. Only the named stabilization
+# method changes between cases.
 set -euo pipefail
 
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
@@ -15,24 +16,24 @@ GAMMA_PI="3.14159265358979"
 
 RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
-PARTICLE_SPACING="${PARTICLE_SPACING:-0.035}"
+PARTICLE_SPACING="${PARTICLE_SPACING:-0.045}"
 
-DT="${DT:-0.020}"
+DT="${DT:-0.010}"
 LF_DT="${LF_DT:-$DT}"
-LF_STEPS="${LF_STEPS:-360}"
+LF_STEPS="${LF_STEPS:-720}"
 
 COLLIDE_DT="${COLLIDE_DT:-$DT}"
-COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-240}}"
+COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-600}}"
 
 VISCOUS="${VISCOUS:-cs}"
-PROCESSING_UNIT="${PROCESSING_UNIT:-CUDA}"
-REMESH_PROCESSING_UNIT="${REMESH_PROCESSING_UNIT:-CUDA}"
+PROCESSING_UNIT="${PROCESSING_UNIT:-GPU}"
+REMESH_PROCESSING_UNIT="${REMESH_PROCESSING_UNIT:-GPU}"
 DEVICE_MEMORY_FRACTION="${DEVICE_MEMORY_FRACTION:-0.5}"
 
 BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
 LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
 BLOWUP_CHECK_FREQUENCY="${BLOWUP_CHECK_FREQUENCY:-10}"
-STABILIZATIONS="${STABILIZATIONS:-les rvpm relax remesh projection split}"
+STABILIZATIONS="${STABILIZATIONS:-control les rvpm relax remesh projection split energy adaptive}"
 RUN_FAMILIES="${RUN_FAMILIES:-leapfrog collide}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"

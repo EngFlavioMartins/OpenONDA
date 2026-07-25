@@ -509,6 +509,7 @@ FIGURE_SIZES_CM = {
     "stacked": (MAX_FIGURE_WIDTH_CM, 11.0),
     "wide": (WIDE_FIGURE_WIDTH_CM, 9.0),
     "wide_short": (WIDE_FIGURE_WIDTH_CM, 8.0),
+    "wide_stacked": (WIDE_FIGURE_WIDTH_CM, 12.5),
 }
 
 LINE_WIDTH = 1.1
@@ -525,17 +526,17 @@ MARK_EVERY = {
 }
 
 PALETTE = {
-    "dark":     "#0C2340",
-    "teal":     "#0E8A85",
-    "purple":   "#5C3D9B",
-    "orange":   "#C76D24",
-    "green":    "#2B7A4E",
-    "red":      "#9C2F50",
-    "gray":     "#6E8898",
+    "dark": "#0C2340",
+    "teal": "#0E8A85",
+    "purple": "#5C3D9B",
+    "orange": "#C76D24",
+    "green": "#2B7A4E",
+    "red": "#9C2F50",
+    "gray": "#6E8898",
     "light_gray": "#C0C0C0",
     "strong_gray": "#8B8B8B",
-    "white":    "#ffffff",
-    "black":    "#000000",
+    "white": "#ffffff",
+    "black": "#000000",
 }
 COLOR_CYCLE = (
     PALETTE["dark"],
@@ -573,12 +574,15 @@ COLORS = {
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
     # Comparison palette for method sweeps.
+    "case_control": PALETTE["strong_gray"],
     "case_les": PALETTE["dark"],
     "case_rvpm": PALETTE["purple"],
     "case_relax": PALETTE["teal"],
     "case_remesh": PALETTE["orange"],
     "case_projection": PALETTE["green"],
     "case_split": PALETTE["gray"],
+    "case_energy": PALETTE["red"],
+    "case_adaptive": PALETTE["black"],
     "background": BACKGROUND_LIGHT,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
@@ -595,12 +599,15 @@ COLORS = {
     "dvh": PALETTE["green"],
     "dvhr": PALETTE["teal"],
     "dns": PALETTE["dark"],
+    "control": PALETTE["strong_gray"],
     "les": PALETTE["dark"],
     "rvpm": PALETTE["purple"],
     "relax": PALETTE["teal"],
     "remesh": PALETTE["orange"],
     "projection": PALETTE["green"],
     "split": PALETTE["gray"],
+    "energy": PALETTE["red"],
+    "adaptive": PALETTE["black"],
 }
 
 COLORMAPS = {
@@ -618,21 +625,27 @@ COLORMAPS = {
 FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
 VARIANT_LABEL = {
+    "control": "Control (none)",
     "les": "LES",
     "rvpm": "rVPM",
     "relax": "Relaxation",
     "remesh": "Remeshing",
     "projection": "Projection",
     "split": "Splitting",
+    "energy": "Energy governor",
+    "adaptive": "Adaptive rVPM",
 }
 VARIANT_ORDER = tuple(VARIANT_LABEL)
 VARIANT_STYLE = {
+    "control": {"color": COLORS["case_control"], "marker": "8"},
     "les": {"color": COLORS["case_les"], "marker": "s"},
     "rvpm": {"color": COLORS["case_rvpm"], "marker": "o"},
     "relax": {"color": COLORS["case_relax"], "marker": "D"},
     "remesh": {"color": COLORS["case_remesh"], "marker": "^"},
     "projection": {"color": COLORS["case_projection"], "marker": "v"},
     "split": {"color": COLORS["case_split"], "marker": "P"},
+    "energy": {"color": COLORS["case_energy"], "marker": "X"},
+    "adaptive": {"color": COLORS["case_adaptive"], "marker": "*"},
 }
 INTENDED_CASE_ORDER = {
     f"{family}_{variant}": family_i * len(VARIANT_ORDER) + variant_i

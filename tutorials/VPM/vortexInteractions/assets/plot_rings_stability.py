@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from _common import (
     build_arg_parser,
     case_style,
+    compact_case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -36,18 +37,20 @@ def main() -> None:
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
-    fig, ax = plt.subplots(figsize=figure_size("single"))
+    fig, ax = plt.subplots(figsize=figure_size("wide_short"))
 
     plotted = False
+    minimum_ratio = 1.0
     for case_dir in discover_cases(args.solution_dir):
         # Keep the full series (including the runaway) so survival time is visible.
         t_star, gmax = read_metric(case_dir, "max_gamma", truncate_blowup=False)
         if t_star.size == 0 or gmax[0] <= 0.0:
             continue
         st = case_style(case_dir.name)
+        ratio = gmax / gmax[0]
         ax.plot(
             t_star,
-            gmax / gmax[0],
+            ratio,
             color=st["color"],
             linestyle=st["linestyle"],
             lw=st["linewidth"],
@@ -57,17 +60,31 @@ def main() -> None:
             mew=st["markeredgewidth"],
             label=st["label"],
         )
+        positive = ratio[ratio > 0.0]
+        if positive.size:
+            minimum_ratio = min(minimum_ratio, float(positive.min()))
         plotted = True
 
     ax.set_yscale("log")
     ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax.set_ylabel(r"Peak circulation, $\max_i|\Gamma_i| / \max_i|\Gamma_i|_0$")
+    ax.set_ylabel(r"Peak strength, $\alpha_{\max}/\alpha_{\max,0}$")
     ax.axhspan(BLOWUP_FACTOR, 100, **reference_fill_style("strong"))
-    ax.set_ylim([0.8, 100])
+    ax.set_ylim([max(1e-3, 0.8 * minimum_ratio), 100])
     if plotted:
-        ax.legend(ncol=2, loc="best")
+        fig.legend(
+            handles=compact_case_legend_handles(),
+            ncol=5,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.005),
+        )
 
-    save_fig(fig, figs / "rings_stability.png", dpi=args.dpi, figure_format=args.format)
+    save_fig(
+        fig,
+        figs / "rings_stability.png",
+        dpi=args.dpi,
+        figure_format=args.format,
+        tight_rect=(0.0, 0.27, 1.0, 1.0),
+    )
 
 
 if __name__ == "__main__":

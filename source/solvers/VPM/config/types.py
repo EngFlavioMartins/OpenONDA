@@ -997,6 +997,9 @@ class StabilizationConfig:
     max_core_radius: float | None = None
     """Split particles whose core radius exceeds this value [m].  None = disabled."""
 
+    max_particle_strength: float | None = None
+    """Split particles whose circulation magnitude exceeds this value [m³/s]."""
+
     split_diagnostics_enabled: bool = False
     """Download pre/post split fields and run detailed split diagnostics. Disabled by default."""
 
@@ -1030,6 +1033,9 @@ class StabilizationConfig:
     remeshing_conserve_impulse: bool = True
     """Apply post-remesh correction to conserve linear/angular impulse."""
 
+    remeshing_conserve_energy: bool = False
+    """Fit the rebuilt core scale to preserve energy without an enstrophy jump."""
+
     remeshing_delta_correction: bool = False
     """Inject delta-correction particles for sub-grid residuals.  Disabled by default."""
 
@@ -1038,6 +1044,15 @@ class StabilizationConfig:
 
     remeshing_radius: float | None = None
     """Core radius [m] for remeshed particles.  None → spacing × RADIUS_RATIO."""
+
+    remeshing_preserve_radius_profile: bool = False
+    """Map source core radii onto the rebuilt grid before invariant correction."""
+
+    remeshing_max_particles: int | None = None
+    """Hard cap for particles retained by one remesh rebuild."""
+
+    remeshing_max_particle_growth: float | None = None
+    """Maximum rebuilt/previous particle-count ratio for one remesh event."""
 
     remeshing_project_solenoidal: bool = False
     """Apply a Helmholtz projection to grid vorticity during conservative remeshing."""
@@ -1090,6 +1105,33 @@ class StabilizationConfig:
     parallel_strain_clamp: float | None = None
     """Optional bound on inferred S_parallel*dt before applying the correction."""
 
+    # -- Conservative adaptive stretching limiter --------------------------
+    stretching_limiter_enabled: bool = False
+    """Limit locally unresolved stretching increments at every RK stage."""
+
+    stretching_limiter_parallel_increment: float = 0.04
+    """Maximum positive ``S_parallel*dt`` resolved in one stretching stage."""
+
+    stretching_limiter_rotation_increment: float = 0.12
+    """Maximum strength-vector rotation increment resolved in one RK stage."""
+
+    stretching_limiter_conserve: bool = True
+    """Preserve the unlimited RK-stage circulation and impulse rates."""
+
+    stretching_limiter_constraint: Literal["both", "sum", "linear"] = "both"
+    """Rate moments preserved after rate limiting."""
+
+    stretching_limiter_project_step_invariants: bool = False
+    """Restore the initial free-vortex circulation/impulse after each step.
+
+    This is appropriate for unbounded free-vortex evolution, but is disabled
+    by default because externally forced and boundary-coupled problems need
+    not conserve those global invariants.
+    """
+
+    stretching_limiter_project_step_angular_impulse: bool = False
+    """Also preserve raw angular impulse in the free-vortex step projection."""
+
     # -- Energy-budget governor ---------------------------------------------
     energy_budget_enabled: bool = False
     """Enable the energy-budget governor: a feedback loop that adapts the
@@ -1099,7 +1141,8 @@ class StabilizationConfig:
 
     energy_budget_frequency: int = 5
     """Solver steps between governor measurements (each costs one fused
-    flow-integrals kernel evaluation)."""
+    flow-integrals kernel evaluation).  Governed relaxation is applied at this
+    same cadence."""
 
     energy_budget_gain: float = 0.5
     """Multiplicative adaptation gain per measurement window."""
@@ -1110,10 +1153,30 @@ class StabilizationConfig:
     energy_budget_r_max: float = 0.9
     """Upper bound on the governed relaxation factor."""
 
+    energy_budget_r_seed: float = 0.01
+    """Relaxation factor used when an inert budget controller first activates."""
+
+    energy_budget_smoothing: float = 1.0
+    """Exponential weight for the newest budget residual.  One disables smoothing."""
+
+    energy_budget_max_log_change: float | None = None
+    """Optional per-update bound on ``abs(log(r_new/r_old))``."""
+
+    energy_budget_r_inject: float = 0.0
+    """Emergency relaxation floor applied the instant a measurement window shows
+    the kinetic energy actually *rising* (dE/dt > 0), which is unphysical for an
+    unbounded viscous flow.  The multiplicative loop creeps up from ``r_seed``
+    too slowly to catch a short spurious-stretching burst, so when dE/dt > 0 the
+    factor jumps to at least this value (capped at ``r_max``) for immediate
+    authority; the normal back-off then relaxes it once monotone decay resumes.
+    Zero (default) keeps the historical creep-only behaviour."""
+
     def __post_init__(self) -> None:
         """Validate direct construction as well as factory-created configs."""
         if self.max_core_radius is not None and self.max_core_radius <= 0:
             raise ValueError("max_core_radius must be positive")
+        if self.max_particle_strength is not None and self.max_particle_strength <= 0:
+            raise ValueError("max_particle_strength must be positive")
         if (
             self.remove_particles_by_bounds is not None
             and len(self.remove_particles_by_bounds) != 6
@@ -1133,6 +1196,13 @@ class StabilizationConfig:
             raise ValueError("remeshing_impulse_constraint must be '3d' or 'z'")
         if self.remeshing_radius is not None and self.remeshing_radius <= 0:
             raise ValueError("remeshing_radius must be positive")
+        if self.remeshing_max_particles is not None and self.remeshing_max_particles <= 0:
+            raise ValueError("remeshing_max_particles must be positive")
+        if (
+            self.remeshing_max_particle_growth is not None
+            and self.remeshing_max_particle_growth < 1.0
+        ):
+            raise ValueError("remeshing_max_particle_growth must be at least one")
         if self.remeshing_projection_padding < 0:
             raise ValueError("remeshing_projection_padding must be non-negative")
         if self.relaxation_mode not in ("blend", "pedrizzetti"):
@@ -1158,6 +1228,18 @@ class StabilizationConfig:
                 raise ValueError("parallel_strain_g + parallel_strain_f must be non-negative")
             if self.parallel_strain_clamp is not None and self.parallel_strain_clamp <= 0:
                 raise ValueError("parallel_strain_clamp must be positive when provided")
+        if self.stretching_limiter_enabled:
+            if self.stretching_limiter_parallel_increment <= 0:
+                raise ValueError("stretching_limiter_parallel_increment must be positive")
+            if self.stretching_limiter_rotation_increment <= 0:
+                raise ValueError("stretching_limiter_rotation_increment must be positive")
+            if self.stretching_limiter_constraint not in ("both", "sum", "linear"):
+                raise ValueError("stretching_limiter_constraint must be 'both', 'sum', or 'linear'")
+            if (
+                self.stretching_limiter_project_step_angular_impulse
+                and not self.stretching_limiter_project_step_invariants
+            ):
+                raise ValueError("angular-impulse projection requires project_step_invariants")
         if self.energy_budget_enabled:
             if self.energy_budget_frequency < 1:
                 raise ValueError("energy_budget_frequency must be >= 1")
@@ -1167,6 +1249,17 @@ class StabilizationConfig:
                 raise ValueError("energy_budget_tolerance must be in [0, 1)")
             if not 0 < self.energy_budget_r_max <= 1:
                 raise ValueError("energy_budget_r_max must be in (0, 1]")
+            if not 0 < self.energy_budget_r_seed <= self.energy_budget_r_max:
+                raise ValueError("energy_budget_r_seed must be in (0, energy_budget_r_max]")
+            if not 0 < self.energy_budget_smoothing <= 1:
+                raise ValueError("energy_budget_smoothing must be in (0, 1]")
+            if (
+                self.energy_budget_max_log_change is not None
+                and self.energy_budget_max_log_change <= 0
+            ):
+                raise ValueError("energy_budget_max_log_change must be positive when provided")
+            if not 0 <= self.energy_budget_r_inject <= self.energy_budget_r_max:
+                raise ValueError("energy_budget_r_inject must be in [0, energy_budget_r_max]")
             if not self.relaxation_enabled:
                 raise ValueError(
                     "energy_budget_enabled requires relaxation_enabled (use the "
@@ -1190,6 +1283,7 @@ class StabilizationConfig:
     @staticmethod
     def particle_splitting(
         radius: float,
+        max_strength: float | None = None,
         weak_threshold_percent: float = 1.0,
     ) -> "StabilizationConfig":
         """Particle splitting when core radius exceeds ``radius``.
@@ -1207,8 +1301,11 @@ class StabilizationConfig:
         """
         if radius <= 0:
             raise ValueError("max_core_radius must be positive")
+        if max_strength is not None and max_strength <= 0:
+            raise ValueError("max_particle_strength must be positive")
         return StabilizationConfig(
             max_core_radius=radius,
+            max_particle_strength=max_strength,
             weak_threshold_percent=weak_threshold_percent,
         )
 
@@ -1220,9 +1317,13 @@ class StabilizationConfig:
         relative_threshold: float = 0.01,
         absolute_threshold: float = 1e-6,
         conserve_impulse: bool = True,
+        conserve_energy: bool = False,
         delta_correction: bool = False,
         impulse_constraint: str = "3d",
         radius: float | None = None,
+        preserve_radius_profile: bool = False,
+        max_particles: int | None = None,
+        max_particle_growth: float | None = None,
         project_solenoidal: bool = False,
         projection_padding: int = 4,
     ) -> "StabilizationConfig":
@@ -1251,6 +1352,10 @@ class StabilizationConfig:
             raise ValueError("impulse_constraint must be '3d' or 'z'")
         if radius is not None and radius <= 0:
             raise ValueError("remeshing_radius must be positive")
+        if max_particles is not None and max_particles <= 0:
+            raise ValueError("remeshing max_particles must be positive")
+        if max_particle_growth is not None and max_particle_growth < 1.0:
+            raise ValueError("remeshing max_particle_growth must be at least one")
         if projection_padding < 0:
             raise ValueError("projection_padding must be non-negative")
         return StabilizationConfig(
@@ -1260,9 +1365,13 @@ class StabilizationConfig:
             remeshing_relative_threshold=relative_threshold,
             remeshing_absolute_threshold=absolute_threshold,
             remeshing_conserve_impulse=conserve_impulse,
+            remeshing_conserve_energy=conserve_energy,
             remeshing_delta_correction=delta_correction,
             remeshing_impulse_constraint=impulse_constraint,
             remeshing_radius=radius,
+            remeshing_preserve_radius_profile=preserve_radius_profile,
+            remeshing_max_particles=max_particles,
+            remeshing_max_particle_growth=max_particle_growth,
             remeshing_project_solenoidal=project_solenoidal,
             remeshing_projection_padding=projection_padding,
         )
@@ -1344,6 +1453,10 @@ class StabilizationConfig:
         gain: float = 0.5,
         tolerance: float = 0.05,
         r_max: float = 0.9,
+        r_seed: float = 0.01,
+        smoothing: float = 1.0,
+        max_log_change: float | None = None,
+        r_inject: float = 0.0,
         mode: str = "blend",
         deconv: int = 1,
         conserve: bool = True,
@@ -1368,6 +1481,10 @@ class StabilizationConfig:
             energy_budget_gain=gain,
             energy_budget_tolerance=tolerance,
             energy_budget_r_max=r_max,
+            energy_budget_r_seed=r_seed,
+            energy_budget_smoothing=smoothing,
+            energy_budget_max_log_change=max_log_change,
+            energy_budget_r_inject=r_inject,
             relaxation_enabled=True,
             relaxation_mode=mode,
             relaxation_deconv=deconv,
@@ -1375,6 +1492,53 @@ class StabilizationConfig:
             relaxation_factor=0.0,
             relaxation_conserve=conserve,
             relaxation_constraint=constraint,
+        )
+
+    @staticmethod
+    def adaptive_rvpm(
+        *,
+        parallel_increment: float = 0.04,
+        rotation_increment: float = 0.12,
+        budget_frequency: int = 5,
+        budget_gain: float = 0.25,
+        budget_tolerance: float = 0.1,
+        budget_r_max: float = 0.02,
+    ) -> "StabilizationConfig":
+        """Hybrid conservative stabilizer for strongly strained vortex tubes.
+
+        The method combines the rVPM parallel-strain/core-size response with a
+        local RK-stage limiter and a slow energy-budget-controlled ADM filter.
+        The limiter prevents an unresolved stretching event from entering the
+        explicit integrator, while the budget loop removes only the remaining
+        kernel-unrepresentable content.
+        """
+        return StabilizationConfig(
+            parallel_strain_enabled=True,
+            parallel_strain_f=RVPM_DEFAULT_F,
+            parallel_strain_g=RVPM_DEFAULT_G,
+            parallel_strain_clamp=0.2,
+            stretching_limiter_enabled=True,
+            stretching_limiter_parallel_increment=parallel_increment,
+            stretching_limiter_rotation_increment=rotation_increment,
+            stretching_limiter_conserve=True,
+            stretching_limiter_constraint="both",
+            stretching_limiter_project_step_invariants=True,
+            stretching_limiter_project_step_angular_impulse=True,
+            energy_budget_enabled=True,
+            energy_budget_frequency=budget_frequency,
+            energy_budget_gain=budget_gain,
+            energy_budget_tolerance=budget_tolerance,
+            energy_budget_r_max=budget_r_max,
+            energy_budget_r_seed=0.001,
+            energy_budget_smoothing=0.25,
+            energy_budget_max_log_change=0.35,
+            relaxation_enabled=True,
+            relaxation_mode="blend",
+            relaxation_deconv=1,
+            relaxation_gate="constant",
+            relaxation_factor=0.0,
+            relaxation_conserve=True,
+            relaxation_constraint="both",
         )
 
 
@@ -1774,7 +1938,15 @@ class VPMSetup:
             object.__setattr__(self, "force", ForceConfig.kutta_joukowski())
 
         if self.velocity is None:
-            object.__setattr__(self, "velocity", VelocityConfig.treecode(theta=0.3))
+            # The GPU LBVH currently implements Gaussian and Winckelmans
+            # regularisation. Corrected/super-Gaussian solvers remain fully
+            # GPU-capable through exact direct summation instead of failing
+            # later during the first update_state().
+            if self.particles_kernel.upper() in ("GAUSSIAN", "WINCKELMANS"):
+                velocity = VelocityConfig.treecode(theta=0.3)
+            else:
+                velocity = VelocityConfig.direct()
+            object.__setattr__(self, "velocity", velocity)
 
         # Validate precision
         if self.precision not in ("f32", "f64"):

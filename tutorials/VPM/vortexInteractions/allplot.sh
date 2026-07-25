@@ -2,9 +2,15 @@
 # Vortex-ring interactions — LES transposed stabilizer comparison.
 #
 # Each script auto-discovers the stabilizer matrix under the solution directory:
-# leapfrog_* and collide_* with variants {les,rvpm,relax,remesh,projection,split}.
+# leapfrog_* and collide_* with variants
+# {control,les,rvpm,relax,remesh,projection,split,energy,adaptive}.
 # The figures share one styling key: color = stabilization, linestyle = family.
 set -euo pipefail
+
+PLOT_CACHE_ROOT="${XDG_CACHE_HOME:-${TMPDIR:-/tmp}/openonda-plot-cache}"
+export XDG_CACHE_HOME="$PLOT_CACHE_ROOT"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$PLOT_CACHE_ROOT/matplotlib}"
+mkdir -p "$XDG_CACHE_HOME" "$MPLCONFIGDIR"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -41,6 +47,9 @@ run_plot assets/plot_rings_energy_budget.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
 run_plot assets/plot_rings_energy.py \
+    --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
+
+run_plot assets/plot_rings_conservation.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
 run_plot assets/plot_rings_stability.py \

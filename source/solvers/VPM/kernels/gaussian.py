@@ -57,8 +57,8 @@ def create_gaussian_kernels(dtype=ti.f32):
         res = 0.0
         if density < 1e-4:
             # Taylor expansion for small density to avoid 0/0 precision loss:
-            # q(density) → (1/4pi) * (4/(3*sqrt(pi))) * density^3
-            res = (4.0 / (3.0 * ti.sqrt(ti.acos(-1.0) ** 3))) * (density**3) * ONE_OVER_FOUR_PI
+            # q(density) = density^3/(3*pi^(3/2)) + O(density^5).
+            res = (ONE_OVER_PI_15 / 3.0) * density**3
         else:
             erf_term = err_func(density)
             exp_term = TWO_OVER_SQRT_PI * density * ti.exp(-density * density)
@@ -67,9 +67,16 @@ def create_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
-        # Energy kernel g = ∫ q(r)/r² dr, approximated by erf(density)/density · (1/4pi).
-        erf_term = err_func(density) / (density + 1e-12)
-        return ti.cast(erf_term * ONE_OVER_FOUR_PI, dtype)
+        # Energy kernel g = ∫_density^∞ q(s)/s² ds
+        #                 = erf(density)/(4*pi*density).
+        # The explicit origin limit is the finite vortex-blob self energy.
+        res = 0.0
+        if density < 1e-4:
+            res = ONE_OVER_PI_15 * (0.5 - density * density / 6.0)
+        else:
+            safe_density = ti.max(density, 1e-12)
+            res = err_func(density) / safe_density * ONE_OVER_FOUR_PI
+        return ti.cast(res, dtype)
 
     @ti.func
     def diffusivity_constant_():

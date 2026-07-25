@@ -26,9 +26,9 @@ sys.path.insert(0, str(ASSETS_DIR))
 from _common import (  # noqa: E402
     build_arg_parser,
     case_style,
+    compact_case_legend_handles,
     discover_cases,
     figure_size,
-    legend_handle_style,
     load_theme,
     mark_every,
     reference_style,
@@ -89,7 +89,7 @@ def main() -> None:
 
     has_ref = plot_reference(ax)
 
-    legend_handles: list[Line2D] = []
+    plotted = False
     for case_dir in discover_cases(args.solution_dir, family="leapfrog"):
         trajectory = load_trajectory(case_dir)
         if not trajectory:
@@ -107,8 +107,9 @@ def main() -> None:
                 markevery=mark_every("trajectory"),
                 mew=st["markeredgewidth"],
             )
-        legend_handles.append(Line2D([0], [0], **legend_handle_style(st)))
+        plotted = True
 
+    legend_handles = compact_case_legend_handles(include_families=False) if plotted else []
     if has_ref:
         legend_handles.append(Line2D([0], [0], label="LBM reference", **reference_style()))
 
@@ -116,13 +117,19 @@ def main() -> None:
     ax.set_ylabel(r"Ring radius, $R/R_0$")
     ax.set_ylim([0.5, 1.5])
     if legend_handles:
-        ax.legend(handles=legend_handles, ncol=3, loc="lower right")
+        fig.legend(
+            handles=legend_handles,
+            ncol=4,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.005),
+        )
 
     save_fig(
         fig,
         Path(args.figures_dir) / "rings_trajectory.png",
         dpi=args.dpi,
         figure_format=args.format,
+        tight_rect=(0.0, 0.22, 1.0, 1.0),
     )
 
 

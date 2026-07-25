@@ -50,4 +50,4 @@ dependencies:
     # GPU backend for the VPM solver (pip-only; pinned to the tested release).
     # On NVIDIA driver 580+ the CUDA backend is buggy with 1.7.x — run the VPM
     # tutorials with OPENONDA_PROCESSING_UNIT=GPU_VULKAN (see tutorial allrun.sh).
-    - taichi==1.7.3
+    - taichi==1.7.4

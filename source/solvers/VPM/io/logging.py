@@ -246,12 +246,14 @@ class Logging:
                 f"({system.total_strength[0]:.3e}, {system.total_strength[1]:.3e}, {system.total_strength[2]:.3e}) m\u00b3/s",
             ),
             (
+                # High precision: linear impulse is a conserved invariant, so a
+                # small drift is a genuine diagnostic that .3e would round away.
                 "Linear Impulse",
-                f"({system.total_linear_impulse[0]:.3e}, {system.total_linear_impulse[1]:.3e}, {system.total_linear_impulse[2]:.3e}) m\u2074/s",
+                f"({system.total_linear_impulse[0]:.6e}, {system.total_linear_impulse[1]:.6e}, {system.total_linear_impulse[2]:.6e}) m\u2074/s",
             ),
             (
                 "Angular Impulse",
-                f"({system.total_angular_impulse[0]:.3e}, {system.total_angular_impulse[1]:.3e}, {system.total_angular_impulse[2]:.3e}) m\u2075/s",
+                f"({system.total_angular_impulse[0]:.6e}, {system.total_angular_impulse[1]:.6e}, {system.total_angular_impulse[2]:.6e}) m\u2075/s",
             ),
             ("Total Enstrophy", f"{system.total_enstrophy:.3e} m\u00b3/s\u00b2"),
             ("Total Helicity", f"{system.total_helicity:.3e} m\u00b2/s\u00b2"),

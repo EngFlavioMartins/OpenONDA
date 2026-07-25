@@ -19,6 +19,7 @@ from _common import (
     T_REF,
     build_arg_parser,
     case_style,
+    compact_case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -34,7 +35,7 @@ def main() -> None:
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
-    fig, (ax_e, ax_w) = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
+    fig, (ax_e, ax_w) = plt.subplots(2, 1, figsize=figure_size("wide_stacked"), sharex=True)
 
     plotted = False
     for case_dir in discover_cases(args.solution_dir):
@@ -66,9 +67,20 @@ def main() -> None:
     ax_w.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax_w.set_ylabel(r"Enstrophy, $\varepsilon / \varepsilon_0$")
     if plotted:
-        ax_e.legend(ncol=2)
+        fig.legend(
+            handles=compact_case_legend_handles(),
+            ncol=5,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.005),
+        )
 
-    save_fig(fig, figs / "rings_energy.png", dpi=args.dpi, figure_format=args.format)
+    save_fig(
+        fig,
+        figs / "rings_energy.png",
+        dpi=args.dpi,
+        figure_format=args.format,
+        tight_rect=(0.0, 0.16, 1.0, 1.0),
+    )
 
 
 if __name__ == "__main__":

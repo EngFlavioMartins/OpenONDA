@@ -28,8 +28,8 @@ _ZETA_0 = {
 
 _G_0 = {
     "GAUSSIAN": 1.0 / (2.0 * np.pi**1.5),  # limit of erf(ρ)/(4πρ) as ρ→0
-    "HIGH_ORDER_GAUSSIAN": 1.0 / (2.0 * np.pi**1.5),
-    "SUPER_GAUSSIAN": 1.0 / (2.0 * np.pi**1.5) + 1.0 / ((2.0 * np.pi) ** 1.5 * 4.0 * np.pi),
+    "HIGH_ORDER_GAUSSIAN": 3.0 / (4.0 * np.pi**1.5),
+    "SUPER_GAUSSIAN": 1.5 * np.sqrt(2.0 / np.pi) / (4.0 * np.pi),
     "WINCKELMANS": 1.5 / (4.0 * np.pi),
 }
 
@@ -119,9 +119,18 @@ def test_vorticity_radial_decay(kernel_name, backend, solver_for_backend):
     probes = np.column_stack([r_values, np.zeros_like(r_values), np.zeros_like(r_values)])
     omega = solver.compute_target_vorticities(probes)[:, 2]
 
-    # Analytical values depend on kernel; we check monotonic decay and sign
-    assert omega[0] > omega[1] > omega[2] > 0, (
-        f"{kernel_name}/{backend}: vorticity must decay monotonically: {omega}"
+    rho = r_values / _SIGMA
+    if kernel_name == "GAUSSIAN":
+        zeta = np.exp(-(rho**2)) / (np.pi**1.5)
+    elif kernel_name == "HIGH_ORDER_GAUSSIAN":
+        zeta = (2.5 - rho**2) * np.exp(-(rho**2)) / (np.pi**1.5)
+    elif kernel_name == "SUPER_GAUSSIAN":
+        zeta = np.sqrt(2.0 / np.pi) * (2.5 - rho**2 / 2.0) * np.exp(-(rho**2) / 2.0) / (4.0 * np.pi)
+    else:
+        zeta = 7.5 / ((rho**2 + 1.0) ** 3.5 * 4.0 * np.pi)
+    expected = _ALPHA_Z * zeta / _SIGMA**3
+    assert np.allclose(omega, expected, rtol=0.02, atol=1e-7), (
+        f"{kernel_name}/{backend}: radial vorticity = {omega}, expected {expected}"
     )
 
 
@@ -159,7 +168,8 @@ def test_kinetic_energy_self(kernel_name, backend, solver_for_backend):
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     # Use the solver's flow integral evaluation
-    solver.update_state()  # compute flow integrals
+    solver.update_state()
+    solver._update_all_flow_integrals()
     ke = solver.total_kinetic_energy
     expected = 0.5 * _G_0[kernel_name] / _SIGMA * _ALPHA_Z**2
     rel_err = abs(ke - expected) / expected
@@ -179,6 +189,7 @@ def test_helicity_is_zero(kernel_name, backend, solver_for_backend):
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     solver.update_state()
+    solver._update_all_flow_integrals()
     helicity = solver.total_helicity
     assert abs(helicity) < 1e-6, (
         f"{kernel_name}/{backend}: helicity = {helicity:.3e} (must be zero for single blob)"
@@ -212,6 +223,7 @@ def test_linear_impulse(kernel_name, backend, solver_for_backend):
         viscosity=np.array([0.0]),
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     impulse = solver.total_linear_impulse
     expected = np.array([0.0, -0.5, 0.0])
     assert np.allclose(impulse, expected, atol=1e-6), (
@@ -227,7 +239,7 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
     Angular impulse: A = (1/3) Σ r × (r × Γ) − (2/9) C σ² Γ_total.
 
     For a particle at (1,0,0) with Γ=(0,0,1), σ=0.2:
-        A = (1/3)(0, -1, 0) − (2/9) C (0.2)² (0,0,1)
+        A = (1/3)(0, 0, -1) − (2/9) C (0.2)² (0,0,1)
 
     Failure → wrong angular impulse formula or correction constant.
     """
@@ -247,9 +259,10 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
         viscosity=np.array([0.0]),
     )
     solver.update_state()
+    solver._update_all_flow_integrals()
     ang = solver.total_angular_impulse
     c = _ANG_CORR[kernel_name]
-    expected = np.array([0.0, -1.0 / 3.0, -(2.0 / 9.0) * c * _SIGMA**2 * _ALPHA_Z])
+    expected = np.array([0.0, 0.0, -1.0 / 3.0 - (2.0 / 9.0) * c * _SIGMA**2 * _ALPHA_Z])
     assert np.allclose(ang, expected, atol=1e-5), (
         f"{kernel_name}/{backend}: angular impulse = {ang}, expected {expected}"
     )
