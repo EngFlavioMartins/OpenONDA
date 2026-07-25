@@ -118,14 +118,6 @@ FVM_SETUP = FVMSetup(
     transport=TransportConfig(density=RHO, nu=NU),
     turbulence=None,
     boundaries=[
-        # Must match the donor_bc_mode="dirichlet" contract (the same pair the
-        # OFW reference case uses, and the one coupling_patch_boundaries()
-        # returns): the coupler imposes the donor velocity on EVERY face, so
-        # the pressure must be all-Neumann.  Declaring freestream pressure here
-        # additionally pins p=0 on whichever faces it calls outflow, which
-        # over-determines those faces and lets the pressure correction violate
-        # the prescribed donor flux -- and the pinned set flips with the flux
-        # sign every step, injecting per-step noise into the forces.
         BoundaryConfig(
             name="numericalBoundary",
             type_U="fixedValue",
@@ -151,12 +143,8 @@ VPM_SETUP = VPMSetup(
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
-    # Matches the OFW reference case.  DNS applies no subgrid dissipation and
-    # assumes the particle spacing resolves every scale; at h = 0.05 and
-    # Re = 1000 the wake is under-resolved, so subgrid energy piles up and the
-    # vortical structures break down instead of convecting coherently.
     turbulence=TurbulenceConfig.les_smagorinsky(),
-    velocity=VelocityConfig.treecode(theta=0.3),
+    velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
     stabilization=replace(
         StabilizationConfig.disabled(),
         remove_particles_by_bounds=list(VPM_DOMAIN),
@@ -185,10 +173,11 @@ COUPLER_SETUP = CouplerSetup(
     strength_correction_iterations=1,
     strength_correction_relax=1.0,
     donor_bc_mode="dirichlet",
-    donor_interior_source="particles",
+    donor_interior_source="fvm",
+    donor_interior_treecode_theta=0.3,
     bc_coupling_iterations=2,
     donor_bc_relax=0.5,
-    donor_interior_warmup_time=0.45,
+    donor_interior_warmup_time=0.0,
     log_period=2,
     backup_period=BACKUP_PERIOD,
 )
