@@ -118,12 +118,19 @@ FVM_SETUP = FVMSetup(
     transport=TransportConfig(density=RHO, nu=NU),
     turbulence=None,
     boundaries=[
+        # Must match the donor_bc_mode="dirichlet" contract (the same pair the
+        # OFW reference case uses, and the one coupling_patch_boundaries()
+        # returns): the coupler imposes the donor velocity on EVERY face, so
+        # the pressure must be all-Neumann.  Declaring freestream pressure here
+        # additionally pins p=0 on whichever faces it calls outflow, which
+        # over-determines those faces and lets the pressure correction violate
+        # the prescribed donor flux -- and the pinned set flips with the flux
+        # sign every step, injecting per-step noise into the forces.
         BoundaryConfig(
             name="numericalBoundary",
-            type_U="freestream",
+            type_U="fixedValue",
             value_U=list(U_INF),
-            type_p="freestream",
-            value_p=0.0,
+            type_p="fixedFluxPressure",
         ),
         BoundaryConfig.wall("cube"),
     ],

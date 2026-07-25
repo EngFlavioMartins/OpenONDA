@@ -1349,19 +1349,19 @@ class FVMVPMCoupler:
             alpha = (sub + 1) / N
             is_final = sub == N - 1
             if is_final and n_bc > 1:
-                exterior_mask = self._outside_box_mask() if self._is_master else None
+                # Only reachable with donor_interior_source="particles" (the
+                # "fvm" path returns above), so the interior induction must come
+                # from the particle cloud — the same whole-cloud donor that
+                # produced u_prev/u_next.  Re-deriving this trace as "exterior
+                # particles + FVM-interior vorticity" mixed two different models
+                # of the same interior field, so the boundary condition jumped
+                # between them once every N sub-steps and drove a Cd modulation
+                # locked to the coupling cadence (measured 14.4% peak-to-peak,
+                # 19x the monolithic reference's step-to-step jitter).
                 previous_trace = None
                 for k in range(n_bc):
-                    omega_interior = self._get_vorticity_field_buffer()
                     if self._is_master:
-                        u_wl = self._donor_velocity(
-                            face_centers,
-                            face_normals,
-                            face_areas,
-                            exterior_mask=exterior_mask,
-                            add_fvm_interior=True,
-                            fvm_omega=omega_interior,
-                        )
+                        u_wl = self._donor_velocity(face_centers, face_normals, face_areas)
                         omega_wl = self._last_omega_donor
                     else:
                         u_wl = np.zeros_like(face_centers)
