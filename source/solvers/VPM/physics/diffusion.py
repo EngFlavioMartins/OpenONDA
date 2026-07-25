@@ -33,6 +33,25 @@ _REGEN_RADIUS_RATIO = 2.5
 # Controls the Gaussian width: 4nu·Δt_d = β·R_d².
 _DVH_BETA = 0.077
 
+# Round-off floor for the 'relative_local' regen threshold, as a fraction of the
+# global max|Γ|.  The local test is scale-free, so without a floor the empty
+# padding of the diffusion grid — where the local level IS round-off — would
+# survive and be promoted to particles.  1e-6 sits above float32 noise
+# (~1e-7 relative) and far below any resolved structure.
+#
+# This is the only place 'relative_local' still refers to a global quantity, and
+# it therefore bounds the mode's usable dynamic range at ~6 decades: past that
+# the floor itself rises above the weakest structure and deletes it.  A coupled
+# FVM-VPM field spans ~4 decades, so the floor sits ~2 decades clear.  See
+# tests/vpm/test_remeshing_thresholds.py::
+# test_relative_local_floor_bounds_the_usable_dynamic_range.
+_LOCAL_THRESHOLD_FLOOR = 1e-6
+
+
+def _threshold_scalar(threshold: float | np.ndarray) -> float:
+    """Representative scalar for logging a possibly per-node threshold."""
+    return float(np.median(threshold)) if isinstance(threshold, np.ndarray) else float(threshold)
+
 
 def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
@@ -691,10 +710,14 @@ class _GridDiffusionMixin:
         regen_threshold: float,
         max_circ: float,
         gamma_post_diffusion: float,
-    ) -> float:
+        regen_threshold_window: int = 3,
+    ) -> float | np.ndarray:
         """Determine the magnitude threshold for grid-node survival.
 
-        Supports three modes:
+        Supports four modes.  The first three compare every node against a
+        SINGLE number derived from the whole grid; ``'relative_local'`` compares
+        each node against its own neighbourhood.
+
         * ``'budget'``       — keep the top-(1-threshold) fraction of total |Γ| sum.
         * ``'relative_max'`` — keep nodes above threshold × global max|Γ|.
         * ``'absolute'``     — keep nodes above the absolute circulation value
@@ -702,6 +725,46 @@ class _GridDiffusionMixin:
                                preferred mode for controlling particle count when
                                the dynamic range of circulation spans many orders
                                of magnitude (e.g. coupled FVM-VPM simulations).
+        * ``'relative_local'`` — keep nodes above threshold × the MEAN |Γ| over a
+                               (2w+1)³ window centred on the node.
+
+        Why ``'relative_local'`` exists
+        -------------------------------
+        Every global-reference mode cuts the field along a single iso-|Γ|
+        surface.  That is harmless when |Γ| has a narrow dynamic range, but a
+        coupled FVM-VPM field spans four decades: the maximum sits in the wall
+        vortex sheet on the body while the wake one body-length downstream is
+        ~10⁻³ of it.  A global cut then deletes the *entire* far wake to keep
+        the boundary layer — measured on the cubeFlow hybrid case, one GBD regen
+        at ``relative_max=5e-3`` removed every particle below |ω| = 0.243 s⁻¹,
+        i.e. 67% of the cloud (128193 → 42766 in ONE step), slicing continuous
+        vortical structures along an
+        iso-surface and leaving disconnected fragments.  Because the reference
+        (global max) lives on the body, any change in the near-wall solution
+        moves the cut level in the far wake, so the amputation jitters from step
+        to step and feeds straight back through the coupling boundary condition.
+
+        Referencing each node to the |Γ| level of its OWN neighbourhood removes
+        the coupling between unrelated regions: every structure is thresholded
+        against itself, so a weak far-wake structure keeps the same fraction of
+        its content as a strong near-body one.  No cut level then exists below
+        which survival drops to zero — measured on the same field, no |ω| decade
+        falls below 64% survival at a matched particle budget, whereas every
+        global mode still zeroes its lowest decade completely.
+
+        The reference is the local MEAN, not the local maximum: a maximum
+        reference thresholds the skirt of a strong structure against that
+        structure's peak and so over-prunes the shear-layer flanks (measured at
+        a matched ~105k-particle budget, worst-decade survival 64% with the mean
+        vs 57% with the maximum).
+
+        A floor at ``_LOCAL_THRESHOLD_FLOOR × max|Γ|`` keeps the empty part of
+        the padded grid from surviving: there the local mean is round-off, and a
+        purely relative test would promote numerical dust to particles.  This is
+        the one place the global maximum still enters, and only as a noise gate.
+
+        Returns a scalar for the global modes and a per-node array for
+        ``'relative_local'``; both broadcast against ``circ_mag``.
         """
         if regen_threshold_mode == "budget":
             circ_sum = gamma_post_diffusion
@@ -718,10 +781,19 @@ class _GridDiffusionMixin:
             threshold = regen_threshold * max_circ
         elif regen_threshold_mode == "absolute":
             threshold = regen_threshold
+        elif regen_threshold_mode == "relative_local":
+            from scipy.ndimage import uniform_filter
+
+            w = max(int(regen_threshold_window), 1)
+            local_level = uniform_filter(circ_mag, size=2 * w + 1, mode="nearest")
+            return np.maximum(
+                regen_threshold * local_level,
+                max(_LOCAL_THRESHOLD_FLOOR * max_circ, 1e-10),
+            )
         else:
             raise ValueError(
-                f"Unknown regen_threshold_mode: {regen_threshold_mode!r}. "
-                f"Must be 'budget', 'relative_max', or 'absolute'."
+                f"Unknown regen_threshold_mode: {regen_threshold_mode!r}. Must be "
+                f"'budget', 'relative_max', 'absolute', or 'relative_local'."
             )
         return max(threshold, 1e-10)
 
@@ -876,6 +948,7 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
+        regen_threshold_window: int = 3,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
@@ -1034,11 +1107,19 @@ class _GridDiffusionMixin:
 
         gamma_total = float(circ_mag.sum())
         threshold = self._select_diffusion_threshold(
-            circ_mag, regen_threshold_mode, regen_threshold, max_circ, gamma_total
+            circ_mag,
+            regen_threshold_mode,
+            regen_threshold,
+            max_circ,
+            gamma_total,
+            regen_threshold_window,
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
         if len(ix) == 0:
-            _logger.warning("[GBD] No nodes above threshold %.2e — keeping originals.", threshold)
+            _logger.warning(
+                "[GBD] No nodes above threshold %.2e — keeping originals.",
+                _threshold_scalar(threshold),
+            )
             return None
 
         # -- Particle-count cap ------------------------------------------------
@@ -1063,7 +1144,7 @@ class _GridDiffusionMixin:
             N,
             len(ix),
             h,
-            threshold,
+            _threshold_scalar(threshold),
         )
 
         # Conservative prune: restore the pruned nodes' circulation/impulse on
@@ -1099,6 +1180,7 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
+        regen_threshold_window: int = 3,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
@@ -1119,6 +1201,7 @@ class _GridDiffusionMixin:
             domain_padding,
             regen_threshold,
             regen_threshold_mode,
+            regen_threshold_window=regen_threshold_window,
             nu_eff=nu_eff,
             max_nodes=max_nodes,
         )
@@ -1248,6 +1331,7 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
+        regen_threshold_window: int = 3,
         rd_ratio: float = 4.0,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
@@ -1328,11 +1412,19 @@ class _GridDiffusionMixin:
 
         gamma_total = float(circ_mag.sum())
         threshold = self._select_diffusion_threshold(
-            circ_mag, regen_threshold_mode, regen_threshold, max_circ, gamma_total
+            circ_mag,
+            regen_threshold_mode,
+            regen_threshold,
+            max_circ,
+            gamma_total,
+            regen_threshold_window,
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
         if len(ix) == 0:
-            _logger.warning("[DVH] No nodes above threshold %.2e — keeping originals.", threshold)
+            _logger.warning(
+                "[DVH] No nodes above threshold %.2e — keeping originals.",
+                _threshold_scalar(threshold),
+            )
             return None
 
         # -- Particle-count cap ------------------------------------------------
@@ -1358,7 +1450,7 @@ class _GridDiffusionMixin:
             N,
             len(ix),
             rd_ratio,
-            threshold,
+            _threshold_scalar(threshold),
         )
 
         # Conservative prune (see GBD path): restore pruned circulation/impulse.
@@ -1392,6 +1484,7 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
+        regen_threshold_window: int = 3,
         rd_ratio: float = 4.0,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
@@ -1414,7 +1507,8 @@ class _GridDiffusionMixin:
             domain_padding,
             regen_threshold,
             regen_threshold_mode,
-            rd_ratio,
+            regen_threshold_window=regen_threshold_window,
+            rd_ratio=rd_ratio,
             nu_eff=nu_eff,
             max_nodes=max_nodes,
         )

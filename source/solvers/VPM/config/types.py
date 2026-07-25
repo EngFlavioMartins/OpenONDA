@@ -216,7 +216,7 @@ class ViscousConfig:
             object.__setattr__(self, "scheme", v_upper)
         if v_upper == "DVH" and self.dvh_rd_ratio not in (3, 4, 5):
             raise ValueError(f"dvh_rd_ratio must be 3, 4, or 5 (got {self.dvh_rd_ratio})")
-        _valid_modes = ("budget", "relative_max", "absolute")
+        _valid_modes = ("budget", "relative_max", "absolute", "relative_local")
         if self.dvh_threshold_mode not in _valid_modes:
             raise ValueError(
                 f"dvh_threshold_mode must be one of {_valid_modes}, got {self.dvh_threshold_mode!r}"
@@ -291,10 +291,30 @@ class ViscousConfig:
 
     gbd_threshold_mode: str = "budget"
     """How ``gbd_threshold`` is interpreted in GBD mode.
-    ``'budget'``       — keep the top-(1-threshold) fraction of total |Γ| sum.
-    ``'relative_max'`` — keep nodes above threshold × global max|Γ|.
-    ``'absolute'``     — keep nodes above the absolute circulation value
-                         ``gbd_threshold`` [m³/s]."""
+    ``'budget'``         — keep the top-(1-threshold) fraction of total |Γ| sum.
+    ``'relative_max'``   — keep nodes above threshold × global max|Γ|.
+    ``'absolute'``       — keep nodes above the absolute circulation value
+                           ``gbd_threshold`` [m³/s].
+    ``'relative_local'`` — keep nodes above threshold × the MEAN |Γ| over a
+                           (2w+1)³ window (w = ``regen_threshold_window``).
+                           Recommended for coupled FVM-VPM runs: see
+                           ``regen_threshold_window``."""
+
+    regen_threshold_window: int = 3
+    """Half-width w (in grid cells) of the ``'relative_local'`` reference window.
+
+    ``'relative_local'`` thresholds each regen node against the mean |Γ| within
+    w cells instead of against the global max|Γ|, which is what makes it safe on
+    fields with a wide dynamic range.  In a coupled FVM-VPM run the
+    global maximum sits in the wall vortex sheet while the wake one body-length
+    downstream is ~10⁻³ of it, so every global-reference mode deletes the far
+    wake to keep the boundary layer — and because the reference lives on the
+    body, the cut level in the wake jitters with the near-wall solution.  A
+    local reference decouples the two.
+
+    w ≈ 3 (a 7³ window, i.e. ±3h ≈ 3 core radii) resolves individual wake
+    structures; larger w averages unrelated structures together and drifts back
+    toward global behaviour.  Applies to both DVH and GBD."""
 
     gbd_max_nodes: int | None = None
     """Hard cap on surviving grid nodes per GBD regen (GBD only).
@@ -501,6 +521,7 @@ class ViscousConfig:
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
+        threshold_window: int = 3,
         dvh_rd_ratio: int = 4,
         viscosity: float | None = None,
         max_nodes: int | None = None,
@@ -544,6 +565,11 @@ class ViscousConfig:
                   Only justified where the far field must be truncated
                   aggressively (e.g. coupled FVM-VPM with a small VPM box)
                   and the loss is monitored.
+                ``'relative_local'`` — discard nodes below threshold × the mean
+                  |Γ| over a (2w+1)³ window.  Recommended for coupled
+                  FVM-VPM runs; see ``regen_threshold_window``.
+            threshold_window: Half-width w in cells of the ``'relative_local'``
+                reference window (ignored by the other modes).
             dvh_rd_ratio: R_d/h compact-support radius ratio for the DVH
                 heat-kernel.  Integer in [3, 5].  Default 4
                 (optimal, Durante 2024 Sec. 4.2).
@@ -566,6 +592,7 @@ class ViscousConfig:
             dvh_domain_padding=padding,
             dvh_threshold=threshold,
             dvh_threshold_mode=threshold_mode,
+            regen_threshold_window=threshold_window,
             dvh_rd_ratio=dvh_rd_ratio,
             viscosity=viscosity,
             dvh_max_nodes=max_nodes,
@@ -578,6 +605,7 @@ class ViscousConfig:
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
+        threshold_window: int = 3,
         viscosity: float | None = None,
         max_nodes: int | None = None,
         regen_radius_ratio: float = 2.5,
@@ -601,10 +629,17 @@ class ViscousConfig:
             h: Grid spacing [m].
             padding: Cell-widths of padding beyond the bounding box.
             threshold: Circulation threshold for pruning (default 0.0001).
-            threshold_mode: ``'budget'``, ``'relative_max'``, or ``'absolute'``.
+            threshold_mode: ``'budget'``, ``'relative_max'``, ``'absolute'``, or
+                ``'relative_local'``.
                 ``'absolute'`` uses ``threshold`` as a raw circulation magnitude
                 in [m³/s] and is the preferred mode for controlling particle
                 count in simulations with large dynamic range.
+                ``'relative_local'`` thresholds against the local (not global)
+                |Γ| level and is the recommended mode for coupled FVM-VPM runs,
+                where a global reference deletes the far wake to keep the wall
+                vortex sheet.
+            threshold_window: Half-width w in cells of the ``'relative_local'``
+                reference window (ignored by the other modes).
             viscosity: Molecular kinematic viscosity nu [m²/s].
             max_nodes: Hard cap on surviving regen nodes (budget-by-count).
             regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
@@ -617,6 +652,7 @@ class ViscousConfig:
             gbd_domain_padding=padding,
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,
+            regen_threshold_window=threshold_window,
             viscosity=viscosity,
             gbd_max_nodes=max_nodes,
             regen_radius_ratio=regen_radius_ratio,

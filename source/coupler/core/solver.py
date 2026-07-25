@@ -222,6 +222,34 @@ class FVMVPMCoupler:
                 float(cfg.overlap_radius_ratio),
                 float(cfg.overlap_radius_ratio),
             )
+        # Regen threshold reference: the particle-population control must not
+        # threshold the wake against a global |Γ| statistic.  A coupled field
+        # spans ~4 decades — the maximum sits in the wall vortex sheet on the
+        # body while the wake one body-length downstream is ~10⁻³ of it — so
+        # every global-reference mode cuts the field along one iso-|Γ| surface
+        # and deletes the far wake to keep the boundary layer.  Measured on the
+        # cubeFlow hybrid case, one GBD regen at relative_max=5e-3 removed 100%
+        # of the particles below |ω| = 0.243 s⁻¹ (67% of the cloud); 'budget'
+        # at 1e-2 removed 100% below |ω| = 0.03 s⁻¹.  Because the reference
+        # lives on the body, the cut level in the wake also jitters with the
+        # near-wall solution and feeds back through the donor BC.
+        scheme = str(getattr(vsc, "scheme", "") or "").upper()
+        mode_attr = {"DVH": "dvh_threshold_mode", "GBD": "gbd_threshold_mode"}.get(scheme)
+        if mode_attr is not None:
+            mode = getattr(vsc, mode_attr, None)
+            if mode in ("relative_max", "budget", "absolute"):
+                logger.warning(
+                    "[Init] Injected VPM uses %s='%s', which thresholds particle "
+                    "regeneration against a GLOBAL |Γ| reference. In a coupled run "
+                    "the global maximum is the body's wall vortex sheet, so the far "
+                    "wake is pruned along an iso-|Γ| surface — real vortical "
+                    "structures are cut into fragments and cannot be passed outward. "
+                    "Use ViscousConfig.%s(threshold_mode='relative_local') so each "
+                    "node is referenced to its own neighbourhood.",
+                    mode_attr,
+                    mode,
+                    scheme.lower(),
+                )
         dom = getattr(vpm, "vpm_domain_bounds", None)
         if dom is None:
             dom = getattr(getattr(vpm, "config", None), "vpm_domain_bounds", None)

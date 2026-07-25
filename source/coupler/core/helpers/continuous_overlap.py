@@ -215,7 +215,10 @@ class HandoffResult:
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_corrected_mismatch: dict[str, float] = field(default_factory=dict)
-    flux_ratio: float = 0.0  # |Γ_VPM_exit| / |Γ_FVM_exit| at the outflow band
+    # Σ|Γ|_VPM / Σ|Γ|_FVM over the outflow band (L1, well-conditioned; 1 = the
+    # particle field carries the FVM's exit vorticity content).  See the
+    # computation in continuous_handoff for why this is not a vector-sum ratio.
+    flux_ratio: float = 0.0
 
     # Strength-correction diagnostics (η-weighted relative residual
     # ‖ω_target − ω_σ‖/‖ω_target‖ before and after the Picard iterations)
@@ -520,16 +523,26 @@ def continuous_handoff(
     # the stencil is still interior.
     cfl = float(abs(u_max) * abs(dt) / (buffer_length + 1e-30))
 
-    # Outflow-band vorticity-flux ratio (downstream-most h-layer of the box).
+    # Outflow-band vorticity-content ratio (downstream-most h-layer of the box).
     # Direction-agnostic: the outflow face is the one whose outward normal is
     # most aligned with the freestream (derived from ``u_inf``); defaults to
     # +x only when no direction is supplied.
+    #
+    # This is an L1 ratio Σ|Γ| / Σ|Γ|, NOT |ΣΓ| / |ΣΓ|.  The vector sum of ω
+    # over a wake cross-section is ~0 (vortex lines close), so the ratio of
+    # vector sums is a quotient of two near-cancelling quantities: it swung
+    # over 0.02–29 on the cube case purely from cancellation noise, with no
+    # corresponding change in the fields, and that reading was once
+    # mis-attributed to the donor interior source.  Summing magnitudes is
+    # well-conditioned and answers the question the diagnostic is for: does the
+    # particle field carry the same vorticity content out of the box as the FVM
+    # holds at the exit?  1.0 = agreement.
     flux_ratio = 0.0
     if target is not None and len(grid_pos) > 0:
         band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
         if band.any():
-            g_vpm = np.linalg.norm(np.sum(grid_blended[band], axis=0))
-            g_fvm = np.linalg.norm(np.sum(target[band], axis=0))
+            g_vpm = float(np.linalg.norm(grid_blended[band], axis=1).sum())
+            g_fvm = float(np.linalg.norm(target[band], axis=1).sum())
             flux_ratio = float(g_vpm / (g_fvm + 1e-30))
 
     return HandoffResult(

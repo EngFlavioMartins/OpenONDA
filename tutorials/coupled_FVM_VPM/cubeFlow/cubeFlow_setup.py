@@ -137,8 +137,37 @@ VPM_SETUP = VPMSetup(
         h=VPM_SPACING,
         padding=3.0,
         viscosity=NU,
-        threshold_mode="relative_max",
-        threshold=5e-3,
+        # The regen threshold MUST use a local reference here.  This field spans
+        # ~4 decades of |Γ|: the maximum is the cube's wall vortex sheet, the
+        # wake at x≈1.5 is ~10⁻³ of it.  Every global-reference mode therefore
+        # cuts along one iso-|Γ| surface and deletes the wake to keep the
+        # boundary layer — measured, one GBD regen removed 100% of the
+        # particles below |ω| = 0.243 s⁻¹ (67% of the cloud) with
+        # relative_max=5e-3, and 100% below 0.03 s⁻¹ with budget=1e-2.  That is
+        # what shredded the vortical structures leaving the FVM box, and because
+        # the reference lives on the body the cut level jittered with the
+        # near-wall solution and fed straight back through the donor BC.
+        #
+        # Value picked on the quantity the coupling actually consumes: the error
+        # the pruning introduces in the donor trace (the Biot-Savart velocity the
+        # cloud induces on the FVM box faces), measured against a keep-everything
+        # reference on the t=2.4 field:
+        #
+        #     threshold   N/N_ref   donor |Δu|/U∞ (max / rms)
+        #       0.15       0.82      1.0e-3 / 2.6e-4
+        #       0.30       0.75      3.2e-3 / 7.1e-4     <- knee, used here
+        #       0.50       0.66      1.2e-2 / 1.3e-3
+        #       0.80       0.49      4.0e-2 / 4.0e-3
+        #
+        # 0.30 drops a quarter of the particles for a 0.07% rms perturbation of
+        # the boundary condition — far below the FVM's own discretisation error —
+        # and still keeps ≥64% of the nodes in EVERY |ω| decade (no scale is
+        # amputated).  Past the knee the error grows ~4x per step in threshold
+        # while the particle saving flattens.  Lower to 0.15 for maximum fidelity;
+        # raise toward 0.5 only if the far-field cost becomes limiting.
+        threshold_mode="relative_local",
+        threshold=0.30,
+        threshold_window=3,
         regen_radius_ratio=OVERLAP_RADIUS_RATIO,
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
@@ -173,7 +202,23 @@ COUPLER_SETUP = CouplerSetup(
     strength_correction_iterations=1,
     strength_correction_relax=1.0,
     donor_bc_mode="dirichlet",
-    donor_interior_source="fvm",
+    # "fvm" is the OFW reference's setting and is now affordable (the interior
+    # Biot-Savart runs as a monopole+dipole treecode, ~37x faster for ~0.1%
+    # error).  It was switched to "particles" because flux_ratio swung between
+    # 0.7 and 16.9 instead of sitting near 1.
+    #
+    # CAVEAT: that evidence does not hold.  flux_ratio was |ΣΓ_VPM| / |ΣΓ_FVM|
+    # over the outflow band — a ratio of two near-cancelling vector sums (ω
+    # integrates to ~0 over a wake cross-section), so it swung on cancellation
+    # noise regardless of the donor mode; it swung 0.02–29 with "particles"
+    # selected too.  It is now an L1 ratio and is meaningful.  The real cause of
+    # the near-boundary noise was the VPM regen threshold (see the viscous block
+    # above).  The structural argument for "particles" still stands on its own —
+    # in "fvm" mode the boundary is driven by FVM interior vorticity while the
+    # VPM carries its own particles inside the box, i.e. two different models of
+    # the same field — so the setting is kept, but "fvm" has NOT been re-tested
+    # since the regen fix and may now be viable.
+    donor_interior_source="particles",
     donor_interior_treecode_theta=0.3,
     bc_coupling_iterations=2,
     donor_bc_relax=0.5,

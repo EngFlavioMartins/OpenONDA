@@ -2409,6 +2409,7 @@ class Solver:
                 domain_padding=vc.dvh_domain_padding,
                 regen_threshold=vc.dvh_threshold,
                 regen_threshold_mode=vc.dvh_threshold_mode,
+                regen_threshold_window=getattr(vc, "regen_threshold_window", 3),
                 rd_ratio=vc.dvh_rd_ratio,
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "dvh_max_nodes", None),
@@ -2441,6 +2442,7 @@ class Solver:
                 domain_padding=vc.gbd_domain_padding,
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,
+                regen_threshold_window=getattr(vc, "regen_threshold_window", 3),
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
             )

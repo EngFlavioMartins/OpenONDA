@@ -6,6 +6,7 @@ import contextlib
 from dataclasses import replace
 import importlib.util
 import io
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -207,3 +208,47 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
     setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="freestream"):
         FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.CORE_BOX, bench.NU)
+
+
+@pytest.mark.parametrize(
+    ("scheme", "attr", "mode", "expect_warning"),
+    [
+        ("GBD", "gbd_threshold_mode", "relative_max", True),
+        ("GBD", "gbd_threshold_mode", "budget", True),
+        ("GBD", "gbd_threshold_mode", "absolute", True),
+        ("GBD", "gbd_threshold_mode", "relative_local", False),
+        ("DVH", "dvh_threshold_mode", "relative_max", True),
+        ("DVH", "dvh_threshold_mode", "relative_local", False),
+    ],
+)
+def test_global_regen_threshold_reference_warns(
+    bench, tmp_path, caplog, scheme, attr, mode, expect_warning
+):
+    """A global |Γ| reference shreds the far wake in a coupled run — warn on it.
+
+    The coupled field spans ~4 decades: max|Γ| is the body's wall vortex sheet,
+    so any global-reference regen mode prunes the wake along an iso-|Γ| surface.
+    """
+    from source.coupler import FVMVPMCoupler
+
+    class _FakeViscous:
+        viscosity = bench.NU
+        regen_radius_ratio = bench.COUPLER_SETUP.overlap_radius_ratio
+
+    class _FakeVPMConfig:
+        viscous = _FakeViscous()
+        vpm_domain_bounds = None
+
+    class _FakeVPM:
+        config = _FakeVPMConfig()
+        time_step_size = bench.DT_VPM
+
+    _FakeViscous.scheme = scheme
+    setattr(_FakeViscous, attr, mode)
+
+    setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="coupler"):
+        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.CORE_BOX, bench.NU)
+
+    warned = any("GLOBAL |Γ| reference" in r.message for r in caplog.records)
+    assert warned is expect_warning
