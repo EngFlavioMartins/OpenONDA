@@ -1180,6 +1180,14 @@ class FVMVPMCoupler:
         # when a circulation element crossed the interface, creating a
         # non-physical step in the donor trace even when Gamma was conserved.
         sigma = float(self.config.overlap_radius_ratio) * float(self.config.h)
+        theta = float(getattr(self.config, "donor_interior_treecode_theta", 0.0) or 0.0)
+        if theta > 0.0:
+            # Barnes-Hut with monopole+dipole: the direct sum is
+            # O(n_faces * n_sources) and dominates the step once the wake fills
+            # the box (measured 19s -> 334s per coupling step on the cube case).
+            return interior_bs.gaussian_bs_velocity_treecode(
+                targets, src, gamma, radii=sigma, theta=theta
+            )
         return interior_bs.gaussian_bs_velocity(targets, src, gamma, radii=sigma)
 
     def _validate_bs_sign_once(self) -> None:

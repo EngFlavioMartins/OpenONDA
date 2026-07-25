@@ -144,6 +144,17 @@ class CouplerSetup:
     donor_interior_source: str = "particles"
     """Interior donor representation: hand-off particles or live FVM vorticity."""
 
+    donor_interior_treecode_theta: float = 0.3
+    """Barnes--Hut opening angle for the ``donor_interior_source='fvm'`` sum.
+
+    The interior Biot--Savart is ``O(n_faces * n_sources)`` as a direct sum and
+    dominates the coupling step once the wake fills the box.  A positive value
+    evaluates it with a monopole+dipole treecode instead; ``0`` restores the
+    exact direct sum.  On a representative wake (80k sources, 33k faces) the
+    default is ~37x faster for ~0.1% relative error.  Smaller is more accurate
+    and slower.
+    """
+
     donor_bc_mode: str = "dirichlet"
     """Donor velocity condition: full Dirichlet or normal-Dirichlet mixed mode."""
 
@@ -166,6 +177,13 @@ class CouplerSetup:
                 f"donor_interior_source must be one of "
                 f"{_valid_donor_interior_sources!r}, got "
                 f"{self.donor_interior_source!r}."
+            )
+        if not np.isfinite(self.donor_interior_treecode_theta) or (
+            self.donor_interior_treecode_theta < 0.0
+        ):
+            raise ValueError(
+                "donor_interior_treecode_theta must be finite and non-negative "
+                f"(0 disables the treecode), got {self.donor_interior_treecode_theta!r}."
             )
         _valid_donor_bc_modes = ("dirichlet", "mixed", "characteristic")
         if self.donor_bc_mode not in _valid_donor_bc_modes:
