@@ -525,6 +525,10 @@ class Solver(OFWInterfaceMixin):
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
+        # Fringe relaxation acts on the resolved scales only (see _fringe_source).
+        # Set False to recover the plain S = λ(Utarget − U).
+        self.fringe_scale_selective = True
+        self._fringe_filter = None  # lazy CellBoxFilter, built on first fringe solve
         self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
         self._current_dt = self.dt
         self._last_residuals = None
@@ -963,10 +967,18 @@ class Solver(OFWInterfaceMixin):
         # exchange because owned rows read only their own one-ring (ghost U is
         # refreshed by the previous solve).  A second pass would widen the filter
         # but requires self.parallel.exchange_halo() on the intermediate.
+        # centre_weight="neighbour_sum": the residual (U − G∗U) is what this term
+        # preserves, and the plain box filter has a NEGATIVE grid-scale response
+        # (−5/7 on a hex interior), which would make that residual larger than U
+        # and flip the source's sign — anti-damping the very modes it is meant to
+        # leave untouched.  The neighbour-sum centre weight gives gain 1 at DC and
+        # exactly 0 at the grid scale, so the retained fraction stays in [0, 1].
         if getattr(self, "_fringe_filter", None) is None:
             from ..fields.filters import CellBoxFilter
 
-            self._fringe_filter = CellBoxFilter(self.mesh_data, self.geo_data)
+            self._fringe_filter = CellBoxFilter(
+                self.mesh_data, self.geo_data, centre_weight="neighbour_sum"
+            )
         u = np.asarray(self.U, dtype=np.float64)[:n]
         u_high = u - self._fringe_filter(u)
         return lam[:, np.newaxis] * (ut + u_high), lam

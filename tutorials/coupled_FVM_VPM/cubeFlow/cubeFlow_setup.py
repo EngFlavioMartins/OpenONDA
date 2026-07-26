@@ -174,10 +174,7 @@ VPM_SETUP = VPMSetup(
     advection=AdvectionConfig(scheme="RK2"),
     turbulence=TurbulenceConfig.les_smagorinsky(),
     velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
-    stabilization=replace(
-        StabilizationConfig.disabled(),
-        remove_particles_by_bounds=list(VPM_DOMAIN),
-    ),
+    stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
     particles_kernel="GAUSSIAN",
     precision="f32",
     processing_unit="GPU",

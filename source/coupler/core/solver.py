@@ -1432,6 +1432,12 @@ class FVMVPMCoupler:
 
         for sub in range(N):
             alpha = (sub + 1) / N
+            # Time-centre the fringe forcing on the same alpha the donor
+            # trace uses below, so the volume source and the boundary
+            # condition refer to the same instant.  Collective: every rank.
+            _fringe = getattr(self, "fringe", None)
+            if _fringe is not None:
+                _fringe.push_target(alpha)
             is_final = sub == N - 1
             if is_final and n_bc > 1:
                 # Only reachable with donor_interior_source="particles" (the
@@ -1526,6 +1532,12 @@ class FVMVPMCoupler:
 
         for sub in range(N):
             alpha = (sub + 1) / N
+            # Time-centre the fringe forcing on the same alpha the donor
+            # trace uses below, so the volume source and the boundary
+            # condition refer to the same instant.  Collective: every rank.
+            _fringe = getattr(self, "fringe", None)
+            if _fringe is not None:
+                _fringe.push_target(alpha)
             u_ext = (1.0 - alpha) * u_ext_prev + alpha * u_ext_next
             omega_bc = None
             if mixed:

@@ -112,6 +112,11 @@ class FringeFields:
 
         self.ofw.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.lam))
 
+        # Retained VPM samples bracketing the current coupling window, so the
+        # volume forcing can be time-centred across the FVM substeps.
+        self._ut_prev: np.ndarray | None = None
+        self._ut_next: np.ndarray | None = None
+
         # Report the strength that was actually built.  The damping a structure
         # sees crossing the band is exp(-∫λ dd / u_char), and with the
         # dead-zone-plus-cosine profile ∫λ dd = λ_max·(dead_zone + B/2 -
@@ -135,10 +140,17 @@ class FringeFields:
         )
 
     def update_target(self) -> None:
-        """Sample the VPM velocity at the FVM cell centres and push Utarget.
+        """Sample the VPM velocity at the FVM cell centres; push it as Utarget.
 
         Only cells with lambda>0 (the band) actually use it, so to save work we
         evaluate VPM only there and leave the core as freestream (unused).
+
+        Called once per COUPLING step, after the VPM has advanced — so the sample
+        is the state at t^{n+1}, while the FVM substeps it feeds span
+        [t^n, t^{n+1}].  The sample is retained here so :meth:`push_target` can
+        interpolate it across those substeps instead of applying the end-of-step
+        field to all of them; this call also pushes it directly so a caller that
+        never uses ``push_target`` behaves exactly as before.
         """
         band = self.lam > 0.0
         Ut = np.tile(self.cfg.U_inf, (len(self.cc), 1)).astype(float)
@@ -149,6 +161,34 @@ class FringeFields:
             Ut[band] = self.vpm.compute_target_velocities(
                 self.cc[band], include_freestream=True, zone_mask=None
             )
+        # First call has no history: start from a flat target so the opening
+        # substeps are not relaxed toward a state the flow has not reached.
+        self._ut_prev = Ut if self._ut_next is None else self._ut_next
+        self._ut_next = Ut
+        self._push(Ut)
+
+    def push_target(self, alpha: float) -> None:
+        """Push the target interpolated to substep fraction ``alpha`` in (0, 1].
+
+        The fringe relaxes the FVM toward the VPM at lambda_max ~ 13 1/s, so
+        applying the t^{n+1} target across the whole window displaces it
+        downstream by U*dt_vpm — one particle spacing on the cubeFlow case, which
+        acts as a spurious advective operator of strength lambda*U*dt against a
+        convection velocity of order U.  Interpolating removes that lag, and uses
+        the SAME alpha as the donor boundary trace in
+        ``FVMVPMCoupler._run_fvm_substeps`` so the volume forcing and the boundary
+        condition are time-consistent with each other.
+
+        COLLECTIVE — ``set_cell_vector_field`` broadcasts/scatters, so every rank
+        must call this, not just the master.  Cheap: the VPM sampling stays at one
+        evaluation per coupling step; only the scatter repeats.
+        """
+        if self._ut_next is None:
+            return  # no sample yet (no coupling step has run)
+        a = float(np.clip(alpha, 0.0, 1.0))
+        self._push(self._ut_prev + a * (self._ut_next - self._ut_prev))
+
+    def _push(self, Ut: np.ndarray) -> None:
         self.ofw.set_cell_vector_field(
             "Utarget",
             np.ascontiguousarray(Ut[:, 0]),
