@@ -26,6 +26,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..fields import gradients
+from ..fields.filters import CellBoxFilter
 from .smagorinsky import Smagorinsky, _compute_filter_width
 
 
@@ -246,37 +247,15 @@ class DynamicSmagorinsky:
         self.geo_data = geo_data
         self.alpha2 = alpha2
         self.last_C = 0.0
-        # Pre-compute the static box-filter denominator Σ V over the one-ring.
-        n_int = mesh_data["n_interior_faces"]
-        vol = geo_data["element_volumes"]
-        own = mesh_data["owners"][:n_int]
-        nei = mesh_data["neighbours"][:n_int]
-        denom = vol.copy()
-        np.add.at(denom, own, vol[nei])
-        np.add.at(denom, nei, vol[own])
-        self._own, self._nei, self._vol, self._denom = own, nei, vol, denom
+        self._filter = CellBoxFilter(mesh_data, geo_data)
 
     def _box_filter(self, f):
-        """Apply a volume-weighted one-ring box filter to a cell field.
+        """Volume-weighted one-ring box filter — the dynamic model's test filter.
 
-        For each cell, the filtered value is the volume-weighted average
-        of the cell and its face neighbours (the one-ring).
-
-        Args:
-            f: Cell-centred field ``(n_elements, ...)``.
-
-        Returns:
-            Filtered field with the same shape as *f*.
+        Thin alias for the shared :class:`CellBoxFilter` so the coupler's fringe
+        relaxation and this model cannot drift apart.
         """
-        vol = self._vol
-        num = (vol.reshape((-1,) + (1,) * (f.ndim - 1)) * f).copy()
-        np.add.at(
-            num, self._own, (vol[self._nei].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._nei]
-        )
-        np.add.at(
-            num, self._nei, (vol[self._own].reshape((-1,) + (1,) * (f.ndim - 1))) * f[self._own]
-        )
-        return num / self._denom.reshape((-1,) + (1,) * (f.ndim - 1))
+        return self._filter(f)
 
     def get_filter_info(self):
         """Return filter-width statistics, model name, and last C value.
