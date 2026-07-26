@@ -70,8 +70,25 @@ def generate_rotorflow_openvsp_blade(
 
 
 def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Path, Path, Path]:
-    vsp = _try_import_openvsp()
+    vsp, import_error = _try_import_openvsp()
     if vsp is None:
+        # Re-exec guard.  When openvsp cannot be imported we relaunch under the
+        # `openvsp-python` helper (which sets OPENVSP_ROOT/PYTHONPATH).  But if
+        # the import fails *again* inside that helper, relaunching would recurse
+        # forever — and because the helper prepends OpenVSP paths to PYTHONPATH
+        # on every level, the environment grows until execve aborts with
+        # OSError [Errno 7] "Argument list too long".  Detect the second failure
+        # via a sentinel and raise the real cause instead.
+        if os.environ.get("_OPENONDA_OPENVSP_REEXEC") == "1":
+            raise ImportError(
+                "OpenVSP Python API failed to import inside the openvsp-python helper: "
+                f"{import_error}. This typically means _vsp.so was built against a "
+                "different Python than the one running it (e.g. the missing symbol "
+                "'_PyDict_GetItemStringRef' is a Python 3.13+ C-API symbol, so the "
+                "module was built for 3.13 but is being loaded under an older Python). "
+                "Rebuild/reinstall OpenVSP for the active Python, or reuse a cached "
+                "blade.json (rotor_setup.py skips regeneration when one is present)."
+            )
         command = _openvsp_python_command()
         if command is None:
             raise ImportError(
@@ -105,7 +122,9 @@ def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Pa
             str(design.chord_stations),
             "--export-only",
         ]
-        subprocess.run(args, check=True, env=_openvsp_subprocess_env())
+        reexec_env = _openvsp_subprocess_env()
+        reexec_env["_OPENONDA_OPENVSP_REEXEC"] = "1"
+        subprocess.run(args, check=True, env=reexec_env)
         return _blade_paths(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -271,16 +290,22 @@ def _blade_paths(output_dir: Path) -> tuple[Path, Path, Path]:
     )
 
 
-def _try_import_openvsp():
+def _try_import_openvsp() -> tuple[object | None, str]:
+    """Return (openvsp_module, "") on success or (None, error_message).
+
+    The error message is preserved so the caller can surface the real cause
+    (typically a Python-ABI mismatch in ``_vsp.so``) instead of silently
+    re-launching the helper.
+    """
     assets_dir = Path(__file__).resolve().parent
     sys.path = [entry for entry in sys.path if Path(entry or ".").resolve() != assets_dir]
     try:
         import openvsp as vsp
-    except ImportError:
-        return None
+    except ImportError as exc:
+        return None, str(exc)
     if not hasattr(vsp, "ClearVSPModel"):
-        return None
-    return vsp
+        return None, "openvsp imported but ClearVSPModel is missing (incomplete install)"
+    return vsp, ""
 
 
 def _openvsp_python_command() -> list[str] | None:

@@ -8,6 +8,9 @@ cd "$SCRIPT_DIR"
 
 ./allclean.sh
 
-"$PYTHON" rotor_setup.py --num-steps "${N_STEPS:-2400}" --dt "${DT:-0.006}" --processing-unit CUDA
+# PROCESSING_UNIT defaults to GPU, which auto-selects Metal on macOS and
+# CUDA/Vulkan elsewhere.  Override (e.g. PROCESSING_UNIT=CUDA) to pin a backend.
+"$PYTHON" rotor_setup.py --num-steps "${N_STEPS:-2400}" --dt "${DT:-0.006}" \
+    --processing-unit "${PROCESSING_UNIT:-GPU}"
 
 ./allplot.sh

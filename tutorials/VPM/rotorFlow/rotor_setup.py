@@ -56,9 +56,9 @@ def main():
     parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
     parser.add_argument(
         "--processing-unit",
-        default="CUDA",
+        default="GPU",
         choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
-        help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
+        help="Compute backend. GPU selects Metal on macOS and CUDA/Vulkan elsewhere.",
     )
     args = parser.parse_args()
 
@@ -212,6 +212,7 @@ def main():
         background_velocity=[freestream_velocity, 0, 0],
         turbulence=turbulence,
         stretching=stretching,
+        stabilization=stabilization,
         viscous=viscous,
         velocity=VelocityConfig.treecode(
             theta=0.35,
