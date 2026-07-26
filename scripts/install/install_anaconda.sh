@@ -10,7 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$REPO_ROOT/scripts/environment/environment.yml"
 OPENVSP_INSTALLER="$SCRIPT_DIR/install_openvsp.sh"
+OPENFOAM_INSTALLER="$SCRIPT_DIR/install_openfoam.sh"
 CONDA_ENV="${OPENONDA_CONDA_ENV:-OpenONDA}"
+
+# Single source of truth for the runtime Python: the `python=3.11` pin in
+# environment.yml (matching the README badge and pyproject's requires-python).
+REQUIRED_PYTHON="$(sed -nE 's/^[[:space:]]*-[[:space:]]*python[[:space:]]*=[[:space:]]*([0-9]+\.[0-9]+).*/\1/p' "$ENV_FILE" 2>/dev/null | head -n1)"
+REQUIRED_PYTHON="${REQUIRED_PYTHON:-3.11}"
 
 # Large PETSc/VTK/Gmsh packages can exceed Conda's default network timeout.
 export CONDA_REMOTE_CONNECT_TIMEOUT_SECS="${CONDA_REMOTE_CONNECT_TIMEOUT_SECS:-30}"
@@ -110,13 +116,84 @@ echo ""
 echo "Creating/updating Conda environment '$CONDA_ENV'..."
 conda env update --name "$CONDA_ENV" --file "$ENV_FILE"
 
+# Resolve the environment's own interpreter without consulting PATH.  Both
+# `conda run -n ENV which python` and `conda run -n ENV python` pick `python`
+# off PATH, so any *other* environment sitting earlier on PATH silently wins —
+# which is how a stray env caused installs and version checks to target the
+# wrong Python.  Ask conda for the target prefix and use an absolute path.
+ENV_PREFIX="$(conda run -n "$CONDA_ENV" printenv CONDA_PREFIX 2>/dev/null | tr -d '\r')"
+if [ -z "$ENV_PREFIX" ]; then
+    ENV_PREFIX="$(conda env list | awk -v e="$CONDA_ENV" '$1==e {print $NF}')"
+fi
+ENV_PYTHON="$ENV_PREFIX/bin/python"
+if [ ! -x "$ENV_PYTHON" ]; then
+    echo -e "${RED}❌ Could not locate the '$CONDA_ENV' interpreter (looked for $ENV_PYTHON).${NC}"
+    exit 1
+fi
+
+# Fail loudly here rather than at some later import.  A Python other than the
+# pin in environment.yml breaks the compiled wheels (Taichi, PETSc, OpenVSP's
+# _vsp.so) with obscure "symbol not found" errors at run time.
+ACTUAL_PYTHON="$("$ENV_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [ "$ACTUAL_PYTHON" != "$REQUIRED_PYTHON" ]; then
+    echo -e "${RED}❌ '$CONDA_ENV' has Python $ACTUAL_PYTHON but OpenONDA requires $REQUIRED_PYTHON.${NC}"
+    echo "   Remove the environment and re-run this script:"
+    echo "     conda env remove -n $CONDA_ENV"
+    exit 1
+fi
+echo -e "${GREEN}✅ $CONDA_ENV uses Python $ACTUAL_PYTHON ($ENV_PYTHON)${NC}"
+
 echo "Installing OpenONDA in editable mode..."
-conda run -n "$CONDA_ENV" python -m pip install --no-deps -e "$REPO_ROOT"
+"$ENV_PYTHON" -m pip install --no-deps -e "$REPO_ROOT"
 
 if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
     echo "Installing OpenVSP and its Python API..."
     "$OPENVSP_INSTALLER"
+else
+    echo "Skipping OpenVSP (OPENONDA_INSTALL_OPENVSP=0)."
 fi
+
+# ── Optional: OpenFOAM (needed only for the OFW wrapper and coupled_OFW_VPM) ──
+# Not part of the Conda environment: it is a system package, needs root, and is
+# packaged for Debian/Ubuntu only.  Everything else in OpenONDA (native FVM,
+# VPM, VLM) runs without it, so this is opt-in.
+install_openfoam_if_requested() {
+    local choice="${OPENONDA_INSTALL_OPENFOAM:-}"
+
+    if [ "$(uname -s)" != "Linux" ]; then
+        if [ "$choice" = "1" ]; then
+            echo -e "${YELLOW}⚠ OpenFOAM packages are Debian/Ubuntu-only; skipping on $(uname -s).${NC}"
+            echo "  Use an Ubuntu VM/container to run the OFW and coupled_OFW_VPM tutorials."
+        fi
+        return 0
+    fi
+
+    if [ -z "$choice" ]; then
+        if [ -t 0 ]; then
+            echo ""
+            echo -e "${YELLOW}OpenFOAM is optional. It is required only for the OFW wrapper${NC}"
+            echo -e "${YELLOW}and the coupled_OFW_VPM tutorials, and installing it needs sudo.${NC}"
+            read -r -p "Install OpenFOAM now? [y/N] " response
+            case "$response" in
+                [yY][eE][sS]|[yY]) choice=1 ;;
+                *) choice=0 ;;
+            esac
+        else
+            # Non-interactive (CI): default to skipping the privileged install.
+            choice=0
+        fi
+    fi
+
+    if [ "$choice" = "1" ]; then
+        echo "Installing OpenFOAM..."
+        "$OPENFOAM_INSTALLER"
+    else
+        echo "Skipping OpenFOAM. Install it later with:"
+        echo "  OPENONDA_INSTALL_OPENFOAM=1 scripts/install/install_openfoam.sh"
+    fi
+}
+
+install_openfoam_if_requested
 
 if [ -d "$REPO_ROOT/.git" ]; then
     if conda run -n "$CONDA_ENV" pre-commit --version >/dev/null 2>&1; then
@@ -129,12 +206,26 @@ fi
 
 echo "Verifying the solver environment..."
 for module in gmsh h5py mpi4py numba petsc4py pyamg pydantic pygit2 pytest pyvista ruff scipy taichi vtk; do
-    conda run -n "$CONDA_ENV" python -c "import $module; print('$module: OK')"
+    "$ENV_PYTHON" -c "import $module; print('$module: OK')"
 done
-conda run -n "$CONDA_ENV" python -m pip check
-conda run -n "$CONDA_ENV" ruff --version
-conda run -n "$CONDA_ENV" pyrefly --version
-conda run -n "$CONDA_ENV" mpiexec --version
+
+# OpenVSP is optional, but a *broken* install is worse than an absent one: the
+# blade generators fall back to re-launching a helper interpreter, so an ABI
+# mismatch surfaces as a confusing failure far from here.  Check it explicitly.
+if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
+    if "$ENV_PREFIX/bin/openvsp-python" -c "import openvsp; print('openvsp:', openvsp.GetVSPVersion())" 2>/dev/null; then
+        :
+    else
+        echo -e "${YELLOW}⚠ OpenVSP is installed but its Python API does not import.${NC}"
+        echo "  Tutorials that ship a cached blade JSON still run; regeneration will not."
+        echo "  Re-run: scripts/install/install_openvsp.sh"
+    fi
+fi
+
+"$ENV_PYTHON" -m pip check
+"$ENV_PREFIX/bin/ruff" --version
+"$ENV_PREFIX/bin/pyrefly" --version
+"$ENV_PREFIX/bin/mpiexec" --version
 
 # ── Make new shells open the project env by default (instead of base) ─────────
 configure_default_env() {

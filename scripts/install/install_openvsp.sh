@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # install_openvsp.sh - Wire OpenVSP into the OpenONDA conda workflow.
 #
-# OpenVSP binary releases are tied to the Python version they were built with.
-# OpenONDA and the official OpenVSP package use the same Python 3.11 ABI.
+# OpenVSP binary releases are tied to the Python version they were built with,
+# so the download, the ABI check, and the environment must all agree.  The
+# required version is derived from scripts/environment/environment.yml rather
+# than hardcoded here — a mismatch shows up at import time as
+# "symbol not found ... _PyDict_GetItemStringRef", not at install time.
 #
 # Usage:
 #   scripts/install/install_openvsp.sh
@@ -11,9 +14,21 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ENV_FILE="$REPO_ROOT/scripts/environment/environment.yml"
+
 CONDA_ENV="${OPENONDA_CONDA_ENV:-OpenONDA}"
+
+# Single source of truth for the runtime Python: the `python=3.11` pin in
+# environment.yml (which matches the README badge and pyproject's
+# requires-python).  Deriving it here keeps the OpenVSP ABI check from drifting
+# away from the environment the project actually builds.
+REQUIRED_PYTHON="$(sed -nE 's/^[[:space:]]*-[[:space:]]*python[[:space:]]*=[[:space:]]*([0-9]+\.[0-9]+).*/\1/p' "$ENV_FILE" | head -n1)"
+REQUIRED_PYTHON="${REQUIRED_PYTHON:-3.11}"
+
 OPENVSP_VERSION="${OPENVSP_VERSION:-3.51.0}"
-OPENVSP_ROOT="${OPENVSP_ROOT:-$HOME/.local/share/openonda/OpenVSP-${OPENVSP_VERSION}-Python3.11}"
+OPENVSP_ROOT="${OPENVSP_ROOT:-$HOME/.local/share/openonda/OpenVSP-${OPENVSP_VERSION}-Python${REQUIRED_PYTHON}}"
 OPENVSP_ARCHIVE_URL="${OPENVSP_ARCHIVE_URL:-}"
 
 if ! command -v conda >/dev/null 2>&1; then
@@ -26,11 +41,11 @@ official_download_url() {
     arch="$(uname -m)"
 
     if [ "$os" = "Darwin" ] && [ "$arch" = "arm64" ]; then
-        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-14-ARM64-Python3.11.zip"
+        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-14-ARM64-Python${REQUIRED_PYTHON}.zip"
         return
     fi
     if [ "$os" = "Darwin" ] && [ "$arch" = "x86_64" ]; then
-        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-15-intel-X64-Python3.11.zip"
+        printf '%s\n' "https://openvsp.org/download.php?file=zips/current/mac/OpenVSP-${OPENVSP_VERSION}-macos-15-intel-X64-Python${REQUIRED_PYTHON}.zip"
         return
     fi
     if [ "$os" = "Linux" ] && [ "$arch" = "x86_64" ] && [ -r /etc/os-release ]; then
@@ -121,11 +136,33 @@ check_openvsp_tree() {
     done
 }
 
+# Resolve the interpreter of $CONDA_ENV without consulting PATH.
+#
+# `conda run -n ENV which python` (and even `conda run -n ENV python`) resolve
+# `python` through PATH, so a *different* environment appearing earlier on PATH
+# silently wins — that is how a stray env made this installer report the wrong
+# Python version and refuse to install.  Ask conda for the target env's own
+# prefix instead, and invoke its interpreter by absolute path.
+openonda_prefix() {
+    local prefix
+    prefix="$(conda run -n "$CONDA_ENV" printenv CONDA_PREFIX 2>/dev/null | tr -d '\r')"
+    if [ -z "$prefix" ]; then
+        prefix="$(conda env list | awk -v e="$CONDA_ENV" '$1==e {print $NF}')"
+    fi
+    if [ -z "$prefix" ] || [ ! -x "$prefix/bin/python" ]; then
+        echo "ERROR: could not locate the '$CONDA_ENV' environment's interpreter." >&2
+        echo "       Create it first: scripts/install/install_anaconda.sh" >&2
+        exit 1
+    fi
+    printf '%s\n' "$prefix"
+}
+
 install_python_api() {
-    openonda_python="$(conda run -n "$CONDA_ENV" which python)"
+    openonda_python="$(openonda_prefix)/bin/python"
     python_version="$($openonda_python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-    if [ "$python_version" != "3.11" ]; then
-        echo "ERROR: OpenVSP ${OPENVSP_VERSION} requires Python 3.11; '$CONDA_ENV' uses $python_version." >&2
+    if [ "$python_version" != "$REQUIRED_PYTHON" ]; then
+        echo "ERROR: OpenVSP ${OPENVSP_VERSION} requires Python ${REQUIRED_PYTHON}; '$CONDA_ENV' uses $python_version." >&2
+        echo "       Recreate the environment from scripts/environment/environment.yml." >&2
         exit 1
     fi
 
@@ -136,7 +173,7 @@ install_python_api() {
 }
 
 install_openonda_hooks() {
-    openonda_prefix="$(conda run -n "$CONDA_ENV" python -c 'import sys; print(sys.prefix)')"
+    openonda_prefix="$(openonda_prefix)"
     openonda_python="$openonda_prefix/bin/python"
 
     mkdir -p "$openonda_prefix/bin"
@@ -173,8 +210,9 @@ EOF
 }
 
 verify_install() {
-    openonda_prefix="$(conda run -n "$CONDA_ENV" python -c 'import sys; print(sys.prefix)')"
-    "$openonda_prefix/bin/openvsp-python" -c "import openvsp as vsp; print(vsp.GetVSPVersion())"
+    local prefix
+    prefix="$(openonda_prefix)"
+    "$prefix/bin/openvsp-python" -c "import openvsp as vsp; print('openvsp:', vsp.GetVSPVersion())"
     "$OPENVSP_ROOT/vspscript" -help >/dev/null 2>&1 || true
 }
 
@@ -187,7 +225,7 @@ verify_install
 cat <<EOF
 OpenVSP is wired into conda env '$CONDA_ENV'.
   OPENVSP_ROOT: $OPENVSP_ROOT
-  wrapper     : $(conda run -n "$CONDA_ENV" python -c 'import sys; print(sys.prefix)')/bin/openvsp-python
+  wrapper     : $(openonda_prefix)/bin/openvsp-python
 
 Reactivate the env to pick up PATH/OPENVSP_ROOT:
   conda deactivate
