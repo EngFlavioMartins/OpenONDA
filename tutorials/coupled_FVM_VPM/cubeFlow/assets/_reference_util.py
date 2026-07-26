@@ -10,7 +10,25 @@ from _plotutil import load_vpm_particles  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[1]
 REF_DIR = ROOT / "referenceFlow"
-DT_VPM = 0.075
+
+
+def _dt_vpm() -> float:
+    """Coupling step, read from the run the coupler actually wrote.
+
+    Hardcoding this drifts silently: it sets MATCH_TOL below, so a stale value
+    changes which snapshots are considered simultaneous.  ``run_metadata.json``
+    is written by ``FVMVPMCoupler._write_run_metadata`` and is authoritative.
+    """
+    meta = ROOT / "solution" / "run_metadata.json"
+    if meta.is_file():
+        try:
+            return float(json.loads(meta.read_text())["dt_vpm"])
+        except (KeyError, ValueError, OSError):
+            pass
+    return 0.05  # tutorial default (cubeFlow_setup.DT_VPM)
+
+
+DT_VPM = _dt_vpm()
 
 
 def _pvd_times(pvd: Path | None) -> list[tuple[float, Path]]:

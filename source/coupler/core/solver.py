@@ -146,6 +146,7 @@ class FVMVPMCoupler:
         self._omega_global_buffer: np.ndarray | None = None
         self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
         self.picard_residual_history: list[dict[str, float | int | None]] = []
+        self._warned_frozen_picard = False
         self._last_donor_flux_diagnostics = {
             "raw_mismatch": 0.0,
             "applied_correction": 0.0,
@@ -576,6 +577,14 @@ class FVMVPMCoupler:
                 self.dt_vpm,
                 self.period_multiplier,
             )
+            if cfg.donor_interior_source == "particles" and cfg.donor_bc_relax != 1.0:
+                logger.warning(
+                    "[Init] donor_bc_relax=%.2f is IGNORED with "
+                    "donor_interior_source='particles' — it under-relaxes between "
+                    "Picard iterations, and in that mode the donor trace does not "
+                    "depend on the FVM solution so the iterations are identical.",
+                    float(cfg.donor_bc_relax),
+                )
             if self._backend == "ofw":
                 # The native FVM backend has no controlDict; its write cadence
                 # is configured programmatically (helpers/fvm_backend.py).
@@ -636,20 +645,29 @@ class FVMVPMCoupler:
 
         self.coupling_strategy.initialize(self)
 
-    def run(self, start_step: int = 0, restart_from=None) -> None:
+    def run(
+        self,
+        start_step: int = 0,
+        restart_from=None,
+        *,
+        allow_config_change: bool = False,
+    ) -> None:
         """Initialize (if not already) and run the coupling loop.
 
         Convenience wrapper = :meth:`initialize` + :meth:`solve`.  Callers who
         want the explicit build→initialize→solve flow can call those two
         directly; ``initialize`` is idempotent so ``run`` after a manual
         ``initialize`` will not rebuild.
+
+        ``allow_config_change`` is forwarded to :meth:`load_state` and only
+        matters with ``restart_from``; see that method for what it relaxes.
         """
         if self.injector is None:  # not yet initialized
             self.initialize()
         if restart_from is not None:
             if start_step:
                 raise ValueError("start_step and restart_from are mutually exclusive")
-            start_step = self.load_state(restart_from)
+            start_step = self.load_state(restart_from, allow_config_change=allow_config_change)
         self.solve(start_step=start_step)
 
     # =========================================================
@@ -1369,6 +1387,37 @@ class FVMVPMCoupler:
             )
             return
 
+        # Below this point donor_interior_source == "particles", where the donor
+        # trace is a PURE FUNCTION OF THE VPM PARTICLE CLOUD -- and that cloud is
+        # frozen for the whole FVM sub-cycle (the VPM advanced before this call).
+        # `_donor_velocity` reads only particle state plus `_omega_global_buffer`,
+        # which is refreshed in the hand-off, not here.  So a Picard iteration
+        # reproduces its own input bit-for-bit: measured on the cubeFlow log, the
+        # two iterations print identical flux residual, delta-u_n and outflow
+        # deficit to every digit.  Each extra iteration is therefore a full
+        # non-advancing PIMPLE solve (~25% of the window's momentum+pressure
+        # work) that cannot change the boundary condition.  A genuine BC<->
+        # pressure Picard loop only exists in the "fvm" branch above, where
+        # `_fvm_interior_induced_velocity` re-reads the FVM solution.
+        # The trace is still RE-DERIVED once on the final substep (that is the
+        # anti-regression against mixing in the FVM-interior donor); only the
+        # redundant repeats are dropped.
+        n_bc_eff = n_bc
+        if n_bc > 1:
+            if not getattr(self, "_warned_frozen_picard", False):
+                logger.warning(
+                    "[Sub-cycle] bc_coupling_iterations=%d has no effect with "
+                    "donor_interior_source='particles': the donor trace does not "
+                    "depend on the FVM solution, so every iteration reproduces the "
+                    "same boundary condition. Collapsing to 1 (saves ~%d%% of the "
+                    "FVM solves per window). Set donor_interior_source='fvm' for a "
+                    "real BC-pressure Picard loop.",
+                    n_bc,
+                    round(100.0 * (n_bc - 1) / (N + n_bc - 1)),
+                )
+                self._warned_frozen_picard = True
+            n_bc_eff = 1
+
         if N > 1 and u_next.shape[0] > 0:
             dU = float(np.max(np.linalg.norm(u_next - u_prev, axis=1))) / u_inf_mag
             big = dU > 0.5
@@ -1395,7 +1444,7 @@ class FVMVPMCoupler:
                 # locked to the coupling cadence (measured 14.4% peak-to-peak,
                 # 19x the monolithic reference's step-to-step jitter).
                 previous_trace = None
-                for k in range(n_bc):
+                for k in range(n_bc_eff):
                     if self._is_master:
                         u_wl = self._donor_velocity(face_centers, face_normals, face_areas)
                         omega_wl = self._last_omega_donor
@@ -1422,7 +1471,7 @@ class FVMVPMCoupler:
                     self._fvm_step(
                         patch,
                         u_wl,
-                        advance=(k == n_bc - 1 or converged),
+                        advance=(k == n_bc_eff - 1 or converged),
                         omega_target=omega_wl if mixed else None,
                     )
                     if converged:
@@ -1626,6 +1675,11 @@ class FVMVPMCoupler:
             "format_version": 1,
             "backend": "fvm",
             "config_sha256": self._config_digest(),
+            # The full config, not just its digest: a digest can only say THAT
+            # the configuration changed, and a restart that is rejected without
+            # naming the offending key is unusable for A/B work.  load_state
+            # diffs against this to report exactly what moved.
+            "config": self.config.to_dict(),
             "coupling_step": step,
             "flow_time": float(self.vpm.flow_time),
             "fvm_time_step": int(self.ofw.time_step),
@@ -1638,47 +1692,121 @@ class FVMVPMCoupler:
         os.replace(manifest_tmp, target / "manifest.json")
         return target
 
-    def load_state(self, directory) -> int:
-        """Restore both solvers and donor history from a compatible checkpoint."""
+    @staticmethod
+    def _config_diff(stored: dict | None, current: dict) -> list[str]:
+        """Return ``section.key: old -> new`` lines for a two-level config dict."""
+        if not stored:
+            return []
+        lines: list[str] = []
+        for section in sorted(set(stored) | set(current)):
+            old_s, new_s = stored.get(section), current.get(section)
+            if isinstance(old_s, dict) and isinstance(new_s, dict):
+                for key in sorted(set(old_s) | set(new_s)):
+                    if old_s.get(key) != new_s.get(key):
+                        lines.append(f"{section}.{key}: {old_s.get(key)!r} -> {new_s.get(key)!r}")
+            elif old_s != new_s:
+                lines.append(f"{section}: {old_s!r} -> {new_s!r}")
+        return lines
+
+    def load_state(self, directory, *, allow_config_change: bool = False) -> int:
+        """Restore both solvers and donor history from a compatible checkpoint.
+
+        COLLECTIVE — must be called on every rank.  The FVM checkpoint is
+        partitioned (``load_partitioned_solver_checkpoint``), so every rank
+        restores its own piece; the VPM, the donor trace and the manifest are
+        master-only, exactly mirroring :meth:`save_state`.  Validation runs on
+        the master and the verdict is broadcast, so a rejected checkpoint raises
+        on all ranks instead of deadlocking the ones that got past it.
+
+        ``allow_config_change`` permits a restart whose ``CouplerSetup`` differs
+        from the one that wrote the checkpoint.  This is what makes A/B ablation
+        from a shared checkpoint possible: several coupling knobs
+        (``donor_bc_mode``, ``bc_coupling_iterations``,
+        ``overlap_velocity_forcing``) are part of the config digest, so changing
+        exactly the parameter under test would otherwise be rejected.  The
+        changed keys are always logged — the flag relaxes the check, it never
+        hides it.  Physics that is NOT in ``CouplerSetup`` (the injected VPM's
+        own config) is outside the digest and changes silently either way.
+        """
         if self._backend != "fvm":
             raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
-        if not self._is_master:
-            raise NotImplementedError("Partitioned coupled restart is not qualified")
-        if self.ofw is None or self.vpm is None:
+        if self.ofw is None:
+            raise RuntimeError("Initialize the coupler before loading a checkpoint")
+        if self._is_master and self.vpm is None:
             raise RuntimeError("Initialize the coupler before loading a checkpoint")
 
         target = Path(directory)
-        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
-        if manifest.get("format_version") != 1 or manifest.get("backend") != "fvm":
-            raise ValueError("Unsupported coupled checkpoint format or backend")
-        if manifest.get("config_sha256") != self._config_digest():
-            raise ValueError("Coupled checkpoint configuration does not match this run")
-        missing = [name for name in manifest["files"] if not (target / name).is_file()]
-        if missing:
-            raise ValueError(f"Incomplete coupled checkpoint; missing: {', '.join(missing)}")
 
+        # ── Validate on the master, broadcast the verdict ────────────────────
+        error: str | None = None
+        manifest: dict | None = None
+        if self._is_master:
+            try:
+                manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            except OSError as exc:
+                error = f"Cannot read coupled checkpoint manifest at {target}: {exc}"
+            if error is None:
+                assert manifest is not None
+                if manifest.get("format_version") != 1 or manifest.get("backend") != "fvm":
+                    error = "Unsupported coupled checkpoint format or backend"
+                elif missing := [n for n in manifest["files"] if not (target / n).exists()]:
+                    error = f"Incomplete coupled checkpoint; missing: {', '.join(missing)}"
+                elif manifest.get("config_sha256") != self._config_digest():
+                    changes = self._config_diff(manifest.get("config"), self.config.to_dict())
+                    detail = "\n  ".join(changes) if changes else "(checkpoint stored no config)"
+                    if allow_config_change:
+                        logger.warning(
+                            "[Restart] Coupled checkpoint configuration differs from this run "
+                            "(allow_config_change=True):\n  %s",
+                            detail,
+                        )
+                    else:
+                        error = (
+                            "Coupled checkpoint configuration does not match this run:\n  "
+                            f"{detail}\nPass allow_config_change=True to restart anyway."
+                        )
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            error, manifest = _mpi4py_comm.bcast(
+                (error, manifest) if self._is_master else None, root=0
+            )
+        if error is not None:
+            raise ValueError(error)
+        assert manifest is not None
+
+        # ── Collective: each rank restores its own FVM partition ─────────────
         self.ofw.load_state(target / "fvm.npz")
-        self.load_vpm_from_backup(str(target / "vpm_latest.h5"))
-        # The standalone VPM visualization backup stores time as float32; the
-        # coupled manifest retains the authoritative float64 synchronization time.
-        self.vpm.flow_time = float(manifest["flow_time"])
-        with np.load(target / "donor_state.npz", allow_pickle=False) as donor:
-            self._u_bc_prev = donor["u"].copy() if bool(donor["u_present"]) else None
-            self._omega_bc_prev = donor["omega"].copy() if bool(donor["omega_present"]) else None
 
         expected_fvm_step = int(manifest["vpm_time_step"]) * self.period_multiplier
         if self.ofw.time_step != expected_fvm_step:
             raise ValueError(
                 f"Coupled checkpoint time-step mismatch: FVM={self.ofw.time_step}, "
-                f"expected {expected_fvm_step} from VPM={self.vpm.time_step}"
+                f"expected {expected_fvm_step} from VPM={manifest['vpm_time_step']}"
             )
-        if not np.isclose(self.ofw.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
-            raise ValueError(
-                f"Coupled checkpoint time mismatch: FVM={self.ofw.flow_time}, "
-                f"VPM={self.vpm.flow_time}"
-            )
+
+        # ── Master-only: VPM particles and the donor trace ───────────────────
+        if self._is_master:
+            assert self.vpm is not None  # guarded above; narrows for the checker
+            self.load_vpm_from_backup(str(target / "vpm_latest.h5"))
+            # The standalone VPM visualization backup stores time as float32; the
+            # coupled manifest retains the authoritative float64 synchronization time.
+            self.vpm.flow_time = float(manifest["flow_time"])
+            with np.load(target / "donor_state.npz", allow_pickle=False) as donor:
+                self._u_bc_prev = donor["u"].copy() if bool(donor["u_present"]) else None
+                self._omega_bc_prev = (
+                    donor["omega"].copy() if bool(donor["omega_present"]) else None
+                )
+            if not np.isclose(self.ofw.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
+                error = (
+                    f"Coupled checkpoint time mismatch: FVM={self.ofw.flow_time}, "
+                    f"VPM={self.vpm.flow_time}"
+                )
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            error = _mpi4py_comm.bcast(error if self._is_master else None, root=0)
+        if error is not None:
+            raise ValueError(error)
+
         if self.vel_blend is not None:
-            self.vel_blend.update()
+            self.vel_blend.update()  # collective
         return int(manifest["coupling_step"])
 
     def load_vpm_from_backup(self, backup_h5_path: str) -> int:

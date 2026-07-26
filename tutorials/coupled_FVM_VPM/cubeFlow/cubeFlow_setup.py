@@ -228,11 +228,71 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
+def _parse_args():
+    """Run-control overrides for coupling A/B studies.
+
+    Defaults reproduce the case exactly as written above; every flag exists so a
+    variant can be run from a shared checkpoint without editing this file.
+    ``openonda_bootstrap`` forwards ``sys.argv[1:]`` through both the Conda and
+    the MPI re-exec, so these reach every rank.
+    """
+    import argparse
+
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--restart",
+        action="store_true",
+        help="Resume from solution/coupled_checkpoint instead of an impulsive start.",
+    )
+    p.add_argument("--t-end", type=float, help="Override the end time [s].")
+    p.add_argument(
+        "--fringe-strength",
+        type=float,
+        help="Fringe relaxation strength A (lambda_max = A*U/buffer_thickness).",
+    )
+    p.add_argument("--donor-bc-mode", choices=("dirichlet", "mixed", "characteristic"))
+    p.add_argument(
+        "--overlap-velocity-forcing",
+        action="store_true",
+        help="Advect overlap particles with the eta-blended FVM velocity (two-sided).",
+    )
+    return p.parse_args()
+
+
 def main() -> None:
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
+    args = _parse_args()
+
+    fvm_setup = FVM_SETUP
+    if args.t_end is not None:
+        fvm_setup = replace(fvm_setup, time=replace(fvm_setup.time, end_time=args.t_end))
+
+    coupler_setup = COUPLER_SETUP
+    overrides = {
+        k: v
+        for k, v in (
+            ("fringe_strength", args.fringe_strength),
+            ("donor_bc_mode", args.donor_bc_mode),
+            ("overlap_velocity_forcing", args.overlap_velocity_forcing or None),
+        )
+        if v is not None
+    }
+    if overrides:
+        coupler_setup = replace(coupler_setup, **overrides)
+
+    fvm_solver = setup_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=MESH)
     vpm_solver = setup_vpm_solver(VPM_SETUP)
-    coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
-    coupled_solver.run()
+    coupled_solver = setup_coupler(vpm_solver, fvm_solver, coupler_setup)
+
+    if args.restart:
+        # allow_config_change: the coupling knobs under test (donor_bc_mode,
+        # overlap_velocity_forcing) are part of the checkpoint's config digest,
+        # so an A/B restart is rejected without it.  The changed keys are logged.
+        coupled_solver.run(
+            restart_from=CASE_DIR / "solution" / "coupled_checkpoint",
+            allow_config_change=True,
+        )
+    else:
+        coupled_solver.run()
 
 
 if __name__ == "__main__":

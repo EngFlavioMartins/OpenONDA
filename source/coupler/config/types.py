@@ -133,7 +133,12 @@ class CouplerSetup:
     donor_bc_relax: float = 1.0
     """Picard under-relaxation of the imposed donor trace between coupling
     iterations (1.0 = undamped).  Values < 1 damp the trace runaway that an
-    impulsively started wall sheet can otherwise drive on refined meshes."""
+    impulsively started wall sheet can otherwise drive on refined meshes.
+
+    ONLY ACTIVE with ``donor_interior_source='fvm'``.  With ``'particles'`` the
+    donor trace does not depend on the FVM solution, so there is nothing to
+    under-relax between iterations and this value is ignored (the coupler warns
+    at init)."""
 
     donor_interior_warmup_time: float = 0.0
     """Flow time [s] before which the live FVM-interior Biot–Savart term is
