@@ -17,13 +17,27 @@ run_plot() {
     done
 }
 
+FORCE=0
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
         --dpi) DPI="$2"; shift 2 ;;
+        --force) FORCE=1; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+# Plotting a live run bakes a startup transient into figures/ that is
+# indistinguishable from physics: the downstream sampler planes read close to
+# the freestream simply because the wake front has not reached them yet.
+if [[ "$FORCE" -eq 0 ]] && pgrep -f "rotor_setup\.py" > /dev/null 2>&1; then
+    echo "ERROR: a rotorFlow simulation is still running." >&2
+    echo "       Figures made now would show a wake that is still in transit," >&2
+    echo "       not a converged one.  Wait for the run to finish, or pass" >&2
+    echo "       --force if you deliberately want a mid-run snapshot." >&2
+    exit 1
+fi
 
 mkdir -p figures
 

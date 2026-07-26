@@ -31,7 +31,7 @@ test_cs_vorticity_field_matches_grown_kernel
 
 import numpy as np
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ _ALPHA_Z = 1.0  # z-circulation strength
 
 def _single_particle_cs_solver(tmp_path):
     """Return a solver with one z-circulation particle and CS enabled."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=_DT,
         processing_unit="CPU",
         stretching=StretchingConfig.disabled(),
@@ -54,7 +54,7 @@ def _single_particle_cs_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA_0**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),

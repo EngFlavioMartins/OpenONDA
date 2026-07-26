@@ -7,7 +7,7 @@ solver log).  A runaway curve marks the onset of numerical blow-up, and where
 each curve ends marks that variant's survival time.  The shaded band is the
 50× blow-up threshold used by the solver to stop a diverging run.
 
-Color encodes the stabilization method, linestyle the interaction family - the
+Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -73,7 +73,7 @@ def main() -> None:
     if plotted:
         fig.legend(
             handles=compact_case_legend_handles(),
-            ncol=5,
+            ncol=4,
             loc="lower center",
             bbox_to_anchor=(0.5, 0.005),
         )

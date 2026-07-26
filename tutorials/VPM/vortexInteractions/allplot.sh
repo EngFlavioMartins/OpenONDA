@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — LES transposed stabilizer comparison.
+# Vortex-ring interactions — baseline versus stabilized comparison.
 #
-# Each script auto-discovers the stabilizer matrix under the solution directory:
-# leapfrog_* and collide_* with variants
-# {control,les,rvpm,relax,remesh,projection,split,energy,adaptive}.
-# The figures share one styling key: color = stabilization, linestyle = family.
+# Each script auto-discovers ``{leapfrog,collide}_{baseline,stabilized}``.
+# Color identifies the numerical method and linestyle identifies the family.
 set -euo pipefail
 
 PLOT_CACHE_ROOT="${XDG_CACHE_HOME:-${TMPDIR:-/tmp}/openonda-plot-cache}"

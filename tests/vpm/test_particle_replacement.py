@@ -1,6 +1,6 @@
 import numpy as np
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
@@ -9,7 +9,7 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
     reset_taichi_backend()
     try:
         solver = Solver(
-            SolverConfig(
+            VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
@@ -96,7 +96,7 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
     reset_taichi_backend()
     try:
         solver = Solver(
-            SolverConfig(
+            VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),

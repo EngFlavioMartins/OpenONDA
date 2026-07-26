@@ -32,7 +32,7 @@ test_velocity_method_is_consistent_across_all_rk_stages
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -57,7 +57,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
     particle has no self-induced velocity; its motion is determined solely
     by the background (free-stream) velocity.
     """
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=_DT,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme=scheme),
@@ -68,7 +68,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=_X0.copy(),
@@ -156,7 +156,7 @@ def test_uniform_background_all_schemes_exact_translation(tmp_path, scheme):
 
 def _self_induced_solver(tmp_path, *, velocity_config):
     """Solver with a small cloud of finite-circulation particles (self-induced flow)."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=_DT,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="RK4"),
@@ -167,7 +167,7 @@ def _self_induced_solver(tmp_path, *, velocity_config):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     rng = np.random.default_rng(0)
     n = 8
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3

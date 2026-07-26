@@ -76,7 +76,7 @@ from math import erf, exp, pi, sqrt
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.physics.pressure import _q_kernel, _zeta_kernel
 
@@ -157,7 +157,7 @@ def test_zeta_kernel_maximum_at_origin():
 
 def _empty_solver(tmp_path):
     """Return a solver with no particles added."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="NONE"),
@@ -167,7 +167,7 @@ def _empty_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    return Solver(config=config)
+    return Solver(setup=config)
 
 
 def test_pressure_gradients_zero_for_empty_field(tmp_path):
@@ -220,7 +220,7 @@ def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
     * The validation guard is removed and the code silently returns zeros or NaN.
     * The guard only checks one of the two required arguments.
     """
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="NONE"),
@@ -230,7 +230,7 @@ def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     sigma = 0.1
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
@@ -321,7 +321,7 @@ def _analytical_grad_p_at_r00(
 
 def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _ALPHA_Z_A):
     """Return a solver loaded with one z-circulation particle at the origin."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         particles_kernel="GAUSSIAN",
@@ -333,7 +333,7 @@ def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _A
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),

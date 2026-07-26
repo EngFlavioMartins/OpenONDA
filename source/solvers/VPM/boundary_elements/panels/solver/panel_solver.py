@@ -569,7 +569,7 @@ class PanelSolver:
         # 5. Compute post-process (forces, Cp)
         self.compute_postprocess(V_inf, V_inf, self.density, dt=dt, coupled=(particles is not None))
 
-        # 6. Compute loads (legacy method, also stores in results)
+        # 6. Compute loads and store them in the results.
         self.compute_loads(V_inf, V_wake, dt, self.density)
 
         # 7. Log forces if requested

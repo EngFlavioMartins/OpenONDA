@@ -89,7 +89,7 @@ def create_super_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def volume_correction_constant_():
-        """Volume correction constant for rVPM radius evolution: dσ/dt = σ * C * div(u).
+        """Volume correction constant for radius evolution: dσ/dt = σ * C * div(u).
 
         For 3D spherical particles, C = 1/3 (Alvarez 2022).
         """

@@ -12,7 +12,7 @@ for every mode, and that the per-mode contraction convention is not swapped.
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -32,7 +32,7 @@ def solver_and_rates(tmp_path_factory):
     pos = rng.uniform(-1, 1, (N, 3)).astype(np.float32)
     circ = rng.normal(0, 0.1, (N, 3)).astype(np.float32)
     rad = np.full(N, 0.15, np.float32)
-    cfg = SolverConfig(
+    cfg = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="RK3"),
@@ -43,11 +43,10 @@ def solver_and_rates(tmp_path_factory):
         backup_frequency=0,
         logging_frequency=0,
         backup_directory=out,
-        solution_name=out,
         clean=True,
         max_particles=N + 16,
     )
-    s = Solver(config=cfg)
+    s = Solver(setup=cfg)
     s.add_vortex_particles(
         pos,
         np.zeros((N, 3), np.float32),
@@ -110,7 +109,7 @@ def test_config_flag_plumbs_through():
 
 
 def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
-    cfg = SolverConfig(
+    cfg = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="NONE"),
@@ -126,11 +125,10 @@ def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
         backup_frequency=0,
         logging_frequency=0,
         backup_directory=str(tmp_path),
-        solution_name=str(tmp_path),
         clean=True,
         max_particles=32,
     )
-    solver = Solver(config=cfg)
+    solver = Solver(setup=cfg)
     try:
         assert solver.physics.velocity_theta == 0.4
         assert solver.physics.treecode_multipole_order == 2

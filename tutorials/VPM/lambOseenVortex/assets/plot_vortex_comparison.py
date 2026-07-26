@@ -29,7 +29,6 @@ from _common import (
     build_style_map,
     load_theme,
     read_column_half_length,
-    read_flow_time,
     resolve_runtime_physics,
 )
 
@@ -85,44 +84,32 @@ def last_csv(
     target_time: float | None = None,
 ):
     folder = solution_dir / f"vortex_{scheme}" / "samples"
+    path = folder / f"vortex_{scheme}_x.csv"
+    if not path.exists():
+        return None, None
+
+    data = pd.read_csv(path)
+    if data.empty or data["Uy"].abs().max() <= 1e-10:
+        return None, None
     if step is not None:
-        c = folder / f"vortex_{scheme}_x_{step:06d}.csv"
-        if c.exists():
-            t = read_flow_time(c)
-            return c, t if t is not None else step * dt
-        return None, None
-    usable = usable_csvs(solution_dir, scheme, dt)
-    if not usable:
-        return None, None
+        available_steps = data["time_step"].dropna().astype(int).unique()
+        if step not in available_steps:
+            return None, None
+        selected_t = float(data.loc[data["time_step"] == step, "flow_time"].iloc[0])
+        return path, selected_t
 
-    if target_time is None:
-        return usable[-1]
-
-    selected, selected_t = min(usable, key=lambda item: abs(item[1] - target_time))
+    available_times = np.sort(data["flow_time"].unique())
+    selected_t = float(available_times[-1])
+    if target_time is not None:
+        selected_t = float(available_times[np.argmin(np.abs(available_times - target_time))])
     tolerance = max(0.5, 20.0 * dt)
-    if abs(selected_t - target_time) > tolerance:
+    if target_time is not None and abs(selected_t - target_time) > tolerance:
         print(
             f"  [skip] {scheme.upper()} final sample is t={selected_t:.3g}s, "
             f"not near requested t={target_time:.3g}s."
         )
         return None, None
-    return selected, selected_t
-
-
-def usable_csvs(solution_dir: Path, scheme: str, dt: float) -> list[tuple[Path, float]]:
-    """Return sampled x-line CSVs that contain a non-zero velocity field."""
-    folder = solution_dir / f"vortex_{scheme}" / "samples"
-    usable = []
-    for candidate in sorted(folder.glob(f"vortex_{scheme}_x_*.csv")):
-        df_check = pd.read_csv(candidate, comment="#")
-        if df_check["Uy"].abs().max() <= 1e-10:
-            continue
-        t = read_flow_time(candidate)
-        if t is None:
-            s = int(candidate.stem.split("_")[-1])
-            t = s * dt
-        usable.append((candidate, t))
-    return usable
+    return path, selected_t
 
 
 # =============================================================
@@ -158,7 +145,8 @@ def plot_vortex_case(args) -> int:
         path, t = last_csv(solution_dir, scheme, args.step, args.dt, target_time)
         if path is None:
             continue
-        df = pd.read_csv(path, comment="#")
+        df = pd.read_csv(path)
+        df = df[np.isclose(df["flow_time"], t)]
         x = df["x"].to_numpy()
         uy = df["Uy"].to_numpy()
         oz = df["omega_z"].to_numpy()

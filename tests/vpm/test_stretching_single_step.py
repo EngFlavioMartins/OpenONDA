@@ -144,7 +144,7 @@ def test_stretching_rate_matches_velocity_gradient_form(
     * MIXED:  dΓ/dt = S · Γ, with S = 0.5(∇u + ∇uᵀ)
 
     Failure → sign/order mismatch between the stretching kernel and the
-    velocity-gradient kernel used elsewhere by LES, diagnostics, and rVPM.
+    velocity-gradient kernel used elsewhere by LES and diagnostics.
     """
     solver = _solver_with_particles(
         solver_for_backend,

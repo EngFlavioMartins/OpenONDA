@@ -28,7 +28,7 @@ import numpy as np
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
 
-from source.solvers.VPM import Solver, SolverConfig, StabilizationConfig
+from source.solvers.VPM import Solver, VPMSetup, StabilizationConfig
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     TurbulenceConfig,
@@ -36,7 +36,7 @@ from source.solvers.VPM.config.types import (
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.boundary_elements.vlm import VLMSolver
+from source.solvers.VPM.boundary_elements.vlm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 from generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
@@ -56,8 +56,8 @@ def main():
     parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
     parser.add_argument(
         "--processing-unit",
-        default="GPU",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        default="AUTO",
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. GPU selects Metal on macOS and CUDA/Vulkan elsewhere.",
     )
     args = parser.parse_args()
@@ -109,15 +109,6 @@ def main():
     # ================================================
     # 4. Configure VLM Solver
     # ================================================
-    vlm = VLMSolver(
-        max_panels=512,
-        viscosity=kinematic_viscosity,
-        density=rho,
-        linear_solver="SCIPY",
-        sample_surface_forces=True,
-        logging_frequency=10,
-    )
-
     rotation_period = 2.0 * np.pi / angular_velocity
     ramp_time = max(0.0, args.ramp_rotations * rotation_period)
 
@@ -133,18 +124,22 @@ def main():
         rotation_center=np.zeros(3),
     )
 
-    # Add three blades at 120° azimuthal spacing
-    blade_azimuths = [0, 120, 240]
-    for blade_index, azimuth in enumerate(blade_azimuths):
-        vlm.add_surface(
-            blade_file,
-            surface_name=f"blade_{blade_index}",
-            kinematics=rotation_kinematics,
-            rotation_deg=[azimuth, 0, 0],
-            mesh_refinement_type="geometric",
-            mesh_refinement_ratio=3.0,
-            mesh_refinement_region="both",
-        )
+    vlm_setup = VLMSetup(
+        surfaces=tuple(
+            VLMSurfaceSetup(
+                blade_file,
+                name=f"blade_{blade_index}",
+                kinematics=rotation_kinematics,
+                rotation_deg=(azimuth, 0.0, 0.0),
+            )
+            for blade_index, azimuth in enumerate((0.0, 120.0, 240.0))
+        ),
+        mesh=VLMMeshSetup.geometric(ratio=3.0),
+        viscosity=kinematic_viscosity,
+        density=rho,
+        sample_surface_forces=True,
+        logging_frequency=10,
+    )
 
     # ================================================
     # 5. Configure VPM Solver
@@ -172,43 +167,23 @@ def main():
 
     stretching = StretchingConfig.transposed()
 
-    stabilization = StabilizationConfig.energy_budget(
-        frequency=2,
-        gain=0.5,
-        tolerance=0.1,
-        r_max=0.4,
-        r_seed=0.002,
-        r_inject=0.15,
-        smoothing=0.7,
-        max_log_change=0.7,
-        deconv=0,
+    stabilization = StabilizationConfig.bounded_domain(
+        bounds=[
+            -2.0 * rotor_radius,
+            20.0 * rotor_radius,
+            -2.0 * rotor_radius,
+            2.0 * rotor_radius,
+            -2.0 * rotor_radius,
+            2.0 * rotor_radius,
+        ]
     )
-    # rVPM parallel-strain correction (first net) + conservative per-stage
-    # stretching limiter (common integration safeguard).
-    stabilization.parallel_strain_enabled = True
-    stabilization.parallel_strain_f = 0.0
-    stabilization.parallel_strain_g = 1.0 / 3.0
-    stabilization.stretching_limiter_enabled = True
-    stabilization.stretching_limiter_parallel_increment = 0.04
-    stabilization.stretching_limiter_rotation_increment = 0.12
-    stabilization.stretching_limiter_conserve = True
-    stabilization.stretching_limiter_constraint = "both"
-    # Drop particles convected past the validation planes / out of the box.
-    stabilization.remove_particles_by_bounds = [
-        -2.0 * rotor_radius,
-        20.0 * rotor_radius,
-        -2.0 * rotor_radius,
-        2.0 * rotor_radius,
-        -2.0 * rotor_radius,
-        2.0 * rotor_radius,
-    ]
 
     viscous = ViscousConfig(scheme="CS")
 
-    solver_config = SolverConfig(
+    solver_config = VPMSetup(
         time_step_size=time_step,
         advection=advection,
-        vlm_solver=vlm,
+        vlm=vlm_setup,
         background_velocity=[freestream_velocity, 0, 0],
         turbulence=turbulence,
         stretching=stretching,
@@ -220,17 +195,15 @@ def main():
             traversal_block_dim=128,
         ),
         samplers=plane_samplers,
-        sampler_output_format="legacy",
         backup_file_name="rotor",
         backup_directory=backup_dir,
-        solution_name=backup_dir,
         backup_frequency=20,
         logging_frequency=20,
         timing_frequency=40,
         processing_unit=args.processing_unit,
     )
 
-    vpm = Solver(config=solver_config)
+    vpm = Solver(setup=solver_config)
     vpm.info()
 
     # ================================================

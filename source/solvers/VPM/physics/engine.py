@@ -51,7 +51,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self._advection = _AdvectionHandler(self)
         self._diffusion = _DiffusionHandler(self)
         self._stretching = _StretchingHandler(self)
-        self.stretching_rate_limiter = None
+        self._coupled = _CoupledAdvectionStretchingHandler(self)
 
     def __str__(self):
         return (
@@ -78,6 +78,35 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
                 integrator's first stage reuses it instead of recomputing.
         """
         self._advection.update_positions(particles, dt, scheme, precomputed_k1)
+
+    def update_positions_and_strengths(
+        self,
+        particles,
+        dt: float,
+        scheme: str = "RK3",
+        mode: str = "TRANSPOSED",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
+        precomputed_velocity_k1: bool = False,
+    ):
+        """Advance particle positions and vortex strengths at common RK stages.
+
+        A fractional ``x``-then-``Gamma`` update evaluates the stretching
+        equation on positions from a different time level than the velocity
+        equation.  That destroys cancellations in the discrete impulse
+        identities even when both individual updates use a high-order RK
+        scheme.  This coupled method treats ``(x, Gamma)`` as one ODE state and
+        evaluates both right-hand sides at every RK stage.
+        """
+        self._coupled.update(
+            particles,
+            dt,
+            scheme,
+            mode,
+            use_treecode,
+            treecode_theta,
+            precomputed_velocity_k1,
+        )
 
     # DIFFUSION INTERFACE
 
@@ -137,7 +166,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             dt: Time step size [s]
             scheme: 'EULER', 'RK2', 'RK3', or 'RK4'
-            mode: 'DIRECT', 'TRANSPOSED', or 'MIXED'
+            mode: 'DIRECT', 'TRANSPOSED', 'MIXED', or 'CONSERVATIVE'
             use_treecode: evaluate the rate from the O(N log N) treecode gradient
                 instead of the direct O(N²) pairwise kernel (large N).
             treecode_theta: Barnes–Hut opening angle for the treecode gradient.
@@ -200,7 +229,15 @@ class _AdvectionHandler:
         self._parent._resize_temp_fields(N)
         self._step(particles, dt, scheme, N, precomputed_k1)
 
-    def _vel(self, particles, pos_field, out_field, N, reuse_tree=False):
+    def _vel(
+        self,
+        particles,
+        pos_field,
+        out_field,
+        N,
+        reuse_tree=False,
+        strength_field=None,
+    ):
         """Self-induced velocity at ``pos_field`` → ``out_field`` (honors method).
 
         ``reuse_tree=True`` (RK stages ≥ 2) refits the stage-1 LBVH topology to
@@ -210,7 +247,7 @@ class _AdvectionHandler:
         """
         self._parent.velocity_self(
             pos_field,
-            particles.circulation,
+            particles.circulation if strength_field is None else strength_field,
             particles.radius,
             out_field,
             particles.velocity_background,
@@ -299,6 +336,131 @@ class _AdvectionHandler:
         )
 
 
+class _CoupledAdvectionStretchingHandler:
+    """Run advection and stretching as a single method-of-lines system."""
+
+    def __init__(self, parent: PhysicsEngine):
+        self._parent = parent
+
+    @staticmethod
+    def _mode_int(mode: str) -> int:
+        value = mode.upper()
+        if value == "DIRECT":
+            return 0
+        if value == "TRANSPOSED":
+            return 1
+        if value == "MIXED":
+            return 2
+        if value == "CONSERVATIVE":
+            return 3
+        raise ValueError(
+            f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, MIXED, or CONSERVATIVE."
+        )
+
+    def update(
+        self,
+        particles,
+        dt: float,
+        scheme: str,
+        mode: str,
+        use_treecode: bool,
+        treecode_theta: float,
+        precomputed_velocity_k1: bool,
+    ) -> None:
+        N = len(particles)
+        scheme = scheme.upper()
+        if N == 0 or dt == 0.0:
+            return
+        if scheme not in {"RK2", "RK3"}:
+            raise ValueError("Coupled advection/stretching supports RK2 and RK3.")
+
+        p = self._parent
+        p._resize_temp_fields(N)
+        p._zero_temp_fields()
+        p._stretching._use_treecode = bool(use_treecode) and p.velocity_method == "TREECODE"
+        p._stretching._treecode_theta = float(treecode_theta)
+        mode_int = self._mode_int(mode)
+
+        # k1 = f(x_n, Gamma_n)
+        if not precomputed_velocity_k1:
+            p._advection._vel(
+                particles,
+                particles.position,
+                particles.velocity,
+                N,
+                strength_field=particles.circulation,
+            )
+        p._stretching._rate(
+            particles.position,
+            particles.circulation,
+            particles.radius,
+            p.dstr_dt_temp,
+            mode_int,
+            N,
+        )
+
+        # y1 = y_n + dt*k1
+        p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
+        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
+
+        # k2 = f(y1).  A tree topology cannot merely be refitted here because
+        # coupled stages change both positions and circulations.
+        p._advection._vel(
+            particles,
+            p.pos_temp,
+            p.vel_temp,
+            N,
+            reuse_tree=False,
+            strength_field=p.str_temp,
+        )
+        p._stretching._rate(p.pos_temp, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
+
+        if scheme == "RK2":
+            p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
+            p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
+            return
+
+        # SSP-RK3 stage y2 = y_n + dt/4*(k1+k2)
+        p.linear_combination_kernel(
+            p.pos_temp2, particles.velocity, p.vel_temp, 0.25 * dt, 0.25 * dt, N
+        )
+        p.step_euler_forward_kernel(particles.position, p.pos_temp2, p.pos_temp2, 1.0, N)
+        p.linear_combination_kernel(
+            p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
+        )
+        p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
+
+        # k3 = f(y2)
+        p._advection._vel(
+            particles,
+            p.pos_temp2,
+            p.vel_temp2,
+            N,
+            reuse_tree=False,
+            strength_field=p.str_temp2,
+        )
+        p._stretching._rate(
+            p.pos_temp2, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N
+        )
+
+        p.step_rk3_ssp_combine_kernel(
+            particles.position,
+            particles.velocity,
+            p.vel_temp,
+            p.vel_temp2,
+            dt,
+            N,
+        )
+        p.step_rk3_ssp_combine_kernel(
+            particles.circulation,
+            p.dstr_dt_temp,
+            p.dstr_dt_temp2,
+            p.dstr_dt_temp3,
+            dt,
+            N,
+        )
+
+
 class _DiffusionHandler:
     """
     Lightweight diffusion handler that uses parent's resources.
@@ -383,8 +545,12 @@ class _StretchingHandler:
             mode_int = 1
         elif mode_str == "MIXED":
             mode_int = 2
+        elif mode_str == "CONSERVATIVE":
+            mode_int = 3
         else:
-            raise ValueError(f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, or MIXED.")
+            raise ValueError(
+                f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, MIXED, or CONSERVATIVE."
+            )
 
         scheme = scheme.upper()
 
@@ -397,7 +563,6 @@ class _StretchingHandler:
                 mode_int,
                 N,
             )
-            self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
             p.step_euler_forward_kernel(
                 particles.circulation, p.dstr_dt_temp, particles.circulation, dt, N
             )
@@ -423,7 +588,10 @@ class _StretchingHandler:
         The two agree up to the Barnes–Hut opening-angle tolerance.
         """
         p = self._parent
-        if self._use_treecode:
+        # CONSERVATIVE is a pair exchange.  A one-sided Barnes--Hut target
+        # traversal cannot retain its antisymmetry, so that mode always uses
+        # the direct pairwise kernel.
+        if self._use_treecode and mode_int != 3:
             tree = p._get_or_create_treecode(N, self._treecode_theta)
             tree.build(pos, strg, rad, N)
             tree.compute_velocity_gradients_gpu()
@@ -437,10 +605,8 @@ class _StretchingHandler:
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
         self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
 
     def _stretching_rk3(self, particles, dt, mode_int, N):
@@ -449,16 +615,13 @@ class _StretchingHandler:
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
         self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.linear_combination_kernel(
             p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
         self._rate(particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp2, p.dstr_dt_temp3, dt, N)
         p.step_rk3_ssp_combine_kernel(
             particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
         )
@@ -469,16 +632,12 @@ class _StretchingHandler:
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        self._limit_rate(particles.position, particles.circulation, p.dstr_dt_temp, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
         self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp2, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
         self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp, p.dstr_dt_temp3, dt, N)
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
         self._rate(particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N)
-        self._limit_rate(particles.position, p.str_temp, p.vel_temp, dt, N)
         p.step_rk4_combine_kernel(
             particles.circulation,
             p.dstr_dt_temp,
@@ -498,8 +657,3 @@ class _StretchingHandler:
         p._resize_temp_fields(N)
         p.compute_strength_magnitudes_kernel(particles.circulation, p.str_mag_before, N)
         ti.sync()
-
-    def _limit_rate(self, positions, strengths, rates, dt: float, N: int) -> None:
-        limiter = getattr(self._parent, "stretching_rate_limiter", None)
-        if limiter is not None:
-            limiter.apply_to_rate(positions, strengths, rates, dt, N)

@@ -5,12 +5,19 @@ set -euo pipefail
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+SOLUTION_DIR="./solution/rotor"
 
 ./allclean.sh
 
-# PROCESSING_UNIT defaults to GPU, which auto-selects Metal on macOS and
+# PROCESSING_UNIT defaults to AUTO, which selects Metal on macOS and
 # CUDA/Vulkan elsewhere.  Override (e.g. PROCESSING_UNIT=CUDA) to pin a backend.
 "$PYTHON" rotor_setup.py --num-steps "${N_STEPS:-2400}" --dt "${DT:-0.006}" \
-    --processing-unit "${PROCESSING_UNIT:-GPU}"
+    --processing-unit "${PROCESSING_UNIT:-AUTO}"
 
 ./allplot.sh
+
+# Acceptance checks: wake-plane convergence, BEM agreement, and the wake's
+# impulse budget.  Runs last so a certification failure is the script's exit
+# code without suppressing the figures.
+"$PYTHON" assets/validate_results.py \
+    --solution-dir "$SOLUTION_DIR" --expected-step "${N_STEPS:-2400}"

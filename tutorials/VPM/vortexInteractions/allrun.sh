@@ -1,53 +1,46 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — LES stabilizer benchmark.
-# Runs leapfrogging and head-on collision cases with the same LES/transposed/RK3
-# solver core and conservative RK-stage safeguard. Only the named stabilization
-# method changes between cases.
+# Vortex-ring interactions — baseline versus stabilized conservative method.
 set -euo pipefail
 
-./allclean.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
     || command -v python3 \
     || command -v python)}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+./allclean.sh
 
 GAMMA_PI="3.14159265358979"
 
 RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
-PARTICLE_SPACING="${PARTICLE_SPACING:-0.045}"
+PARTICLE_SPACING="${PARTICLE_SPACING:-0.020}"
 
-DT="${DT:-0.010}"
+DT="${DT:-0.00254647908947033}"
 LF_DT="${LF_DT:-$DT}"
-LF_STEPS="${LF_STEPS:-720}"
+LF_STEPS="${LF_STEPS:-2800}"
 
 COLLIDE_DT="${COLLIDE_DT:-$DT}"
-COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-600}}"
+COLLIDE_STEPS="${COLLIDE_STEPS:-${N_STEPS:-2400}}"
 
-VISCOUS="${VISCOUS:-cs}"
-PROCESSING_UNIT="${PROCESSING_UNIT:-GPU}"
-REMESH_PROCESSING_UNIT="${REMESH_PROCESSING_UNIT:-GPU}"
+PROCESSING_UNIT="${PROCESSING_UNIT:-AUTO}"
 DEVICE_MEMORY_FRACTION="${DEVICE_MEMORY_FRACTION:-0.5}"
 
-BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-20}"
-LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-10}"
-BLOWUP_CHECK_FREQUENCY="${BLOWUP_CHECK_FREQUENCY:-10}"
-STABILIZATIONS="${STABILIZATIONS:-control les rvpm relax remesh projection split energy adaptive}"
+BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-100}"
+LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-20}"
+GUARD_FREQUENCY="${GUARD_FREQUENCY:-1}"
+METHODS="${METHODS:-baseline stabilized}"
 RUN_FAMILIES="${RUN_FAMILIES:-leapfrog collide}"
 
 mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
 
 echo "Results root: $RUN_ROOT"
 echo "Particle spacing: $PARTICLE_SPACING"
-echo "Viscous scheme: $VISCOUS"
 echo "Processing unit: $PROCESSING_UNIT"
-echo "Remesh/projection processing unit: $REMESH_PROCESSING_UNIT"
 echo "Device memory fraction: $DEVICE_MEMORY_FRACTION"
-echo "Solver core: LES, transposed stretching, RK3 advection/stretching"
-echo "Stabilizations: $STABILIZATIONS"
+echo "Stabilized core: DNS, Winckelmans, direct, coupled RK2, conservative stretching, CS"
+echo "Methods: $METHODS"
 echo "Families: $RUN_FAMILIES"
 
 run_case() {
@@ -70,7 +63,7 @@ run_case() {
 
 total=0
 for family in $RUN_FAMILIES; do
-    for stabilization in $STABILIZATIONS; do
+    for method in $METHODS; do
         total=$((total + 1))
     done
 done
@@ -96,26 +89,19 @@ for family in $RUN_FAMILIES; do
             ;;
     esac
 
-    for stabilization in $STABILIZATIONS; do
+    for method in $METHODS; do
         index=$((index + 1))
-        case_name="${family}_${stabilization}"
-        case_processing_unit="$PROCESSING_UNIT"
-        case "$stabilization" in
-            remesh|projection)
-                case_processing_unit="$REMESH_PROCESSING_UNIT"
-                ;;
-        esac
+        case_name="${family}_${method}"
         run_case "$index/$total $case_name" "$case_name" \
             --gamma1 "$gamma1" --gamma2 "$gamma2" \
             --particle-spacing "$PARTICLE_SPACING" \
             --dt "$dt" --num-steps "$steps" \
-            --viscous "$VISCOUS" \
-            --processing-unit "$case_processing_unit" \
+            --processing-unit "$PROCESSING_UNIT" \
             --device-memory-fraction "$DEVICE_MEMORY_FRACTION" \
-            --stabilization "$stabilization" \
+            --method "$method" \
             --backup-frequency "$BACKUP_FREQUENCY" \
             --logging-frequency "$LOGGING_FREQUENCY" \
-            --blowup-check-frequency "$BLOWUP_CHECK_FREQUENCY"
+            --guard-frequency "$GUARD_FREQUENCY"
     done
 done
 

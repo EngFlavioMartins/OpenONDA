@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 
 from source.solvers.VPM.utils import LambOseenVPM, LineSampler, SurfaceSampler
-from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
+from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -210,13 +210,16 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
     # ================================================
     advection = AdvectionConfig(scheme="RK3")
     stretching = StretchingConfig.transposed(scheme="RK3")
+    viscous = build_viscous_config(scheme, nu, args, spacing)
+    dt_actual = viscous.dvh_required_dt() if scheme == "dvh" else args.dt
+    output_interval = max(1, round(args.backup_frequency * args.dt / dt_actual))
 
     # ================================================
     # Core-size control (CS only)
     # ================================================
-    config = SolverConfig.dns_simulation(
-        time_step_size=args.dt,
-        viscous=build_viscous_config(scheme, nu, args, spacing),
+    config = VPMSetup.dns_simulation(
+        time_step_size=dt_actual,
+        viscous=viscous,
         advection=advection,
         stretching=stretching,
         processing_unit=args.processing_unit,
@@ -227,20 +230,17 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
             sort_particle_targets=True,
             traversal_block_dim=128,
         ),
-        backup_frequency=args.backup_frequency,
-        logging_frequency=args.backup_frequency,
+        backup_frequency=output_interval,
+        logging_frequency=output_interval,
         timing_frequency=50,
         backup_file_name=f"{case_type}_{scheme}",
-        solution_name=str(output_dir),
         backup_directory=str(output_dir),
         samplers=samplers,
-        sampler_output_format="legacy",
         clean=args.clean,
         vpm_domain_bounds=domain_bounds,
     )
 
-    solver = Solver(config=config)
-    solver.physics._resize_temp_fields(args.temp_field_capacity)
+    solver = Solver(setup=config)
 
     n = len(positions)
     solver.add_vortex_particles(
@@ -261,13 +261,6 @@ def run_case(args: argparse.Namespace, scheme: str, solution_dir: Path) -> None:
             group_id=np.ones(n, dtype=np.int32),
         )
     solver.remove_weak_particles(percent=1.0, per_group=True)
-
-    # DVH overrides the user-set time step, so we query the actual dt used.
-    dt_actual = solver.get_time_step_size()
-
-    fixed_interval = max(1, round(10.0 * args.dt / dt_actual))
-    solver.update_config(backup_frequency=fixed_interval)
-    solver.update_config(logging_frequency=fixed_interval)
 
     if args.num_steps is not None:
         num_steps = int(args.num_steps)
@@ -389,7 +382,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--processing-unit",
         default="CUDA",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. Default is CUDA to avoid Vulkan DVH/GBD field-retention issues.",
     )
     parser.add_argument(
@@ -397,12 +390,6 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.55,
         help="Fraction of GPU memory reserved by Taichi.",
-    )
-    parser.add_argument(
-        "--temp-field-capacity",
-        type=int,
-        default=160_000,
-        help="Initial temporary-field capacity; fields still grow on demand.",
     )
     parser.add_argument(
         "--backup-frequency",

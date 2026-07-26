@@ -13,6 +13,7 @@ Date: May 2026
 import numpy as np
 import pytest
 
+from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
 from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
 from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
@@ -49,8 +50,7 @@ class TestAdaptiveSolverSelection:
         small matrices, making it 100-1000x slower than SCIPY.
         """
         aircraft = create_dummy_aircraft(n_chord=4, n_span=8)  # 32 panels
-        vlm = VLMSolver(max_panels=512)
-        vlm.add_surface(aircraft)
+        vlm = VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(aircraft),)))
         assert vlm.linear_solver == "SCIPY"
 
     def test_large_system_keeps_bicgstab(self):
@@ -61,15 +61,18 @@ class TestAdaptiveSolverSelection:
         overhead, and the GPU iterative solver avoids the O(N³) CPU cost.
         """
         aircraft = create_dummy_aircraft(n_chord=20, n_span=60)  # 1200 panels
-        vlm = VLMSolver(max_panels=2000)
-        vlm.add_surface(aircraft)
+        vlm = VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(aircraft),)))
         assert vlm.linear_solver == "BICGSTAB_GPU"
 
     def test_explicit_override_preserved(self):
         """User-specified solver should never be silently changed."""
         aircraft = create_dummy_aircraft(n_chord=4, n_span=8)
-        vlm = VLMSolver(max_panels=512, linear_solver="BICGSTAB_GPU")
-        vlm.add_surface(aircraft)
+        vlm = VLMSolver(
+            VLMSetup(
+                surfaces=(VLMSurfaceSetup(aircraft),),
+                linear_solver="BICGSTAB_GPU",
+            )
+        )
         assert vlm.linear_solver == "BICGSTAB_GPU"
 
     def test_scipy_solve_completes_fast(self):
@@ -87,8 +90,7 @@ class TestAdaptiveSolverSelection:
         ti.init(arch=ti.cpu)
 
         aircraft = create_dummy_aircraft(n_chord=4, n_span=8)
-        vlm = VLMSolver(max_panels=512, linear_solver="SCIPY")
-        vlm.add_surface(aircraft)
+        vlm = VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(aircraft),), linear_solver="SCIPY"))
         vlm.generate_mesh()
 
         # Mock external velocity

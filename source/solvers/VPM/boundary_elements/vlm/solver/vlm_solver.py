@@ -9,11 +9,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import copy
-from dataclasses import dataclass
-import json
-import os
 import time
-from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import taichi as ti
@@ -23,7 +19,7 @@ from ....config.constants import VLM_SMALL_VELOCITY
 
 EPSILON = VLM_SMALL_VELOCITY
 
-from ..coupling import kinematics as kin_module
+from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
@@ -46,55 +42,6 @@ from .mesh import (
     update_trailing_edge_directions,
 )
 
-# Import kinematics for type checking (avoid circular import at runtime)
-if TYPE_CHECKING:
-    from ..coupling.kinematics import VLMKinematics
-
-
-@dataclass
-class ForceConfig:
-    """Configuration for VLM aerodynamic force evaluation.
-
-    VLM surface loads are evaluated with the conventional Kutta-Joukowski
-    pressure integration on bound vortex panels.
-    """
-
-    method: str = "KUTTA_JOUKOWSKI"
-    """Force evaluation method. Only ``"KUTTA_JOUKOWSKI"`` is supported."""
-
-    kj_smoothing: bool = False
-    """
-      Apply 2-step running-average filter to the Kutta-Joukowski bound-circulation
-      term in coupled VLM-VPM runs.
-
-      The root cause of the 2Δt oscillation is explicit-coupling lag (the shed
-      TE element is not in the solve). The Kelvin-consistent starting-vortex
-      augmentation (_augment_starting_vortex) fixes the root cause; kj_smoothing
-      is a band-aid filter that masks the symptom and must stay off so validation
-      uses unfiltered CL.
-
-      Applying γ_eff = 0.5*(γ_n + γ_{n-1}) before force integration exactly
-      cancels the 2Δt mode while leaving the time-mean unchanged:
-        - Steady-state CL is unaffected
-        - Transient ramp is gently smoothed (one-step moving average of γ)
-        - No change to wake shedding, AIC solve, or coupling dynamics
-
-      Disable (False) only for standalone (uncoupled) VLM runs.
-      """
-
-    @staticmethod
-    def kutta_joukowski() -> "ForceConfig":
-        """
-        Create conventional Kutta-Joukowski force configuration.
-
-        Uses classical pressure integration over bound vortex panels.
-        This is the standard method in VLM theory.
-
-        Returns:
-              ForceConfig: K-J force evaluation configuration
-        """
-        return ForceConfig(method="KUTTA_JOUKOWSKI")
-
 
 class VLMSolver:
     """
@@ -103,126 +50,24 @@ class VLMSolver:
     Solves for circulation distribution on thin lifting surfaces using
     horseshoe vortex elements and the zero-normal-flow boundary condition.
 
-    **Initialization Options:**
-
-    :param surface: Surface geometry (Aircraft object, JSON path, or None for multi-surface)
-    :param max_panels: Maximum panels to allocate (default: 10000)
-    :param dtype: Data type 'f32' or 'f64' (default: 'f32')
-    :param linear_solver: Linear system solver (see options below)
-    :param relaxation_factor: Renamed to `circulation_relaxation` (default: 1.0)
-    :param viscosity: Kinematic viscosity [m²/s] (default: 1.0)
-    :param density: Fluid density [kg/m³] (default: 1.0 for air)
-    :param kinematics: Optional kinematics for single-surface mode
-
     **Linear Solver Options:**
 
     - ``'SCIPY'`` (default): CPU direct solver, fastest for <500 panels
     - ``'BICGSTAB_GPU'``: GPU iterative solver, best for >500 panels (non-symmetric)
     - ``'CG_GPU'``: GPU iterative solver, only for symmetric matrices
 
-    Workflow:
-        1. generate_mesh() - Create VLM panels from aircraft geometry
-        2. set_motion_profile() - Set kinematics (optional, default: Static)
-        3. solve(V_external) - Compute circulation with external velocity field
-        4. compute_forces() - Calculate aerodynamic forces and moments
-
-    Example (single surface)::
-
-        >>> solver = VLMSolver(surface="wing.json", linear_solver='BICGSTAB_GPU')
-        >>> solver.set_motion_profile(StaticVLM())
-        >>> V_ext = np.zeros((n_panels, 3))
-        >>> V_ext[:] = [10, 0, 0]
-        >>> gamma = solver.solve(V_external=V_ext)
-        >>> forces = solver.compute_forces(density=1.0, U_ref_mag=10.0)
-
-    Example (multi-surface rotor)::
-
-        >>> from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import RotatingVLM
-        >>> solver = VLMSolver(linear_solver='BICGSTAB_GPU')
-        >>> kinematics = RotatingVLM(omega=10.0, axis=[1,0,0], center=[0,0,0])
-        >>> for i in range(3):  # 3 blades
-        ...     solver.add_surface("blade.json", kinematics=kinematics,
-        ...                        rotation_deg=[i*120, 0, 0])
-        >>> # VPM coupling handles the rest
+    Geometry, kinematics, transforms, mesh spacing, and fluid data are all
+    declared in :class:`VLMSetup`. The runtime solver does not expose
+    configuration mutation methods.
     """
 
-    def __init__(
-        self,
-        surface=None,
-        max_panels: int = 10000,
-        dtype: str = "f32",
-        linear_solver: str | None = None,
-        circulation_relaxation: float = 1.0,
-        viscosity: float = 1.0,
-        density: float = 1.0,
-        sigma_factor: float = 2.5,
-        U_inf: np.ndarray | None = None,
-        logging_frequency: int = 1,
-        force: Optional["ForceConfig"] = None,
-        kinematics: Optional["VLMKinematics"] = None,
-        sample_surface_forces: bool = False,
-    ):
-        """
-        Initialize VLM solver.
-
-        Args:
-            surface: Surface geometry (one of):
-                - Aircraft object directly
-                - String path to JSON surface file
-                - None (use add_surface() later for multi-body)
-            max_panels: Maximum panels to allocate across all surfaces.
-                Higher values use more GPU memory.
-            dtype: Floating point precision:
-                - 'f32': Single precision (faster, less memory)
-                - 'f64': Double precision (more accurate)
-            linear_solver: Algorithm for solving AIC @ gamma = rhs:
-                - 'BICGSTAB_GPU' (default): GPU BiCGSTAB iterative solver
-                    - Pros: No CPU transfer, scales to large systems
-                    - Cons: May need more iterations for ill-conditioned matrices
-                - 'SCIPY': CPU direct solver (scipy.linalg.solve)
-                    - Pros: Robust, fast for small systems (<500 panels)
-                    - Cons: CPU-GPU transfer overhead
-                - 'CG_GPU': GPU Conjugate Gradient (for symmetric matrices only)
-            circulation_relaxation: Under-relaxation applied to circulation after each AIC solve,
-                within a single timestep. 1.0 = no relaxation (standard). Values < 1.0 slow
-                convergence but can stabilise ill-conditioned AIC systems on very coarse meshes.
-                A previous tutorial value of 0.5 was masking an under-resolved ramp acceleration
-                (tau_ramp/dt too small); the correct fix is to reduce the timestep, not this.
-            viscosity: Kinematic viscosity of fluid [m²/s].
-                Default 1.0 so it won't interfer with results.
-            density: Fluid density [kg/m³].
-                Default 1.0 so it won't interfer with results.
-            sigma_factor: Particle core radius sizing factor.
-                Controls the overlap ratio σ/(V·dt) for shed wake particles.
-                Higher values provide stronger regularization and prevent
-                divergence from near-singular particle interactions.
-                Default 2.5 (recommended for rotor wakes in hover).
-                Use 1.0 for forward-flight cases with weaker wake interactions.
-            U_inf: Freestream velocity vector used for reference normalization.
-            logging_frequency: Frequency for VLM force CSV writing in coupled runs.
-            kinematics: Body kinematics for single-surface mode.
-                For multi-surface, use add_surface() with per-surface kinematics.
-
-        Examples:
-            Simple wing::
-
-                >>> solver = VLMSolver(surface="wing.json")
-
-            GPU solver for large rotor::
-
-                >>> solver = VLMSolver(linear_solver='BICGSTAB_GPU', max_panels=5000)
-                >>> solver.add_surface("blade.json", kinematics=RotatingVLM(...))
-        """
+    def __init__(self, setup: VLMSetup):
+        """Initialize from one complete, immutable VLM definition."""
         # Solver configuration
-        self.max_panels = max_panels
-        self.dtype = dtype
+        self.setup = setup
+        self.dtype = setup.dtype
         self.epsilon = EPSILON
-        # Adaptive default: SCIPY is faster for small systems (<1000 panels)
-        # because BICGSTAB_GPU kernel-launch overhead dominates on small matrices.
-        if linear_solver is None:
-            linear_solver = "SCIPY" if max_panels < 1000 else "BICGSTAB_GPU"
-        self.linear_solver = linear_solver
-        self.circulation_relaxation = circulation_relaxation
+        self.circulation_relaxation = setup.circulation_relaxation
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
         self.surfaces = {}
@@ -237,11 +82,15 @@ class VLMSolver:
         self._current_time = None  # Temporary: set during advance operations from parent solver
 
         # Flight condition / Fluid properties
-        self.U_inf = None if U_inf is None else np.array(U_inf, dtype=np.float64)
-        self.logging_frequency = max(1, int(logging_frequency))
-        self.density = density  # kg/m³ (fluid density)
-        self.viscosity = viscosity  # m²/s (kinematic viscosity)
-        self.sigma_factor = sigma_factor  # wake particle core sizing
+        self.U_inf = (
+            None
+            if setup.freestream_velocity is None
+            else np.array(setup.freestream_velocity, dtype=np.float64)
+        )
+        self.logging_frequency = setup.logging_frequency
+        self.density = setup.density
+        self.viscosity = setup.viscosity
+        self.sigma_factor = setup.sigma_factor
         self.alpha_rad = 0.0
         self.beta_rad = 0.0
 
@@ -258,28 +107,31 @@ class VLMSolver:
         self._solved = False
 
         # Force evaluation configuration
-        self.force = force if force is not None else ForceConfig(method="KUTTA_JOUKOWSKI")
+        self.force = setup.force
 
         # Explicit initialization of optional attributes to avoid AttributeError
         self._surface_transforms: dict[str, dict] = {}
         self._surface_group_ids: dict[str, int] = {}
         self._surface_sampling: dict[str, bool] = {}
-        self.sample_surface_forces: bool = bool(sample_surface_forces)
-        self._mesh_refinement_settings: dict[str, dict] = {}
-        self._pending_refinement: dict | None = None
+        self.sample_surface_forces = setup.sample_surface_forces
 
-        # Mesh generation settings for idempotency
-        self._spanwise_spacing = None
-        self._spanwise_spacing_ratio = None
-        self._spanwise_spacing_direction = None
-        self._spanwise_spacing_region = None
+        for surface_setup in setup.surfaces:
+            self._register_surface(surface_setup)
 
-        if surface is not None:
-            # Single-surface mode: load immediately
-            self.add_surface(surface, kinematics=kinematics)
+        num_panels = self.aircraft.total_num_panels()
+        self.max_panels = setup.max_panels if setup.max_panels is not None else num_panels
+        if self.max_panels < num_panels:
+            raise ValueError(
+                f"VLM max_panels={self.max_panels} is smaller than the "
+                f"{num_panels} panels declared by the surfaces"
+            )
+        self.linear_solver = setup.linear_solver
+        if self.linear_solver is None:
+            self.linear_solver = "SCIPY" if num_panels < 1000 else "BICGSTAB_GPU"
 
         print(
-            f"   [VLM Solver] Initialized (max_panels={max_panels}, dtype={dtype}, solver={linear_solver})"
+            f"   [VLM Solver] Initialized (max_panels={self.max_panels}, "
+            f"dtype={self.dtype}, solver={self.linear_solver})"
         )
 
     # V_inf removed: use U_inf directly
@@ -325,42 +177,12 @@ class VLMSolver:
             self.lattice = VLMLattice(self.max_panels, ti_dtype)
             self._lattice_initialized = True
 
-    def generate_mesh(
-        self,
-        spanwise_spacing: str = "uniform",
-        spanwise_spacing_ratio: float = 1.0,
-        spanwise_spacing_direction: str = "y",
-        spanwise_spacing_region: str = "both",
-    ) -> None:
-        """
-        Generate VLM mesh from aircraft geometry.
-
-        Args:
-            spanwise_spacing: Panel distribution method ('uniform' or 'geometric')
-            spanwise_spacing_ratio: Concentration ratio for geometric spacing (max/min panel size)
-            spanwise_spacing_direction: Axis for refinement ('x', 'y', or 'z')
-            spanwise_spacing_region: Where to apply refinement:
-                'start': Smallest at start (0), largest at end
-                'end': Smallest at end (1), largest at start
-                'both': Smallest at both ends, largest at center
-        """
+    def generate_mesh(self) -> None:
+        """Generate the VLM mesh using the distribution declared in ``setup``."""
         self._ensure_lattice_initialized()
 
-        # Avoid redundant generation if settings haven't changed
-        if (
-            self._mesh_generated
-            and self._spanwise_spacing == spanwise_spacing
-            and self._spanwise_spacing_ratio == spanwise_spacing_ratio
-            and self._spanwise_spacing_direction == spanwise_spacing_direction
-            and self._spanwise_spacing_region == spanwise_spacing_region
-        ):
+        if self._mesh_generated:
             return
-
-        # Store spacing parameters for mesh generation
-        self._spanwise_spacing = spanwise_spacing
-        self._spanwise_spacing_ratio = spanwise_spacing_ratio
-        self._spanwise_spacing_direction = spanwise_spacing_direction
-        self._spanwise_spacing_region = spanwise_spacing_region
 
         print("   [VLM Solver] Generating mesh...")
         t0 = time.time()
@@ -368,9 +190,9 @@ class VLMSolver:
         generate_vlm_mesh(
             self.aircraft,
             self.lattice,
-            spanwise_spacing=spanwise_spacing,
-            spanwise_spacing_ratio=spanwise_spacing_ratio,
-            spanwise_spacing_region=spanwise_spacing_region,
+            spanwise_spacing=self.setup.mesh.spacing,
+            spanwise_spacing_ratio=self.setup.mesh.ratio,
+            spanwise_spacing_region=self.setup.mesh.region,
         )
 
         # Apply per-surface transformations AFTER mesh generation
@@ -571,185 +393,35 @@ class VLMSolver:
 
         return R
 
-    def add_surface(
-        self,
-        surface,
-        surface_name: str | None = None,
-        kinematics: Optional["VLMKinematics"] = None,
-        mesh_refinement_type: str = "uniform",
-        mesh_refinement_ratio: float = 1.0,
-        mesh_refinement_direction: str = "y",
-        mesh_refinement_region: str = "both",
-        translation: np.ndarray | None = None,
-        rotation_deg: np.ndarray | None = None,
-        rotation_center: np.ndarray | None = None,
-        group_id: int = 0,
-        sample_surface_forces: bool | None = None,
-    ) -> str:
-        """
-        Add a surface to the VLM solver with automatic mesh generation.
-
-        This is the primary method for setting up VLM surfaces. It combines
-        surface loading and mesh generation into a single step.
-
-        Args:
-            surface: Surface geometry - can be:
-                    - Aircraft object directly
-                    - String path to JSON surface file
-            surface_name: Optional unique name for this surface. If None, uses Aircraft.uid.
-            kinematics: Motion profile for this surface (default: StaticVLM)
-            mesh_refinement_type: Panel distribution method ('uniform' or 'geometric')
-            mesh_refinement_ratio: Concentration ratio for geometric refinement (max/min panel size)
-            mesh_refinement_direction: Axis for refinement ('x', 'y', or 'z')
-            mesh_refinement_region: Where to apply refinement:
-                'start': Smallest panels at start (0), largest at end (1)
-                'end': Smallest panels at end (1), largest at start (0)
-                'both': Smallest at both ends (0 and 1), largest at center (0.5)
-            translation: [x, y, z] translation to apply to surface vertices
-            rotation_deg: [rx, ry, rz] rotation angles in degrees (applied in X->Y->Z order)
-            rotation_center: Center of rotation (default: origin [0, 0, 0])
-            group_id: Integer ID for wake particles shed from this surface (default: 0)
-
-        Returns:
-            str: The surface UID/name for reference
-        """
-        # Load from file if string path
-        aircraft = _load_surface(surface) if isinstance(surface, str) else copy.deepcopy(surface)
-
-        # Determine name
-        if surface_name is None:
-            surface_name = aircraft.uid
-
-        # Default kinematics
-        if kinematics is None:
-            kinematics = StaticVLM()
-
-        # Store in surfaces dict with mesh refinement settings
-        # Note: We now store group_id in a separate dict to avoid breaking existing tuple unpacking
-        self.surfaces[surface_name] = (aircraft, kinematics)
-
-        self._surface_group_ids[surface_name] = group_id
-        self._surface_sampling[surface_name] = (
-            self.sample_surface_forces
-            if sample_surface_forces is None
-            else bool(sample_surface_forces)
+    def _register_surface(self, setup: VLMSurfaceSetup) -> str:
+        """Load one declared surface before any Taichi fields are allocated."""
+        aircraft = (
+            _load_surface(setup.surface)
+            if isinstance(setup.surface, str)
+            else copy.deepcopy(setup.surface)
         )
+        surface_name = setup.name or aircraft.uid
+        if surface_name in self.surfaces:
+            raise ValueError(f"Duplicate VLM surface name: {surface_name}")
+        kinematics = setup.kinematics if setup.kinematics is not None else StaticVLM()
 
-        # Store mesh refinement settings for this surface (used when mesh is generated)
-        self._mesh_refinement_settings[surface_name] = {
-            "type": mesh_refinement_type,
-            "ratio": mesh_refinement_ratio,
-            "direction": mesh_refinement_direction,
-            "region": mesh_refinement_region,
-        }
-
-        # Store transformation parameters (applied AFTER mesh generation)
+        self.surfaces[surface_name] = (aircraft, kinematics)
+        self._surface_group_ids[surface_name] = setup.group_id
+        self._surface_sampling[surface_name] = (
+            self.sample_surface_forces if setup.sample_forces is None else setup.sample_forces
+        )
         self._surface_transforms[surface_name] = {
-            "translation": translation,
-            "rotation_deg": rotation_deg,
-            "rotation_center": rotation_center,
+            "translation": setup.translation,
+            "rotation_deg": setup.rotation_deg,
+            "rotation_center": setup.rotation_center,
         }
 
-        # Update main aircraft reference (combined or first surface)
         self._update_combined_aircraft()
-
-        # Mark mesh as pending (deferred until VPMSolver initializes Taichi)
-        self._mesh_generated = False
-        self._pending_refinement = {
-            "type": mesh_refinement_type,
-            "ratio": mesh_refinement_ratio,
-            "direction": mesh_refinement_direction,
-            "region": mesh_refinement_region,
-        }
-
         print(
-            f"   [VLM Solver] Added surface '{surface_name}' ({aircraft.total_num_panels()} panels, group_id={group_id})"
+            f"   [VLM Solver] Declared surface '{surface_name}' "
+            f"({aircraft.total_num_panels()} panels, group_id={setup.group_id})"
         )
         return surface_name
-
-    def load_scene(self, layout_file: str):
-        """
-        Load a complete scene (assembly of surfaces) from a JSON layout file.
-
-        The layout file should define a list of surfaces with their properties:
-        {
-            "surfaces": [
-                {
-                    "file": "path/to/surface.json",
-                    "name": "surface_name",
-                    "translation": [x, y, z],
-                    "rotation_deg": [rx, ry, rz],
-                    "kinematics": {
-                        "type": "RotatingVLM",
-                        "rotation_speed": rad_per_s,
-                        "rotation_axis": [x, y, z],
-                        "rotation_center": [x, y, z]
-                    }
-                },
-                ...
-            ]
-        }
-
-        This method automatically increments group_id for each added surface.
-
-        Args:
-            layout_file: Path to the JSON layout file.
-        """
-        with open(layout_file) as f:
-            data = json.load(f)
-
-        base_dir = os.path.dirname(layout_file)
-
-        group_id_counter = 0
-
-        for surf_data in data.get("surfaces", []):
-            # Resolve file path relative to layout file
-            surf_file = surf_data.get("file")
-            if not os.path.isabs(surf_file):
-                surf_file = os.path.join(base_dir, surf_file)
-
-            name = surf_data.get("name")
-            translation = np.array(surf_data.get("translation", [0, 0, 0]))
-            rotation_deg = np.array(surf_data.get("rotation_deg", [0, 0, 0]))
-            rot_center = surf_data.get("rotation_center")
-            if rot_center:
-                rot_center = np.array(rot_center)
-
-            # Parse Kinematics
-            kin_data = surf_data.get("kinematics", {"type": "StaticVLM"})
-            kin_type = kin_data.get("type")
-
-            # Use getattr to safely get the class, default to StaticVLM
-            try:
-                kin_cls = getattr(kin_module, kin_type)
-            except AttributeError:
-                print(f"Warning: Unknown kinematics type '{kin_type}', defaulting to StaticVLM")
-                kin_cls = kin_module.StaticVLM
-
-            # Prepare kwargs for kinematics constructor
-            # Filter out 'type' from dict
-            kin_kwargs = {k: v for k, v in kin_data.items() if k != "type"}
-
-            # Convert known list arguments to numpy arrays for kinematics
-            for k, v in kin_kwargs.items():
-                if isinstance(v, list):
-                    kin_kwargs[k] = np.array(v)
-
-            kinematics = kin_cls(**kin_kwargs)
-
-            self.add_surface(
-                surf_file,
-                surface_name=name,
-                translation=translation,
-                rotation_deg=rotation_deg,
-                rotation_center=rot_center,
-                kinematics=kinematics,
-                group_id=group_id_counter,
-            )
-
-            group_id_counter += 1
-
-        print(f"Loaded scene from {layout_file} ({group_id_counter} surfaces)")
 
     def get_panel_group_ids(self) -> np.ndarray:
         """
@@ -805,16 +477,7 @@ class VLMSolver:
         if not self.aircraft:
             return
 
-        # Get refinement settings (_pending_refinement is None when no explicit
-        # generate_mesh() call was made before Solver() construction)
-        refinement = getattr(self, "_pending_refinement", None) or {}
-
-        self.generate_mesh(
-            spanwise_spacing=refinement.get("type", "uniform"),
-            spanwise_spacing_ratio=refinement.get("ratio", 1.0),
-            spanwise_spacing_direction=refinement.get("direction", "y"),
-            spanwise_spacing_region=refinement.get("region", "both"),
-        )
+        self.generate_mesh()
 
     def _update_combined_aircraft(self) -> None:
         """Update combined aircraft from all loaded surfaces."""

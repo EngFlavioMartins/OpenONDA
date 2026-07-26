@@ -32,10 +32,9 @@ The module is organized into several sub-packages:
 """
 
 from .boundary_elements.panels.solver.panel_solver import PanelSolver
+from .boundary_elements.vlm.config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .config.types import (
     AdvectionConfig,
-    ForceConfig,
-    SolverConfig,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -58,7 +57,6 @@ except ImportError:
 
 __all__ = [
     "Solver",
-    "SolverConfig",
     "VPMSetup",
     "setup_vpm_solver",
     "AdvectionConfig",
@@ -68,6 +66,9 @@ __all__ = [
     "StabilizationConfig",
     "VelocityConfig",
     "ForceConfig",
+    "VLMSetup",
+    "VLMSurfaceSetup",
+    "VLMMeshSetup",
     "ParticleDistributor",
     "PanelSolver",
 ]

@@ -349,11 +349,11 @@ def test_regen_radius_respects_configured_ratio(physics):
 
 
 def test_viscous_config_carries_regen_radius_ratio():
-    """ViscousConfig exposes regen_radius_ratio (default 2.5, legacy)."""
+    """ViscousConfig exposes the standard regen_radius_ratio default of 2.5."""
     vc = ViscousConfig.gbd(h=0.05, viscosity=1e-3)
     assert vc.regen_radius_ratio == 2.5
-    vc.regen_radius_ratio = 1.5
-    assert vc.regen_radius_ratio == 1.5
+    tuned = ViscousConfig.gbd(h=0.05, viscosity=1e-3, regen_radius_ratio=1.5)
+    assert tuned.regen_radius_ratio == 1.5
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 # Kinematics classes for moving surfaces
+from .config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .coupling.kinematics import (
     CompositeVLM,
     HeavingVLM,
@@ -22,7 +23,7 @@ from .coupling.kinematics import (
 )
 from .geometry.aircraft import Aircraft, Wing, WingSegment
 from .solver.lattice import VLMLattice
-from .solver.vlm_solver import ForceConfig, VLMSolver
+from .solver.vlm_solver import VLMSolver
 
 __all__ = [
     "Aircraft",
@@ -30,6 +31,9 @@ __all__ = [
     "WingSegment",
     "VLMSolver",
     "ForceConfig",
+    "VLMSetup",
+    "VLMSurfaceSetup",
+    "VLMMeshSetup",
     "VLMLattice",
     # Kinematics
     "VLMKinematics",

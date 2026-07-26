@@ -31,9 +31,9 @@ from pathlib import Path
 
 import numpy as np
 
-from source.solvers.VPM import Solver, SolverConfig, StabilizationConfig
+from source.solvers.VPM import Solver, VPMSetup, StabilizationConfig
 from source.solvers.VPM.config.types import TurbulenceConfig, VelocityConfig
-from source.solvers.VPM.boundary_elements.vlm import VLMSolver
+from source.solvers.VPM.boundary_elements.vlm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
@@ -59,7 +59,7 @@ def main():
     parser.add_argument(
         "--processing-unit",
         default="CUDA",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     args = parser.parse_args()
@@ -108,12 +108,6 @@ def main():
     # ================================================
     # 4. VLM solver with two phase-shifted wings
     # ================================================
-    vlm = VLMSolver(
-        viscosity=kinematic_viscosity,
-        density=rho,
-        sample_surface_forces=True,  # per-wing force history → samples/vlm_forces.csv
-    )
-
     def make_heave(phase):
         # h(t) = A(1 − cos(ωt+φ)) → vz = A ω sin(ωt+φ)
         def vfn(t):
@@ -132,27 +126,31 @@ def main():
 
         return wfn
 
-    wings = [
+    wings = (
         ("front_wing", separation, 0.0),  # upstream, phase 0
         ("rear_wing", 0.0, np.pi),  # downstream, phase π (out of phase)
-    ]
-    for name, x0, phase in wings:
-        kin = ManeuverVLM(
-            velocity_fn=make_heave(phase),
-            angular_velocity_fn=make_pitch(phase),
-            rotation_center=[x0 + pivot_x, 0.0, 0.0],
-        )
-        vlm.add_surface(
-            surface_file,
-            surface_name=name,
-            kinematics=kin,
-            translation=np.array([x0, 0.0, 0.0]),
-            rotation_deg=np.array([0.0, 0.0, 180.0]),  # face the −x free-stream
-            rotation_center=np.array([x0 + pivot_x, 0.0, 0.0]),
-            mesh_refinement_type="geometric",
-            mesh_refinement_ratio=3.0,
-            mesh_refinement_region="end",
-        )
+    )
+    vlm_setup = VLMSetup(
+        surfaces=tuple(
+            VLMSurfaceSetup(
+                surface_file,
+                name=name,
+                kinematics=ManeuverVLM(
+                    velocity_fn=make_heave(phase),
+                    angular_velocity_fn=make_pitch(phase),
+                    rotation_center=[x0 + pivot_x, 0.0, 0.0],
+                ),
+                translation=(x0, 0.0, 0.0),
+                rotation_deg=(0.0, 0.0, 180.0),
+                rotation_center=(x0 + pivot_x, 0.0, 0.0),
+            )
+            for name, x0, phase in wings
+        ),
+        mesh=VLMMeshSetup.geometric(ratio=3.0, region="end"),
+        viscosity=kinematic_viscosity,
+        density=rho,
+        sample_surface_forces=True,
+    )
 
     # ================================================
     # 5. Wake crossflow samplers: 1, 5, 10 half-spans downstream of rear wing.
@@ -176,10 +174,10 @@ def main():
     # ================================================
     # 6. VPM solver
     # ================================================
-    solver_config = SolverConfig(
+    solver_config = VPMSetup(
         time_step_size=time_step,
         turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
-        vlm_solver=vlm,
+        vlm=vlm_setup,
         velocity=VelocityConfig.treecode(
             theta=0.35,
             sort_particle_targets=True,
@@ -197,10 +195,9 @@ def main():
             remove_particles_by_bounds=[-8.0, separation + 1.0, -2.0, 2.0, -1.5, 1.5],
         ),
         samplers=sampler_planes,
-        sampler_output_format="legacy",
     )
 
-    vpm = Solver(config=solver_config)
+    vpm = Solver(setup=solver_config)
 
     # Save motion parameters so the post-processing can reconstruct the wing
     # plunge trajectories z(t) without re-deriving them.

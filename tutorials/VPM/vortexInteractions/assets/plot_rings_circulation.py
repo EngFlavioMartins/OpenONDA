@@ -6,7 +6,7 @@ Plots Σ|Γᵢ|/Σ|Γᵢ|₀ versus normalised time for every case discovered un
 This total variation is a stretching/resolution diagnostic, not a conserved
 circulation invariant for a three-dimensional vortex-particle field.
 
-Color encodes the stabilization method, linestyle the interaction family - the
+Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -65,7 +65,7 @@ def main() -> None:
     if plotted:
         fig.legend(
             handles=compact_case_legend_handles(),
-            ncol=5,
+            ncol=4,
             loc="lower center",
             bbox_to_anchor=(0.5, 0.005),
         )

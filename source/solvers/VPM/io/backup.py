@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 
 from ..config.constants import *  # noqa: F403
-from ..config.types import SolverConfig
+from ..config.types import VPMSetup
 
 # =========================================================
 
@@ -508,7 +508,7 @@ class BackupSystem:
             # 2. Create new solver with exact configuration
             from ..core.solver import Solver  # Import here to avoid circular dependency
 
-            solver = Solver(config=config)
+            solver = Solver(setup=config)
 
             # 3. Load numerical data with full precision
             BackupSystem._load_numerical_data(solver, hdf5_file)
@@ -522,12 +522,12 @@ class BackupSystem:
             raise RuntimeError(f"Restore failed: {e}") from e
 
     @staticmethod
-    def _load_configuration(config_file: str) -> SolverConfig:
+    def _load_configuration(config_file: str) -> VPMSetup:
         """Load and validate solver configuration from JSON."""
         with open(config_file) as f:
             data = json.load(f)
 
-        # Extract SolverConfig data
+        # Extract VPMSetup data
         config_dict = data["solver_config"]
 
         # Validate backup format
@@ -537,8 +537,8 @@ class BackupSystem:
         if format_version < "2.0":
             print(f"(Info) Warning: Loading older backup format {format_version}")
 
-        # Create SolverConfig instance with validation
-        config = SolverConfig.from_dict(config_dict)
+        # Create VPMSetup instance with validation
+        config = VPMSetup.from_dict(config_dict)
 
         print(f"Configuration validated (format v{format_version})")
         return config

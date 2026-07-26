@@ -47,7 +47,9 @@ def create_winckelmans_kernels(dtype=ti.f32):
 
     @ti.func
     def diffusivity_constant_():
-        return ti.cast(5.0, dtype)
+        # Winckelmans--Leonard high-order algebraic core-spreading constant.
+        # The reference VPM formulation uses d(sigma²)/dt = (256/45) nu.
+        return ti.cast(256.0 / 45.0, dtype)
 
     @ti.func
     def energy_equivalence_constant_():
@@ -55,7 +57,7 @@ def create_winckelmans_kernels(dtype=ti.f32):
 
     @ti.func
     def volume_correction_constant_():
-        """Volume correction constant for rVPM radius evolution: dσ/dt = σ * C * div(u).
+        """Volume correction constant for radius evolution: dσ/dt = σ * C * div(u).
 
         For 3D spherical particles, C = 1/3 (Alvarez 2022).
         """

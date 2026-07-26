@@ -59,8 +59,8 @@ codegen → Numba DVH scatter).  A silent upgrade re-exposes both.  Recommend
 **M2 — f32 accumulation in the fused flow-integrals kernel.**  Energy /
 enstrophy / dissipation accumulate in `accumulator_dtype` (f32 by default on
 GPU) over O(N²) pair terms; at N ≳ 10⁵ the relative rounding is no longer
-negligible, and the dissipation integral now *drives* the energy-budget
-governor.  Partially mitigated (per-thread `local_*` partials then one atomic
+negligible, and the dissipation integral is used by energy-budget diagnostics.
+Partially mitigated (per-thread `local_*` partials then one atomic
 add).  Recommend Kahan or f64 accumulation for the four scalar reductions —
 kernel change ⇒ needs human sign-off.
 
@@ -81,8 +81,8 @@ but exactly the "phantom guard/dead path" smell; safe to auto-fix with
 ## Low / Informational
 
 - **L1 — complexipy: 28 functions above the repo's cognitive-complexity
-  threshold (15)**, concentrated in `diffusion.py` (scatter/regen), `remesh`,
-  splitting, and `pressure.py`.  Matches the rubric's under-tested-branches
+  threshold (15)**, concentrated in `diffusion.py` (scatter/regen) and
+  `pressure.py`. Matches the rubric's under-tested-branches
   concern; refactor opportunistically.
 - **L2 — bandit `-r source/solvers/VPM -ll`: zero medium/high findings.**
   No `shell=True` with interpolated paths found.

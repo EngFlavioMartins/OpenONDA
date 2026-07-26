@@ -35,8 +35,13 @@ _REPO_ROOT = _CASE_DIR.parents[2]
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_CASE_DIR / "assets"))
 
-from source.solvers.VPM import Solver, SolverConfig
-from source.solvers.VPM.boundary_elements.vlm import VLMSolver, ForceConfig
+from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM.boundary_elements.vlm import (
+    ForceConfig,
+    VLMMeshSetup,
+    VLMSurfaceSetup,
+    VLMSetup,
+)
 from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import SmoothRampVLM
 from source.solvers.VPM.io.backup import BackupSystem
@@ -89,26 +94,25 @@ def main():
     t_ramp = 2.0 * args.tau_ramp * c / U
     kin = SmoothRampVLM(U_final=[-U, 0.0, 0.0], acceleration_time=t_ramp)
 
-    vlm = VLMSolver(
-        max_panels=max(1024, args.panels_chord * args.panels_span * 4),
+    vlm_setup = VLMSetup(
+        surfaces=(VLMSurfaceSetup(surface_file, kinematics=kin),),
+        mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
         density=1.0,
         viscosity=1e-2,
-        linear_solver="SCIPY",
-        U_inf=U_ref,
+        freestream_velocity=tuple(U_ref),
         force=ForceConfig.kutta_joukowski(),
         sigma_factor=2.5,
         sample_surface_forces=True,
     )
-    vlm.add_surface(surface_file, kinematics=kin)
 
     # -- Minimal Solver (initialises ti.init + VPM physics) -------------------
     _tmp_dir = "/tmp/diag_downwash"
     Path(_tmp_dir).mkdir(parents=True, exist_ok=True)
     solver = Solver(
-        config=SolverConfig.les_simulation(
+        setup=VPMSetup.les_simulation(
             cs=0.30,
             time_step_size=dt,
-            vlm_solver=vlm,
+            vlm=vlm_setup,
             background_velocity=[0.0, 0.0, 0.0],
             logging_frequency=999999,
             backup_frequency=999999,
@@ -116,13 +120,9 @@ def main():
             backup_directory=_tmp_dir,
         )
     )
-
-    # Mesh must be generated after Solver() (ti.init is called inside Solver)
-    vlm.generate_mesh(
-        spanwise_spacing="geometric",
-        spanwise_spacing_ratio=4.0,
-        spanwise_spacing_region="end",
-    )
+    vlm = solver.vlm_solver
+    if vlm is None:
+        raise RuntimeError("Downwash diagnostic requires its declared VLM solver")
 
     # -- Plate displacement at final step (pure translation, sin²-ramp) --------
     # v(t) = 0.5*U*(1 - cos(π*t/t_ramp)) for t ≤ t_ramp, then U constant.

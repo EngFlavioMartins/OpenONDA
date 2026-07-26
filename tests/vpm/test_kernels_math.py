@@ -131,7 +131,7 @@ def _g_winckelmans(rho):
 #
 # NOTE: M₂ is NOT the CSM diffusivity constant nor the Winckelmans-1993
 # angular-impulse correction constant.  Those production coefficients
-# (diffusivity {4,4,2,5}; angular {3,0,1.875,1.5}) are separate physical
+# (diffusivity {4,4,2,256/45}; angular {3,0,1.875,1.5}) are separate physical
 # quantities — the diffusivity constant is the core-spreading rate dσ²/dt = Cnu
 # and the angular constant comes from a higher-moment impulse formula — so they
 # are validated by the integration tests (test_single_blob, test_two_particles),

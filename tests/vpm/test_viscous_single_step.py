@@ -20,10 +20,10 @@ _SIGMA = 0.1
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 
 
-def _viscous_solver(make_solver, scheme, kernel="GAUSSIAN", **kwargs):
+def _viscous_solver(make_solver, scheme, kernel="GAUSSIAN", time_step_size=0.01, **kwargs):
     """Create a solver with only viscous diffusion active."""
     return make_solver(
-        time_step_size=0.01,
+        time_step_size=time_step_size,
         particles_kernel=kernel,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme=scheme, **kwargs),
@@ -46,9 +46,12 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     """
     nu = 0.01
     dt = 0.01
-    C = {"GAUSSIAN": 4.0, "HIGH_ORDER_GAUSSIAN": 4.0, "SUPER_GAUSSIAN": 2.0, "WINCKELMANS": 5.0}[
-        kernel_name
-    ]
+    C = {
+        "GAUSSIAN": 4.0,
+        "HIGH_ORDER_GAUSSIAN": 4.0,
+        "SUPER_GAUSSIAN": 2.0,
+        "WINCKELMANS": 256.0 / 45.0,
+    }[kernel_name]
 
     solver = _viscous_solver(solver_for_backend, "CS", kernel=kernel_name)
     solver.add_vortex_particles(
@@ -216,10 +219,10 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
         solver_for_backend,
         "GBD",
         kernel=kernel_name,
+        time_step_size=dt,
         gbd_grid_spacing=h,
         gbd_threshold=1e-8,
     )
-    solver.config.time_step_size = dt
     rng = np.random.default_rng(43)
     positions = rng.uniform(-0.3, 0.3, (8, 3))
     circulations = rng.normal(0.0, 0.1, (8, 3))

@@ -26,7 +26,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, build_rotor_style_map, load_theme
+from _common import add_case_arguments, build_arg_parser, build_rotor_style_map, load_theme
 
 # ==============================================================================
 # Physics helpers
@@ -65,7 +65,7 @@ def plot_rotor_performance(args) -> int:
 
     # Physical constants
     rho = args.rho
-    U = args.freestream_velocity
+    U = args.u_inf
     R = args.rotor_radius
     omega = args.tip_speed_ratio * U / R
     A = np.pi * R**2
@@ -219,11 +219,7 @@ def plot_rotor_performance(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Rotor performance Ct/Cp plotting.")
-    p.add_argument("--rho", type=float, default=1.225, help="Fluid density [kg/m^3].")
-    p.add_argument("--freestream-velocity", type=float, default=7.0)
-    p.add_argument("--rotor-radius", type=float, default=6.0, help="Rotor radius [m].")
-    p.add_argument("--tip-speed-ratio", type=float, default=7.0, help="Tip-speed ratio TSR.")
+    p = add_case_arguments(build_arg_parser("Rotor performance Ct/Cp plotting."))
     return plot_rotor_performance(p.parse_args())
 
 

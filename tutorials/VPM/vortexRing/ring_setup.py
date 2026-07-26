@@ -20,13 +20,11 @@ from pathlib import Path
 from source.solvers.VPM import (
     ParticleDistributor,
     Solver,
-    SolverConfig,
+    VPMSetup,
     VelocityConfig,
 )
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
-    RVPM_DEFAULT_F,
-    RVPM_DEFAULT_G,
     StabilizationConfig,
     TurbulenceConfig,
     ViscousConfig,
@@ -55,23 +53,6 @@ def main():
         help="Time integrator for the stretching substep.",
     )
     parser.add_argument(
-        "--parallel-strain-relaxation",
-        action="store_true",
-        help="Enable the rVPM a-posteriori parallel-strain correction.",
-    )
-    parser.add_argument(
-        "--parallel-strain-f",
-        type=float,
-        default=RVPM_DEFAULT_F,
-        help=f"rVPM correction parameter f (FLOWVPM default: {RVPM_DEFAULT_F:g}).",
-    )
-    parser.add_argument(
-        "--parallel-strain-g",
-        type=float,
-        default=RVPM_DEFAULT_G,
-        help=f"rVPM correction parameter g (FLOWVPM default: {RVPM_DEFAULT_G:g}).",
-    )
-    parser.add_argument(
         "--solution-dir",
         default="solution",
         help="Root directory for solution output (default: solution/)",
@@ -91,7 +72,7 @@ def main():
     parser.add_argument(
         "--processing-unit",
         default="CUDA",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     parser.add_argument(
@@ -155,18 +136,11 @@ def main():
         "mixed": StretchingConfig.mixed(scheme=stretching_scheme),
     }
     stretching = _stretching_map[args.stretching]
-    stabilization = (
-        StabilizationConfig.parallel_strain_relaxation(
-            f=args.parallel_strain_f,
-            g=args.parallel_strain_g,
-        )
-        if args.parallel_strain_relaxation
-        else StabilizationConfig.disabled()
-    )
+    stabilization = StabilizationConfig.disabled()
 
     output_dir = Path(args.solution_dir) / args.name
 
-    solver_config = SolverConfig(
+    solver_config = VPMSetup(
         time_step_size=time_step,
         advection=AdvectionConfig(scheme="RK3"),
         turbulence=turbulence,
@@ -184,12 +158,11 @@ def main():
         logging_frequency=logging_frequency,
         timing_frequency=max(1, 6 * logging_frequency) if logging_frequency > 0 else 0,
         backup_file_name=args.name,
-        solution_name=str(output_dir),
         backup_directory=str(output_dir),
         max_particles=30_000,
     )
 
-    vpm = Solver(config=solver_config)
+    vpm = Solver(setup=solver_config)
 
     # ================================================
     # 5. Initialize One Vortex Ring (centered at origin)

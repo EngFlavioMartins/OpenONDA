@@ -597,62 +597,22 @@ class Logging:
 
     @staticmethod
     def _format_stabilization_config(system) -> list:
-        """Format stabilization and remeshing section."""
+        """Format the particle-retention policy."""
         lines = []
         lines.append("\n" + "-" * 60)
-        lines.append("STABILIZATION")
+        lines.append("PARTICLE RETENTION")
         lines.append("-" * 60)
 
         cfg = getattr(system.config, "stabilization", None)
-        if cfg is not None:
-            if cfg.remeshing_frequency is not None:
-                lines.append(f"  Remeshing Frequency      : {cfg.remeshing_frequency} steps")
-                spacing_label = (
-                    f"{cfg.remeshing_spacing:.4e} m"
-                    if cfg.remeshing_spacing is not None
-                    else "automatic"
-                )
-                lines.append(f"  Remeshing Spacing (h_rem): {spacing_label}")
-
-                # Try to estimate grid points if bounds are available
-                bounds = cfg.remeshing_bounds or cfg.remove_particles_by_bounds
-                if bounds and cfg.remeshing_spacing is not None:
-                    xmin, xmax, ymin, ymax, zmin, zmax = bounds
-                    spacing = cfg.remeshing_spacing
-                    nx = max(2, int(np.ceil((xmax - xmin) / spacing)))
-                    ny = max(2, int(np.ceil((ymax - ymin) / spacing)))
-                    nz = max(2, int(np.ceil((zmax - zmin) / spacing)))
-                    lines.append(
-                        f"  Remeshing Grid           : {nx} x {ny} x {nz} ({nx * ny * nz:,} points)"
-                    )
-                    lines.append("  Remeshing Domain: ")
-                    lines.append(f"    X: [{xmin:.3e}, {xmax:.3e}] m")
-                    lines.append(f"    Y: [{ymin:.3e}, {ymax:.3e}] m")
-                    lines.append(f"    Z: [{zmin:.3e}, {zmax:.3e}] m")
-
-                lines.append(
-                    f"  Conserve Impulse         : {'Enabled' if cfg.remeshing_conserve_impulse else 'Disabled'}"
-                )
-            else:
-                lines.append("  Remeshing                : Disabled")
-
-            if cfg.weak_threshold_percent is not None:
-                lines.append(f"  Weak Removal Threshold   : {cfg.weak_threshold_percent}%")
-            if cfg.max_core_radius is not None:
-                lines.append(f"  Max Core Radius (Split) : {cfg.max_core_radius:.4e} m")
-            if cfg.relaxation_enabled:
-                lines.append(f"  Strength Relaxation      : {cfg.relaxation_mode}")
-                lines.append(f"  Relaxation Gate          : {cfg.relaxation_gate}")
-                if cfg.relaxation_gate == "constant":
-                    lines.append(f"  Relaxation Factor        : {cfg.relaxation_factor:.3g}")
-            if cfg.parallel_strain_enabled:
-                lines.append("  Parallel Strain Relax.   : Enabled")
-                lines.append(f"  Parallel Strain f        : {cfg.parallel_strain_f:.6g}")
-                lines.append(f"  Parallel Strain g        : {cfg.parallel_strain_g:.6g}")
-                if cfg.parallel_strain_clamp is not None:
-                    lines.append(f"  Parallel Strain Clamp    : {cfg.parallel_strain_clamp:.6g}")
+        bounds = getattr(cfg, "remove_particles_by_bounds", None)
+        if bounds is not None:
+            xmin, xmax, ymin, ymax, zmin, zmax = bounds
+            lines.append("  Domain cutoff            : Enabled")
+            lines.append(f"    X: [{xmin:.3e}, {xmax:.3e}] m")
+            lines.append(f"    Y: [{ymin:.3e}, {ymax:.3e}] m")
+            lines.append(f"    Z: [{zmin:.3e}, {zmax:.3e}] m")
         else:
-            lines.append("  Status                   : Not configured")
+            lines.append("  Domain cutoff            : Disabled")
         return lines
 
     @staticmethod

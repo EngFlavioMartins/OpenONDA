@@ -495,8 +495,20 @@ def _stretching_contribution(
         coeff1 = q_val / denom_coeff1
         dstr = coeff1 * str_i.cross(str_j) + coeff2 * Gi_dot_rCrossGj * r_ij
 
-    else:
+    elif mode == 2:
         dstr = 0.5 * coeff2 * (Gi_dot_r * r_cross_Gj + Gi_dot_rCrossGj * r_ij)
+
+    else:
+        # Pairwise conservative transposed form.  The exchange is
+        # antisymmetric (so ΣΓ is invariant) and its tangential term satisfies
+        #
+        #   r_ij × dΓ_ij = -(u_ij × Γ_i + u_ji × Γ_j),
+        #
+        # so the complete coupled x/Γ system conserves linear impulse without
+        # an a-posteriori projection.  The radial transposed term does not
+        # affect this identity.
+        coeff1 = -q_val / denom_coeff1
+        dstr = coeff1 * str_i.cross(str_j) + coeff2 * Gi_dot_rCrossGj * r_ij
 
     return dstr
 

@@ -43,7 +43,7 @@ _DVH_BETA = 0.077
 # it therefore bounds the mode's usable dynamic range at ~6 decades: past that
 # the floor itself rises above the weakest structure and deletes it.  A coupled
 # FVM-VPM field spans ~4 decades, so the floor sits ~2 decades clear.  See
-# tests/vpm/test_remeshing_thresholds.py::
+# Grid-diffusion threshold regression tests::
 # test_relative_local_floor_bounds_the_usable_dynamic_range.
 _LOCAL_THRESHOLD_FLOOR = 1e-6
 

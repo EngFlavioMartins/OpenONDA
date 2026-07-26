@@ -573,16 +573,9 @@ COLORS = {
     "LESpurple": PALETTE["purple"],
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
-    # Comparison palette for method sweeps.
-    "case_control": PALETTE["strong_gray"],
-    "case_les": PALETTE["dark"],
-    "case_rvpm": PALETTE["purple"],
-    "case_relax": PALETTE["teal"],
-    "case_remesh": PALETTE["orange"],
-    "case_projection": PALETTE["green"],
-    "case_split": PALETTE["gray"],
-    "case_energy": PALETTE["red"],
-    "case_adaptive": PALETTE["black"],
+    # Vortex-interaction baseline/stabilized comparison.
+    "case_baseline": PALETTE["strong_gray"],
+    "case_stabilized": PALETTE["black"],
     "background": BACKGROUND_LIGHT,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
@@ -599,15 +592,6 @@ COLORS = {
     "dvh": PALETTE["green"],
     "dvhr": PALETTE["teal"],
     "dns": PALETTE["dark"],
-    "control": PALETTE["strong_gray"],
-    "les": PALETTE["dark"],
-    "rvpm": PALETTE["purple"],
-    "relax": PALETTE["teal"],
-    "remesh": PALETTE["orange"],
-    "projection": PALETTE["green"],
-    "split": PALETTE["gray"],
-    "energy": PALETTE["red"],
-    "adaptive": PALETTE["black"],
 }
 
 COLORMAPS = {
@@ -625,27 +609,13 @@ COLORMAPS = {
 FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
 VARIANT_LABEL = {
-    "control": "Control (none)",
-    "les": "LES",
-    "rvpm": "rVPM",
-    "relax": "Relaxation",
-    "remesh": "Remeshing",
-    "projection": "Projection",
-    "split": "Splitting",
-    "energy": "Energy governor",
-    "adaptive": "Adaptive rVPM",
+    "baseline": "Baseline fractional",
+    "stabilized": "Stabilized coupled",
 }
 VARIANT_ORDER = tuple(VARIANT_LABEL)
 VARIANT_STYLE = {
-    "control": {"color": COLORS["case_control"], "marker": "8"},
-    "les": {"color": COLORS["case_les"], "marker": "s"},
-    "rvpm": {"color": COLORS["case_rvpm"], "marker": "o"},
-    "relax": {"color": COLORS["case_relax"], "marker": "D"},
-    "remesh": {"color": COLORS["case_remesh"], "marker": "^"},
-    "projection": {"color": COLORS["case_projection"], "marker": "v"},
-    "split": {"color": COLORS["case_split"], "marker": "P"},
-    "energy": {"color": COLORS["case_energy"], "marker": "X"},
-    "adaptive": {"color": COLORS["case_adaptive"], "marker": "*"},
+    "baseline": {"color": COLORS["case_baseline"], "marker": "8"},
+    "stabilized": {"color": COLORS["case_stabilized"], "marker": "o"},
 }
 INTENDED_CASE_ORDER = {
     f"{family}_{variant}": family_i * len(VARIANT_ORDER) + variant_i
@@ -656,11 +626,10 @@ INTENDED_CASE_ORDER = {
 VORTEX_RING_VARIANT_STYLE = {
     "DNS_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
     "DNS_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
-    "DNS_mixed": {"color": COLORS["case_remesh"], "marker": "^", "linestyle": "--"},
-    "LES_direct": {"color": COLORS["case_les"], "marker": "D", "linestyle": "-"},
+    "DNS_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
+    "LES_direct": {"color": PALETTE["dark"], "marker": "D", "linestyle": "-"},
     "LES_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
-    "LES_mixed": {"color": COLORS["case_split"], "marker": "p", "linestyle": "-"},
-    "LES_rvpm": {"color": COLORS["case_rvpm"], "marker": "v", "linestyle": "-"},
+    "LES_mixed": {"color": PALETTE["gray"], "marker": "p", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["linewidth"] = LINE_WIDTH
@@ -668,7 +637,6 @@ for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["markeredgewidth"] = MARKER_EDGE_WIDTH
 VORTEX_RING_VARIANT_LABEL = {
     **{name: name.replace("_", " ") for name in VORTEX_RING_VARIANT_STYLE},
-    "LES_rvpm": "LES rVPM",
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {

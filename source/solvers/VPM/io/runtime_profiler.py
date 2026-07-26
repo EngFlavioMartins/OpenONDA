@@ -155,7 +155,7 @@ class RuntimeProfiler:
 
         Reuses :meth:`Logging.step_timing` so the per-step console style is
         unchanged.  The breakdown is shown only when ``VPM_DETAILED_TIMING=1``
-        is set (preserving the legacy opt-in behaviour).
+        is set.
         """
         detailed = self._last if os.environ.get("VPM_DETAILED_TIMING", "0") == "1" else None
         Logging.step_timing(self.step_time, self.wall_time, detailed)

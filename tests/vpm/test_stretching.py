@@ -19,7 +19,7 @@ test_direct_stretching_changes_total_circulation
 
 import numpy as np
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ _GAMMA_SCALE = 1.0  # RMS circulation magnitude per component [m²/s]
 
 def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
     """Return a solver with only stretching active (advection=NONE, viscous=NONE)."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=_DT,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="NONE"),
@@ -42,7 +42,7 @@ def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     n = len(positions)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(

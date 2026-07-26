@@ -29,7 +29,7 @@ class SamplerExecutor:
     """
 
     @staticmethod
-    def execute(solver) -> None:
+    def execute(solver, sampler_entries=None) -> None:
         """Execute all configured samplers and persist their output.
 
         Reads ``solver.config.samplers`` (list of sampler or
@@ -42,7 +42,8 @@ class SamplerExecutor:
         insignificant (< 2 particles or max |Γ| < 1e-8) to avoid crashes
         inside pressure-gradient or SVD routines.
         """
-        if solver.config.samplers is None:
+        sampler_entries = solver.config.samplers if sampler_entries is None else sampler_entries
+        if sampler_entries is None:
             return
 
         n_particles = solver.particles.number_of_particles
@@ -57,7 +58,7 @@ class SamplerExecutor:
         samples_dir = Path(solver.backup_directory) / "samples"
         samples_dir.mkdir(parents=True, exist_ok=True)
 
-        for sampler_entry in solver.config.samplers:
+        for sampler_entry in sampler_entries:
             sampler, name_prefix, solution_dir = SamplerExecutor._prepare_context(
                 sampler_entry, samples_dir
             )
@@ -109,24 +110,15 @@ class SamplerExecutor:
         flow_time: float,
         time_step: int | None = None,
     ) -> None:
-        """Persist one sampler event in the configured output format."""
+        """Persist one sampler event using the canonical format for its geometry."""
         try:
-            output_format = getattr(solver.config, "sampler_output_format", "csv")
-            if output_format == "csv":
-                SamplerExecutor._append_csv(
-                    sampler,
-                    solver,
-                    solution_dir / f"{name_prefix}.csv",
-                    flow_time,
-                    time_step,
-                )
-            elif output_format in {"vtk", "legacy"} and hasattr(sampler, "save_vtp"):
+            if hasattr(sampler, "save_vtp"):
                 filename = f"{name_prefix}_{seq_num}.vts"
                 filepath = solution_dir / filename
                 sampler.save_vtp(solver, filepath, time=flow_time)
                 sampler._pvd_entries.append((flow_time, filename))
                 SamplerExecutor._write_pvd(solution_dir, name_prefix, sampler._pvd_entries)
-            elif output_format == "vtk":
+            else:
                 SamplerExecutor._append_csv(
                     sampler,
                     solver,
@@ -134,11 +126,6 @@ class SamplerExecutor:
                     flow_time,
                     time_step,
                 )
-            elif output_format == "legacy":
-                filename = f"{name_prefix}_{seq_num}.csv"
-                sampler.save_csv(solver, solution_dir / filename, time=flow_time)
-            else:
-                raise ValueError(f"Unknown sampler_output_format {output_format!r}")
         except Exception as exc:
             print(f"(Warning) Sampler '{name_prefix}' failed: {exc}")
 

@@ -1,7 +1,7 @@
 import pytest
 import taichi as ti
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.core import solver as solver_module
@@ -17,10 +17,10 @@ def _pretend_vulkan_on_cpu(monkeypatch):
     monkeypatch.setattr(solver_module, "initialize_taichi_backend", _fake_initialize_taichi_backend)
 
 
-def _grid_diffusion_config(**kwargs) -> SolverConfig:
-    return SolverConfig(
+def _grid_diffusion_config(**kwargs) -> VPMSetup:
+    return VPMSetup(
         time_step_size=0.01,
-        processing_unit="GPU_VULKAN",
+        processing_unit="VULKAN",
         stretching=StretchingConfig.disabled(),
         advection=AdvectionConfig(scheme="NONE"),
         viscous=ViscousConfig.dvh(h=0.25, padding=0.0, viscosity=1.0e-3),
@@ -62,7 +62,7 @@ def test_cpu_grid_diffusion_does_not_preallocate_the_removal_domain(tmp_path):
     reset_taichi_backend()
     try:
         solver = Solver(
-            SolverConfig(
+            VPMSetup(
                 time_step_size=0.01,
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),

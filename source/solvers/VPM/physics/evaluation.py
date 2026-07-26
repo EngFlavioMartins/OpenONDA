@@ -125,7 +125,7 @@ class ParticleFieldEvaluation:
         if required_size > self.max_particles:
             raise ValueError(
                 f"Diagnostics require {required_size} particles, but max_particles="
-                f"{self.max_particles}. Increase SolverConfig.max_particles before "
+                f"{self.max_particles}. Increase VPMSetup.max_particles before "
                 "constructing the solver."
             )
 
@@ -203,8 +203,15 @@ class ParticleFieldEvaluation:
             This combines energy, helicity, enstrophy, dissipation rates, strength,
             and impulses into one efficient computation using unbounded definitions.
 
-            Angular impulse includes kernel correction per Winckelmans 1993:
-            A = (1/3) Σ r × (r × Γ) - (2/9) C σ² Γ_total
+            Angular impulse includes the per-particle kernel correction:
+
+                A = (1/3) Σ r_i × (r_i × Γ_i)
+                    - (2/9) C Σ σ_i² Γ_i
+
+            The correction must remain inside the sum when core radii vary.
+            Replacing it by a mean radius times ``ΣΓ`` is only equivalent for
+            uniform cores and gives a false angular-impulse drift as soon as
+            core spreading changes individual radii.
             """
             N = num_particles
 
@@ -247,41 +254,14 @@ class ParticleFieldEvaluation:
                 # Angular impulse (raw, without correction): (1/3) Σ (r × (r × Γ))
                 r_cross_gamma = pos_i.cross(str_i)
                 angular_contrib = pos_i.cross(r_cross_gamma)
-                ti.atomic_add(results[None].ang_x, angular_contrib[ti.static(0)] * (1.0 / 3.0))
-                ti.atomic_add(results[None].ang_y, angular_contrib[ti.static(1)] * (1.0 / 3.0))
-                ti.atomic_add(results[None].ang_z, angular_contrib[ti.static(2)] * (1.0 / 3.0))
-
-            # Apply kernel correction to angular impulse: subtract (2/9) C σ² Γ_total
-            # Get kernel-specific correction constant
-            C = angular_correction_func()
-
-            # Compute weighted mean σ² (weighted by |Γ|)
-            sigma_sq_weighted_sum = ti.cast(0.0, self.accumulator_dtype)
-            total_circ_mag = results[None].str_mag  # Σ|Γ|
-
-            for i in range(N):
-                str_mag = strengths[i].norm()
-                sigma_sq_weighted_sum += radii[i] ** 2 * str_mag
-
-            # Mean σ² = Σ(σ²|Γ|) / Σ|Γ|
-            sigma_sq_mean = sigma_sq_weighted_sum / (total_circ_mag + 1e-16)
-
-            # Total circulation vector Γ_total = ΣΓ
-            Gamma_total_x = results[None].gamma_x
-            Gamma_total_y = results[None].gamma_y
-            Gamma_total_z = results[None].gamma_z
-
-            # Correction term: (2/9) C σ² Γ_total
-            correction_factor = ti.cast((2.0 / 9.0) * C * sigma_sq_mean, self.accumulator_dtype)
-            results[None].ang_x -= ti.cast(
-                correction_factor * Gamma_total_x, self.accumulator_dtype
-            )
-            results[None].ang_y -= ti.cast(
-                correction_factor * Gamma_total_y, self.accumulator_dtype
-            )
-            results[None].ang_z -= ti.cast(
-                correction_factor * Gamma_total_z, self.accumulator_dtype
-            )
+                correction_factor = ti.cast(
+                    (2.0 / 9.0) * angular_correction_func() * radii[i] ** 2,
+                    self.accumulator_dtype,
+                )
+                corrected = angular_contrib * (1.0 / 3.0) - correction_factor * str_i
+                ti.atomic_add(results[None].ang_x, corrected[ti.static(0)])
+                ti.atomic_add(results[None].ang_y, corrected[ti.static(1)])
+                ti.atomic_add(results[None].ang_z, corrected[ti.static(2)])
 
             # Double loop for pairwise quantities (energy, helicity, enstrophy)
             for i in range(N):

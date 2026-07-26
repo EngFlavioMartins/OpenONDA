@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Conservation & structure-destruction audit — ``rings_conservation.png``.
-
-Two stacked panels for every case discovered under ``solution/`` (read from the
-solver log):
-
-  (top)    Particle-count growth N(t)/N₀ — a flat line is a fixed budget; a ramp
-           into a plateau is the remeshing hitting ``max_particles`` and being
-           forced to discard vorticity.
-  (bottom) Linear-impulse drift |I(t)−I₀|/|I₀| — the physically conserved
-           invariant for an unbounded vortex flow.  A stabilizer that "works" by
-           throwing away circulation shows up here and in the printed
-           destroyed-circulation column.
-
-Color encodes the stabilization method, linestyle the interaction family — the
-same key shared by every comparison figure (see ``_common.case_style``).
-"""
+"""Particle count and all conserved vector moments."""
 
 from pathlib import Path
 import sys
@@ -25,11 +10,12 @@ import numpy as np
 ASSETS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ASSETS_DIR))
 from _common import (  # noqa: E402
+    GAMMA,
+    R0,
     T_REF,
     build_arg_parser,
     case_style,
     compact_case_legend_handles,
-    compounded_discarded_fraction,
     discover_cases,
     figure_size,
     load_theme,
@@ -47,10 +33,10 @@ def main() -> None:
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
-    fig, (ax_n, ax_imp) = plt.subplots(2, 1, figsize=figure_size("wide_stacked"), sharex=True)
+    fig, axes = plt.subplots(4, 1, figsize=(8.4, 9.0), sharex=True)
+    ax_n, ax_circ, ax_imp, ax_ang = axes
 
     plotted = False
-    discard_rows: list[tuple[str, float]] = []
     for case_dir in discover_cases(args.solution_dir):
         df = read_integrals(case_dir)
         if df is None or len(df) == 0:
@@ -74,25 +60,39 @@ def main() -> None:
                 plotted = True
 
         imp_cols = [f"impulse_{axis}" for axis in "xyz"]
+        strength_cols = [f"strength_{axis}" for axis in "xyz"]
+        if all(col in df.columns for col in strength_cols):
+            strength = df[strength_cols].to_numpy(float)
+            drift = np.linalg.norm(strength - strength[0], axis=1) / GAMMA
+            ax_circ.plot(t_star, np.maximum(drift, 1e-12), **common)
+
         if all(col in df.columns for col in imp_cols):
             imp = df[imp_cols].to_numpy(float)
-            imp0 = float(np.linalg.norm(imp[0]))
-            if imp0 > 1e-30:
-                drift = np.linalg.norm(imp - imp[0], axis=1) / imp0
-                ax_imp.plot(t_star, np.maximum(drift, 1e-9), **common)
+            scale = max(float(np.linalg.norm(imp[0])), GAMMA * R0**2)
+            drift = np.linalg.norm(imp - imp[0], axis=1) / scale
+            ax_imp.plot(t_star, np.maximum(drift, 1e-12), **common)
 
-        discard_rows.append((case_dir.name, compounded_discarded_fraction(case_dir)))
+        angular_cols = [f"angular_impulse_{axis}" for axis in "xyz"]
+        if all(col in df.columns for col in angular_cols):
+            angular = df[angular_cols].to_numpy(float)
+            scale = max(float(np.linalg.norm(angular[0])), GAMMA * R0**3)
+            drift = np.linalg.norm(angular - angular[0], axis=1) / scale
+            ax_ang.plot(t_star, np.maximum(drift, 1e-12), **common)
 
     ax_n.set_ylabel(r"Particle count, $N/N_0$")
-    ax_n.set_title("Structure destruction — particle growth and impulse drift")
+    ax_n.set_title("Conservation contract")
+    for axis in (ax_circ, ax_imp, ax_ang):
+        axis.set_yscale("log")
+    ax_circ.set_ylabel(r"$|\sum\Gamma-\sum\Gamma_0|/\Gamma_0$")
     ax_imp.set_yscale("log")
-    ax_imp.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax_imp.set_ylabel(r"Impulse drift, $|I-I_0|/|I_0|$")
+    ax_imp.set_ylabel(r"$|I-I_0|/(\Gamma_0R_0^2)$")
+    ax_ang.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
+    ax_ang.set_ylabel(r"$|A-A_0|/(\Gamma_0R_0^3)$")
 
     if plotted:
         fig.legend(
             handles=compact_case_legend_handles(),
-            ncol=5,
+            ncol=4,
             loc="lower center",
             bbox_to_anchor=(0.5, 0.005),
         )
@@ -102,16 +102,8 @@ def main() -> None:
         figs / "rings_conservation.png",
         dpi=args.dpi,
         figure_format=args.format,
-        tight_rect=(0.0, 0.16, 1.0, 1.0),
+        tight_rect=(0.0, 0.10, 1.0, 1.0),
     )
-
-    if discard_rows:
-        print("\n=== Circulation destroyed by capped/thresholded remeshing ===")
-        for name, frac in sorted(discard_rows, key=lambda r: r[1], reverse=True):
-            if frac > 0.0:
-                print(f"  {name:<22} {100 * frac:6.2f}%")
-        if not any(frac > 0.0 for _, frac in discard_rows):
-            print("  (none — no run discarded circulation)")
 
 
 if __name__ == "__main__":

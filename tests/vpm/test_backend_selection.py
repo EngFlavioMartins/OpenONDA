@@ -8,7 +8,7 @@ def _names(chain):
 def test_explicit_vulkan_never_falls_back_to_cuda(monkeypatch):
     monkeypatch.setattr(backend.platform, "system", lambda: "Linux")
 
-    names = _names(backend._build_backend_chain("GPU_VULKAN"))
+    names = _names(backend._build_backend_chain("VULKAN"))
 
     assert names[0] == "VULKAN"
     assert "CUDA" not in names
@@ -28,7 +28,7 @@ def test_explicit_cuda_never_falls_back_to_vulkan(monkeypatch):
 def test_macos_f32_prefers_metal(monkeypatch):
     monkeypatch.setattr(backend.platform, "system", lambda: "Darwin")
 
-    names = _names(backend._build_backend_chain("GPU", precision="f32"))
+    names = _names(backend._build_backend_chain("AUTO", precision="f32"))
 
     assert names[0] == "METAL"
     assert names[-1] == "CPU"
@@ -39,7 +39,7 @@ def test_macos_f64_skips_metal(monkeypatch, capsys):
     kernels abort the process (uncatchably) at SPIRV codegen time."""
     monkeypatch.setattr(backend.platform, "system", lambda: "Darwin")
 
-    names = _names(backend._build_backend_chain("GPU", precision="f64"))
+    names = _names(backend._build_backend_chain("AUTO", precision="f64"))
 
     assert "METAL" not in names
     assert names and all(name == "CPU" for name in names)

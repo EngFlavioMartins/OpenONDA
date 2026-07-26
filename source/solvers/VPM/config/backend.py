@@ -127,7 +127,7 @@ _INTEGRATED_GPU_POOL_BYTES: int = 768 * (1 << 20)  # 768 MiB
 
 def _safe_device_memory_for_init(
     desired_fraction: float,
-    backend: str = "GPU_VULKAN",
+    backend: str = "VULKAN",
 ) -> dict[str, float]:
     """Return ``ti.init()`` memory kwargs appropriate for the current GPU.
 
@@ -148,7 +148,7 @@ def _safe_device_memory_for_init(
     ``{"device_memory_GB": ...}``.
     """
     # -- Metal (macOS) path --------------------------------------------------
-    if platform.system() == "Darwin" or backend in {"GPU_METAL", "METAL"}:
+    if platform.system() == "Darwin" or backend == "METAL":
         if _is_apple_silicon():
             # Apple Silicon: GPU shares system RAM (unified memory).
             # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
@@ -278,11 +278,11 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
                              hardware, so any GPU request maps to Metal.)
     * **CPU** (explicit)   → CPU only.
     * **Linux / Windows**  → requested GPU API, then CPU:
-        - ``GPU``                → platform-best GPU (CUDA if an NVIDIA device is
+        - ``AUTO``               → platform-best GPU (CUDA if an NVIDIA device is
                                    present, else Vulkan) → the other GPU → CPU.
-        - ``GPU_VULKAN``/``VULKAN`` → Vulkan → CPU.
+        - ``VULKAN``             → Vulkan → CPU.
         - ``CUDA``               → CUDA → CPU.
-        - ``GPU_METAL``/``METAL``  (non-mac) → no Metal here, treat as ``GPU``.
+        - ``METAL``              → Metal → CPU.
 
     Precision rule: Metal has **no fp64 support**.  ``ti.init(arch=ti.metal,
     default_fp=ti.f64)`` succeeds, but the first f64 kernel then fails SPIRV
@@ -314,13 +314,14 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
     vulkan = (ti.vulkan, "VULKAN")
     cuda = (ti.cuda, "CUDA")
 
-    if preferred_backend in {"GPU_VULKAN", "VULKAN"}:
+    if preferred_backend == "VULKAN":
         gpu_order = [vulkan]
     elif preferred_backend == "CUDA":
         gpu_order = [cuda]
+    elif preferred_backend == "METAL":
+        gpu_order = [(ti.metal, "METAL")]
     else:
-        # "GPU", "GPU_METAL"/"METAL" on non-mac, or anything unrecognised:
-        # use the platform-best GPU first, then the other API.
+        # AUTO uses the platform-best GPU first, then the other portable API.
         best = _resolve_gpu_backend()
         gpu_order = [best, cuda if best[1] != "CUDA" else vulkan]
 
@@ -342,11 +343,11 @@ def reset_taichi_backend() -> None:
 
     Typical usage in a script that runs several cases back-to-back::
 
-        from source.solvers.VPM import Solver, SolverConfig
+        from source.solvers.VPM import Solver, VPMSetup
 
         for case in cases:
             Solver.reset_gpu()          # free all GPU memory from previous run
-            solver = Solver(config=case)
+            solver = Solver(setup=case)
             for _ in range(num_steps):
                 solver.update_state()
 
@@ -376,7 +377,7 @@ def _probe_taichi_backend() -> None:
 
 
 def initialize_taichi_backend(
-    preferred_backend: str = "GPU_VULKAN",
+    preferred_backend: str = "AUTO",
     debug_mode: bool = False,
     precision: str = "f32",
     device_memory_fraction: float = 0.5,
@@ -387,20 +388,18 @@ def initialize_taichi_backend(
     The backend is chosen automatically based on the current platform when
     a generic GPU backend is requested:
 
-    * **macOS** — ``GPU_METAL`` (Apple's Metal API) is used.  Any request
-      for ``GPU_VULKAN``, ``GPU``, or ``CUDA`` is transparently redirected
-      to Metal because neither CUDA nor Vulkan are natively available on
-      macOS.  Fallback order: Metal → CPU.  Exception: with
+    * **macOS** — ``AUTO`` selects Metal. Fallback order: Metal → CPU.
+      Exception: with
       ``precision='f64'`` Metal is skipped entirely (no fp64 support;
       f64 kernels abort the process at SPIRV codegen) and the chain is
       CPU-only.
-    * **Linux / Windows** — ``GPU_VULKAN`` (default), ``GPU`` / ``CUDA``
-      for NVIDIA cards, or ``CPU``.  Fallback order: requested → CPU.
+    * **Linux / Windows** — ``AUTO`` selects CUDA when available and Vulkan
+      otherwise. Explicit ``CUDA``, ``VULKAN``, ``METAL``, and ``CPU`` requests
+      try only that accelerator before a CPU fallback.
 
     Args:
-          preferred_backend: Backend key — ``'GPU_METAL'``, ``'GPU_VULKAN'``,
-              ``'GPU'`` / ``'CUDA'``, or ``'CPU'``.  On macOS any GPU key
-              is automatically mapped to Metal.
+          preferred_backend: ``'AUTO'``, ``'METAL'``, ``'VULKAN'``,
+              ``'CUDA'``, or ``'CPU'``.
           debug_mode: Enable Taichi debug features (default ``False``).
           precision: Floating-point precision — ``'f32'`` (default) or
               ``'f64'`` (CPU only; Vulkan/Metal have limited f64 support).
@@ -423,11 +422,11 @@ def initialize_taichi_backend(
     # -- Environment-variable override (highest priority) ----------------
     # Users (and install.sh) can set OPENONDA_PROCESSING_UNIT to control
     # the backend without modifying any Python config:
-    #   export OPENONDA_PROCESSING_UNIT=GPU    # best GPU for this platform
+    #   export OPENONDA_PROCESSING_UNIT=AUTO   # best GPU for this platform
     #   export OPENONDA_PROCESSING_UNIT=CPU    # force CPU
-    # Any explicit value in SolverConfig is used as the fallback when the
+    # Any explicit value in VPMSetup is used as the fallback when the
     # env var is not set.
-    _VALID_ENV_KEYS = {"GPU", "CPU", "GPU_METAL", "METAL", "GPU_VULKAN", "VULKAN", "CUDA"}
+    _VALID_ENV_KEYS = {"AUTO", "CPU", "METAL", "VULKAN", "CUDA"}
     env_unit = os.environ.get("OPENONDA_PROCESSING_UNIT", "").strip().upper()
     if env_unit in _VALID_ENV_KEYS:
         if env_unit != preferred_backend:

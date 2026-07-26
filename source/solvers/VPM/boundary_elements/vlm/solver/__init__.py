@@ -8,6 +8,7 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+from ..config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .diagnostics import VLMDiagnostics
 from .forces import VLMForceEvaluator
 from .lattice import VLMLattice
@@ -20,4 +21,8 @@ __all__ = [
     "VLMLattice",
     "VLMLoadingDistribution",
     "VLMSolver",
+    "VLMSetup",
+    "VLMSurfaceSetup",
+    "VLMMeshSetup",
+    "ForceConfig",
 ]

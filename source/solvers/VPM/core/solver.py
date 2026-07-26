@@ -13,7 +13,6 @@ License: GPL-3.0-or-later
 # =========================================================
 
 # Standard library imports
-from dataclasses import replace
 import os
 from pathlib import Path
 
@@ -31,7 +30,7 @@ from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.backend import initialize_taichi_backend, reset_taichi_backend
 from ..config.constants import MAX_PARTICLES, MAX_SOURCES
-from ..config.types import SetFlowModel, SolverConfig, StabilizationConfig
+from ..config.types import SetFlowModel, StabilizationConfig, VPMSetup
 from ..io.backup import BackupSystem
 from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
@@ -124,11 +123,10 @@ class Solver:
 
     # Taichi initialization is handled by initialize_taichi_backend() which
     # safely handles re-initialization attempts (catches exceptions if already initialized).
-    def __init__(self, config: SolverConfig | None = None, **kwargs) -> None:
-        """Initialize the VPM solver. See SolverConfig for all parameters."""
-        debug_mode: bool = bool(kwargs.pop("debug_mode", False))
-        final_config = self._init_config(config, kwargs)
-        self._init_io_and_backend(final_config, debug_mode)
+    def __init__(self, setup: VPMSetup | None = None) -> None:
+        """Initialize the VPM solver. See VPMSetup for all parameters."""
+        final_config = self._init_config(setup)
+        self._init_io_and_backend(final_config, final_config.debug_mode)
         self._init_particles_and_physics(final_config)
         self._init_turbulence_and_adaptation(final_config)
         self._init_diagnostics_and_solvers(final_config)
@@ -146,11 +144,11 @@ class Solver:
 
         Example::
 
-            from source.solvers.VPM import Solver, SolverConfig
+            from source.solvers.VPM import Solver, VPMSetup
 
             for case in cases:
                 Solver.reset_gpu()           # free all GPU memory
-                solver = Solver(config=case)
+                solver = Solver(setup=case)
                 for _ in range(num_steps):
                     solver.update_state()
 
@@ -160,16 +158,18 @@ class Solver:
         """
         reset_taichi_backend()
 
-    def _init_config(self, config: SolverConfig | None, kwargs: dict) -> SolverConfig:
-        """Merge config + kwargs, validate, set scalar attributes, prepare backup dir."""
-        if config is None:
-            config = SolverConfig.dns_simulation()
-        final_config = replace(config, **kwargs) if kwargs else config
+    def _init_config(self, setup: VPMSetup | None) -> VPMSetup:
+        """Validate one complete setup and initialize scalar solver state."""
+        final_config = setup if setup is not None else VPMSetup.dns_simulation()
         final_config._validate_config()
         self.config = final_config
         self.time_step_size = final_config.time_step_size
         self.flow_time = final_config.flow_time
         self.time_step = final_config.time_step
+        self.time_integration = final_config.time_integration.upper()
+        self.coupled_max_strain_increment = final_config.coupled_max_strain_increment
+        self.coupled_max_advection_fraction = final_config.coupled_max_advection_fraction
+        self.coupled_max_substeps = final_config.coupled_max_substeps
 
         # The DVH heat-kernel width is fixed at β·R_d², so each firing advances
         # viscous time by EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
@@ -279,7 +279,7 @@ class Solver:
         self._viscous_config = final_config.viscous
         self.stabilization_config: StabilizationConfig = final_config.stabilization
         self.particles_kernel = final_config.particles_kernel.upper()
-        self.backup_frequency = final_config._backup_frequency_internal
+        self.backup_frequency = final_config.backup_frequency
         self.logging_frequency = final_config.logging_frequency
         self.timing_frequency = getattr(final_config, "timing_frequency", 0)
         self.backup_file_name = final_config.backup_file_name
@@ -297,7 +297,7 @@ class Solver:
         Path(self.backup_directory).mkdir(parents=True, exist_ok=True)
         return final_config
 
-    def _init_io_and_backend(self, final_config: SolverConfig, debug_mode: bool) -> None:
+    def _init_io_and_backend(self, final_config: VPMSetup, debug_mode: bool) -> None:
         """Set up output redirection, IO, precision, splitter/remesher, Taichi backend."""
         Logging.setup_output_redirection(self)
         self.io = SolverIO(self)
@@ -316,22 +316,7 @@ class Solver:
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
-        # Adaptation helpers may allocate Taichi fields in their constructors,
-        # so they must be created only after the backend is initialized.
-        stab = self.stabilization_config
-        max_p_init = getattr(final_config, "max_particles", MAX_PARTICLES)
-        self._splitter = None
-        if stab.max_core_radius is not None or stab.max_particle_strength is not None:
-            from ..stabilization.splitting import ParticleSplitter
-
-            self._splitter = ParticleSplitter(precision=self.precision, max_particles=max_p_init)
-        self._remesher = None
-        if stab.remeshing_frequency is not None:
-            from ..stabilization.conservative_remesh import ConservativeRemesher
-
-            self._remesher = ConservativeRemesher(precision=self.precision)
-
-    def _init_particles_and_physics(self, final_config: SolverConfig) -> None:
+    def _init_particles_and_physics(self, final_config: VPMSetup) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
         max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
         self.particles = Particles(max_particles=max_p, float_dtype=self.precision)
@@ -385,7 +370,7 @@ class Solver:
             if vpm_bounds is None:
                 raise ValueError(
                     "Vulkan DVH/GBD requires vpm_domain_bounds so the diffusion "
-                    "grid can be pre-allocated once. Use processing_unit='GPU' "
+                    "grid can be pre-allocated once. Use processing_unit='AUTO' "
                     "to prefer CUDA when available, use CUDA/CPU explicitly, or "
                     "provide fixed VPM domain bounds."
                 )
@@ -403,8 +388,8 @@ class Solver:
         if hasattr(self.config, "background_velocity"):
             self.particles.set_background_velocity(np.array(self.config.background_velocity))
 
-    def _init_turbulence_and_adaptation(self, final_config: SolverConfig) -> None:
-        """Initialize LES turbulence model, stretching settings, regularizers, and diagnostics."""
+    def _init_turbulence_and_adaptation(self, final_config: VPMSetup) -> None:
+        """Initialize LES turbulence, stretching settings, and diagnostics."""
         max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
         self.LES = None
         if self.flow_model == "LES":
@@ -425,75 +410,7 @@ class Solver:
         )
         self._flow_integrals: dict = {}
 
-        # Strength relaxation — Winckelmans/Pedrizzetti direction projection.
-        self._strength_relaxation = None
-        self._parallel_strain_relaxation = None
-        self._stretching_limiter = None
-        stabilization = final_config.stabilization
-        if stabilization.stretching_limiter_enabled:
-            from ..stabilization.stretching_limiter import (
-                ConservativeStretchingLimiter,
-            )
-
-            self._stretching_limiter = ConservativeStretchingLimiter(
-                max_parallel_increment=(stabilization.stretching_limiter_parallel_increment),
-                max_rotation_increment=(stabilization.stretching_limiter_rotation_increment),
-                conserve=stabilization.stretching_limiter_conserve,
-                constraint=stabilization.stretching_limiter_constraint,
-                project_step_invariants=(stabilization.stretching_limiter_project_step_invariants),
-                project_step_angular_impulse=(
-                    stabilization.stretching_limiter_project_step_angular_impulse
-                ),
-                max_particles=max_p,
-                precision=self.precision,
-            )
-            self.physics.stretching_rate_limiter = self._stretching_limiter
-        if stabilization.parallel_strain_enabled:
-            from ..stabilization.parallel_strain import ParallelStrainRelaxation
-
-            self._parallel_strain_relaxation = ParallelStrainRelaxation(
-                f=stabilization.parallel_strain_f,
-                g=stabilization.parallel_strain_g,
-                clamp=stabilization.parallel_strain_clamp,
-                max_particles=max_p,
-                precision=self.precision,
-            )
-        if stabilization.relaxation_enabled:
-            from ..stabilization.strength_relaxation import StrengthRelaxation
-
-            self._strength_relaxation = StrengthRelaxation(
-                C=stabilization.relaxation_rate,
-                particles_kernel=self.particles_kernel,
-                max_particles=max_p,
-                precision=self.precision,
-                verbose=stabilization.relaxation_verbose,
-                seff_min=stabilization.relaxation_seff_min,
-                mode=stabilization.relaxation_mode,
-                deconv=stabilization.relaxation_deconv,
-                gate=stabilization.relaxation_gate,
-                rlx=stabilization.relaxation_factor,
-                conserve=stabilization.relaxation_conserve,
-                constraint=stabilization.relaxation_constraint,
-            )
-        # Energy-budget governor: adapts the constant-gate relaxation factor so
-        # measured dE/dt tracks the viscous budget -nu_eff*Enstrophy.
-        self._energy_budget_governor = None
-        if stabilization.energy_budget_enabled:
-            from ..stabilization.energy_budget import EnergyBudgetGovernor
-
-            self._energy_budget_governor = EnergyBudgetGovernor(
-                self._strength_relaxation,
-                gain=stabilization.energy_budget_gain,
-                tolerance=stabilization.energy_budget_tolerance,
-                r_max=stabilization.energy_budget_r_max,
-                r_seed=stabilization.energy_budget_r_seed,
-                frequency=stabilization.energy_budget_frequency,
-                smoothing=stabilization.energy_budget_smoothing,
-                max_log_change=stabilization.energy_budget_max_log_change,
-                r_inject=stabilization.energy_budget_r_inject,
-            )
-
-    def _init_diagnostics_and_solvers(self, final_config: SolverConfig) -> None:
+    def _init_diagnostics_and_solvers(self, final_config: VPMSetup) -> None:
         """Build diagnostics history dict and initialize optional solvers."""
         self._diagnostics_history: dict = {
             "time": [],
@@ -526,7 +443,6 @@ class Solver:
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
             Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
-            self.vlm_solver.force = self.config.force
             self.vlm_solver.check_coupling_stability(
                 self.time_step_size, getattr(self.config, "background_velocity", None)
             )
@@ -540,7 +456,12 @@ class Solver:
             except Exception as e:
                 Logging.warning(f"Failed to initialize panel solver: {e}")
 
-        self.vlm_solver = getattr(final_config, "vlm_solver", None)
+        if final_config.vlm is None:
+            self.vlm_solver = None
+        else:
+            from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
+
+            self.vlm_solver = VLMSolver(final_config.vlm)
         if self.vlm_solver is not None:
             self._vpm_velocity_at_vlm = None
             self._vlm_velocity_at_vpm = None
@@ -554,93 +475,25 @@ class Solver:
         self.io.export_diagnostics_csv(self._diagnostics_history, filename)
 
     @classmethod
-    def from_config_file(cls, filename: str, **kwargs) -> "Solver":
+    def from_config_file(cls, filename: str) -> "Solver":
         """
         Create solver instance from a JSON configuration file.
 
         Args:
               filename: Path to JSON configuration file containing simulation parameters
-              **kwargs: Parameter overrides for the loaded configuration.
-                       Any valid solver parameter can be overridden.
-
         Returns:
               Solver: Fully initialized VPM solver instance ready for simulation
 
-        Example:
-              >>> # Load base configuration and override time step
-              >>> solver = VPMSolver.from_config_file(
-              ...     'turbulence_config.json',
-              ...     time_step_size=0.001,
-              ...     final_time=10.0
-              ... )
-              >>>
-              >>> # Load configuration with custom flow model
-              >>> solver = VPMSolver.from_config_file(
-              ...     'base_config.json',
-              ...     flow_model='DNS',
-              ...     viscosity=1e-6
-              ... )
-
         Notes:
               Configuration file should contain valid JSON with solver parameters.
-              See SolverConfig documentation for complete parameter list.
+              See VPMSetup documentation for complete parameter list.
         """
-        config = SolverConfig.load_from_file(filename)
-        return cls(config=config, **kwargs)
+        config = VPMSetup.load_from_file(filename)
+        return cls(setup=config)
 
     def save_config(self, filename: str) -> None:
         """Save the current solver configuration to a JSON file."""
         self.io.save_config(filename)
-
-    def update_config(self, **kwargs) -> None:
-        """
-        Update solver configuration parameters dynamically.
-
-        Args:
-              **kwargs: Configuration parameters to update.
-                       Parameter names should match SolverConfig attributes.
-
-        Example:
-              >>> # Update time stepping parameters
-              >>> solver.update_config(
-              ...     time_step_size=0.0005,
-              ...     final_time=20.0,
-              ...     backup_frequency=100
-              ... )
-              >>>
-              >>> # Update numerical settings
-              >>> solver.update_config(
-              ...     kernel_type='gaussian',
-              ...     cutoff_radius=3.0
-              ... )
-
-        Warning:
-              Changing parameters during simulation may affect conservation
-              properties and numerical stability. Best used between simulation
-              runs or during initialization phase.
-        """
-        # Update configuration
-        for key, value in kwargs.items():
-            if hasattr(self.config, key):
-                setattr(self.config, key, value)
-                # Also update the solver attribute if it exists
-                if hasattr(self, key):
-                    setattr(self, key, value)
-            else:
-                raise ValueError(f"Unknown configuration parameter: {key}")
-
-        # Re-validate configuration
-        self.config._validate_config()
-
-        # Handle turbulence configuration changes
-        if "turbulence" in kwargs and self.LES is not None:
-            self.LES = ParticlesLES.rebuild(
-                kwargs["turbulence"],
-                getattr(self.config, "max_particles", MAX_PARTICLES),
-                self.particles_kernel,
-            )
-
-        Logging.message(f"Configuration updated: {list(kwargs.keys())}")
 
     # MAGIC METHODS AND BASIC OPERATIONS
 
@@ -716,12 +569,6 @@ class Solver:
                 with self.profiler.section("Panel coupling"):
                     self._advance_panel()
 
-            # The adaptive free-vortex projection targets invariants over the
-            # complete advection/diffusion/stretching update, not merely over
-            # the stretching substep.
-            if self._stretching_limiter is not None:
-                self._stretching_limiter.begin_solver_step(self.particles)
-
             # 1. VELOCITY & GRADIENTS (At t_n)
             _adv = (self.config.advection.scheme if self.config.advection else "RK3").upper()
             # Fuse u + ∇u into one tree build
@@ -746,35 +593,29 @@ class Solver:
             with self.profiler.section("LES update"):
                 self._update_LES_state()
 
-            # 3. CONVECTION (Advection x_n -> x_n+1)
-            with self.profiler.section("Advection"):
-                self._update_positions(precomputed_k1=_fuse_vel_grad)
+            coupled_update = self.time_integration == "COUPLED" and self.flow_model != "POTENTIAL"
 
-            # 4. DIFFUSION & STRETCHING (Update alpha)
+            # 3-4. CONVECTION, DIFFUSION & STRETCHING
+            #
+            # The conservative path advances (x, Gamma) at common RK stages.
+            # CS is Strang split around that coupled inviscid update.  The
+            # legacy path remains available for backwards compatibility.
+            if not coupled_update:
+                with self.profiler.section("Advection"):
+                    self._update_positions(precomputed_k1=_fuse_vel_grad)
+
             if self.flow_model != "POTENTIAL":
                 self._announce_strength_update()
-                with self.profiler.section("Viscous diffusion"):
-                    self._apply_viscous_diffusion(self.time_step_size)
-                with self.profiler.section("Stretching"):
-                    self._apply_stretching_with_relaxation(self.time_step_size)
-
-            # 4.5 ENERGY-BUDGET GOVERNOR (windowed dE/dt vs -nu*Enstrophy control)
-            gov = self._energy_budget_governor
-            if gov is not None and self.time_step % gov.frequency == 0:
-                with self.profiler.section("Energy budget"):
-                    integrals = self.field_diagnostics.compute_flow_integrals(
-                        self.particles, self.flow_time, record_history=False
-                    )
-                    r_now = gov.update(
-                        integrals["kinetic_energy"],
-                        integrals["vorticity_dissipation_rate"],
-                        self.flow_time,
-                    )
-                    if gov.last_residual is not None:
-                        Logging.message(
-                            f"\t[EnergyBudget] residual={gov.last_residual:+.3f} "
-                            f"→ relaxation factor r={r_now:.4f}"
+                if coupled_update:
+                    with self.profiler.section("Coupled advection + stretching"):
+                        self._apply_coupled_update_with_subcycling(
+                            self.time_step_size, precomputed_velocity_k1=_fuse_vel_grad
                         )
+                else:
+                    with self.profiler.section("Viscous diffusion"):
+                        self._apply_viscous_diffusion(self.time_step_size)
+                    with self.profiler.section("Stretching"):
+                        self._apply_stretching(self.time_step_size)
 
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
@@ -785,9 +626,9 @@ class Solver:
                 with self.profiler.section("VLM diagnostics"):
                     self._record_vlm_diagnostics()
 
-            # 6. ADAPTATION (Splitting / Remeshing / Wake Cutoff)
-            with self.profiler.section("Adaptation"):
-                self._update_adaptation()
+            # 6. PARTICLE RETENTION (optional domain cutoff)
+            with self.profiler.section("Particle retention"):
+                self._apply_particle_retention()
 
             # 7. DIAGNOSTICS & IO
             with self.profiler.section("Backup / IO"):
@@ -896,6 +737,10 @@ class Solver:
     def _execute_samplers(self) -> None:
         """Execute all configured field samplers (delegates to SamplerExecutor)."""
         SamplerExecutor.execute(self)
+
+    def execute_final_samplers(self) -> None:
+        """Execute the final-only samplers declared by the immutable setup."""
+        SamplerExecutor.execute(self, self.config.final_samplers)
 
     def _prepare_sampler_context(self, sampler_entry, samples_dir):
         """Delegate to SamplerExecutor."""
@@ -1315,13 +1160,15 @@ class Solver:
 
         Example::
 
-            >>> config = SolverConfig(force=ForceConfig.kutta_joukowski())
-            >>> solver = Solver(config=config)
+            >>> config = VPMSetup(vlm=vlm_setup)
+            >>> solver = Solver(setup=config)
             >>> result = solver.compute_forces(density=1.225)
             >>> print(f"Force: {result['force']}")
             >>> print(f"Method: {result['method']}")
         """
-        method = self.config.force.method
+        if self.vlm_solver is None:
+            raise RuntimeError("Force evaluation requires a VLM setup")
+        method = self.vlm_solver.force.method
 
         if method == "KUTTA_JOUKOWSKI":
             return self._compute_forces_kutta_joukowski(density, V_ref_mag)
@@ -2117,7 +1964,6 @@ class Solver:
                 )
 
         # Update particle field directly (this is now the source of truth)
-        self.config.background_velocity = [float(v) for v in velocity_arr]
         self.particles.set_background_velocity(velocity_arr)
 
     def set_velocity_override(self, fn) -> None:
@@ -2242,7 +2088,7 @@ class Solver:
 
         Order of operations:
           1. Viscous diffusion
-          2. Vortex stretching + strength-relaxation projection
+          2. Vortex stretching
         """
         if self.flow_model == "POTENTIAL":
             return
@@ -2252,7 +2098,7 @@ class Solver:
 
         dt = self.time_step_size if dt is None else dt
         self._apply_viscous_diffusion(dt)
-        self._apply_stretching_with_relaxation(dt)
+        self._apply_stretching(dt)
 
     def _announce_strength_update(self) -> None:
         """Log the stretching formulation used for this strength update."""
@@ -2261,32 +2107,27 @@ class Solver:
             "DIRECT": "(ω·∇)u",
             "TRANSPOSED": "(ω·∇')u",
             "MIXED": "½((ω·∇)u + (∇u)ᵀ·ω)",
+            "CONSERVATIVE": "pairwise conservative (ω·∇')u",
         }.get(effective_mode, f"({effective_mode})")
         Logging.message(f"Updating strengths via {mode_eq}")
 
     def _effective_stretching_mode(self) -> str:
-        """Mode actually used by the stretching step.
-
-        Stabilizers must not change the user-selected stretching formulation.
-        """
+        """Return the user-selected stretching formulation."""
         return self.stretching_mode
 
-    def _apply_stretching_with_relaxation(self, dt: float) -> None:
-        """Vortex stretching followed by the strength-relaxation projection, once per dt."""
+    def _apply_stretching(self, dt: float) -> None:
+        """Advance the configured vortex-stretching equation once per ``dt``."""
         if self.stretching_enabled:
-            if self._stretching_limiter is not None:
-                self._stretching_limiter.begin_stretching(self.particles)
-            if self._parallel_strain_relaxation is not None:
-                self._parallel_strain_relaxation.snapshot(self.particles)
-
             # Advisory only: warn once if dt exceeds the strain-set stability limit
             # dt_rec = C/σ_max (C = 0.2 stretching-CFL target), the usual source of an
             # explicit-stretching blow-up.  An explicit solver integrates exactly the
             # adopted dt — this never sub-divides or overrides it.
             if not getattr(self, "_stretch_dt_warned", False):
-                from ..stabilization.strength_relaxation import max_seff_from_particles
-
-                sigma_max = max_seff_from_particles(self.particles)
+                gradient = self.particles_velocity_gradients
+                strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
+                sigma_max = (
+                    float(np.max(np.abs(np.linalg.eigvalsh(strain)))) if len(strain) else 0.0
+                )
                 if sigma_max > 0.0:
                     dt_rec = 0.2 / sigma_max
                     if dt > dt_rec:
@@ -2301,33 +2142,92 @@ class Solver:
                 treecode_theta=self.stretching_treecode_theta,
             )
             ti.sync()
-            if self._parallel_strain_relaxation is not None:
-                self._parallel_strain_relaxation.apply(self.particles)
-                ti.sync()
-        relaxation_due = (
-            self._energy_budget_governor is None
-            or self.time_step % self._energy_budget_governor.frequency == 0
+
+    def _apply_coupled_advection_stretching(
+        self, dt: float, *, precomputed_velocity_k1: bool = False
+    ) -> None:
+        """Advance positions and strengths at the same Runge--Kutta stages."""
+        self.physics.update_positions_and_strengths(
+            self.particles,
+            dt=dt,
+            scheme=self.stretching_scheme,
+            mode=self.stretching_mode,
+            use_treecode=self.stretching_use_treecode,
+            treecode_theta=self.stretching_treecode_theta,
+            precomputed_velocity_k1=precomputed_velocity_k1,
         )
-        if self._strength_relaxation is not None and relaxation_due:
-            self._strength_relaxation.apply(self.particles, dt)
-            ti.sync()
-        if self._stretching_limiter is not None:
-            limiter_diag = self._stretching_limiter.finish_solver_step(self.particles)
-            if (
-                limiter_diag["n_limited"] > 0
-                and self.logging_frequency > 0
-                and self.time_step % self.logging_frequency == 0
-            ):
-                Logging.message(
-                    "\t[StretchLimiter] "
-                    f"limited={limiter_diag['n_limited']} "
-                    f"stage_hits={limiter_diag['limited_stage_count']} "
-                    f"max_parallel_dt={limiter_diag['max_parallel_increment']:.3e} "
-                    f"max_rotation_dt={limiter_diag['max_rotation_increment']:.3e} "
-                    f"rate_conserve_rel={limiter_diag['rate_conserve_rel']:.3e} "
-                    f"step_project_rel={limiter_diag['step_project_rel']:.3e}"
+        ti.sync()
+
+    def _coupled_stable_dt(self, remaining_dt: float) -> float:
+        """Return a strain- and displacement-limited coupled substep."""
+        grad = self.particles_velocity_gradients
+        stable_dt = float(remaining_dt)
+        if len(grad):
+            strain = 0.5 * (grad + np.swapaxes(grad, 1, 2))
+            max_strain = float(np.max(np.abs(np.linalg.eigvalsh(strain))))
+            if np.isfinite(max_strain) and max_strain > 0.0:
+                stable_dt = min(
+                    stable_dt,
+                    self.coupled_max_strain_increment / max_strain,
                 )
-            ti.sync()
+
+        spacing = getattr(self._viscous_config, "characteristic_distance", None)
+        if spacing is not None and spacing > 0.0:
+            velocity = self.particles_velocities
+            max_speed = float(np.linalg.norm(velocity, axis=1).max()) if len(velocity) else 0.0
+            if np.isfinite(max_speed) and max_speed > 0.0:
+                stable_dt = min(
+                    stable_dt,
+                    self.coupled_max_advection_fraction * float(spacing) / max_speed,
+                )
+        return max(stable_dt, np.finfo(float).eps)
+
+    def _apply_coupled_update_with_subcycling(
+        self, dt: float, *, precomputed_velocity_k1: bool
+    ) -> None:
+        """Advance one macro step without clipping an inadmissible RK increment."""
+        remaining = float(dt)
+        substeps = 0
+        reuse_velocity = bool(precomputed_velocity_k1)
+        tolerance = 32.0 * np.finfo(float).eps * max(1.0, abs(dt))
+
+        while remaining > tolerance:
+            sub_dt = min(remaining, self._coupled_stable_dt(remaining))
+            substeps += 1
+            if substeps > self.coupled_max_substeps:
+                raise RuntimeError(
+                    "Coupled VPM step exceeded coupled_max_substeps. "
+                    "The particle field is no longer temporally admissible at the "
+                    "requested macro dt; reduce dt or refine the particle spacing."
+                )
+
+            if self.viscous_scheme == "CS":
+                # Strang split the exact core-radius evolution around the
+                # coupled inviscid method-of-lines update.
+                self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)
+                reuse_velocity = False
+
+            self._apply_coupled_advection_stretching(sub_dt, precomputed_velocity_k1=reuse_velocity)
+
+            if self.viscous_scheme == "CS":
+                self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)
+
+            remaining -= sub_dt
+            if remaining <= tolerance:
+                break
+
+            # Re-evaluate the admissibility bounds on the evolved cloud.  For
+            # LES this also refreshes the eddy viscosity before the next CS
+            # half-step.
+            self._update_velocity_and_gradients()
+            self._update_LES_state()
+            reuse_velocity = self.viscous_scheme == "NONE"
+
+        if substeps > 1:
+            Logging.message(
+                f"\t[CoupledSubcycling] {substeps} physics-preserving substeps "
+                f"for macro dt={dt:.3e}"
+            )
 
     def _apply_viscous_diffusion(self, dt: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
@@ -2447,114 +2347,15 @@ class Solver:
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
             )
 
-    def _update_adaptation(self) -> None:
-        """
-        Perform particle adaptation based on configuration.
-
-        Supports three independent adaptation mechanisms:
-        1. max_core_radius - Particle splitting (Winckelmans 1993) when radius exceeds threshold
-        2. remove_particles_by_bounds - Remove particles outside spatial bounds
-        3. conservative_remeshing - Periodic remeshing with delta correction
-        4. weak_removal - Remove particles with negligible strength
-
-        Each feature is only executed if configured (not None).
-        """
+    def _apply_particle_retention(self) -> None:
+        """Remove particles that have left the configured VPM domain."""
         if self.flow_model == "POTENTIAL":
             return
 
-        adaptation_performed = False
-        budget_reset_needed = False
         cfg = self.stabilization_config
-
-        # 1. Particle Splitting (1-to-2, transverse to the vorticity direction)
-        _split_diag_data = None
-        if self._splitter is not None:
-            max_radius = cfg.max_core_radius if cfg.max_core_radius is not None else float("inf")
-            max_strength = cfg.max_particle_strength
-
-            if self._splitter.needs_splitting(
-                self.particles,
-                max_radius,
-                max_strength,
-            ):
-                if cfg.split_diagnostics_enabled:
-                    # Expensive debug path: downloads full particle fields.
-                    self.physics.compute_vorticities(self.particles)
-                    _pos_pre = self.particles.position_cpu().copy()
-                    _str_pre = self.particles.circulation_cpu().copy()
-                    _rad_pre = self.particles.radius_cpu().copy()
-                    _vort_pre = self.particles.vorticity_cpu().copy()
-                    _mask_split = _rad_pre > max_radius
-
-                stats = self._splitter.split(
-                    self.particles,
-                    max_radius,
-                    max_strength,
-                )
-                Logging.message(
-                    f"(Stabilization) Splitting: {stats.particles_split} particles -> {stats.particles_created} children "
-                    f"({stats.particles_total_after} total)"
-                )
-                adaptation_performed = True
-                if cfg.split_diagnostics_enabled and stats.particles_split > 0:
-                    _split_diag_data = (_pos_pre, _str_pre, _rad_pre, _vort_pre, _mask_split, stats)
-
-        # 2. Remove particles outside bounds
         if cfg.remove_particles_by_bounds is not None:
             self.remove_particles_by_bounds(cfg.remove_particles_by_bounds, invert_selection=True)
-            adaptation_performed = True
-            budget_reset_needed = True
-
-        # 3. Conservative Remeshing (periodic remesh + delta correction)
-        if cfg.remeshing_frequency is not None and self.time_step % cfg.remeshing_frequency == 0:
-            stats = self._remesher.remesh(
-                solver=self,
-                spacing=cfg.remeshing_spacing,
-                bounds=cfg.remeshing_bounds,
-                rel_threshold=cfg.remeshing_relative_threshold,
-                abs_threshold=cfg.remeshing_absolute_threshold,
-                conserve_impulse=cfg.remeshing_conserve_impulse,
-                conserve_energy=cfg.remeshing_conserve_energy,
-                delta_correction=cfg.remeshing_delta_correction,
-                impulse_constraint=cfg.remeshing_impulse_constraint,
-                particle_radius=cfg.remeshing_radius,
-                preserve_radius_profile=cfg.remeshing_preserve_radius_profile,
-                max_particles=cfg.remeshing_max_particles,
-                max_particle_growth=cfg.remeshing_max_particle_growth,
-                project_solenoidal=cfg.remeshing_project_solenoidal,
-                projection_padding=cfg.remeshing_projection_padding,
-            )
-            # Recompute flow integrals from the post-remesh particle state so the
-            # logged CSV row is consistent with the particle distribution used next step.
-            self._update_all_flow_integrals()
-            adaptation_performed = True
-            budget_reset_needed = True
-
-        # 4. Remove weak particles (only if not already done by grid reinit or remesh)
-        elif cfg.weak_threshold_percent is not None and cfg.max_core_radius is None:
-            self.remove_weak_particles(percent=cfg.weak_threshold_percent, per_group=cfg.per_group)
-            adaptation_performed = True
-            budget_reset_needed = True
-
-        # Update vorticity field if any adaptation was performed
-        if adaptation_performed:
-            # A topology rebuild changes the discrete energy functional even
-            # when its conserved moments are restored. Start a fresh budget
-            # measurement window so that this jump is not interpreted as
-            # physical production/dissipation by the feedback controller.
-            if budget_reset_needed and self._energy_budget_governor is not None:
-                self._energy_budget_governor.reset()
             self.physics.compute_vorticities(self.particles)
-            if _split_diag_data is not None:
-                self._diagnose_split(*_split_diag_data)
-
-    def _diagnose_split(self, pos_pre, str_pre, rad_pre, vort_pre, mask_split, stats):
-        """Delegate to diagnostics.split_diagnostics.diagnose_split."""
-        from ..diagnostics.split_diagnostics import diagnose_split
-
-        diagnose_split(
-            self.physics, self.particles, pos_pre, str_pre, rad_pre, vort_pre, mask_split, stats
-        )
 
     def _update_positions(self, dt: float | None = None, precomputed_k1: bool = False) -> None:
         """

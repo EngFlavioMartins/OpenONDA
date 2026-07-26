@@ -193,7 +193,7 @@ class PhysicsBase:
             return
         raise ValueError(
             f"Particle operation requires {N} slots, but max_particles="
-            f"{self._temp_field_size}. Increase SolverConfig.max_particles before "
+            f"{self._temp_field_size}. Increase VPMSetup.max_particles before "
             "constructing the solver."
         )
 
@@ -215,7 +215,7 @@ class PhysicsBase:
             return
         raise ValueError(
             f"Target query requires {N} points but max_targets="
-            f"{self._target_field_size}. Increase SolverConfig.max_targets "
+            f"{self._target_field_size}. Increase VPMSetup.max_targets "
             "before constructing the solver; runtime Taichi field growth is "
             "disabled because replaced fields retain device memory."
         )
@@ -334,7 +334,7 @@ class PhysicsBase:
 
         raise ValueError(
             f"Filtered evaluation requires {N} particles, but max_particles="
-            f"{self._filtered_field_size}. Increase SolverConfig.max_particles "
+            f"{self._filtered_field_size}. Increase VPMSetup.max_particles "
             "before constructing the solver."
         )
 

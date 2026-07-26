@@ -38,7 +38,7 @@ from math import erf, exp, pi, sqrt
 
 import numpy as np
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Analytical Gaussian kernel helpers ───────────────────────────────────────
@@ -72,7 +72,7 @@ _ALPHA_Z = 1.0  # z-circulation strength  [m²/s · m]
 
 def _single_particle_solver(tmp_path):
     """Return a solver loaded with one z-circulation particle at the origin."""
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=0.01,
         processing_unit="CPU",
         particles_kernel="GAUSSIAN",
@@ -83,7 +83,7 @@ def _single_particle_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),

@@ -18,6 +18,7 @@ Also covered:
 import numpy as np
 import pytest
 
+from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
 from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
@@ -91,8 +92,13 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
     """Σ sectional forces == Σ panel forces — exact reduction, no leakage."""
     n_chord, n_span = 4, 12
     aircraft = _flat_plate_aircraft(n_chord=n_chord, n_span=n_span)
-    vlm = VLMSolver(max_panels=256, linear_solver="SCIPY")
-    vlm.add_surface(aircraft, sample_surface_forces=True)
+    vlm = VLMSolver(
+        VLMSetup(
+            surfaces=(VLMSurfaceSetup(aircraft, sample_forces=True),),
+            max_panels=256,
+            linear_solver="SCIPY",
+        )
+    )
     vlm.generate_mesh()
     _solve_static(vlm, _u_alpha())
 
@@ -122,8 +128,13 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
 def test_spanwise_stations_are_sane():
     """Stations: monotonic y, y_over_b ∈ [−1, 1], positive cl at +α, loaded center."""
     aircraft = _flat_plate_aircraft(n_chord=4, n_span=12, span=4.0, chord=0.5)
-    vlm = VLMSolver(max_panels=256, linear_solver="SCIPY")
-    vlm.add_surface(aircraft, sample_surface_forces=True)
+    vlm = VLMSolver(
+        VLMSetup(
+            surfaces=(VLMSurfaceSetup(aircraft, sample_forces=True),),
+            max_panels=256,
+            linear_solver="SCIPY",
+        )
+    )
     vlm.generate_mesh()
     _solve_static(vlm, _u_alpha())
 
@@ -150,9 +161,14 @@ def test_rotated_surface_span_axis():
     exploded by ~10 orders of magnitude.
     """
     aircraft = _flat_plate_aircraft(uid="fin", n_chord=4, n_span=12, span=4.0, chord=0.5)
-    vlm = VLMSolver(max_panels=256, linear_solver="SCIPY")
     # span +y → +z, plate normal +z → −y: sideslip onto the fin lifts in −y
-    vlm.add_surface(aircraft, rotation_deg=np.array([90.0, 0.0, 0.0]))
+    vlm = VLMSolver(
+        VLMSetup(
+            surfaces=(VLMSurfaceSetup(aircraft, rotation_deg=(90.0, 0.0, 0.0)),),
+            max_panels=256,
+            linear_solver="SCIPY",
+        )
+    )
     vlm.generate_mesh()
     a = np.deg2rad(ALPHA_DEG)
     u_ref = np.array([np.cos(a), -np.sin(a), 0.0])
@@ -179,8 +195,13 @@ def test_symmetry_surface_has_both_halves():
     aircraft = _flat_plate_aircraft(
         uid="sym_plate", n_chord=3, n_span=n_span, span=2.0, chord=0.5, symmetry=2
     )
-    vlm = VLMSolver(max_panels=256, linear_solver="SCIPY")
-    vlm.add_surface(aircraft)
+    vlm = VLMSolver(
+        VLMSetup(
+            surfaces=(VLMSurfaceSetup(aircraft),),
+            max_panels=256,
+            linear_solver="SCIPY",
+        )
+    )
     vlm.generate_mesh()
     _solve_static(vlm, _u_alpha())
 
@@ -210,9 +231,16 @@ def test_sampling_flag_plumbing():
     a2 = _flat_plate_aircraft(uid="s2", n_chord=2, n_span=2)
     a3 = _flat_plate_aircraft(uid="s3", n_chord=2, n_span=2)
 
-    vlm = VLMSolver(max_panels=64, sample_surface_forces=True)
-    vlm.add_surface(a1)  # inherits global True
-    vlm.add_surface(a2, sample_surface_forces=False)  # explicit off
-    vlm.add_surface(a3, sample_surface_forces=True)  # explicit on
+    vlm = VLMSolver(
+        VLMSetup(
+            surfaces=(
+                VLMSurfaceSetup(a1),
+                VLMSurfaceSetup(a2, sample_forces=False),
+                VLMSurfaceSetup(a3, sample_forces=True),
+            ),
+            max_panels=64,
+            sample_surface_forces=True,
+        )
+    )
 
     assert vlm._surface_sampling == {"s1": True, "s2": False, "s3": True}

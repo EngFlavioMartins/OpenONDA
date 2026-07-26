@@ -45,8 +45,13 @@ _REPO_ROOT = _SCRIPT_DIR.parents[2]  # OpenONDA/
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_CASE_DIR / "assets"))
 
-from source.solvers.VPM import Solver, SolverConfig
-from source.solvers.VPM.boundary_elements.vlm import VLMSolver, ForceConfig
+from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM.boundary_elements.vlm import (
+    ForceConfig,
+    VLMMeshSetup,
+    VLMSurfaceSetup,
+    VLMSetup,
+)
 from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     StaticVLM,
@@ -170,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--processing-unit",
         default="CUDA",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     p.add_argument(
@@ -368,18 +373,17 @@ def main():
     else:
         U_ref = np.array([args.U_inf, 0.0, 0.0])
 
-    vlm = VLMSolver(
-        max_panels=max(512, args.panels_chord * args.panels_span * 4),
+    vlm_setup = VLMSetup(
+        surfaces=(VLMSurfaceSetup(surface_file, kinematics=kin),),
+        mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
         density=args.density,
         viscosity=args.viscosity,
-        linear_solver="SCIPY",
-        U_inf=U_ref,
+        freestream_velocity=tuple(U_ref),
         force=force_cfg,
         sigma_factor=args.sigma_factor,
         sample_surface_forces=True,
         logging_frequency=args.log_freq,
     )
-    vlm.add_surface(surface_file, kinematics=kin)
 
     # -- Samplers ------------------------------------------------------
     backup_dir = f"solution/{args.name}"
@@ -418,14 +422,13 @@ def main():
     cfg_kwargs = dict(
         time_step_size=dt,
         advection=AdvectionConfig(scheme="RK3"),
-        vlm_solver=vlm,
+        vlm=vlm_setup,
         background_velocity=bg_vel,
         processing_unit=args.processing_unit,
         logging_frequency=args.log_freq,
         backup_frequency=args.backup_freq,
         backup_file_name=args.name,
         backup_directory=backup_dir,
-        solution_name=backup_dir,
         max_particles=120_000,
         velocity=VelocityConfig.treecode(
             theta=0.35,
@@ -434,10 +437,10 @@ def main():
         ),
         # Field planes are certification snapshots, not transient probes.  They
         # are sampled once after the final steady step below.
-        samplers=None,
+        final_samplers=samplers,
     )
 
-    solver_config = SolverConfig.les_simulation(cs=args.cs, **cfg_kwargs)
+    solver_config = VPMSetup.les_simulation(cs=args.cs, **cfg_kwargs)
 
     # -- Remove stale CSVs before run ----------------------------------
     # The diagnostics/loading-distribution hooks APPEND to these every log step,
@@ -452,14 +455,10 @@ def main():
             _p.unlink()
 
     # -- Solver instantiation ------------------------------------------
-    solver = Solver(config=solver_config)
-
-    # Generate mesh AFTER Solver() (ti.init required first)
-    vlm.generate_mesh(
-        spanwise_spacing="geometric",
-        spanwise_spacing_ratio=4.0,
-        spanwise_spacing_region="end",
-    )
+    solver = Solver(setup=solver_config)
+    vlm = solver.vlm_solver
+    if vlm is None:
+        raise RuntimeError("Flat-plate setup requires its declared VLM solver")
 
     # -- DIAGNOSTIC: standalone uncoupled steady VLM (D1) --------------
     # One solve with the FULL semi-infinite horseshoe (coupled=False) = the exact
@@ -494,8 +493,7 @@ def main():
         solver.update_state()
 
     if samplers:
-        solver.config.samplers = samplers
-        solver._execute_samplers()
+        solver.execute_final_samplers()
 
     # -- Post-process --------------------------------------------------
     if src_csv.exists():

@@ -1,6 +1,6 @@
 """
 Configuration dataclasses for the VPM solver: advection, viscous, stretching,
-turbulence, stabilization, velocity, and the top-level SolverConfig.
+turbulence, stabilization, velocity, and the top-level VPMSetup.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -33,17 +33,11 @@ from .constants import (
     MAX_PARTICLES,
 )
 
-RVPM_DEFAULT_F = 0.0
-"""FLOWVPM default rVPM re-orientation parameter."""
-
-RVPM_DEFAULT_G = 1.0 / 5.0
-"""FLOWVPM default rVPM stretching-compensation parameter."""
-
 
 # =========================================================
 # ADVECTION CONFIGURATION
 # =========================================================
-@dataclass
+@dataclass(frozen=True)
 class AdvectionConfig:
     """
     Configuration for the advection substep: dx/dt = u.
@@ -108,7 +102,7 @@ class AdvectionConfig:
 # =========================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class ViscousConfig:
     """
     Configuration for viscous diffusion in the VPM solver.
@@ -237,7 +231,7 @@ class ViscousConfig:
     strength correction deconvolves with the wrong kernel width and the
     reconstructed velocity field is over-smoothed (measured: σ=2.5h vs the
     corrected-for 1.5h costs ~4× in-box velocity error).  The coupler syncs
-    this automatically.  Default 2.5 preserves legacy standalone behaviour."""
+    this automatically.  Default 2.5 is the standard standalone overlap."""
 
     # ---- Grid-Based Diffusion (DVH) parameters ----
     dvh_grid_spacing: float | None = None
@@ -579,7 +573,7 @@ class ViscousConfig:
             max_nodes: Hard cap on surviving regen nodes (budget-by-count) —
                 bounds the budget-mode halo growth.  None = built-in cap only.
             regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
-                particles.  Default 2.5 (legacy).  Lower toward 1.5 to avoid
+                particles.  Default 2.5. Lower toward 1.5 to avoid
                 over-smearing the reconstructed field (see the field docstring).
         """
         if not isinstance(dvh_rd_ratio, int) or dvh_rd_ratio not in (3, 4, 5):
@@ -643,7 +637,7 @@ class ViscousConfig:
             viscosity: Molecular kinematic viscosity nu [m²/s].
             max_nodes: Hard cap on surviving regen nodes (budget-by-count).
             regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
-                particles.  Default 2.5 (legacy).  Lower toward 1.5 to avoid
+                particles.  Default 2.5. Lower toward 1.5 to avoid
                 over-smearing the reconstructed field (see the field docstring).
         """
         return ViscousConfig(
@@ -659,7 +653,7 @@ class ViscousConfig:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class StretchingConfig:
     """
     Configuration for vortex stretching schemes.
@@ -670,8 +664,10 @@ class StretchingConfig:
 
     Modes:
         - DIRECT: dΓ/dt = (Γ·∇)u, the standard direct formulation
-        - TRANSPOSED: dΓ/dt = (Γ·∇')u, conservative direct formulation
+        - TRANSPOSED: dΓ/dt = (∇u)ᵀΓ, conserves vector circulation
         - MIXED: Strain-based symmetric direct formulation
+        - CONSERVATIVE: antisymmetric pair exchange that conserves vector
+          circulation and, with coupled advection, linear impulse
 
     Examples:
           # Transposed stretching (conserves circulation, recommended)
@@ -687,8 +683,8 @@ class StretchingConfig:
           stretching = StretchingConfig.disabled()
     """
 
-    mode: Literal["DIRECT", "TRANSPOSED", "MIXED"] = "TRANSPOSED"
-    """Stretching formulation mode: DIRECT, TRANSPOSED, or MIXED."""
+    mode: Literal["DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"] = "TRANSPOSED"
+    """Stretching formulation mode."""
 
     scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3"
     """Time integration scheme for the stretching substep (dΓ/dt).
@@ -725,7 +721,7 @@ class StretchingConfig:
     The physics is preserved either way (circulation matches to ~4e-5 after
     several steps).  Enable this only above the crossover, or once the treecode
     traversal itself is made cheaper (higher-order multipoles → larger θ).
-    Default False keeps the faster, exact legacy rate."""
+    Default False keeps the faster exact-direct rate."""
 
     treecode_theta: float = 0.3
     """Barnes–Hut opening angle for the treecode stretching gradient
@@ -734,9 +730,10 @@ class StretchingConfig:
     def __post_init__(self) -> None:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
-        if mode not in ("DIRECT", "TRANSPOSED", "MIXED"):
+        if mode not in ("DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"):
             raise ValueError(
-                f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}"
+                "stretching mode must be DIRECT, TRANSPOSED, MIXED, or "
+                f"CONSERVATIVE, got {self.mode!r}"
             )
         if scheme not in ("EULER", "RK2", "RK3", "RK4"):
             raise ValueError(
@@ -787,6 +784,20 @@ class StretchingConfig:
         )
 
     @staticmethod
+    def conservative(scheme: str = "RK2") -> "StretchingConfig":
+        """Pairwise conservative exchange for common-stage time integration.
+
+        This mode is evaluated by direct symmetric pairs; a one-sided
+        Barnes--Hut traversal cannot preserve the exchange identities.
+        """
+        return StretchingConfig(
+            mode="CONSERVATIVE",
+            scheme=scheme,
+            enabled=True,
+            use_treecode=False,
+        )
+
+    @staticmethod
     def mixed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
         """Mixed/strain scheme: symmetric formulation
 
@@ -808,15 +819,14 @@ class StretchingConfig:
         return StretchingConfig(enabled=False)
 
 
-# ForceConfig is imported from vlm_solver to ensure consistency and avoid duplication
-# as it is primarily a property of the VLM-VPM interaction.
-from ..boundary_elements.vlm.solver.vlm_solver import ForceConfig
+# VLM definitions are independent of the runtime solver.
+from ..boundary_elements.vlm.config import VLMSetup
 
 
 # =========================================================
 # TURBULENCE CONFIGURATION
 # =========================================================
-@dataclass
+@dataclass(frozen=True)
 class TurbulenceConfig:
     """
     Configuration for turbulence modeling in VPM.
@@ -830,16 +840,15 @@ class TurbulenceConfig:
 
     **Usage Examples:**
           # DNS (inviscid or with molecular viscosity only)
-          config = SolverConfig(turbulence=TurbulenceConfig.dns())
+          config = VPMSetup(turbulence=TurbulenceConfig.dns())
 
           # Static Smagorinsky LES
-          config = SolverConfig(turbulence=TurbulenceConfig.les_smagorinsky(cs=0.17))
+          config = VPMSetup(turbulence=TurbulenceConfig.les_smagorinsky(cs=0.17))
 
-          # Inviscid — pure stretching, stabilised with strength relaxation
-          config = SolverConfig(
+          # Inviscid — pure stretching
+          config = VPMSetup(
               turbulence=TurbulenceConfig.inviscid(),
               viscous=ViscousConfig.inviscid(),
-              stabilization=StabilizationConfig.strength_relaxation(),
           )
     """
 
@@ -914,7 +923,7 @@ class TurbulenceConfig:
             TurbulenceConfig: DNS configuration instance
 
         Example:
-            >>> config = SolverConfig(
+            >>> config = VPMSetup(
             ...     turbulence=TurbulenceConfig.dns(),
             ...     viscous=ViscousConfig.cs()  # With core spreading diffusion
             ... )
@@ -969,14 +978,8 @@ class TurbulenceConfig:
         No SGS eddy viscosity, no molecular diffusion, no turbulence model.
 
         **Use when:**
-        - Testing stretching stabilisation schemes in isolation.
-        - Running inviscid validation sweeps.
-        - Comparing damping/regularisation methods without LES or CS.
-
-        **Note:** Pass ``StabilizationConfig.strength_relaxation()`` to
-        ``SolverConfig.stabilization`` to control unresolved strength build-up
-        (Winckelmans/Pedrizzetti direction projection) without changing the
-        selected stretching scheme.
+        - Testing stretching formulations in isolation.
+        - Running inviscid validation and convergence studies.
 
         Returns:
             TurbulenceConfig: INVISCID configuration instance
@@ -989,599 +992,50 @@ class TurbulenceConfig:
 # =========================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class StabilizationConfig:
-    """
-    Unified configuration for all solution-stabilization mechanisms.
+    """Particle-retention policy for a VPM domain.
 
-    Every mechanism that modifies the particle field to maintain accuracy
-    or prevent instability lives in this single class.
-
-    Particle splitting
-    ------------------
-    Splits particles whose core radius exceeds ``max_core_radius`` into two
-    daughters offset perpendicular to the vorticity direction (transverse
-    redistribution conserves the mollified field's kinetic energy through
-    the split; an axial offset cannot).  Children inherit the parent's
-    group and zone IDs exactly, so group-based diagnostics remain correct.
-
-    Conservative remeshing
-    ----------------------
-    Periodically remeshes the particle field onto a regular grid to maintain
-    spatial overlap.  Impulse correction enforces exact conservation of linear
-    (and optionally angular) impulse across every remesh cycle.
-
-    Examples
-    --------
-    .. code-block:: python
-
-        # Default: no active stabilisation
-        stab = StabilizationConfig()
-
-        # Particle splitting
-        stab = StabilizationConfig(max_core_radius=0.12)
-
-        # Periodic remeshing
-        stab = StabilizationConfig.conservative_remeshing(frequency=20, spacing=0.03)
-
-        # Splitting + remeshing
-        stab = StabilizationConfig(max_core_radius=0.12,
-                                   remeshing_frequency=20, remeshing_spacing=0.03)
+    This class intentionally contains no strength filters, limiters,
+    projections, splitting, or remeshing controls.  Stability is obtained by
+    resolving the coupled equations and rejecting inadmissible time steps,
+    while this policy only removes particles that have left a declared
+    computational domain.
     """
 
-    # -- Particle splitting -----------------------------------------------------
-    max_core_radius: float | None = None
-    """Split particles whose core radius exceeds this value [m].  None = disabled."""
-
-    max_particle_strength: float | None = None
-    """Split particles whose circulation magnitude exceeds this value [m³/s]."""
-
-    split_diagnostics_enabled: bool = False
-    """Download pre/post split fields and run detailed split diagnostics. Disabled by default."""
-
-    # -- Wake / bounds cutoff --------------------------------------------------
-    remove_particles_by_bounds: list[float] | None = None
+    remove_particles_by_bounds: tuple[float, ...] | None = None
     """[xmin, xmax, ymin, ymax, zmin, zmax] — remove particles outside box.  None = disabled."""
 
-    # -- Weak-particle removal -------------------------------------------------
-    weak_threshold_percent: float | None = None
-    """Remove particles with |Γ| < weak_threshold_percent% of the group maximum.  None = disabled."""
-
-    per_group: bool = True
-    """Apply the weak-particle threshold independently per group (True, default) or globally."""
-
-    # -- Conservative remeshing ------------------------------------------------
-    remeshing_frequency: int | None = None
-    """Remesh every N steps.  None = disabled."""
-
-    remeshing_spacing: float | None = None
-    """Grid spacing [m] for remeshing.  None → uses mean particle spacing."""
-
-    remeshing_bounds: list[float] | None = None
-    """[xmin, xmax, ymin, ymax, zmin, zmax] for the remeshing domain.  None = auto."""
-
-    remeshing_relative_threshold: float = 0.05
-    """Relative vorticity threshold for delta injection (5% default)."""
-
-    remeshing_absolute_threshold: float = 1e-6
-    """Absolute vorticity threshold [1/s] for delta injection."""
-
-    remeshing_conserve_impulse: bool = True
-    """Apply post-remesh correction to conserve linear/angular impulse."""
-
-    remeshing_conserve_energy: bool = False
-    """Fit the rebuilt core scale to preserve energy without an enstrophy jump."""
-
-    remeshing_delta_correction: bool = False
-    """Inject delta-correction particles for sub-grid residuals.  Disabled by default."""
-
-    remeshing_impulse_constraint: str = "3d"
-    """"3d" — full 3-component correction; "z" — z-only (for quasi-2-D flows)."""
-
-    remeshing_radius: float | None = None
-    """Core radius [m] for remeshed particles.  None → spacing × RADIUS_RATIO."""
-
-    remeshing_preserve_radius_profile: bool = False
-    """Map source core radii onto the rebuilt grid before invariant correction."""
-
-    remeshing_max_particles: int | None = None
-    """Hard cap for particles retained by one remesh rebuild."""
-
-    remeshing_max_particle_growth: float | None = None
-    """Maximum rebuilt/previous particle-count ratio for one remesh event."""
-
-    remeshing_project_solenoidal: bool = False
-    """Apply a Helmholtz projection to grid vorticity during conservative remeshing."""
-
-    remeshing_projection_padding: int = 4
-    """Zero-padding cells used by the isolated-domain FFT projection."""
-
-    # -- Strength relaxation (Winckelmans/Pedrizzetti direction projection) --
-    relaxation_enabled: bool = False
-    """Enable strength-relaxation stabilization of vortex stretching."""
-
-    relaxation_mode: Literal["blend", "pedrizzetti"] = "blend"
-    """Relaxation update: residual filtering (``blend``) or direction
-    realignment at fixed |Gamma| (``pedrizzetti``)."""
-
-    relaxation_deconv: int = 1
-    """Van Cittert approximate-deconvolution iterations (0 through 3)."""
-
-    relaxation_gate: Literal["strain", "constant"] = "strain"
-    """Use a local strain-rate gate or a constant relaxation factor."""
-
-    relaxation_factor: float = 0.3
-    """Constant relaxation factor used with the constant gate."""
-
-    relaxation_conserve: bool = True
-    """Restore configured circulation/impulse invariants after relaxation."""
-
-    relaxation_constraint: Literal["both", "sum", "linear"] = "both"
-    """Invariants restored when conservation is enabled."""
-
-    relaxation_rate: float = 1.0
-    """Strain-gate rate constant."""
-
-    relaxation_seff_min: float = 1e-4
-    """Skip strain-gated corrections below this effective-strain increment."""
-
-    relaxation_verbose: bool = False
-    """Collect per-step strength-relaxation diagnostics."""
-
-    # -- Parallel-strain relaxation (rVPM correction) -----------------------
-    parallel_strain_enabled: bool = False
-    """Enable the rVPM a-posteriori correction after the stretching substep."""
-
-    parallel_strain_f: float = RVPM_DEFAULT_F
-    """rVPM parameter f in c_r=(g+f)/(1/3+f), c_sigma=(g+f)/(1+3f)."""
-
-    parallel_strain_g: float = RVPM_DEFAULT_G
-    """rVPM parameter g.  Default 1/5 matches FLOWVPM's rVPM alias."""
-
-    parallel_strain_clamp: float | None = None
-    """Optional bound on inferred S_parallel*dt before applying the correction."""
-
-    # -- Conservative adaptive stretching limiter --------------------------
-    stretching_limiter_enabled: bool = False
-    """Limit locally unresolved stretching increments at every RK stage."""
-
-    stretching_limiter_parallel_increment: float = 0.04
-    """Maximum positive ``S_parallel*dt`` resolved in one stretching stage."""
-
-    stretching_limiter_rotation_increment: float = 0.12
-    """Maximum strength-vector rotation increment resolved in one RK stage."""
-
-    stretching_limiter_conserve: bool = True
-    """Preserve the unlimited RK-stage circulation and impulse rates."""
-
-    stretching_limiter_constraint: Literal["both", "sum", "linear"] = "both"
-    """Rate moments preserved after rate limiting."""
-
-    stretching_limiter_project_step_invariants: bool = False
-    """Restore the initial free-vortex circulation/impulse after each step.
-
-    This is appropriate for unbounded free-vortex evolution, but is disabled
-    by default because externally forced and boundary-coupled problems need
-    not conserve those global invariants.
-    """
-
-    stretching_limiter_project_step_angular_impulse: bool = False
-    """Also preserve raw angular impulse in the free-vortex step projection."""
-
-    # -- Energy-budget governor ---------------------------------------------
-    energy_budget_enabled: bool = False
-    """Enable the energy-budget governor: a feedback loop that adapts the
-    (constant-gate) strength-relaxation factor so the measured dE/dt tracks
-    the physical viscous budget dE/dt = -nu_eff*Enstrophy.  Requires (and
-    auto-configures via the factory) a constant-gate strength relaxation."""
-
-    energy_budget_frequency: int = 5
-    """Solver steps between governor measurements (each costs one fused
-    flow-integrals kernel evaluation).  Governed relaxation is applied at this
-    same cadence."""
-
-    energy_budget_gain: float = 0.5
-    """Multiplicative adaptation gain per measurement window."""
-
-    energy_budget_tolerance: float = 0.05
-    """Relative dead-band on the budget residual (no adaptation within it)."""
-
-    energy_budget_r_max: float = 0.9
-    """Upper bound on the governed relaxation factor."""
-
-    energy_budget_r_seed: float = 0.01
-    """Relaxation factor used when an inert budget controller first activates."""
-
-    energy_budget_smoothing: float = 1.0
-    """Exponential weight for the newest budget residual.  One disables smoothing."""
-
-    energy_budget_max_log_change: float | None = None
-    """Optional per-update bound on ``abs(log(r_new/r_old))``."""
-
-    energy_budget_r_inject: float = 0.0
-    """Emergency relaxation floor applied the instant a measurement window shows
-    the kinetic energy actually *rising* (dE/dt > 0), which is unphysical for an
-    unbounded viscous flow.  The multiplicative loop creeps up from ``r_seed``
-    too slowly to catch a short spurious-stretching burst, so when dE/dt > 0 the
-    factor jumps to at least this value (capped at ``r_max``) for immediate
-    authority; the normal back-off then relaxes it once monotone decay resumes.
-    Zero (default) keeps the historical creep-only behaviour."""
-
     def __post_init__(self) -> None:
-        """Validate direct construction as well as factory-created configs."""
-        if self.max_core_radius is not None and self.max_core_radius <= 0:
-            raise ValueError("max_core_radius must be positive")
-        if self.max_particle_strength is not None and self.max_particle_strength <= 0:
-            raise ValueError("max_particle_strength must be positive")
+        """Normalize and validate the optional retention domain."""
+        if self.remove_particles_by_bounds is not None:
+            object.__setattr__(
+                self,
+                "remove_particles_by_bounds",
+                tuple(float(value) for value in self.remove_particles_by_bounds),
+            )
         if (
             self.remove_particles_by_bounds is not None
             and len(self.remove_particles_by_bounds) != 6
         ):
             raise ValueError("remove_particles_by_bounds must have 6 elements")
-        if self.weak_threshold_percent is not None and not 0 <= self.weak_threshold_percent <= 100:
-            raise ValueError("weak_threshold_percent must be between 0 and 100")
-        if self.remeshing_frequency is not None and self.remeshing_frequency <= 0:
-            raise ValueError("remeshing_frequency must be positive")
-        if self.remeshing_spacing is not None and self.remeshing_spacing <= 0:
-            raise ValueError("remeshing_spacing must be positive")
-        if self.remeshing_bounds is not None and len(self.remeshing_bounds) != 6:
-            raise ValueError("remeshing_bounds must have 6 elements")
-        if not 0 <= self.remeshing_relative_threshold <= 1:
-            raise ValueError("remeshing_relative_threshold must be in [0, 1]")
-        if self.remeshing_impulse_constraint not in ("3d", "z"):
-            raise ValueError("remeshing_impulse_constraint must be '3d' or 'z'")
-        if self.remeshing_radius is not None and self.remeshing_radius <= 0:
-            raise ValueError("remeshing_radius must be positive")
-        if self.remeshing_max_particles is not None and self.remeshing_max_particles <= 0:
-            raise ValueError("remeshing_max_particles must be positive")
-        if (
-            self.remeshing_max_particle_growth is not None
-            and self.remeshing_max_particle_growth < 1.0
-        ):
-            raise ValueError("remeshing_max_particle_growth must be at least one")
-        if self.remeshing_projection_padding < 0:
-            raise ValueError("remeshing_projection_padding must be non-negative")
-        if self.relaxation_mode not in ("blend", "pedrizzetti"):
-            raise ValueError("relaxation_mode must be 'blend' or 'pedrizzetti'")
-        if self.relaxation_gate not in ("strain", "constant"):
-            raise ValueError("relaxation_gate must be 'strain' or 'constant'")
-        if self.relaxation_constraint not in ("both", "sum", "linear"):
-            raise ValueError("relaxation_constraint must be 'both', 'sum', or 'linear'")
-        if not 0 <= self.relaxation_deconv <= 3:
-            raise ValueError("relaxation_deconv must be between 0 and 3")
-        if not 0 <= self.relaxation_factor <= 1:
-            raise ValueError("relaxation_factor must be between 0 and 1")
-        if self.relaxation_rate < 0:
-            raise ValueError("relaxation_rate must be non-negative")
-        if self.relaxation_seff_min < 0:
-            raise ValueError("relaxation_seff_min must be non-negative")
-        if self.parallel_strain_enabled:
-            if (1.0 / 3.0 + self.parallel_strain_f) <= 0:
-                raise ValueError("parallel_strain_f must keep 1/3 + f positive")
-            if (1.0 + 3.0 * self.parallel_strain_f) <= 0:
-                raise ValueError("parallel_strain_f must keep 1 + 3f positive")
-            if self.parallel_strain_g + self.parallel_strain_f < 0:
-                raise ValueError("parallel_strain_g + parallel_strain_f must be non-negative")
-            if self.parallel_strain_clamp is not None and self.parallel_strain_clamp <= 0:
-                raise ValueError("parallel_strain_clamp must be positive when provided")
-        if self.stretching_limiter_enabled:
-            if self.stretching_limiter_parallel_increment <= 0:
-                raise ValueError("stretching_limiter_parallel_increment must be positive")
-            if self.stretching_limiter_rotation_increment <= 0:
-                raise ValueError("stretching_limiter_rotation_increment must be positive")
-            if self.stretching_limiter_constraint not in ("both", "sum", "linear"):
-                raise ValueError("stretching_limiter_constraint must be 'both', 'sum', or 'linear'")
-            if (
-                self.stretching_limiter_project_step_angular_impulse
-                and not self.stretching_limiter_project_step_invariants
-            ):
-                raise ValueError("angular-impulse projection requires project_step_invariants")
-        if self.energy_budget_enabled:
-            if self.energy_budget_frequency < 1:
-                raise ValueError("energy_budget_frequency must be >= 1")
-            if self.energy_budget_gain <= 0:
-                raise ValueError("energy_budget_gain must be positive")
-            if not 0 <= self.energy_budget_tolerance < 1:
-                raise ValueError("energy_budget_tolerance must be in [0, 1)")
-            if not 0 < self.energy_budget_r_max <= 1:
-                raise ValueError("energy_budget_r_max must be in (0, 1]")
-            if not 0 < self.energy_budget_r_seed <= self.energy_budget_r_max:
-                raise ValueError("energy_budget_r_seed must be in (0, energy_budget_r_max]")
-            if not 0 < self.energy_budget_smoothing <= 1:
-                raise ValueError("energy_budget_smoothing must be in (0, 1]")
-            if (
-                self.energy_budget_max_log_change is not None
-                and self.energy_budget_max_log_change <= 0
-            ):
-                raise ValueError("energy_budget_max_log_change must be positive when provided")
-            if not 0 <= self.energy_budget_r_inject <= self.energy_budget_r_max:
-                raise ValueError("energy_budget_r_inject must be in [0, energy_budget_r_max]")
-            if not self.relaxation_enabled:
-                raise ValueError(
-                    "energy_budget_enabled requires relaxation_enabled (use the "
-                    "StabilizationConfig.energy_budget() factory)"
-                )
-            if self.relaxation_gate != "constant":
-                raise ValueError("the energy-budget governor requires relaxation_gate='constant'")
 
     # -- Factory methods -------------------------------------------------------
     @staticmethod
     def disabled() -> "StabilizationConfig":
-        """No stabilisation mechanisms active.
-
-        Examples:
-              >>> stab = StabilizationConfig.disabled()
-              >>> stab.max_core_radius is None
-              True
-        """
+        """Do not remove particles automatically."""
         return StabilizationConfig()
 
     @staticmethod
-    def particle_splitting(
-        radius: float,
-        max_strength: float | None = None,
-        weak_threshold_percent: float = 1.0,
-    ) -> "StabilizationConfig":
-        """Particle splitting when core radius exceeds ``radius``.
-
-        Examples:
-              >>> stab = StabilizationConfig.particle_splitting(radius=0.1)
-              >>> stab.max_core_radius
-              0.1
-
-              >>> stab = StabilizationConfig.particle_splitting(
-              ...     radius=0.08, weak_threshold_percent=2.0
-              ... )
-              >>> stab.weak_threshold_percent
-              2.0
-        """
-        if radius <= 0:
-            raise ValueError("max_core_radius must be positive")
-        if max_strength is not None and max_strength <= 0:
-            raise ValueError("max_particle_strength must be positive")
-        return StabilizationConfig(
-            max_core_radius=radius,
-            max_particle_strength=max_strength,
-            weak_threshold_percent=weak_threshold_percent,
-        )
-
-    @staticmethod
-    def conservative_remeshing(
-        frequency: int = 20,
-        spacing: float | None = None,
-        bounds: list[float] | None = None,
-        relative_threshold: float = 0.01,
-        absolute_threshold: float = 1e-6,
-        conserve_impulse: bool = True,
-        conserve_energy: bool = False,
-        delta_correction: bool = False,
-        impulse_constraint: str = "3d",
-        radius: float | None = None,
-        preserve_radius_profile: bool = False,
-        max_particles: int | None = None,
-        max_particle_growth: float | None = None,
-        project_solenoidal: bool = False,
-        projection_padding: int = 4,
-    ) -> "StabilizationConfig":
-        """Periodic conservative remeshing.
-
-        Examples:
-              >>> stab = StabilizationConfig.conservative_remeshing()
-              >>> stab.remeshing_frequency
-              20
-
-              >>> stab = StabilizationConfig.conservative_remeshing(
-              ...     frequency=10, spacing=0.02, project_solenoidal=True
-              ... )
-              >>> stab.remeshing_project_solenoidal
-              True
-        """
-        if frequency <= 0:
-            raise ValueError("remeshing frequency must be positive")
-        if spacing is not None and spacing <= 0:
-            raise ValueError("remeshing spacing must be positive")
-        if bounds is not None and len(bounds) != 6:
-            raise ValueError("remeshing bounds must have 6 elements")
-        if not 0 <= relative_threshold <= 1:
-            raise ValueError("relative_threshold must be in [0, 1]")
-        if impulse_constraint not in ("3d", "z"):
-            raise ValueError("impulse_constraint must be '3d' or 'z'")
-        if radius is not None and radius <= 0:
-            raise ValueError("remeshing_radius must be positive")
-        if max_particles is not None and max_particles <= 0:
-            raise ValueError("remeshing max_particles must be positive")
-        if max_particle_growth is not None and max_particle_growth < 1.0:
-            raise ValueError("remeshing max_particle_growth must be at least one")
-        if projection_padding < 0:
-            raise ValueError("projection_padding must be non-negative")
-        return StabilizationConfig(
-            remeshing_frequency=frequency,
-            remeshing_spacing=spacing,
-            remeshing_bounds=bounds,
-            remeshing_relative_threshold=relative_threshold,
-            remeshing_absolute_threshold=absolute_threshold,
-            remeshing_conserve_impulse=conserve_impulse,
-            remeshing_conserve_energy=conserve_energy,
-            remeshing_delta_correction=delta_correction,
-            remeshing_impulse_constraint=impulse_constraint,
-            remeshing_radius=radius,
-            remeshing_preserve_radius_profile=preserve_radius_profile,
-            remeshing_max_particles=max_particles,
-            remeshing_max_particle_growth=max_particle_growth,
-            remeshing_project_solenoidal=project_solenoidal,
-            remeshing_projection_padding=projection_padding,
-        )
-
-    @staticmethod
-    def strength_relaxation(
-        mode: Literal["blend", "pedrizzetti"] = "blend",
-        *,
-        deconv: int = 1,
-        gate: Literal["strain", "constant"] = "strain",
-        factor: float = 0.3,
-        conserve: bool = True,
-        constraint: Literal["both", "sum", "linear"] = "both",
-        rate: float = 1.0,
-        seff_min: float = 1e-4,
-        verbose: bool = False,
-    ) -> "StabilizationConfig":
-        """Enable strength relaxation with its complete set of controls.
-
-        Examples:
-              >>> stab = StabilizationConfig.strength_relaxation()
-              >>> stab.relaxation_enabled
-              True
-
-              >>> stab = StabilizationConfig.strength_relaxation(
-              ...     mode="pedrizzetti", factor=0.5
-              ... )
-              >>> stab.relaxation_mode
-              'pedrizzetti'
-        """
-        return StabilizationConfig(
-            relaxation_enabled=True,
-            relaxation_mode=mode,
-            relaxation_deconv=deconv,
-            relaxation_gate=gate,
-            relaxation_factor=factor,
-            relaxation_conserve=conserve,
-            relaxation_constraint=constraint,
-            relaxation_rate=rate,
-            relaxation_seff_min=seff_min,
-            relaxation_verbose=verbose,
-        )
-
-    @staticmethod
-    def parallel_strain_relaxation(
-        *,
-        f: float = RVPM_DEFAULT_F,
-        g: float = RVPM_DEFAULT_G,
-        clamp: float | None = None,
-    ) -> "StabilizationConfig":
-        """Enable the rVPM parallel-strain correction.
-
-        The correction is applied after the configured stretching formulation.
-        It infers the achieved parallel growth from |Gamma| before/after
-        stretching, reduces that growth by c_r, and contracts sigma by c_sigma.
-
-        Examples:
-              >>> stab = StabilizationConfig.parallel_strain_relaxation()
-              >>> stab.parallel_strain_enabled
-              True
-
-              >>> stab = StabilizationConfig.parallel_strain_relaxation(
-              ...     f=0.1, g=0.3, clamp=0.5
-              ... )
-              >>> stab.parallel_strain_clamp
-              0.5
-        """
-        return StabilizationConfig(
-            parallel_strain_enabled=True,
-            parallel_strain_f=f,
-            parallel_strain_g=g,
-            parallel_strain_clamp=clamp,
-        )
-
-    @staticmethod
-    def energy_budget(
-        *,
-        frequency: int = 5,
-        gain: float = 0.5,
-        tolerance: float = 0.05,
-        r_max: float = 0.9,
-        r_seed: float = 0.01,
-        smoothing: float = 1.0,
-        max_log_change: float | None = None,
-        r_inject: float = 0.0,
-        mode: str = "blend",
-        deconv: int = 1,
-        conserve: bool = True,
-        constraint: str = "both",
-    ) -> "StabilizationConfig":
-        """Enable the energy-budget governor.
-
-        A slow feedback loop measures the discrete energy budget every
-        ``frequency`` steps and adapts a constant-gate strength-relaxation
-        factor so that the measured dE/dt tracks the physical viscous budget
-        dE/dt = -nu_eff*Enstrophy.  The relaxation starts inert (factor 0)
-        and only strengthens while the budget is violated.
-
-        Examples:
-              >>> stab = StabilizationConfig.energy_budget()
-              >>> stab.energy_budget_enabled
-              True
-        """
-        return StabilizationConfig(
-            energy_budget_enabled=True,
-            energy_budget_frequency=frequency,
-            energy_budget_gain=gain,
-            energy_budget_tolerance=tolerance,
-            energy_budget_r_max=r_max,
-            energy_budget_r_seed=r_seed,
-            energy_budget_smoothing=smoothing,
-            energy_budget_max_log_change=max_log_change,
-            energy_budget_r_inject=r_inject,
-            relaxation_enabled=True,
-            relaxation_mode=mode,
-            relaxation_deconv=deconv,
-            relaxation_gate="constant",
-            relaxation_factor=0.0,
-            relaxation_conserve=conserve,
-            relaxation_constraint=constraint,
-        )
-
-    @staticmethod
-    def adaptive_rvpm(
-        *,
-        parallel_increment: float = 0.04,
-        rotation_increment: float = 0.12,
-        budget_frequency: int = 5,
-        budget_gain: float = 0.25,
-        budget_tolerance: float = 0.1,
-        budget_r_max: float = 0.02,
-    ) -> "StabilizationConfig":
-        """Hybrid conservative stabilizer for strongly strained vortex tubes.
-
-        The method combines the rVPM parallel-strain/core-size response with a
-        local RK-stage limiter and a slow energy-budget-controlled ADM filter.
-        The limiter prevents an unresolved stretching event from entering the
-        explicit integrator, while the budget loop removes only the remaining
-        kernel-unrepresentable content.
-        """
-        return StabilizationConfig(
-            parallel_strain_enabled=True,
-            parallel_strain_f=RVPM_DEFAULT_F,
-            parallel_strain_g=RVPM_DEFAULT_G,
-            parallel_strain_clamp=0.2,
-            stretching_limiter_enabled=True,
-            stretching_limiter_parallel_increment=parallel_increment,
-            stretching_limiter_rotation_increment=rotation_increment,
-            stretching_limiter_conserve=True,
-            stretching_limiter_constraint="both",
-            stretching_limiter_project_step_invariants=True,
-            stretching_limiter_project_step_angular_impulse=True,
-            energy_budget_enabled=True,
-            energy_budget_frequency=budget_frequency,
-            energy_budget_gain=budget_gain,
-            energy_budget_tolerance=budget_tolerance,
-            energy_budget_r_max=budget_r_max,
-            energy_budget_r_seed=0.001,
-            energy_budget_smoothing=0.25,
-            energy_budget_max_log_change=0.35,
-            relaxation_enabled=True,
-            relaxation_mode="blend",
-            relaxation_deconv=1,
-            relaxation_gate="constant",
-            relaxation_factor=0.0,
-            relaxation_conserve=True,
-            relaxation_constraint="both",
-        )
+    def bounded_domain(bounds: list[float] | tuple[float, ...]) -> "StabilizationConfig":
+        """Remove particles outside one declared six-coordinate domain."""
+        return StabilizationConfig(remove_particles_by_bounds=tuple(bounds))
 
 
 # =========================================================
 # VELOCITY CONFIGURATION
 # =========================================================
-@dataclass
+@dataclass(frozen=True)
 class VelocityConfig:
     """
     Configuration for velocity field computation.
@@ -1614,7 +1068,7 @@ class VelocityConfig:
       - θ = 0.7: ~15% error, faster"""
 
     multipole_order: Literal[1, 2, 3] = 1
-    """Treecode far-field expansion order. 1 is the legacy monopole. 2 adds a
+    """Treecode far-field expansion order. 1 is the base monopole. 2 adds a
     circulation dipole moment per node, improving far-field gradient accuracy at
     extra per-node cost. 3 adds the quadrupole moment, allowing a larger theta
     at the same accuracy (usually the fastest accuracy/cost trade-off)."""
@@ -1706,62 +1160,11 @@ class VelocityConfig:
 
 
 # =========================================================
-# VLM SOLVER CONFIGURATION
-# =========================================================
-@dataclass
-class VLMSolverConfig:
-    """Configuration for VLM coupling with the VPM solver.
-
-    Controls whether the VLM solver is active, whether wake vorticity is
-    shed into VPM particles, and the Tikhonov regularisation used when
-    solving the VLM influence-matrix system.
-
-    Fields
-    ------
-    enabled
-        Activate the VLM solver (default: ``False``).
-    wake_shedding
-        Shed trailing-edge vorticity into VPM particles each step
-        (default: ``True``).  Set to ``False`` for quasi-steady coupling.
-    regularization
-        Tikhonov regularisation parameter for the VLM influence-matrix
-        solve (default: ``1e-8``).  A small positive value prevents
-        singularity near panel-edge intersections and wake-panel
-        alignments.
-
-    Examples
-    --------
-    .. code-block:: python
-
-        # Enable VLM with wake shedding (default)
-        vlm = VLMSolverConfig.create(wake=True)
-
-        # Enable VLM without wake shedding (quasi-steady)
-        vlm = VLMSolverConfig.create(wake=False)
-
-        # Disable VLM (pure VPM simulation)
-        vlm = VLMSolverConfig.disabled()
-    """
-
-    enabled: bool = False
-    wake_shedding: bool = True
-    regularization: float = 1e-8
-
-    @staticmethod
-    def create(wake: bool = True):
-        return VLMSolverConfig(enabled=True, wake_shedding=wake)
-
-    @staticmethod
-    def disabled():
-        return VLMSolverConfig(enabled=False)
-
-
-# =========================================================
 # SOLVER CONFIGURATION DATACLASS
 # =========================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class VPMSetup:
     """
     Configuration dataclass for the VPM solver.
@@ -1789,27 +1192,42 @@ class VPMSetup:
     """Initial time step number"""
 
     # ---- PHYSICS CONFIGURATION ----
-    advection: AdvectionConfig | None = None
+    time_integration: Literal["FRACTIONAL", "COUPLED"] = "FRACTIONAL"
+    """How advection and vortex stretching are time-integrated.
+
+    ``FRACTIONAL`` retains the legacy position-then-strength update.
+    ``COUPLED`` advances ``(x, Gamma)`` at common RK stages so the discrete
+    impulse cancellations are not broken by operator splitting.  The coupled
+    path currently supports matching RK2 or RK3 advection/stretching schemes
+    and core-spreading (or no) viscous diffusion.
+    """
+
+    coupled_max_strain_increment: float = 0.08
+    """Maximum ``dt_sub * ||S||_2`` used by automatic coupled subcycling."""
+
+    coupled_max_advection_fraction: float = 0.25
+    """Maximum particle displacement per substep as a fraction of spacing."""
+
+    coupled_max_substeps: int = 128
+    """Fail instead of silently filtering physics when a macro step needs more substeps."""
+
+    advection: AdvectionConfig = field(default_factory=AdvectionConfig)
     """Configuration for advection term (scheme, etc.)."""
 
-    stretching: StretchingConfig | None = None
+    stretching: StretchingConfig = field(default_factory=StretchingConfig.transposed)
     """Configuration for vortex stretching term."""
 
-    viscous: ViscousConfig | None = None
+    viscous: ViscousConfig = field(default_factory=ViscousConfig.cs)
     """Configuration for viscous diffusion term."""
 
-    turbulence: TurbulenceConfig | None = None
+    turbulence: TurbulenceConfig = field(default_factory=TurbulenceConfig.dns)
     """Configuration for turbulence modeling (DNS/LES/INVISCID)."""
 
-    stabilization: "StabilizationConfig | None" = None
-    """Unified configuration for all stabilization mechanisms (stretching regularisation,
-    particle splitting, wake cutoff, weak removal, and conservative remeshing)."""
+    stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
+    """Optional particle-retention domain used by wake and coupled cases."""
 
-    vlm: VLMSolverConfig | None = None
-    """Configuration for VLM coupling."""
-
-    force: ForceConfig | None = None
-    """Configuration for force evaluation method (Kutta-Joukowski vs Impulse-based)."""
+    vlm: VLMSetup | None = None
+    """Complete VLM definition. ``None`` selects a pure VPM simulation."""
 
     particles_kernel: Literal[
         "GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"
@@ -1832,10 +1250,8 @@ class VPMSetup:
     """
 
     # ---- COMPUTATIONAL SETTINGS ----
-    processing_unit: Literal["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"] = (
-        "GPU"
-    )
-    """Compute backend.  Default ``'GPU'`` selects the best available GPU automatically:
+    processing_unit: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] = "AUTO"
+    """Compute backend.  Default ``'AUTO'`` selects the best available GPU automatically:
 
     * **macOS**             → Metal  (Apple's native GPU API)
     * **Linux / Windows**   → CUDA   (if an NVIDIA GPU + driver is found)
@@ -1844,10 +1260,10 @@ class VPMSetup:
     Override the automatic selection via the ``OPENONDA_PROCESSING_UNIT`` environment
     variable or by passing an explicit value here:
 
-    * ``'GPU'``        — best GPU for this platform (recommended)
-    * ``'GPU_VULKAN'`` / ``'VULKAN'`` — force Vulkan (Linux / Windows)
+    * ``'AUTO'``       — best GPU for this platform (recommended)
+    * ``'VULKAN'``     — force Vulkan (Linux / Windows)
     * ``'CUDA'``       — force CUDA (requires NVIDIA GPU + driver)
-    * ``'GPU_METAL'``  / ``'METAL'`` — force Metal (macOS only)
+    * ``'METAL'``      — force Metal (macOS only)
     * ``'CPU'``        — software rendering (no GPU required)
     """
 
@@ -1858,15 +1274,6 @@ class VPMSetup:
     export_flow_integrals: bool = True
     """Append computed global diagnostics to ``samples/flow_integrals.csv``."""
 
-    sampler_output_format: Literal["csv", "vtk", "legacy"] = "csv"
-    """Sampler persistence mode.
-
-    ``csv`` appends all samples to one table per sampler with explicit time and
-    step columns. ``vtk`` writes surface snapshots and consolidates samplers
-    without VTK support as CSV. ``legacy`` preserves the former numbered-file
-    behavior for existing post-processing scripts.
-    """
-
     log_mode: Literal["file", "tee", "console"] = "file"
     """Solver output destination: log file, console and file, or console only."""
 
@@ -1875,9 +1282,6 @@ class VPMSetup:
     (0 = disabled). The per-step time line is always shown; this only controls
     the periodic ``RuntimeProfiler`` summary. ``Solver.print_timing()`` can be
     called manually at any time regardless of this setting."""
-
-    solution_name: str = "solution"
-    """Name of the solution directory where output files will be saved."""
 
     # ---- BACKUP AND OUTPUT ----
     backup_frequency: int = 0
@@ -1916,7 +1320,10 @@ class VPMSetup:
       Clamped to the range [0.1, 0.7].  Values above ~0.7 almost always cause
       allocation failures on Vulkan backends."""
 
-    background_velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    debug_mode: bool = False
+    """Enable Taichi debug checks. This must be selected before solver construction."""
+
+    background_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Free-stream background velocity vector [ux, uy, uz] in m/s."""
 
     verbose: bool = True
@@ -1930,19 +1337,19 @@ class VPMSetup:
     panel_solver: Any | None = None
     """Panel solver instance for hybrid simulations."""
 
-    vlm_solver: Any | None = None
-    """VLM solver instance for VLM-VPM coupling."""
-
     # ---- FIELD SAMPLERS ----
-    samplers: list[Any] | None = None
+    samplers: tuple[Any, ...] | None = None
     """List of field samplers (SurfaceSampler, LineSampler) called at logging_frequency intervals."""
+
+    final_samplers: tuple[Any, ...] | None = None
+    """Field samplers executed only when ``Solver.execute_final_samplers()`` is called."""
 
     body_stl: str | None = None
     """Path to body STL file for field sampler masking and geometry-aware output.
       Used by field samplers to mask interior points and project near-wall velocities.
       Can be absolute or relative to case directory."""
 
-    vpm_domain_bounds: list[float] | None = None
+    vpm_domain_bounds: tuple[float, ...] | None = None
     """Optional ``[xmin, xmax, ymin, ymax, zmin, zmax]`` of the VPM domain.
       When set, the DVH diffusion grid is pre-allocated to cover this domain
       (if the memory cost is acceptable) and re-allocation is capped at these
@@ -1951,27 +1358,19 @@ class VPMSetup:
     def __post_init__(self):
         """Post-initialization validation and setup."""
 
-        # Set defaults for None fields
-        if self.advection is None:
-            object.__setattr__(self, "advection", AdvectionConfig())
-
-        if self.stretching is None:
-            object.__setattr__(self, "stretching", StretchingConfig.transposed())
-
-        if self.viscous is None:
-            object.__setattr__(self, "viscous", ViscousConfig.cs())
-
-        if self.turbulence is None:
-            object.__setattr__(self, "turbulence", TurbulenceConfig.dns())
-
-        if self.vlm is None:
-            object.__setattr__(self, "vlm", VLMSolverConfig.disabled())
-
-        if self.stabilization is None:
-            object.__setattr__(self, "stabilization", StabilizationConfig.disabled())
-
-        if self.force is None:
-            object.__setattr__(self, "force", ForceConfig.kutta_joukowski())
+        if len(self.background_velocity) != 3:
+            raise ValueError("background_velocity must contain three coordinates")
+        object.__setattr__(
+            self,
+            "background_velocity",
+            tuple(float(value) for value in self.background_velocity),
+        )
+        if self.samplers is not None:
+            object.__setattr__(self, "samplers", tuple(self.samplers))
+        if self.final_samplers is not None:
+            object.__setattr__(self, "final_samplers", tuple(self.final_samplers))
+        if self.vpm_domain_bounds is not None:
+            object.__setattr__(self, "vpm_domain_bounds", tuple(self.vpm_domain_bounds))
 
         if self.velocity is None:
             # The GPU LBVH currently implements Gaussian and Winckelmans
@@ -1997,6 +1396,30 @@ class VPMSetup:
         if self.time_step_size <= 0:
             raise ValueError("time_step_size must be positive")
 
+        integration = self.time_integration.upper()
+        if integration not in {"FRACTIONAL", "COUPLED"}:
+            raise ValueError("time_integration must be 'FRACTIONAL' or 'COUPLED'")
+        if integration == "COUPLED":
+            advection_scheme = self.advection.scheme.upper()
+            stretching_scheme = self.stretching.scheme.upper()
+            if not self.stretching.enabled:
+                raise ValueError("COUPLED time integration requires stretching to be enabled")
+            if advection_scheme != stretching_scheme or advection_scheme not in {"RK2", "RK3"}:
+                raise ValueError(
+                    "COUPLED time integration requires matching RK2 or RK3 "
+                    "advection and stretching schemes"
+                )
+            if self.viscous.scheme.upper() not in {"NONE", "CS"}:
+                raise ValueError(
+                    "COUPLED time integration currently supports only NONE or CS diffusion"
+                )
+        if self.coupled_max_strain_increment <= 0.0:
+            raise ValueError("coupled_max_strain_increment must be positive")
+        if self.coupled_max_advection_fraction <= 0.0:
+            raise ValueError("coupled_max_advection_fraction must be positive")
+        if self.coupled_max_substeps < 1:
+            raise ValueError("coupled_max_substeps must be at least one")
+
         # Frequency validation
         if self.logging_frequency < 0:
             raise ValueError("logging_frequency must be non-negative")
@@ -2010,9 +1433,6 @@ class VPMSetup:
         if self.max_targets < 1:
             raise ValueError("max_targets must be at least 1")
 
-        if self.sampler_output_format not in {"csv", "vtk", "legacy"}:
-            raise ValueError("sampler_output_format must be 'csv', 'vtk', or 'legacy'")
-
         if self.log_mode not in {"file", "tee", "console"}:
             raise ValueError("log_mode must be 'file', 'tee', or 'console'")
 
@@ -2020,17 +1440,12 @@ class VPMSetup:
         if self.backup_frequency < 0:
             raise ValueError("backup_frequency must be non-negative")
 
-        # Store backup frequency for solver use
-        object.__setattr__(self, "_backup_frequency_internal", self.backup_frequency)
-
         # Processing unit validation
         valid_processing_units = [
+            "AUTO",
             "CPU",
-            "GPU",
-            "GPU_VULKAN",
             "VULKAN",
             "CUDA",
-            "GPU_METAL",
             "METAL",
         ]
         if self.processing_unit.upper() not in valid_processing_units:
@@ -2067,18 +1482,22 @@ class VPMSetup:
             "time_step_size": self.time_step_size,
             "flow_time": self.flow_time,
             "time_step": self.time_step,
-            "advection": _as_dict(self.advection) if self.advection else None,
-            "stretching": _as_dict(self.stretching) if self.stretching else None,
-            "viscous": _as_dict(self.viscous) if self.viscous else None,
-            "turbulence": _as_dict(self.turbulence) if self.turbulence else None,
-            "stabilization": _as_dict(self.stabilization) if self.stabilization else None,
-            "vlm": _as_dict(self.vlm) if self.vlm else None,
+            "time_integration": self.time_integration,
+            "coupled_max_strain_increment": self.coupled_max_strain_increment,
+            "coupled_max_advection_fraction": self.coupled_max_advection_fraction,
+            "coupled_max_substeps": self.coupled_max_substeps,
+            "advection": _as_dict(self.advection),
+            "stretching": _as_dict(self.stretching),
+            "viscous": _as_dict(self.viscous),
+            "turbulence": _as_dict(self.turbulence),
+            "stabilization": _as_dict(self.stabilization),
+            # Runtime geometry and kinematics are not particle-state backup data.
+            "vlm": None,
             "particles_kernel": self.particles_kernel,
             "max_particles": self.max_particles,
             "max_targets": self.max_targets,
             "logging_frequency": self.logging_frequency,
             "export_flow_integrals": self.export_flow_integrals,
-            "sampler_output_format": self.sampler_output_format,
             "log_mode": self.log_mode,
             "timing_frequency": self.timing_frequency,
             "backup_frequency": self.backup_frequency,
@@ -2086,6 +1505,10 @@ class VPMSetup:
             "backup_directory": self.backup_directory,
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
+            "device_memory_fraction": self.device_memory_fraction,
+            "processing_unit": self.processing_unit,
+            "debug_mode": self.debug_mode,
+            "clean": self.clean,
             "background_velocity": list(self.background_velocity)
             if self.background_velocity
             else [0.0, 0.0, 0.0],
@@ -2094,12 +1517,12 @@ class VPMSetup:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SolverConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "VPMSetup":
         """Create configuration from dictionary.
 
         Returns
         -------
-        SolverConfig
+        VPMSetup
             Configuration object reconstructed from the dictionary.
         """
         values = dict(data)
@@ -2110,7 +1533,6 @@ class VPMSetup:
             "turbulence": TurbulenceConfig,
             "stabilization": StabilizationConfig,
             "velocity": VelocityConfig,
-            "vlm": VLMSolverConfig,
         }
         for name, config_type in nested_types.items():
             if isinstance(values.get(name), dict):
@@ -2123,7 +1545,7 @@ class VPMSetup:
         background_velocity: Any = (0.0, 0.0, 0.0),
         viscous: Optional["ViscousConfig"] = None,
         **kwargs,
-    ) -> "SolverConfig":
+    ) -> "VPMSetup":
         """
         Create a standard viscous flow simulation configuration.
 
@@ -2141,15 +1563,15 @@ class VPMSetup:
               **kwargs: Additional parameters to override defaults
 
         Returns:
-              SolverConfig: Initialized configuration object
+              VPMSetup: Initialized configuration object
 
         Examples:
               >>> # Default viscous flow
-              >>> config = SolverConfig.viscous_flow_simulation()
+              >>> config = VPMSetup.viscous_flow_simulation()
               >>> config.time_step_size
               0.01
 
-              >>> config = SolverConfig.viscous_flow_simulation(
+              >>> config = VPMSetup.viscous_flow_simulation(
               ...     time_step_size=0.005, background_velocity=(10.0, 0.0, 0.0)
               ... )
               >>> config.time_step_size
@@ -2160,7 +1582,7 @@ class VPMSetup:
 
         stretching = kwargs.pop("stretching", StretchingConfig.disabled())
 
-        return SolverConfig(
+        return VPMSetup(
             time_step_size=time_step_size,
             stretching=stretching,
             viscous=viscous,
@@ -2169,7 +1591,7 @@ class VPMSetup:
         )
 
     @staticmethod
-    def dns_simulation(time_step_size: float = 0.01, **kwargs) -> "SolverConfig":
+    def dns_simulation(time_step_size: float = 0.01, **kwargs) -> "VPMSetup":
         """
         Create a Direct Numerical Simulation (DNS) configuration.
 
@@ -2186,15 +1608,15 @@ class VPMSetup:
               **kwargs: Additional parameters to override defaults
 
         Returns:
-              SolverConfig: Initialized configuration object
+              VPMSetup: Initialized configuration object
 
         Examples:
               >>> # Default DNS
-              >>> config = SolverConfig.dns_simulation()
+              >>> config = VPMSetup.dns_simulation()
               >>> config.time_step_size
               0.01
 
-              >>> config = SolverConfig.dns_simulation(
+              >>> config = VPMSetup.dns_simulation(
               ...     time_step_size=0.001, processing_unit="CPU"
               ... )
               >>> config.time_step_size
@@ -2205,7 +1627,7 @@ class VPMSetup:
         viscous = kwargs.pop("viscous", ViscousConfig.cs())
         turbulence = kwargs.pop("turbulence", TurbulenceConfig.dns())
 
-        return SolverConfig(
+        return VPMSetup(
             time_step_size=time_step_size,
             stretching=stretching,
             viscous=viscous,
@@ -2214,7 +1636,7 @@ class VPMSetup:
         )
 
     @staticmethod
-    def les_simulation(time_step_size: float = 0.01, cs: float = 0.17, **kwargs) -> "SolverConfig":
+    def les_simulation(time_step_size: float = 0.01, cs: float = 0.17, **kwargs) -> "VPMSetup":
         """
         Create a Large Eddy Simulation (LES) configuration with the static
         Smagorinsky SGS model (k-equilibrium formulation).
@@ -2233,15 +1655,15 @@ class VPMSetup:
               **kwargs: Additional parameters to override defaults
 
         Returns:
-              SolverConfig: Initialized configuration object
+              VPMSetup: Initialized configuration object
 
         Examples:
               >>> # Default LES
-              >>> config = SolverConfig.les_simulation()
+              >>> config = VPMSetup.les_simulation()
               >>> config.time_step_size
               0.01
 
-              >>> config = SolverConfig.les_simulation(
+              >>> config = VPMSetup.les_simulation(
               ...     time_step_size=0.005, cs=0.15
               ... )
               >>> config.time_step_size
@@ -2252,7 +1674,7 @@ class VPMSetup:
         # Use les_smagorinsky or similar if available, else fallback
         turbulence = kwargs.pop("turbulence", TurbulenceConfig.les_smagorinsky(cs=cs))
 
-        return SolverConfig(
+        return VPMSetup(
             time_step_size=time_step_size,
             stretching=stretching,
             viscous=viscous,
@@ -2266,12 +1688,12 @@ class VPMSetup:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def load_from_file(cls, filename: str) -> "SolverConfig":
+    def load_from_file(cls, filename: str) -> "VPMSetup":
         """Load configuration from JSON file.
 
         Returns
         -------
-        SolverConfig
+        VPMSetup
             Configuration object deserialised from the JSON file.
         """
         with open(filename) as f:
@@ -2301,10 +1723,6 @@ class VPMSetup:
         lines.append(f"  Backup Frequency: {self.backup_frequency} steps")
         lines.append(f"  Background Velocity: {self.background_velocity} m/s")
         return "\n".join(lines)
-
-
-# Backward-compatible name for existing cases and serialized configurations.
-SolverConfig = VPMSetup
 
 
 # =========================================================
@@ -2368,7 +1786,7 @@ class SolverState(BaseModel):
     advection_scheme: str = Field(default="RK3", description="Advection time integration scheme")
     stretching_scheme: str = Field(default="RK3", description="Stretching time integration scheme")
 
-    processing_unit: str = Field(default="GPU_VULKAN", description="Computation backend")
+    processing_unit: str = Field(default="AUTO", description="Computation backend")
     flow_model: str = Field(default="DNS", description="Flow physics model")
     viscous_scheme: str = Field(default="CS", description="Viscous modeling scheme")
 
@@ -2398,7 +1816,7 @@ class SolverState(BaseModel):
     @classmethod
     def validate_processing_unit(cls, v: str) -> str:
         """Validate processing unit."""
-        valid_units = {"CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"}
+        valid_units = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
         v_upper = v.upper()
         if v_upper not in valid_units:
             raise ValueError(f"Invalid processing unit: {v}. Must be one of {valid_units}")
@@ -2465,10 +1883,10 @@ class SolverState(BaseModel):
             # Import locally to avoid circular dependencies
             from source.solvers.VPM.config.types import (
                 AdvectionConfig,
-                SolverConfig,
                 StretchingConfig,
                 TurbulenceConfig,
                 ViscousConfig,
+                VPMSetup,
             )
             from source.solvers.VPM.core.solver import Solver
 
@@ -2491,8 +1909,8 @@ class SolverState(BaseModel):
             if self.flow_model == "LES":
                 turbulence = TurbulenceConfig.les_smagorinsky()  # Default/Placeholder
 
-            # Reconstruct full SolverConfig
-            config = SolverConfig(
+            # Reconstruct full VPMSetup
+            config = VPMSetup(
                 time_step_size=self.time_step_size,
                 flow_time=self.flow_time,
                 time_step=self.time_step,
@@ -2511,7 +1929,7 @@ class SolverState(BaseModel):
             )
 
             # Create new solver instance with config
-            new_solver = Solver(config=config)
+            new_solver = Solver(setup=config)
 
             # Restore additional attributes that aren't constructor parameters
             for key, value in self.__dict__.items():
@@ -2720,7 +2138,7 @@ class ParticlesState(BaseModel):
 def SetFlowModel(psys, flow_model: str):
     """
     Set flow model and configure associated parameters.
-    Note: Validation is already done in SolverConfig, so this just sets the model.
+    Note: Validation is already done in VPMSetup, so this just sets the model.
     """
     if flow_model == "DNS":
         psys.flow_model_description = "DNS ::: (ω.∇)u + (v)(∇²)ω"
@@ -2737,7 +2155,6 @@ def SetFlowModel(psys, flow_model: str):
 
 __all__ = [
     "VPMSetup",
-    "SolverConfig",
     "SolverState",
     "ParticlesState",
     "CachedParticleProperty",

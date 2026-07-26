@@ -6,10 +6,17 @@ time- and azimuthally-averaged axial-velocity profiles against
 actuator-disk momentum theory:
 
     rotor disk:   u/U∞ = 1 − a
-    far wake:     u/U∞ = 1 − 2a          (a = 1/3 Betz optimum)
+    far wake:     u/U∞ = 1 − 2a
 
-As the planes move downstream the annular rotor wake should show a clear
-deficit relative to the freestream.
+``a`` is taken from the run's **own** thrust coefficient via momentum theory,
+not from the Betz design value: a rotor that settles at Ct = 0.73 has a = 0.24,
+and drawing the a = 1/3 lines against it invites the reader to match curves to
+a reference the simulation was never going to hit.
+
+Each plane is only averaged over a window in which its wake signal is
+statistically stationary.  A plane whose wake front is still arriving is
+plotted dashed and labelled "not converged" rather than being averaged into a
+profile that looks like physics but is a transient.
 
 Saves: figures/rotor_wake_planes.png
 """
@@ -32,7 +39,15 @@ except Exception:  # pragma: no cover
     pv = None
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, build_rotor_style_map, load_theme
+from _common import (  # noqa: E402
+    add_case_arguments,
+    build_arg_parser,
+    build_rotor_style_map,
+    load_theme,
+    read_operating_point,
+    read_time_step,
+)
+from rotor_theory import induction_from_ct  # noqa: E402
 
 
 # ==============================================================================
@@ -72,6 +87,7 @@ def _select_time_window(
     averaging_rotations: float,
     tail_fraction: float,
 ) -> list[Path]:
+    """Trailing window of ``averaging_rotations`` rotor revolutions."""
     if not files:
         return []
     if averaging_rotations > 0.0 and dt > 0.0 and omega > 0.0:
@@ -84,33 +100,45 @@ def _select_time_window(
     return selected or [files[-1]]
 
 
-def _azimuthal_profile(grid, U_inf: float, rotor_radius: float, radial_edges: np.ndarray):
-    """Return one plane's azimuthally averaged u_x/U∞ in radial bins."""
+# ==============================================================================
+# Profiles and stationarity
+# ==============================================================================
+
+
+def _plane_statistics(grid, U_inf: float, rotor_radius: float, radial_edges: np.ndarray):
+    """Return (radial profile of u_x/U∞, disc-averaged u_x/U∞) for one snapshot."""
     pts = np.asarray(grid.points)
     vel = np.asarray(grid.point_data["Velocity"])
     r_over_R = np.sqrt(pts[:, 1] ** 2 + pts[:, 2] ** 2) / rotor_radius
     ux_over_U = vel[:, 0] / U_inf
+
     bin_idx = np.digitize(r_over_R, radial_edges) - 1
     valid = (bin_idx >= 0) & (bin_idx < len(radial_edges) - 1) & np.isfinite(ux_over_U)
-
     sums = np.zeros(len(radial_edges) - 1)
     counts = np.zeros(len(radial_edges) - 1)
     np.add.at(sums, bin_idx[valid], ux_over_U[valid])
     np.add.at(counts, bin_idx[valid], 1.0)
-    return np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0.0)
+    profile = np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0.0)
+
+    disc = (r_over_R <= 1.0) & np.isfinite(ux_over_U)
+    disc_mean = float(np.mean(ux_over_U[disc])) if disc.any() else np.nan
+    return profile, disc_mean
 
 
-def _time_azimuthal_profile(
-    files: list[Path],
-    U_inf: float,
-    rotor_radius: float,
-    radial_edges: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    profiles = []
-    for f in files:
-        profiles.append(_azimuthal_profile(pv.read(f), U_inf, rotor_radius, radial_edges))
-    radial_centers = 0.5 * (radial_edges[:-1] + radial_edges[1:])
-    return radial_centers, np.nanmean(np.vstack(profiles), axis=0)
+def _drift(disc_means: np.ndarray) -> float:
+    """Relative drift of the disc-averaged deficit across the averaging window.
+
+    Compares the first and second halves of the window.  A wake front still in
+    transit produces a large one-sided drift; a converged wake produces noise
+    about zero.
+    """
+    finite = disc_means[np.isfinite(disc_means)]
+    if finite.size < 4:
+        return np.inf
+    half = finite.size // 2
+    first, second = np.mean(finite[:half]), np.mean(finite[half:])
+    scale = abs(np.mean(finite))
+    return np.inf if scale < 1e-12 else abs(second - first) / scale
 
 
 # ==============================================================================
@@ -123,12 +151,38 @@ def plot_wake_planes(args) -> int:
         print("  [WARNING] pyvista unavailable — skipping rotor wake-plane plot.")
         return 1
 
-    samples = Path(args.solution_dir) / "samples"
+    solution_dir = Path(args.solution_dir)
+    samples = solution_dir / "samples"
     fmt = getattr(args, "format", "png")
     out = Path(args.figures_dir) / f"rotor_wake_planes.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
     R, U = args.rotor_radius, args.u_inf
     omega = args.tip_speed_ratio * U / R
+
+    # -- Time step: from the run, never a hardcoded guess -----------------
+    dt = args.dt if args.dt is not None else read_time_step(solution_dir)
+    if dt is None:
+        print(
+            "  [WARNING] could not determine the run's time step — falling back to tail fraction."
+        )
+        dt = 0.0
+
+    # -- Reference induction: the run's own operating point ---------------
+    operating_point = read_operating_point(
+        solution_dir,
+        rho=args.rho,
+        u_inf=U,
+        rotor_radius=R,
+        tip_speed_ratio=args.tip_speed_ratio,
+    )
+    if args.a is not None:
+        a_ref, a_source = args.a, "user override"
+    elif operating_point is not None:
+        a_ref = induction_from_ct(operating_point[0])
+        a_source = rf"from run $C_T={operating_point[0]:.3f}$"
+    else:
+        a_ref, a_source = 1.0 / 3.0, "Betz design value"
+        print("  [WARNING] vlm_forces.csv not found — falling back to the Betz a = 1/3.")
 
     planes = _discover_planes(samples, R)
     colors, _ = load_theme()
@@ -142,14 +196,15 @@ def plot_wake_planes(args) -> int:
     n_planes = len(planes)
     alphas = np.linspace(0.5, 1.0, n_planes) if n_planes > 1 else [0.8]
     radial_edges = np.linspace(0.0, args.r_max, args.radial_bins + 1)
+    radial_centers = 0.5 * (radial_edges[:-1] + radial_edges[1:])
 
     found = False
-    ux_min = np.inf
-    ux_max = -np.inf
+    unconverged: list[str] = []
+    ux_min, ux_max = np.inf, -np.inf
     for i, (tag, label) in enumerate(planes):
         files = _select_time_window(
             _plane_files(samples, tag),
-            dt=args.dt,
+            dt=dt,
             omega=omega,
             averaging_rotations=args.averaging_rotations,
             tail_fraction=args.tail_fraction,
@@ -157,19 +212,38 @@ def plot_wake_planes(args) -> int:
         if not files:
             continue
         try:
-            r, ux = _time_azimuthal_profile(files, U, R, radial_edges)
+            stats = [_plane_statistics(pv.read(f), U, R, radial_edges) for f in files]
         except Exception as exc:
             print(f"  [WARNING] could not read wake samples for {tag}: {exc}")
             continue
+
+        profiles = np.vstack([s[0] for s in stats])
+        disc_means = np.array([s[1] for s in stats])
+        ux = np.nanmean(profiles, axis=0)
+
+        drift = _drift(disc_means)
+        converged = drift <= args.drift_tolerance
+        if converged:
+            plot_label = rf"{label}, $\langle u_x\rangle_{{t,\theta}}$"
+        else:
+            # '%' is a comment character in the LaTeX text pipeline — escape it.
+            plot_label = rf"{label}, not converged ({100 * drift:.0f}\% drift)"
+            unconverged.append(f"{tag} ({drift:.1%})")
+
         ax.plot(
-            r,
+            radial_centers,
             ux,
             color=s_vpm["color"],
             alpha=alphas[i],
             marker=markers[i % len(markers)],
             markersize=s_vpm["markersize"],
             lw=s_vpm["linewidth"],
-            label=rf"{label}, $\langle u_x\rangle_{{t,\theta}}$",
+            ls="-" if converged else ":",
+            label=plot_label,
+        )
+        print(
+            f"  {tag}: {len(files)} snapshots, disc-mean drift {drift:.2%} "
+            f"→ {'converged' if converged else 'NOT CONVERGED'}"
         )
         ux_min = min(ux_min, float(np.nanmin(ux)))
         ux_max = max(ux_max, float(np.nanmax(ux)))
@@ -179,19 +253,26 @@ def plot_wake_planes(args) -> int:
         print("  [WARNING] no rotor wake-plane samples found — run rotorFlow first.")
         return 0
 
+    if unconverged:
+        print(
+            "  [WARNING] wake still in transit at: "
+            + ", ".join(unconverged)
+            + " — run longer before reading these profiles as physics."
+        )
+
     # Momentum-theory references (text-annotated, not in legend)
     ax.axhline(1.0, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
-    ax.axhline(1.0 - args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
+    ax.axhline(1.0 - a_ref, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"])
     ax.axhline(
-        1.0 - 2.0 * args.a, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"]
+        1.0 - 2.0 * a_ref, color=s_ref["color"], ls=s_ref["linestyle"], lw=s_ref["linewidth"]
     )
 
     x_text = 1.03
     ax.text(x_text, 1.03, r"$U_\infty$", color=s_ref["color"], va="center", ha="left")
-    ax.text(x_text, 1.03 - args.a, r"$(1-a)U_\infty$", color=s_ref["color"], va="center", ha="left")
+    ax.text(x_text, 1.03 - a_ref, r"$(1-a)U_\infty$", color=s_ref["color"], va="center", ha="left")
     ax.text(
         x_text,
-        1.03 - 2.0 * args.a,
+        1.03 - 2.0 * a_ref,
         r"$(1-2a)U_\infty$",
         color=s_ref["color"],
         va="center",
@@ -208,8 +289,9 @@ def plot_wake_planes(args) -> int:
     ax.set_xlabel(r"$r/R$")
     ax.set_ylabel(r"$\langle u_x/U_\infty\rangle_{t,\theta}$")
     ax.set_xlim([0.0, args.r_max])
-    ax.set_ylim([min(0.25, ux_min - 0.05), max(1.1, ux_max + 0.05)])
-    ax.set_title(r"Azimuthally averaged wake deficit")
+    # Keep the far-wake reference line in frame without leaving half the axis empty.
+    ax.set_ylim([min(1.0 - 2.0 * a_ref - 0.08, ux_min - 0.05), max(1.1, ux_max + 0.05)])
+    ax.set_title(rf"Azimuthally averaged wake deficit ($a={a_ref:.3f}$, {a_source})")
     ax.legend(loc="best")
 
     save_kw: dict = {"bbox_inches": "tight"}
@@ -222,19 +304,30 @@ def plot_wake_planes(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Rotor wake-plane validation vs momentum theory.")
-    p.add_argument("--rotor-radius", type=float, default=6.0)
-    p.add_argument("--hub-radius", type=float, default=1.0)
-    p.add_argument("--u-inf", type=float, default=7.0)
-    p.add_argument("--tip-speed-ratio", type=float, default=7.0)
+    p = add_case_arguments(build_arg_parser("Rotor wake-plane validation vs momentum theory."))
     p.add_argument(
-        "--dt", type=float, default=0.005, help="Simulation time step used in rotor_setup.py."
+        "--dt",
+        type=float,
+        default=None,
+        help="Time-step size [s]. Read from the run's own output when omitted.",
     )
     p.add_argument("--averaging-rotations", type=float, default=3.0)
     p.add_argument("--tail-fraction", type=float, default=0.25)
     p.add_argument("--radial-bins", type=int, default=32)
     p.add_argument("--r-max", type=float, default=1.25)
-    p.add_argument("--a", type=float, default=1.0 / 3.0, help="Axial induction (Betz=1/3).")
+    p.add_argument(
+        "--drift-tolerance",
+        type=float,
+        default=0.01,
+        help="Max relative drift of the disc-averaged deficit across the averaging "
+        "window before a plane is reported as not converged (default 1%%).",
+    )
+    p.add_argument(
+        "--a",
+        type=float,
+        default=None,
+        help="Axial induction override. Derived from the run's own Ct when omitted.",
+    )
     return plot_wake_planes(p.parse_args())
 
 

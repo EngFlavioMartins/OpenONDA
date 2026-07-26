@@ -22,7 +22,7 @@ def main() -> int:
     root, figs = Path(args.solution_dir), Path(args.figures_dir)
     failures: list[str] = []
 
-    for name, speed_tol in (("DNS_transposed", 0.10), ("LES_rvpm", 0.12)):
+    for name, speed_tol in (("DNS_transposed", 0.10), ("LES_transposed", 0.12)):
         files = sorted(glob.glob(str(root / name / f"vpm_{name}_*.h5")))
         if len(files) != args.expected_files:
             failures.append(f"{name}: {len(files)} backups, expected {args.expected_files}")

@@ -110,37 +110,41 @@ def VortexRingVPM(
     seed: int = 42,
     max_modes: int = 24,
     anti_diffuse_flag: bool = False,
-    perturbation_model: str = "solenoidal",
+    diffusivity_constant: float = 4.0,
 ):
     """
     Initialize a vortex ring with an optional Widnall-type perturbation.
 
-    ``perturbation_model="solenoidal"`` displaces the ring centreline and
-    adds the radial vorticity component required for the vorticity to remain
-    divergence-free.  In cylindrical coordinates about the x-axis,
+    The perturbation displaces the ring centreline and adds the radial
+    vorticity component required for the field to remain divergence-free.
+    In cylindrical coordinates about the x-axis,
 
         R_c(theta) = R (1 + epsilon_W g(theta))
         omega = W [e_theta + R_c'(theta) / rho e_rho]
 
     is the curl of an axial vector potential, so ``div(omega) = 0`` in the
-    continuum.  ``"legacy"`` retains the old radial-coordinate modulation for
-    reproducing historical tutorial results; that field is not solenoidal
-    when ``epsilon_W`` is non-zero.
+    continuum.
 
     Returns:
     --------
     velocities : (N,3) ndarray
     viscosities : (N,) ndarray
     strengths : (N,3) ndarray
+
+    ``diffusivity_constant`` must match the selected particle kernel's
+    core-spreading law because the anti-diffusion shift is
+    ``sigma_0² / (C_nu * nu)``.  It is 4 for Gaussian and 256/45 for the
+    Winckelmans--Leonard algebraic kernel.
     """
     num_particles = len(positions)
-    perturbation_model = perturbation_model.lower()
-    if perturbation_model not in {"solenoidal", "legacy"}:
-        raise ValueError("perturbation_model must be 'solenoidal' or 'legacy'")
     if max_modes < 1:
         raise ValueError("max_modes must be at least 1")
 
-    t_shift = avg_particle_radius**2 / (viscosity * 4.0) if anti_diffuse_flag else 0.0
+    if diffusivity_constant <= 0.0:
+        raise ValueError("diffusivity_constant must be positive")
+    t_shift = (
+        avg_particle_radius**2 / (viscosity * diffusivity_constant) if anti_diffuse_flag else 0.0
+    )
 
     t0 = ring_thickness**2 / (4 * viscosity)
     if t_shift > t0:
@@ -163,14 +167,9 @@ def VortexRingVPM(
     dg_dtheta /= np.sqrt(max_modes)
 
     radial_dist = np.sqrt(Y**2 + Z**2)
-    if perturbation_model == "legacy":
-        radial_dist_perturbed = radial_dist * (1 + epsilon_W * g_theta)
-        core_dist = np.sqrt((radial_dist_perturbed - ring_radius) ** 2 + X**2)
-        centerline_slope = np.zeros_like(theta)
-    else:
-        centerline_radius = ring_radius * (1.0 + epsilon_W * g_theta)
-        centerline_slope = ring_radius * epsilon_W * dg_dtheta
-        core_dist = np.sqrt((radial_dist - centerline_radius) ** 2 + X**2)
+    centerline_radius = ring_radius * (1.0 + epsilon_W * g_theta)
+    centerline_slope = ring_radius * epsilon_W * dg_dtheta
+    core_dist = np.sqrt((radial_dist - centerline_radius) ** 2 + X**2)
 
     omega_mag = (ring_strength / (np.pi * actual_ring_thickness_sq)) * np.exp(
         -(core_dist**2) / actual_ring_thickness_sq

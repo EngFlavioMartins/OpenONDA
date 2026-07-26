@@ -9,7 +9,7 @@ exact consequences of the Biot-Savart law and incompressibility.
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
@@ -207,7 +207,7 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
     """
     reset_taichi_backend()
     solver = Solver(
-        SolverConfig(
+        VPMSetup(
             time_step_size=0.01,
             processing_unit="CPU",
             particles_kernel="GAUSSIAN",

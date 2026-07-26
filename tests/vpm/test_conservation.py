@@ -20,7 +20,7 @@ test_cs_diffusion_conserves_total_circulation
 
 import numpy as np
 
-from source.solvers.VPM import ParticleDistributor, Solver, SolverConfig
+from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.utils.flow_models import LambOseenVPM
 
@@ -38,8 +38,8 @@ _H = 0.04  # particle spacing       [m]
 
 
 def _minimal_config(tmp_path, *, stretching, viscous, advection, dt=0.01):
-    """Return a SolverConfig that writes nothing useful, only logs to tmp_path."""
-    return SolverConfig(
+    """Return a VPMSetup that writes nothing useful, only logs to tmp_path."""
+    return VPMSetup(
         time_step_size=dt,
         processing_unit="CPU",
         stretching=stretching,
@@ -115,7 +115,7 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     solver.add_vortex_particles(
         position=positions,
         velocity=velocities,
@@ -165,7 +165,7 @@ def test_cs_diffusion_conserves_total_circulation(tmp_path):
         advection=AdvectionConfig(scheme="NONE"),
         dt=0.02,
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     _load_lamb_oseen(solver, bounds, _H)
 
     gamma_z_initial = solver.particles_strengths[:, 2].sum()

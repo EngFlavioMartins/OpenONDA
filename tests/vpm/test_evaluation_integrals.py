@@ -74,6 +74,33 @@ def test_empty_system_zero_integrals(kernel_name, backend, solver_for_backend):
     assert np.allclose(solver.total_strength, 0.0)
 
 
+def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_backend):
+    """Unequal cores must use Σ sigma_i² Gamma_i, not mean(sigma²) Σ Gamma."""
+    solver = solver_for_backend(
+        time_step_size=0.01,
+        particles_kernel="GAUSSIAN",
+        stretching=StretchingConfig.disabled(),
+        viscous=ViscousConfig(scheme="NONE"),
+        advection=AdvectionConfig(scheme="NONE"),
+        velocity=VelocityConfig.direct(),
+    )
+    solver.add_vortex_particles(
+        position=np.zeros((2, 3)),
+        velocity=np.zeros((2, 3)),
+        circulation=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]]),
+        radius=np.array([0.1, 0.3]),
+        volume=np.full(2, _VOLUME),
+        viscosity=np.zeros(2),
+    )
+
+    integrals = solver.field_diagnostics.compute_flow_integrals(
+        solver.particles, solver.flow_time, record_history=False
+    )
+    # Gaussian C=3.  The raw position term is zero.
+    expected = -(2.0 / 9.0) * 3.0 * np.array([0.0, 0.0, 0.1**2 - 0.3**2])
+    assert np.allclose(integrals["angular_impulse"], expected, atol=1e-6)
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )

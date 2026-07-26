@@ -13,7 +13,7 @@ import time
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, SolverConfig
+from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -89,7 +89,7 @@ def test_format_report_handles_empty_profiler():
 
 
 def _tiny_solver(tmp_path, timing_frequency=0):
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=0.05,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="RK2"),
@@ -100,7 +100,7 @@ def _tiny_solver(tmp_path, timing_frequency=0):
         timing_frequency=timing_frequency,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(config=config)
+    solver = Solver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),

@@ -30,14 +30,14 @@ import sys
 # OpenONDA imports
 from source.solvers.VPM.core.solver import Solver
 from source.solvers.VPM.config.types import (
-    SolverConfig,
+    VPMSetup,
     StabilizationConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
     TurbulenceConfig,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.VPM.boundary_elements.vlm import VLMSurfaceSetup, VLMSetup
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import RotatingVLM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
@@ -59,7 +59,7 @@ def main():
     parser.add_argument(
         "--processing-unit",
         default="CUDA",
-        choices=["CPU", "GPU", "GPU_VULKAN", "VULKAN", "CUDA", "GPU_METAL", "METAL"],
+        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
         help="Compute backend. Default CUDA keeps the tutorial on the tested NVIDIA path.",
     )
     args = parser.parse_args()
@@ -118,14 +118,6 @@ def main():
     # 4. VLM System Setup
     # =========================================================================
 
-    vlm = VLMSolver(
-        viscosity=nu,
-        density=rho,
-        max_panels=10000,
-        linear_solver="SCIPY",
-        sigma_factor=2.5,  # Overlap ratio for stable rotor wakes
-    )
-
     # Rotor layout — alternating CW / CCW for torque balance
     arm_length = 0.16  # [m] hub centre distance from vehicle CG
     rotors = [
@@ -135,33 +127,29 @@ def main():
         ("rotor_3", [arm_length, -arm_length, 0.0], -1.0),  # CW
     ]
 
-    for i, (name, pos, direction) in enumerate(rotors):
-        pos = np.array(pos)
-
-        # Use the correct blade geometry for rotation direction
-        blade_file = blade_ccw_json if direction > 0 else blade_cw_json
-
-        # Add multiple blades symmetrically around the hub center
-        for b in range(n_blades):
-            blade_name = f"{name}_blade_{b}"
-            offset_deg = 360.0 / n_blades * b
-
-            # Create a separate kinematics instance for each blade to track its state
-            kinematics = RotatingVLM(
-                omega=omega * direction,
-                axis=[0.0, 0.0, 1.0],
-                center=pos,
+    vlm_setup = VLMSetup(
+        surfaces=tuple(
+            VLMSurfaceSetup(
+                blade_ccw_json if direction > 0 else blade_cw_json,
+                name=f"{name}_blade_{blade_index}",
+                kinematics=RotatingVLM(
+                    omega=omega * direction,
+                    axis=[0.0, 0.0, 1.0],
+                    center=position,
+                ),
+                translation=tuple(position),
+                rotation_deg=(0.0, 0.0, 360.0 / n_blades * blade_index),
+                rotation_center=(0.0, 0.0, 0.0),
+                group_id=rotor_index + 1,
             )
-
-            vlm.add_surface(
-                blade_file,
-                surface_name=blade_name,
-                kinematics=kinematics,
-                translation=pos,
-                rotation_deg=[0.0, 0.0, offset_deg],
-                rotation_center=[0.0, 0.0, 0.0],
-                group_id=i + 1,
-            )
+            for rotor_index, (name, position_values, direction) in enumerate(rotors)
+            for position in (np.array(position_values),)
+            for blade_index in range(n_blades)
+        ),
+        viscosity=nu,
+        density=rho,
+        sigma_factor=2.5,
+    )
 
     # =========================================================================
     # 5. Field Samplers
@@ -187,9 +175,9 @@ def main():
     # Spatial bounds for particle removal (rotors at ±0.25, wake goes -Z)
     wake_bounds = [-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
 
-    config = SolverConfig(
+    config = VPMSetup(
         time_step_size=dt,
-        vlm_solver=vlm,
+        vlm=vlm_setup,
         backup_frequency=6,
         logging_frequency=6,
         timing_frequency=40,
@@ -205,16 +193,14 @@ def main():
         background_velocity=background_velocity,
         backup_file_name="quadcopter",
         backup_directory=output_dir,
-        solution_name=output_dir,
         stabilization=StabilizationConfig(
             remove_particles_by_bounds=wake_bounds,
         ),
         samplers=samplers,
-        sampler_output_format="legacy",
         processing_unit=args.processing_unit,
     )
 
-    vpm = Solver(config=config)
+    vpm = Solver(setup=config)
 
     # =========================================================================
     # 6. Simulation Loop

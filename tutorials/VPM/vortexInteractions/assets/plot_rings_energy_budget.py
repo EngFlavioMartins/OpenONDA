@@ -26,11 +26,12 @@ import pandas as pd
 ASSETS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ASSETS_DIR))
 from _common import (
+    GAMMA,
+    R0,
     T_REF,
     build_arg_parser,
     case_style,
     compact_case_legend_handles,
-    compounded_discarded_fraction,
     discover_cases,
     figure_size,
     load_theme,
@@ -207,14 +208,31 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
 
     e0 = float(energy[0])
 
-    # Impulse drift — the physically conserved invariant for this flow.
+    # Conserved vector circulation and impulses.  Closed rings may have a
+    # nearly zero vector sum, so normalize by physical ring scales rather than
+    # by a cancellation-prone initial norm alone.
+    strength_cols = [f"strength_{axis}" for axis in "xyz"]
+    if all(col in df.columns for col in strength_cols):
+        strength = df[strength_cols].to_numpy(float)
+        circulation_drift = float(np.linalg.norm(strength[-1] - strength[0]) / max(GAMMA, 1e-30))
+    else:
+        circulation_drift = np.nan
+
     imp_cols = [f"impulse_{axis}" for axis in "xyz"]
     if all(col in df.columns for col in imp_cols):
         imp = df[imp_cols].to_numpy(float)
-        imp0 = float(np.linalg.norm(imp[0]))
-        impulse_drift = float(np.linalg.norm(imp[-1] - imp[0]) / imp0) if imp0 > 1e-30 else np.nan
+        impulse_scale = max(float(np.linalg.norm(imp[0])), GAMMA * R0**2)
+        impulse_drift = float(np.linalg.norm(imp[-1] - imp[0]) / impulse_scale)
     else:
         impulse_drift = np.nan
+
+    ang_cols = [f"angular_impulse_{axis}" for axis in "xyz"]
+    if all(col in df.columns for col in ang_cols):
+        angular = df[ang_cols].to_numpy(float)
+        angular_scale = max(float(np.linalg.norm(angular[0])), GAMMA * R0**3)
+        angular_impulse_drift = float(np.linalg.norm(angular[-1] - angular[0]) / angular_scale)
+    else:
+        angular_impulse_drift = np.nan
 
     npart = df["n_particles"].to_numpy(float) if "n_particles" in df.columns else np.array([np.nan])
     dE_valid = dE_poly[np.isfinite(dE_poly)]
@@ -231,8 +249,9 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
         "frac_dEdt_pos": float(np.mean(dE_valid > 0.0)) if dE_valid.size else np.nan,
         "max_dEdt_E0": float(dE_valid.max() / e0) if dE_valid.size and abs(e0) > 1e-30 else np.nan,
         "spurious_E_in_E0": float(cum_spurious[-1] / e0) if abs(e0) > 1e-30 else np.nan,
-        "destroyed_circ": compounded_discarded_fraction(case_dir),
+        "circulation_drift": circulation_drift,
         "impulse_drift": impulse_drift,
+        "angular_impulse_drift": angular_impulse_drift,
         "N_ratio": float(npart[-1] / npart[0]) if npart.size and npart[0] > 0 else np.nan,
     }
     for prefix, metrics in (("nu", m_nu), ("minus2", m_m2)):
@@ -317,7 +336,7 @@ def make_figure(
 
     fig.legend(
         handles=compact_case_legend_handles(),
-        ncol=5,
+        ncol=4,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.005),
     )
@@ -361,14 +380,14 @@ def main() -> None:
 
     make_figure(timeseries, summary, figures_dir, args.dpi, args.format)
 
-    # Objective verdict: a method succeeds only if it never injects energy
-    # (frac_dEdt_pos == 0) AND preserves the physics — no destroyed circulation,
-    # negligible impulse drift.  Ranked worst-violation first.
+    # Objective verdict: a method succeeds only if it never injects energy and
+    # preserves circulation and both impulses. Ranked worst-violation first.
     verdict = summary.copy()
     verdict["PASS"] = (
         (verdict["frac_dEdt_pos"] <= 0.0)
-        & (verdict["destroyed_circ"] <= 1e-3)
+        & (verdict["circulation_drift"].abs() <= 1e-3)
         & (verdict["impulse_drift"].abs() <= 1e-2)
+        & (verdict["angular_impulse_drift"].abs() <= 1e-2)
     )
     cols = [
         "case",
@@ -376,21 +395,20 @@ def main() -> None:
         "frac_dEdt_pos",
         "max_dEdt_E0",
         "spurious_E_in_E0",
-        "destroyed_circ",
+        "circulation_drift",
         "impulse_drift",
+        "angular_impulse_drift",
         "E_ratio",
         "N_ratio",
     ]
-    verdict = verdict.sort_values(
-        ["frac_dEdt_pos", "spurious_E_in_E0", "destroyed_circ"], ascending=False
-    )
+    verdict = verdict.sort_values(["frac_dEdt_pos", "spurious_E_in_E0"], ascending=False)
     print("\n=== OBJECTIVE VERDICT (dE/dt ≤ 0 always, physics preserved) ===")
     print(verdict[cols].to_string(index=False, float_format=lambda x: f"{x:.4g}"))
     print(
-        "\nPASS requires: frac_dEdt_pos=0, destroyed_circ≤1e-3, |impulse_drift|≤1e-2.\n"
+        "\nPASS requires: frac_dEdt_pos=0, |circulation_drift|≤1e-3, "
+        "and both impulse drifts≤1e-2.\n"
         "frac_dEdt_pos = fraction of samples with dE/dt>0 (spurious energy gain);\n"
-        "spurious_E_in_E0 = total injected energy ∫max(dE/dt,0)dt / E0;\n"
-        "destroyed_circ = circulation thrown away by capped/thresholded remeshing."
+        "spurious_E_in_E0 = total injected energy ∫max(dE/dt,0)dt / E0."
     )
 
 

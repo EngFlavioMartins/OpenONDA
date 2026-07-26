@@ -1,5 +1,5 @@
 """
-VLM coupling subpackage: the VPM coupler, kinematics drivers, and wake shedding.
+VLM coupling subpackage: kinematics drivers used by the integrated VPM solver.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -7,7 +7,6 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from .coupler import CouplingConfig, VLMVPMCoupler
 from .kinematics import (
     HeavingVLM,
     ManeuverVLM,
@@ -17,12 +16,8 @@ from .kinematics import (
     TranslatingVLM,
     VLMKinematics,
 )
-from .wake_shedding import VLMWakeShedder
 
 __all__ = [
-    "VLMVPMCoupler",
-    "CouplingConfig",
-    "VLMWakeShedder",
     "VLMKinematics",
     "StaticVLM",
     "TranslatingVLM",

@@ -7,7 +7,7 @@ the solver log's ``FLOW DIAGNOSTICS`` sections):
   (top)    Kinetic energy   E(t)/E(0)
   (bottom) Enstrophy        ε(t)/ε(0)
 
-Color encodes the stabilization method, linestyle the interaction family - the
+Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
@@ -69,7 +69,7 @@ def main() -> None:
     if plotted:
         fig.legend(
             handles=compact_case_legend_handles(),
-            ncol=5,
+            ncol=4,
             loc="lower center",
             bbox_to_anchor=(0.5, 0.005),
         )

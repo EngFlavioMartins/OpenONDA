@@ -34,7 +34,7 @@ def setup_vpm_solver(setup: VPMSetup):
         return None
     from .core.solver import Solver
 
-    return Solver(config=setup)
+    return Solver(setup=setup)
 
 
 __all__ = ["setup_vpm_solver"]

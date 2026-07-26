@@ -41,8 +41,6 @@ class SolverIO:
 
         if hasattr(self.solver.config, "backup_directory") and self.solver.config.backup_directory:
             self.export_dir = self.solver.config.backup_directory
-        elif hasattr(self.solver.config, "solution_name"):
-            self.export_dir = self.solver.config.solution_name
         else:
             self.export_dir = "solution"
 

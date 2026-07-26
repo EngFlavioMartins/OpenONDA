@@ -10,6 +10,5 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from .conservation import ConservationTracker
-from .split_diagnostics import diagnose_split
 
-__all__ = ["ConservationTracker", "diagnose_split"]
+__all__ = ["ConservationTracker"]
