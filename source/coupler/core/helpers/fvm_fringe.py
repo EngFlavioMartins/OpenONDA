@@ -18,7 +18,11 @@ reads them via relaxationSource.H (fvOptions); the native FVM via
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+_logger = logging.getLogger("coupler")
 
 
 def build_lambda(
@@ -107,6 +111,28 @@ class FringeFields:
         )
 
         self.ofw.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.lam))
+
+        # Report the strength that was actually built.  The damping a structure
+        # sees crossing the band is exp(-∫λ dd / u_char), and with the
+        # dead-zone-plus-cosine profile ∫λ dd = λ_max·(dead_zone + B/2 -
+        # dead_zone/2) — NOT λ_max·B as the `A` heuristic assumes.  Without this
+        # line the effective fringe strength is invisible in the log, which makes
+        # an A/B on `fringe_strength` unverifiable after the fact.
+        band_integral = lam_max * (dead_zone + 0.5 * (cfg.buffer_thickness - dead_zone))
+        attenuation = float(np.exp(-band_integral / max(u_char, 1e-30)))
+        n_band = int(np.count_nonzero(self.lam > 0.0))
+        _logger.info(
+            "[Fringe] A=%.3g  λ_max=%.3e 1/s (τ=%.3e s, τ/dt=%.1f)  band=%.3f m "
+            "(dead_zone=%.3f)  cells in band=%d  transit attenuation=%.3f",
+            float(cfg.fringe_strength),
+            lam_max,
+            1.0 / max(lam_max, 1e-30),
+            (1.0 / max(lam_max, 1e-30)) / max(coupling_dt, 1e-30),
+            float(cfg.buffer_thickness),
+            dead_zone,
+            n_band,
+            attenuation,
+        )
 
     def update_target(self) -> None:
         """Sample the VPM velocity at the FVM cell centres and push Utarget.
