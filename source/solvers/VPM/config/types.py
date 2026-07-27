@@ -658,9 +658,11 @@ class StretchingConfig:
     """
     Configuration for vortex stretching schemes.
 
-    Uses direct pair-wise computation (O(N²)) for the selected physical
-    stretching formulation.  Numerical stabilization is configured separately
-    through :class:`StabilizationConfig`.
+    Stability comes from common-stage advection/stretching integration and
+    strain/displacement subcycling.  ``CONSERVATIVE`` uses exact direct
+    pair-wise exchange (O(N²)); the other formulations may use either direct
+    evaluation or a controlled treecode approximation.  ``StabilizationConfig``
+    is only a particle-retention policy and never modifies vortex strength.
 
     Modes:
         - DIRECT: dΓ/dt = (Γ·∇)u, the standard direct formulation

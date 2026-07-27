@@ -11,7 +11,8 @@ written as dE/dt = -2*nu*Enstrophy.  This script reports both the code-native
 ``neg_nu_enstrophy`` balance and the literal ``-2*enstrophy`` balance so a
 normalization mismatch is impossible to miss.
 
-It reads the solver log's ``FLOW DIAGNOSTICS`` sections.
+It reads the exported flow-integral CSV, with solver-log fallback for legacy
+runs.
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ def read_budget(case_dir: Path) -> tuple[pd.DataFrame | None, str]:
     if df is None:
         return None, ""
     df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["time", "kinetic_energy"])
-    if len(df) < 3:
+    if len(df) < 2:
         return None, ""
     return df.reset_index(drop=True), "log"
 
@@ -336,7 +337,7 @@ def make_figure(
 
     fig.legend(
         handles=compact_case_legend_handles(),
-        ncol=4,
+        ncol=5,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.005),
     )

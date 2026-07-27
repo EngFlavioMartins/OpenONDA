@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — baseline versus stabilized comparison.
+# Vortex-ring interactions — baseline, LES, and stabilized-LES comparison.
 #
-# Each script auto-discovers ``{leapfrog,collide}_{baseline,stabilized}``.
+# Each script auto-discovers the three methods for both interaction families.
 # Color identifies the numerical method and linestyle identifies the family.
 set -euo pipefail
 
@@ -19,6 +19,7 @@ PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
 SOLUTION_DIR="./solution"
 FIGURES_DIR="./figures"
 DPI=300
+ALLOW_PARTIAL=0
 
 run_plot() {
     local fmt
@@ -32,9 +33,16 @@ while [[ $# -gt 0 ]]; do
         --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
         --figures-dir) FIGURES_DIR="$2"; shift 2 ;;
         --dpi) DPI="$2"; shift 2 ;;
+        --allow-partial) ALLOW_PARTIAL=1; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+VALIDATE_ARGS=(--solution-dir "$SOLUTION_DIR")
+if [[ "$ALLOW_PARTIAL" == "1" ]]; then
+    VALIDATE_ARGS+=(--allow-partial)
+fi
+"$PYTHON" assets/validate_plot_inputs.py "${VALIDATE_ARGS[@]}"
 
 mkdir -p "$FIGURES_DIR"
 

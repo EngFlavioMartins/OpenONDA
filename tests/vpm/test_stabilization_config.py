@@ -37,18 +37,23 @@ def _vortex_interactions_namespace():
     return runpy.run_path(tutorial)
 
 
-def test_vortex_interactions_cli_defaults_to_stabilized_reference():
+def _rotor_flow_namespace():
+    tutorial = Path(__file__).parents[2] / "tutorials/VPM/rotorFlow/rotor_setup.py"
+    return runpy.run_path(tutorial)
+
+
+def test_vortex_interactions_cli_defaults_to_stabilized_les_reference():
     args = _vortex_interactions_namespace()["build_arg_parser"]().parse_args([])
 
     assert args.processing_unit == "AUTO"
-    assert args.method == "stabilized"
+    assert args.method == "les_stabilized"
     assert args.dt == pytest.approx(20.0 * 0.02**2 / 3.141592653589793)
     assert args.particle_spacing == pytest.approx(0.02)
     assert args.epsilon_w == pytest.approx(0.025)
     assert args.guard_frequency == 1
 
 
-def test_vortex_interactions_stabilized_config_has_no_field_filter(tmp_path):
+def test_vortex_interactions_stabilized_les_config_has_no_field_filter(tmp_path):
     namespace = _vortex_interactions_namespace()
     args = namespace["build_arg_parser"]().parse_args([])
     config = namespace["build_solver_config"](args, tmp_path, "leapfrog")
@@ -58,7 +63,35 @@ def test_vortex_interactions_stabilized_config_has_no_field_filter(tmp_path):
     assert config.particles_kernel == "WINCKELMANS"
     assert config.advection.scheme == config.stretching.scheme == "RK2"
     assert config.stretching.mode == "CONSERVATIVE"
+    assert config.turbulence.flow_model == "LES"
     assert config.stabilization == StabilizationConfig.disabled()
+    assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
+    assert config.viscous.characteristic_distance == pytest.approx(args.particle_spacing)
+    assert config.coupled_max_strain_increment == pytest.approx(0.08)
+    assert config.coupled_max_advection_fraction == pytest.approx(0.25)
+    assert config.coupled_max_substeps == 128
+
+
+def test_vortex_interactions_three_methods_are_distinct(tmp_path):
+    namespace = _vortex_interactions_namespace()
+    parser = namespace["build_arg_parser"]()
+
+    baseline = namespace["build_solver_config"](
+        parser.parse_args(["--method", "baseline"]), tmp_path, "leapfrog"
+    )
+    les = namespace["build_solver_config"](
+        parser.parse_args(["--method", "les"]), tmp_path, "leapfrog"
+    )
+    stabilized = namespace["build_solver_config"](
+        parser.parse_args(["--method", "les_stabilized"]), tmp_path, "leapfrog"
+    )
+
+    assert baseline.turbulence.flow_model == "DNS"
+    assert les.turbulence.flow_model == stabilized.turbulence.flow_model == "LES"
+    assert baseline.time_integration == les.time_integration == "FRACTIONAL"
+    assert baseline.velocity.method == les.velocity.method == "TREECODE"
+    assert stabilized.time_integration == "COUPLED"
+    assert stabilized.velocity.method == "DIRECT"
 
 
 def test_vortex_interactions_stabilized_contract_rejects_coarse_spacing():
@@ -67,3 +100,36 @@ def test_vortex_interactions_stabilized_contract_rejects_coarse_spacing():
 
     with pytest.raises(ValueError, match="h/a0=.* > 0.2"):
         namespace["validate_resolution"](args)
+
+
+def test_rotor_flow_cli_defaults_to_physics_preserving_policy():
+    namespace = _rotor_flow_namespace()
+    args = namespace["build_arg_parser"]().parse_args([])
+
+    assert args.dt == pytest.approx(0.006)
+    assert args.treecode_theta == pytest.approx(0.20)
+    assert args.coupled_max_strain_increment == pytest.approx(0.08)
+    assert args.coupled_max_advection_fraction == pytest.approx(0.25)
+    assert args.coupled_max_substeps == 128
+    assert args.guard_frequency == 20
+
+
+def test_rotor_flow_uses_scalable_coupled_stabilization():
+    namespace = _rotor_flow_namespace()
+    args = namespace["build_arg_parser"]().parse_args([])
+    config = namespace["build_solver_config"](args)
+
+    assert config.time_integration == "COUPLED"
+    assert config.advection.scheme == config.stretching.scheme == "RK2"
+    assert config.stretching.mode == "TRANSPOSED"
+    assert config.stretching.use_treecode is True
+    assert config.stretching.treecode_theta == pytest.approx(args.treecode_theta)
+    assert config.velocity.method == "TREECODE"
+    assert config.velocity.theta == pytest.approx(args.treecode_theta)
+    assert config.particles_kernel == "WINCKELMANS"
+    assert config.viscous.scheme == "CS"
+    assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
+    assert config.viscous.characteristic_distance == pytest.approx(
+        namespace["nominal_wake_spacing"](args.dt)
+    )
+    assert config.stabilization.remove_particles_by_bounds is not None

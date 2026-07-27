@@ -330,7 +330,12 @@ def read_metric(case_dir, column: str, truncate_blowup: bool = True):
     blow-up factor, so diverging runs do not swamp the axis scale.
     """
     df = read_log_diagnostics(case_dir)
-    if df.empty:
+    if df.empty or column not in df.columns or df[column].dropna().empty:
+        integrals = read_integrals(case_dir)
+        csv_column = "strength_magnitude" if column == "sum_gamma_magnitude" else column
+        if integrals is not None and csv_column in integrals.columns:
+            df = integrals.rename(columns={csv_column: column})
+    if df.empty or column not in df.columns or df[column].dropna().empty:
         csv = Path(case_dir) / "stability_metrics.csv"
         if not csv.exists():
             return np.array([]), np.array([])
@@ -352,17 +357,20 @@ def read_metric(case_dir, column: str, truncate_blowup: bool = True):
 
 
 def read_integrals(case_dir):
-    """Return flow-integral diagnostics parsed from the case log, or None.
+    """Return flow-integral diagnostics from CSV, falling back to the case log.
 
     Keeps only the last monotonically increasing time segment so appended
     restart rows do not double back on the time axis.
     """
-    df = read_log_diagnostics(case_dir)
-    if df.empty:
-        csv = Path(case_dir) / "samples" / "flow_integrals.csv"
-        if not csv.exists():
-            return None
+    csv = Path(case_dir) / "samples" / "flow_integrals.csv"
+    if csv.exists():
         df = pd.read_csv(csv)
+    else:
+        df = read_log_diagnostics(case_dir)
+        if df.empty:
+            return None
+    if "strength_magnitude" in df.columns and "sum_gamma_magnitude" not in df.columns:
+        df["sum_gamma_magnitude"] = df["strength_magnitude"]
     keep = [
         "time",
         "step",
@@ -373,6 +381,7 @@ def read_integrals(case_dir):
         "neg_nu_enstrophy",
         "helicity",
         "sum_gamma_magnitude",
+        "strength_magnitude",
         "strength_x",
         "strength_y",
         "strength_z",

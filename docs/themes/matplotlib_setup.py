@@ -573,9 +573,10 @@ COLORS = {
     "LESpurple": PALETTE["purple"],
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
-    # Vortex-interaction baseline/stabilized comparison.
+    # Vortex-interaction baseline/LES/stabilized-LES comparison.
     "case_baseline": PALETTE["strong_gray"],
-    "case_stabilized": PALETTE["black"],
+    "case_les": PALETTE["dark"],
+    "case_les_stabilized": PALETTE["black"],
     "background": BACKGROUND_LIGHT,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
@@ -609,13 +610,15 @@ COLORMAPS = {
 FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
 VARIANT_LABEL = {
-    "baseline": "Baseline fractional",
-    "stabilized": "Stabilized coupled",
+    "baseline": "Baseline (DNS)",
+    "les": "LES",
+    "les_stabilized": "LES + stabilized",
 }
 VARIANT_ORDER = tuple(VARIANT_LABEL)
 VARIANT_STYLE = {
     "baseline": {"color": COLORS["case_baseline"], "marker": "8"},
-    "stabilized": {"color": COLORS["case_stabilized"], "marker": "o"},
+    "les": {"color": COLORS["case_les"], "marker": "s"},
+    "les_stabilized": {"color": COLORS["case_les_stabilized"], "marker": "o"},
 }
 INTENDED_CASE_ORDER = {
     f"{family}_{variant}": family_i * len(VARIANT_ORDER) + variant_i

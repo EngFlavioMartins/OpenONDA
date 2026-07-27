@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Baseline versus physically stabilized vortex-ring interactions.
+"""Six-case vortex-ring interaction comparison.
 
-The ``stabilized`` method uses the conditions under which the discretized VPM
-equations themselves remain admissible:
+Each interaction family is run with three deliberately distinct methods:
 
-* h/a0 <= 0.2 and dt <= 20 h^2/Gamma0;
-* direct symmetric particle interactions;
-* coupled RK2 stages for position and vortex strength;
-* pairwise conservative stretching and Strang-split core spreading;
-* automatic strain/displacement subcycling;
-* a fail-fast physical contract instead of modifying the evolved field.
+* ``baseline``: molecular-viscosity DNS with the legacy fractional RK3 core;
+* ``les``: the same legacy core plus Smagorinsky LES;
+* ``les_stabilized``: the same LES physics with direct symmetric interactions,
+  coupled RK2 stages, conservative stretching, Strang-split core spreading,
+  and strain/displacement subcycling.
 
-``baseline`` is the former fractional/treecode/RK3 formulation.  It remains
-only as the control needed to measure the effect of the numerical methodology.
+Only ``les_stabilized`` is subject to the strict closed-system physical
+acceptance contract.  Baseline and LES are controls: their invariant errors
+are measured and plotted, not used to reject an otherwise useful comparison.
 """
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +33,11 @@ from source.solvers.VPM.config.types import (
 from source.solvers.VPM.utils import VortexRingVPM
 from source.solvers.VPM.utils.field_samplers import SurfaceSampler
 
+# The configuration module keeps library tracebacks terse. A long batch runner
+# needs the full traceback in its per-case log so infrastructure failures are
+# diagnosable instead of appearing as a single unexplained exception line.
+sys.tracebacklimit = None
+
 
 GAMMA_REF = np.pi
 RING_RADIUS = 1.0
@@ -41,14 +46,27 @@ REYNOLDS_GAMMA = 3000.0
 KINEMATIC_VISCOSITY = GAMMA_REF / REYNOLDS_GAMMA
 PAPER_SPACING = 0.2 * CORE_RADIUS
 PAPER_DT = 20.0 * PAPER_SPACING**2 / GAMMA_REF
+STABILIZED_METHOD = "les_stabilized"
+
+
+class PhysicalContractError(RuntimeError):
+    """A finite solution violated the stabilized method's acceptance contract."""
+
+
+class NumericalBlowupError(RuntimeError):
+    """A control run became non-finite or exceeded its declared blow-up scale."""
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Baseline versus stabilized vortex rings")
+    parser = argparse.ArgumentParser(description="Baseline, LES, and stabilized-LES vortex rings")
     parser.add_argument("--gamma1", type=float, default=GAMMA_REF)
     parser.add_argument("--gamma2", type=float, default=GAMMA_REF)
-    parser.add_argument("--name", default="leapfrog_stabilized")
-    parser.add_argument("--method", choices=["baseline", "stabilized"], default="stabilized")
+    parser.add_argument("--name", default="leapfrog_les_stabilized")
+    parser.add_argument(
+        "--method",
+        choices=["baseline", "les", STABILIZED_METHOD],
+        default=STABILIZED_METHOD,
+    )
     parser.add_argument("--dt", type=float, default=PAPER_DT, help="Macro time step [s].")
     parser.add_argument("--num-steps", type=int, default=2800)
     parser.add_argument("--particle-spacing", type=float, default=PAPER_SPACING)
@@ -92,6 +110,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=5.0e-3,
         help="Maximum normalized drift of circulation and the two impulses.",
+    )
+    parser.add_argument(
+        "--blowup-factor",
+        type=float,
+        default=50.0,
+        help="Stop a non-physical control after max|Gamma| exceeds this multiple of its initial value.",
     )
     return parser
 
@@ -180,10 +204,11 @@ def validate_resolution(args: argparse.Namespace) -> None:
         args.energy_increase_tolerance < 0.0
         or args.energy_budget_tolerance <= 0.0
         or args.invariant_drift_tolerance <= 0.0
+        or args.blowup_factor <= 1.0
     ):
-        raise ValueError("Physical-contract tolerances must be non-negative/positive.")
+        raise ValueError("Physical-contract tolerances and --blowup-factor are invalid.")
 
-    if args.method != "stabilized" or args.allow_underresolved:
+    if args.method != STABILIZED_METHOD or args.allow_underresolved:
         return
     spacing_ratio = args.particle_spacing / CORE_RADIUS
     dt_limit = (
@@ -223,7 +248,7 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
         timing_frequency=100,
         export_flow_integrals=True,
     )
-    if args.method == "stabilized":
+    if args.method == STABILIZED_METHOD:
         return VPMSetup(
             **common,
             time_integration="COUPLED",
@@ -232,7 +257,7 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
             coupled_max_substeps=128,
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.conservative(scheme="RK2"),
-            turbulence=TurbulenceConfig.dns(),
+            turbulence=TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048),
             velocity=VelocityConfig.direct(),
             particles_kernel="WINCKELMANS",
         )
@@ -241,7 +266,11 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
         time_integration="FRACTIONAL",
         advection=AdvectionConfig(scheme="RK3"),
         stretching=StretchingConfig.transposed(scheme="RK3"),
-        turbulence=TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048),
+        turbulence=(
+            TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+            if args.method == "les"
+            else TurbulenceConfig.dns()
+        ),
         velocity=VelocityConfig.treecode(
             theta=0.35,
             sort_particle_targets=True,
@@ -315,7 +344,7 @@ def enforce_physical_contract(
         if not np.isfinite(drift) or drift > args.invariant_drift_tolerance:
             failures.append(f"{key} drift={drift:.3e} (limit {args.invariant_drift_tolerance:.3e})")
     if failures:
-        raise RuntimeError(
+        raise PhysicalContractError(
             "Physical acceptance contract failed at "
             f"step={solver.time_step}, t={solver.flow_time:.6e}: "
             + "; ".join(failures)
@@ -324,17 +353,61 @@ def enforce_physical_contract(
     return energy, sink, drifts
 
 
+def enforce_numerical_bound(
+    solver: Solver,
+    initial_max_strength: float,
+    blowup_factor: float,
+) -> float:
+    """Log and reject only a genuine strength blow-up or non-finite field."""
+    circulation = solver.particles_circulation
+    magnitudes = np.linalg.norm(circulation, axis=1)
+    maximum = float(magnitudes.max()) if len(magnitudes) else 0.0
+    threshold = blowup_factor * max(initial_max_strength, np.finfo(float).tiny)
+    print(
+        "BLOWUP CHECK "
+        f"step={solver.time_step} time={solver.flow_time:.6e} "
+        f"max_gamma={maximum:.8e} threshold={threshold:.8e} "
+        f"n_particles={len(magnitudes)}",
+        flush=True,
+    )
+    if not np.isfinite(circulation).all() or not np.isfinite(maximum) or maximum > threshold:
+        raise NumericalBlowupError(
+            f"Numerical blow-up at step={solver.time_step}, t={solver.flow_time:.6e}: "
+            f"max|Gamma|={maximum:.6e}, threshold={threshold:.6e}."
+        )
+    return maximum
+
+
+def export_diagnostic_snapshot(solver: Solver) -> None:
+    """Export the current state once when periodic logging did not just do so."""
+    if (
+        solver.logging_frequency > 0
+        and solver.time_step > 0
+        and solver.time_step % solver.logging_frequency == 0
+    ):
+        return
+    solver._update_all_flow_integrals()
+    solver._export_flow_integrals_csv()
+
+
 def write_manifest(
     args: argparse.Namespace,
     case_label: str,
     output_dir: Path,
     solver: Solver,
+    *,
+    status: str,
+    termination_reason: str | None = None,
 ) -> None:
     cfg = solver.config
     manifest = {
         "case": output_dir.name,
         "family": case_label,
         "method": args.method,
+        "status": status,
+        "completed_steps": solver.time_step,
+        "requested_steps": args.num_steps,
+        "termination_reason": termination_reason,
         "time_integration": cfg.time_integration,
         "model": cfg.turbulence.flow_model,
         "kernel": cfg.particles_kernel,
@@ -343,7 +416,18 @@ def write_manifest(
         "stretching_mode": cfg.stretching.mode,
         "stretching_scheme": cfg.stretching.scheme,
         "viscous_scheme": cfg.viscous.scheme,
+        "molecular_viscosity": cfg.viscous.viscosity,
+        "characteristic_distance": cfg.viscous.characteristic_distance,
+        "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
+        "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
+        "coupled_max_substeps": cfg.coupled_max_substeps,
         "field_modification": "none",
+        "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
+        "physical_acceptance": (
+            "closed-system energy/circulation/linear-impulse/angular-impulse contract"
+            if args.method == STABILIZED_METHOD
+            else "diagnostic control; invariant errors are measured but do not reject the run"
+        ),
         "processing_unit": solver.processing_unit,
         "processing_unit_requested": args.processing_unit,
         "dt": args.dt,
@@ -359,12 +443,13 @@ def write_manifest(
         "energy_increase_tolerance": args.energy_increase_tolerance,
         "energy_budget_tolerance": args.energy_budget_tolerance,
         "invariant_drift_tolerance": args.invariant_drift_tolerance,
+        "blowup_factor": args.blowup_factor,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
 
 
-def run_case(args: argparse.Namespace) -> None:
+def run_case(args: argparse.Namespace) -> str:
     validate_resolution(args)
     case_label = "leapfrog" if args.gamma1 * args.gamma2 >= 0.0 else "collide"
     domain_bounds = [-0.15, 0.15, -1.5, 1.5, -1.5, 1.5]
@@ -396,22 +481,27 @@ def run_case(args: argparse.Namespace) -> None:
         args.gamma2,
         args.epsilon_w,
         args.perturbation_modes,
-        256.0 / 45.0 if args.method == "stabilized" else 4.0,
+        256.0 / 45.0 if args.method == STABILIZED_METHOD else 4.0,
     )
-    write_manifest(args, case_label, output_dir, solver)
     solver.info()
 
-    initial = solver.field_diagnostics.compute_flow_integrals(
-        solver.particles, solver.flow_time, record_history=False
-    )
+    solver._update_all_flow_integrals()
+    solver._export_flow_integrals_csv()
+    solver.backup_solution(str(output_dir / f"vpm_{args.name}"))
+    initial = dict(solver._flow_integrals)
     scales = _contract_scales(solver, initial)
     previous_energy = float(initial["kinetic_energy"])
     previous_sink = float(initial["vorticity_dissipation_rate"])
+    initial_max_strength = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
+    write_manifest(args, case_label, output_dir, solver, status="running")
 
     try:
         for step in range(args.num_steps):
             solver.update_state()
             if (step + 1) % args.guard_frequency != 0:
+                continue
+            enforce_numerical_bound(solver, initial_max_strength, args.blowup_factor)
+            if args.method != STABILIZED_METHOD:
                 continue
             previous_energy, previous_sink, drifts = enforce_physical_contract(
                 solver, initial, previous_energy, previous_sink, scales, args
@@ -425,11 +515,30 @@ def run_case(args: argparse.Namespace) -> None:
                 f"angular_drift={drifts['angular_impulse']:.3e}",
                 flush=True,
             )
-    except RuntimeError:
+    except (PhysicalContractError, NumericalBlowupError) as error:
+        export_diagnostic_snapshot(solver)
         solver.save_state(str(output_dir / "rejected_state"))
-        raise
+        status = (
+            "rejected_physical_contract"
+            if isinstance(error, PhysicalContractError)
+            else "terminated_nonphysical"
+        )
+        write_manifest(
+            args,
+            case_label,
+            output_dir,
+            solver,
+            status=status,
+            termination_reason=str(error),
+        )
+        print(f"Simulation ended with status={status}: {error}", flush=True)
+        return status
 
-    print(f"Simulation completed {args.num_steps} physically accepted steps.")
+    export_diagnostic_snapshot(solver)
+    write_manifest(args, case_label, output_dir, solver, status="completed")
+    qualifier = "physically accepted " if args.method == STABILIZED_METHOD else ""
+    print(f"Simulation completed {args.num_steps} {qualifier}steps.", flush=True)
+    return "completed"
 
 
 def main() -> int:

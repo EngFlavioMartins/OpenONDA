@@ -65,7 +65,7 @@ def main() -> None:
     if plotted:
         fig.legend(
             handles=compact_case_legend_handles(),
-            ncol=4,
+            ncol=5,
             loc="lower center",
             bbox_to_anchor=(0.5, 0.005),
         )

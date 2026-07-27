@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Clean up solution files and figures.
+# Explicit cleanup for vortexInteractions.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [[ $# -eq 0 ]]; then
+if [[ $# -eq 1 && "$1" == "--all" ]]; then
     rm -rf -- "solution" "figures"
     echo "Removed: solution/ figures/"
 elif [[ $# -eq 1 && "$1" =~ ^[A-Za-z0-9._-]+$ ]]; then
     rm -rf -- "solution/${1}"
     echo "Removed: solution/${1}"
 else
-    echo "Usage: $0 [CASE_NAME]" >&2
+    echo "Refusing an implicit full cleanup." >&2
+    echo "Usage: $0 CASE_NAME | $0 --all" >&2
     exit 2
 fi

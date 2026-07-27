@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — baseline versus stabilized conservative method.
+# Six vortex-ring interactions: 3 methods x 2 interaction families.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,8 +8,6 @@ cd "$SCRIPT_DIR"
 PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
     || command -v python3 \
     || command -v python)}"
-
-./allclean.sh
 
 GAMMA_PI="3.14159265358979"
 
@@ -30,18 +28,43 @@ DEVICE_MEMORY_FRACTION="${DEVICE_MEMORY_FRACTION:-0.5}"
 BACKUP_FREQUENCY="${BACKUP_FREQUENCY:-100}"
 LOGGING_FREQUENCY="${LOGGING_FREQUENCY:-20}"
 GUARD_FREQUENCY="${GUARD_FREQUENCY:-1}"
-METHODS="${METHODS:-baseline stabilized}"
-RUN_FAMILIES="${RUN_FAMILIES:-leapfrog collide}"
+DEFAULT_METHODS="baseline les les_stabilized"
+DEFAULT_FAMILIES="leapfrog collide"
+METHODS="${METHODS:-$DEFAULT_METHODS}"
+RUN_FAMILIES="${RUN_FAMILIES:-$DEFAULT_FAMILIES}"
+CLEAN_ALL="${CLEAN_ALL:-0}"
+ALLOW_UNDERRESOLVED="${ALLOW_UNDERRESOLVED:-0}"
+RUN_PLOTS="${RUN_PLOTS:-1}"
 
-mkdir -p "$RUN_ROOT" "$FIGURES_ROOT"
+if [[ "$CLEAN_ALL" == "1" ]]; then
+    ./allclean.sh --all
+elif [[ "$CLEAN_ALL" != "0" ]]; then
+    echo "CLEAN_ALL must be 0 or 1, got: $CLEAN_ALL" >&2
+    exit 2
+fi
+
+if [[ "$ALLOW_UNDERRESOLVED" != "0" && "$ALLOW_UNDERRESOLVED" != "1" ]]; then
+    echo "ALLOW_UNDERRESOLVED must be 0 or 1, got: $ALLOW_UNDERRESOLVED" >&2
+    exit 2
+fi
+if [[ "$RUN_PLOTS" != "0" && "$RUN_PLOTS" != "1" ]]; then
+    echo "RUN_PLOTS must be 0 or 1, got: $RUN_PLOTS" >&2
+    exit 2
+fi
+
+STAGING_ROOT="$RUN_ROOT/.running"
+mkdir -p "$RUN_ROOT" "$FIGURES_ROOT" "$STAGING_ROOT"
 
 echo "Results root: $RUN_ROOT"
 echo "Particle spacing: $PARTICLE_SPACING"
 echo "Processing unit: $PROCESSING_UNIT"
 echo "Device memory fraction: $DEVICE_MEMORY_FRACTION"
-echo "Stabilized core: DNS, Winckelmans, direct, coupled RK2, conservative stretching, CS"
+echo "Baseline: DNS, Gaussian, treecode, fractional RK3, transposed stretching, CS"
+echo "LES: Smagorinsky LES with the same baseline numerical core"
+echo "LES + stabilized: LES, Winckelmans, direct, coupled RK2, conservative stretching, CS"
 echo "Methods: $METHODS"
 echo "Families: $RUN_FAMILIES"
+echo "Transactional output: an existing case is replaced only after its rerun reaches a terminal status"
 
 run_case() {
     local label="$1"
@@ -53,12 +76,50 @@ run_case() {
     echo "$label"
     echo "========================================================================"
 
-    rm -rf "$RUN_ROOT/$case_name"
+    local staged_case="$STAGING_ROOT/$case_name"
+    local final_case="$RUN_ROOT/$case_name"
+    local command=(
+        "$PYTHON" rings_setup.py
+        --output-root "$STAGING_ROOT"
+        --name "$case_name"
+    )
+    if [[ "$ALLOW_UNDERRESOLVED" == "1" ]]; then
+        command+=(--allow-underresolved)
+    fi
+    command+=("$@")
+    rm -rf -- "$staged_case"
 
-    "$PYTHON" rings_setup.py \
-        --output-root "$RUN_ROOT" \
-        --name "$case_name" \
-        "$@"
+    if ! "${command[@]}"; then
+        echo "ERROR: $case_name crashed. Existing results were preserved." >&2
+        if [[ -f "$staged_case/$case_name.log" ]]; then
+            tail -80 "$staged_case/$case_name.log" >&2
+        fi
+        return 1
+    fi
+
+    local manifest="$staged_case/run_manifest.json"
+    if [[ ! -s "$manifest" ]] || ! grep -Eq \
+        '"status": "(completed|terminated_nonphysical|rejected_physical_contract)"' "$manifest"; then
+        echo "ERROR: $case_name did not record a valid terminal status." >&2
+        echo "Existing results were preserved; staged output remains at $staged_case" >&2
+        return 1
+    fi
+
+    local case_status
+    case_status="$(sed -n 's/.*"status": "\\([^"]*\\)".*/\\1/p' "$manifest")"
+    if [[ "$case_status" != "completed" && -d "$final_case" ]]; then
+        local failed_root="$RUN_ROOT/.failed"
+        local failed_case="$failed_root/${case_name}_$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$failed_root"
+        mv -- "$staged_case" "$failed_case"
+        echo "WARNING: rerun ended with status=$case_status." >&2
+        echo "Preserved existing $final_case; rejected rerun is at $failed_case" >&2
+        return 0
+    fi
+
+    rm -rf -- "$final_case"
+    mv -- "$staged_case" "$final_case"
+    grep -E '"status"|"completed_steps"|"requested_steps"' "$final_case/run_manifest.json"
 }
 
 total=0
@@ -105,6 +166,12 @@ for family in $RUN_FAMILIES; do
     done
 done
 
-if [[ -x ./allplot.sh ]]; then
-    ./allplot.sh --solution-dir "$RUN_ROOT" --figures-dir "$FIGURES_ROOT"
+rmdir "$STAGING_ROOT" 2>/dev/null || true
+
+if [[ "$RUN_PLOTS" == "1" && -x ./allplot.sh ]]; then
+    PLOT_ARGS=(--solution-dir "$RUN_ROOT" --figures-dir "$FIGURES_ROOT")
+    if [[ "$METHODS" != "$DEFAULT_METHODS" || "$RUN_FAMILIES" != "$DEFAULT_FAMILIES" ]]; then
+        PLOT_ARGS+=(--allow-partial)
+    fi
+    ./allplot.sh "${PLOT_ARGS[@]}"
 fi
