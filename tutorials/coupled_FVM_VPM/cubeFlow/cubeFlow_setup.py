@@ -188,6 +188,7 @@ def _parse_args():
         help="Resume from solution/coupled_checkpoint instead of an impulsive start.",
     )
     p.add_argument("--t-end", type=float, help="Override the end time [s].")
+    p.add_argument("--cores", type=int, help="Override FVM MPI ranks.")
     p.add_argument(
         "--fringe-strength",
         type=float,
@@ -207,6 +208,8 @@ def main() -> None:
     args = _parse_args()
 
     fvm_setup = FVM_SETUP
+    if args.cores is not None:
+        fvm_setup = replace(fvm_setup, cores=args.cores)
     if args.t_end is not None:
         fvm_setup = replace(fvm_setup, time=replace(fvm_setup.time, end_time=args.t_end))
 
