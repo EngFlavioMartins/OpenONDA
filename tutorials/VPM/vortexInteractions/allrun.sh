@@ -117,28 +117,24 @@ run_case() {
         return 1
     fi
 
+    # The transactional guarantee is exactly this check: a case is replaced only
+    # once its rerun has recorded a terminal status.  A crash, or a run that
+    # wrote no manifest, leaves the previous result untouched.
+    #
+    # Every terminal status is then promoted, including a blow-up.  All three
+    # of them are results here: the controls are *expected* to go non-physical
+    # once the rings break down -- that is the error under study, and
+    # rings_stability.png exists to show where each variant dies.  Keeping the
+    # older run instead would silently leave a case at a different spacing from
+    # the rest of the matrix, and a figure built from mixed resolutions looks
+    # perfectly fine while being wrong.  A missing case, by contrast, is caught
+    # loudly by assets/validate_plot_inputs.py.
     local manifest="$staged_case/run_manifest.json"
     if [[ ! -s "$manifest" ]] || ! grep -Eq \
         '"status": "(completed|terminated_nonphysical|rejected_physical_contract)"' "$manifest"; then
         echo "ERROR: $case_name did not record a valid terminal status." >&2
         echo "Existing results were preserved; staged output remains at $staged_case" >&2
         return 1
-    fi
-
-    local case_status
-    case_status="$(awk -F'"' '/"status":/ { print $4; exit }' "$manifest")"
-    # 'rejected_physical_contract' is a legitimate terminal outcome, not a
-    # failure: the stabilized method is defined to run only as far as it stays
-    # admissible, and that run IS the result. Only a genuine blow-up is
-    # quarantined in favour of whatever was there before.
-    if [[ "$case_status" == "terminated_nonphysical" && -d "$final_case" ]]; then
-        local failed_root="$RUN_ROOT/.failed"
-        local failed_case="$failed_root/${case_name}_$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$failed_root"
-        mv -- "$staged_case" "$failed_case"
-        echo "WARNING: rerun ended with status=$case_status." >&2
-        echo "Preserved existing $final_case; rejected rerun is at $failed_case" >&2
-        return 0
     fi
 
     rm -rf -- "$final_case"

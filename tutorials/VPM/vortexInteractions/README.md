@@ -172,10 +172,13 @@ PARTICLE_SPACING=0.045 DT=0.010 LF_STEPS=720 COLLIDE_STEPS=600 EPSILON_W=0 ./all
 and replaces an existing case only after the new run records a terminal
 status. It does not erase the other cases or figures. To explicitly discard
 everything first, use `CLEAN_ALL=1 ./allrun.sh` or `./allclean.sh --all`.
-`rejected_physical_contract` counts as a terminal status and is promoted like
-any other: for the stabilized method that run *is* the result. Only a genuine
-`terminated_nonphysical` blow-up is quarantined under `solution/.failed` in
-favour of whatever was there before.
+All three terminal statuses are promoted. `rejected_physical_contract` is the
+stabilized method's own result, and `terminated_nonphysical` is the controls'
+-- they are *expected* to blow up once the rings break down, which is the error
+under study. Keeping an older run instead would leave one case at a different
+spacing from the rest of the matrix, and a figure built from mixed resolutions
+looks fine while being wrong; a missing case is caught loudly by
+`assets/validate_plot_inputs.py`.
 
 Regenerate the publication figures from an existing solution root:
 
