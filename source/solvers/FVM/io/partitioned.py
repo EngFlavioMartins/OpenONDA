@@ -79,7 +79,9 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
     return target
 
 
-def load_partitioned_solver_checkpoint(solver, directory) -> None:
+def load_partitioned_solver_checkpoint(
+    solver, directory, *, allow_config_change: bool = False
+) -> None:
     """Restore a complete checkpoint for the same mesh and communicator size."""
     from .checkpoint import config_hash
 
@@ -94,8 +96,11 @@ def load_partitioned_solver_checkpoint(solver, directory) -> None:
         raise ValueError("Partitioned checkpoint communicator size does not match")
     if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
         raise ValueError("Partitioned checkpoint mesh hash does not match")
-    if manifest.get("config_hash") != config_hash(solver.config):
-        raise ValueError("Partitioned checkpoint configuration hash does not match")
+    if not allow_config_change and manifest.get("config_hash") != config_hash(solver.config):
+        raise ValueError(
+            "Partitioned checkpoint configuration hash does not match "
+            f"(allow_config_change={allow_config_change})"
+        )
 
     rank = solver.parallel.rank
     with np.load(target / manifest["files"][rank], allow_pickle=False) as archive:

@@ -1382,18 +1382,18 @@ class Solver(OFWInterfaceMixin):
         self.parallel.barrier()
         return str(written if written is not None else destination)
 
-    def load_state(self, path) -> None:
+    def load_state(self, path, *, allow_config_change: bool = False) -> None:
         """Restore a compatible restart, rejecting mismatched meshes or configs."""
         self.flush_output()
         if self.parallel.is_partitioned:
             from ..io.partitioned import load_partitioned_solver_checkpoint
 
-            load_partitioned_solver_checkpoint(self, path)
+            load_partitioned_solver_checkpoint(self, path, allow_config_change=allow_config_change)
             return
         from ..io.checkpoint import load_checkpoint
 
         self.parallel.barrier()
-        load_checkpoint(self, path)
+        load_checkpoint(self, path, allow_config_change=allow_config_change)
         self.parallel.barrier()
 
     def write_vtk(self, filename: str | None = None) -> None:

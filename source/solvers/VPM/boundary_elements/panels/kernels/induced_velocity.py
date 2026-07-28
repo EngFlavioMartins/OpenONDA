@@ -16,11 +16,7 @@ from ....config.constants import PANEL_EPSILON
 
 
 @ti.func
-def _segment_velocity(
-    p: ti.types.vector(3, ti.f64),
-    a: ti.types.vector(3, ti.f64),
-    b: ti.types.vector(3, ti.f64),
-) -> ti.types.vector(3, ti.f64):
+def _segment_velocity(p, a, b):
     r1 = p - a
     r2 = p - b
     r1xr2 = r1.cross(r2)
@@ -32,15 +28,15 @@ def _segment_velocity(
         * (1.0 / (d1 + PANEL_EPSILON) + 1.0 / (d2 + PANEL_EPSILON))
         * (1.0 / denom)
     )
-    return coeff * r1xr2
+    return -coeff * r1xr2
 
 
 @ti.kernel
 def compute_induced_velocity_kernel(
-    vertices: ti.types.ndarray(ndim=3, dtype=ti.f64),
-    strengths: ti.types.ndarray(ndim=1, dtype=ti.f64),
-    points: ti.types.ndarray(ndim=2, dtype=ti.f64),
-    velocity: ti.types.ndarray(ndim=2, dtype=ti.f64),
+    vertices: ti.types.ndarray(ndim=3),
+    strengths: ti.types.ndarray(ndim=1),
+    points: ti.types.ndarray(ndim=2),
+    velocity: ti.types.ndarray(ndim=2),
 ):
     n_queries = points.shape[0]
     n_panels = strengths.shape[0]

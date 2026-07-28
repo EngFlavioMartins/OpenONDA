@@ -60,6 +60,7 @@ INITIAL_U = (1.0, 0.0, 0.0)
 DT_FVM = 0.0125
 T_END = 40.0
 WRITE_INTERVAL = 0.15
+PERTURBATION = 1.0e-3
 
 DT_VPM = 0.05
 VPM_SPACING = 0.05
@@ -178,6 +179,15 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
+def _break_symmetry(solver) -> None:
+    centroids = solver.geo_data["element_centroids"]
+    n_cells = solver.mesh_data["n_elements"]
+    x, y, z = centroids[:n_cells].T
+    near_wake = (x > 0.5) & (x < 2.5) & (np.abs(y) < 1.0) & (np.abs(z) < 1.0)
+    kick = PERTURBATION * np.sign(z + 1e-12) * np.exp(-((x - 1.0) ** 2))
+    solver.U[:n_cells, 1] += np.where(near_wake, kick, 0.0)
+
+
 def _parse_args():
     import argparse
 
@@ -233,6 +243,8 @@ def main() -> None:
         vpm_setup = replace(vpm_setup, turbulence=TurbulenceConfig.les_smagorinsky())
 
     fvm_solver = setup_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=MESH)
+    if not args.restart:
+        _break_symmetry(fvm_solver)
     vpm_solver = setup_vpm_solver(vpm_setup)
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, coupler_setup)
 

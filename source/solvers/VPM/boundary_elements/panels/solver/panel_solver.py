@@ -452,7 +452,8 @@ class PanelSolver:
 
     def compute_induced_velocity(self, points: np.ndarray) -> np.ndarray:
         self._ensure_initialized()
-        points = np.asarray(points, dtype=float)
+        dtype = np.float32 if self.float_dtype == "f32" else np.float64
+        points = np.asarray(points, dtype=dtype)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("points must have shape (N, 3)")
 
@@ -460,11 +461,11 @@ class PanelSolver:
         if n_panels == 0:
             return np.zeros_like(points)
 
-        vertices = self.lattice.vertices.to_numpy()[:n_panels]
-        strengths = self.lattice.strengths.to_numpy()[:n_panels]
-        velocity = np.zeros_like(points, dtype=float)
+        vertices = self.lattice.vertices.to_numpy()[:n_panels].astype(dtype, copy=False)
+        strengths = self.lattice.strengths.to_numpy()[:n_panels].astype(dtype, copy=False)
+        velocity = np.zeros_like(points)
 
-        if n_panels >= 1000:
+        if n_panels >= 1000 or n_panels * len(points) >= 100_000:
             compute_induced_velocity_kernel(vertices, strengths, points, velocity)
         else:
 
@@ -480,7 +481,7 @@ class PanelSolver:
                     * (1.0 / (d1 + 1e-12) + 1.0 / (d2 + 1e-12))
                     * (1.0 / denom)
                 )
-                return coeff * r1xr2
+                return -coeff * r1xr2
 
             for j in range(n_panels):
                 v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]

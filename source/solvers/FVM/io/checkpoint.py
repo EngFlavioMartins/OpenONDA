@@ -118,7 +118,7 @@ def save_checkpoint(solver, path) -> Path:
     return destination
 
 
-def load_checkpoint(solver, path) -> None:
+def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
     """Validate and restore a checkpoint without accepting partial state."""
     source = Path(path)
     with np.load(source, allow_pickle=False) as archive:
@@ -153,7 +153,7 @@ def load_checkpoint(solver, path) -> None:
         if metadata.get("mesh_hash") != expected_mesh:
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
         expected_config = config_hash(solver.config)
-        if metadata.get("config_hash") != expected_config:
+        if not allow_config_change and metadata.get("config_hash") != expected_config:
             raise ValueError("FVM checkpoint configuration hash does not match the active case")
 
         state = {name: np.array(archive[name], copy=True) for name in required - {"metadata"}}

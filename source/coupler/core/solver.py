@@ -1786,7 +1786,7 @@ class FVMVPMCoupler:
         assert manifest is not None
 
         # ── Collective: each rank restores its own FVM partition ─────────────
-        self.ofw.load_state(target / "fvm.npz")
+        self.ofw.load_state(target / "fvm.npz", allow_config_change=allow_config_change)
 
         expected_fvm_step = int(manifest["vpm_time_step"]) * self.period_multiplier
         if self.ofw.time_step != expected_fvm_step:

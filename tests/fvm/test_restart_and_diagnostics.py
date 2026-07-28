@@ -105,6 +105,20 @@ def test_restart_rejects_incompatible_config_and_mesh(tmp_path):
         changed_mesh.load_state(checkpoint)
 
 
+def test_restart_allows_an_explicit_end_time_extension(tmp_path):
+    original = _solver(_config(), tmp_path / "original")
+    checkpoint = tmp_path / "state.npz"
+    original.save_state(checkpoint)
+
+    extended = _config()
+    extended.time.end_time = 0.2
+    restored = _solver(extended, tmp_path / "extended")
+    restored.load_state(checkpoint, allow_config_change=True)
+
+    assert restored.flow_time == original.flow_time
+    np.testing.assert_array_equal(restored.U, original.U)
+
+
 def test_scipy_linear_result_discloses_solver_health():
     matrix = sparse.diags([-np.ones(3), 4.0 * np.ones(4), -np.ones(3)], [-1, 0, 1])
     solution, result = solve_linear_system(

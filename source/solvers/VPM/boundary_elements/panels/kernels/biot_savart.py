@@ -54,7 +54,7 @@ def compute_vortex_ring_velocity(
     vel += biot_savart_segment(p, v0, v1)
     vel += biot_savart_segment(p, v1, v2)
     vel += biot_savart_segment(p, v2, v0)
-    return vel
+    return -vel
 
 
 @ti.func
