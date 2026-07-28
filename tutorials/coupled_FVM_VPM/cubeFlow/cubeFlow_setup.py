@@ -50,23 +50,20 @@ from source.solvers.VPM import (  # noqa: E402
 CASE_DIR = Path(__file__).resolve().parent
 MESH = str(CASE_DIR / "assets" / "mesh.msh")  # built by assets/create_mesh.py
 
-# Physical problem
 CUBE_SIDE = 1.0
-CORE_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)  # FVM common-region extent
 U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.0, 0.0)
 
-# Time integration
 DT_FVM = 0.0125
 T_END = 40.0
 WRITE_INTERVAL = 0.15
 
 DT_VPM = 0.05
 VPM_SPACING = 0.05
-VPM_DOMAIN = (-2.0, 10.0, -2.0, 2.0, -2.0, 2.0)
+VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 MAX_PARTICLES = 1_000_000
 OVERLAP_RADIUS_RATIO = 1.0
 BACKUP_PERIOD = round(WRITE_INTERVAL / DT_VPM)
@@ -137,34 +134,6 @@ VPM_SETUP = VPMSetup(
         h=VPM_SPACING,
         padding=3.0,
         viscosity=NU,
-        # The regen threshold MUST use a local reference here.  This field spans
-        # ~4 decades of |Γ|: the maximum is the cube's wall vortex sheet, the
-        # wake at x≈1.5 is ~10⁻³ of it.  Every global-reference mode therefore
-        # cuts along one iso-|Γ| surface and deletes the wake to keep the
-        # boundary layer — measured, one GBD regen removed 100% of the
-        # particles below |ω| = 0.243 s⁻¹ (67% of the cloud) with
-        # relative_max=5e-3, and 100% below 0.03 s⁻¹ with budget=1e-2.  That is
-        # what shredded the vortical structures leaving the FVM box, and because
-        # the reference lives on the body the cut level jittered with the
-        # near-wall solution and fed straight back through the donor BC.
-        #
-        # Value picked on the quantity the coupling actually consumes: the error
-        # the pruning introduces in the donor trace (the Biot-Savart velocity the
-        # cloud induces on the FVM box faces), measured against a keep-everything
-        # reference on the t=2.4 field:
-        #
-        #     threshold   N/N_ref   donor |Δu|/U∞ (max / rms)
-        #       0.15       0.82      1.0e-3 / 2.6e-4
-        #       0.30       0.75      3.2e-3 / 7.1e-4     <- knee, used here
-        #       0.50       0.66      1.2e-2 / 1.3e-3
-        #       0.80       0.49      4.0e-2 / 4.0e-3
-        #
-        # 0.30 drops a quarter of the particles for a 0.07% rms perturbation of
-        # the boundary condition — far below the FVM's own discretisation error —
-        # and still keeps ≥64% of the nodes in EVERY |ω| decade (no scale is
-        # amputated).  Past the knee the error grows ~4x per step in threshold
-        # while the particle saving flattens.  Lower to 0.15 for maximum fidelity;
-        # raise toward 0.5 only if the far-field cost becomes limiting.
         threshold_mode="relative_local",
         threshold=0.30,
         threshold_window=3,
@@ -172,12 +141,12 @@ VPM_SETUP = VPMSetup(
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
-    turbulence=TurbulenceConfig.les_smagorinsky(),
+    turbulence=TurbulenceConfig.dns(),
     velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
     stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
     particles_kernel="GAUSSIAN",
     precision="f32",
-    processing_unit="AUTO",
+    processing_unit="METAL",
     max_particles=MAX_PARTICLES,
     max_targets=MAX_PARTICLES,
     vpm_domain_bounds=list(VPM_DOMAIN),
@@ -199,26 +168,10 @@ COUPLER_SETUP = CouplerSetup(
     strength_correction_iterations=1,
     strength_correction_relax=1.0,
     donor_bc_mode="dirichlet",
-    # "fvm" is the OFW reference's setting and is now affordable (the interior
-    # Biot-Savart runs as a monopole+dipole treecode, ~37x faster for ~0.1%
-    # error).  It was switched to "particles" because flux_ratio swung between
-    # 0.7 and 16.9 instead of sitting near 1.
-    #
-    # CAVEAT: that evidence does not hold.  flux_ratio was |ΣΓ_VPM| / |ΣΓ_FVM|
-    # over the outflow band — a ratio of two near-cancelling vector sums (ω
-    # integrates to ~0 over a wake cross-section), so it swung on cancellation
-    # noise regardless of the donor mode; it swung 0.02–29 with "particles"
-    # selected too.  It is now an L1 ratio and is meaningful.  The real cause of
-    # the near-boundary noise was the VPM regen threshold (see the viscous block
-    # above).  The structural argument for "particles" still stands on its own —
-    # in "fvm" mode the boundary is driven by FVM interior vorticity while the
-    # VPM carries its own particles inside the box, i.e. two different models of
-    # the same field — so the setting is kept, but "fvm" has NOT been re-tested
-    # since the regen fix and may now be viable.
     donor_interior_source="particles",
     donor_interior_treecode_theta=0.3,
-    bc_coupling_iterations=2,
-    donor_bc_relax=0.5,
+    bc_coupling_iterations=1,
+    donor_bc_relax=1.0,
     donor_interior_warmup_time=0.0,
     log_period=2,
     backup_period=BACKUP_PERIOD,
@@ -226,13 +179,6 @@ COUPLER_SETUP = CouplerSetup(
 
 
 def _parse_args():
-    """Run-control overrides for coupling A/B studies.
-
-    Defaults reproduce the case exactly as written above; every flag exists so a
-    variant can be run from a shared checkpoint without editing this file.
-    ``openonda_bootstrap`` forwards ``sys.argv[1:]`` through both the Conda and
-    the MPI re-exec, so these reach every rank.
-    """
     import argparse
 
     p = argparse.ArgumentParser(description=__doc__)
@@ -248,6 +194,7 @@ def _parse_args():
         help="Fringe relaxation strength A (lambda_max = A*U/buffer_thickness).",
     )
     p.add_argument("--donor-bc-mode", choices=("dirichlet", "mixed", "characteristic"))
+    p.add_argument("--vpm-turbulence", choices=("dns", "smagorinsky"))
     p.add_argument(
         "--overlap-velocity-forcing",
         action="store_true",
@@ -276,14 +223,17 @@ def main() -> None:
     if overrides:
         coupler_setup = replace(coupler_setup, **overrides)
 
+    vpm_setup = VPM_SETUP
+    if args.vpm_turbulence == "dns":
+        vpm_setup = replace(vpm_setup, turbulence=TurbulenceConfig.dns())
+    elif args.vpm_turbulence == "smagorinsky":
+        vpm_setup = replace(vpm_setup, turbulence=TurbulenceConfig.les_smagorinsky())
+
     fvm_solver = setup_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=MESH)
-    vpm_solver = setup_vpm_solver(VPM_SETUP)
+    vpm_solver = setup_vpm_solver(vpm_setup)
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, coupler_setup)
 
     if args.restart:
-        # allow_config_change: the coupling knobs under test (donor_bc_mode,
-        # overlap_velocity_forcing) are part of the checkpoint's config digest,
-        # so an A/B restart is rejected without it.  The changed keys are logged.
         coupled_solver.run(
             restart_from=CASE_DIR / "solution" / "coupled_checkpoint",
             allow_config_change=True,

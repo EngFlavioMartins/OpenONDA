@@ -56,3 +56,7 @@ pytest tests/coupler -m "not mpi and not openfoam"
 
 Slow validation physics and MPI/PETSc runs are exercised nightly, not on every
 change (see `.github/workflows/`).
+
+## Imported Claude Cowork project instructions
+
+I am working on perfecting the VLM+VPM solver for the OpenONDA project. Currently, I notice that the flat-plate case (in tutorials/VPM/flatPlate) has an issue that I can't seen to fix: it does not show a reasonable match to the parabolic-like lift distribution, instead showing an almost constant lift that does not even drop to zero at the tips. I want you to find out why and fix it.
