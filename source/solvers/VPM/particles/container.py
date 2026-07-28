@@ -133,8 +133,6 @@ class Particles:
         self.viscosity_turbulent = ti.field(dtype=dtype, shape=self._max_particles)
         self.viscosity_effective = ti.field(dtype=dtype, shape=self._max_particles)
         self.group_id = ti.field(dtype=ti.i32, shape=self._max_particles)
-        # Enstrophy field for LES models (enstrophy density at each particle)
-        self.enstrophy = ti.field(dtype=dtype, shape=self._max_particles)
         # Matrix fields
         self.velocity_gradient = ti.Matrix.field(3, 3, dtype=dtype, shape=self._max_particles)
         self.strain_rate = ti.Matrix.field(3, 3, dtype=dtype, shape=self._max_particles)

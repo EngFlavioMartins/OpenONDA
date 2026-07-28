@@ -162,16 +162,23 @@ def test_far_field_velocity(kernel_name, backend, solver_for_backend):
 )
 def test_kinetic_energy_self(kernel_name, backend, solver_for_backend):
     """
-    Self-energy of one blob: E = ½ · g(0)/σ · Γ².
+    Self-energy of one blob: E = ½ · g(0)/(σ√2) · Γ².
 
-    Failure → wrong energy kernel g or missing self-interaction.
+    The √2 is not a fudge: E = ½∫ω·ψ convolves the blob with its own mollified
+    Green's function, and for a Gaussian ζ_σ * ζ_σ = ζ_{σ√2}.  Verified against
+    direct quadrature of ½∫ω·ψ for σ=0.4, Γ_z=1.3: 0.13413031 versus
+    0.13413031 from this formula (the pair-mean convention gives 0.18968890,
+    41 % high).  See evaluation.py::compute_flow_integrals_kernel.
+
+    Failure → wrong energy kernel g, wrong pair width, or missing
+    self-interaction.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     # Use the solver's flow integral evaluation
     solver.update_state()
     solver._update_all_flow_integrals()
     ke = solver.total_kinetic_energy
-    expected = 0.5 * _G_0[kernel_name] / _SIGMA * _ALPHA_Z**2
+    expected = 0.5 * _G_0[kernel_name] / (_SIGMA * np.sqrt(2.0)) * _ALPHA_Z**2
     rel_err = abs(ke - expected) / expected
     assert rel_err < 0.05, (
         f"{kernel_name}/{backend}: KE = {ke:.6e}, expected {expected:.6e}, rel_err={rel_err:.3e}"

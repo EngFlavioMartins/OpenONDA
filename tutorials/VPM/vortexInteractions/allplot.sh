@@ -61,6 +61,9 @@ run_plot assets/plot_rings_conservation.py \
 run_plot assets/plot_rings_stability.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
+run_plot assets/plot_rings_resolution.py \
+    --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
+
 run_plot assets/plot_rings_trajectory.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 

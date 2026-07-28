@@ -19,6 +19,26 @@ from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
 from .diffusion import _GridDiffusionMixin
 
+# Implicit-midpoint fixed-point iteration.  An update that fails to shrink the
+# residual by at least (1 - _STALL_FACTOR) has stopped making progress.
+#
+# What limits it is not the machine epsilon of the state but the round-off of
+# the right-hand side: dGamma/dt is an O(N^2) sum of pair terms that cancel
+# heavily, so in f32 its relative noise is ~1e-4 and the iterates end up
+# wandering inside a ball of radius ~dt*(that noise) instead of converging
+# further -- three decades above eps.
+#
+# Neither an absolute nor a relative acceptance floor works alone: the floor is
+# roughly fixed in absolute terms, so a relative test fails for large dt and an
+# absolute one fails for the small dt the subcycler produces.  Test the two
+# things that are actually meaningful instead -- the iteration contracted by at
+# least _STALL_RELATIVE, and it has genuinely stopped improving.  How good the
+# resulting solve was is not decided here: the achieved residual is reported as
+# ``midpoint_residual_max`` and the invariant drift, which is the quantity that
+# actually matters, is measured downstream.
+_STALL_FACTOR = 0.8
+_STALL_RELATIVE = 1.0e-1
+
 
 @ti.data_oriented
 class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
@@ -88,6 +108,8 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         use_treecode: bool = False,
         treecode_theta: float = 0.3,
         precomputed_velocity_k1: bool = False,
+        midpoint_tolerance: float = 1.0e-12,
+        midpoint_max_iterations: int = 24,
     ):
         """Advance particle positions and vortex strengths at common RK stages.
 
@@ -106,6 +128,8 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             use_treecode,
             treecode_theta,
             precomputed_velocity_k1,
+            midpoint_tolerance=midpoint_tolerance,
+            midpoint_max_iterations=midpoint_max_iterations,
         )
 
     # DIFFUSION INTERFACE
@@ -133,18 +157,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             dt: Time step size [s]
         """
         self._diffusion.random_walk_method_diffusion(particles, dt)
-
-    def update_volumes(self, particles, dt: float):
-        """
-        Update volumes from velocity divergence.
-
-        Delegates to diffusion handler.
-
-        Args:
-            particles: Particle container
-            dt: Time step size [s]
-        """
-        self._diffusion.update_volumes(particles, dt)
 
     # STRETCHING INTERFACE
 
@@ -174,17 +186,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self._stretching.vortex_stretching(
             particles, dt, scheme, mode, use_treecode, treecode_theta
         )
-
-    def save_strength_magnitudes(self, particles):
-        """
-        Save strength magnitudes for splitting detection.
-
-        Delegates to stretching handler.
-
-        Args:
-            particles: Particle container
-        """
-        self._stretching.save_strength_magnitudes(particles)
 
 
 # =========================================================
@@ -341,6 +342,8 @@ class _CoupledAdvectionStretchingHandler:
 
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
+        self._last_iterations = 0
+        self._last_residual = 0.0
 
     @staticmethod
     def _mode_int(mode: str) -> int:
@@ -366,13 +369,15 @@ class _CoupledAdvectionStretchingHandler:
         use_treecode: bool,
         treecode_theta: float,
         precomputed_velocity_k1: bool,
+        midpoint_tolerance: float = 1.0e-12,
+        midpoint_max_iterations: int = 24,
     ) -> None:
         N = len(particles)
         scheme = scheme.upper()
         if N == 0 or dt == 0.0:
             return
-        if scheme not in {"RK2", "RK3"}:
-            raise ValueError("Coupled advection/stretching supports RK2 and RK3.")
+        if scheme not in {"RK2", "RK3", "MIDPOINT"}:
+            raise ValueError("Coupled advection/stretching supports RK2, RK3 and MIDPOINT.")
 
         p = self._parent
         p._resize_temp_fields(N)
@@ -380,6 +385,10 @@ class _CoupledAdvectionStretchingHandler:
         p._stretching._use_treecode = bool(use_treecode) and p.velocity_method == "TREECODE"
         p._stretching._treecode_theta = float(treecode_theta)
         mode_int = self._mode_int(mode)
+
+        if scheme == "MIDPOINT":
+            self._midpoint(particles, dt, mode_int, N, midpoint_tolerance, midpoint_max_iterations)
+            return
 
         # k1 = f(x_n, Gamma_n)
         if not precomputed_velocity_k1:
@@ -460,6 +469,96 @@ class _CoupledAdvectionStretchingHandler:
             N,
         )
 
+    def _midpoint(self, particles, dt, mode_int, N, tolerance, max_iterations):
+        """Implicit midpoint rule for the coupled (x, Gamma) system.
+
+            y_{n+1} = y_n + dt * f( (y_n + y_{n+1}) / 2 )
+
+        Why this and not another RK method: the discrete linear impulse
+        I = ½ Σ x_i × Γ_i is a *quadratic* invariant of the semi-discrete
+        system (exactly conserved by the CONSERVATIVE pairwise stretching
+        exchange).  A Runge--Kutta method preserves quadratic invariants iff
+        b_i a_ij + b_j a_ji = b_i b_j; the Gauss methods -- of which the
+        implicit midpoint rule is the one-stage member -- satisfy it, and no
+        explicit method does.  So this is the only way the impulse is conserved
+        to round-off rather than to O(dt^p).  Total circulation ΣΓ is *linear*
+        and is preserved by any method.
+
+        Solved by fixed-point iteration.  The map is a contraction with factor
+        ~ (dt/2)‖∇u‖, and the caller's strain-limited substepping already
+        enforces dt‖S‖ <= coupled_max_strain_increment, so convergence to
+        round-off takes only a few evaluations.
+
+        Two exit conditions, because the stage is only solvable to the round-off
+        of the right-hand side: the relative residual reaches ``tolerance``, or
+        it stops improving after already shrinking by ``_STALL_RELATIVE``.
+        Stalling before that is divergence, and raises rather than silently
+        accepting an unsolved stage.
+        """
+        p = self._parent
+        # y^(0) = y_n  (start from the current state, i.e. one Euler-free guess)
+        p._copy_vec3(particles.position, p.pos_temp, N)
+        p._copy_vec3(particles.circulation, p.str_temp, N)
+
+        converged = False
+        iterations = 0
+        residual = float("inf")
+        previous = float("inf")
+        first = float("inf")
+        for _ in range(max_iterations):
+            iterations += 1
+            # Midpoint state y_m = (y_n + y^(k)) / 2
+            p.linear_combination_kernel(p.pos_temp2, particles.position, p.pos_temp, 0.5, 0.5, N)
+            p.linear_combination_kernel(p.str_temp2, particles.circulation, p.str_temp, 0.5, 0.5, N)
+
+            # k = f(y_m)
+            p._advection._vel(
+                particles, p.pos_temp2, p.vel_temp, N, reuse_tree=False, strength_field=p.str_temp2
+            )
+            p._stretching._rate(
+                p.pos_temp2, p.str_temp2, particles.radius, p.dstr_dt_temp, mode_int, N
+            )
+
+            # y^(k+1) = y_n + dt * k, held in pos_temp2/str_temp2 for the residual
+            p.step_euler_forward_kernel(particles.position, p.vel_temp, p.pos_temp2, dt, N)
+            p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp2, dt, N)
+
+            dx = float(p.fixed_point_residual_kernel(p.pos_temp2, p.pos_temp, p.iter_scale, N))
+            x_scale = max(float(p.iter_scale[None]), 1.0e-30)
+            dg = float(p.fixed_point_residual_kernel(p.str_temp2, p.str_temp, p.iter_scale, N))
+            g_scale = max(float(p.iter_scale[None]), 1.0e-30)
+
+            p._copy_vec3(p.pos_temp2, p.pos_temp, N)
+            p._copy_vec3(p.str_temp2, p.str_temp, N)
+
+            residual = max(dx / x_scale, dg / g_scale)
+            if iterations == 1:
+                first = residual
+            if residual <= tolerance:
+                converged = True
+                break
+            # No useful improvement left: the right-hand side's round-off is
+            # exhausted.  Accept only once the stage residual has genuinely
+            # collapsed relative to where the iteration started.
+            if iterations >= 3 and residual > _STALL_FACTOR * previous:
+                converged = residual <= _STALL_RELATIVE * first
+                break
+            previous = residual
+
+        if not converged:
+            raise RuntimeError(
+                f"Implicit-midpoint iteration stalled at a relative residual of "
+                f"{residual:.3e} after {iterations} iterations, having started at "
+                f"{first:.3e} (target {tolerance:.1e}, dt={dt:.3e}). The coupled "
+                "step is not solvable at this dt: reduce "
+                "coupled_max_strain_increment or the macro time step."
+            )
+
+        self._last_iterations = iterations
+        self._last_residual = residual
+        p._copy_vec3(p.pos_temp, particles.position, N)
+        p._copy_vec3(p.str_temp, particles.circulation, N)
+
 
 class _DiffusionHandler:
     """
@@ -486,17 +585,6 @@ class _DiffusionHandler:
         p = self._parent
         p._resize_temp_fields(N)
         p.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
-
-    def update_volumes(self, particles, dt: float):
-        """Volume update from divergence."""
-        N = len(particles)
-        if N == 0 or dt == 0.0:
-            return
-        p = self._parent
-        p._resize_temp_fields(N)
-        p.update_volume_divergence_kernel(
-            particles.volume, particles.radius, particles.velocity_gradient, dt, N
-        )
 
 
 class _StretchingHandler:
@@ -647,13 +735,3 @@ class _StretchingHandler:
             dt,
             N,
         )
-
-    def save_strength_magnitudes(self, particles):
-        """Save magnitudes for splitting detection."""
-        N = len(particles)
-        if N == 0:
-            return
-        p = self._parent
-        p._resize_temp_fields(N)
-        p.compute_strength_magnitudes_kernel(particles.circulation, p.str_mag_before, N)
-        ti.sync()

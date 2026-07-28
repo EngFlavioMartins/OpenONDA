@@ -112,42 +112,16 @@ def _make_kinetic_energy_kernel(g_):
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
                 r_sigma = r_mag / sigma
                 if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    # E = ½∫ω·ψ convolves two blobs, so the pair width is
+                    # σ_e = sqrt(σ_i²+σ_j²), not the pair mean σ (see
+                    # evaluation.py::compute_flow_integrals_kernel).
                     # g(0) is finite: retain the continuum blob self energy.
-                    energy_sum += g_(r_sigma) / sigma * str_j.dot(str_i) * 0.5
+                    sigma_e = ti.sqrt(radii[i] * radii[i] + radii[j] * radii[j])
+                    energy_sum += g_(r_mag / sigma_e) / sigma_e * str_j.dot(str_i) * 0.5
 
             kinetic_energy[i] = energy_sum
 
     return compute_kinetic_energy_kernel
-
-
-def _make_enstrophy_kernel(zeta_):
-    """Mini-factory: creates compute_enstrophy_kernel capturing zeta_."""
-
-    @ti.kernel
-    def compute_enstrophy_kernel(
-        positions: ti.template(),
-        strengths: ti.template(),
-        radii: ti.template(),
-        enstrophy: ti.template(),
-        num_particles: ti.i32,
-    ):  # type: ignore
-        N = num_particles
-        for i in range(N):
-            enstrophy_local = ti.cast(0.0, ti.f32)
-            str_i = strengths[i]
-            pos_i = positions[i]
-            radii_i = radii[i]
-            for j in range(N):
-                r_ij = pos_i - positions[j]
-                r_mag = ti.sqrt(r_ij.dot(r_ij))
-                str_j = strengths[j]
-                sigma = 0.5 * (radii_i + radii[j])
-                r_sigma = r_mag / sigma
-                if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                    enstrophy_local += zeta_(r_sigma) / (sigma * sigma * sigma) * str_i.dot(str_j)
-            enstrophy[i] = enstrophy_local
-
-    return compute_enstrophy_kernel
 
 
 def _make_update_position_euler_kernel():
@@ -343,117 +317,6 @@ def _make_rwm_kernel():
             positions[i] += ti.Vector([dx, dy, dz])
 
     return update_position_rwm_kernel
-
-
-def _make_volume_divergence_kernel():
-    """Mini-factory: creates update_volume_divergence_kernel (no captures)."""
-
-    @ti.kernel
-    def update_volume_divergence_kernel(
-        volumes: ti.template(),
-        radii: ti.template(),
-        gradU: ti.template(),
-        dt: ti.f32,
-        num_particles: ti.i32,
-    ):  # type: ignore
-        """Update particle volumes and radii based on velocity divergence."""
-        N = num_particles
-        for i in range(N):
-            grad_u = gradU[i]
-            div_u = grad_u[0, 0] + grad_u[1, 1] + grad_u[2, 2]
-            volume_old = volumes[i]
-            volumes[i] = volume_old * (1.0 + dt * div_u)
-            radii[i] = ti.pow(volumes[i] / volume_old, 1.0 / 3.0) * radii[i]
-
-    return update_volume_divergence_kernel
-
-
-def _make_strength_magnitudes_kernel():
-    """Mini-factory: creates compute_strength_magnitudes_kernel (no captures)."""
-
-    @ti.kernel
-    def compute_strength_magnitudes_kernel(
-        strengths: ti.template(), magnitudes: ti.template(), num_particles: ti.i32
-    ):  # type: ignore
-        """Compute magnitude of strength vectors."""
-        for i in range(num_particles):
-            mag = ti.sqrt(strengths[i].dot(strengths[i]))
-            magnitudes[i] = mag
-
-    return compute_strength_magnitudes_kernel
-
-
-def _make_flag_strong_particles_kernel():
-    """Mini-factory: creates flag_strong_particles_kernel (no captures)."""
-
-    @ti.kernel
-    def flag_strong_particles_kernel(
-        strengths: ti.template(),
-        strengths_before: ti.template(),
-        flags: ti.template(),
-        growth_threshold: ti.f32,
-        absolute_threshold: ti.f32,
-        num_particles: ti.i32,
-    ):  # type: ignore
-        """Flag particles whose strength grew beyond threshold or exceeds absolute limit."""
-        for i in range(num_particles):
-            mag_after = ti.sqrt(strengths[i].dot(strengths[i]))
-            mag_before = strengths_before[i]
-
-            relative_flag = mag_before > 1e-15 and mag_after > growth_threshold * mag_before
-            absolute_flag = absolute_threshold > 0.0 and mag_after > absolute_threshold
-
-            if relative_flag or absolute_flag:
-                flags[i] = 1
-            else:
-                flags[i] = 0
-
-    return flag_strong_particles_kernel
-
-
-def _make_count_flagged_kernel():
-    """Mini-factory: creates count_flagged_particles_kernel (no captures)."""
-
-    @ti.kernel
-    def count_flagged_particles_kernel(flags: ti.template(), num_particles: ti.i32) -> ti.i32:  # type: ignore
-        """Count number of flagged particles."""
-        count = 0
-        for i in range(num_particles):
-            if flags[i] == 1:
-                count += 1
-        return count
-
-    return count_flagged_particles_kernel
-
-
-def _make_apply_merger_dissipation_kernel():
-    """Mini-factory: creates apply_merger_dissipation_kernel (no captures)."""
-
-    @ti.kernel
-    def apply_merger_dissipation_kernel(
-        strengths: ti.template(),
-        Sij: ti.template(),
-        radii: ti.template(),
-        viscosities: ti.template(),
-        N_original: ti.i32,
-        N_total: ti.i32,
-        beta: ti.f32,
-        Re_crit: ti.f32,
-    ):
-        """Apply energy dissipation to daughter particles after splitting."""
-        for i in range(N_original, N_total):
-            S_mat = Sij[i]
-            S_mag = ti.sqrt(2.0 * (S_mat * S_mat).sum())
-
-            sigma = radii[i]
-            nu = viscosities[i]
-            Re_local = S_mag * sigma**2 / (nu + EPSILON)
-
-            f_diss = beta / (1.0 + Re_local / Re_crit)
-            scale = ti.sqrt(1.0 - f_diss)
-            strengths[i] *= scale
-
-    return apply_merger_dissipation_kernel
 
 
 @ti.func
@@ -682,9 +545,8 @@ def _create_gradient_kernels(kernel_functions):
 
 
 def _create_energy_kernels(kernel_functions):
-    """Create kinetic energy, enstrophy, and helicity computation kernels."""
+    """Create the kinetic-energy and helicity computation kernels."""
     q_ = kernel_functions["q_"]
-    zeta_ = kernel_functions["zeta_"]
     g_ = kernel_functions["g_"]
 
     @ti.kernel
@@ -716,7 +578,6 @@ def _create_energy_kernels(kernel_functions):
 
     return {
         "compute_kinetic_energy_kernel": _make_kinetic_energy_kernel(g_),
-        "compute_enstrophy_kernel": _make_enstrophy_kernel(zeta_),
         "compute_helicity_kernel": compute_helicity_kernel,
     }
 
@@ -801,6 +662,26 @@ def _create_position_update_kernels(kernel_functions):
         for i in range(num_particles):
             positions[i] += (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
 
+    @ti.kernel
+    def fixed_point_residual_kernel(
+        a: ti.template(),
+        b: ti.template(),
+        scale: ti.template(),
+        num_particles: ti.i32,
+    ) -> ti.f32:  # type: ignore
+        """Max |a-b| over particles, and max |b|, for a relative convergence test.
+
+        Drives the implicit-midpoint fixed-point iteration.  ``scale[None]``
+        receives max|b| so the caller can form a relative residual without a
+        second pass.
+        """
+        scale[None] = 0.0
+        residual = 0.0
+        for i in range(num_particles):
+            ti.atomic_max(residual, (a[i] - b[i]).norm())
+            ti.atomic_max(scale[None], b[i].norm())
+        return residual
+
     return {
         "update_position_euler_kernel": _make_update_position_euler_kernel(),
         "step_euler_forward_kernel": step_euler_forward_kernel,
@@ -809,6 +690,7 @@ def _create_position_update_kernels(kernel_functions):
         "step_rk2_combine_kernel": step_rk2_combine_kernel,
         "step_rk3_ssp_combine_kernel": step_rk3_ssp_combine_kernel,
         "step_rk4_combine_kernel": step_rk4_combine_kernel,
+        "fixed_point_residual_kernel": fixed_point_residual_kernel,
     }
 
 
@@ -875,19 +757,6 @@ def _create_diffusion_kernels(kernel_functions):
     return {
         "update_radius_csm_kernel": _make_csm_kernel(diffusivity_constant_),
         "update_position_rwm_kernel": _make_rwm_kernel(),
-        "update_volume_divergence_kernel": _make_volume_divergence_kernel(),
-    }
-
-
-def _create_splitting_kernels(kernel_functions):
-    """Create kernels for particle splitting and merging operations."""
-    kernel_functions["zeta_"]
-
-    return {
-        "compute_strength_magnitudes_kernel": _make_strength_magnitudes_kernel(),
-        "flag_strong_particles_kernel": _make_flag_strong_particles_kernel(),
-        "count_flagged_particles_kernel": _make_count_flagged_kernel(),
-        "apply_merger_dissipation_kernel": _make_apply_merger_dissipation_kernel(),
     }
 
 
@@ -982,7 +851,6 @@ def create_kernels(kernel_functions):
     kernels.update(_create_position_update_kernels(kernel_functions))
     kernels.update(_create_target_eval_kernels(kernel_functions))
     kernels.update(_create_diffusion_kernels(kernel_functions))
-    kernels.update(_create_splitting_kernels(kernel_functions))
     kernels.update(_create_stretching_kernels(kernel_functions))
     kernels.update(_create_utility_kernels(kernel_functions))
 

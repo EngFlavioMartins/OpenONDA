@@ -60,10 +60,15 @@ def test_vortex_interactions_stabilized_les_config_has_no_field_filter(tmp_path)
 
     assert config.time_integration == "COUPLED"
     assert config.velocity.method == "DIRECT"
-    assert config.particles_kernel == "WINCKELMANS"
-    assert config.advection.scheme == config.stretching.scheme == "RK2"
+    assert config.particles_kernel == "GAUSSIAN"
+    # The structure-preserving pair: the antisymmetric pairwise exchange makes
+    # sum(Gamma) and the linear impulse invariants of the semi-discrete system,
+    # and the one-stage Gauss method is the only integrator here that carries a
+    # quadratic invariant like the impulse to round-off.
+    assert config.advection.scheme == config.stretching.scheme == "MIDPOINT"
     assert config.stretching.mode == "CONSERVATIVE"
     assert config.turbulence.flow_model == "LES"
+    assert config.turbulence.cs == pytest.approx(namespace["STABILIZED_LES_CS"])
     assert config.stabilization == StabilizationConfig.disabled()
     assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
     assert config.viscous.characteristic_distance == pytest.approx(args.particle_spacing)
@@ -92,6 +97,8 @@ def test_vortex_interactions_three_methods_are_distinct(tmp_path):
     assert baseline.velocity.method == les.velocity.method == "TREECODE"
     assert stabilized.time_integration == "COUPLED"
     assert stabilized.velocity.method == "DIRECT"
+    assert baseline.stretching.mode == les.stretching.mode == "TRANSPOSED"
+    assert stabilized.stretching.mode == "CONSERVATIVE"
 
 
 def test_vortex_interactions_stabilized_contract_rejects_coarse_spacing():

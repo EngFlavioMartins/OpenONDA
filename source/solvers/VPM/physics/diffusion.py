@@ -1812,29 +1812,3 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         self.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
 
     # VOLUME UPDATE FROM DIVERGENCE
-
-    def update_volumes(self, particles, dt: float):
-        """
-        Update particle volumes from velocity divergence.
-
-        For compressible or variable-density flows:
-            dV/dt = V * ∇·u
-
-        The radius is updated consistently:
-            r = (3V / 4π)^(1/3)
-
-        Args:
-            particles: Particle container
-            dt: Time step size [s]
-        """
-        N = len(particles)
-        if N == 0 or dt == 0.0:
-            return
-
-        self._resize_temp_fields(N)
-        self._zero_temp_fields()
-
-        # Update volume: V_new = V * (1 + dt * div(u))
-        self.update_volume_divergence_kernel(
-            particles.volume, particles.radius, particles.velocity_gradient, dt, N
-        )

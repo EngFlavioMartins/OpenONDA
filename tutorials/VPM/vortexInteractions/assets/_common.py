@@ -392,6 +392,15 @@ def read_integrals(case_dir):
         "angular_impulse_y",
         "angular_impulse_z",
         "n_particles",
+        # Discretization health (solver ``export_discretization_health``).
+        # Invariant drift cannot tell a conservative-but-unresolved run from a
+        # trustworthy one; these can.
+        "core_radius_mean",
+        "overlap_ratio",
+        "overlap_ratio_max",
+        "vorticity_divergence_error",
+        "strength_misalignment_deg",
+        "midpoint_residual_max",
     ]
     keep = [col for col in keep if col in df.columns]
     if "time" not in keep or "kinetic_energy" not in keep:

@@ -83,7 +83,7 @@ class AdvectionConfig:
     - Gottlieb, Shu & Tadmor (2001) SIAM J. Numer. Anal. 39(5), 1984–2012.
     """
 
-    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK3"
+    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4", "MIDPOINT"] = "RK3"
     """Time integration scheme for the advection substep (dx/dt = u).
 
     Options:
@@ -92,6 +92,10 @@ class AdvectionConfig:
       - 'RK2':   Heun's method, 2nd-order Runge–Kutta
       - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
+      - 'MIDPOINT': implicit midpoint (2nd order, ``COUPLED`` integration only).
+        The one-stage Gauss method: the only option here that preserves the
+        *quadratic* invariant I = ½ Σ x × Γ to round-off rather than to
+        O(dt^p).  Pair it with ``StretchingConfig.conservative``.
 
     Advection advances the configured scheme over the macro time-step set by the
     solver (the DVH-pinned dt for DVH runs)."""
@@ -688,7 +692,7 @@ class StretchingConfig:
     mode: Literal["DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"] = "TRANSPOSED"
     """Stretching formulation mode."""
 
-    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3"
+    scheme: Literal["EULER", "RK2", "RK3", "RK4", "MIDPOINT"] = "RK3"
     """Time integration scheme for the stretching substep (dΓ/dt).
 
     Options:
@@ -696,6 +700,8 @@ class StretchingConfig:
       - 'RK2':   Heun's method, 2nd-order Runge–Kutta
       - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
+      - 'MIDPOINT': implicit midpoint, ``COUPLED`` integration only — see
+        :class:`AdvectionConfig`.  Must match the advection scheme.
     """
 
     enabled: bool = True
@@ -737,9 +743,9 @@ class StretchingConfig:
                 "stretching mode must be DIRECT, TRANSPOSED, MIXED, or "
                 f"CONSERVATIVE, got {self.mode!r}"
             )
-        if scheme not in ("EULER", "RK2", "RK3", "RK4"):
+        if scheme not in ("EULER", "RK2", "RK3", "RK4", "MIDPOINT"):
             raise ValueError(
-                f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}"
+                f"stretching scheme must be EULER, RK2, RK3, RK4, or MIDPOINT, got {self.scheme!r}"
             )
         if not 0.0 < self.treecode_theta < 2.0:
             raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
@@ -1200,8 +1206,13 @@ class VPMSetup:
     ``FRACTIONAL`` retains the legacy position-then-strength update.
     ``COUPLED`` advances ``(x, Gamma)`` at common RK stages so the discrete
     impulse cancellations are not broken by operator splitting.  The coupled
-    path currently supports matching RK2 or RK3 advection/stretching schemes
-    and core-spreading (or no) viscous diffusion.
+    path currently supports matching RK2, RK3 or MIDPOINT advection/stretching
+    schemes and core-spreading (or no) viscous diffusion.
+
+    For an exactly conserved linear impulse use ``MIDPOINT`` together with
+    ``StretchingConfig.conservative``: the pairwise-antisymmetric exchange makes
+    I = ½ Σ x × Γ an invariant of the semi-discrete system, and the one-stage
+    Gauss method preserves that quadratic invariant to round-off.
     """
 
     coupled_max_strain_increment: float = 0.08
@@ -1212,6 +1223,21 @@ class VPMSetup:
 
     coupled_max_substeps: int = 128
     """Fail instead of silently filtering physics when a macro step needs more substeps."""
+
+    coupled_midpoint_tolerance: float | None = None
+    """Relative fixed-point residual at which the implicit-midpoint solve stops.
+
+    Only used when the coupled advection/stretching scheme is ``MIDPOINT``.  The
+    quadratic-invariant (linear-impulse) conservation of the Gauss method holds
+    only for the *exactly* solved stage equation, so this must be driven to
+    round-off — not to a truncation-sized tolerance.
+
+    ``None`` (default) picks the floor of the solver's working precision:
+    ``1e-6`` in f32, ``1e-12`` in f64.  The iteration also exits on its own once
+    the residual stops improving, so an over-tight value costs nothing."""
+
+    coupled_midpoint_max_iterations: int = 24
+    """Fail instead of accepting an unconverged implicit-midpoint stage."""
 
     advection: AdvectionConfig = field(default_factory=AdvectionConfig)
     """Configuration for advection term (scheme, etc.)."""
@@ -1275,6 +1301,14 @@ class VPMSetup:
 
     export_flow_integrals: bool = True
     """Append computed global diagnostics to ``samples/flow_integrals.csv``."""
+
+    export_discretization_health: bool = True
+    """Also record the resolution metrics (particle overlap h/sigma, vorticity
+    divergence error, Gamma-omega misalignment) with each diagnostics row.
+
+    Invariant drift cannot detect a conservative-but-unresolved solution; these
+    can.  Cost is one k-d tree plus a neighbour sum per diagnostics event, so it
+    scales with ``logging_frequency`` and not with the step count."""
 
     log_mode: Literal["file", "tee", "console"] = "file"
     """Solver output destination: log file, console and file, or console only."""
@@ -1406,10 +1440,14 @@ class VPMSetup:
             stretching_scheme = self.stretching.scheme.upper()
             if not self.stretching.enabled:
                 raise ValueError("COUPLED time integration requires stretching to be enabled")
-            if advection_scheme != stretching_scheme or advection_scheme not in {"RK2", "RK3"}:
+            if advection_scheme != stretching_scheme or advection_scheme not in {
+                "RK2",
+                "RK3",
+                "MIDPOINT",
+            }:
                 raise ValueError(
-                    "COUPLED time integration requires matching RK2 or RK3 "
-                    "advection and stretching schemes"
+                    "COUPLED time integration requires matching RK2, RK3 or "
+                    "MIDPOINT advection and stretching schemes"
                 )
             if self.viscous.scheme.upper() not in {"NONE", "CS"}:
                 raise ValueError(
@@ -1421,6 +1459,12 @@ class VPMSetup:
             raise ValueError("coupled_max_advection_fraction must be positive")
         if self.coupled_max_substeps < 1:
             raise ValueError("coupled_max_substeps must be at least one")
+        if self.coupled_midpoint_tolerance is not None and not (
+            0.0 < self.coupled_midpoint_tolerance < 1.0
+        ):
+            raise ValueError("coupled_midpoint_tolerance must be None or in (0, 1)")
+        if self.coupled_midpoint_max_iterations < 1:
+            raise ValueError("coupled_midpoint_max_iterations must be at least one")
 
         # Frequency validation
         if self.logging_frequency < 0:
@@ -1488,6 +1532,8 @@ class VPMSetup:
             "coupled_max_strain_increment": self.coupled_max_strain_increment,
             "coupled_max_advection_fraction": self.coupled_max_advection_fraction,
             "coupled_max_substeps": self.coupled_max_substeps,
+            "coupled_midpoint_tolerance": self.coupled_midpoint_tolerance,
+            "coupled_midpoint_max_iterations": self.coupled_midpoint_max_iterations,
             "advection": _as_dict(self.advection),
             "stretching": _as_dict(self.stretching),
             "viscous": _as_dict(self.viscous),
@@ -1500,6 +1546,7 @@ class VPMSetup:
             "max_targets": self.max_targets,
             "logging_frequency": self.logging_frequency,
             "export_flow_integrals": self.export_flow_integrals,
+            "export_discretization_health": self.export_discretization_health,
             "log_mode": self.log_mode,
             "timing_frequency": self.timing_frequency,
             "backup_frequency": self.backup_frequency,

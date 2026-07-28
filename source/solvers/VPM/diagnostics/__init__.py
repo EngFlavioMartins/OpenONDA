@@ -10,5 +10,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from .conservation import ConservationTracker
+from .resolution import discretization_health
 
-__all__ = ["ConservationTracker"]
+__all__ = ["ConservationTracker", "discretization_health"]

@@ -31,6 +31,7 @@ from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistri
 from ..config.backend import initialize_taichi_backend, reset_taichi_backend
 from ..config.constants import MAX_PARTICLES, MAX_SOURCES
 from ..config.types import SetFlowModel, StabilizationConfig, VPMSetup
+from ..diagnostics.resolution import discretization_health
 from ..io.backup import BackupSystem
 from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
@@ -170,6 +171,8 @@ class Solver:
         self.coupled_max_strain_increment = final_config.coupled_max_strain_increment
         self.coupled_max_advection_fraction = final_config.coupled_max_advection_fraction
         self.coupled_max_substeps = final_config.coupled_max_substeps
+        self.coupled_midpoint_tolerance = final_config.coupled_midpoint_tolerance
+        self.coupled_midpoint_max_iterations = final_config.coupled_midpoint_max_iterations
 
         # The DVH heat-kernel width is fixed at β·R_d², so each firing advances
         # viscous time by EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
@@ -316,6 +319,10 @@ class Solver:
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
+        # An implicit stage can only be solved to the working precision's floor.
+        if self.coupled_midpoint_tolerance is None:
+            self.coupled_midpoint_tolerance = 1.0e-12 if self.precision == "f64" else 1.0e-6
+
     def _init_particles_and_physics(self, final_config: VPMSetup) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
         max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
@@ -409,6 +416,7 @@ class Solver:
             accumulator_dtype=self.accumulator_dtype,
         )
         self._flow_integrals: dict = {}
+        self._discretization_health: dict = {}
 
     def _init_diagnostics_and_solvers(self, final_config: VPMSetup) -> None:
         """Build diagnostics history dict and initialize optional solvers."""
@@ -727,6 +735,7 @@ class Solver:
             "angular_impulse_z": float(ang_impulse[2]),
             "n_particles": self.particles.number_of_particles,
         }
+        row.update(getattr(self, "_discretization_health", {}))
 
         df = pd.DataFrame([row])
         if not csv_path.exists():
@@ -973,9 +982,39 @@ class Solver:
         self._flow_integrals = self.field_diagnostics.compute_flow_integrals(
             self.particles, self.flow_time
         )
+        self._update_discretization_health()
         self._record_centroid_history()
         self._record_flow_time_history()
         self._record_vlm_diagnostics()
+
+    def _update_discretization_health(self) -> None:
+        """Refresh the resolution metrics that invariant drift cannot report.
+
+        A structure-preserving scheme conserves its invariants whether or not
+        the particle field still resolves the flow, so these are what actually
+        distinguish a trustworthy run from a conservative-but-wrong one.  See
+        :mod:`..diagnostics.resolution`.
+        """
+        if not getattr(self.config, "export_discretization_health", True):
+            return
+        if self.particles.number_of_particles == 0:
+            self._discretization_health = {}
+            return
+        # particles.vorticity is otherwise refreshed only when a backup or a
+        # retention pass happens to run, and a stale omega makes the
+        # Gamma-omega misalignment meaningless.  One O(N^2) evaluation per
+        # diagnostics event, not per step.
+        self.physics.compute_vorticities(self.particles)
+        self._discretization_health = discretization_health(
+            self.particles_positions,
+            self.particles_circulation,
+            self.particles_radii,
+            self.particles_vorticities,
+        )
+        if self.time_integration == "COUPLED":
+            self._discretization_health["midpoint_residual_max"] = float(
+                getattr(self, "_coupled_residual_max", 0.0)
+            )
 
     def _record_centroid_history(self) -> None:
         """Compute and record the circulation-weighted centroid to diagnostics history."""
@@ -2075,8 +2114,6 @@ class Solver:
         computed for logging purposes.
         """
         if self.flow_model == "LES":
-            # Compute enstrophy for enstrophy-based dissipation (used by SFS model)
-            self.physics.compute_enstrophy(self.particles)
             self.LES.compute(
                 self.particles,
                 dt=self.time_step_size if dt is None else dt,
@@ -2155,6 +2192,8 @@ class Solver:
             use_treecode=self.stretching_use_treecode,
             treecode_theta=self.stretching_treecode_theta,
             precomputed_velocity_k1=precomputed_velocity_k1,
+            midpoint_tolerance=self.coupled_midpoint_tolerance,
+            midpoint_max_iterations=self.coupled_midpoint_max_iterations,
         )
         ti.sync()
 
@@ -2190,6 +2229,9 @@ class Solver:
         substeps = 0
         reuse_velocity = bool(precomputed_velocity_k1)
         tolerance = 32.0 * np.finfo(float).eps * max(1.0, abs(dt))
+        # Worst implicit-stage residual over the macro step.  Reported so the
+        # quality of the MIDPOINT solve is auditable rather than assumed.
+        self._coupled_residual_max = 0.0
 
         while remaining > tolerance:
             sub_dt = min(remaining, self._coupled_stable_dt(remaining))
@@ -2208,6 +2250,10 @@ class Solver:
                 reuse_velocity = False
 
             self._apply_coupled_advection_stretching(sub_dt, precomputed_velocity_k1=reuse_velocity)
+            self._coupled_residual_max = max(
+                self._coupled_residual_max,
+                float(getattr(self.physics._coupled, "_last_residual", 0.0)),
+            )
 
             if self.viscous_scheme == "CS":
                 self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)

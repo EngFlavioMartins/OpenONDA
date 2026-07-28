@@ -5,9 +5,10 @@ Each interaction family is run with three deliberately distinct methods:
 
 * ``baseline``: molecular-viscosity DNS with the legacy fractional RK3 core;
 * ``les``: the same legacy core plus Smagorinsky LES;
-* ``les_stabilized``: the same LES physics with direct symmetric interactions,
-  coupled RK2 stages, conservative stretching, Strang-split core spreading,
-  and strain/displacement subcycling.
+* ``les_stabilized``: the same Gaussian LES physics with direct interactions,
+  coupled implicit-midpoint stages, the pairwise-conservative stretching
+  exchange, Strang-split core spreading, a coarse-grid Smagorinsky
+  coefficient, and strain/displacement subcycling.
 
 Only ``les_stabilized`` is subject to the strict closed-system physical
 acceptance contract.  Baseline and LES are controls: their invariant errors
@@ -47,10 +48,22 @@ KINEMATIC_VISCOSITY = GAMMA_REF / REYNOLDS_GAMMA
 PAPER_SPACING = 0.2 * CORE_RADIUS
 PAPER_DT = 20.0 * PAPER_SPACING**2 / GAMMA_REF
 STABILIZED_METHOD = "les_stabilized"
+CONTROL_LES_CS = 0.16
+STABILIZED_LES_CS = 0.20
 
 
 class PhysicalContractError(RuntimeError):
     """A finite solution violated the stabilized method's acceptance contract."""
+
+
+class ResolutionContractError(RuntimeError):
+    """The particle field stopped resolving the flow it is supposed to represent.
+
+    Separate from :class:`PhysicalContractError` on purpose.  A
+    structure-preserving scheme conserves circulation and impulse whether or
+    not the discretization is still faithful, so invariant drift cannot detect
+    this failure and a conservation check alone would pass a wrong answer.
+    """
 
 
 class NumericalBlowupError(RuntimeError):
@@ -109,7 +122,47 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--invariant-drift-tolerance",
         type=float,
         default=5.0e-3,
-        help="Maximum normalized drift of circulation and the two impulses.",
+        help=(
+            "Maximum normalized drift of vector circulation and linear impulse. "
+            "Both are exact invariants of the semi-discrete conservative scheme, "
+            "so this bounds accumulated round-off, not truncation."
+        ),
+    )
+    parser.add_argument(
+        "--angular-drift-tolerance",
+        type=float,
+        default=5.0e-2,
+        help=(
+            "Maximum normalized drift of the kernel-corrected angular impulse. "
+            "Separate from --invariant-drift-tolerance because A = (1/3) sum "
+            "x x (x x Gamma) is CUBIC in the state: it has no discrete "
+            "conservation structure, so its drift is a truncation error that "
+            "converges with the particle spacing rather than round-off."
+        ),
+    )
+    parser.add_argument(
+        "--max-overlap-ratio",
+        type=float,
+        default=1.0,
+        help=(
+            "Reject once the mean particle spacing exceeds this multiple of the "
+            "core radius. Particle quadrature is only consistent while blobs overlap."
+        ),
+    )
+    parser.add_argument(
+        "--max-divergence-error",
+        type=float,
+        default=0.10,
+        help=(
+            "Reject once ||div w||/||grad w|| exceeds this. The discrete vorticity "
+            "field must stay near-solenoidal; stretching amplifies its divergent part."
+        ),
+    )
+    parser.add_argument(
+        "--max-misalignment-deg",
+        type=float,
+        default=15.0,
+        help="Reject once Gamma_p and w(x_p) part company by more than this angle.",
     )
     parser.add_argument(
         "--blowup-factor",
@@ -204,6 +257,7 @@ def validate_resolution(args: argparse.Namespace) -> None:
         args.energy_increase_tolerance < 0.0
         or args.energy_budget_tolerance <= 0.0
         or args.invariant_drift_tolerance <= 0.0
+        or args.angular_drift_tolerance <= 0.0
         or args.blowup_factor <= 1.0
     ):
         raise ValueError("Physical-contract tolerances and --blowup-factor are invalid.")
@@ -255,11 +309,18 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
             coupled_max_strain_increment=0.08,
             coupled_max_advection_fraction=0.25,
             coupled_max_substeps=128,
-            advection=AdvectionConfig(scheme="RK2"),
-            stretching=StretchingConfig.conservative(scheme="RK2"),
-            turbulence=TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048),
+            # The two choices that make the invariants exact rather than
+            # merely small.  CONSERVATIVE is the pairwise-antisymmetric
+            # transposed exchange: it makes both sum(Gamma) and
+            # I = 1/2 sum(x x Gamma) invariants of the semi-discrete system.
+            # MIDPOINT is the one-stage Gauss method, the only integrator here
+            # that carries a *quadratic* invariant like I to round-off; an
+            # explicit RK leaks it at O(dt^p) no matter which mode is used.
+            advection=AdvectionConfig(scheme="MIDPOINT"),
+            stretching=StretchingConfig.conservative(scheme="MIDPOINT"),
+            turbulence=TurbulenceConfig.les_smagorinsky(cs=STABILIZED_LES_CS, ce=1.048),
             velocity=VelocityConfig.direct(),
-            particles_kernel="WINCKELMANS",
+            particles_kernel="GAUSSIAN",
         )
     return VPMSetup(
         **common,
@@ -267,7 +328,7 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
         advection=AdvectionConfig(scheme="RK3"),
         stretching=StretchingConfig.transposed(scheme="RK3"),
         turbulence=(
-            TurbulenceConfig.les_smagorinsky(cs=0.16, ce=1.048)
+            TurbulenceConfig.les_smagorinsky(cs=CONTROL_LES_CS, ce=1.048)
             if args.method == "les"
             else TurbulenceConfig.dns()
         ),
@@ -340,9 +401,16 @@ def enforce_physical_contract(
         failures.append(
             f"|dE/dt-sink|/|sink|={budget_error:.3e} (limit {args.energy_budget_tolerance:.3e})"
         )
+    # Exact invariants of the semi-discrete conservative scheme are held to the
+    # round-off bound; the cubic angular impulse only to its truncation bound.
+    limits = {
+        "strength": args.invariant_drift_tolerance,
+        "linear_impulse": args.invariant_drift_tolerance,
+        "angular_impulse": args.angular_drift_tolerance,
+    }
     for key, drift in drifts.items():
-        if not np.isfinite(drift) or drift > args.invariant_drift_tolerance:
-            failures.append(f"{key} drift={drift:.3e} (limit {args.invariant_drift_tolerance:.3e})")
+        if not np.isfinite(drift) or drift > limits[key]:
+            failures.append(f"{key} drift={drift:.3e} (limit {limits[key]:.3e})")
     if failures:
         raise PhysicalContractError(
             "Physical acceptance contract failed at "
@@ -351,6 +419,36 @@ def enforce_physical_contract(
             + ". The run was stopped rather than changing Gamma."
         )
     return energy, sink, drifts
+
+
+def enforce_resolution_contract(solver: Solver, args: argparse.Namespace) -> dict[str, float]:
+    """Reject a run whose particle field has stopped resolving the flow.
+
+    The solver records these with every diagnostics row; here they become
+    acceptance criteria rather than post-hoc observations.
+    """
+    health = dict(getattr(solver, "_discretization_health", {}) or {})
+    if not health:
+        return health
+    limits = (
+        ("overlap_ratio", args.max_overlap_ratio, "h/sigma"),
+        ("vorticity_divergence_error", args.max_divergence_error, "||div w||/||grad w||"),
+        ("strength_misalignment_deg", args.max_misalignment_deg, "angle(Gamma, w) [deg]"),
+    )
+    failures = [
+        f"{label}={health[key]:.3e} (limit {limit:.3e})"
+        for key, limit, label in limits
+        if np.isfinite(health.get(key, np.nan)) and health[key] > limit
+    ]
+    if failures:
+        raise ResolutionContractError(
+            "Resolution contract failed at "
+            f"step={solver.time_step}, t={solver.flow_time:.6e}: "
+            + "; ".join(failures)
+            + ". The invariants may still be exact; the discretization is not. "
+            "Refine the particle spacing."
+        )
+    return health
 
 
 def enforce_numerical_bound(
@@ -416,6 +514,7 @@ def write_manifest(
         "stretching_mode": cfg.stretching.mode,
         "stretching_scheme": cfg.stretching.scheme,
         "viscous_scheme": cfg.viscous.scheme,
+        "smagorinsky_cs": cfg.turbulence.cs if cfg.turbulence.flow_model == "LES" else None,
         "molecular_viscosity": cfg.viscous.viscosity,
         "characteristic_distance": cfg.viscous.characteristic_distance,
         "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
@@ -424,7 +523,7 @@ def write_manifest(
         "field_modification": "none",
         "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
         "physical_acceptance": (
-            "closed-system energy/circulation/linear-impulse/angular-impulse contract"
+            "closed-system energy/circulation/impulse contract plus resolution guard"
             if args.method == STABILIZED_METHOD
             else "diagnostic control; invariant errors are measured but do not reject the run"
         ),
@@ -443,7 +542,13 @@ def write_manifest(
         "energy_increase_tolerance": args.energy_increase_tolerance,
         "energy_budget_tolerance": args.energy_budget_tolerance,
         "invariant_drift_tolerance": args.invariant_drift_tolerance,
+        "angular_drift_tolerance": args.angular_drift_tolerance,
         "blowup_factor": args.blowup_factor,
+        "max_overlap_ratio": args.max_overlap_ratio,
+        "max_divergence_error": args.max_divergence_error,
+        "max_misalignment_deg": args.max_misalignment_deg,
+        "coupled_midpoint_tolerance": cfg.coupled_midpoint_tolerance,
+        "coupled_midpoint_max_iterations": cfg.coupled_midpoint_max_iterations,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -481,15 +586,15 @@ def run_case(args: argparse.Namespace) -> str:
         args.gamma2,
         args.epsilon_w,
         args.perturbation_modes,
-        256.0 / 45.0 if args.method == STABILIZED_METHOD else 4.0,
+        4.0,
     )
     solver.info()
 
     solver._update_all_flow_integrals()
     solver._export_flow_integrals_csv()
-    solver.backup_solution(str(output_dir / f"vpm_{args.name}"))
     initial = dict(solver._flow_integrals)
-    scales = _contract_scales(solver, initial)
+    contract_enabled = args.method == STABILIZED_METHOD
+    scales = _contract_scales(solver, initial) if contract_enabled else {}
     previous_energy = float(initial["kinetic_energy"])
     previous_sink = float(initial["vorticity_dissipation_rate"])
     initial_max_strength = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
@@ -506,23 +611,32 @@ def run_case(args: argparse.Namespace) -> str:
             previous_energy, previous_sink, drifts = enforce_physical_contract(
                 solver, initial, previous_energy, previous_sink, scales, args
             )
+            health = enforce_resolution_contract(solver, args)
             print(
                 "PHYSICS CHECK "
                 f"step={step + 1} time={solver.flow_time:.6e} "
                 f"energy={previous_energy:.8e} "
                 f"circ_drift={drifts['strength']:.3e} "
                 f"impulse_drift={drifts['linear_impulse']:.3e} "
-                f"angular_drift={drifts['angular_impulse']:.3e}",
+                f"angular_drift={drifts['angular_impulse']:.3e} "
+                f"h_over_sigma={health.get('overlap_ratio', float('nan')):.3f} "
+                f"div_error={health.get('vorticity_divergence_error', float('nan')):.3e} "
+                f"misalign_deg={health.get('strength_misalignment_deg', float('nan')):.3f}",
                 flush=True,
             )
-    except (PhysicalContractError, NumericalBlowupError) as error:
+    except (PhysicalContractError, ResolutionContractError, NumericalBlowupError) as error:
         export_diagnostic_snapshot(solver)
-        solver.save_state(str(output_dir / "rejected_state"))
         status = (
             "rejected_physical_contract"
-            if isinstance(error, PhysicalContractError)
+            if isinstance(error, (PhysicalContractError, ResolutionContractError))
             else "terminated_nonphysical"
         )
+        state_name = (
+            "contract_violation_state"
+            if isinstance(error, (PhysicalContractError, ResolutionContractError))
+            else "nonphysical_state"
+        )
+        solver.save_state(str(output_dir / f"vpm_{args.name}_{state_name}"))
         write_manifest(
             args,
             case_label,

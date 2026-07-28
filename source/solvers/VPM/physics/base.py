@@ -169,8 +169,8 @@ class PhysicsBase:
             3, dtype=self.accumulator_dtype, shape=(self.max_particles,)
         )
 
-        # Strength magnitude tracking (for adaptive splitting)
-        self.str_mag_before = ti.field(dtype=self.accumulator_dtype, shape=(self.max_particles,))
+        # Scalar scratch for the implicit-midpoint fixed-point residual test.
+        self.iter_scale = ti.field(dtype=self.accumulator_dtype, shape=())
 
         # Mark initial size
         self._temp_field_size = self.max_particles
@@ -1096,26 +1096,6 @@ class PhysicsBase:
         self._resize_temp_fields(N)
         self.compute_kinetic_energy_kernel(
             particles.position, particles.circulation, particles.radius, particles.kinetic_energy, N
-        )
-
-    def compute_enstrophy(self, particles):
-        """
-        Compute enstrophy at each particle.
-
-        Evaluates Z = ½‖ω‖² per particle by calling a Taichi kernel that
-        computes vorticity from the velocity gradient and stores the result
-        in ``particles.enstrophy``.
-
-        Args:
-            particles: Particle container with ``position``, ``circulation``,
-                ``radius``, and ``enstrophy`` fields.
-        """
-        N = len(particles)
-        if N == 0:
-            return
-        self._resize_temp_fields(N)
-        self.compute_enstrophy_kernel(
-            particles.position, particles.circulation, particles.radius, particles.enstrophy, N
         )
 
     def compute_helicity(self, particles):

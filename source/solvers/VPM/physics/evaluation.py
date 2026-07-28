@@ -286,21 +286,41 @@ class ParticleFieldEvaluation:
                     r_sigma = r_mag / sigma
 
                     if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        # Enstrophy = ∫|ω|² with ω = Σ Γ ζ_σ.  Two Gaussian blobs
-                        # of width σ convolve to width σ√2, so the regularised
-                        # enstrophy kernel must be evaluated at σ_ens = σ√2 (not
-                        # σ).  Using σ here over-weights it by 2^{3/2} and breaks
-                        # the dE/dt = −ν∫|ω|² balance.  Energy/helicity keep σ.
-                        sigma_ens = sigma * 1.4142135623730951
-                        zeta_val = zeta_(r_mag / sigma_ens) / sigma_ens**3
-                        g_val = g_(r_sigma) / sigma
+                        # Every quadratic field integral of the blob field is a
+                        # *convolution* of two blobs, so its regularised kernel is
+                        # evaluated at the convolved width
+                        #
+                        #     σ_e = sqrt(σ_i² + σ_j²)
+                        #
+                        # not at the pair mean σ = (σ_i+σ_j)/2.  This applies to
+                        # E = ½∫ω·ψ, to H = ∫ω·u and to ∫|ω|² alike: each is
+                        # ΣΣ Γ_i·Γ_j (k_σi * k_σj)(r_ij).  Using σ inflates the
+                        # near field (+41 % on the single-blob self energy) and
+                        # breaks the exact dE/dt = −ν∫|ω|² balance under core
+                        # spreading.  With σ_e that identity closes to machine
+                        # precision, including for unequal cores and per-particle
+                        # ν_eff — which is what makes the LES energy budget
+                        # auditable at all.
+                        #
+                        # ζ_σ * ζ_σ = ζ_{σ√2} is a *Gaussian* identity, so σ_e is
+                        # exact for GAUSSIAN and an approximation for the
+                        # algebraic kernels, whose double-mollified Green's
+                        # function is not in their own family.  The pre-existing
+                        # enstrophy kernel already assumed it for every kernel;
+                        # this extends the same assumption to E and H so the
+                        # three stay mutually consistent.  Deriving the true
+                        # factor for WINCKELMANS et al. is open work.
+                        sigma_e = ti.sqrt(radii_i * radii_i + radii_j * radii_j)
+                        r_sigma_e = r_mag / sigma_e
+                        zeta_val = zeta_(r_sigma_e) / sigma_e**3
+                        g_val = g_(r_sigma_e) / sigma_e
 
                         # Accumulate pairwise contributions (explicit cast avoids
                         # implicit f32↔f64 promotion warnings from Taichi JIT)
                         _acc = self.accumulator_dtype
                         local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
                         if r_mag > EPSILON:
-                            q_val = q_(r_sigma)
+                            q_val = q_(r_sigma_e)
                             local_helicity += ti.cast(
                                 q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
                                 _acc,
@@ -347,7 +367,9 @@ class ParticleFieldEvaluation:
                     r_sigma = r_mag / sigma
 
                     if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        g_val = g_(r_sigma) / sigma
+                        # Convolved pair width — see compute_flow_integrals_kernel.
+                        sigma_e = ti.sqrt(radii[i] * radii[i] + radii_j * radii_j)
+                        g_val = g_(r_mag / sigma_e) / sigma_e
                         energy_sum += g_val * str_j.dot(str_i) * 0.5
 
                 kinetic_energy[i] = energy_sum
@@ -376,14 +398,14 @@ class ParticleFieldEvaluation:
                 for j in range(N):
                     pos_j = positions[j]
                     str_j = strengths[j]
-                    sigma = 0.5 * (radii_i + radii[j])
 
                     r_ij = pos_i - pos_j
                     r_mag = ti.sqrt(r_ij.dot(r_ij))
 
                     if r_mag > EPSILON and r_mag <= cutoff_radius:
-                        r_sigma = r_mag / sigma
-                        q_val = q_(r_sigma)
+                        # Convolved pair width — see compute_flow_integrals_kernel.
+                        sigma_e = ti.sqrt(radii_i * radii_i + radii[j] * radii[j])
+                        q_val = q_(r_mag / sigma_e)
                         hel += q_val * r_ij.dot(str_i.cross(str_j)) / (r_mag**3)
 
                 helicity[i] = hel
@@ -416,7 +438,9 @@ class ParticleFieldEvaluation:
 
                     if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
                         str_j = strengths[j]
-                        zeta_val = zeta_(r_sigma) / sigma**3
+                        # Convolved pair width — see compute_flow_integrals_kernel.
+                        sigma_e = ti.sqrt(radii_i * radii_i + radii[j] * radii[j])
+                        zeta_val = zeta_(r_mag / sigma_e) / sigma_e**3
                         enstrophy_local += zeta_val * str_i.dot(str_j)
 
                 enstrophy[i] = enstrophy_local
