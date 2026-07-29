@@ -170,6 +170,58 @@ def test_gbd_max_dt_formula():
     assert np.isclose(vc.gbd_max_dt(), 0.05**2 / (6 * 0.001))
 
 
+def test_particle_cap_protects_circulation_and_local_wake(physics):
+    values = np.array([40.0, 30.0, 20.0, 10.0, 1.0, 1.0])
+    grid = values.reshape(6, 1, 1)
+    importance = np.array([1.0, 1.0, 1.0, 1.0, 100.0, 90.0]).reshape(6, 1, 1)
+    ix = np.arange(6)
+    iy = np.zeros(6, dtype=int)
+    iz = np.zeros(6, dtype=int)
+
+    kept_x, _, _, _, old_count = physics._cap_surviving_nodes(
+        grid,
+        ix,
+        iy,
+        iz,
+        cap=4,
+        importance=importance,
+        min_abs_fraction=0.8,
+    )
+
+    assert old_count == 6
+    assert set(kept_x) == {0, 1, 2, 4}
+    assert values[kept_x].sum() / values.sum() >= 0.8
+
+
+def test_particle_cap_falls_back_to_strongest_when_budget_is_infeasible(physics):
+    grid = np.array([40.0, 30.0, 20.0, 10.0]).reshape(4, 1, 1)
+    ix = np.arange(4)
+    zeros = np.zeros(4, dtype=int)
+    kept_x, _, _, _, _ = physics._cap_surviving_nodes(
+        grid,
+        ix,
+        zeros,
+        zeros,
+        cap=2,
+        importance=np.ones_like(grid),
+        min_abs_fraction=0.99,
+    )
+
+    assert set(kept_x) == {0, 1}
+    assert np.isclose(grid[kept_x, 0, 0].sum() / grid.sum(), 0.7)
+
+
+def test_viscous_config_carries_particle_cap():
+    vc = ViscousConfig.gbd(
+        h=0.05,
+        viscosity=0.001,
+        max_nodes=350_000,
+        cap_abs_fraction=0.99,
+    )
+    assert vc.gbd_max_nodes == 350_000
+    assert vc.regen_cap_abs_fraction == 0.99
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DVH
 # ─────────────────────────────────────────────────────────────────────────────

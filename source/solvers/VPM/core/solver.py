@@ -629,12 +629,17 @@ class Solver:
                 else:
                     with self.profiler.section("Viscous diffusion"):
                         self._apply_viscous_diffusion(self.time_step_size)
+                    # Snapshot before stretching so chi_Gamma can compare the
+                    # safety correction against the physics increment it rides on.
+                    gamma_before = (
+                        self.particles_circulation.copy() if self.envelope is not None else None
+                    )
                     with self.profiler.section("Stretching"):
                         self._apply_stretching(self.time_step_size)
 
                 if self.envelope is not None:
                     with self.profiler.section("Enstrophy envelope"):
-                        self._apply_enstrophy_envelope(self.time_step_size)
+                        self._apply_enstrophy_envelope(self.time_step_size, gamma_before)
 
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
@@ -2278,7 +2283,7 @@ class Solver:
                 f"for macro dt={dt:.3e}"
             )
 
-    def _apply_enstrophy_envelope(self, dt: float) -> None:
+    def _apply_enstrophy_envelope(self, dt: float, gamma_before=None) -> None:
         """Restore the enstrophy bound, and stop if the state is unrepresentable.
 
         The two hard ceilings are deliberately fatal rather than corrective: past
@@ -2289,6 +2294,14 @@ class Solver:
         integrals = self.field_diagnostics.compute_flow_integrals(
             self.particles, self.flow_time, record_history=False
         )
+        n = self.particles.number_of_particles
+        if gamma_before is not None:
+            volume = self.particles_volumes[:n]
+            increment = self.particles_circulation[:n] - gamma_before[:n]
+            raw = float(np.sqrt((increment * increment).sum(axis=1) / volume).sum())
+        else:
+            raw = 0.0
+        self.envelope.note_step(n, raw)
         self._check_representability()
         self.envelope.apply(
             self.particles,
@@ -2404,6 +2417,7 @@ class Solver:
                 rd_ratio=vc.dvh_rd_ratio,
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "dvh_max_nodes", None),
+                cap_abs_fraction=vc.regen_cap_abs_fraction,
             )
         else:  # GBD
             # In LES mode the per-particle effective viscosity (nu + nu_t) sets
@@ -2436,6 +2450,7 @@ class Solver:
                 regen_threshold_window=getattr(vc, "regen_threshold_window", 3),
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
+                cap_abs_fraction=vc.regen_cap_abs_fraction,
             )
 
     def _apply_particle_retention(self) -> None:

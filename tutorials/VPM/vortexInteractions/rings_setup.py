@@ -110,6 +110,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Coarse-scale exponential growth allowance b_L [1/s] (calibrated).",
     )
     parser.add_argument(
+        "--r-loc-max",
+        type=float,
+        default=15.0,
+        help=(
+            "Local barrier: correct a particle whose |Gamma|/sigma^3 exceeds this "
+            "multiple of its 20-neighbour median. This is the criterion that "
+            "actually fires; the global enstrophy bound is an L2 certificate and "
+            "cannot see a sparse runaway."
+        ),
+    )
+    parser.add_argument(
         "--envelope-kappa",
         type=float,
         default=1.0,
@@ -277,6 +288,7 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
                 rho_max=args.rho_max,
                 b_l=args.envelope_growth,
                 kappa=args.envelope_kappa,
+                r_loc_max=args.r_loc_max,
                 omega_hard=args.omega_hard,
             ),
         )
@@ -391,6 +403,7 @@ def write_manifest(
         "rho_max": args.rho_max,
         "envelope_growth": args.envelope_growth,
         "envelope_kappa": args.envelope_kappa,
+        "r_loc_max": args.r_loc_max,
         "omega_hard": args.omega_hard,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:

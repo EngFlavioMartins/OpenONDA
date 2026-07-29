@@ -22,6 +22,7 @@ import numpy as np
 import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
+from ..io.logging import Logging
 from .base import PhysicsBase
 
 _logger = logging.getLogger("vpm")
@@ -804,23 +805,38 @@ class _GridDiffusionMixin:
         iy: np.ndarray,
         iz: np.ndarray,
         cap: int,
+        importance: np.ndarray | None = None,
+        min_abs_fraction: float = 0.99,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, int]:
-        """Keep exactly the strongest ``cap`` surviving grid nodes.
-
-        Raising a magnitude threshold can still overshoot the requested cap
-        when many nodes share the cutoff value.  Selecting by the already
-        surviving linear indices makes the particle-count budget exact.
-        """
         n_survivors = len(ix)
         if cap <= 0:
             raise ValueError("Diffusion regeneration cap must be positive.")
+        if not 0.0 < min_abs_fraction <= 1.0:
+            raise ValueError("min_abs_fraction must be in (0, 1].")
         if n_survivors <= cap:
             threshold = float(circ_mag[ix, iy, iz].min()) if n_survivors else 0.0
             return ix, iy, iz, threshold, n_survivors
 
-        values = circ_mag[ix, iy, iz]
-        keep_local = np.argpartition(-values, cap - 1)[:cap]
-        keep_local = keep_local[np.argsort(-values[keep_local])]
+        values = circ_mag[ix, iy, iz].astype(np.float64)
+        scores = values if importance is None else importance[ix, iy, iz].astype(np.float64)
+        strongest = np.argsort(-values, kind="stable")
+        total = float(values.sum())
+        protected_count = int(
+            np.searchsorted(np.cumsum(values[strongest]), min_abs_fraction * total) + 1
+        )
+
+        if protected_count >= cap:
+            keep_local = strongest[:cap]
+        else:
+            protected = strongest[:protected_count]
+            available = np.ones(n_survivors, dtype=bool)
+            available[protected] = False
+            candidates = np.flatnonzero(available)
+            fill_count = cap - protected_count
+            fill = candidates[np.argpartition(-scores[candidates], fill_count - 1)[:fill_count]]
+            keep_local = np.concatenate((protected, fill))
+
+        keep_local = keep_local[np.argsort(-scores[keep_local], kind="stable")]
         ix_keep = ix[keep_local]
         iy_keep = iy[keep_local]
         iz_keep = iz[keep_local]
@@ -951,6 +967,7 @@ class _GridDiffusionMixin:
         regen_threshold_window: int = 3,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
@@ -1121,6 +1138,12 @@ class _GridDiffusionMixin:
                 _threshold_scalar(threshold),
             )
             return None
+        threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
+        _logger.info(
+            "[GBD] Threshold retained %.4f%% of Σ|Γ| on %d nodes.",
+            100.0 * threshold_retained,
+            len(ix),
+        )
 
         # -- Particle-count cap ------------------------------------------------
         # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
@@ -1131,12 +1154,24 @@ class _GridDiffusionMixin:
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         if len(ix) > cap:
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(circ_mag, ix, iy, iz, cap)
-            _logger.info(
-                "[GBD] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
-                old_count,
-                len(ix),
-                threshold,
+            survivor_abs = float(circ_mag[ix, iy, iz].sum())
+            importance = circ_mag / threshold if isinstance(threshold, np.ndarray) else None
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
+                circ_mag,
+                ix,
+                iy,
+                iz,
+                cap,
+                importance=importance,
+                min_abs_fraction=cap_abs_fraction,
+            )
+            retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
+            retained_total = retained * threshold_retained
+            Logging.message(
+                "[GBD] Capped surviving nodes: "
+                f"{old_count} → {len(ix)}, retained Σ|Γ|={100.0 * retained:.3f}% "
+                f"of candidates, {100.0 * retained_total:.3f}% total "
+                f"(minimum |Γ| {threshold:.2e})."
             )
 
         _logger.info(
@@ -1183,6 +1218,7 @@ class _GridDiffusionMixin:
         regen_threshold_window: int = 3,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
@@ -1204,6 +1240,7 @@ class _GridDiffusionMixin:
             regen_threshold_window=regen_threshold_window,
             nu_eff=nu_eff,
             max_nodes=max_nodes,
+            cap_abs_fraction=cap_abs_fraction,
         )
 
     def _dvh_scatter_circ(
@@ -1335,6 +1372,7 @@ class _GridDiffusionMixin:
         rd_ratio: float = 4.0,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """DVH diffusion + particle regeneration (Durante et al. 2024).
 
@@ -1437,12 +1475,22 @@ class _GridDiffusionMixin:
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         if len(ix) > cap:
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(circ_mag, ix, iy, iz, cap)
-            _logger.info(
-                "[DVH] Capped surviving nodes: %d → %d (threshold raised to %.2e).",
-                old_count,
-                len(ix),
-                threshold,
+            survivor_abs = float(circ_mag[ix, iy, iz].sum())
+            importance = circ_mag / threshold if isinstance(threshold, np.ndarray) else None
+            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
+                circ_mag,
+                ix,
+                iy,
+                iz,
+                cap,
+                importance=importance,
+                min_abs_fraction=cap_abs_fraction,
+            )
+            retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
+            Logging.message(
+                "[DVH] Capped surviving nodes: "
+                f"{old_count} → {len(ix)}, retained Σ|Γ|={100.0 * retained:.3f}% "
+                f"(minimum |Γ| {threshold:.2e})."
             )
 
         _logger.info(
@@ -1488,6 +1536,7 @@ class _GridDiffusionMixin:
         rd_ratio: float = 4.0,
         nu_eff: np.ndarray | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """DVH (Durante 2024) diffusion step with particle regeneration.
 
@@ -1511,6 +1560,7 @@ class _GridDiffusionMixin:
             rd_ratio=rd_ratio,
             nu_eff=nu_eff,
             max_nodes=max_nodes,
+            cap_abs_fraction=cap_abs_fraction,
         )
 
     # ---- Taichi Kernels ----

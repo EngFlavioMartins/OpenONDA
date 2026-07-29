@@ -219,6 +219,8 @@ class ViscousConfig:
             raise ValueError(
                 f"gbd_threshold_mode must be one of {_valid_modes}, got {self.gbd_threshold_mode!r}"
             )
+        if not 0.0 < self.regen_cap_abs_fraction <= 1.0:
+            raise ValueError("regen_cap_abs_fraction must be in (0, 1].")
 
     rwm_noise_amplitude: float = 1.0
     """Scaling factor for Random Walk noise."""
@@ -309,6 +311,9 @@ class ViscousConfig:
     w ≈ 3 (a 7³ window, i.e. ±3h ≈ 3 core radii) resolves individual wake
     structures; larger w averages unrelated structures together and drifts back
     toward global behaviour.  Applies to both DVH and GBD."""
+
+    regen_cap_abs_fraction: float = 0.99
+    """Minimum fraction of surviving Σ|Γ| protected by a particle cap."""
 
     gbd_max_nodes: int | None = None
     """Hard cap on surviving grid nodes per GBD regen (GBD only).
@@ -519,6 +524,7 @@ class ViscousConfig:
         dvh_rd_ratio: int = 4,
         viscosity: float | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
         regen_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """DVH (Diffused Vortex Hydrodynamics) with particle regeneration.
@@ -572,6 +578,7 @@ class ViscousConfig:
                 determines the DVH time-step Δt_d = β·R_d²/(4nu).
             max_nodes: Hard cap on surviving regen nodes (budget-by-count) —
                 bounds the budget-mode halo growth.  None = built-in cap only.
+            cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
             regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
                 particles.  Default 2.5. Lower toward 1.5 to avoid
                 over-smearing the reconstructed field (see the field docstring).
@@ -590,6 +597,7 @@ class ViscousConfig:
             dvh_rd_ratio=dvh_rd_ratio,
             viscosity=viscosity,
             dvh_max_nodes=max_nodes,
+            regen_cap_abs_fraction=cap_abs_fraction,
             regen_radius_ratio=regen_radius_ratio,
         )
 
@@ -602,6 +610,7 @@ class ViscousConfig:
         threshold_window: int = 3,
         viscosity: float | None = None,
         max_nodes: int | None = None,
+        cap_abs_fraction: float = 0.99,
         regen_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """Grid-Based Diffusion (Cottet & Koumoutsakos 2000).
@@ -636,6 +645,7 @@ class ViscousConfig:
                 reference window (ignored by the other modes).
             viscosity: Molecular kinematic viscosity nu [m²/s].
             max_nodes: Hard cap on surviving regen nodes (budget-by-count).
+            cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
             regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
                 particles.  Default 2.5. Lower toward 1.5 to avoid
                 over-smearing the reconstructed field (see the field docstring).
@@ -649,6 +659,7 @@ class ViscousConfig:
             regen_threshold_window=threshold_window,
             viscosity=viscosity,
             gbd_max_nodes=max_nodes,
+            regen_cap_abs_fraction=cap_abs_fraction,
             regen_radius_ratio=regen_radius_ratio,
         )
 
@@ -1074,6 +1085,23 @@ class EnvelopeConfig:
     """Coarse-scale exponential growth allowance [1/s], from Q_0.999 of
     [P_2Delta]_+ / Z_2Delta over the trusted ensemble."""
 
+    r_loc_max: float = 15.0
+    """Local barrier: correct a particle whose |Gamma_p|/sigma_p^3 exceeds this
+    multiple of the median over its 20 nearest neighbours.
+
+    This is the L-infinity half of the guarantee and the one that actually fires.
+    A global enstrophy bound is an L2 certificate: on the h=0.036 leapfrog
+    breakdown, ten particles out of 13234 carried 39% of sum(q^2) while global
+    enstrophy was still 0.65 of its initial value, so the global envelope never
+    engaged at all.
+
+    Neighbourhood-relative rather than absolute because q_max is non-monotone
+    (27.9 -> 2.8 -> runaway): any absolute threshold either fires at t=0 or
+    arrives one sample before the crash.  Calibrated on that trajectory --
+    r > 15 gives zero violations across 25 healthy samples and first flags a
+    single particle 2.07 time units (27% of the run) before the blow-up, while
+    r > 10 already produces false positives during healthy evolution."""
+
     max_iterations: int = 6
     """Barrier iterations per step.  The enstrophy constraint is quadratic and
     the solved row is its linearisation, so one solve undershoots; each extra
@@ -1091,6 +1119,8 @@ class EnvelopeConfig:
     def __post_init__(self) -> None:
         if self.rho_max <= 0.0:
             raise ValueError("rho_max must be positive")
+        if self.r_loc_max <= 1.0:
+            raise ValueError("r_loc_max must exceed one")
         if self.kappa <= 0.0:
             raise ValueError("kappa must be positive")
         if self.z_floor < 0.0 or self.a_l < 0.0 or self.b_l < 0.0:
@@ -1114,6 +1144,7 @@ class EnvelopeConfig:
         kappa: float = 1.0,
         z_floor: float = 0.0,
         a_l: float = 0.0,
+        r_loc_max: float = 15.0,
         omega_hard: float | None = None,
         max_overlap: float | None = None,
     ) -> "EnvelopeConfig":
@@ -1125,6 +1156,7 @@ class EnvelopeConfig:
             kappa=kappa,
             a_l=a_l,
             b_l=b_l,
+            r_loc_max=r_loc_max,
             omega_hard=omega_hard,
             max_overlap=max_overlap,
         )
