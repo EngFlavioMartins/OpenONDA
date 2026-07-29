@@ -96,8 +96,10 @@ def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_bac
     integrals = solver.field_diagnostics.compute_flow_integrals(
         solver.particles, solver.flow_time, record_history=False
     )
-    # Gaussian C=3.  The raw position term is zero.
-    expected = -(2.0 / 9.0) * 3.0 * np.array([0.0, 0.0, 0.1**2 - 0.3**2])
+    # Gaussian second moment m2 = 3/2 (verified against 3-D quadrature of
+    # int x*(x*omega) dV; it was 3.0 here and in the kernel, twice too large).
+    # The raw position term is zero because both blobs sit at the origin.
+    expected = -(2.0 / 9.0) * 1.5 * np.array([0.0, 0.0, 0.1**2 - 0.3**2])
     assert np.allclose(integrals["angular_impulse"], expected, atol=1e-6)
 
 

@@ -95,6 +95,7 @@ class ParticleFieldEvaluation:
             energy=_F,
             helicity=_F,
             enstrophy=_F,
+            enstrophy_test=_F,
             dissipation=_F,
             str_mag=_F,
             gamma_x=_F,
@@ -193,6 +194,7 @@ class ParticleFieldEvaluation:
             positions: ti.template(),
             strengths: ti.template(),
             radii: ti.template(),
+            volumes: ti.template(),
             viscosities_eff: ti.template(),
             results: ti.template(),
             num_particles: ti.i32,
@@ -219,6 +221,7 @@ class ParticleFieldEvaluation:
             results[None].energy = ti.cast(0.0, self.accumulator_dtype)
             results[None].helicity = ti.cast(0.0, self.accumulator_dtype)
             results[None].enstrophy = ti.cast(0.0, self.accumulator_dtype)
+            results[None].enstrophy_test = ti.cast(0.0, self.accumulator_dtype)
             results[None].dissipation = ti.cast(0.0, self.accumulator_dtype)
             results[None].str_mag = ti.cast(0.0, self.accumulator_dtype)
             results[None].gamma_x = ti.cast(0.0, self.accumulator_dtype)
@@ -272,6 +275,7 @@ class ParticleFieldEvaluation:
                 local_energy = ti.cast(0.0, self.accumulator_dtype)
                 local_helicity = ti.cast(0.0, self.accumulator_dtype)
                 local_enstrophy = ti.cast(0.0, self.accumulator_dtype)
+                local_enstrophy_test = ti.cast(0.0, self.accumulator_dtype)
                 local_dissipation = ti.cast(0.0, self.accumulator_dtype)
 
                 for j in range(N):
@@ -325,7 +329,19 @@ class ParticleFieldEvaluation:
                                 q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
                                 _acc,
                             )
+                        # Test-filtered enstrophy: the same quadratic form at a
+                        # widened width sqrt(sigma_i^2 + sigma_j^2 + Delta_test^2).
+                        # Delta_test = 2 V^(1/3) matches the LES filter width in
+                        # smagorinsky.py, so the pair gives the scale-separation
+                        # ratio rho_Z = Z_Delta / Z_2Delta that the enstrophy
+                        # envelope uses to tell physical vortex stretching (both
+                        # scales rise) from particle-scale pile-up (only the fine
+                        # scale rises).  Reusing this loop costs one extra zeta_.
+                        d_test = 2.0 * (volumes[i] ** (1.0 / 3.0) + volumes[j] ** (1.0 / 3.0)) * 0.5
+                        sigma_t = ti.sqrt(sigma_e * sigma_e + d_test * d_test)
+                        zeta_test = zeta_(r_mag / sigma_t) / sigma_t**3
                         pair_enstrophy = ti.cast(zeta_val * str_i.dot(str_j), _acc)
+                        local_enstrophy_test += ti.cast(zeta_test * str_i.dot(str_j), _acc)
                         pair_nu = ti.cast(0.5 * (viscosities_eff[i] + viscosities_eff[j]), _acc)
                         local_enstrophy += pair_enstrophy
                         local_dissipation -= pair_nu * pair_enstrophy
@@ -334,6 +350,7 @@ class ParticleFieldEvaluation:
                 ti.atomic_add(results[None].energy, local_energy)
                 ti.atomic_add(results[None].helicity, local_helicity)
                 ti.atomic_add(results[None].enstrophy, local_enstrophy)
+                ti.atomic_add(results[None].enstrophy_test, local_enstrophy_test)
                 ti.atomic_add(results[None].dissipation, local_dissipation)
 
         # Store kernel as instance method
@@ -658,6 +675,7 @@ class ParticleFieldEvaluation:
             particles.position,
             particles.circulation,
             particles.radius,
+            particles.volume,
             particles.viscosity_effective,
             self.total_quantities_results,
             N,
@@ -676,6 +694,7 @@ class ParticleFieldEvaluation:
             "kinetic_energy": kinetic_energy,
             "helicity": float(r.helicity),
             "enstrophy": float(r.enstrophy),
+            "enstrophy_test": float(r.enstrophy_test),
             "vorticity_dissipation_rate": float(r.dissipation),
             "kinetic_energy_dissipation_rate": dE_dt,
             "strength_magnitude": float(r.str_mag),
@@ -891,6 +910,7 @@ class ParticleFieldEvaluation:
             "kinetic_energy": 0.0,
             "helicity": 0.0,
             "enstrophy": 0.0,
+            "enstrophy_test": 0.0,
             "vorticity_dissipation_rate": 0.0,
             "kinetic_energy_dissipation_rate": 0.0,
             "strength_magnitude": 0.0,

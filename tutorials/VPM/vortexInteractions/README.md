@@ -13,126 +13,71 @@ position/strength update, Gaussian kernel, and Barnes--Hut interactions.
 `--method les` keeps that numerical core and adds the static Smagorinsky LES
 model. This isolates the SGS-model effect from the stabilization methodology.
 
-`--method les_stabilized` keeps the same LES model and uses:
+`--method les_stabilized` is numerically **identical** to `les` -- same
+fractional RK3 core, Gaussian kernel, treecode and core spreading -- plus two
+things: the coarse-grid Smagorinsky constant `C_s = 0.20`, and the enstrophy
+envelope. The comparison therefore isolates the envelope instead of confounding
+it with a pile of numerical differences.
 
-- `dt <= 20 h^2 / Gamma0`;
-- a spacing fine enough that the anti-diffused initial core is not aliased
-  (the paper's stricter `h/a0 <= 0.2` is still checked, and the shipped
-  `h = 0.030` runs with `--allow-underresolved` at `h/a0 = 0.30`);
-- the same Gaussian kernel as the two controls, so the comparison does not
-  change the represented initial vorticity field;
-- `C_nu = 4` for Gaussian core spreading and its matching initial
-  anti-diffusion shift;
-- exact direct interactions;
-- the **pairwise-conservative** stretching exchange (`CONSERVATIVE`);
-- **coupled implicit-midpoint** stages for `(x, Gamma)`;
-- `C_s = 0.20`, the documented coarse-grid Smagorinsky setting (`les` keeps
-  the lower-dissipation `C_s = 0.16` control);
-- Strang-split core spreading;
-- automatic subcycling with
-  `dt_sub ||S||_2 <= 0.08` and `|u| dt_sub / h <= 0.25`;
-- no post-step modification of circulation, core size, or particle topology.
+### What the envelope is
 
-### Why those last two are the ones that matter
+A control-barrier safety layer on a *vorticity-sensitive* norm. Conserving
+circulation and impulse bounds nothing about `|Gamma_p|/sigma^3` or
+`||grad u||`, so a scheme can hold its invariants to round-off and still blow up
+-- which is what the previous pairwise-conservative stabilization did here
+(it crashed at `t = 0.14`, where the ungoverned controls reach `t = 5.87`).
 
-The invariants are exact by construction, not by tuning:
+It does **not** cap enstrophy magnitude. Vortex stretching legitimately produces
+enstrophy: the head-on collision grows it `1826 -> 2890` while
+`sum|Gamma|/(2 pi R Gamma)` stays constant to 1%, i.e. pure line stretching. A
+fixed cap near `Z(0)` would suppress the mechanism the solver exists to resolve.
 
-- The stretching exchange is antisymmetric in `(i, j)`, so `sum(Gamma)` is an
-  invariant of the semi-discrete system. Its tangential part additionally
-  satisfies `r_ij x dGamma_ij = -(u_ij x Gamma_i + u_ji x Gamma_j)`, which
-  cancels the advective half of `dI/dt` exactly — so the **linear impulse**
-  `I = 1/2 sum(x x Gamma)` is an invariant too. `TRANSPOSED` gets the first
-  identity but not the second, and leaks impulse at first order in `dt`.
-- `sum(Gamma)` is *linear* in the state, so any integrator preserves it. `I` is
-  *quadratic*, and a Runge--Kutta method preserves a quadratic invariant only if
-  `b_i a_ij + b_j a_ji = b_i b_j`. The Gauss methods satisfy it and no explicit
-  method does, so the one-stage Gauss method — implicit midpoint — is what
-  carries `I` to round-off instead of to `O(dt^p)`.
+It caps *anomalous scale-localized* production instead. With `Z_D` the
+particle-scale enstrophy and `Z_2D` the same quadratic form at a widened kernel
+width, physical coherent stretching raises both, while particle-scale pile-up
+raises mainly `Z_D`. The admissible set is
 
-Measured on the leapfrog case at `t = 3.0 s` (`t Gamma0/R0^2 = 9.4`), the two
-changes are independent and multiply — all four rows are the same physics, the
-same `h`, and the same `dt`:
+    Z_D <= rho_max * B_L + Z_floor,    Bdot_L <= a_L + b_L B_L,   B_L >= Z_2D
 
-| stretching mode | scheme | `abs(dI)/Gamma` | `div(w)` error | survives to |
-|---|---|---|---|---|
-| `TRANSPOSED` | RK2 | 1.9e-2 | 0.013 | `t > 5.5` |
-| `TRANSPOSED` | `MIDPOINT` | 1.9e-2 | 0.013 | `t > 5.5` |
-| `CONSERVATIVE` | RK2 | 5.4e-5 | 0.101 | `t ~ 4.0` |
-| `CONSERVATIVE` | `MIDPOINT` | **3.9e-7** | 0.099 | `t ~ 4.0` |
+so the cap moves with credible coarse-scale growth. Gronwall bounds `B_L` at
+every finite time, hence `Z_D`; with `sigma_p >= sigma_min` and finite total
+volume, Cauchy-Schwarz then bounds `sum|Gamma|`, `u` and `grad u`, so the
+particle ODE cannot blow up. **The guarantee is for this modified discrete
+model, not for Navier-Stokes.**
 
-`MIDPOINT` buys nothing with `TRANSPOSED`, which is the point: that mode's leak
-is `O(dt)` in the *semi-discrete* system, so no integrator can remove it. Only
-once the mode supplies the invariant does the Gauss method have something to
-preserve.
+The correction is the minimum-norm strength change restoring the bound, subject
+to nine hard equality rows -- total vorticity, linear impulse, angular impulse
+(with the kernel second moment) -- plus a no-energy-injection inequality. A plain
+`-lambda Gamma_p` sink would also restore the bound, but it shrinks the impulse;
+the constrained solve is what keeps the conservation properties. Measured on a
+deliberately violating state: bound restored exactly, invariants held to `1e-16`.
 
-### The cost, and why the run stops early
+Two hard ceilings sit above all of that (`--omega-hard`, max `h_nn/sigma`) and
+are deliberately **fatal**: past them the requested state is outside what the
+discretization can represent, and dissipating hard enough to survive would
+produce a bounded wrong answer that looks like a result.
 
-The same `Gamma_i x Gamma_j` sign that the impulse identity forces is the one
-that excites the divergent part of the discrete vorticity field.
-`CONSERVATIVE` grows `||div w||/||grad w||` about eight times faster than
-`TRANSPOSED` and goes unstable near `t = 4`. **Refining does not cure it** —
-at `h = 0.0318` the divergence error follows the same trajectory (0.094 at
-`t = 2.8` versus 0.099 at `t = 3.0` for `h = 0.045`) and the blow-up arrives
-*sooner*, so this is an intrinsic property of the scheme rather than an
-under-resolution artifact.
+### Calibrate before trusting it
 
-Within this kernel family the two properties are therefore mutually exclusive:
-the impulse identity fixes the rotational term's sign, and that sign is
-destabilizing. The stabilized method takes exact conservation and lets the
-contract bound the interval, which is why its curves end before the controls'.
-The unexplored escape route is the *radial* term: the identity
-`r_ij x dGamma_ij = -(u_ij x Gamma_i + u_ji x Gamma_j)` constrains only the
-rotational part, leaving `dGamma_ij = -C Gamma_i x Gamma_j + lambda r_ij` free
-in `lambda`. A `lambda` chosen to damp the divergence mode would keep both
-invariants and the stability.
+`rho_max` and `b_L` are measurements, not defaults. Run the ungoverned controls,
+then:
 
-If you would rather have the full-duration run than the exact impulse, swap
-`StretchingConfig.conservative` for `.transposed` in `build_solver_config`: that
-restores `TRANSPOSED`/`MIDPOINT` from the table above — stable throughout, with
-`sum(Gamma)` still exact and the impulse drifting at `2e-2`.
+```bash
+python assets/calibrate_envelope.py --solution-dir solution
+```
 
-The strict guard applies only to `les_stabilized`. It checks that kinetic
-energy is non-increasing, its decay agrees with the viscous enstrophy sink, and
-vector circulation, linear impulse, and kernel-corrected angular impulse remain
-within tolerance. Baseline and LES are controls: the same quantities are
-recorded and plotted without rejecting the control merely for demonstrating
-the error under study.
+It reads `rho_Z` and the coarse-scale growth rate from `baseline` and `les`,
+truncates each at the point where the resolution diagnostics go bad (so the fit
+never legalises the blow-up), and takes the 99.9th percentile plus the spread
+between resolutions. The shipped `--rho-max 2.0` is a placeholder.
 
-A second, independent guard checks **resolution**, because a
-structure-preserving scheme conserves its invariants whether or not the particle
-field still resolves the flow — conservation alone would happily pass a wrong
-answer. The solver records particle overlap `h_nn/sigma`, the vorticity
-divergence error `||div w||/||grad w||`, and the angle between `Gamma_p` and
-`w(x_p)` with every diagnostics row (`rings_resolution.png`), and the stabilized
-method rejects a run that exceeds `--max-overlap-ratio`,
-`--max-divergence-error` or `--max-misalignment-deg`.
+### Reading the result
 
-The conserved circulation diagnostic is the vector sum `sum(Gamma_i)`.
-`sum(|Gamma_i|)` is total strength variation and is not conserved by
-three-dimensional stretching. In the head-on family its growth is physical line
-stretching: the rings expand radially and `sum(|Gamma_i|) / (2 pi R Gamma)`
-stays constant to about 1%.
-
-Angular impulse is *cubic* in the state and has no discrete conservation
-structure here, so unlike the other two it is a truncation error that converges
-under refinement (16x smaller going from `h=0.045` to `h=0.0318`). It therefore
-has its own `--angular-drift-tolerance`, looser than the round-off bound
-`--invariant-drift-tolerance` that applies to the two exact invariants; holding
-a truncation quantity to a conservation tolerance would just report the
-particle spacing.
-
-### What the study measured at the previous, coarser spacing
-
-At `h=0.045` (axisymmetric, no Widnall perturbation) both stabilized cases
-passed every check until the energy budget closed to worse than 30%, then
-stopped and recorded why:
-
-| | `abs(dSumGamma)/Gamma` | `abs(dI)/(Gamma R0^2)` | steps with `dE/dt>0` | admissible to |
-|---|---|---|---|---|
-| leapfrog, stabilized | 4.6e-7 | **6.1e-6** | 0 / 29 | `t = 2.90` |
-| leapfrog, DNS control | 7.5e-7 | 5.8e-2 | 3 / 72 | (not gated) |
-| collide, stabilized | 1.1e-6 | **1.0e-6** | 0 / 22 | `t = 2.20` |
-| collide, DNS control | 6.8e-6 | 1.8e-1 | 5 / 60 | (not gated) |
+`envelope_active_fraction` and `envelope_chi` (safety dissipation over the
+physical plus SGS sink) are in `flow_integrals.csv`. **A run that survives only
+because the envelope is active most of the time is a bounded wrong answer, not a
+success** -- it means the resolution or the primary closure is inadequate, and
+the diagnostics are there to say so.
 
 ## Run and plot
 
@@ -150,10 +95,9 @@ smallest that clears initial aliasing of the anti-diffused core (see the table
 at the top of `allrun.sh`) while keeping the `O(N^2)` direct/conservative
 stabilized method tractable. Expect several hours for the full matrix.
 
-The contract is enforced for `les_stabilized`, always: past the point where it
-fails, the structure-preserving scheme does not produce a less accurate answer,
-it produces a conservative wrong one, so the run stops and is kept with a
-`rejected_physical_contract` status. The controls are never gated.
+Every case runs to the end unless the solution actually falls apart, and then it
+says so plainly and saves the state at the crash. Conservation and resolution are
+recorded every logging step for the figures; they are diagnostics, never gates.
 
 Restrict the matrix when needed:
 
@@ -172,13 +116,12 @@ PARTICLE_SPACING=0.045 DT=0.010 LF_STEPS=720 COLLIDE_STEPS=600 EPSILON_W=0 ./all
 and replaces an existing case only after the new run records a terminal
 status. It does not erase the other cases or figures. To explicitly discard
 everything first, use `CLEAN_ALL=1 ./allrun.sh` or `./allclean.sh --all`.
-All three terminal statuses are promoted. `rejected_physical_contract` is the
-stabilized method's own result, and `terminated_nonphysical` is the controls'
--- they are *expected* to blow up once the rings break down, which is the error
-under study. Keeping an older run instead would leave one case at a different
-spacing from the rest of the matrix, and a figure built from mixed resolutions
-looks fine while being wrong; a missing case is caught loudly by
-`assets/validate_plot_inputs.py`.
+Both terminal statuses are promoted, `completed` and `crashed`. A control that
+blows up once the rings break down *is* the result -- that is the error under
+study, and `rings_stability.png` exists to show where each variant dies. Keeping
+an older run instead would leave one case at a different spacing from the rest of
+the matrix, and a figure built from mixed resolutions looks fine while being
+wrong; a missing case is caught loudly by `assets/validate_plot_inputs.py`.
 
 Regenerate the publication figures from an existing solution root:
 
@@ -189,8 +132,7 @@ Regenerate the publication figures from an existing solution root:
 Plotting validates the complete six-case matrix before overwriting figures.
 For an intentional subset, add `--allow-partial`.
 
-No finite-resolution method can guarantee every invariant after the spatial
-field becomes unresolved. The stabilized LES case therefore provides a
-bounded contract: accepted steps preserve the stated physics; an inadmissible
-run is retained with a rejected status and asks for finer spacing or a smaller
-macro step.
+No finite-resolution method can guarantee every invariant once the spatial field
+becomes unresolved. What the envelope guarantees is narrower and precise: the
+discrete state cannot blow up. Whether the bounded answer is also *right* is a
+separate question, and `envelope_chi` is the number that answers it.

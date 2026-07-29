@@ -97,12 +97,15 @@ def create_super_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def angular_impulse_correction_constant_():
-        """Angular impulse correction constant for second moment correction.
+        """Second moment m2 = ∫|q|² ζ(|q|) d³q of the regularization kernel.
 
-        For Super-Gaussian kernel: C ≈ 1.875 (intermediate between Gaussian and Winckelmans)
-        Used in: A = (1/3) Σ x × (x × Γ) - (2/9) C σ² Γ_total
+        The (2.5 - ρ²/2) polynomial makes this kernel second-order accurate, so
+        its second moment vanishes identically -- as it does for
+        HIGH_ORDER_GAUSSIAN.  It was 1.875 here, described as "intermediate
+        between Gaussian and Winckelmans", which is not how the moment works:
+        a moment-cancelling polynomial gives 0, not an interpolated value.
         """
-        return ti.cast(1.875, dtype)
+        return ti.cast(0.0, dtype)
 
     return {
         "q_": q_,

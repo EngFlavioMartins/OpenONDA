@@ -14,11 +14,7 @@ from _common import discover_cases, read_integrals
 FAMILIES = ("leapfrog", "collide")
 METHODS = ("baseline", "les", "les_stabilized")
 EXPECTED_CASES = tuple(f"{family}_{method}" for family, method in product(FAMILIES, METHODS))
-TERMINAL_STATUSES = {
-    "completed",
-    "terminated_nonphysical",
-    "rejected_physical_contract",
-}
+TERMINAL_STATUSES = {"completed", "crashed"}
 
 
 def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:

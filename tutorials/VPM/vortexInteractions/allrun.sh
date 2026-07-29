@@ -26,9 +26,8 @@ FIGURES_ROOT="${FIGURES_ROOT:-figures}"
 #   0.030   0.060    0.0800               no        3.3    8.7     <- used here
 #   0.020   0.040    0.0917               no        5.0    13.1    (143k particles)
 #
-# h = 0.030 is the smallest spacing that both clears aliasing with margin and
-# keeps the O(N^2) direct/conservative stabilized method tractable at ~33k
-# particles.  h = 0.020 would satisfy the paper's h/a0 <= 0.2 but needs 143k.
+# h = 0.030 clears aliasing with margin at ~30k particles.  h = 0.020 would
+# satisfy the paper's h/a0 <= 0.2 but needs 143k.
 PARTICLE_SPACING="${PARTICLE_SPACING:-0.030}"
 DT="${DT:-0.0057295779513082}"          # 20 h^2 / Gamma0
 LF_DT="${LF_DT:-$DT}"
@@ -52,6 +51,12 @@ CLEAN_ALL="${CLEAN_ALL:-0}"
 # of the anti-diffused core, which this spacing clears.
 ALLOW_UNDERRESOLVED="${ALLOW_UNDERRESOLVED:-1}"
 EPSILON_W="${EPSILON_W:-0.025}"         # Widnall centreline perturbation
+# Enstrophy-envelope parameters for les_stabilized.  These are measurements, not
+# defaults: run the ungoverned controls, then
+#   python assets/calibrate_envelope.py --solution-dir solution
+# and paste the numbers it prints.  Shipped values are placeholders.
+RHO_MAX="${RHO_MAX:-2.0}"
+ENVELOPE_GROWTH="${ENVELOPE_GROWTH:-1.0}"
 RUN_PLOTS="${RUN_PLOTS:-1}"
 
 if [[ "$CLEAN_ALL" == "1" ]]; then
@@ -80,11 +85,12 @@ echo "Processing unit: $PROCESSING_UNIT"
 echo "Device memory fraction: $DEVICE_MEMORY_FRACTION"
 echo "Baseline: DNS, Gaussian, treecode, fractional RK3, transposed stretching, CS"
 echo "LES: Smagorinsky LES with the same baseline numerical core"
-echo "LES + stabilized: LES Cs=0.20, Gaussian, direct, coupled implicit midpoint, conservative stretching, CS"
+echo "LES + stabilized: LES Cs=0.20, Gaussian, treecode, coupled RK2, transposed stretching, strain/displacement subcycling, CS"
 echo "Methods: $METHODS"
 echo "Families: $RUN_FAMILIES"
 echo "Widnall perturbation amplitude: $EPSILON_W"
-echo "Transactional output: an existing case is replaced only after its rerun reaches a terminal status"
+echo "Envelope: rho_max=$RHO_MAX growth=$ENVELOPE_GROWTH (calibrate with assets/calibrate_envelope.py)"
+echo "Each case is replaced only once its rerun finishes or crashes"
 
 run_case() {
     local label="$1"
@@ -131,7 +137,7 @@ run_case() {
     # loudly by assets/validate_plot_inputs.py.
     local manifest="$staged_case/run_manifest.json"
     if [[ ! -s "$manifest" ]] || ! grep -Eq \
-        '"status": "(completed|terminated_nonphysical|rejected_physical_contract)"' "$manifest"; then
+        '"status": "(completed|crashed)"' "$manifest"; then
         echo "ERROR: $case_name did not record a valid terminal status." >&2
         echo "Existing results were preserved; staged output remains at $staged_case" >&2
         return 1
@@ -181,6 +187,8 @@ for family in $RUN_FAMILIES; do
             --device-memory-fraction "$DEVICE_MEMORY_FRACTION" \
             --method "$method" \
             --epsilon-w "$EPSILON_W" \
+            --rho-max "$RHO_MAX" \
+            --envelope-growth "$ENVELOPE_GROWTH" \
             --backup-frequency "$BACKUP_FREQUENCY" \
             --logging-frequency "$LOGGING_FREQUENCY" \
             --guard-frequency "$GUARD_FREQUENCY"

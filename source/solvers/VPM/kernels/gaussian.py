@@ -93,12 +93,17 @@ def create_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def angular_impulse_correction_constant_():
-        """Angular impulse correction constant for second moment correction.
+        """Second moment m2 = ∫|q|² ζ(|q|) d³q of the regularization kernel.
 
-        For Gaussian kernel: C = 3.0 (Winckelmans 1993)
-        Used in: A = (1/3) Σ x × (x × Γ) - (2/9) C σ² Γ_total
+        Used in: A = (1/3) Σ x × (x × Γ) - (2/9) m2 σ² Γ, which follows from
+        ∫ x × (x × ω) dV = d × (d × Γ) - (2/3) m2 σ² Γ for a blob at d.
+
+        For the Gaussian ζ = π^(-3/2) exp(-ρ²) this is exactly 3/2.  It was 3.0
+        here, i.e. twice too large, which doubled the correction and put a
+        spurious σ-dependent drift into the angular-impulse diagnostic as core
+        spreading grew σ.  Verified against 3-D quadrature of ∫x×(x×ω)dV.
         """
-        return ti.cast(3.0, dtype)
+        return ti.cast(1.5, dtype)
 
     return {
         "q_": q_,

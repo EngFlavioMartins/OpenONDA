@@ -37,6 +37,7 @@ from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
+from ..physics.envelope import EnstrophyEnvelope
 from ..physics.evaluation import ParticleFieldEvaluation
 
 
@@ -171,8 +172,6 @@ class Solver:
         self.coupled_max_strain_increment = final_config.coupled_max_strain_increment
         self.coupled_max_advection_fraction = final_config.coupled_max_advection_fraction
         self.coupled_max_substeps = final_config.coupled_max_substeps
-        self.coupled_midpoint_tolerance = final_config.coupled_midpoint_tolerance
-        self.coupled_midpoint_max_iterations = final_config.coupled_midpoint_max_iterations
 
         # The DVH heat-kernel width is fixed at β·R_d², so each firing advances
         # viscous time by EXACTLY Δt_d = β·R_d²/(4nu), independent of the dt argument.
@@ -319,10 +318,6 @@ class Solver:
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
-        # An implicit stage can only be solved to the working precision's floor.
-        if self.coupled_midpoint_tolerance is None:
-            self.coupled_midpoint_tolerance = 1.0e-12 if self.precision == "f64" else 1.0e-6
-
     def _init_particles_and_physics(self, final_config: VPMSetup) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
         max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
@@ -417,6 +412,18 @@ class Solver:
         )
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
+
+        # Enstrophy envelope: a safety layer, not the SGS model.  Off unless the
+        # setup asks for it, so comparison controls stay ungoverned.
+        envelope_config = getattr(final_config, "envelope", None)
+        self.envelope = None
+        if envelope_config is not None and envelope_config.enabled:
+            self.envelope = EnstrophyEnvelope(
+                envelope_config,
+                self.particles_kernel,
+                final_config.max_particles,
+                self.accumulator_dtype,
+            )
 
     def _init_diagnostics_and_solvers(self, final_config: VPMSetup) -> None:
         """Build diagnostics history dict and initialize optional solvers."""
@@ -625,6 +632,10 @@ class Solver:
                     with self.profiler.section("Stretching"):
                         self._apply_stretching(self.time_step_size)
 
+                if self.envelope is not None:
+                    with self.profiler.section("Enstrophy envelope"):
+                        self._apply_enstrophy_envelope(self.time_step_size)
+
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
             if _diag_due:
@@ -720,6 +731,7 @@ class Solver:
             "step": self.time_step,
             "kinetic_energy": self.total_kinetic_energy,
             "enstrophy": self.total_enstrophy,
+            "enstrophy_test": self._flow_integrals.get("enstrophy_test", 0.0),
             "dEdt": self.kinetic_energy_dissipation_rate,
             "neg_nu_enstrophy": self.vorticity_dissipation_rate,
             "helicity": self.total_helicity,
@@ -736,6 +748,10 @@ class Solver:
             "n_particles": self.particles.number_of_particles,
         }
         row.update(getattr(self, "_discretization_health", {}))
+        if self.envelope is not None:
+            envelope_row = self.envelope.diagnostics(self.vorticity_dissipation_rate)
+            envelope_row.pop("enstrophy_test", None)  # already recorded above
+            row.update(envelope_row)
 
         df = pd.DataFrame([row])
         if not csv_path.exists():
@@ -1011,10 +1027,6 @@ class Solver:
             self.particles_radii,
             self.particles_vorticities,
         )
-        if self.time_integration == "COUPLED":
-            self._discretization_health["midpoint_residual_max"] = float(
-                getattr(self, "_coupled_residual_max", 0.0)
-            )
 
     def _record_centroid_history(self) -> None:
         """Compute and record the circulation-weighted centroid to diagnostics history."""
@@ -2192,8 +2204,6 @@ class Solver:
             use_treecode=self.stretching_use_treecode,
             treecode_theta=self.stretching_treecode_theta,
             precomputed_velocity_k1=precomputed_velocity_k1,
-            midpoint_tolerance=self.coupled_midpoint_tolerance,
-            midpoint_max_iterations=self.coupled_midpoint_max_iterations,
         )
         ti.sync()
 
@@ -2229,9 +2239,6 @@ class Solver:
         substeps = 0
         reuse_velocity = bool(precomputed_velocity_k1)
         tolerance = 32.0 * np.finfo(float).eps * max(1.0, abs(dt))
-        # Worst implicit-stage residual over the macro step.  Reported so the
-        # quality of the MIDPOINT solve is auditable rather than assumed.
-        self._coupled_residual_max = 0.0
 
         while remaining > tolerance:
             sub_dt = min(remaining, self._coupled_stable_dt(remaining))
@@ -2250,10 +2257,6 @@ class Solver:
                 reuse_velocity = False
 
             self._apply_coupled_advection_stretching(sub_dt, precomputed_velocity_k1=reuse_velocity)
-            self._coupled_residual_max = max(
-                self._coupled_residual_max,
-                float(getattr(self.physics._coupled, "_last_residual", 0.0)),
-            )
 
             if self.viscous_scheme == "CS":
                 self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)
@@ -2274,6 +2277,48 @@ class Solver:
                 f"\t[CoupledSubcycling] {substeps} physics-preserving substeps "
                 f"for macro dt={dt:.3e}"
             )
+
+    def _apply_enstrophy_envelope(self, dt: float) -> None:
+        """Restore the enstrophy bound, and stop if the state is unrepresentable.
+
+        The two hard ceilings are deliberately fatal rather than corrective: past
+        them the requested state is outside what this discretization can carry, and
+        dissipating hard enough to survive would produce a bounded wrong answer
+        that looks like a result.
+        """
+        integrals = self.field_diagnostics.compute_flow_integrals(
+            self.particles, self.flow_time, record_history=False
+        )
+        self._check_representability()
+        self.envelope.apply(
+            self.particles,
+            float(integrals["enstrophy"]),
+            float(integrals["enstrophy_test"]),
+            dt,
+        )
+
+    def _check_representability(self) -> None:
+        """Fail loudly when the particle field can no longer represent the state."""
+        cfg = self.envelope.config
+        if cfg.omega_hard is not None:
+            circulation = self.particles_circulation
+            radii = self.particles_radii
+            if len(radii):
+                peak = float(np.max(np.linalg.norm(circulation, axis=1) / radii**3))
+                if peak > cfg.omega_hard:
+                    raise RuntimeError(
+                        f"Under-resolved at step {self.time_step} (t={self.flow_time:.4f}): "
+                        f"peak |Gamma|/sigma^3 = {peak:.4e} exceeds the representability "
+                        f"ceiling {cfg.omega_hard:.4e}. Refine the particle spacing."
+                    )
+        if cfg.max_overlap is not None:
+            overlap = self._discretization_health.get("overlap_ratio")
+            if overlap is not None and np.isfinite(overlap) and overlap > cfg.max_overlap:
+                raise RuntimeError(
+                    f"Under-resolved at step {self.time_step} (t={self.flow_time:.4f}): "
+                    f"particle overlap h/sigma = {overlap:.3f} exceeds {cfg.max_overlap:.3f}; "
+                    "the blobs no longer overlap, so the quadrature is inconsistent."
+                )
 
     def _apply_viscous_diffusion(self, dt: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""

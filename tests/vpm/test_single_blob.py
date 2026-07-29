@@ -33,11 +33,16 @@ _G_0 = {
     "WINCKELMANS": 1.5 / (4.0 * np.pi),
 }
 
-# Angular impulse correction constants
+# Kernel second moments m2 = int |q|^2 zeta(|q|) d^3q, which is what the angular
+# impulse correction is: A = (1/3) sum x*(x*G) - (2/9) m2 sigma^2 G follows from
+# int x*(x*omega) dV = d*(d*G) - (2/3) m2 sigma^2 G for a blob at d.  Verified
+# against 3-D quadrature of int x*(x*omega) dV, not copied from the kernels --
+# GAUSSIAN was 3.0 and SUPER_GAUSSIAN 1.875 in both places, and both were wrong.
+# The two moment-cancelling polynomial kernels give exactly zero.
 _ANG_CORR = {
-    "GAUSSIAN": 3.0,
+    "GAUSSIAN": 1.5,
     "HIGH_ORDER_GAUSSIAN": 0.0,
-    "SUPER_GAUSSIAN": 1.875,
+    "SUPER_GAUSSIAN": 0.0,
     "WINCKELMANS": 1.5,
 }
 

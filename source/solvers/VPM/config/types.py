@@ -83,7 +83,7 @@ class AdvectionConfig:
     - Gottlieb, Shu & Tadmor (2001) SIAM J. Numer. Anal. 39(5), 1984–2012.
     """
 
-    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4", "MIDPOINT"] = "RK3"
+    scheme: Literal["NONE", "EULER", "RK2", "RK3", "RK4"] = "RK3"
     """Time integration scheme for the advection substep (dx/dt = u).
 
     Options:
@@ -92,10 +92,6 @@ class AdvectionConfig:
       - 'RK2':   Heun's method, 2nd-order Runge–Kutta
       - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
-      - 'MIDPOINT': implicit midpoint (2nd order, ``COUPLED`` integration only).
-        The one-stage Gauss method: the only option here that preserves the
-        *quadratic* invariant I = ½ Σ x × Γ to round-off rather than to
-        O(dt^p).  Pair it with ``StretchingConfig.conservative``.
 
     Advection advances the configured scheme over the macro time-step set by the
     solver (the DVH-pinned dt for DVH runs)."""
@@ -692,7 +688,7 @@ class StretchingConfig:
     mode: Literal["DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"] = "TRANSPOSED"
     """Stretching formulation mode."""
 
-    scheme: Literal["EULER", "RK2", "RK3", "RK4", "MIDPOINT"] = "RK3"
+    scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3"
     """Time integration scheme for the stretching substep (dΓ/dt).
 
     Options:
@@ -700,8 +696,6 @@ class StretchingConfig:
       - 'RK2':   Heun's method, 2nd-order Runge–Kutta
       - 'RK3':   SSP-RK3, 3rd-order strong-stability-preserving (default)
       - 'RK4':   classical 4th-order Runge–Kutta
-      - 'MIDPOINT': implicit midpoint, ``COUPLED`` integration only — see
-        :class:`AdvectionConfig`.  Must match the advection scheme.
     """
 
     enabled: bool = True
@@ -743,9 +737,9 @@ class StretchingConfig:
                 "stretching mode must be DIRECT, TRANSPOSED, MIXED, or "
                 f"CONSERVATIVE, got {self.mode!r}"
             )
-        if scheme not in ("EULER", "RK2", "RK3", "RK4", "MIDPOINT"):
+        if scheme not in ("EULER", "RK2", "RK3", "RK4"):
             raise ValueError(
-                f"stretching scheme must be EULER, RK2, RK3, RK4, or MIDPOINT, got {self.scheme!r}"
+                f"stretching scheme must be EULER, RK2, RK3, or RK4, got {self.scheme!r}"
             )
         if not 0.0 < self.treecode_theta < 2.0:
             raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
@@ -1041,6 +1035,102 @@ class StabilizationConfig:
 
 
 # =========================================================
+# ENSTROPHY ENVELOPE CONFIGURATION
+# =========================================================
+
+
+@dataclass(frozen=True)
+class EnvelopeConfig:
+    """Control-barrier safety layer on the discrete enstrophy.
+
+    See :mod:`..physics.envelope`.  This does not cap enstrophy magnitude --
+    vortex stretching legitimately produces enstrophy -- it caps *anomalous
+    scale-localized* production, i.e. particle-scale growth that the test-filter
+    scale does not corroborate.
+
+    The correction is the minimum-norm strength change that restores the bound
+    while holding total vorticity, linear impulse and angular impulse exactly and
+    forbidding kinetic-energy injection.
+    """
+
+    enabled: bool = False
+    """Off by default: the controls in a comparison must stay ungoverned."""
+
+    rho_max: float = 2.0
+    """Largest credible Z_Delta / Z_2Delta.  Calibrate from trusted runs as
+    Q_0.999(rho_Z) plus the resolution-convergence spread -- do not guess it."""
+
+    z_floor: float = 0.0
+    """Additive floor on the bound, for flows starting from near-zero vorticity."""
+
+    kappa: float = 1.0
+    """Barrier relaxation rate [1/s]."""
+
+    a_l: float = 0.0
+    """Coarse-scale production not proportional to existing enstrophy (shedding,
+    coupling sources).  Zero for a closed ring system."""
+
+    b_l: float = 1.0
+    """Coarse-scale exponential growth allowance [1/s], from Q_0.999 of
+    [P_2Delta]_+ / Z_2Delta over the trusted ensemble."""
+
+    max_iterations: int = 6
+    """Barrier iterations per step.  The enstrophy constraint is quadratic and
+    the solved row is its linearisation, so one solve undershoots; each extra
+    iteration costs one O(N^2) gradient pass."""
+
+    omega_hard: float | None = None
+    """Hard representability ceiling on max |Gamma_p| / sigma_p^3.  Reaching it
+    means the requested state is outside what this discretization can represent;
+    the run stops as under-resolved rather than being dissipated into looking
+    fine.  ``None`` disables."""
+
+    max_overlap: float | None = None
+    """Hard ceiling on mean h_nn/sigma, same intent as ``omega_hard``."""
+
+    def __post_init__(self) -> None:
+        if self.rho_max <= 0.0:
+            raise ValueError("rho_max must be positive")
+        if self.kappa <= 0.0:
+            raise ValueError("kappa must be positive")
+        if self.z_floor < 0.0 or self.a_l < 0.0 or self.b_l < 0.0:
+            raise ValueError("z_floor, a_l and b_l must be non-negative")
+        if self.max_iterations < 1:
+            raise ValueError("max_iterations must be at least one")
+        for name in ("omega_hard", "max_overlap"):
+            value = getattr(self, name)
+            if value is not None and value <= 0.0:
+                raise ValueError(f"{name} must be positive or None")
+
+    @staticmethod
+    def disabled() -> "EnvelopeConfig":
+        """No governor (the default, and what the comparison controls use)."""
+        return EnvelopeConfig()
+
+    @staticmethod
+    def bounded(
+        rho_max: float,
+        b_l: float,
+        kappa: float = 1.0,
+        z_floor: float = 0.0,
+        a_l: float = 0.0,
+        omega_hard: float | None = None,
+        max_overlap: float | None = None,
+    ) -> "EnvelopeConfig":
+        """Enable the governor with a calibrated envelope."""
+        return EnvelopeConfig(
+            enabled=True,
+            rho_max=rho_max,
+            z_floor=z_floor,
+            kappa=kappa,
+            a_l=a_l,
+            b_l=b_l,
+            omega_hard=omega_hard,
+            max_overlap=max_overlap,
+        )
+
+
+# =========================================================
 # VELOCITY CONFIGURATION
 # =========================================================
 @dataclass(frozen=True)
@@ -1206,13 +1296,8 @@ class VPMSetup:
     ``FRACTIONAL`` retains the legacy position-then-strength update.
     ``COUPLED`` advances ``(x, Gamma)`` at common RK stages so the discrete
     impulse cancellations are not broken by operator splitting.  The coupled
-    path currently supports matching RK2, RK3 or MIDPOINT advection/stretching
-    schemes and core-spreading (or no) viscous diffusion.
-
-    For an exactly conserved linear impulse use ``MIDPOINT`` together with
-    ``StretchingConfig.conservative``: the pairwise-antisymmetric exchange makes
-    I = ½ Σ x × Γ an invariant of the semi-discrete system, and the one-stage
-    Gauss method preserves that quadratic invariant to round-off.
+    path currently supports matching RK2 or RK3 advection/stretching schemes
+    and core-spreading (or no) viscous diffusion.
     """
 
     coupled_max_strain_increment: float = 0.08
@@ -1223,21 +1308,6 @@ class VPMSetup:
 
     coupled_max_substeps: int = 128
     """Fail instead of silently filtering physics when a macro step needs more substeps."""
-
-    coupled_midpoint_tolerance: float | None = None
-    """Relative fixed-point residual at which the implicit-midpoint solve stops.
-
-    Only used when the coupled advection/stretching scheme is ``MIDPOINT``.  The
-    quadratic-invariant (linear-impulse) conservation of the Gauss method holds
-    only for the *exactly* solved stage equation, so this must be driven to
-    round-off — not to a truncation-sized tolerance.
-
-    ``None`` (default) picks the floor of the solver's working precision:
-    ``1e-6`` in f32, ``1e-12`` in f64.  The iteration also exits on its own once
-    the residual stops improving, so an over-tight value costs nothing."""
-
-    coupled_midpoint_max_iterations: int = 24
-    """Fail instead of accepting an unconverged implicit-midpoint stage."""
 
     advection: AdvectionConfig = field(default_factory=AdvectionConfig)
     """Configuration for advection term (scheme, etc.)."""
@@ -1253,6 +1323,9 @@ class VPMSetup:
 
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
     """Optional particle-retention domain used by wake and coupled cases."""
+
+    envelope: EnvelopeConfig = field(default_factory=EnvelopeConfig.disabled)
+    """Optional enstrophy envelope (see :class:`EnvelopeConfig`)."""
 
     vlm: VLMSetup | None = None
     """Complete VLM definition. ``None`` selects a pure VPM simulation."""
@@ -1440,14 +1513,10 @@ class VPMSetup:
             stretching_scheme = self.stretching.scheme.upper()
             if not self.stretching.enabled:
                 raise ValueError("COUPLED time integration requires stretching to be enabled")
-            if advection_scheme != stretching_scheme or advection_scheme not in {
-                "RK2",
-                "RK3",
-                "MIDPOINT",
-            }:
+            if advection_scheme != stretching_scheme or advection_scheme not in {"RK2", "RK3"}:
                 raise ValueError(
-                    "COUPLED time integration requires matching RK2, RK3 or "
-                    "MIDPOINT advection and stretching schemes"
+                    "COUPLED time integration requires matching RK2 or RK3 "
+                    "advection and stretching schemes"
                 )
             if self.viscous.scheme.upper() not in {"NONE", "CS"}:
                 raise ValueError(
@@ -1459,12 +1528,6 @@ class VPMSetup:
             raise ValueError("coupled_max_advection_fraction must be positive")
         if self.coupled_max_substeps < 1:
             raise ValueError("coupled_max_substeps must be at least one")
-        if self.coupled_midpoint_tolerance is not None and not (
-            0.0 < self.coupled_midpoint_tolerance < 1.0
-        ):
-            raise ValueError("coupled_midpoint_tolerance must be None or in (0, 1)")
-        if self.coupled_midpoint_max_iterations < 1:
-            raise ValueError("coupled_midpoint_max_iterations must be at least one")
 
         # Frequency validation
         if self.logging_frequency < 0:
@@ -1532,13 +1595,12 @@ class VPMSetup:
             "coupled_max_strain_increment": self.coupled_max_strain_increment,
             "coupled_max_advection_fraction": self.coupled_max_advection_fraction,
             "coupled_max_substeps": self.coupled_max_substeps,
-            "coupled_midpoint_tolerance": self.coupled_midpoint_tolerance,
-            "coupled_midpoint_max_iterations": self.coupled_midpoint_max_iterations,
             "advection": _as_dict(self.advection),
             "stretching": _as_dict(self.stretching),
             "viscous": _as_dict(self.viscous),
             "turbulence": _as_dict(self.turbulence),
             "stabilization": _as_dict(self.stabilization),
+            "envelope": _as_dict(self.envelope),
             # Runtime geometry and kinematics are not particle-state backup data.
             "vlm": None,
             "particles_kernel": self.particles_kernel,
@@ -1581,6 +1643,7 @@ class VPMSetup:
             "viscous": ViscousConfig,
             "turbulence": TurbulenceConfig,
             "stabilization": StabilizationConfig,
+            "envelope": EnvelopeConfig,
             "velocity": VelocityConfig,
         }
         for name, config_type in nested_types.items():

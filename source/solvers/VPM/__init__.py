@@ -35,6 +35,7 @@ from .boundary_elements.panels.solver.panel_solver import PanelSolver
 from .boundary_elements.vlm.config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .config.types import (
     AdvectionConfig,
+    EnvelopeConfig,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -63,6 +64,7 @@ __all__ = [
     "StretchingConfig",
     "TurbulenceConfig",
     "ViscousConfig",
+    "EnvelopeConfig",
     "StabilizationConfig",
     "VelocityConfig",
     "ForceConfig",

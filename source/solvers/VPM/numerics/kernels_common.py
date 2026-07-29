@@ -662,26 +662,6 @@ def _create_position_update_kernels(kernel_functions):
         for i in range(num_particles):
             positions[i] += (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
 
-    @ti.kernel
-    def fixed_point_residual_kernel(
-        a: ti.template(),
-        b: ti.template(),
-        scale: ti.template(),
-        num_particles: ti.i32,
-    ) -> ti.f32:  # type: ignore
-        """Max |a-b| over particles, and max |b|, for a relative convergence test.
-
-        Drives the implicit-midpoint fixed-point iteration.  ``scale[None]``
-        receives max|b| so the caller can form a relative residual without a
-        second pass.
-        """
-        scale[None] = 0.0
-        residual = 0.0
-        for i in range(num_particles):
-            ti.atomic_max(residual, (a[i] - b[i]).norm())
-            ti.atomic_max(scale[None], b[i].norm())
-        return residual
-
     return {
         "update_position_euler_kernel": _make_update_position_euler_kernel(),
         "step_euler_forward_kernel": step_euler_forward_kernel,
@@ -690,7 +670,6 @@ def _create_position_update_kernels(kernel_functions):
         "step_rk2_combine_kernel": step_rk2_combine_kernel,
         "step_rk3_ssp_combine_kernel": step_rk3_ssp_combine_kernel,
         "step_rk4_combine_kernel": step_rk4_combine_kernel,
-        "fixed_point_residual_kernel": fixed_point_residual_kernel,
     }
 
 

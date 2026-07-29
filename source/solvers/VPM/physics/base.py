@@ -169,9 +169,6 @@ class PhysicsBase:
             3, dtype=self.accumulator_dtype, shape=(self.max_particles,)
         )
 
-        # Scalar scratch for the implicit-midpoint fixed-point residual test.
-        self.iter_scale = ti.field(dtype=self.accumulator_dtype, shape=())
-
         # Mark initial size
         self._temp_field_size = self.max_particles
 
