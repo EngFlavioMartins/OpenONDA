@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler.core.helpers.continuous_overlap import continuous_handoff
+from source.coupler.core.helpers.continuous_overlap import (
+    circulation_from_velocity_trace,
+    continuous_handoff,
+)
 from source.coupler.core.solver import FVMVPMCoupler
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
 from source.solvers.FVM.mesh.cartesian import structured_box
@@ -79,6 +82,67 @@ def test_linear_fvm_vorticity_field_is_reproduced_on_the_injection_lattice():
     )
     core = np.all(np.abs(result.pos) < 0.3, axis=1)
     np.testing.assert_allclose(result.circ[core] / h**3, omega(result.pos[core]), atol=1e-14)
+
+
+def test_velocity_trace_recovers_linear_field_curl_exactly():
+    rng = np.random.default_rng(4)
+    positions = rng.uniform(-1.0, 1.0, size=(20, 3))
+    h = 0.08
+    gradient = np.array(
+        [
+            [0.2, -0.3, 0.4],
+            [0.7, -0.1, 0.5],
+            [-0.2, 0.6, 0.3],
+        ]
+    )
+
+    def velocity(points):
+        return np.asarray(points) @ gradient + np.array([0.4, -0.2, 0.1])
+
+    circulation = circulation_from_velocity_trace(positions, h, velocity)
+    curl = np.array(
+        [
+            gradient[1, 2] - gradient[2, 1],
+            gradient[2, 0] - gradient[0, 2],
+            gradient[0, 1] - gradient[1, 0],
+        ]
+    )
+    np.testing.assert_allclose(circulation, np.tile(curl * h**3, (len(positions), 1)))
+
+
+def test_velocity_trace_uses_the_no_slip_body_face():
+    h = 0.05
+    position = np.array([[0.5 + 0.5 * h, 0.0, 0.0]])
+
+    def velocity(points):
+        points = np.asarray(points)
+        result = np.zeros_like(points)
+        fluid = points[:, 0] > 0.5
+        result[fluid, 1] = points[fluid, 0] - 0.5
+        return result
+
+    circulation = circulation_from_velocity_trace(position, h, velocity)
+    np.testing.assert_allclose(circulation, [[0.0, 0.0, h**3]])
+
+
+def test_direct_circulation_target_bypasses_cell_remeshing():
+    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    h = 0.1
+    target = np.array([0.0, 0.0, 2.0 * h**3])
+    result = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        box,
+        h,
+        circulation_at_node=lambda points: np.tile(target, (len(points), 1)),
+        inside_mesh_at_node=lambda points: np.ones(len(points), dtype=bool),
+        ramp_width=h,
+        buffer_length=h,
+        threshold_abs=0.0,
+        lattice_anchor=np.array([-0.45, -0.45, -0.45]),
+    )
+    core = np.all(np.abs(result.pos) < 0.3, axis=1)
+    np.testing.assert_allclose(result.circ[core], np.tile(target, (core.sum(), 1)))
 
 
 def test_vorticity_sign_matches_the_fvm_curl_convention():

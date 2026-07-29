@@ -210,7 +210,7 @@ def main() -> None:
     for t, hyb_vtu in entries:
         out1 = FIG / f"velocity_fields_t{t:.2f}.{args.format}"
         out2 = FIG / f"Stitched_RefVsHybrid_t{t:.2f}.{args.format}"
-        if not args.force and out1.exists() and out2.exists():
+        if not args.force and out1.exists() and (out2.exists() or not REF_PVD.exists()):
             continue
         h5 = nearest_vpm_h5(t)
         particles = (
@@ -222,13 +222,14 @@ def main() -> None:
                 "radius": np.zeros(0),
             }
         )
-        ref_s = nearest_vtu(REF_PVD, t)
-        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
-            print(f"  velocity_fields t={t:.2f}: no coincident reference snapshot — skip")
-            continue
-        assert_same_time(t, ref_s[0])  # guard: identical physical time only
         if args.force or not out1.exists():
             fig_velocity_fields(t, hyb_vtu, particles, box, args.format, args.dpi)
+
+        ref_s = nearest_vtu(REF_PVD, t)
+        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
+            print(f"  stitched comparison t={t:.2f}: no coincident reference snapshot — skip")
+            continue
+        assert_same_time(t, ref_s[0])  # guard: identical physical time only
         if args.force or not out2.exists():
             fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, args.format, args.dpi)
         print(f"  velocity_fields t={t:.2f} (ref t={ref_s[0]:.2f}) done")

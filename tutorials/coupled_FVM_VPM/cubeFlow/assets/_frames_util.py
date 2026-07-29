@@ -3,7 +3,10 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from source.coupler.core.helpers.interior_bs import gaussian_bs_velocity
+from source.coupler.core.helpers.interior_bs import (
+    gaussian_bs_velocity,
+    gaussian_bs_velocity_treecode,
+)
 
 try:
     from numba import njit, prange
@@ -47,12 +50,13 @@ if _HAVE_NUMBA:
 
 
 def vpm_velocity(particles, pts):
-    u = gaussian_bs_velocity(
-        np.asarray(pts, np.float64),
-        np.asarray(particles["position"], np.float64),
-        np.asarray(particles["circulation"], np.float64),
-        np.asarray(particles["radius"], np.float64),
-    )
+    targets = np.asarray(pts, np.float64)
+    position = np.asarray(particles["position"], np.float64)
+    circulation = np.asarray(particles["circulation"], np.float64)
+    radius = np.asarray(particles["radius"], np.float64)
+    evaluator = gaussian_bs_velocity_treecode if len(position) > 20_000 else gaussian_bs_velocity
+    kwargs = {"theta": 0.3} if evaluator is gaussian_bs_velocity_treecode else {}
+    u = evaluator(targets, position, circulation, radius, **kwargs)
     return u + np.array([U_INF, 0.0, 0.0])[None, :]
 
 

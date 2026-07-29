@@ -80,7 +80,8 @@ class VTKExporter:
         """Return a contiguous array matching the qualified output precision."""
         values = np.asarray(data)
         if np.issubdtype(values.dtype, np.floating):
-            values = values.astype(np.float64, copy=False)
+            dtype = np.float32 if self.output.precision == "float32" else np.float64
+            values = values.astype(dtype, copy=False)
         return np.ascontiguousarray(values)
 
     def _write_grid(self, filename: str, grid) -> None:

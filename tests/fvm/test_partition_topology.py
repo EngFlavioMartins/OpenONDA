@@ -210,3 +210,23 @@ def test_partition_vtu_can_omit_visualization_ghosts(tmp_path):
     assert 'GhostLevel="0"' in text
     assert "vtkGhostType" not in text
     assert 'Name="GlobalCellIds"' in text
+
+
+def test_partition_vtu_float32_fields(tmp_path):
+    pv = pytest.importorskip("pyvista", reason="partitioned VTK output requires PyVista")
+    mesh = structured_box(2, 2, 2)
+    partition = CellPartition.from_mesh_data(mesh, 0, 1)
+
+    collection = write_partition_vtu(
+        tmp_path,
+        "float32",
+        mesh,
+        partition,
+        {"pressure": partition.local_global_ids.astype(float)},
+        _SerialComm(),
+        output=OutputSetup(precision="float32"),
+    )
+
+    assert 'type="Float32" Name="pressure"' in collection.read_text(encoding="utf-8")
+    data = pv.read(tmp_path / "float32-rank-00000.vtu")
+    assert data.cell_data["pressure"].dtype == np.float32

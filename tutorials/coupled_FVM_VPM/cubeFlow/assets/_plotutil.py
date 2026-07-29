@@ -72,6 +72,8 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser()
     ap.add_argument("--format", default="png", help="figure format (png, pdf, svg)")
     ap.add_argument("--dpi", type=int, default=160)
+    ap.add_argument("--times", default="all")
+    ap.add_argument("--force", action="store_true")
     return ap.parse_args()
 
 

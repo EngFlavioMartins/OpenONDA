@@ -106,15 +106,31 @@ def sample_vtu(vtu: Path, points: np.ndarray) -> dict[str, np.ndarray]:
     import pyvista as pv
 
     mesh = pv.read(vtu)
+    cell_fields = {
+        name: np.asarray(mesh.cell_data[name])
+        for name in ("U", "p", "vorticity")
+        if name in mesh.cell_data
+    }
     if "U" not in mesh.point_data:
         mesh = mesh.cell_data_to_point_data()
     cloud = pv.PolyData(np.ascontiguousarray(points, dtype=np.float64))
-    sampled = cloud.sample(mesh, tolerance=1e-9)
+    sampled = cloud.sample(mesh, tolerance=1e-6)
     valid = np.asarray(sampled["vtkValidPointMask"]).astype(bool)
+    fallback: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    if (~valid).any():
+        missing = np.flatnonzero(~valid)
+        cell_ids, closest = mesh.find_closest_cell(points[missing], return_closest_point=True)
+        inside = np.linalg.norm(points[missing] - closest, axis=1) < 1e-8
+        for name, values in cell_fields.items():
+            fallback[name] = (missing[inside], values[np.asarray(cell_ids)[inside]])
+        valid[missing[inside]] = True
     fields: dict[str, np.ndarray] = {"valid": valid}
     for name in ("U", "p", "vorticity"):
         if name in sampled.point_data:
             value = np.asarray(sampled[name], dtype=np.float64)
+            if name in fallback:
+                indices, values = fallback[name]
+                value[indices] = values
             value[~valid] = np.nan
             fields[name] = value
     return fields

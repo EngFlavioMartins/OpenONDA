@@ -1,8 +1,11 @@
 """OpenFOAM-compatible field output and step diagnostics."""
 
+import csv
 from dataclasses import asdict
 import json
 import os
+from pathlib import Path
+import tempfile
 from typing import Any
 
 import numpy as np
@@ -67,6 +70,53 @@ class SolverIO:
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "diagnostics.jsonl"), "a", encoding="utf-8") as stream:
             stream.write(json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n")
+
+    def rewind_histories(self, flow_time: float) -> None:
+        parallel = getattr(self.solver, "parallel", None)
+        if parallel is not None and not parallel.is_root:
+            return
+
+        solution = Path(self.case_dir) / "solution"
+        self._rewind_csv(solution / "forces_history.csv", flow_time)
+        self._rewind_csv(solution / "ibm_forces_history.csv", flow_time)
+        self._rewind_jsonl(solution / "diagnostics.jsonl", flow_time)
+
+    @staticmethod
+    def _replace(path: Path, lines: list[str]) -> None:
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+                stream.writelines(lines)
+            os.replace(temporary, path)
+        except BaseException:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+            raise
+
+    @classmethod
+    def _rewind_csv(cls, path: Path, flow_time: float) -> None:
+        if not path.exists():
+            return
+        with path.open(newline="", encoding="utf-8") as stream:
+            rows = list(csv.reader(stream))
+        if not rows or "time" not in rows[0]:
+            return
+        time_column = rows[0].index("time")
+        kept = [rows[0]]
+        for row in rows[1:]:
+            if row and float(row[time_column]) <= flow_time + 1e-12:
+                kept.append(row)
+        if len(kept) != len(rows):
+            cls._replace(path, [",".join(row) + "\n" for row in kept])
+
+    @classmethod
+    def _rewind_jsonl(cls, path: Path, flow_time: float) -> None:
+        if not path.exists():
+            return
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        kept = [line for line in lines if float(json.loads(line)["time"]) <= flow_time + 1e-12]
+        if len(kept) != len(lines):
+            cls._replace(path, kept)
 
     def _gather_fields_for_io(self) -> list[dict[str, Any]]:
         """

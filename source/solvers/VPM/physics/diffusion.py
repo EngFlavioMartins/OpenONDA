@@ -1139,10 +1139,9 @@ class _GridDiffusionMixin:
             )
             return None
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
-        _logger.info(
-            "[GBD] Threshold retained %.4f%% of Σ|Γ| on %d nodes.",
-            100.0 * threshold_retained,
-            len(ix),
+        Logging.message(
+            f"[GBD] Threshold retained {100.0 * threshold_retained:.4f}% "
+            f"of Σ|Γ| on {len(ix)} nodes."
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1188,6 +1187,11 @@ class _GridDiffusionMixin:
         if self.conserve_pruned_moments:
             grid_np[ix, iy, iz] = self._redistribute_pruned_moments(
                 grid_np, circ_mag, ix, iy, iz, grid_min_np, h
+            )
+            corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
+            Logging.message(
+                f"[GBD] Moment recovery retained "
+                f"{100.0 * corrected_abs / gamma_total:.4f}% of pre-prune Σ|Γ|."
             )
 
         return self._build_diffusion_particle_arrays(

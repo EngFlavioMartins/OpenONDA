@@ -144,6 +144,8 @@ class FVMVPMCoupler:
             None  # ω at faces from last _donor_velocity call
         )
         self._omega_global_buffer: np.ndarray | None = None
+        self._velocity_global_buffer: np.ndarray | None = None
+        self._velocity_gradient_global_buffer: np.ndarray | None = None
         self._bc_omega_tree = None  # lazy cKDTree on injector._cell_centers (mixed BC)
         self.picard_residual_history: list[dict[str, float | int | None]] = []
         self._warned_frozen_picard = False
@@ -595,26 +597,29 @@ class FVMVPMCoupler:
         # Build injector
         self.injector = ContinuousOverlapInjector(self)
         self.injector.setup(self.ofw)
+        physics = getattr(self.vpm, "physics", None)
         if (
             self._is_master
             and self.injector._body_bounds is not None
-            and hasattr(self.vpm.physics, "configure_body_box")
+            and physics is not None
+            and hasattr(physics, "configure_body_box")
         ):
-            self.vpm.physics.configure_body_box(self.injector._body_bounds)
+            physics.configure_body_box(self.injector._body_bounds)
             logger.info(
                 "[Init] VPM grid diffusion body mask enabled for box %s.",
                 self.injector._body_bounds.tolist(),
             )
         if (
             self._is_master
-            and self.injector._cell_centers is not None
-            and len(self.injector._cell_centers) > 0
-            and hasattr(self.vpm.physics, "configure_grid_lattice_anchor")
+            and physics is not None
+            and hasattr(physics, "configure_grid_lattice_anchor")
         ):
-            self.vpm.physics.configure_grid_lattice_anchor(
-                self.injector._cell_centers[0], self.config.h
-            )
-            logger.info("[Init] VPM diffusion lattice phase aligned with FVM cell centres.")
+            anchor = self.injector._lattice_anchor
+            if anchor is None and self.injector._cell_centers is not None:
+                anchor = self.injector._cell_centers[0]
+            if anchor is not None:
+                physics.configure_grid_lattice_anchor(anchor, self.config.h)
+                logger.info("[Init] VPM diffusion lattice aligned with the handoff lattice.")
 
         # Build velocity forcing.  FVMVelocityBlend is built on ALL ranks because
         # vel_blend.update() triggers collective OFW getters; only the VPM wiring
@@ -811,9 +816,12 @@ class FVMVPMCoupler:
         _face_normals: np.ndarray,
         _face_areas: np.ndarray,
     ):
-        """Fetch FVM vorticity collectively, then perform the conservative hand-off."""
+        """Fetch the FVM velocity trace and transfer it to the particle lattice."""
         t_handoff = time.time()
-        omega_global = self._get_vorticity_field_buffer()
+        has_velocity_trace = callable(getattr(self.ofw, "get_velocity_gradient_field", None))
+        velocity_global = self._get_velocity_field_buffer() if has_velocity_trace else None
+        gradient_global = self._get_velocity_gradient_field_buffer() if has_velocity_trace else None
+        omega_global = None if has_velocity_trace else self._get_vorticity_field_buffer()
         handoff_result = None
         if self._is_master:
             eta_fn = self._build_eta_fn()
@@ -824,7 +832,12 @@ class FVMVPMCoupler:
                 else 0.0
             )
             handoff_result = self.injector.inject(
-                self.ofw, self.vpm, eta_fn=eta_fn, omega=omega_global
+                self.ofw,
+                self.vpm,
+                eta_fn=eta_fn,
+                omega=omega_global,
+                velocity=velocity_global,
+                velocity_gradient=gradient_global,
             )
             n_after = self.vpm.particles.number_of_particles
             sum_after = (
@@ -1184,6 +1197,26 @@ class FVMVPMCoupler:
         else:
             self.ofw.get_vorticity_field_into(self._omega_global_buffer)
         return self._omega_global_buffer
+
+    def _get_velocity_field_buffer(self) -> np.ndarray:
+        assert self.ofw is not None
+        if self._velocity_global_buffer is None:
+            self._velocity_global_buffer = np.ascontiguousarray(
+                self.ofw.get_velocity_field(), dtype=np.float64
+            ).reshape(-1, 3)
+        else:
+            self.ofw.get_velocity_field_into(self._velocity_global_buffer)
+        return self._velocity_global_buffer
+
+    def _get_velocity_gradient_field_buffer(self) -> np.ndarray:
+        assert self.ofw is not None
+        if self._velocity_gradient_global_buffer is None:
+            self._velocity_gradient_global_buffer = np.ascontiguousarray(
+                self.ofw.get_velocity_gradient_field(), dtype=np.float64
+            ).reshape(-1, 3, 3)
+        else:
+            self.ofw.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
+        return self._velocity_gradient_global_buffer
 
     def _fvm_interior_induced_velocity(
         self, targets: np.ndarray, omega: np.ndarray | None = None

@@ -159,7 +159,7 @@ class TestConfigFactories:
             ("data_location", "point"),
             ("encoding", "ascii"),
             ("compression", "unsupported"),
-            ("precision", "float32"),
+            ("precision", "float16"),
             ("ghost_layers", 2),
         ),
     )

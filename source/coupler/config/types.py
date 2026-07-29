@@ -107,6 +107,9 @@ class CouplerSetup:
     prune_vorticity_min: float = 0.01
     """Vorticity threshold [1/s] used to prune hand-off lattice nodes."""
 
+    handoff_max_particles: int | None = None
+    """Maximum particle count after an FVM-to-VPM handoff."""
+
     overlap_velocity_forcing: bool = True
     """Advect overlap particles with the η-blended FVM velocity instead of pure
     Biot–Savart (velocity forcing).  Disable to recover reconstruction-only
@@ -255,6 +258,8 @@ class CouplerSetup:
             raise ValueError("backup_period must be non-negative and log_period at least one")
         if self.dead_zone_h < 0 or self.prune_vorticity_min < 0:
             raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
+        if self.handoff_max_particles is not None and self.handoff_max_particles < 1:
+            raise ValueError("handoff_max_particles must be positive")
         if not 0.0 < self.blend_relaxation <= 1.0:
             raise ValueError("blend_relaxation must lie in (0, 1]")
         if self.strength_correction_iterations < 0:
@@ -332,6 +337,7 @@ class CouplerSetup:
             "coupler": {
                 "blend_relaxation": self.blend_relaxation,
                 "prune_vorticity_min": self.prune_vorticity_min,
+                "handoff_max_particles": self.handoff_max_particles,
                 "strength_correction_iterations": self.strength_correction_iterations,
                 "strength_correction_relax": self.strength_correction_relax,
                 "overlap_radius_ratio": self.overlap_radius_ratio,

@@ -1049,7 +1049,7 @@ class ExecutionConfig:
     linear_backend: Literal["scipy", "petsc"] = "scipy"
     parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
     device: Literal["cpu", "cuda", "metal", "vulkan"] = "cpu"
-    precision: Literal["float64"] = "float64"
+    precision: Literal["float32", "float64"] = "float64"
     output_mode: Literal["synchronous", "threaded"] = "synchronous"
 
     @staticmethod
@@ -1097,8 +1097,8 @@ class OutputSetup:
             raise ValueError("Only safe appended-binary VTK encoding is supported")
         if self.compression not in {"lz4", "none", "zlib"}:
             raise ValueError("compression must be 'lz4', 'none', or 'zlib'")
-        if self.precision != "float64":
-            raise ValueError("Only float64 visualization output is currently qualified")
+        if self.precision not in {"float32", "float64"}:
+            raise ValueError("precision must be 'float32' or 'float64'")
         if not isinstance(self.asynchronous, bool):
             raise TypeError("asynchronous must be a boolean")
         if self.ghost_layers not in {0, 1}:

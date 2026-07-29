@@ -1389,11 +1389,14 @@ class Solver(OFWInterfaceMixin):
             from ..io.partitioned import load_partitioned_solver_checkpoint
 
             load_partitioned_solver_checkpoint(self, path, allow_config_change=allow_config_change)
+            self.io.rewind_histories(self.flow_time)
+            self.parallel.barrier()
             return
         from ..io.checkpoint import load_checkpoint
 
         self.parallel.barrier()
         load_checkpoint(self, path, allow_config_change=allow_config_change)
+        self.io.rewind_histories(self.flow_time)
         self.parallel.barrier()
 
     def write_vtk(self, filename: str | None = None) -> None:

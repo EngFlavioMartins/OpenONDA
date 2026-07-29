@@ -29,6 +29,9 @@ from _frames_util import D, EPS, U_INF, vpm_velocity
 FIG = CASE_DIR / "figures"
 REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
 REF_FORCES = CASE_DIR / "referenceFlow" / "solution" / "forces_history.csv"
+ARCHIVED_REF_FORCES = CASE_DIR / "postprocessed" / "reference" / "forces_history.csv"
+if not ARCHIVED_REF_FORCES.exists():
+    ARCHIVED_REF_FORCES = Path(f"{ARCHIVED_REF_FORCES}.gz")
 
 
 def fig_velocity_profiles(t, hyb_vtu, ref_s, particles, box, forces, fmt, dpi):
@@ -39,13 +42,15 @@ def fig_velocity_profiles(t, hyb_vtu, ref_s, particles, box, forces, fmt, dpi):
     in_box = (x >= box["xmin"]) & (x <= box["xmax"])
     hyb_cl = sample_vtu(hyb_vtu, cl)["U"][:, 0]
     hyb_oa = sample_vtu(hyb_vtu, oa)["U"][:, 0]
-    ref_cl = sample_vtu(ref_s[1], cl)["U"][:, 0]
-    ref_oa = sample_vtu(ref_s[1], oa)["U"][:, 0]
+    ref_cl = sample_vtu(ref_s[1], cl)["U"][:, 0] if ref_s else None
+    ref_oa = sample_vtu(ref_s[1], oa)["U"][:, 0] if ref_s else None
     vpm_dom = (x >= -2.0) & (x <= 10.0)
     vpm_cl = np.full_like(x, np.nan)
     vpm_oa = np.full_like(x, np.nan)
-    vpm_cl[vpm_dom] = vpm_velocity(particles, cl[vpm_dom])[:, 0]
-    vpm_oa[vpm_dom] = vpm_velocity(particles, oa[vpm_dom])[:, 0]
+    n_vpm = int(vpm_dom.sum())
+    vpm_u = vpm_velocity(particles, np.vstack((cl[vpm_dom], oa[vpm_dom])))[:, 0]
+    vpm_cl[vpm_dom] = vpm_u[:n_vpm]
+    vpm_oa[vpm_dom] = vpm_u[n_vpm:]
 
     fig_height = 6.0 / 2.54
     fig_length = 12.5 / 2.54
@@ -85,7 +90,15 @@ def fig_velocity_profiles(t, hyb_vtu, ref_s, particles, box, forces, fmt, dpi):
         ax.axvspan(box["xmin"], box["xmax"], color=COLORS["background_light"], zorder=0)
         if ax is ax2:
             ax.axvspan(-0.5, 0.5, color=COLORS["background_strong"], zorder=1)
-        ax.plot(x, ref / U_INF, color=COLORS["reference"], ls="-.", label="Reference FVM", zorder=2)
+        if ref is not None:
+            ax.plot(
+                x,
+                ref / U_INF,
+                color=COLORS["reference"],
+                ls="-.",
+                label="Reference FVM",
+                zorder=2,
+            )
         hx = np.where(in_box, hyb, np.nan)
         ax.plot(x, hx / U_INF, color=COLORS["hybrid"], ls="-", label="FVM", zorder=2)
         ax.plot(
@@ -131,9 +144,10 @@ def main() -> None:
 
     hf = load_forces()
     forces = {"hyb": (np.asarray(hf.get("time", [])), np.asarray(hf.get("Cd", [])))}
-    if REF_FORCES.exists():
+    ref_forces = REF_FORCES if REF_FORCES.exists() else ARCHIVED_REF_FORCES
+    if ref_forces.exists():
         rows = np.atleast_1d(
-            np.genfromtxt(REF_FORCES, delimiter=",", names=True, dtype=None, encoding="utf-8")
+            np.genfromtxt(ref_forces, delimiter=",", names=True, dtype=None, encoding="utf-8")
         )
         forces["ref"] = (rows["time"], rows["Cd"])
     else:
@@ -155,11 +169,12 @@ def main() -> None:
         )
         ref_s = nearest_vtu(REF_PVD, t)
         if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
-            print(f"  velocity_profiles t={t:.2f}: no coincident reference snapshot — skip")
-            continue
-        assert_same_time(t, ref_s[0])
+            ref_s = None
+        else:
+            assert_same_time(t, ref_s[0])
         fig_velocity_profiles(t, hyb_vtu, ref_s, particles, box, forces, args.format, args.dpi)
-        print(f"  velocity_profiles t={t:.2f} (ref t={ref_s[0]:.2f}) done")
+        suffix = f"ref t={ref_s[0]:.2f}" if ref_s else "hybrid-only; reference fields archived"
+        print(f"  velocity_profiles t={t:.2f} ({suffix}) done")
 
 
 if __name__ == "__main__":

@@ -13,7 +13,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _plotutil import COLORS, apply_style, load_forces, parse_args, run_constants, save
+from _plotutil import CASE_DIR, COLORS, apply_style, load_forces, parse_args, run_constants, save
+
+REFERENCE_FORCES = CASE_DIR / "postprocessed" / "reference" / "forces_history.csv"
+if not REFERENCE_FORCES.exists():
+    REFERENCE_FORCES = Path(f"{REFERENCE_FORCES}.gz")
 
 
 def main() -> int:
@@ -32,8 +36,20 @@ def main() -> int:
     cd, cl = forces["Cd"], forces["Cl"]
     ax_c.plot(t_star, cd, color=COLORS["cd"], marker="o", ms=3, label=r"$C_D$")
     ax_c.plot(t_star, cl, color=COLORS["cl"], marker="s", ms=3, label=r"$C_L$")
+    if REFERENCE_FORCES.exists():
+        ref = np.atleast_1d(
+            np.genfromtxt(REFERENCE_FORCES, delimiter=",", names=True, encoding="utf-8")
+        )
+        common = ref["time"] <= forces["time"].max() + 1e-12
+        ax_c.plot(
+            ref["time"][common] * const["U_inf"] / const["D"],
+            ref["Cd"][common],
+            color=COLORS["reference"],
+            ls="-.",
+            label=r"$C_D$ reference",
+        )
     ax_c.axhline(0.0, color=COLORS["box"], lw=0.8, zorder=0)
-    ax_c.set(ylabel="force coefficient", title="Cube force history (immersed-boundary)")
+    ax_c.set(ylabel="force coefficient", title="Cube force history")
     ax_c.legend(loc="upper right", ncol=2)
 
     # The impulsive start produces a large one-step C_D spike (the body appears

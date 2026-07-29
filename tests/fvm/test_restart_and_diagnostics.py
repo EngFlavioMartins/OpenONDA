@@ -119,6 +119,27 @@ def test_restart_allows_an_explicit_end_time_extension(tmp_path):
     np.testing.assert_array_equal(restored.U, original.U)
 
 
+def test_restart_rewinds_append_only_histories(tmp_path):
+    solver = _solver(_config(), tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(2):
+            solver.evolve()
+    checkpoint = tmp_path / "state.npz"
+    solver.save_state(checkpoint)
+
+    solution = tmp_path / "solution"
+    solution.mkdir(exist_ok=True)
+    (solution / "forces_history.csv").write_text(
+        "time,patch,Cd\n0.01,cube,1.0\n0.02,cube,1.1\n0.03,cube,9.9\n"
+    )
+    (solution / "diagnostics.jsonl").write_text('{"time": 0.01}\n{"time": 0.02}\n{"time": 0.03}\n')
+
+    solver.load_state(checkpoint)
+
+    assert "0.03" not in (solution / "forces_history.csv").read_text()
+    assert "0.03" not in (solution / "diagnostics.jsonl").read_text()
+
+
 def test_scipy_linear_result_discloses_solver_health():
     matrix = sparse.diags([-np.ones(3), 4.0 * np.ones(4), -np.ones(3)], [-1, 0, 1])
     solution, result = solve_linear_system(

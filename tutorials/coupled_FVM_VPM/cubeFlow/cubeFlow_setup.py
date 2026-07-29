@@ -58,12 +58,13 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.0, 0.0)
 
 DT_FVM = 0.0125
-T_END = 40.0
+T_END = 20.0
 WRITE_INTERVAL = 0.15
 PERTURBATION = 1.0e-3
 
 DT_VPM = 0.05
 VPM_SPACING = 0.05
+CORE_BOX = (-1.8, 1.8, -1.8, 1.8, -1.8, 1.8)
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 MAX_PARTICLES = 1_000_000
 OVERLAP_RADIUS_RATIO = 1.0
@@ -78,7 +79,7 @@ FVM_SETUP = FVMSetup(
         data_location="cell",
         encoding="appended",
         compression="lz4",
-        precision="float64",
+        precision="float32",
         asynchronous=True,
         ghost_layers=1,
     ),
@@ -138,6 +139,8 @@ VPM_SETUP = VPMSetup(
         threshold_mode="relative_local",
         threshold=0.30,
         threshold_window=3,
+        max_nodes=200_000,
+        cap_abs_fraction=0.99,
         regen_radius_ratio=OVERLAP_RADIUS_RATIO,
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
@@ -163,7 +166,8 @@ COUPLER_SETUP = CouplerSetup(
     h=VPM_SPACING,
     buffer_thickness=6 * VPM_SPACING,
     dead_zone_h=3.0,
-    prune_vorticity_min=0.005,
+    prune_vorticity_min=0.01,
+    handoff_max_particles=250_000,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
     overlap_velocity_forcing=False,
     strength_correction_iterations=1,

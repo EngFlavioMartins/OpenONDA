@@ -12,6 +12,8 @@ CONTRACT_METHODS = [
     "get_cell_volumes",
     "get_velocity_field",
     "get_velocity_field_into",
+    "get_velocity_gradient_field",
+    "get_velocity_gradient_field_into",
     "get_vorticity_field",
     "get_vorticity_field_into",
     "get_boundary_face_center_coordinates",
@@ -215,6 +217,16 @@ def test_dirichlet_bc_and_driver_split_produce_finite_flow(built_backend):
     assert np.isfinite(U).all()
     # Uniform inflow through an empty box stays uniform.
     assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-8)
+
+
+def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):
+    _, fvm = built_backend
+    gradient = np.asarray(fvm.get_velocity_gradient_field())
+    assert gradient.shape == (fvm.mesh_data["n_elements"], 3, 3)
+    assert np.isfinite(gradient).all()
+    out = np.empty_like(gradient)
+    assert fvm.get_velocity_gradient_field_into(out) is out
+    np.testing.assert_array_equal(out, gradient)
 
 
 def test_coupler_runtime_setters_apply(built_backend):

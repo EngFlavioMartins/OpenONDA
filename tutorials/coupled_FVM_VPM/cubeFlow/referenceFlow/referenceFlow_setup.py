@@ -47,7 +47,7 @@ REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.0, 0.0)
 DT_FVM = 0.0125
-T_END = 40.0
+T_END = 20.0
 WRITE_INTERVAL = 0.15
 PERTURBATION = 1.0e-3
 
@@ -60,7 +60,7 @@ FVM_SETUP = FVMSetup(
         data_location="cell",
         encoding="appended",
         compression="lz4",
-        precision="float64",
+        precision="float32",
         asynchronous=True,
         ghost_layers=1,
     ),

@@ -189,7 +189,7 @@ def _vtk_xml_type(values: np.ndarray) -> str:
     """Return the VTK XML scalar type used by :class:`VTKExporter`."""
     dtype = np.asarray(values).dtype
     if np.issubdtype(dtype, np.floating):
-        return "Float64"
+        return f"Float{dtype.itemsize * 8}"
     if np.issubdtype(dtype, np.signedinteger):
         return f"Int{dtype.itemsize * 8}"
     if np.issubdtype(dtype, np.unsignedinteger):
@@ -237,6 +237,9 @@ def write_partition_vtu(
         if array.shape[0] != local_count:
             raise ValueError(f"Field {name!r} does not match the local partition")
         _field_components(array)
+        if np.issubdtype(array.dtype, np.floating):
+            dtype = np.float32 if output.precision == "float32" else np.float64
+            array = array.astype(dtype, copy=False)
         local_fields[name] = np.ascontiguousarray(array).copy()
 
     piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"

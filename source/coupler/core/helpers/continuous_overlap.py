@@ -54,6 +54,27 @@ def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> 
     return float(max(l_buf - _M4P_SUPPORT * h, 0.0) / (safety * u))
 
 
+def circulation_from_velocity_trace(
+    positions: np.ndarray,
+    h: float,
+    velocity_at,
+) -> np.ndarray:
+    """Integrate ``n × u`` over each cubic particle control volume."""
+    pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+    circulation = np.zeros_like(pos)
+    offset = np.zeros(3, dtype=np.float64)
+    for axis in range(3):
+        offset.fill(0.0)
+        offset[axis] = 0.5 * h
+        delta_u = np.asarray(velocity_at(pos + offset), dtype=np.float64) - np.asarray(
+            velocity_at(pos - offset), dtype=np.float64
+        )
+        normal = np.zeros(3, dtype=np.float64)
+        normal[axis] = 1.0
+        circulation += h**2 * np.cross(normal, delta_u)
+    return circulation
+
+
 def _outflow_band_mask(
     grid_pos: np.ndarray,
     lo: np.ndarray,
@@ -205,6 +226,11 @@ class HandoffResult:
     n_remesh_out: int = 0  # particles produced from the lattice
     n_free: int = 0  # untouched free-exterior particles
     n_excluded: int = 0  # input particles removed from a physical solid
+    n_pruned: int = 0
+    pruned_circulation_l1: float = 0.0
+    pruned_circulation_fraction: float = 0.0
+    n_population_pruned: int = 0
+    population_pruned_circulation_fraction: float = 0.0
     cfl: float = 0.0  # U_max·dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
     # Invariant diagnostics around the conservative prune correction.  These
@@ -233,7 +259,7 @@ class HandoffResult:
 
     @property
     def n_total(self) -> int:
-        return self.n_remesh_out + self.n_free
+        return len(self.pos)
 
 
 # =========================================================
@@ -246,6 +272,7 @@ def continuous_handoff(
     h: float,
     *,
     omega_at_node=None,
+    circulation_at_node=None,
     fvm_cell_pos=None,
     fvm_cell_circ=None,
     u_inf=None,
@@ -263,6 +290,8 @@ def continuous_handoff(
     dt: float = 0.0,
     conserve: bool = True,
     eta_fn=None,
+    lattice_anchor=None,
+    max_output_particles: int | None = None,
 ) -> HandoffResult:
     """One continuous, conservative, dt-robust FVM→VPM hand-off.
 
@@ -284,6 +313,12 @@ def continuous_handoff(
     omega_at_node : callable ``grid_pos -> ω (M, 3)`` or None
         Test/no-body path (``target = ω·h³``); ignored when ``fvm_cell_pos``
         is given.  When both are None the hand-off is pure transport.
+    circulation_at_node : callable ``grid_pos -> Γ (M, 3)`` or None
+        Direct particle-control-volume circulation. Takes precedence over
+        cell-centred and vorticity sources.
+    max_output_particles : int or None
+        Post-handoff population cap. Transported exterior particles are
+        retained before weak reconstructed overlap particles are discarded.
     inside_mesh_at_node : callable ``grid_pos -> bool (M,)`` or None
         Mask of nodes that have FVM data (inside the mesh, outside the body).
         Nodes outside are forced η = 0 (pure Lagrangian).
@@ -348,7 +383,11 @@ def continuous_handoff(
     # the remesh lattice by h/4.  M4' is interpolating only at integer offsets,
     # so the shift spread every wall-adjacent FVM circulation over the solid
     # before the body mask could act.
-    if fvm_cell_pos is not None and len(fvm_cell_pos) > 0:
+    if lattice_anchor is not None:
+        anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
+        shift = np.floor((lo_lat - anchor) / float(h))
+        lo_lat = anchor + shift * float(h)
+    elif fvm_cell_pos is not None and len(fvm_cell_pos) > 0:
         source_pos = np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3)
         anchor = source_pos[0]
         q = (source_pos - anchor) / float(h)
@@ -399,7 +438,9 @@ def continuous_handoff(
 
     # ── Build the FVM target circulation on the lattice ──────────────────────
     target = None
-    if fvm_cell_pos is not None and fvm_cell_circ is not None and len(fvm_cell_pos) > 0:
+    if circulation_at_node is not None:
+        target = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
+    elif fvm_cell_pos is not None and fvm_cell_circ is not None and len(fvm_cell_pos) > 0:
         _, target = remesh_to_grid(
             np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3),
             np.asarray(fvm_cell_circ, dtype=np.float64).reshape(-1, 3),
@@ -465,7 +506,11 @@ def continuous_handoff(
     # ── Conservative prune: drop weak nodes, redistribute their moments ──────
     target_inv = _invariants(grid_pos, grid_blended)
     mag = np.linalg.norm(grid_blended, axis=1)
+    candidates = (mag > 0.0) & ~excluded_grid
     keep = (mag >= threshold_abs) & ~excluded_grid
+    pruned = candidates & ~keep
+    active_l1 = float(mag[candidates].sum())
+    pruned_l1 = float(mag[pruned].sum())
     new_pos = grid_pos[keep]
     new_circ = grid_blended[keep]
 
@@ -517,6 +562,49 @@ def continuous_handoff(
     else:
         out_pos, out_circ, out_vol, out_rad = new_pos, new_circ, new_vol, new_rad
 
+    population_pruned = 0
+    population_pruned_fraction = 0.0
+    if max_output_particles is not None and len(out_pos) > max_output_particles:
+        target_count = int(max_output_particles)
+        combined_target = _invariants(out_pos, out_circ)
+        combined_mag = np.linalg.norm(out_circ, axis=1)
+
+        n_remesh = len(new_pos)
+        n_free = len(out_pos) - n_remesh
+        if n_free < target_count:
+            remesh_budget = target_count - n_free
+            remesh_mag = combined_mag[:n_remesh]
+            remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
+            keep_indices = np.concatenate(
+                [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
+            )
+        else:
+            free_mag = combined_mag[n_remesh:]
+            free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
+            keep_indices = free_keep
+
+        keep_mask = np.zeros(len(out_pos), dtype=bool)
+        keep_mask[keep_indices] = True
+        discarded_l1 = float(combined_mag[~keep_mask].sum())
+        population_pruned_fraction = discarded_l1 / (float(combined_mag.sum()) + 1e-30)
+        population_pruned = int((~keep_mask).sum())
+
+        out_pos = out_pos[keep_indices]
+        out_circ = out_circ[keep_indices]
+        out_vol = out_vol[keep_indices]
+        out_rad = out_rad[keep_indices]
+        if conserve:
+            out_circ = recover_invariants(
+                out_pos,
+                out_circ,
+                combined_target,
+                volumes=out_vol,
+                weighting="volume",
+                conserve_circulation=True,
+                conserve_linear_impulse=True,
+                conserve_angular_impulse=False,
+            )
+
     # ── Diagnostics ──────────────────────────────────────────────────────────
     # CFL = fraction of the active buffer a freestream particle crosses per
     # step; < ~0.7 guarantees hand-over to the free population happens while
@@ -554,6 +642,11 @@ def continuous_handoff(
         n_remesh_out=int(len(new_pos)),
         n_free=int(free_mask.sum()),
         n_excluded=int(excluded_input.sum()),
+        n_pruned=int(pruned.sum()),
+        pruned_circulation_l1=pruned_l1,
+        pruned_circulation_fraction=pruned_l1 / (active_l1 + 1e-30),
+        n_population_pruned=population_pruned,
+        population_pruned_circulation_fraction=population_pruned_fraction,
         cfl=cfl,
         conservation_drift=drift,
         conservation_raw_mismatch=raw_mismatch,
@@ -630,6 +723,7 @@ class ContinuousOverlapInjector:
         self._cell_centers: np.ndarray | None = None
         self._cell_volumes: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
+        self._lattice_anchor: np.ndarray | None = None
         self.step = 0
 
     # ── setup ────────────────────────────────────────────────────────────────
@@ -674,6 +768,7 @@ class ContinuousOverlapInjector:
                     on_planes |= np.isclose(wf[:, ax], bounds[2 * ax + 1], atol=1e-9)
                 if on_planes.all():
                     self._body_bounds = bounds
+                    self._lattice_anchor = bounds[[0, 2, 4]] - 0.5 * self.h
                 else:
                     logger.warning(
                         "[Handoff] wall patch %r is not an axis-aligned box; no "
@@ -705,7 +800,15 @@ class ContinuousOverlapInjector:
         return required_buffer_length(self.u_inf, self.dt, self.h)
 
     # ── inject ────────────────────────────────────────────────────────────────
-    def inject(self, fvm, vpm, eta_fn=None, omega=None):
+    def inject(
+        self,
+        fvm,
+        vpm,
+        eta_fn=None,
+        omega=None,
+        velocity=None,
+        velocity_gradient=None,
+    ):
         """Execute one continuous overlap hand-off and write the VPM field.
 
         Parameters
@@ -730,22 +833,33 @@ class ContinuousOverlapInjector:
             pos = np.zeros((0, 3))
             circ = np.zeros((0, 3))
 
-        if omega is None:
-            omega = np.asarray(fvm.get_vorticity_field(), dtype=np.float64).reshape(-1, 3)
-        else:
-            omega = np.asarray(omega, dtype=np.float64).reshape(-1, 3)
         tree = self._cell_tree
         h = self.h
-
-        # Conservative FVM→lattice source Γ_cell = ω_cell·V_cell, restricted to
-        # cells that can actually deposit on the lattice.
         cell_pos = self._cell_centers
-        cell_circ = omega * self._cell_volumes[:, None]
-        box = self._box
-        lo = np.array([box[0], box[2], box[4]])
-        hi = np.array([box[1], box[3], box[5]])
-        margin = self.buffer_length + (_M4P_SUPPORT + 2.0) * h
-        in_bbox = np.all((cell_pos >= lo - margin) & (cell_pos <= hi + margin), axis=1)
+
+        use_velocity_trace = velocity is not None and velocity_gradient is not None
+        if use_velocity_trace:
+            velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
+            gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
+            if len(velocity_values) != len(cell_pos) or len(gradient_values) != len(cell_pos):
+                raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
+            source_pos = None
+            source_circ = None
+        else:
+            velocity_values = np.empty((0, 3), dtype=np.float64)
+            gradient_values = np.empty((0, 3, 3), dtype=np.float64)
+            if omega is None:
+                omega = np.asarray(fvm.get_vorticity_field(), dtype=np.float64).reshape(-1, 3)
+            else:
+                omega = np.asarray(omega, dtype=np.float64).reshape(-1, 3)
+            cell_circ = omega * self._cell_volumes[:, None]
+            box = self._box
+            lo = np.array([box[0], box[2], box[4]])
+            hi = np.array([box[1], box[3], box[5]])
+            margin = self.buffer_length + (_M4P_SUPPORT + 2.0) * h
+            in_bbox = np.all((cell_pos >= lo - margin) & (cell_pos <= hi + margin), axis=1)
+            source_pos = cell_pos[in_bbox]
+            source_circ = cell_circ[in_bbox]
 
         def inside_mesh_at_node(grid_pos):
             d, _ = tree.query(grid_pos)
@@ -761,13 +875,35 @@ class ContinuousOverlapInjector:
             # carry a boundary vortex sheet and are therefore retained.
             return np.all((grid_pos > lo_body) & (grid_pos < hi_body), axis=1)
 
+        def velocity_at(points):
+            points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+            _, nearest = tree.query(points, workers=-1)
+            delta = points - cell_pos[nearest]
+            sampled = velocity_values[nearest] + np.einsum(
+                "ni,nij->nj", delta, gradient_values[nearest]
+            )
+            if self._body_bounds is not None:
+                b = self._body_bounds
+                lo_body = b[[0, 2, 4]]
+                hi_body = b[[1, 3, 5]]
+                on_or_inside = np.all(
+                    (points >= lo_body - 1e-12) & (points <= hi_body + 1e-12),
+                    axis=1,
+                )
+                sampled[on_or_inside] = 0.0
+            return sampled
+
+        def circulation_at_node(grid_pos):
+            return circulation_from_velocity_trace(grid_pos, h, velocity_at)
+
         res = continuous_handoff(
             pos,
             circ,
             self._box,
             h,
-            fvm_cell_pos=cell_pos[in_bbox],
-            fvm_cell_circ=cell_circ[in_bbox],
+            circulation_at_node=circulation_at_node if use_velocity_trace else None,
+            fvm_cell_pos=source_pos,
+            fvm_cell_circ=source_circ,
             u_inf=self.config.U_inf,
             inside_mesh_at_node=inside_mesh_at_node,
             excluded_at_node=excluded_at_node,
@@ -782,6 +918,8 @@ class ContinuousOverlapInjector:
             u_max=self.u_inf,
             dt=self.dt,
             eta_fn=eta_fn,
+            lattice_anchor=self._lattice_anchor,
+            max_output_particles=self.config.handoff_max_particles,
         )
 
         # Write the rebuilt cloud back to the VPM solver.
@@ -821,12 +959,17 @@ class ContinuousOverlapInjector:
 
         logger.info(
             "[Handoff step=%d] in=%d → out=%d  free=%d  solid_removed=%d  "
+            "pruned=%d (%.3f%% Σ|Γ|)  cap_pruned=%d (%.3f%% Σ|Γ|)  "
             "CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",
             self.step,
             res.n_remesh_in,
             res.n_remesh_out,
             res.n_free,
             res.n_excluded,
+            res.n_pruned,
+            100.0 * res.pruned_circulation_fraction,
+            res.n_population_pruned,
+            100.0 * res.population_pruned_circulation_fraction,
             res.cfl,
             res.conservation_drift.get("circulation_rel", 0.0),
             res.flux_ratio,

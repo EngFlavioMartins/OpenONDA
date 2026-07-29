@@ -51,6 +51,24 @@ class TestVTKExporter:
         data = pv.read(str(path))
         assert "p" in data.point_data
 
+    def test_export_float32_fields(self, gmsh_unit_cube, tmp_path):
+        path = tmp_path / "float32.vtu"
+        fields = {
+            "p": np.ones(gmsh_unit_cube["n_elements"]),
+            "U": np.ones((gmsh_unit_cube["n_elements"], 3)),
+        }
+
+        VTKExporter(gmsh_unit_cube, OutputSetup(precision="float32")).export(
+            str(path),
+            fields,
+        )
+
+        import pyvista as pv
+
+        data = pv.read(str(path))
+        assert data.cell_data["p"].dtype == np.float32
+        assert data.cell_data["U"].dtype == np.float32
+
     @staticmethod
     def _graded_box_with_linear_field():
         """A graded box plus a field that is exactly linear in space."""

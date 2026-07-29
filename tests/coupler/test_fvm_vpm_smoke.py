@@ -20,7 +20,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     from source.coupler import CouplerSetup, FVMVPMCoupler
     from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
     from source.solvers.VPM import Solver as VPM_Solver
-    from source.solvers.VPM import SolverConfig
+    from source.solvers.VPM import VPMSetup
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
@@ -34,7 +34,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     )
 
     vpm = VPM_Solver(
-        SolverConfig(
+        VPMSetup(
             time_step_size=DT_VPM,
             processing_unit="CPU",
             max_particles=50_000,
@@ -92,7 +92,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     expected_p = fvm.p.copy()
     expected_phi = fvm.phi.copy()
     restored_vpm = VPM_Solver(
-        SolverConfig(
+        VPMSetup(
             time_step_size=DT_VPM,
             processing_unit="CPU",
             max_particles=50_000,

@@ -438,6 +438,41 @@ def test_prune_threshold_scales_with_h():
     assert frac_fine < 0.99, f"Nothing pruned at h=0.05 (frac={frac_fine:.4f})"
 
 
+def test_post_handoff_cap_preserves_free_wake_and_invariants():
+    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    h = 0.25
+    free_pos = np.array([[1.5, 0.0, 0.0], [1.6, 0.1, 0.0]])
+    free_circ = np.array([[0.0, 0.02, 0.01], [0.0, -0.01, 0.02]])
+
+    kwargs = {
+        "box": box,
+        "h": h,
+        "omega_at_node": lambda points: np.tile([0.0, 0.0, 1.0], (len(points), 1)),
+        "inside_mesh_at_node": lambda points: np.ones(len(points), dtype=bool),
+        "ramp_width": 0.5,
+        "buffer_length": 0.25,
+        "threshold_abs": 0.0,
+    }
+    full = continuous_handoff(free_pos, free_circ, **kwargs)
+    capped = continuous_handoff(
+        free_pos,
+        free_circ,
+        max_output_particles=8,
+        **kwargs,
+    )
+
+    assert full.n_total > capped.n_total == 8
+    assert capped.n_population_pruned == full.n_total - capped.n_total
+    for position in free_pos:
+        assert np.any(np.all(np.isclose(capped.pos, position), axis=1))
+    np.testing.assert_allclose(capped.circ.sum(axis=0), full.circ.sum(axis=0), atol=1e-12)
+    np.testing.assert_allclose(
+        np.cross(capped.pos, capped.circ).sum(axis=0),
+        np.cross(full.pos, full.circ).sum(axis=0),
+        atol=1e-12,
+    )
+
+
 # =============================================================================
 # Stand-alone runner
 # =============================================================================

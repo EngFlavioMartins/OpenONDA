@@ -181,6 +181,11 @@ def main() -> None:
         out = FIG / f"wake_errors_t{t:.2f}.{args.format}"
         if not args.force and out.exists():
             continue
+        ref_s = nearest_vtu(REF_PVD, t)
+        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
+            print(f"  wake_errors t={t:.2f}: no coincident reference snapshot — skip")
+            continue
+        assert_same_time(t, ref_s[0])
         h5 = nearest_vpm_h5(t)
         particles = (
             load_vpm_particles(h5)
@@ -191,11 +196,6 @@ def main() -> None:
                 "radius": np.zeros(0),
             }
         )
-        ref_s = nearest_vtu(REF_PVD, t)
-        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
-            print(f"  wake_errors t={t:.2f}: no coincident reference snapshot — skip")
-            continue
-        assert_same_time(t, ref_s[0])
         fig_wake_errors(t, ref_s, particles, box, args.format, args.dpi)
         print(f"  wake_errors t={t:.2f} (ref t={ref_s[0]:.2f}) done")
 
