@@ -45,11 +45,6 @@
 
 set -euo pipefail
 
-# Resolve Python interpreter: prefer the OpenONDA conda env, fall back to legacy
-# then to whatever python3/python is on PATH.
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
-       || command -v python3 \
-       || command -v python)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -60,16 +55,16 @@ cd "$SCRIPT_DIR"
 # ============================================================
 # TEST CASE 1: Single Lamb-Oseen vortex diffusion
 # ============================================================
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes cs
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes rwm
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes dvh
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 0.0 --schemes gbd
 
 sleep 15
@@ -79,16 +74,16 @@ echo 'DONE WITH SINGLE VORTEX'
 # ============================================================
 # TEST CASE 2: Vortex dipole (counter-rotating pair)
 # ============================================================
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes cs
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes rwm
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes dvh
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 -1.0 --schemes gbd
 
 
@@ -100,14 +95,14 @@ sleep 15
 # ============================================================
 # TEST CASE 3: Co-rotating vortex merger vortex merger
 # ============================================================
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes cs
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes rwm
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes dvh
 
-"$PYTHON" vortex_setup.py \
+python vortex_setup.py \
     --gamma1 1.0 --gamma2 1.0 --schemes gbd

@@ -11,10 +11,6 @@
 
 set -euo pipefail
 
-# Resolve Python interpreter: same precedence as allrun.sh.
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
-       || command -v python3 \
-       || command -v python)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -22,7 +18,7 @@ cd "$SCRIPT_DIR"
 run_plot() {
     local fmt
     for fmt in png pdf; do
-        "$PYTHON" "$@" --format "$fmt"
+        python "$@" --format "$fmt"
     done
 }
 

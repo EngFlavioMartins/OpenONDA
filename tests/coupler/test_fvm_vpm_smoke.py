@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -82,11 +84,17 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "FVM-VPM COUPLED SOLVER" in coupler_log
     assert coupler_log.count("[Inject]") == 2
     assert "period_multiplier=3" in coupler_log
-    checkpoint = sol / "coupled_checkpoint"
-    assert (checkpoint / "manifest.json").is_file()
-    assert (checkpoint / "fvm.npz").is_file()
-    assert (checkpoint / "vpm_latest.h5").is_file()
-    assert (checkpoint / "donor_state.npz").is_file()
+    checkpoint = sol / "checkpoint"
+    manifest = json.loads((checkpoint / "manifest.json").read_text())
+    assert manifest["format_version"] == 2
+    assert manifest["kind"] == "openonda.coupled_checkpoint"
+    assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
+    assert manifest["artifacts"] == {
+        "fvm": "fvm_000002.npz",
+        "vpm": "vpm_000002.h5",
+        "donor": "donor_000002.npz",
+    }
+    assert not list(checkpoint.glob("*_000001*"))
 
     expected_u = fvm.U.copy()
     expected_p = fvm.p.copy()

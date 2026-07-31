@@ -37,7 +37,6 @@ from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
-from ..physics.envelope import EnstrophyEnvelope
 from ..physics.evaluation import ParticleFieldEvaluation
 
 
@@ -280,6 +279,8 @@ class Solver:
         self.viscous_scheme = final_config.viscous.scheme
         self._viscous_config = final_config.viscous
         self.stabilization_config: StabilizationConfig = final_config.stabilization
+        self.filament_refinement_config = final_config.filament_refinement
+        self.divergence_relaxation_config = final_config.divergence_relaxation
         self.particles_kernel = final_config.particles_kernel.upper()
         self.backup_frequency = final_config.backup_frequency
         self.logging_frequency = final_config.logging_frequency
@@ -413,18 +414,6 @@ class Solver:
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
 
-        # Enstrophy envelope: a safety layer, not the SGS model.  Off unless the
-        # setup asks for it, so comparison controls stay ungoverned.
-        envelope_config = getattr(final_config, "envelope", None)
-        self.envelope = None
-        if envelope_config is not None and envelope_config.enabled:
-            self.envelope = EnstrophyEnvelope(
-                envelope_config,
-                self.particles_kernel,
-                final_config.max_particles,
-                self.accumulator_dtype,
-            )
-
     def _init_diagnostics_and_solvers(self, final_config: VPMSetup) -> None:
         """Build diagnostics history dict and initialize optional solvers."""
         self._diagnostics_history: dict = {
@@ -447,6 +436,91 @@ class Solver:
             "vlm_lesp_max": [],
             "vlm_n_particles": [],
         }
+        self._filament_refinement_diagnostics = {
+            "refinement_events": 0,
+            "refinement_parents_total": 0,
+            "refinement_last_split": 0,
+            "refinement_max_stretch_ratio": 1.0,
+            "refinement_last_energy_change": 0.0,
+            "refinement_cumulative_energy_change": 0.0,
+            "refinement_cumulative_enstrophy_change": 0.0,
+            "refinement_cumulative_helicity_change": 0.0,
+            "refinement_cumulative_abs_energy_change": 0.0,
+            "refinement_cumulative_abs_enstrophy_change": 0.0,
+            "refinement_cumulative_abs_helicity_change": 0.0,
+            "refinement_cumulative_abs_circulation_error_relative": 0.0,
+            "refinement_cumulative_abs_linear_impulse_error_relative": 0.0,
+            "refinement_cumulative_abs_angular_impulse_error_relative": 0.0,
+            "refinement_last_enstrophy_change": 0.0,
+            "refinement_last_helicity_error": 0.0,
+            "refinement_max_abs_energy_change": 0.0,
+            "refinement_max_abs_enstrophy_change": 0.0,
+            "refinement_max_helicity_error": 0.0,
+            "refinement_max_circulation_error": 0.0,
+            "refinement_max_strength_variation_error": 0.0,
+            "refinement_max_linear_impulse_error": 0.0,
+            "refinement_max_angular_impulse_error": 0.0,
+            "refinement_max_circulation_error_relative": 0.0,
+            "refinement_max_strength_variation_error_relative": 0.0,
+            "refinement_max_linear_impulse_error_relative": 0.0,
+            "refinement_max_angular_impulse_error_relative": 0.0,
+        }
+        self._filament_refinement_cumulative_energy_transfer = 0.0
+        self._filament_refinement_energy_reference = None
+        self._filament_refinement_enstrophy_reference = None
+        self._divergence_relaxation_diagnostics = {
+            "relaxation_events": 0,
+            "relaxation_last_iterations": 0,
+            "relaxation_last_regularization": 0.0,
+            "relaxation_last_trust_region_scale": 1.0,
+            "relaxation_last_residual_ratio": 1.0,
+            "relaxation_best_residual_ratio": 1.0,
+            "relaxation_last_correction_norm": 0.0,
+            "relaxation_max_correction_norm": 0.0,
+            "relaxation_last_energy_change": 0.0,
+            "relaxation_last_enstrophy_change": 0.0,
+            "relaxation_last_helicity_change": 0.0,
+            "relaxation_last_variation_change": 0.0,
+            "relaxation_last_energy_spectral_error": 0.0,
+            "relaxation_last_enstrophy_spectral_error": 0.0,
+            "relaxation_last_helicity_spectral_error": 0.0,
+            "relaxation_max_energy_spectral_error": 0.0,
+            "relaxation_max_enstrophy_spectral_error": 0.0,
+            "relaxation_max_helicity_spectral_error": 0.0,
+            "relaxation_max_abs_energy_change": 0.0,
+            "relaxation_max_abs_enstrophy_change": 0.0,
+            "relaxation_max_abs_helicity_change": 0.0,
+            "relaxation_max_abs_variation_change": 0.0,
+            "relaxation_last_circulation_restored_relative": 0.0,
+            "relaxation_last_linear_impulse_restored_relative": 0.0,
+            "relaxation_last_angular_impulse_restored_relative": 0.0,
+            "relaxation_last_reference_restoration_scale": 1.0,
+            "relaxation_last_circulation_reference_error_relative": 0.0,
+            "relaxation_last_linear_impulse_reference_error_relative": 0.0,
+            "relaxation_last_angular_impulse_reference_error_relative": 0.0,
+            "relaxation_max_circulation_restored_relative": 0.0,
+            "relaxation_max_linear_impulse_restored_relative": 0.0,
+            "relaxation_max_angular_impulse_restored_relative": 0.0,
+            "relaxation_cumulative_energy_change": 0.0,
+            "relaxation_cumulative_enstrophy_change": 0.0,
+            "relaxation_cumulative_helicity_change": 0.0,
+            "relaxation_cumulative_variation_change": 0.0,
+            "relaxation_cumulative_abs_energy_change": 0.0,
+            "relaxation_cumulative_abs_enstrophy_change": 0.0,
+            "relaxation_cumulative_abs_helicity_change": 0.0,
+            "relaxation_cumulative_abs_variation_change": 0.0,
+            "relaxation_max_circulation_error": 0.0,
+            "relaxation_max_linear_impulse_error": 0.0,
+            "relaxation_max_angular_impulse_error": 0.0,
+            "relaxation_cumulative_abs_circulation_error_relative": 0.0,
+            "relaxation_cumulative_abs_linear_impulse_error_relative": 0.0,
+            "relaxation_cumulative_abs_angular_impulse_error_relative": 0.0,
+            "relaxation_grid_divergence_before": 0.0,
+            "relaxation_grid_divergence_after": 0.0,
+            "relaxation_direct_divergence_before": 0.0,
+            "relaxation_direct_divergence_after": 0.0,
+            "relaxation_direct_divergence_ratio": 1.0,
+        }
         self._init_optional_solvers(final_config)
         # Runtime wall-clock profiler. ``ti.sync`` makes the timing GPU-correct
         # (Taichi kernels are asynchronous); it is shared across all backends.
@@ -467,9 +541,21 @@ class Solver:
         self.panel_solver = getattr(final_config, "panel_solver", None)
         if self.panel_solver is not None:
             try:
+                body_stl = getattr(final_config, "body_stl", None)
+                lattice = getattr(self.panel_solver, "lattice", None)
+                if body_stl and (lattice is None or lattice.num_panels == 0):
+                    self.panel_solver.add_surface("body", body_stl)
                 self.panel_solver.initialize(force=True)
+                scope = getattr(self.panel_solver, "coupling_scope", "full")
+                self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity
+                if scope in ("full", "donor"):
+                    self.set_body_induced_velocity(self.panel_solver.compute_induced_velocity)
+                else:
+                    self.set_body_induced_velocity(None)
+                if scope != "full":
+                    self.physics.body_velocity = None
             except Exception as e:
-                Logging.warning(f"Failed to initialize panel solver: {e}")
+                raise RuntimeError(f"Failed to initialize panel solver: {e}") from e
 
         if final_config.vlm is None:
             self.vlm_solver = None
@@ -565,6 +651,8 @@ class Solver:
               RuntimeError: If simulation update fails
         """
 
+        self._capture_filament_refinement_reference()
+
         # Advance step counter and print the step header.
         self._advance_time_step()
 
@@ -597,10 +685,13 @@ class Solver:
             if _fuse_vel_grad:
                 with self.profiler.section("Velocity + gradients"):
                     self._update_velocity_and_gradients()
+                velocity_k1_ready = True
             else:
+                velocity_k1_ready = False
                 if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
                     with self.profiler.section("Velocity"):
                         self._update_velocities()
+                    velocity_k1_ready = True
                 with self.profiler.section("Velocity gradients"):
                     self._update_velocity_gradients()
 
@@ -617,7 +708,7 @@ class Solver:
             # legacy path remains available for backwards compatibility.
             if not coupled_update:
                 with self.profiler.section("Advection"):
-                    self._update_positions(precomputed_k1=_fuse_vel_grad)
+                    self._update_positions(precomputed_k1=velocity_k1_ready)
 
             if self.flow_model != "POTENTIAL":
                 self._announce_strength_update()
@@ -629,17 +720,13 @@ class Solver:
                 else:
                     with self.profiler.section("Viscous diffusion"):
                         self._apply_viscous_diffusion(self.time_step_size)
-                    # Snapshot before stretching so chi_Gamma can compare the
-                    # safety correction against the physics increment it rides on.
-                    gamma_before = (
-                        self.particles_circulation.copy() if self.envelope is not None else None
-                    )
                     with self.profiler.section("Stretching"):
                         self._apply_stretching(self.time_step_size)
 
-                if self.envelope is not None:
-                    with self.profiler.section("Enstrophy envelope"):
-                        self._apply_enstrophy_envelope(self.time_step_size, gamma_before)
+                with self.profiler.section("Filament refinement"):
+                    self._apply_filament_refinement()
+                with self.profiler.section("Divergence relaxation"):
+                    self._apply_divergence_relaxation()
 
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
             _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
@@ -753,10 +840,8 @@ class Solver:
             "n_particles": self.particles.number_of_particles,
         }
         row.update(getattr(self, "_discretization_health", {}))
-        if self.envelope is not None:
-            envelope_row = self.envelope.diagnostics(self.vorticity_dissipation_rate)
-            envelope_row.pop("enstrophy_test", None)  # already recorded above
-            row.update(envelope_row)
+        row.update(self._filament_refinement_diagnostics)
+        row.update(self._divergence_relaxation_diagnostics)
 
         df = pd.DataFrame([row])
         if not csv_path.exists():
@@ -1021,16 +1106,10 @@ class Solver:
         if self.particles.number_of_particles == 0:
             self._discretization_health = {}
             return
-        # particles.vorticity is otherwise refreshed only when a backup or a
-        # retention pass happens to run, and a stale omega makes the
-        # Gamma-omega misalignment meaningless.  One O(N^2) evaluation per
-        # diagnostics event, not per step.
-        self.physics.compute_vorticities(self.particles)
         self._discretization_health = discretization_health(
             self.particles_positions,
             self.particles_circulation,
             self.particles_radii,
-            self.particles_vorticities,
         )
 
     def _record_centroid_history(self) -> None:
@@ -1401,6 +1480,7 @@ class Solver:
         Pass ``None`` to disable.
         """
         self._body_induced_fn = fn
+        self.physics.body_velocity = fn
 
     def set_surface_sources(
         self, positions: np.ndarray, strengths: np.ndarray, radii: np.ndarray
@@ -1470,6 +1550,7 @@ class Solver:
         velocity_previous: np.ndarray | None = None,
         dt: float | None = None,
         return_velocity: bool = False,
+        treecode_theta: float | None = None,
     ) -> dict | tuple[dict, np.ndarray]:
         """Compute pressure gradient and individual components at arbitrary spatial points.
 
@@ -1496,14 +1577,95 @@ class Solver:
               If return_velocity is True:
                   tuple[dict, np.ndarray]: (components_dict, u_target [N, 3])
         """
-        from source.solvers.VPM.physics.pressure import PressurePhysics
-
         if nu is None:
             nu = (
                 float(np.mean(self.particles_viscosities))
                 if self.particles.number_of_particles > 0
                 else 1e-5
             )
+        if treecode_theta is not None:
+            if temporal_method != "eulerian":
+                raise ValueError("Treecode pressure gradients require temporal_method='eulerian'")
+            points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+            count = len(points)
+            targets = points
+            if include_viscous:
+                if h is None:
+                    h = (
+                        float(np.mean(self.particles.radius_cpu()))
+                        if self.particles.number_of_particles > 0
+                        else 1.0
+                    )
+                offsets = np.eye(3, dtype=np.float64) * float(h)
+                targets = np.concatenate(
+                    [
+                        points,
+                        *(points + offsets[j] for j in range(3)),
+                        *(points - offsets[j] for j in range(3)),
+                    ]
+                )
+            velocity_samples = self.physics.compute_target_velocities_hierarchical(
+                self.particles,
+                targets,
+                theta=float(treecode_theta),
+                include_freestream=include_freestream,
+            ).astype(np.float64)
+            if self.particles.number_of_particles == 0 and include_freestream:
+                velocity_samples[:] = self.background_velocity
+            velocity = velocity_samples[:count]
+            gradient = self.physics.compute_target_velocity_gradients_hierarchical(
+                self.particles, points, theta=float(treecode_theta)
+            ).reshape(count, 3, 3)
+            body_fn = getattr(
+                self,
+                "_pressure_body_induced_fn",
+                getattr(self, "_body_induced_fn", None),
+            )
+            if body_fn is not None:
+                velocity_samples += np.asarray(
+                    body_fn(targets), dtype=velocity_samples.dtype
+                ).reshape(velocity_samples.shape)
+                velocity = velocity_samples[:count]
+                gradient_h = (
+                    float(h)
+                    if h is not None
+                    else (
+                        float(np.mean(self.particles.radius_cpu()))
+                        if self.particles.number_of_particles > 0
+                        else 0.05
+                    )
+                )
+                for axis in range(3):
+                    offset = np.zeros(3, dtype=np.float64)
+                    offset[axis] = gradient_h
+                    plus = np.asarray(body_fn(points + offset), dtype=np.float64)
+                    minus = np.asarray(body_fn(points - offset), dtype=np.float64)
+                    gradient[:, :, axis] += (plus - minus) / (2.0 * gradient_h)
+            advective = np.einsum("mb,mab->ma", velocity, gradient)
+            temporal = np.zeros_like(velocity)
+            if include_temporal:
+                if velocity_previous is None or dt is None:
+                    raise ValueError("Treecode pressure gradients require velocity_previous and dt")
+                temporal = (velocity - velocity_previous) / float(dt)
+            viscous = np.zeros_like(velocity)
+            if include_viscous and nu > 0.0:
+                plus = velocity_samples[count : 4 * count].reshape(3, count, 3)
+                minus = velocity_samples[4 * count :].reshape(3, count, 3)
+                viscous = (
+                    float(nu)
+                    * np.sum(plus + minus - 2.0 * velocity[None, :, :], axis=0)
+                    / float(h) ** 2
+                )
+            result = {
+                "grad_p": density * (-temporal - advective + viscous),
+                "convective": -density * advective,
+                "viscous": density * viscous,
+                "temporal": -density * temporal,
+            }
+            return (result, velocity) if return_velocity else result
+
+        from source.solvers.VPM.physics.pressure import PressurePhysics
+
         if self.particles.number_of_particles > 0:
             self.physics.compute_velocity_gradients(self.particles)
         if not hasattr(self, "_pressure_physics"):
@@ -1580,6 +1742,18 @@ class Solver:
             self._particles_removed_this_step = 0
             self._circulation_removed_this_step = np.zeros(3)
 
+        reference_strengths = getattr(self, "_filament_reference_strengths", None)
+        reference_lengths = getattr(self, "_filament_reference_lengths", None)
+        if reference_strengths is not None and reference_lengths is not None:
+            if remove_all:
+                self._filament_reference_strengths = np.empty(0, dtype=np.float64)
+                self._filament_reference_lengths = np.empty(0, dtype=np.float64)
+            elif particle_indices is not None and len(particle_indices) > 0:
+                keep = np.ones(len(reference_strengths), dtype=bool)
+                keep[np.asarray(particle_indices, dtype=np.int64)] = False
+                self._filament_reference_strengths = reference_strengths[keep]
+                self._filament_reference_lengths = reference_lengths[keep]
+
         # Perform removal via particle container
         self.particles.remove_vortex_particles(indices=particle_indices, remove_all=remove_all)
 
@@ -1622,6 +1796,7 @@ class Solver:
                     "ViscousConfig.viscosity or pass an explicit array."
                 )
 
+        start = self.particles.number_of_particles
         self.particles.add_vortex_particles(
             position=position,
             velocity=velocity,
@@ -1634,6 +1809,29 @@ class Solver:
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
         )
+        if hasattr(self, "_filament_reference_strengths") and not getattr(
+            self,
+            "_loading_numerical_state",
+            False,
+        ):
+            added_strength = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+            floor = max(
+                float(added_strength.max(initial=0.0)) * 1e-12,
+                np.finfo(np.float64).tiny,
+            )
+            if len(self._filament_reference_strengths) != start:
+                raise RuntimeError(
+                    "filament-refinement lineage state did not match the cloud before insertion"
+                )
+            self._filament_reference_strengths = np.concatenate(
+                (self._filament_reference_strengths, np.maximum(added_strength, floor))
+            )
+            self._filament_reference_lengths = np.concatenate(
+                (
+                    self._filament_reference_lengths,
+                    np.cbrt(np.asarray(volume, dtype=np.float64)),
+                )
+            )
 
     def replace_vortex_particles(
         self,
@@ -1681,6 +1879,14 @@ class Solver:
             velocity_gradient=velocity_gradient,
             strain_rate=strain_rate,
         )
+        if hasattr(self, "_filament_reference_strengths"):
+            magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+            floor = max(
+                float(magnitude.max(initial=0.0)) * 1e-12,
+                np.finfo(np.float64).tiny,
+            )
+            self._filament_reference_strengths = np.maximum(magnitude, floor)
+            self._filament_reference_lengths = np.cbrt(np.asarray(volume, dtype=np.float64))
 
     def update_particle_circulations(
         self,
@@ -1799,18 +2005,18 @@ class Solver:
 
         # Valid particle property names (mapped to internal field names)
         valid_properties = {
-            "positions": "positions",
-            "velocities": "velocities",
-            "strengths": "strengths",
-            "vorticities": "vorticities",
-            "radii": "radii",
-            "volumes": "volumes",
-            "viscosities": "viscosities",
-            "viscosities_t": "viscosities_t",
-            "viscosities_eff": "viscosities_eff",
-            "group_ids": "group_ids",
-            "grad_u": "gradU",  # Note: internal field name is gradU, not grad_u
-            "Sij": "Sij",
+            "positions": "position",
+            "velocities": "velocity",
+            "strengths": "circulation",
+            "vorticities": "vorticity",
+            "radii": "radius",
+            "volumes": "volume",
+            "viscosities": "viscosity",
+            "viscosities_t": "viscosity_turbulent",
+            "viscosities_eff": "viscosity_effective",
+            "group_ids": "group_id",
+            "grad_u": "velocity_gradient",
+            "Sij": "strain_rate",
         }
 
         # Validate all property names first
@@ -1865,7 +2071,7 @@ class Solver:
               filename: Base filename (without extension). Files saved:
                        - {filename}.h5: Numerical state
                        - {filename}.xdmf: ParaView visualization
-                       - {filename}_config.json: Solver configuration
+                       - {filename}.config.json: Solver configuration
 
         Example:
               >>> # Save checkpoint at specific time
@@ -1881,10 +2087,10 @@ class Solver:
 
         # Save numerical data (HDF5) and XDMF
         self._refresh_backup_particle_fields()
-        BackupSystem.backup_solver(self, filename, verbose=False)
+        BackupSystem.backup_solver(self, filename, append_step=False, verbose=False)
 
         # Also save configuration JSON (required for continue_from_backup)
-        config_file = f"{filename}_config.json"
+        config_file = f"{filename}.config.json"
         BackupSystem._save_configuration(self, config_file)
 
         Logging.info(f"Complete state saved to: {filename}")
@@ -1920,6 +2126,8 @@ class Solver:
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh particle fields that are expected to be available in backups."""
         N = self.particles.number_of_particles
+        if N > 50_000:
+            return
         if N > 0:
             self.physics.velocity_self(
                 self.particles.position,
@@ -2059,7 +2267,10 @@ class Solver:
         )
 
         # Add induced velocity from panels using DIRECT solver (more accurate)
-        if self.panel_solver is not None:
+        if (
+            self.panel_solver is not None
+            and getattr(self.panel_solver, "coupling_scope", "full") == "full"
+        ):
             # Synchronize before reading particle velocity data that was
             # just written by velocity_self via an asynchronous Taichi kernel.
             ti.sync()
@@ -2283,56 +2494,6 @@ class Solver:
                 f"for macro dt={dt:.3e}"
             )
 
-    def _apply_enstrophy_envelope(self, dt: float, gamma_before=None) -> None:
-        """Restore the enstrophy bound, and stop if the state is unrepresentable.
-
-        The two hard ceilings are deliberately fatal rather than corrective: past
-        them the requested state is outside what this discretization can carry, and
-        dissipating hard enough to survive would produce a bounded wrong answer
-        that looks like a result.
-        """
-        integrals = self.field_diagnostics.compute_flow_integrals(
-            self.particles, self.flow_time, record_history=False
-        )
-        n = self.particles.number_of_particles
-        if gamma_before is not None:
-            volume = self.particles_volumes[:n]
-            increment = self.particles_circulation[:n] - gamma_before[:n]
-            raw = float(np.sqrt((increment * increment).sum(axis=1) / volume).sum())
-        else:
-            raw = 0.0
-        self.envelope.note_step(n, raw)
-        self._check_representability()
-        self.envelope.apply(
-            self.particles,
-            float(integrals["enstrophy"]),
-            float(integrals["enstrophy_test"]),
-            dt,
-        )
-
-    def _check_representability(self) -> None:
-        """Fail loudly when the particle field can no longer represent the state."""
-        cfg = self.envelope.config
-        if cfg.omega_hard is not None:
-            circulation = self.particles_circulation
-            radii = self.particles_radii
-            if len(radii):
-                peak = float(np.max(np.linalg.norm(circulation, axis=1) / radii**3))
-                if peak > cfg.omega_hard:
-                    raise RuntimeError(
-                        f"Under-resolved at step {self.time_step} (t={self.flow_time:.4f}): "
-                        f"peak |Gamma|/sigma^3 = {peak:.4e} exceeds the representability "
-                        f"ceiling {cfg.omega_hard:.4e}. Refine the particle spacing."
-                    )
-        if cfg.max_overlap is not None:
-            overlap = self._discretization_health.get("overlap_ratio")
-            if overlap is not None and np.isfinite(overlap) and overlap > cfg.max_overlap:
-                raise RuntimeError(
-                    f"Under-resolved at step {self.time_step} (t={self.flow_time:.4f}): "
-                    f"particle overlap h/sigma = {overlap:.3f} exceeds {cfg.max_overlap:.3f}; "
-                    "the blobs no longer overlap, so the quadrature is inconsistent."
-                )
-
     def _apply_viscous_diffusion(self, dt: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
         if self.viscous_scheme == "NONE":
@@ -2463,6 +2624,841 @@ class Solver:
             self.remove_particles_by_bounds(cfg.remove_particles_by_bounds, invert_selection=True)
             self.physics.compute_vorticities(self.particles)
 
+    def _apply_filament_refinement(self) -> None:
+        cfg = self.filament_refinement_config
+        if not cfg.enabled or self.time_step % cfg.frequency != 0:
+            return
+
+        from dataclasses import replace
+
+        from ..numerics.filament_refinement import (
+            FilamentRefinementError,
+            gaussian_particle_moments,
+            gaussian_refinement_integral_transfer,
+            split_stretched_filaments,
+        )
+
+        position = self.particles.position_cpu()
+        circulation = self.particles.circulation_cpu()
+        radius = self.particles.radius_cpu()
+        volume = self.particles.volume_cpu()
+        reference_strength = getattr(self, "_filament_reference_strengths", None)
+        reference_length = getattr(self, "_filament_reference_lengths", None)
+        if reference_strength is None or reference_length is None:
+            raise FilamentRefinementError(
+                "filament-refinement lineage references were not captured before time integration"
+            )
+        if len(reference_strength) != len(position) or len(reference_length) != len(position):
+            raise FilamentRefinementError(
+                "filament-refinement lineage state no longer matches the particle cloud"
+            )
+        capacity = int(self.particles._max_particles)
+        if cfg.max_particles is not None:
+            capacity = min(capacity, int(cfg.max_particles))
+        result = split_stretched_filaments(
+            position,
+            circulation,
+            radius,
+            volume,
+            reference_strength=reference_strength,
+            reference_length=reference_length,
+            max_stretch_factor=cfg.max_strength_factor,
+            offset_fraction=cfg.offset_fraction,
+            max_particles=capacity,
+        )
+        self._filament_refinement_diagnostics["refinement_max_stretch_ratio"] = (
+            result.maximum_stretch_ratio
+        )
+        self._filament_refinement_diagnostics["refinement_last_split"] = 0
+        self._filament_refinement_diagnostics["refinement_last_energy_change"] = 0.0
+        self._filament_refinement_diagnostics["refinement_last_enstrophy_change"] = 0.0
+        self._filament_refinement_diagnostics["refinement_last_helicity_error"] = 0.0
+        if result.refined_particles == 0:
+            return
+
+        uploaded_position = result.position.astype(self.np_dtype)
+        uploaded_circulation = result.circulation.astype(self.np_dtype)
+        uploaded_radius = result.radius.astype(self.np_dtype)
+        uploaded_volume = result.volume.astype(self.np_dtype)
+        uploaded_result = replace(
+            result,
+            position=uploaded_position.astype(np.float64),
+            circulation=uploaded_circulation.astype(np.float64),
+            radius=uploaded_radius.astype(np.float64),
+            volume=uploaded_volume.astype(np.float64),
+        )
+        transfer = gaussian_refinement_integral_transfer(
+            position,
+            circulation,
+            radius,
+            uploaded_result,
+        )
+        moments_before = gaussian_particle_moments(position, circulation, radius)
+        moments_after = gaussian_particle_moments(
+            uploaded_result.position,
+            uploaded_result.circulation,
+            uploaded_result.radius,
+        )
+        circulation_error = float(np.linalg.norm(moments_after[0] - moments_before[0]))
+        strength_variation_error = abs(moments_after[1] - moments_before[1])
+        linear_impulse_error = float(np.linalg.norm(moments_after[2] - moments_before[2]))
+        angular_impulse_error = float(np.linalg.norm(moments_after[3] - moments_before[3]))
+        impulse_scale = max(
+            0.5
+            * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+            np.finfo(float).tiny,
+        )
+        angular_terms = (
+            np.cross(position, np.cross(position, circulation)) / 3.0
+            - radius[:, None] ** 2 * circulation / 3.0
+        )
+        angular_scale = max(
+            float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
+            np.finfo(float).tiny,
+        )
+        roundoff_factor = 512.0 * np.finfo(self.np_dtype).eps
+        roundoff_checks = (
+            ("vector circulation", circulation_error, moments_before[1]),
+            ("total strength variation", strength_variation_error, moments_before[1]),
+            ("linear impulse", linear_impulse_error, impulse_scale),
+            ("angular impulse", angular_impulse_error, angular_scale),
+        )
+        for name, error, scale in roundoff_checks:
+            if error > roundoff_factor * max(float(scale), np.finfo(float).tiny):
+                raise FilamentRefinementError(
+                    f"uploaded filament refinement changed {name} by {error:.3e}; "
+                    "this exceeds its floating-point roundoff allowance "
+                    f"{roundoff_factor * float(scale):.3e}"
+                )
+        relative_moment_errors = (
+            (
+                "circulation",
+                circulation_error / max(float(moments_before[1]), np.finfo(float).tiny),
+            ),
+            (
+                "linear_impulse",
+                linear_impulse_error / impulse_scale,
+            ),
+            (
+                "angular_impulse",
+                angular_impulse_error / angular_scale,
+            ),
+        )
+        energy_scale = max(
+            abs(float(self._flow_integrals.get("kinetic_energy", 0.0))),
+            abs(float(self._filament_refinement_energy_reference or 0.0)),
+            abs(transfer.energy_change),
+            np.finfo(float).tiny,
+        )
+        enstrophy_scale = max(
+            abs(float(self._flow_integrals.get("enstrophy", 0.0))),
+            abs(float(self._filament_refinement_enstrophy_reference or 0.0)),
+            abs(transfer.enstrophy_change),
+            np.finfo(float).tiny,
+        )
+        relative_energy_change = transfer.energy_change / energy_scale
+        relative_enstrophy_change = transfer.enstrophy_change / enstrophy_scale
+        helicity_scale = np.sqrt(
+            max(
+                2.0 * energy_scale * enstrophy_scale,
+                np.finfo(float).tiny,
+            )
+        )
+        relative_helicity_change = transfer.helicity_change / helicity_scale
+        relative_helicity_error = abs(relative_helicity_change)
+        if relative_energy_change > cfg.energy_injection_tolerance:
+            raise FilamentRefinementError(
+                f"filament refinement would inject {relative_energy_change:.3e} relative "
+                "kinetic energy, exceeding the admissible "
+                f"{cfg.energy_injection_tolerance:.3e}"
+            )
+        if relative_energy_change < -cfg.energy_dissipation_tolerance:
+            raise FilamentRefinementError(
+                f"filament refinement would dissipate {-relative_energy_change:.3e} "
+                "relative kinetic energy, exceeding the admissible "
+                f"{cfg.energy_dissipation_tolerance:.3e}"
+            )
+        if abs(relative_enstrophy_change) > cfg.enstrophy_transfer_tolerance:
+            raise FilamentRefinementError(
+                "filament refinement would change enstrophy by "
+                f"{relative_enstrophy_change:.3e}, exceeding the admissible "
+                f"{cfg.enstrophy_transfer_tolerance:.3e}"
+            )
+        if relative_helicity_error > cfg.helicity_transfer_tolerance:
+            raise FilamentRefinementError(
+                "filament refinement helicity transfer error "
+                f"{relative_helicity_error:.3e} exceeds the admissible "
+                f"{cfg.helicity_transfer_tolerance:.3e}"
+            )
+        cumulative_gates = (
+            (
+                "energy",
+                relative_energy_change,
+                cfg.cumulative_energy_tolerance,
+            ),
+            (
+                "enstrophy",
+                relative_enstrophy_change,
+                cfg.cumulative_enstrophy_tolerance,
+            ),
+            (
+                "helicity",
+                relative_helicity_change,
+                cfg.cumulative_helicity_tolerance,
+            ),
+        )
+        diagnostics = self._filament_refinement_diagnostics
+        for name, value, limit in cumulative_gates:
+            proposed = diagnostics[f"refinement_cumulative_abs_{name}_change"] + abs(value)
+            if proposed > limit:
+                raise FilamentRefinementError(
+                    "filament-refinement cumulative absolute "
+                    f"{name} transfer {proposed:.3e} exceeds the admissible "
+                    f"{limit:.3e}"
+                )
+        for name, value in relative_moment_errors:
+            key = f"refinement_cumulative_abs_{name}_error_relative"
+            proposed = diagnostics[key] + value
+            if proposed > cfg.cumulative_moment_tolerance:
+                raise FilamentRefinementError(
+                    "filament-refinement cumulative absolute "
+                    f"{name.replace('_', ' ')} roundoff {proposed:.3e} "
+                    "exceeds the admissible "
+                    f"{cfg.cumulative_moment_tolerance:.3e}"
+                )
+
+        source = result.source_index
+        count = len(result.position)
+        self.replace_vortex_particles(
+            position=uploaded_position,
+            velocity=self.particles.velocity_cpu()[source],
+            circulation=uploaded_circulation,
+            radius=uploaded_radius,
+            volume=uploaded_volume,
+            viscosity=self.particles.viscosity_cpu()[source],
+            viscosity_turbulent=self.particles.viscosity_turbulent_cpu()[source],
+            group_id=self.particles.group_id_cpu()[source],
+            zone_id=self.particles.zone_id_cpu()[source],
+        )
+        # A conservative subdivision is not particle deletion.  Do not expose
+        # the replacement upload as removed circulation to coupled diagnostics.
+        self._particles_removed_this_step = 0
+        self._circulation_removed_this_step = np.zeros(3, dtype=self.np_dtype)
+        self._filament_reference_strengths = result.reference_strength
+        self._filament_reference_lengths = result.reference_length
+        self._last_filament_refinement = {
+            "refined_particles": result.refined_particles,
+            "maximum_stretch_ratio": result.maximum_stretch_ratio,
+            "relative_energy_change": relative_energy_change,
+            "relative_enstrophy_change": relative_enstrophy_change,
+            "relative_helicity_error": relative_helicity_error,
+            "energy_transfer": transfer.energy_change,
+            "enstrophy_transfer": transfer.enstrophy_change,
+            "helicity_transfer": transfer.helicity_change,
+            "circulation_error": circulation_error,
+            "strength_variation_error": strength_variation_error,
+            "linear_impulse_error": linear_impulse_error,
+            "angular_impulse_error": angular_impulse_error,
+            "isolated_energy_change": result.isolated_energy_change,
+        }
+        diagnostics["refinement_events"] += 1
+        diagnostics["refinement_parents_total"] += result.refined_particles
+        diagnostics["refinement_last_split"] = result.refined_particles
+        diagnostics["refinement_last_energy_change"] = relative_energy_change
+        diagnostics["refinement_last_enstrophy_change"] = relative_enstrophy_change
+        diagnostics["refinement_last_helicity_error"] = relative_helicity_error
+        diagnostics["refinement_max_abs_energy_change"] = max(
+            diagnostics["refinement_max_abs_energy_change"],
+            abs(relative_energy_change),
+        )
+        diagnostics["refinement_max_abs_enstrophy_change"] = max(
+            diagnostics["refinement_max_abs_enstrophy_change"],
+            abs(relative_enstrophy_change),
+        )
+        diagnostics["refinement_max_helicity_error"] = max(
+            diagnostics["refinement_max_helicity_error"],
+            relative_helicity_error,
+        )
+        diagnostics["refinement_cumulative_enstrophy_change"] += relative_enstrophy_change
+        diagnostics["refinement_cumulative_helicity_change"] += relative_helicity_change
+        for name, value in (
+            ("energy", relative_energy_change),
+            ("enstrophy", relative_enstrophy_change),
+            ("helicity", relative_helicity_change),
+        ):
+            diagnostics[f"refinement_cumulative_abs_{name}_change"] += abs(value)
+        for name, value in relative_moment_errors:
+            diagnostics[f"refinement_cumulative_abs_{name}_error_relative"] += value
+        if self._filament_refinement_energy_reference is None:
+            self._filament_refinement_energy_reference = energy_scale
+        self._filament_refinement_cumulative_energy_transfer += transfer.energy_change
+        diagnostics["refinement_cumulative_energy_change"] = (
+            self._filament_refinement_cumulative_energy_transfer
+            / self._filament_refinement_energy_reference
+        )
+        diagnostics["refinement_max_circulation_error"] = max(
+            diagnostics["refinement_max_circulation_error"],
+            circulation_error,
+        )
+        diagnostics["refinement_max_strength_variation_error"] = max(
+            diagnostics["refinement_max_strength_variation_error"],
+            strength_variation_error,
+        )
+        diagnostics["refinement_max_linear_impulse_error"] = max(
+            diagnostics["refinement_max_linear_impulse_error"],
+            linear_impulse_error,
+        )
+        diagnostics["refinement_max_angular_impulse_error"] = max(
+            diagnostics["refinement_max_angular_impulse_error"],
+            angular_impulse_error,
+        )
+        diagnostics["refinement_max_circulation_error_relative"] = max(
+            diagnostics["refinement_max_circulation_error_relative"],
+            circulation_error / max(float(moments_before[1]), np.finfo(float).tiny),
+        )
+        diagnostics["refinement_max_strength_variation_error_relative"] = max(
+            diagnostics["refinement_max_strength_variation_error_relative"],
+            strength_variation_error / max(float(moments_before[1]), np.finfo(float).tiny),
+        )
+        diagnostics["refinement_max_linear_impulse_error_relative"] = max(
+            diagnostics["refinement_max_linear_impulse_error_relative"],
+            linear_impulse_error / impulse_scale,
+        )
+        diagnostics["refinement_max_angular_impulse_error_relative"] = max(
+            diagnostics["refinement_max_angular_impulse_error_relative"],
+            angular_impulse_error / angular_scale,
+        )
+        Logging.message(
+            f"[Filament refinement] {len(position)} -> {count} particles; "
+            f"split={result.refined_particles}, "
+            f"|dGamma|={circulation_error:.3e}, "
+            f"|dTV|={strength_variation_error:.3e}, "
+            f"|dI|={linear_impulse_error:.3e}, "
+            f"|dA|={angular_impulse_error:.3e}, "
+            f"dE/E={relative_energy_change:.3e}, "
+            f"dZ/Z={relative_enstrophy_change:.3e}, "
+            f"dH/H*={relative_helicity_error:.3e}"
+        )
+
+    def _apply_divergence_relaxation(self) -> None:
+        """Reassign strengths while preserving the declared Gaussian invariants."""
+
+        cfg = self.divergence_relaxation_config
+        if (
+            not cfg.enabled
+            or self.time_step < cfg.start_step
+            or (self.time_step - cfg.start_step) % cfg.frequency != 0
+        ):
+            return
+
+        from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
+        from ..numerics.divergence_relaxation import (
+            DivergenceRelaxationError,
+            GaussianParticleGridOperator,
+            constrained_divergence_relaxation,
+        )
+        from ..numerics.filament_refinement import gaussian_particle_moments
+
+        position = self.particles.position_cpu().astype(np.float64)
+        circulation = self.particles.circulation_cpu().astype(np.float64)
+        radius = self.particles.radius_cpu().astype(np.float64)
+        volume = self.particles.volume_cpu().astype(np.float64)
+        target_moments = getattr(
+            self,
+            "_divergence_relaxation_reference_moments",
+            None,
+        )
+        if target_moments is None:
+            raise DivergenceRelaxationError(
+                "divergence relaxation requires captured reference moments"
+            )
+        result = constrained_divergence_relaxation(
+            position,
+            circulation,
+            radius,
+            volume,
+            grid_spacing=cfg.grid_spacing,
+            regularization=cfg.regularization,
+            solver_rtol=cfg.solver_rtol,
+            max_iterations=cfg.max_iterations,
+            max_grid_nodes=cfg.max_grid_nodes,
+            max_correction_norm=cfg.max_correction_norm,
+            max_residual_ratio=cfg.max_residual_ratio,
+            energy_tolerance=cfg.energy_tolerance,
+            enstrophy_tolerance=cfg.enstrophy_tolerance,
+            helicity_tolerance=cfg.helicity_tolerance,
+            variation_tolerance=cfg.variation_tolerance,
+            spectral_convergence_fraction=(cfg.spectral_convergence_fraction),
+            target_moments=target_moments,
+        )
+
+        # The production field may be f32.  Repeat every acceptance audit after
+        # the actual upload cast rather than relying on the f64 proposal alone.
+        uploaded_circulation = result.circulation.astype(self.np_dtype)
+        audited_circulation = uploaded_circulation.astype(np.float64)
+        before_moments = gaussian_particle_moments(position, circulation, radius)
+        after_moments = gaussian_particle_moments(
+            position,
+            audited_circulation,
+            radius,
+        )
+        target_total, target_impulse, target_angular = target_moments
+        restoration_scale = result.reference_restoration_scale
+        achieved_total = before_moments[0] + restoration_scale * (target_total - before_moments[0])
+        achieved_impulse = before_moments[2] + restoration_scale * (
+            target_impulse - before_moments[2]
+        )
+        achieved_angular = before_moments[3] + restoration_scale * (
+            target_angular - before_moments[3]
+        )
+        circulation_error = float(np.linalg.norm(after_moments[0] - achieved_total))
+        linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
+        angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
+        circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
+        linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
+        angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
+        circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
+        linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
+        angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
+        variation_change = (after_moments[1] - before_moments[1]) / max(
+            before_moments[1],
+            np.finfo(float).tiny,
+        )
+
+        before_integrals = gaussian_fourier_integrals(
+            position,
+            circulation,
+            radius,
+            volume,
+            spacing=cfg.grid_spacing,
+        )
+        after_integrals = gaussian_fourier_integrals(
+            position,
+            audited_circulation,
+            radius,
+            volume,
+            spacing=cfg.grid_spacing,
+        )
+        energy_change = (after_integrals.energy - before_integrals.energy) / max(
+            abs(before_integrals.energy), np.finfo(float).tiny
+        )
+        enstrophy_change = (after_integrals.enstrophy - before_integrals.enstrophy) / max(
+            abs(before_integrals.enstrophy), np.finfo(float).tiny
+        )
+        helicity_scale = np.sqrt(
+            max(
+                2.0 * abs(before_integrals.energy) * abs(before_integrals.enstrophy),
+                np.finfo(float).tiny,
+            )
+        )
+        helicity_change = (after_integrals.helicity - before_integrals.helicity) / helicity_scale
+        previous_energy_change = (
+            after_integrals.previous_order_energy - before_integrals.previous_order_energy
+        ) / max(
+            abs(before_integrals.previous_order_energy),
+            np.finfo(float).tiny,
+        )
+        previous_enstrophy_change = (
+            after_integrals.previous_order_enstrophy - before_integrals.previous_order_enstrophy
+        ) / max(
+            abs(before_integrals.previous_order_enstrophy),
+            np.finfo(float).tiny,
+        )
+        previous_helicity_scale = np.sqrt(
+            max(
+                2.0
+                * abs(before_integrals.previous_order_energy)
+                * abs(before_integrals.previous_order_enstrophy),
+                np.finfo(float).tiny,
+            )
+        )
+        previous_helicity_change = (
+            after_integrals.previous_order_helicity - before_integrals.previous_order_helicity
+        ) / previous_helicity_scale
+        energy_spectral_error = abs(energy_change - previous_energy_change)
+        enstrophy_spectral_error = abs(enstrophy_change - previous_enstrophy_change)
+        helicity_spectral_error = abs(helicity_change - previous_helicity_change)
+        correction_norm = float(
+            np.linalg.norm(audited_circulation - circulation)
+            / max(np.linalg.norm(circulation), np.finfo(float).tiny)
+        )
+
+        operator = GaussianParticleGridOperator(
+            position,
+            radius,
+            np.linalg.norm(circulation, axis=1),
+            spacing=cfg.grid_spacing,
+            max_grid_nodes=cfg.max_grid_nodes,
+        )
+        residual_before, grid_divergence_before, _ = operator.relaxation_residual(circulation)
+        residual_after, grid_divergence_after, _ = operator.relaxation_residual(audited_circulation)
+        residual_norm = float(np.linalg.norm(residual_before))
+        residual_ratio = (
+            float(np.linalg.norm(residual_after) / residual_norm)
+            if residual_norm > np.finfo(float).tiny
+            else 0.0
+        )
+        direct_divergence_before = discretization_health(
+            position,
+            circulation,
+            radius,
+        )["vorticity_divergence_error"]
+        direct_divergence_after = discretization_health(
+            position,
+            audited_circulation,
+            radius,
+        )["vorticity_divergence_error"]
+        direct_divergence_ratio = (
+            direct_divergence_after / direct_divergence_before
+            if (
+                np.isfinite(direct_divergence_before)
+                and direct_divergence_before > np.finfo(float).tiny
+            )
+            else float("nan")
+        )
+
+        impulse_scale = max(
+            0.5
+            * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+            np.finfo(float).tiny,
+        )
+        angular_terms = (
+            np.cross(position, np.cross(position, circulation)) / 3.0
+            - radius[:, None] ** 2 * circulation / 3.0
+        )
+        angular_scale = max(
+            float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
+            np.finfo(float).tiny,
+        )
+        roundoff_factor = 512.0 * np.finfo(self.np_dtype).eps
+        moment_checks = (
+            ("vector circulation", circulation_error, before_moments[1]),
+            ("linear impulse", linear_impulse_error, impulse_scale),
+            ("angular impulse", angular_impulse_error, angular_scale),
+        )
+        for name, error, scale in moment_checks:
+            allowance = roundoff_factor * max(
+                float(scale),
+                np.finfo(float).tiny,
+            )
+            if error > allowance:
+                raise DivergenceRelaxationError(
+                    f"uploaded divergence relaxation changed {name} by "
+                    f"{error:.3e}; this exceeds its floating-point roundoff "
+                    f"allowance {allowance:.3e}"
+                )
+        relative_moment_errors = (
+            (
+                "circulation",
+                circulation_error / max(float(before_moments[1]), np.finfo(float).tiny),
+            ),
+            (
+                "linear_impulse",
+                linear_impulse_error / impulse_scale,
+            ),
+            (
+                "angular_impulse",
+                angular_impulse_error / angular_scale,
+            ),
+        )
+        relative_moment_restoration = (
+            (
+                "circulation",
+                circulation_restored / max(float(before_moments[1]), np.finfo(float).tiny),
+            ),
+            (
+                "linear_impulse",
+                linear_impulse_restored / impulse_scale,
+            ),
+            (
+                "angular_impulse",
+                angular_impulse_restored / angular_scale,
+            ),
+        )
+        relative_reference_errors = (
+            (
+                "circulation",
+                circulation_reference_error / max(float(before_moments[1]), np.finfo(float).tiny),
+            ),
+            (
+                "linear_impulse",
+                linear_impulse_reference_error / impulse_scale,
+            ),
+            (
+                "angular_impulse",
+                angular_impulse_reference_error / angular_scale,
+            ),
+        )
+        gates = (
+            ("correction norm", correction_norm, cfg.max_correction_norm),
+            ("residual ratio", residual_ratio, cfg.max_residual_ratio),
+            ("kinetic-energy transfer", abs(energy_change), cfg.energy_tolerance),
+            ("enstrophy transfer", abs(enstrophy_change), cfg.enstrophy_tolerance),
+            ("helicity transfer", abs(helicity_change), cfg.helicity_tolerance),
+            (
+                "total-variation transfer",
+                abs(variation_change),
+                cfg.variation_tolerance,
+            ),
+            (
+                "direct divergence ratio",
+                direct_divergence_ratio,
+                cfg.max_direct_divergence_ratio,
+            ),
+            (
+                "kinetic-energy spectral convergence",
+                energy_spectral_error,
+                cfg.spectral_convergence_fraction * cfg.energy_tolerance,
+            ),
+            (
+                "enstrophy spectral convergence",
+                enstrophy_spectral_error,
+                cfg.spectral_convergence_fraction * cfg.enstrophy_tolerance,
+            ),
+            (
+                "helicity spectral convergence",
+                helicity_spectral_error,
+                cfg.spectral_convergence_fraction * cfg.helicity_tolerance,
+            ),
+        )
+        for name, value, limit in gates:
+            if not np.isfinite(value) or value > limit:
+                raise DivergenceRelaxationError(
+                    f"uploaded divergence-relaxation {name} {value:.3e} "
+                    f"exceeds the admissible {limit:.3e}"
+                )
+        cumulative_gates = (
+            (
+                "energy",
+                energy_change,
+                cfg.cumulative_energy_tolerance,
+            ),
+            (
+                "enstrophy",
+                enstrophy_change,
+                cfg.cumulative_enstrophy_tolerance,
+            ),
+            (
+                "helicity",
+                helicity_change,
+                cfg.cumulative_helicity_tolerance,
+            ),
+            (
+                "variation",
+                variation_change,
+                cfg.cumulative_variation_tolerance,
+            ),
+        )
+        diagnostics = self._divergence_relaxation_diagnostics
+        for name, value, limit in cumulative_gates:
+            proposed = diagnostics[f"relaxation_cumulative_abs_{name}_change"] + abs(value)
+            if proposed > limit:
+                raise DivergenceRelaxationError(
+                    "divergence-relaxation cumulative absolute "
+                    f"{name} transfer {proposed:.3e} exceeds the admissible "
+                    f"{limit:.3e}"
+                )
+        for name, value in relative_moment_errors:
+            key = f"relaxation_cumulative_abs_{name}_error_relative"
+            proposed = diagnostics[key] + value
+            if proposed > cfg.cumulative_moment_tolerance:
+                raise DivergenceRelaxationError(
+                    "divergence-relaxation cumulative absolute "
+                    f"{name.replace('_', ' ')} roundoff {proposed:.3e} "
+                    "exceeds the admissible "
+                    f"{cfg.cumulative_moment_tolerance:.3e}"
+                )
+
+        reference_strength = getattr(
+            self,
+            "_filament_reference_strengths",
+            None,
+        )
+        if reference_strength is None or len(reference_strength) != len(circulation):
+            raise DivergenceRelaxationError(
+                "divergence relaxation requires valid filament-lineage state"
+            )
+        old_magnitude = np.linalg.norm(circulation, axis=1)
+        new_magnitude = np.linalg.norm(audited_circulation, axis=1)
+        magnitude_floor = max(
+            float(old_magnitude.max(initial=0.0)) * 1e-14,
+            np.finfo(float).tiny,
+        )
+        updated_reference = np.asarray(
+            reference_strength,
+            dtype=np.float64,
+        ).copy()
+        scalable = old_magnitude > magnitude_floor
+        updated_reference[scalable] *= new_magnitude[scalable] / old_magnitude[scalable]
+        updated_reference[~scalable] = np.maximum(
+            updated_reference[~scalable],
+            new_magnitude[~scalable],
+        )
+        updated_reference = np.maximum(updated_reference, magnitude_floor)
+
+        self.set_particles_properties(strengths=uploaded_circulation)
+        self._filament_reference_strengths = updated_reference
+        self._last_divergence_relaxation = {
+            "iterations": result.iterations,
+            "regularization": result.regularization,
+            "trust_region_scale": result.trust_region_scale,
+            "residual_ratio": residual_ratio,
+            "correction_norm_relative": correction_norm,
+            "energy_restoration_fraction": result.energy_restoration_fraction,
+            "reference_restoration_scale": restoration_scale,
+            "circulation_restored": circulation_restored,
+            "linear_impulse_restored": linear_impulse_restored,
+            "angular_impulse_restored": angular_impulse_restored,
+            "circulation_reference_error": circulation_reference_error,
+            "linear_impulse_reference_error": linear_impulse_reference_error,
+            "angular_impulse_reference_error": angular_impulse_reference_error,
+            "circulation_error": circulation_error,
+            "linear_impulse_error": linear_impulse_error,
+            "angular_impulse_error": angular_impulse_error,
+            "energy_change_relative": energy_change,
+            "enstrophy_change_relative": enstrophy_change,
+            "helicity_change_relative": helicity_change,
+            "total_variation_change_relative": variation_change,
+            "energy_spectral_error": energy_spectral_error,
+            "enstrophy_spectral_error": enstrophy_spectral_error,
+            "helicity_spectral_error": helicity_spectral_error,
+            "grid_divergence_before": grid_divergence_before,
+            "grid_divergence_after": grid_divergence_after,
+            "direct_divergence_before": direct_divergence_before,
+            "direct_divergence_after": direct_divergence_after,
+            "direct_divergence_ratio": direct_divergence_ratio,
+        }
+        diagnostics["relaxation_events"] += 1
+        diagnostics["relaxation_last_iterations"] = result.iterations
+        diagnostics["relaxation_last_regularization"] = result.regularization
+        diagnostics["relaxation_last_trust_region_scale"] = result.trust_region_scale
+        diagnostics["relaxation_last_residual_ratio"] = residual_ratio
+        diagnostics["relaxation_best_residual_ratio"] = min(
+            diagnostics["relaxation_best_residual_ratio"],
+            residual_ratio,
+        )
+        diagnostics["relaxation_last_correction_norm"] = correction_norm
+        diagnostics["relaxation_max_correction_norm"] = max(
+            diagnostics["relaxation_max_correction_norm"],
+            correction_norm,
+        )
+        diagnostics["relaxation_last_reference_restoration_scale"] = restoration_scale
+        for key, value in relative_moment_restoration:
+            diagnostics[f"relaxation_last_{key}_restored_relative"] = value
+            max_key = f"relaxation_max_{key}_restored_relative"
+            diagnostics[max_key] = max(diagnostics[max_key], value)
+        for key, value in relative_reference_errors:
+            diagnostics[f"relaxation_last_{key}_reference_error_relative"] = value
+        for key, value in (
+            ("energy", energy_change),
+            ("enstrophy", enstrophy_change),
+            ("helicity", helicity_change),
+            ("variation", variation_change),
+        ):
+            diagnostics[f"relaxation_last_{key}_change"] = value
+            max_key = f"relaxation_max_abs_{key}_change"
+            diagnostics[max_key] = max(diagnostics[max_key], abs(value))
+            diagnostics[f"relaxation_cumulative_{key}_change"] += value
+            diagnostics[f"relaxation_cumulative_abs_{key}_change"] += abs(value)
+        for key, value in relative_moment_errors:
+            diagnostics[f"relaxation_cumulative_abs_{key}_error_relative"] += value
+        for key, value in (
+            ("energy", energy_spectral_error),
+            ("enstrophy", enstrophy_spectral_error),
+            ("helicity", helicity_spectral_error),
+        ):
+            diagnostics[f"relaxation_last_{key}_spectral_error"] = value
+            max_key = f"relaxation_max_{key}_spectral_error"
+            diagnostics[max_key] = max(diagnostics[max_key], value)
+        diagnostics["relaxation_max_circulation_error"] = max(
+            diagnostics["relaxation_max_circulation_error"],
+            circulation_error,
+        )
+        diagnostics["relaxation_max_linear_impulse_error"] = max(
+            diagnostics["relaxation_max_linear_impulse_error"],
+            linear_impulse_error,
+        )
+        diagnostics["relaxation_max_angular_impulse_error"] = max(
+            diagnostics["relaxation_max_angular_impulse_error"],
+            angular_impulse_error,
+        )
+        diagnostics["relaxation_grid_divergence_before"] = grid_divergence_before
+        diagnostics["relaxation_grid_divergence_after"] = grid_divergence_after
+        diagnostics["relaxation_direct_divergence_before"] = direct_divergence_before
+        diagnostics["relaxation_direct_divergence_after"] = direct_divergence_after
+        diagnostics["relaxation_direct_divergence_ratio"] = direct_divergence_ratio
+        Logging.message(
+            "[Divergence relaxation] "
+            f"iterations={result.iterations}, "
+            f"trust={result.trust_region_scale:.3e}, "
+            f"restore_scale={restoration_scale:.3e}, "
+            f"residual={residual_ratio:.3e}, "
+            f"|deltaGamma|/|Gamma|={correction_norm:.3e}, "
+            f"div={grid_divergence_before:.3e}->{grid_divergence_after:.3e}, "
+            f"direct_div={direct_divergence_before:.3e}"
+            f"->{direct_divergence_after:.3e}, "
+            f"restored=({circulation_restored:.3e},"
+            f"{linear_impulse_restored:.3e},"
+            f"{angular_impulse_restored:.3e}), "
+            f"reference_error=({circulation_reference_error:.3e},"
+            f"{linear_impulse_reference_error:.3e},"
+            f"{angular_impulse_reference_error:.3e}), "
+            f"|dGamma|={circulation_error:.3e}, "
+            f"|dI|={linear_impulse_error:.3e}, "
+            f"|dA|={angular_impulse_error:.3e}, "
+            f"dE/E={energy_change:.3e}, "
+            f"dZ/Z={enstrophy_change:.3e}, "
+            f"dH/H*={helicity_change:.3e}, "
+            f"dTV/TV={variation_change:.3e}, "
+            f"spectral_error=({energy_spectral_error:.1e},"
+            f"{enstrophy_spectral_error:.1e},"
+            f"{helicity_spectral_error:.1e})"
+        )
+
+    def _capture_filament_refinement_reference(self) -> None:
+        cfg = self.filament_refinement_config
+        if (
+            not cfg.enabled
+            or hasattr(self, "_filament_reference_strengths")
+            or self.particles.number_of_particles == 0
+        ):
+            return
+        circulation = self.particles.circulation_cpu()
+        volume = self.particles.volume_cpu()
+        magnitude = np.linalg.norm(circulation, axis=1)
+        floor = max(
+            float(magnitude.max()) * 1e-12,
+            np.finfo(np.float64).tiny,
+        )
+        self._filament_reference_strengths = np.maximum(magnitude, floor)
+        self._filament_reference_lengths = np.cbrt(volume)
+        from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
+        from ..numerics.filament_refinement import gaussian_particle_moments
+
+        reference_moments = gaussian_particle_moments(
+            self.particles.position_cpu(),
+            circulation,
+            self.particles.radius_cpu(),
+        )
+        self._divergence_relaxation_reference_moments = tuple(
+            np.asarray(reference_moments[index], dtype=np.float64).copy() for index in (0, 2, 3)
+        )
+
+        reference_integrals = gaussian_fourier_integrals(
+            self.particles.position_cpu(),
+            circulation,
+            self.particles.radius_cpu(),
+            volume,
+        )
+        self._filament_refinement_energy_reference = max(
+            abs(reference_integrals.energy),
+            np.finfo(float).tiny,
+        )
+        self._filament_refinement_enstrophy_reference = max(
+            abs(reference_integrals.enstrophy),
+            np.finfo(float).tiny,
+        )
+
     def _update_positions(self, dt: float | None = None, precomputed_k1: bool = False) -> None:
         """
         Update particle positions through advection.
@@ -2589,12 +3585,30 @@ class Solver:
 
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
 
+        keep_reference = None
+        if hasattr(self, "_filament_reference_strengths"):
+            position = self.particles.position_cpu()
+            inside = (
+                (xmin <= position[:, 0])
+                & (position[:, 0] <= xmax)
+                & (ymin <= position[:, 1])
+                & (position[:, 1] <= ymax)
+                & (zmin <= position[:, 2])
+                & (position[:, 2] <= zmax)
+            )
+            keep_reference = inside if invert_selection else ~inside
+
         # Use GPU-based removal with invert_selection flag
         n_removed = self.particles.remove_particles_by_bounds(
             bounds, invert_selection=invert_selection
         )
 
         if n_removed > 0:
+            if keep_reference is not None:
+                self._filament_reference_strengths = self._filament_reference_strengths[
+                    keep_reference
+                ]
+                self._filament_reference_lengths = self._filament_reference_lengths[keep_reference]
             action = "outside" if invert_selection else "inside"
             Logging.info(
                 f"Removed {n_removed} particles {action} "
@@ -2642,7 +3656,19 @@ class Solver:
         particles_before = len(self.particles)
 
         # Remove weak particles
-        self.particles._remove_weak_particles(percent=percent, per_group=per_group)
+        removed_indices = self.particles._remove_weak_particles(
+            percent=percent,
+            per_group=per_group,
+        )
+        if (
+            removed_indices is not None
+            and len(removed_indices) > 0
+            and hasattr(self, "_filament_reference_strengths")
+        ):
+            keep = np.ones(particles_before, dtype=bool)
+            keep[np.asarray(removed_indices, dtype=np.int64)] = False
+            self._filament_reference_strengths = self._filament_reference_strengths[keep]
+            self._filament_reference_lengths = self._filament_reference_lengths[keep]
 
         # Only compute vorticities if particles remain after removal
         if len(self.particles) > 0:

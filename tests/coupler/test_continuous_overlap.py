@@ -473,6 +473,26 @@ def test_post_handoff_cap_preserves_free_wake_and_invariants():
     )
 
 
+def test_interface_velocity_metric_keeps_near_wake_before_distant_vortex():
+    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    pos = np.array([[0.6, 0.0, 0.0], [10.0, 0.0, 0.0]])
+    circ = np.array([[0.0, 0.1, 0.0], [0.0, 1.0, 0.0]])
+
+    result = continuous_handoff(
+        pos,
+        circ,
+        box,
+        h=0.1,
+        buffer_length=0.0,
+        max_output_particles=1,
+        population_metric="interface_velocity",
+        conserve=False,
+    )
+
+    np.testing.assert_allclose(result.pos[0], pos[0])
+    assert result.population_pruned_velocity_bound > 0.0
+
+
 # =============================================================================
 # Stand-alone runner
 # =============================================================================

@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from openonda_bootstrap import RunConfig
+from openonda.runtime import RunConfig
 
 from .config.types import FVMSetup
 

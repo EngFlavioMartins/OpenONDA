@@ -75,39 +75,25 @@ def vpm_vorticity(particles, pts):
     )
 
 
+def inside_box(points, box):
+    return (
+        (points[:, 0] >= box["xmin"])
+        & (points[:, 0] <= box["xmax"])
+        & (points[:, 1] >= box["ymin"])
+        & (points[:, 1] <= box["ymax"])
+        & (points[:, 2] >= box["zmin"])
+        & (points[:, 2] <= box["zmax"])
+    )
+
+
 def hybrid_velocity(hyb_vtu, particles, pts, box, sample_vtu):
     pts = np.asarray(pts, dtype=float)
-    inside = (
-        (pts[:, 0] >= box["xmin"])
-        & (pts[:, 0] <= box["xmax"])
-        & (pts[:, 1] >= box["ymin"])
-        & (pts[:, 1] <= box["ymax"])
-        & (pts[:, 2] >= box["zmin"])
-        & (pts[:, 2] <= box["zmax"])
-    )
+    inside = inside_box(pts, box)
     result = np.full((len(pts), 3), np.nan)
     if inside.any():
         result[inside] = sample_vtu(hyb_vtu, pts[inside])["U"]
     if (~inside).any():
         result[~inside] = vpm_velocity(particles, pts[~inside])
-    return result, inside
-
-
-def hybrid_vorticity(hyb_vtu, particles, pts, box, sample_vtu):
-    pts = np.asarray(pts, dtype=float)
-    inside = (
-        (pts[:, 0] >= box["xmin"])
-        & (pts[:, 0] <= box["xmax"])
-        & (pts[:, 1] >= box["ymin"])
-        & (pts[:, 1] <= box["ymax"])
-        & (pts[:, 2] >= box["zmin"])
-        & (pts[:, 2] <= box["zmax"])
-    )
-    result = np.full((len(pts), 3), np.nan)
-    if inside.any():
-        result[inside] = sample_vtu(hyb_vtu, pts[inside])["vorticity"]
-    if (~inside).any():
-        result[~inside] = vpm_vorticity(particles, pts[~inside])
     return result, inside
 
 

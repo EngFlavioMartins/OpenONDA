@@ -42,18 +42,18 @@ def _rotor_flow_namespace():
     return runpy.run_path(tutorial)
 
 
-def test_vortex_interactions_cli_defaults_to_stabilized_les_reference():
+def test_vortex_interactions_cli_defaults_to_les_control():
     args = _vortex_interactions_namespace()["build_arg_parser"]().parse_args([])
 
     assert args.processing_unit == "AUTO"
-    assert args.method == "les_stabilized"
+    assert args.method == "les"
     assert args.dt == pytest.approx(20.0 * 0.02**2 / 3.141592653589793)
     assert args.particle_spacing == pytest.approx(0.02)
     assert args.epsilon_w == pytest.approx(0.025)
     assert args.guard_frequency == 1
 
 
-def test_vortex_interactions_stabilized_les_config_has_no_field_filter(tmp_path):
+def test_vortex_interactions_les_control_has_no_field_filter(tmp_path):
     namespace = _vortex_interactions_namespace()
     args = namespace["build_arg_parser"]().parse_args([])
     config = namespace["build_solver_config"](args, tmp_path, "leapfrog")
@@ -61,18 +61,16 @@ def test_vortex_interactions_stabilized_les_config_has_no_field_filter(tmp_path)
     assert config.time_integration == "FRACTIONAL"
     assert config.velocity.method == "TREECODE"
     assert config.particles_kernel == "GAUSSIAN"
-    # Identical numerics to the `les` control, so the comparison isolates the
-    # Smagorinsky constant and the enstrophy envelope.
     assert config.advection.scheme == config.stretching.scheme == "RK3"
     assert config.stretching.mode == "TRANSPOSED"
     assert config.turbulence.flow_model == "LES"
-    assert config.turbulence.cs == pytest.approx(namespace["STABILIZED_LES_CS"])
+    assert config.turbulence.cs == pytest.approx(namespace["CONTROL_LES_CS"])
     assert config.stabilization == StabilizationConfig.disabled()
     assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
     assert config.viscous.characteristic_distance == pytest.approx(args.particle_spacing)
 
 
-def test_vortex_interactions_three_methods_are_distinct(tmp_path):
+def test_vortex_interactions_two_controls_are_distinct(tmp_path):
     namespace = _vortex_interactions_namespace()
     parser = namespace["build_arg_parser"]()
 
@@ -82,20 +80,57 @@ def test_vortex_interactions_three_methods_are_distinct(tmp_path):
     les = namespace["build_solver_config"](
         parser.parse_args(["--method", "les"]), tmp_path, "leapfrog"
     )
-    stabilized = namespace["build_solver_config"](
-        parser.parse_args(["--method", "les_stabilized"]), tmp_path, "leapfrog"
-    )
-
     assert baseline.turbulence.flow_model == "DNS"
-    assert les.turbulence.flow_model == stabilized.turbulence.flow_model == "LES"
+    assert les.turbulence.flow_model == "LES"
     assert baseline.time_integration == les.time_integration == "FRACTIONAL"
     assert baseline.velocity.method == les.velocity.method == "TREECODE"
-    assert stabilized.time_integration == "FRACTIONAL"
-    assert stabilized.velocity.method == "TREECODE"
-    assert les.turbulence.cs != stabilized.turbulence.cs
 
 
-def test_vortex_interactions_stabilized_contract_rejects_coarse_spacing():
+def test_vortex_interactions_stabilized_method_is_the_combined_candidate(
+    tmp_path,
+):
+    namespace = _vortex_interactions_namespace()
+    args = namespace["build_arg_parser"]().parse_args(
+        [
+            "--method",
+            "les_stabilized",
+            "--particle-spacing",
+            "0.03",
+            "--allow-underresolved",
+        ]
+    )
+
+    config = namespace["build_solver_config"](
+        args,
+        tmp_path,
+        "collide",
+    )
+
+    assert config.turbulence.flow_model == "LES"
+    assert config.filament_refinement.enabled
+    assert config.filament_refinement.frequency == 1
+    assert config.divergence_relaxation.enabled
+    assert config.divergence_relaxation.frequency == 10
+    assert config.divergence_relaxation.start_step == 50
+    assert config.divergence_relaxation.grid_spacing == pytest.approx(0.045)
+    assert config.divergence_relaxation.max_correction_norm == pytest.approx(0.02)
+    assert config.divergence_relaxation.max_residual_ratio == pytest.approx(0.9)
+    assert config.divergence_relaxation.spectral_convergence_fraction == pytest.approx(0.1)
+
+
+def test_vortex_interactions_scripts_require_the_six_case_matrix():
+    tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions"
+    allrun = (tutorial / "allrun.sh").read_text(encoding="utf-8")
+    validator = (tutorial / "assets/validate_plot_inputs.py").read_text(encoding="utf-8")
+
+    assert 'DEFAULT_METHODS="baseline les les_stabilized"' in allrun
+    assert 'METHODS = ("baseline", "les", "les_stabilized")' in validator
+    assert "complete six-case matrix" in validator
+    assert 'name.endswith("_les_stabilized")' in validator
+    assert 'status != "completed"' in validator
+
+
+def test_vortex_interactions_reference_contract_rejects_coarse_spacing():
     namespace = _vortex_interactions_namespace()
     args = namespace["build_arg_parser"]().parse_args(["--particle-spacing", "0.03"])
 

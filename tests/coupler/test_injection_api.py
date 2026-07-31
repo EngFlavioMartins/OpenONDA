@@ -236,6 +236,23 @@ def test_config_has_no_vpm_physics_fields():
         assert not hasattr(cfg, gone), f"{gone} should have moved to SolverConfig"
 
 
+def test_component_gates_are_serialized_and_transfer_mode_is_validated():
+    cfg = _make_config(
+        fringe_enabled=False,
+        handoff_enabled=False,
+        handoff_transfer_mode="vorticity",
+        harmonic_correction_enabled=False,
+    )
+    data = cfg.to_dict()["coupler"]
+    assert data["fringe_enabled"] is False
+    assert data["handoff_enabled"] is False
+    assert data["handoff_transfer_mode"] == "vorticity"
+    assert data["harmonic_correction_enabled"] is False
+
+    with pytest.raises(ValueError, match="handoff_transfer_mode"):
+        _make_config(handoff_transfer_mode="invalid")
+
+
 def test_public_api_exposes_coupler_setup_not_vpm_configs():
     """The coupler package should not be a convenience export point for VPM
     solver-build classes; those belong to source.solvers.VPM.config.types."""

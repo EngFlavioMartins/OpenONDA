@@ -11,15 +11,10 @@ import argparse
 import csv
 import math
 import os
-import sys
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.append(project_root)
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
+from assets import mesh_airfoil as mesher
 
-import mesh_airfoil as mesher  # noqa: E402
-
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     FVMConfig,
     Solver,
@@ -30,7 +25,7 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.mesh.gmsh_importer import GmshImporter  # noqa: E402
+from openonda.fvm import GmshImporter
 
 
 def build_config(args, u_vec):

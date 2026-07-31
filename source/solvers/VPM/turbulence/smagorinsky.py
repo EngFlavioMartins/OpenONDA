@@ -12,8 +12,7 @@ Key design choices (see docs/les_vpm_over_diffusion_analysis.md):
   - No separate circulation damping: Core Spreading with nu_eff = nu + nu_t
     already models the full SGS diffusion; a second drain would double-count.
 
-Stretching regularisation has been removed from the codebase.
-Stretching stabilization is handled by particle splitting and conservative remeshing.
+The turbulence model does not modify vortex stretching or particle strengths.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026 / Refactored May 2026

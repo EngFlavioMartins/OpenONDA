@@ -49,7 +49,6 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 m.set_style()
 
-sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import prandtl_a3D
 
 

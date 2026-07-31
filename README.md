@@ -50,21 +50,25 @@ cd OpenONDA
 scripts/install/install_anaconda.sh
 ```
 
-The repository supports one canonical environment named `OpenONDA`. The case
-launchers automatically select it when they are started from another Python
-interpreter.
+This creates the `OpenONDA` environment and installs the repository in editable
+mode. Activate it once per shell:
+
+```bash
+conda activate OpenONDA
+```
+
+After that, `import openonda` works from any directory. Python source changes
+are visible immediately; no reinstall or `PYTHONPATH` is needed.
 
 For example, the fully meshed cube reference is run with:
 
 ```bash
-cd tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow
-python referenceFlow_setup.py
+python tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py
 ```
 
-The `cores` value in each case's `FVM_SETUP` is the complete parallel setting.
-`setup_fvm_solver(...)` selects and launches the distributed backend
-internally, so no external `mpiexec` command or environment activation is
-required.
+The public APIs are `openonda.fvm`, `openonda.vpm`, `openonda.ofw`, and
+`openonda.coupler`. The `cores` value in `FVMSetup` controls threaded or MPI
+execution.
 
 ### 3. Optional: source OpenFOAM for OFW
 

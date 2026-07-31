@@ -25,6 +25,24 @@ _WORKSPACE_IDS = count()
 
 @dataclass(frozen=True)
 class _CSRPattern:
+    """Structural CSR (compressed sparse row) pattern for a static mesh.
+
+    Stores the column indices, row pointers, and contribution-slot mapping
+    that remain invariant as long as the mesh topology does not change.
+    Instances are created once by :meth:`MatrixAssemblyWorkspace.create` and
+    reused across every time step.
+
+    Attributes
+    ----------
+    indices : np.ndarray
+        Column indices of the sparse matrix (CSR format).
+    indptr : np.ndarray
+        Row pointers into ``indices`` (CSR format), shape ``(n_rows + 1,)``.
+    contribution_slots : np.ndarray
+        Mapping from flux-contribution entries to their target positions in
+        the flattened coefficient array.
+    """
+
     indices: np.ndarray
     indptr: np.ndarray
     contribution_slots: np.ndarray

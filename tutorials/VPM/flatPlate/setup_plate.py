@@ -29,41 +29,32 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import os
-import sys
 import argparse
 import math
 import numpy as np
 import pandas as pd
 from pathlib import Path
 
-# ------------------------------------------------------------------
-# Ensure OpenONDA is importable when run from any working directory
-# ------------------------------------------------------------------
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_CASE_DIR = _SCRIPT_DIR  # tutorial root (flatPlate/)
-_REPO_ROOT = _SCRIPT_DIR.parents[2]  # OpenONDA/
-sys.path.insert(0, str(_REPO_ROOT))
-sys.path.insert(0, str(_CASE_DIR / "assets"))
+_CASE_DIR = _SCRIPT_DIR
 
-from source.solvers.VPM import Solver, VPMSetup
-from source.solvers.VPM.boundary_elements.vlm import (
+from assets.generate_surface import create_flat_plate, save_surface
+from openonda.vpm import Solver, VPMSetup
+from openonda.vpm import (
     ForceConfig,
     VLMMeshSetup,
     VLMSurfaceSetup,
     VLMSetup,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
+from openonda.vpm import VLMLoadingDistribution
+from openonda.vpm import (
     StaticVLM,
     TranslatingVLM,
     SmoothRampVLM,
     PitchingVLM,
 )
-from source.solvers.VPM.config.types import AdvectionConfig, VelocityConfig
-from source.solvers.VPM.utils.field_samplers import SurfaceSampler
-
-from generate_surface import create_flat_plate, save_surface
-
+from openonda.vpm import AdvectionConfig, VelocityConfig
+from openonda.vpm import SurfaceSampler
 
 # ======================================================================
 # Argument parser

@@ -35,7 +35,8 @@ from .boundary_elements.panels.solver.panel_solver import PanelSolver
 from .boundary_elements.vlm.config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .config.types import (
     AdvectionConfig,
-    EnvelopeConfig,
+    DivergenceRelaxationConfig,
+    FilamentRefinementConfig,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -45,6 +46,8 @@ from .config.types import (
 )
 from .core.solver import Solver
 from .factory import setup_vpm_solver
+from .numerics.divergence_relaxation import DivergenceRelaxationError
+from .numerics.filament_refinement import FilamentRefinementError
 from .particles.distribution import ParticleDistributor
 
 # VLM module (optional import)
@@ -64,7 +67,10 @@ __all__ = [
     "StretchingConfig",
     "TurbulenceConfig",
     "ViscousConfig",
-    "EnvelopeConfig",
+    "DivergenceRelaxationConfig",
+    "DivergenceRelaxationError",
+    "FilamentRefinementConfig",
+    "FilamentRefinementError",
     "StabilizationConfig",
     "VelocityConfig",
     "ForceConfig",

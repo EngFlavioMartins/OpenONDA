@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Six-case vortex-ring interaction comparison.
+"""Vortex-ring interaction controls for stabilization development.
 
-Each interaction family is run with three deliberately distinct methods:
+Each interaction family exposes two untreated controls and one candidate:
 
-* ``baseline``: molecular-viscosity DNS with the legacy fractional RK3 core;
-* ``les``: the same legacy core plus Smagorinsky LES;
-* ``les_stabilized``: numerically identical to ``les`` -- same fractional RK3
-  core, Gaussian kernel and treecode -- plus a coarse-grid Smagorinsky
-  coefficient and the enstrophy envelope, so the comparison isolates the
-  envelope rather than a pile of numerical differences.
+* ``baseline``: molecular-viscosity DNS with the fractional RK3 core;
+* ``les``: the same numerical core plus Smagorinsky LES;
+* ``les_stabilized``: LES plus conservative filament subdivision and
+  reference-restoring constrained Winckelmans divergence relaxation.
 
-Every case runs to the end unless the solution actually falls apart, and then
-it says so.  Conservation and resolution are recorded every logging step into
-samples/flow_integrals.csv for the figures; they are diagnostics, never gates.
+The two controls run until the solution actually falls apart.  The stabilized
+candidate also stops on any declared conservation or field-transfer gate.
 """
 
 import argparse
@@ -22,18 +19,22 @@ from pathlib import Path
 
 import numpy as np
 
-from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
-from source.solvers.VPM.config.types import (
+from openonda.vpm import ParticleDistributor, Solver, VPMSetup
+from openonda.vpm import (
     AdvectionConfig,
-    EnvelopeConfig,
+    BackupSystem,
+    DivergenceRelaxationConfig,
+    DivergenceRelaxationError,
+    FilamentRefinementConfig,
+    FilamentRefinementError,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.utils import VortexRingVPM
-from source.solvers.VPM.utils.field_samplers import SurfaceSampler
+from openonda.vpm import VortexRingVPM
+from openonda.vpm import SurfaceSampler
 
 # The configuration module keeps library tracebacks terse. A long batch runner
 # needs the full traceback in its per-case log so infrastructure failures are
@@ -48,27 +49,28 @@ REYNOLDS_GAMMA = 3000.0
 KINEMATIC_VISCOSITY = GAMMA_REF / REYNOLDS_GAMMA
 PAPER_SPACING = 0.2 * CORE_RADIUS
 PAPER_DT = 20.0 * PAPER_SPACING**2 / GAMMA_REF
-STABILIZED_METHOD = "les_stabilized"
 CONTROL_LES_CS = 0.16
-STABILIZED_LES_CS = 0.20
 
 
-class SimulationCrashed(RuntimeError):
+class NonphysicalState(RuntimeError):
     """The particle field went non-finite or its strengths ran away."""
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Baseline, LES, and stabilized-LES vortex rings")
+    parser = argparse.ArgumentParser(
+        description="Baseline, LES, and physics-gated vortex-ring runs"
+    )
     parser.add_argument("--gamma1", type=float, default=GAMMA_REF)
     parser.add_argument("--gamma2", type=float, default=GAMMA_REF)
-    parser.add_argument("--name", default="leapfrog_les_stabilized")
+    parser.add_argument("--name", default="leapfrog_les")
     parser.add_argument(
         "--method",
-        choices=["baseline", "les", STABILIZED_METHOD],
-        default=STABILIZED_METHOD,
+        choices=["baseline", "les", "les_stabilized"],
+        default="les",
     )
     parser.add_argument("--dt", type=float, default=PAPER_DT, help="Macro time step [s].")
     parser.add_argument("--num-steps", type=int, default=2800)
+    parser.add_argument("--restart-from", type=Path)
     parser.add_argument("--particle-spacing", type=float, default=PAPER_SPACING)
     parser.add_argument("--output-root", default="solution")
     parser.add_argument("--backup-frequency", type=int, default=100)
@@ -91,49 +93,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-underresolved",
         action="store_true",
-        help="Permit h/a0 or dt above the stabilized-method limits for convergence studies.",
-    )
-    parser.add_argument(
-        "--rho-max",
-        type=float,
-        default=2.0,
-        help=(
-            "Largest credible Z_Delta/Z_2Delta before fine-scale growth counts as "
-            "anomalous. Calibrate with assets/calibrate_envelope.py; the shipped "
-            "default is a placeholder, not a measurement."
-        ),
-    )
-    parser.add_argument(
-        "--envelope-growth",
-        type=float,
-        default=1.0,
-        help="Coarse-scale exponential growth allowance b_L [1/s] (calibrated).",
-    )
-    parser.add_argument(
-        "--r-loc-max",
-        type=float,
-        default=15.0,
-        help=(
-            "Local barrier: correct a particle whose |Gamma|/sigma^3 exceeds this "
-            "multiple of its 20-neighbour median. This is the criterion that "
-            "actually fires; the global enstrophy bound is an L2 certificate and "
-            "cannot see a sparse runaway."
-        ),
-    )
-    parser.add_argument(
-        "--envelope-kappa",
-        type=float,
-        default=1.0,
-        help="Barrier relaxation rate [1/s].",
-    )
-    parser.add_argument(
-        "--omega-hard",
-        type=float,
-        default=None,
-        help=(
-            "Hard ceiling on max |Gamma_p|/sigma_p^3. Reaching it stops the run as "
-            "under-resolved rather than dissipating it into looking fine."
-        ),
+        help="Permit h/a0 or dt above the reference limits for convergence studies.",
     )
     parser.add_argument(
         "--blowup-factor",
@@ -141,6 +101,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=50.0,
         help="Stop a non-physical control after max|Gamma| exceeds this multiple of its initial value.",
     )
+    parser.add_argument("--refinement-frequency", type=int, default=1)
+    parser.add_argument("--refinement-strength-factor", type=float, default=2.0)
+    parser.add_argument("--refinement-offset-fraction", type=float, default=0.25)
+    parser.add_argument("--refinement-max-particles", type=int, default=200_000)
+    parser.add_argument("--relaxation-frequency", type=int, default=10)
+    parser.add_argument("--relaxation-start-step", type=int, default=50)
+    parser.add_argument(
+        "--relaxation-grid-spacing",
+        type=float,
+        default=None,
+        help="Projection-grid spacing [m]; default is 1.5 times particle spacing.",
+    )
+    parser.add_argument("--relaxation-regularization", type=float, default=0.1)
+    parser.add_argument("--relaxation-max-grid-nodes", type=int, default=12_000_000)
     return parser
 
 
@@ -226,10 +200,19 @@ def validate_resolution(args: argparse.Namespace) -> None:
         raise ValueError("--device-memory-fraction must be between 0.1 and 0.7.")
     if args.blowup_factor <= 1.0:
         raise ValueError("--blowup-factor must be greater than one.")
-    if args.rho_max <= 0.0 or args.envelope_growth < 0.0 or args.envelope_kappa <= 0.0:
-        raise ValueError("--rho-max and --envelope-kappa must be positive, growth >= 0.")
-
-    if args.method != STABILIZED_METHOD or args.allow_underresolved:
+    if args.refinement_frequency < 1 or args.relaxation_frequency < 1:
+        raise ValueError("stabilization frequencies must be at least one.")
+    if args.relaxation_start_step < 0:
+        raise ValueError("--relaxation-start-step must be non-negative.")
+    if args.refinement_max_particles < 1:
+        raise ValueError("--refinement-max-particles must be positive.")
+    if args.relaxation_grid_spacing is not None and args.relaxation_grid_spacing <= 0.0:
+        raise ValueError("--relaxation-grid-spacing must be positive.")
+    if args.relaxation_regularization <= 0.0:
+        raise ValueError("--relaxation-regularization must be positive.")
+    if args.relaxation_max_grid_nodes < 1:
+        raise ValueError("--relaxation-max-grid-nodes must be positive.")
+    if args.allow_underresolved:
         return
     spacing_ratio = args.particle_spacing / CORE_RADIUS
     dt_limit = (
@@ -252,15 +235,16 @@ def validate_resolution(args: argparse.Namespace) -> None:
 
 def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: str) -> VPMSetup:
     sampler = make_surface_sampler(case_label, args.particle_spacing, output_dir)
+    viscous = ViscousConfig.cs(
+        viscosity=KINEMATIC_VISCOSITY,
+        characteristic_distance=args.particle_spacing,
+    )
     common = dict(
         time_step_size=args.dt,
         processing_unit=args.processing_unit,
         device_memory_fraction=args.device_memory_fraction,
         stabilization=StabilizationConfig.disabled(),
-        viscous=ViscousConfig.cs(
-            viscosity=KINEMATIC_VISCOSITY,
-            characteristic_distance=args.particle_spacing,
-        ),
+        viscous=viscous,
         samplers=[(sampler, "xz_slice")],
         backup_file_name=args.name,
         backup_directory=str(output_dir),
@@ -269,29 +253,12 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
         timing_frequency=100,
         export_flow_integrals=True,
     )
-    if args.method == STABILIZED_METHOD:
-        return VPMSetup(
-            **common,
-            # Numerically identical to the `les` control -- same integration,
-            # same kernel, same treecode -- so the three-way comparison isolates
-            # exactly two things: the coarse-grid Smagorinsky constant and the
-            # enstrophy envelope.
-            time_integration="FRACTIONAL",
-            advection=AdvectionConfig(scheme="RK3"),
-            stretching=StretchingConfig.transposed(scheme="RK3"),
-            turbulence=TurbulenceConfig.les_smagorinsky(cs=STABILIZED_LES_CS, ce=1.048),
-            velocity=VelocityConfig.treecode(
-                theta=0.35, sort_particle_targets=True, traversal_block_dim=128
-            ),
-            particles_kernel="GAUSSIAN",
-            envelope=EnvelopeConfig.bounded(
-                rho_max=args.rho_max,
-                b_l=args.envelope_growth,
-                kappa=args.envelope_kappa,
-                r_loc_max=args.r_loc_max,
-                omega_hard=args.omega_hard,
-            ),
-        )
+    stabilized = args.method == "les_stabilized"
+    relaxation_spacing = (
+        args.relaxation_grid_spacing
+        if args.relaxation_grid_spacing is not None
+        else 1.5 * args.particle_spacing
+    )
     return VPMSetup(
         **common,
         time_integration="FRACTIONAL",
@@ -299,8 +266,36 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
         stretching=StretchingConfig.transposed(scheme="RK3"),
         turbulence=(
             TurbulenceConfig.les_smagorinsky(cs=CONTROL_LES_CS, ce=1.048)
-            if args.method == "les"
+            if args.method in {"les", "les_stabilized"}
             else TurbulenceConfig.dns()
+        ),
+        filament_refinement=(
+            FilamentRefinementConfig.adaptive(
+                frequency=args.refinement_frequency,
+                max_strength_factor=args.refinement_strength_factor,
+                offset_fraction=args.refinement_offset_fraction,
+                max_particles=args.refinement_max_particles,
+            )
+            if stabilized
+            else FilamentRefinementConfig.disabled()
+        ),
+        divergence_relaxation=(
+            DivergenceRelaxationConfig.constrained(
+                frequency=args.relaxation_frequency,
+                start_step=args.relaxation_start_step,
+                grid_spacing=relaxation_spacing,
+                regularization=args.relaxation_regularization,
+                max_grid_nodes=args.relaxation_max_grid_nodes,
+                max_correction_norm=2e-2,
+                max_residual_ratio=0.9,
+                max_direct_divergence_ratio=0.98,
+                energy_tolerance=1e-6,
+                enstrophy_tolerance=1.5e-4,
+                helicity_tolerance=1e-4,
+                variation_tolerance=1e-3,
+            )
+            if stabilized
+            else DivergenceRelaxationConfig.disabled()
         ),
         velocity=VelocityConfig.treecode(
             theta=0.35,
@@ -329,13 +324,13 @@ def enforce_numerical_bound(
         flush=True,
     )
     if not np.isfinite(circulation).all():
-        raise SimulationCrashed(
-            f"CRASHED at step {solver.time_step} (t={solver.flow_time:.4f}): "
+        raise NonphysicalState(
+            f"NONPHYSICAL at step {solver.time_step} (t={solver.flow_time:.4f}): "
             "particle strengths went to NaN or infinity."
         )
     if maximum > threshold:
-        raise SimulationCrashed(
-            f"CRASHED at step {solver.time_step} (t={solver.flow_time:.4f}): "
+        raise NonphysicalState(
+            f"NONPHYSICAL at step {solver.time_step} (t={solver.flow_time:.4f}): "
             f"peak particle strength ran away to {maximum:.4e}, which is "
             f"{maximum / max(initial_max_strength, np.finfo(float).tiny):.0f}x its "
             f"starting value of {initial_max_strength:.4e}."
@@ -381,12 +376,86 @@ def write_manifest(
         "stretching_mode": cfg.stretching.mode,
         "stretching_scheme": cfg.stretching.scheme,
         "viscous_scheme": cfg.viscous.scheme,
+        "filament_refinement_frequency": cfg.filament_refinement.frequency,
+        "filament_refinement_max_strength_factor": (cfg.filament_refinement.max_strength_factor),
+        "filament_refinement_offset_fraction": cfg.filament_refinement.offset_fraction,
+        "filament_refinement_max_particles": cfg.filament_refinement.max_particles,
+        "filament_refinement_energy_injection_tolerance": (
+            cfg.filament_refinement.energy_injection_tolerance
+        ),
+        "filament_refinement_energy_dissipation_tolerance": (
+            cfg.filament_refinement.energy_dissipation_tolerance
+        ),
+        "filament_refinement_enstrophy_transfer_tolerance": (
+            cfg.filament_refinement.enstrophy_transfer_tolerance
+        ),
+        "filament_refinement_helicity_transfer_tolerance": (
+            cfg.filament_refinement.helicity_transfer_tolerance
+        ),
+        "filament_refinement_cumulative_energy_tolerance": (
+            cfg.filament_refinement.cumulative_energy_tolerance
+        ),
+        "filament_refinement_cumulative_enstrophy_tolerance": (
+            cfg.filament_refinement.cumulative_enstrophy_tolerance
+        ),
+        "filament_refinement_cumulative_helicity_tolerance": (
+            cfg.filament_refinement.cumulative_helicity_tolerance
+        ),
+        "filament_refinement_cumulative_moment_tolerance": (
+            cfg.filament_refinement.cumulative_moment_tolerance
+        ),
+        "divergence_relaxation_frequency": cfg.divergence_relaxation.frequency,
+        "divergence_relaxation_start_step": cfg.divergence_relaxation.start_step,
+        "divergence_relaxation_grid_spacing": cfg.divergence_relaxation.grid_spacing,
+        "divergence_relaxation_regularization": (cfg.divergence_relaxation.regularization),
+        "divergence_relaxation_max_grid_nodes": (cfg.divergence_relaxation.max_grid_nodes),
+        "divergence_relaxation_max_correction_norm": (
+            cfg.divergence_relaxation.max_correction_norm
+        ),
+        "divergence_relaxation_max_residual_ratio": (cfg.divergence_relaxation.max_residual_ratio),
+        "divergence_relaxation_max_direct_divergence_ratio": (
+            cfg.divergence_relaxation.max_direct_divergence_ratio
+        ),
+        "divergence_relaxation_energy_tolerance": (cfg.divergence_relaxation.energy_tolerance),
+        "divergence_relaxation_enstrophy_tolerance": (
+            cfg.divergence_relaxation.enstrophy_tolerance
+        ),
+        "divergence_relaxation_helicity_tolerance": (cfg.divergence_relaxation.helicity_tolerance),
+        "divergence_relaxation_variation_tolerance": (
+            cfg.divergence_relaxation.variation_tolerance
+        ),
+        "divergence_relaxation_spectral_convergence_fraction": (
+            cfg.divergence_relaxation.spectral_convergence_fraction
+        ),
+        "divergence_relaxation_cumulative_energy_tolerance": (
+            cfg.divergence_relaxation.cumulative_energy_tolerance
+        ),
+        "divergence_relaxation_cumulative_enstrophy_tolerance": (
+            cfg.divergence_relaxation.cumulative_enstrophy_tolerance
+        ),
+        "divergence_relaxation_cumulative_helicity_tolerance": (
+            cfg.divergence_relaxation.cumulative_helicity_tolerance
+        ),
+        "divergence_relaxation_cumulative_variation_tolerance": (
+            cfg.divergence_relaxation.cumulative_variation_tolerance
+        ),
+        "divergence_relaxation_cumulative_moment_tolerance": (
+            cfg.divergence_relaxation.cumulative_moment_tolerance
+        ),
         "smagorinsky_cs": cfg.turbulence.cs if cfg.turbulence.flow_model == "LES" else None,
         "molecular_viscosity": cfg.viscous.viscosity,
         "characteristic_distance": cfg.viscous.characteristic_distance,
-        "field_modification": "none",
+        "field_modification": (
+            "conservative axial split plus reference-restoring constrained relaxation"
+            if args.method == "les_stabilized"
+            else "none"
+        ),
         "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
-        "diagnostics": "conservation and resolution recorded per logging step; not gated",
+        "diagnostics": (
+            "conservation, transfer, and divergence reduction are hard gated"
+            if args.method == "les_stabilized"
+            else "conservation and resolution recorded per logging step; not gated"
+        ),
         "processing_unit": solver.processing_unit,
         "processing_unit_requested": args.processing_unit,
         "dt": args.dt,
@@ -400,11 +469,6 @@ def write_manifest(
         "gamma2": args.gamma2,
         "guard_frequency": args.guard_frequency,
         "blowup_factor": args.blowup_factor,
-        "rho_max": args.rho_max,
-        "envelope_growth": args.envelope_growth,
-        "envelope_kappa": args.envelope_kappa,
-        "r_loc_max": args.r_loc_max,
-        "omega_hard": args.omega_hard,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -444,31 +508,62 @@ def run_case(args: argparse.Namespace) -> str:
         args.perturbation_modes,
         4.0,
     )
+    initial_max_strength = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
+    solver._capture_filament_refinement_reference()
+    if args.restart_from is not None:
+        BackupSystem.load_numerical_state(solver, args.restart_from)
+        if solver.time_step >= args.num_steps:
+            raise ValueError(
+                f"checkpoint step {solver.time_step} must be below target step {args.num_steps}"
+            )
     solver.info()
 
     solver._update_all_flow_integrals()
     solver._export_flow_integrals_csv()
-    initial_max_strength = float(np.linalg.norm(solver.particles_circulation, axis=1).max())
     write_manifest(args, case_label, output_dir, solver, status="running")
 
     try:
-        for step in range(args.num_steps):
+        for step in range(solver.time_step, args.num_steps):
             solver.update_state()
             if (step + 1) % args.guard_frequency == 0:
                 enforce_numerical_bound(solver, initial_max_strength, args.blowup_factor)
-    except SimulationCrashed as error:
+    except (DivergenceRelaxationError, FilamentRefinementError) as error:
         export_diagnostic_snapshot(solver)
-        solver.save_state(str(output_dir / f"vpm_{args.name}_crash_state"))
+        solver.save_state(str(output_dir / f"vpm_{args.name}_rejected_state"))
         write_manifest(
-            args, case_label, output_dir, solver, status="crashed", termination_reason=str(error)
+            args,
+            case_label,
+            output_dir,
+            solver,
+            status="rejected",
+            termination_reason=str(error),
+        )
+        print(f"\nPHYSICS GATE REJECTED: {error}", flush=True)
+        print(
+            f"Ran {solver.time_step} of {args.num_steps} steps before rejection. "
+            f"State saved to vpm_{args.name}_rejected_state.",
+            flush=True,
+        )
+        return "rejected"
+    except NonphysicalState as error:
+        export_diagnostic_snapshot(solver)
+        solver.save_state(str(output_dir / f"vpm_{args.name}_nonphysical_state"))
+        write_manifest(
+            args,
+            case_label,
+            output_dir,
+            solver,
+            status="terminated_nonphysical",
+            termination_reason=str(error),
         )
         print(f"\n{error}", flush=True)
         print(
-            f"Ran {solver.time_step} of {args.num_steps} steps before crashing. "
-            f"State at the crash saved to vpm_{args.name}_crash_state.",
+            f"Ran {solver.time_step} of {args.num_steps} steps before the "
+            "solution became nonphysical. State saved to "
+            f"vpm_{args.name}_nonphysical_state.",
             flush=True,
         )
-        return "crashed"
+        return "terminated_nonphysical"
 
     export_diagnostic_snapshot(solver)
     write_manifest(args, case_label, output_dir, solver, status="completed")

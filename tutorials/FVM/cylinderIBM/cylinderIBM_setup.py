@@ -21,14 +21,11 @@ Usage:
 
 import argparse
 import os
-import sys
 
 import numpy as np
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.append(project_root)
-
-from source.solvers.FVM import (  # noqa: E402
+from assets.mesh_rectilinear import cylinder_ibm_mesh
+from openonda.fvm import (
     BoundaryConfig,
     FVMConfig,
     Solver,
@@ -39,10 +36,7 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.immersed_boundary import ImmersedBody  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
-from mesh_rectilinear import cylinder_ibm_mesh  # noqa: E402
+from openonda.fvm import ImmersedBody
 
 
 def build_config(args, depth):

@@ -159,7 +159,10 @@ class FringeFields:
             # in the buffer VPM is authoritative, so relaxing FVM -> VPM enforces
             # agreement exactly where eta -> 0.
             Ut[band] = self.vpm.compute_target_velocities(
-                self.cc[band], include_freestream=True, zone_mask=None
+                self.cc[band],
+                include_freestream=True,
+                zone_mask=None,
+                include_body=self.cfg.harmonic_correction_enabled,
             )
         # First call has no history: start from a flat target so the opening
         # substeps are not relaxed toward a state the flow has not reached.

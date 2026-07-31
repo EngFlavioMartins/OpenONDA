@@ -19,15 +19,18 @@ import numpy as np
 import taichi as ti
 
 from ..coupling import kinematics as kin_module
-from ..kernels.induced_velocity import compute_induced_velocity_kernel
+from ..kernels.induced_velocity import (
+    compute_induced_velocity_kernel,
+    compute_source_induced_velocity_kernel,
+)
 from .influence import (
-    build_AIC_matrix,
     build_AIC_matrix_dirichlet,
+    build_source_AIC_matrix,
     compute_forces_bernoulli,
     compute_forces_kutta_joukowski,
     compute_pressure_bernoulli,
+    compute_RHS,
     compute_RHS_dirichlet_with_sources,
-    compute_RHS_neumann_with_sources,
     compute_surface_velocities,
     compute_surface_velocities_with_sources,
 )
@@ -105,6 +108,7 @@ class PanelSolver:
         density: float = 1.225,
         U_inf: np.ndarray | None = None,
         logging_frequency: int = 1,
+        coupling_scope: Literal["full", "donor", "normal", "pressure"] = "full",
     ):
         self.max_panels = max_panels
         self.float_dtype = float_dtype
@@ -114,6 +118,9 @@ class PanelSolver:
         self.density = density
         self.U_inf = None if U_inf is None else np.array(U_inf, dtype=np.float64)
         self.logging_frequency = max(1, int(logging_frequency))
+        if coupling_scope not in ("full", "donor", "normal", "pressure"):
+            raise ValueError("coupling_scope must be 'full', 'donor', 'normal', or 'pressure'")
+        self.coupling_scope = coupling_scope
         self.step = 0
         self._current_time = 0.0
         self._solved = False
@@ -279,7 +286,7 @@ class PanelSolver:
                         n,
                     )
                 else:
-                    build_AIC_matrix(
+                    build_source_AIC_matrix(
                         self.lattice.vertices,
                         self.lattice.centers,
                         self.lattice.normals,
@@ -317,9 +324,7 @@ class PanelSolver:
                 n,
             )
         else:
-            # Neumann BC with source-doublet formulation (Hess-Smith)
-            compute_RHS_neumann_with_sources(
-                self.lattice.vertices,
+            compute_RHS(
                 self.lattice.centers,
                 self.lattice.normals,
                 ti_v_inf,
@@ -328,9 +333,17 @@ class PanelSolver:
                 n,
             )
 
-        success = self.solver_strategy.solve(self.AIC, self.rhs, self.lattice.strengths, n)
+        strengths = (
+            self.lattice.strengths if self.bc_type == "DIRICHLET" else self.lattice.source_strengths
+        )
+        success = self.solver_strategy.solve(self.AIC, self.rhs, strengths, n)
         if not success:
             logger.error("Panel linear solver failed to converge.")
+        elif self.bc_type == "NEUMANN":
+            values = strengths.to_numpy()
+            areas = self.lattice.areas.to_numpy()
+            values[:n] -= np.dot(values[:n], areas[:n]) / np.sum(areas[:n])
+            strengths.from_numpy(values)
         self._solved = success
         self.results["diagnostics"].append(
             {
@@ -462,9 +475,17 @@ class PanelSolver:
             return np.zeros_like(points)
 
         vertices = self.lattice.vertices.to_numpy()[:n_panels].astype(dtype, copy=False)
-        strengths = self.lattice.strengths.to_numpy()[:n_panels].astype(dtype, copy=False)
         velocity = np.zeros_like(points)
 
+        if self.bc_type == "NEUMANN":
+            normals = self.lattice.normals.to_numpy()[:n_panels].astype(dtype, copy=False)
+            strengths = self.lattice.source_strengths.to_numpy()[:n_panels].astype(
+                dtype, copy=False
+            )
+            compute_source_induced_velocity_kernel(vertices, normals, strengths, points, velocity)
+            return velocity
+
+        strengths = self.lattice.strengths.to_numpy()[:n_panels].astype(dtype, copy=False)
         if n_panels >= 1000 or n_panels * len(points) >= 100_000:
             compute_induced_velocity_kernel(vertices, strengths, points, velocity)
         else:
@@ -799,15 +820,13 @@ class PanelSolver:
         ti_v_inf = ti.Vector(V_inf.tolist())
         V_wake = self._resolve_wake_field()
 
-        # Compute source strengths and upload to lattice
-        # For Dirichlet BC: σ_j = -V_∞ · n_j
-        normals_np = self.lattice.normals.to_numpy()[:n]
-        source_strengths_np = -np.dot(normals_np, V_inf)
-        # Cast to lattice dtype to avoid f32<-f64 precision warnings
-        ti_dtype = np.float32 if self.float_dtype == "f32" else np.float64
-        source_full = np.zeros(self.lattice.max_panels, dtype=ti_dtype)
-        source_full[:n] = source_strengths_np.astype(ti_dtype)
-        self.lattice.source_strengths.from_numpy(source_full)
+        if self.bc_type == "DIRICHLET":
+            normals_np = self.lattice.normals.to_numpy()[:n]
+            source_strengths_np = -np.dot(normals_np, V_inf)
+            ti_dtype = np.float32 if self.float_dtype == "f32" else np.float64
+            source_full = np.zeros(self.lattice.max_panels, dtype=ti_dtype)
+            source_full[:n] = source_strengths_np.astype(ti_dtype)
+            self.lattice.source_strengths.from_numpy(source_full)
 
         # Compute surface velocities
         # Use source-doublet formulation for both DIRICHLET and NEUMANN BC

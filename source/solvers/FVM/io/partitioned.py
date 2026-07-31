@@ -237,9 +237,6 @@ def write_partition_vtu(
         if array.shape[0] != local_count:
             raise ValueError(f"Field {name!r} does not match the local partition")
         _field_components(array)
-        if np.issubdtype(array.dtype, np.floating):
-            dtype = np.float32 if output.precision == "float32" else np.float64
-            array = array.astype(dtype, copy=False)
         local_fields[name] = np.ascontiguousarray(array).copy()
 
     piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"
@@ -247,6 +244,14 @@ def write_partition_vtu(
         if len(partition.ghost_global_ids):
             for values in local_fields.values():
                 partition.exchange_halo(values, comm)
+        _output_dtype = np.float32 if output.precision == "float32" else np.float64
+        if _output_dtype != np.float64:
+            _fmin = float(np.finfo(_output_dtype).min)
+            _fmax = float(np.finfo(_output_dtype).max)
+            for name in list(local_fields):
+                array = local_fields[name]
+                if np.issubdtype(array.dtype, np.floating):
+                    local_fields[name] = np.clip(array, _fmin, _fmax).astype(_output_dtype)
         piece_fields = dict(local_fields)
         ghost_types = np.zeros(local_count, dtype=np.uint8)
         # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only for

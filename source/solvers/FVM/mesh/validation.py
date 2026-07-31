@@ -6,7 +6,13 @@ import numpy as np
 
 
 class MeshValidationError(ValueError):
-    """Raised when a mesh cannot safely enter the finite-volume solver."""
+    """Raised when a mesh fails topology, geometry, or quality validation.
+
+    The validation functions in this module raise this exception (through
+    the :func:`_require` helper) when the mesh data cannot safely enter the
+    finite-volume solver.  The error message includes the specific
+    validation that failed and the offending values where applicable.
+    """
 
 
 def _require(condition, message):

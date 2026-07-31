@@ -41,7 +41,6 @@ CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
 
-sys.path.insert(0, str(CASE_DIR / "assets"))
 from theoretical_model import spanwise_reference
 
 # -- Argument parsing -----------------------------------------------------------

@@ -12,7 +12,23 @@ from .vtk_exporter import PVDManager, VTKExporter
 
 
 class BufferedVTKWriter:
-    """Serialize VTU/PVD output on one worker while bounding queued memory."""
+    """Asynchronous VTK output writer with bounded memory.
+
+    Uses a single background thread to serialise VTU snapshots and update
+    the PVD collection file.  At most one snapshot is queued at a time:
+    :meth:`submit` blocks until the previous write finishes, which bounds
+    the memory used by pending output to one complete field copy.
+
+    The writer reuses its :class:`VTKExporter` and :class:`PVDManager`
+    across calls — they are created once on the worker thread.
+
+    Examples
+    --------
+    >>> writer = BufferedVTKWriter(mesh_data, "solution/sim.pvd")
+    >>> writer.submit("step_0001.vtu", 0.1, fields)
+    >>> writer.flush()
+    >>> writer.close()
+    """
 
     def __init__(
         self,

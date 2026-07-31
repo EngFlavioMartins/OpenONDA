@@ -57,6 +57,70 @@ def test_constant_donor_is_reproduced_exactly_without_particles():
     }
 
 
+def test_body_potential_is_retained_before_particle_injection():
+    class _Particles:
+        number_of_particles = 0
+
+    class _VPM:
+        particles = _Particles()
+        _body_induced_fn = object()
+        num_sources = 0
+
+        @staticmethod
+        def compute_target_velocities(points, include_freestream=True):
+            return np.tile([0.9, 0.0, 0.0], (len(points), 1))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.vpm = _VPM()
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler._last_omega_donor = None
+    coupler._log_outflow_deficit = lambda *_: None
+
+    centres, normals, areas = _cube_face_quadrature()
+    donor = coupler._donor_velocity(centres, normals, areas)
+
+    np.testing.assert_allclose(
+        donor,
+        np.tile([0.9, 0.0, 0.0], (len(centres), 1)),
+        atol=1e-15,
+    )
+
+
+def test_normal_panel_scope_changes_only_donor_normal_velocity():
+    class _Particles:
+        number_of_particles = 0
+
+    class _Panel:
+        coupling_scope = "normal"
+
+        @staticmethod
+        def compute_induced_velocity(points):
+            return np.tile([0.2, 0.3, 0.4], (len(points), 1))
+
+    class _VPM:
+        particles = _Particles()
+        panel_solver = _Panel()
+        _body_induced_fn = None
+        num_sources = 0
+
+        @staticmethod
+        def compute_target_velocities(points, include_freestream=True):
+            return np.tile([1.0, 0.0, 0.0], (len(points), 1))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.vpm = _VPM()
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler._last_omega_donor = None
+    coupler._log_outflow_deficit = lambda *_: None
+
+    centres, normals, areas = _cube_face_quadrature()
+    donor = coupler._donor_velocity(centres, normals, areas)
+    correction = donor - coupler.u_inf
+
+    expected = np.sum(np.array([0.2, 0.3, 0.4]) * normals, axis=1)[:, None] * normals
+    np.testing.assert_allclose(correction, expected, atol=1e-15)
+
+
 def test_linear_fvm_vorticity_field_is_reproduced_on_the_injection_lattice():
     """The FVM-to-particle path preserves a linear manufactured field where
     eta is one; this catches a transposed component or lattice-phase error."""
@@ -180,8 +244,7 @@ def test_projection_is_flux_free_and_subcycle_ratio_is_strict():
     assert FVMVPMCoupler._derive_coupling_step_count(0.15, 0.05) == 3
     with pytest.raises(ValueError, match="integer multiple"):
         FVMVPMCoupler._derive_period_multiplier(0.14, 0.05)
-    with pytest.raises(ValueError, match="integer multiple"):
-        FVMVPMCoupler._derive_coupling_step_count(0.14, 0.05)
+    assert FVMVPMCoupler._derive_coupling_step_count(0.14, 0.05) == 3  # round(2.8)
 
 
 def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():

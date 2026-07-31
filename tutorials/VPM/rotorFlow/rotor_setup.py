@@ -27,30 +27,21 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-# =========================================================
-# Ensure assets/ is importable when run from the tutorial root
-# =========================================================
-_SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
-
-from source.solvers.VPM import Solver, VPMSetup, StabilizationConfig
-from source.solvers.VPM.config.types import (
+from openonda.vpm import Solver, VPMSetup, StabilizationConfig
+from openonda.vpm import (
     AdvectionConfig,
     TurbulenceConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.boundary_elements.vlm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
-from source.solvers.VPM.utils.field_samplers import SurfaceSampler
-from generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
-
+from openonda.vpm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
+from openonda.vpm import ManeuverVLM
+from openonda.vpm import SurfaceSampler
 
 FREESTREAM_VELOCITY = 7.0
 TIP_SPEED_RATIO = 7.0
@@ -279,6 +270,8 @@ def write_manifest(args: argparse.Namespace, solver: Solver) -> None:
 
 
 def main() -> int:
+    from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
+
     args = build_arg_parser().parse_args()
     validate_arguments(args)
 

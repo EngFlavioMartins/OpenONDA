@@ -17,20 +17,20 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from source.solvers.VPM import (
+from openonda.vpm import (
     ParticleDistributor,
     Solver,
     VPMSetup,
     VelocityConfig,
 )
-from source.solvers.VPM.config.types import (
+from openonda.vpm import (
     AdvectionConfig,
     StabilizationConfig,
     TurbulenceConfig,
     ViscousConfig,
     StretchingConfig,
 )
-from source.solvers.VPM.utils import VortexRingVPM
+from openonda.vpm import VortexRingVPM
 
 
 def main():

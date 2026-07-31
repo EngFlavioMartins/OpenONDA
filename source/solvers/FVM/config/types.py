@@ -225,18 +225,34 @@ def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool]:
 
 @dataclass
 class BoundaryConfig:
-    """
-    Configuration for a boundary patch.
+    """Boundary-condition specification for one mesh patch.
+
+    Wraps the type and value for every field (velocity, pressure, scalar,
+    turbulent viscosity) applied to a single patch.  The naming follows
+    OpenFOAM conventions so that ``load_from_time_dir`` can round-trip an
+    existing OpenFOAM case without manual re-entry.
+
+    Use the factory methods (:meth:`inlet`, :meth:`outlet`, :meth:`wall`,
+    etc.) for common boundary types; they set sensible defaults for all
+    fields at once.
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 5.2 ``Boundary conditions``
+
+    Examples
+    --------
+    >>> BoundaryConfig.inlet("inlet", velocity=[1.0, 0.0, 0.0])
+    >>> BoundaryConfig.wall("cube")
     """
 
-    name: str  # e.g. "inlet", "outlet"
-    type_U: str = "fixedValue"  # fixedValue, zeroGradient, etc.
+    name: str
+    type_U: str = "fixedValue"
     value_U: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     type_p: str = "zeroGradient"
     value_p: float = 0.0
-    type_phi: str = "zeroGradient"  # For scalar transport
+    type_phi: str = "zeroGradient"
     value_phi: float = 0.0
-    # Nut (turbulent viscosity) specific BC (OpenFOAM supports 'calculated')
     type_nut: str = "calculated"
     value_nut: float = 0.0
     neighbour_patch: str | None = None
@@ -383,19 +399,34 @@ class BoundaryConfig:
 
 @dataclass
 class MeshConfig:
-    """
-    Configuration for mesh generation.
-    Supports OpenFOAM's blockMesh and cfMesh (cartesianMesh).
+    """Mesh generation parameters.
+
+    Supports two methods: OpenFOAM's ``blockMesh`` (structured multi-block)
+    and cfMesh's ``cartesianMesh`` (automatic Cartesian with local
+    refinement).  The quality-constraint fields (non-orthogonality, skewness,
+    aspect ratio, LSQ condition) are written into the ``meshDict`` when set
+    but are advisory — what the mesh generator can achieve depends on the
+    geometry and the configured cell sizes.
+
+    Use the factory methods :meth:`block_mesh` and :meth:`cartesian` for the
+    most common configurations.
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 2.1 ``Mesh generation with blockMesh``
+    - cfMesh User Guide, ``cartesianMesh``
+
+    Examples
+    --------
+    >>> MeshConfig.cartesian(surface_file="wing.stl", max_cell_size=0.05)
     """
 
     method: Literal["blockMesh", "cartesianMesh"] = "blockMesh"
-    surface_file: str | None = None  # For cartesianMesh: Expects this in constant/triSurface/
-    max_cell_size: float = 1.0  # For cartesianMesh
-    boundary_cell_size: float | None = None  # For cartesianMesh
-    min_cell_size: float | None = None  # For cartesianMesh
-    local_refinement: dict[str, float] = field(
-        default_factory=dict
-    )  # patch -> size (cartesianMesh)
+    surface_file: str | None = None
+    max_cell_size: float = 1.0
+    boundary_cell_size: float | None = None
+    min_cell_size: float | None = None
+    local_refinement: dict[str, float] = field(default_factory=dict)
     max_non_orthogonality_deg: float | None = None
     max_skewness: float | None = None
     max_aspect_ratio: float | None = None
@@ -487,8 +518,21 @@ class MeshConfig:
 
 @dataclass
 class TimeConfig:
-    """
-    Time control configuration.
+    """Temporal control for the simulation run.
+
+    Defines the time-step size, total run duration, output frequency, and
+    optional adaptive time-stepping with CFL-based adjustment.  The solver
+    advances from ``start_time`` to ``end_time`` in increments of ``delta_t``
+    (or less when ``adjust_timestep`` is enabled).
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 4.3 ``controlDict``
+
+    Examples
+    --------
+    >>> TimeConfig.transient(dt=0.01, duration=10.0)
+    >>> TimeConfig.steady(max_iter=500)
     """
 
     delta_t: float = 0.01
@@ -567,20 +611,72 @@ class TimeConfig:
 
 @dataclass
 class SchemesConfig:
-    """Discretisation schemes — OpenFOAM ``fvSchemes``."""
+    """Numerical discretisation schemes for the finite-volume solver.
 
-    convection_scheme: str = "limitedLinear"
-    gradient_scheme: str = "lsq"
-    time_scheme: str = "euler_implicit"
+    Selects the interpolation and derivative operators used to approximate
+    the convection, gradient, and time-advancement terms in the governing
+    equations.  The mapping from these user-facing names to internal dispatch
+    follows the conventions established by OpenFOAM's ``fvSchemes`` dictionary.
+
+    The choice of schemes has a direct impact on accuracy, numerical stability,
+    and the effective dissipation of the solver.  Low-dissipation schemes
+    (``LUST``, ``central``) are recommended for LES and DNS, while bounded
+    upwind-biased schemes (``limitedLinear``, ``upwind``) improve robustness on
+    coarse or low-quality meshes.
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 4.4 ``fvSchemes``
+    - Jasak, H. "Error Analysis and Estimation for the Finite Volume
+      Method with Applications to Fluid Flows." PhD thesis, Imperial
+      College London, 1996.
+
+    Examples
+    --------
+    >>> # Low-dissipation setup for LES
+    >>> SchemesConfig(convection_scheme="LUST", gradient_scheme="lsq")
+    """
+
+    convection_scheme: Literal[
+        "upwind",
+        "central",
+        "limitedLinear",
+        "LUST",
+        "linearUpwind",
+        "vanLeer",
+        "MUSCL",
+        "minmod",
+        "superbee",
+    ] = "limitedLinear"
+    gradient_scheme: Literal["gauss", "lsq"] = "lsq"
+    time_scheme: Literal["euler_implicit", "backward"] = "euler_implicit"
 
 
 @dataclass
 class LinearSolverConfig:
-    """Linear solvers and tolerances — OpenFOAM ``fvSolution/solvers``."""
+    """Linear-system solver settings for momentum and pressure.
 
-    linear_solver: str = "bicgstab"
-    momentum_solver: str | None = None
-    pressure_solver: str | None = None
+    Mirrors the ``solvers`` sub-dictionary of an OpenFOAM ``fvSolution`` file.
+    Separate tolerances and iteration limits can be set for the momentum
+    (velocity) and pressure (Poisson) equations.
+
+    The pressure solve supports algebraic multigrid (AMG) preconditioning via
+    ``pyamg``; ILU preconditioning with optional reuse is available for the
+    momentum equation.  A ``direct_fallback`` failure policy allows the solver
+    to degrade gracefully when iterative convergence fails.
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 4.5 ``fvSolution``
+
+    Examples
+    --------
+    >>> LinearSolverConfig(pressure_tol=1e-10, momentum_maxiter=2000)
+    """
+
+    linear_solver: Literal["bicgstab", "gmres", "cg", "amg", "spsolve"] = "bicgstab"
+    momentum_solver: Literal["bicgstab", "gmres", "cg", "spsolve"] | None = None
+    pressure_solver: Literal["amg", "bicgstab", "gmres", "cg", "spsolve"] | None = None
     pressure_nullspace_policy: Literal["auto", "reference", "petsc"] = "auto"
     linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
     reuse_ilu: bool = True
@@ -621,7 +717,23 @@ class PimpleControl:
 
 @dataclass
 class ForcesConfig:
-    """Wall-force / y+ diagnostics — OpenFOAM ``functionObjects/forces``."""
+    """Force, moment, and y+ diagnostics for wall patches.
+
+    Corresponds to the OpenFOAM ``functionObjects/forces`` and
+    ``functionObjects/yPlus`` utilities.  Forces are integrated over the
+    specified ``force_patches`` and non-dimensionalised with the reference
+    velocity, area, and length.  A separate ``yplus_patches`` list controls
+    which patches produce wall-distance and y+ output.
+
+    Examples
+    --------
+    >>> ForcesConfig(
+    ...     force_patches=["cube"],
+    ...     ref_velocity=1.0,
+    ...     ref_area=1.0,
+    ...     force_log_interval=10,
+    ... )
+    """
 
     force_patches: list[str] | None = None
     ref_velocity: float = 1.0
@@ -819,8 +931,25 @@ def solver_configs_from_case(
 
 @dataclass
 class TransportConfig:
-    """
-    Transport and fluid properties.
+    """Fluid properties (density and viscosity).
+
+    Provides factory methods for common fluids (:meth:`air`, :meth:`water`)
+    and a class method (:meth:`from_foam_file`) that reads an OpenFOAM
+    ``transportProperties`` dictionary.
+
+    The kinematic viscosity ``nu`` defines the Reynolds number together with
+    the freestream velocity and a reference length:
+
+        Re = U_ref * L_ref / nu
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 4.2 ``transportProperties``
+
+    Examples
+    --------
+    >>> TransportConfig.air()
+    >>> TransportConfig.water()
     """
 
     density: float = 1.225
@@ -886,13 +1015,25 @@ class TransportConfig:
 
 @dataclass
 class DynamicMeshConfig:
-    """
-    Configuration for predictable dynamic mesh motion.
+    """Mesh motion (rigid-body or static).
+
+    Controls whether the mesh translates and/or rotates as a rigid body, or
+    remains stationary.  Translational velocity and rotational speed about a
+    user-defined axis through a specified origin are set independently.
+
+    References
+    ----------
+    - OpenFOAM User Guide, Section 5.4 ``Dynamic mesh``
+
+    Examples
+    --------
+    >>> DynamicMeshConfig.static()
+    >>> DynamicMeshConfig.rigid(velocity=[1.0, 0.0, 0.0], omega=0.5)
     """
 
     method: Literal["static", "rigidMotion"] = "static"
-    velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])  # [vx, vy, vz]
-    omega: float = 0.0  # rad/s (rotation around axis)
+    velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    omega: float = 0.0
     axis: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     origin: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
@@ -1129,8 +1270,25 @@ class RunAcceptancePolicy:
 
 @dataclass
 class FVMSetup:
-    """
-    Top-level FVM configuration.
+    """Top-level configuration object for a finite-volume simulation.
+
+    Aggregates all sub-configurations (mesh, time, schemes, linear solvers,
+    PIMPLE control, forces, transport, turbulence, boundaries, output, and
+    execution backends) into a single dataclass.  Create a fully populated
+    instance and pass it to :func:`source.solvers.FVM.setup_fvm_solver`.
+
+    Most fields accept a sub-config object; leaving one at its default
+    produces a sensible baseline.  The ``case_name`` and (for non-generated
+    meshes) an explicit mesh path are required.
+
+    Examples
+    --------
+    >>> FVMSetup(
+    ...     case_name="my_run",
+    ...     schemes=SchemesConfig(convection_scheme="LUST"),
+    ...     time=TimeConfig.transient(dt=0.01, duration=10.0),
+    ...     boundaries=[BoundaryConfig.inlet("in", [1, 0, 0])],
+    ... )
     """
 
     case_name: str

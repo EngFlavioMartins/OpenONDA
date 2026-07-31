@@ -5,5 +5,6 @@ cd "$(dirname "$0")" || exit 1
 rm -rf solution constant figures .matplotlib
 rm -rf __pycache__ assets/__pycache__
 rm -f ./*.log
+rm -f assets/mesh.msh
 
 echo "Cleaned: solution/ constant/ figures/ caches and logs removed."

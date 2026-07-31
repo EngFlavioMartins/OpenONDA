@@ -7,22 +7,10 @@ The mesh is built beforehand by ``assets/create_mesh.py`` and read from
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
+import numpy as np
 
-REPO_ROOT = next(
-    parent
-    for parent in Path(__file__).resolve().parents
-    if (parent / "openonda_bootstrap.py").is_file()
-)
-sys.path.insert(0, str(REPO_ROOT))
-from openonda_bootstrap import activate  # noqa: E402
-
-activate(__file__)
-
-import numpy as np  # noqa: E402
-
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     ForcesConfig,
     FVMSetup,

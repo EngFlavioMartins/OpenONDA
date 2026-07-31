@@ -19,6 +19,7 @@ from ..config.constants import (
 )
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
+_DIRECT_INTEGRAL_LIMIT = 50_000
 
 
 @ti.data_oriented
@@ -332,11 +333,7 @@ class ParticleFieldEvaluation:
                         # Test-filtered enstrophy: the same quadratic form at a
                         # widened width sqrt(sigma_i^2 + sigma_j^2 + Delta_test^2).
                         # Delta_test = 2 V^(1/3) matches the LES filter width in
-                        # smagorinsky.py, so the pair gives the scale-separation
-                        # ratio rho_Z = Z_Delta / Z_2Delta that the enstrophy
-                        # envelope uses to tell physical vortex stretching (both
-                        # scales rise) from particle-scale pile-up (only the fine
-                        # scale rises).  Reusing this loop costs one extra zeta_.
+                        # smagorinsky.py and remains a useful resolution diagnostic.
                         d_test = 2.0 * (volumes[i] ** (1.0 / 3.0) + volumes[j] ** (1.0 / 3.0)) * 0.5
                         sigma_t = ti.sqrt(sigma_e * sigma_e + d_test * d_test)
                         zeta_test = zeta_(r_mag / sigma_t) / sigma_t**3
@@ -664,6 +661,8 @@ class ParticleFieldEvaluation:
         if N == 0:
             # Return zero values for empty particle system
             return self._get_zero_results()
+        if N > _DIRECT_INTEGRAL_LIMIT and self.particles_kernel == "GAUSSIAN":
+            return self._compute_fourier_flow_integrals(particles, flow_time, record_history)
 
         self._resize_fields(N)
 
@@ -701,6 +700,47 @@ class ParticleFieldEvaluation:
             "strength": np.array([float(r.gamma_x), float(r.gamma_y), float(r.gamma_z)]),
             "linear_impulse": np.array([float(r.imp_x), float(r.imp_y), float(r.imp_z)]),
             "angular_impulse": np.array([float(r.ang_x), float(r.ang_y), float(r.ang_z)]),
+        }
+
+    def _compute_fourier_flow_integrals(
+        self,
+        particles,
+        flow_time: float,
+        record_history: bool,
+    ) -> dict:
+        from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
+
+        position = particles.position_cpu().astype(np.float64)
+        circulation = particles.circulation_cpu().astype(np.float64)
+        radius = particles.radius_cpu().astype(np.float64)
+        volume = particles.volume_cpu().astype(np.float64)
+        viscosity = particles.viscosity_effective_cpu().astype(np.float64)
+        spectral = gaussian_fourier_integrals(
+            position,
+            circulation,
+            radius,
+            volume,
+        )
+
+        energy = spectral.energy
+        if record_history:
+            self._update_energy_history(flow_time, energy)
+        total = circulation.sum(axis=0, dtype=np.float64)
+        impulse = 0.5 * np.cross(position, circulation).sum(axis=0, dtype=np.float64)
+        angular = np.cross(position, np.cross(position, circulation)).sum(
+            axis=0, dtype=np.float64
+        ) / 3.0 - (1.0 / 3.0) * (radius[:, None] ** 2 * circulation).sum(axis=0)
+        return {
+            "kinetic_energy": energy,
+            "helicity": spectral.helicity,
+            "enstrophy": spectral.enstrophy,
+            "enstrophy_test": spectral.enstrophy_test,
+            "vorticity_dissipation_rate": -float(np.mean(viscosity)) * spectral.enstrophy,
+            "kinetic_energy_dissipation_rate": self._compute_energy_dissipation_rate(),
+            "strength_magnitude": float(np.linalg.norm(circulation, axis=1).sum()),
+            "strength": total,
+            "linear_impulse": impulse,
+            "angular_impulse": angular,
         }
 
     def compute_particles_kinetic_energy(self, particles) -> np.ndarray:

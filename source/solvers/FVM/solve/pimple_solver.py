@@ -11,7 +11,30 @@ from .contracts import OuterCorrectorDiagnostics
 
 
 class PIMPLESolver(simple_solver.SIMPLESolver):
-    """PIMPLE algorithm using the SIMPLE boundary and correction operators."""
+    """Transient PIMPLE algorithm for incompressible Navier–Stokes.
+
+    Combines the PISO inner corrector loop (momentum predictor + multiple
+    pressure correctors per time step) with outer correctors that re-solve
+    the momentum equation with an updated pressure field.  This hybrid
+    approach allows larger time steps than pure PISO while retaining good
+    temporal accuracy.
+
+    Inherits the SIMPLE boundary handling and pressure-correction operators;
+    replaces the steady outer iteration with a time-advancement loop driven
+    by the :class:`~source.solvers.FVM.core.solver.Solver`.
+
+    References
+    ----------
+    - Issa, R. I. "Solution of the implicitly discretised fluid flow
+      equations by operator-splitting." *J. Comput. Phys.*, 62(1):40–65, 1986.
+    - OpenFOAM User Guide, Section 6.3 ``PIMPLE algorithm``
+
+    Examples
+    --------
+    >>> solver = PIMPLESolver(mesh_data, geo_data, boundaries)
+    >>> solver.setup_pimple(params)
+    >>> diagnostics = solver.solve_one_step(dt=0.01)
+    """
 
     def __init__(self, mesh_data, geo_data, boundaries, params=None):
         """Initialise PIMPLE with transient defaults."""

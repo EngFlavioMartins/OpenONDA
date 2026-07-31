@@ -81,7 +81,10 @@ class VTKExporter:
         values = np.asarray(data)
         if np.issubdtype(values.dtype, np.floating):
             dtype = np.float32 if self.output.precision == "float32" else np.float64
-            values = values.astype(dtype, copy=False)
+            if dtype != values.dtype:
+                fmin = float(np.finfo(dtype).min)
+                fmax = float(np.finfo(dtype).max)
+                values = np.clip(values, fmin, fmax).astype(dtype)
         return np.ascontiguousarray(values)
 
     def _write_grid(self, filename: str, grid) -> None:

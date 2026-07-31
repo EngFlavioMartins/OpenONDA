@@ -31,20 +31,15 @@ from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _CASE_DIR = _SCRIPT_DIR.parent
-_REPO_ROOT = _CASE_DIR.parents[2]
-sys.path.insert(0, str(_REPO_ROOT))
-sys.path.insert(0, str(_CASE_DIR / "assets"))
-
-from source.solvers.VPM import Solver, VPMSetup
-from source.solvers.VPM.boundary_elements.vlm import (
+from openonda.vpm import BackupSystem, Solver, VPMSetup
+from openonda.vpm import (
     ForceConfig,
     VLMMeshSetup,
     VLMSurfaceSetup,
     VLMSetup,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import SmoothRampVLM
-from source.solvers.VPM.io.backup import BackupSystem
+from openonda.vpm import VLMLoadingDistribution
+from openonda.vpm import SmoothRampVLM
 
 from generate_surface import create_flat_plate, save_surface
 from theoretical_model import liftingline_circulation

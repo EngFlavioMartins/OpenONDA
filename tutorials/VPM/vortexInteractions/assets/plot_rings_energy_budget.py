@@ -11,8 +11,8 @@ written as dE/dt = -2*nu*Enstrophy.  This script reports both the code-native
 ``neg_nu_enstrophy`` balance and the literal ``-2*enstrophy`` balance so a
 normalization mismatch is impossible to miss.
 
-It reads the exported flow-integral CSV, with solver-log fallback for legacy
-runs.
+It reads the exported flow-integral CSV, with solver-log fallback when a CSV
+is unavailable.
 """
 
 from __future__ import annotations

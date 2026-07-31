@@ -26,20 +26,16 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-from source.solvers.VPM import Solver, VPMSetup, StabilizationConfig
-from source.solvers.VPM.config.types import TurbulenceConfig, VelocityConfig
-from source.solvers.VPM.boundary_elements.vlm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import ManeuverVLM
-from source.solvers.VPM.utils.field_samplers import SurfaceSampler
-
-_SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
-from generate_surface import create_delta_wing, save_surface  # noqa: E402
+from assets.generate_surface import create_delta_wing, save_surface
+from openonda.vpm import Solver, StabilizationConfig, VPMSetup
+from openonda.vpm import TurbulenceConfig, VelocityConfig
+from openonda.vpm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
+from openonda.vpm import ManeuverVLM
+from openonda.vpm import SurfaceSampler
 
 
 def main():

@@ -9,6 +9,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import json
 import os
+from pathlib import Path
+import tempfile
 
 import h5py
 import numpy as np
@@ -16,89 +18,86 @@ import numpy as np
 from ..config.constants import *  # noqa: F403
 from ..config.types import VPMSetup
 
-# =========================================================
+
+def _atomic_write_text(path: str | Path, text: str) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+        raise
 
 
 class BackupSystem:
-    """
-    Unified backup and restore system using HDF5 for numerical data
-    and JSON for configuration metadata.
+    """Atomic HDF5 snapshots and JSON-backed restart checkpoints."""
 
-    This eliminates precision loss while maintaining human-readable configuration.
-    """
+    @staticmethod
+    def load_numerical_state(solver, hdf5_file: str | Path) -> None:
+        path = str(hdf5_file)
+        if not BackupSystem._validate_hdf5_structure(path):
+            raise ValueError(f"invalid VPM checkpoint: {path}")
+        reference_strengths = getattr(solver, "_filament_reference_strengths", None)
+        reference_lengths = getattr(solver, "_filament_reference_lengths", None)
+        if solver.particles.number_of_particles:
+            solver.remove_particles(remove_all=True)
+        if reference_strengths is not None and reference_lengths is not None:
+            solver._filament_reference_strengths = reference_strengths
+            solver._filament_reference_lengths = reference_lengths
+        BackupSystem._load_numerical_data(solver, path)
 
     @staticmethod
     def backup_solver(
-        solver, backup_file_name: str, time_float32: float = None, verbose: bool = True
+        solver,
+        backup_file_name: str,
+        flow_time: float | None = None,
+        *,
+        append_step: bool = True,
+        verbose: bool = True,
     ) -> None:
-        """
-        Create a complete backup of the solver state using HDF5 + JSON + XDMF.
+        """Write an HDF5 particle snapshot and its XDMF descriptor.
 
         Args:
             solver: The Solver instance to backup
             backup_file_name: Base filename (without extension)
-            time_float32: Optional float32 time value for consistency (computed if None)
+            flow_time: Optional authoritative simulation time.
+            append_step: Append the zero-padded solver step to the filename.
             verbose: Whether to print backup completion message
         """
         try:
-            # Compute float32 time if not provided
-            if time_float32 is None:
-                import numpy as np
+            time_value = float(solver.flow_time if flow_time is None else flow_time)
+            backup_base = backup_file_name
+            if append_step:
+                backup_base = f"{backup_base}_{int(getattr(solver, 'time_step', 0)):06d}"
+            hdf5_file = f"{backup_base}.h5"
+            xdmf_file = f"{backup_base}.xdmf"
 
-                time_float32 = float(np.float32(solver.flow_time))
-
-            # For timestamped backups: add 6-digit sequential id
-            # For "latest" backups: do NOT add timestep (keep it consistent)
-            if "_latest" in backup_file_name:
-                # This is a "latest" checkpoint; don't add timestep suffix
-                hdf5_file = f"{backup_file_name}.h5"
-                xdmf_file = f"{backup_file_name}.xdmf"
-            else:
-                # This is a timestamped backup; add 6-digit sequential id
-                step_str = str(getattr(solver, "time_step", 0)).zfill(6)
-                backup_base = f"{backup_file_name}_{step_str}"
-                # Generate filenames: <name>_XXXXXX.ext
-                hdf5_file = f"{backup_base}.h5"
-                xdmf_file = f"{backup_base}.xdmf"
-
-            # Ensure destination directory exists (create if missing)
-            # If backup_file_name contains a directory, create it. If it's a bare filename,
-            # os.path.dirname() returns an empty string and no directory creation is needed.
             backup_dir = os.path.dirname(hdf5_file)
             if backup_dir:
                 os.makedirs(backup_dir, exist_ok=True)
 
-            # 1. Save numerical data atomically.  An interrupted direct write
-            # used to leave a zero-byte/truncated .h5 file that crashed later
-            # post-processing.  The temporary sibling is invisible to readers;
-            # os.replace is atomic on the destination filesystem.
             hdf5_tmp = f"{hdf5_file}.tmp"
             try:
                 if os.path.exists(hdf5_tmp):
                     os.remove(hdf5_tmp)
-                BackupSystem._save_numerical_data(solver, hdf5_tmp, time_float32)
+                BackupSystem._save_numerical_data(solver, hdf5_tmp, time_value)
                 os.replace(hdf5_tmp, hdf5_file)
             finally:
                 if os.path.exists(hdf5_tmp):
                     os.remove(hdf5_tmp)
 
-            # 2. Configuration JSON is NOT saved at every timestep (use save_state() explicitly)
-            # This reduces IO overhead during simulation
+            BackupSystem._create_xdmf_file(solver, backup_base, xdmf_file, time_value)
 
-            # 3. Create XDMF file for ParaView visualization (references the per-step HDF5) - use float32 time
-            backup_base_for_xdmf = (
-                backup_file_name
-                if "_latest" in backup_file_name
-                else f"{backup_file_name}_{str(getattr(solver, 'time_step', 0)).zfill(6)}"
-            )
-            BackupSystem._create_xdmf_file(solver, backup_base_for_xdmf, xdmf_file, time_float32)
-
-            # Print message only if verbose is True
             if verbose:
-                backup_dir = (
-                    os.path.dirname(hdf5_file) if os.path.dirname(hdf5_file) else os.getcwd()
-                )
-                print(f"Solution data saved to {backup_dir}")
+                print(f"Snapshot saved: {hdf5_file}")
 
         except Exception as e:
             raise RuntimeError(f"Backup failed: {e}") from e
@@ -106,6 +105,23 @@ class BackupSystem:
     @staticmethod
     def _save_particle_optional_fields(particles_group, solver, n_particles: int) -> None:
         """Save optional/advanced particle fields to HDF5, silently skipping unavailable ones."""
+        reference_strengths = getattr(solver, "_filament_reference_strengths", None)
+        reference_lengths = getattr(solver, "_filament_reference_lengths", None)
+        if (
+            reference_strengths is not None
+            and reference_lengths is not None
+            and len(reference_strengths) == n_particles
+            and len(reference_lengths) == n_particles
+        ):
+            particles_group.create_dataset(
+                "filament_reference_strength",
+                data=np.asarray(reference_strengths),
+            )
+            particles_group.create_dataset(
+                "filament_reference_length",
+                data=np.asarray(reference_lengths),
+            )
+
         try:
             zone_id_data = solver.particles.zone_id_cpu()
             particles_group.create_dataset("zone_id", data=zone_id_data)
@@ -171,14 +187,60 @@ class BackupSystem:
             print(f"(Info) Warning: Could not compute enstrophy for backup: {e}")
 
     @staticmethod
-    def _save_numerical_data(solver, hdf5_file: str, time_float32: float) -> None:
-        """Save all numerical data to HDF5 with consistent float32 time."""
+    def _save_numerical_data(solver, hdf5_file: str, flow_time: float) -> None:
+        """Save all numerical data to HDF5."""
         with h5py.File(hdf5_file, "w") as f:
             solver_group = f.create_group("solver")
-            solver_group.attrs["flow_time"] = time_float32
+            solver_group.attrs["flow_time"] = flow_time
             solver_group.attrs["time_step"] = solver.time_step
             solver_group.attrs["time_step_size"] = solver.time_step_size
             solver_group.attrs["number_of_particles"] = solver.particles.number_of_particles
+            solver_group.attrs["filament_refinement_cumulative_energy_transfer"] = float(
+                getattr(solver, "_filament_refinement_cumulative_energy_transfer", 0.0)
+            )
+            energy_reference = getattr(
+                solver,
+                "_filament_refinement_energy_reference",
+                None,
+            )
+            if energy_reference is not None:
+                solver_group.attrs["filament_refinement_energy_reference"] = float(energy_reference)
+            enstrophy_reference = getattr(
+                solver,
+                "_filament_refinement_enstrophy_reference",
+                None,
+            )
+            if enstrophy_reference is not None:
+                solver_group.attrs["filament_refinement_enstrophy_reference"] = float(
+                    enstrophy_reference
+                )
+            for name, value in getattr(
+                solver,
+                "_filament_refinement_diagnostics",
+                {},
+            ).items():
+                solver_group.attrs[name] = value
+            for name, value in getattr(
+                solver,
+                "_divergence_relaxation_diagnostics",
+                {},
+            ).items():
+                solver_group.attrs[name] = value
+            reference_moments = getattr(
+                solver,
+                "_divergence_relaxation_reference_moments",
+                None,
+            )
+            if reference_moments is not None:
+                reference_array = np.asarray(reference_moments, dtype=np.float64)
+                if reference_array.shape != (3, 3):
+                    raise ValueError(
+                        "divergence-relaxation reference moments must have shape (3, 3)"
+                    )
+                solver_group.create_dataset(
+                    "divergence_relaxation_reference_moments",
+                    data=reference_array,
+                )
 
             particles_group = f.create_group("particles")
             n_particles = solver.particles.number_of_particles
@@ -208,7 +270,7 @@ class BackupSystem:
         config_data = {
             "solver_config": solver.config.to_dict(),
             "backup_metadata": {
-                "backup_format_version": "2.1",  # Bumped for background velocity support
+                "backup_format_version": "2.2",
                 "original_backend": solver.config.processing_unit,
                 "openonda_version": getattr(solver, "version", "unknown"),
                 "particle_count": int(
@@ -224,13 +286,13 @@ class BackupSystem:
         if config_dir:
             os.makedirs(config_dir, exist_ok=True)
 
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=4, ensure_ascii=False)
+        _atomic_write_text(
+            config_file,
+            json.dumps(config_data, indent=2, ensure_ascii=False) + "\n",
+        )
 
     @staticmethod
-    def _create_xdmf_file(
-        solver, backup_file_name: str, xdmf_file: str, time_float32: float
-    ) -> None:
+    def _create_xdmf_file(solver, backup_file_name: str, xdmf_file: str, flow_time: float) -> None:
         """Create XDMF file that references the HDF5 data for ParaView visualization.
 
         Only datasets that actually exist in the HDF5 file are referenced,
@@ -239,6 +301,8 @@ class BackupSystem:
         n_particles = solver.particles.number_of_particles
 
         if n_particles == 0:
+            if os.path.exists(xdmf_file):
+                os.remove(xdmf_file)
             print("(Info) Warning: No particles to export to XDMF")
             return
 
@@ -288,7 +352,7 @@ class BackupSystem:
       </Geometry>
 
       <!-- Time information -->
-      <Time Value="{time_float32:.6g}"/>
+      <Time Value="{flow_time:.17g}"/>
 
       <!-- Particle attributes -->
       <Attribute Name="Velocity" AttributeType="Vector" Center="Node">
@@ -356,9 +420,7 @@ class BackupSystem:
         if xdmf_dir:
             os.makedirs(xdmf_dir, exist_ok=True)
 
-        # Write XDMF file
-        with open(xdmf_file, "w") as f:
-            f.write(xdmf_content)
+        _atomic_write_text(xdmf_file, xdmf_content)
 
     @staticmethod
     def create_temporal_xdmf(backup_pattern: str, output_file: str | None = None) -> str:
@@ -471,9 +533,7 @@ class BackupSystem:
   </Domain>
 </Xdmf>"""
 
-        # Write temporal XDMF file
-        with open(output_file, "w") as f:
-            f.write(xdmf_content)
+        _atomic_write_text(output_file, xdmf_content)
 
         print(f"Created temporal XDMF file: {output_file}")
         print(f"Contains {len(h5_files)} timesteps")
@@ -494,7 +554,10 @@ class BackupSystem:
         try:
             # Generate filenames
             hdf5_file = f"{backup_file_name}.h5"
-            config_file = f"{backup_file_name}_config.json"
+            config_file = f"{backup_file_name}.config.json"
+            legacy_config_file = f"{backup_file_name}_config.json"
+            if not os.path.exists(config_file) and os.path.exists(legacy_config_file):
+                config_file = legacy_config_file
 
             # Verify files exist
             if not os.path.exists(hdf5_file):
@@ -546,7 +609,13 @@ class BackupSystem:
     @staticmethod
     def _load_optional_particle_fields(particles_group) -> dict:
         """Load optional advanced particle fields; returns dict of available arrays."""
-        result = {"zone_id": None, "velocity_gradient": None, "strain_rate": None}
+        result = {
+            "zone_id": None,
+            "velocity_gradient": None,
+            "strain_rate": None,
+            "filament_reference_strength": None,
+            "filament_reference_length": None,
+        }
         if "zone_id" in particles_group:
             result["zone_id"] = particles_group["zone_id"][:]
         if "velocity_gradient" in particles_group:
@@ -559,6 +628,12 @@ class BackupSystem:
             result["strain_rate"] = (
                 sr.reshape(-1, 3, 3) if sr.ndim == 2 and sr.shape[1] == 9 else sr
             )
+        if "filament_reference_strength" in particles_group:
+            result["filament_reference_strength"] = particles_group["filament_reference_strength"][
+                :
+            ]
+        if "filament_reference_length" in particles_group:
+            result["filament_reference_length"] = particles_group["filament_reference_length"][:]
         if "total_enstrophy" in particles_group:
             print(f"(Info) Restored enstrophy value: {float(particles_group['total_enstrophy'])}")
         return result
@@ -571,6 +646,42 @@ class BackupSystem:
             solver.flow_time = float(solver_group.attrs["flow_time"])
             solver.time_step = int(solver_group.attrs["time_step"])
             solver.time_step_size = float(solver_group.attrs["time_step_size"])
+            if hasattr(solver, "_filament_refinement_diagnostics"):
+                for name in solver._filament_refinement_diagnostics:
+                    if name in solver_group.attrs:
+                        solver._filament_refinement_diagnostics[name] = solver_group.attrs[
+                            name
+                        ].item()
+                if "filament_refinement_cumulative_energy_transfer" in solver_group.attrs:
+                    solver._filament_refinement_cumulative_energy_transfer = float(
+                        solver_group.attrs["filament_refinement_cumulative_energy_transfer"]
+                    )
+                if "filament_refinement_energy_reference" in solver_group.attrs:
+                    solver._filament_refinement_energy_reference = float(
+                        solver_group.attrs["filament_refinement_energy_reference"]
+                    )
+                if "filament_refinement_enstrophy_reference" in solver_group.attrs:
+                    solver._filament_refinement_enstrophy_reference = float(
+                        solver_group.attrs["filament_refinement_enstrophy_reference"]
+                    )
+            if hasattr(solver, "_divergence_relaxation_diagnostics"):
+                for name in solver._divergence_relaxation_diagnostics:
+                    if name in solver_group.attrs:
+                        solver._divergence_relaxation_diagnostics[name] = solver_group.attrs[
+                            name
+                        ].item()
+            if "divergence_relaxation_reference_moments" in solver_group:
+                reference_array = np.asarray(
+                    solver_group["divergence_relaxation_reference_moments"][:],
+                    dtype=np.float64,
+                )
+                if reference_array.shape != (3, 3):
+                    raise ValueError(
+                        "checkpoint divergence-relaxation reference moments must have shape (3, 3)"
+                    )
+                solver._divergence_relaxation_reference_moments = tuple(
+                    row.copy() for row in reference_array
+                )
 
             particles_group = f["particles"]
             n_particles = int(solver_group.attrs["number_of_particles"])
@@ -590,23 +701,48 @@ class BackupSystem:
 
             optional = BackupSystem._load_optional_particle_fields(particles_group)
 
-            solver.add_vortex_particles(
-                position=position,
-                velocity=velocity,
-                circulation=circulation,
-                radius=radius,
-                volume=volume,
-                viscosity=viscosity,
-                viscosity_turbulent=viscosity_turbulent,
-                group_id=group_id,
-                velocity_gradient=optional["velocity_gradient"],
-                zone_id=optional["zone_id"],
-            )
+            solver._loading_numerical_state = True
+            try:
+                solver.add_vortex_particles(
+                    position=position,
+                    velocity=velocity,
+                    circulation=circulation,
+                    radius=radius,
+                    volume=volume,
+                    viscosity=viscosity,
+                    viscosity_turbulent=viscosity_turbulent,
+                    group_id=group_id,
+                    velocity_gradient=optional["velocity_gradient"],
+                    zone_id=optional["zone_id"],
+                )
+            finally:
+                solver._loading_numerical_state = False
 
             if vorticity is not None:
                 solver.particles.set_field("vorticity", vorticity)
             if optional["strain_rate"] is not None:
                 solver.particles.set_field("strain_rate", optional["strain_rate"])
+            saved_reference_strength = optional["filament_reference_strength"]
+            saved_reference_length = optional["filament_reference_length"]
+            if saved_reference_strength is not None and saved_reference_length is not None:
+                solver._filament_reference_strengths = np.asarray(
+                    saved_reference_strength,
+                    dtype=np.float64,
+                )
+                solver._filament_reference_lengths = np.asarray(
+                    saved_reference_length,
+                    dtype=np.float64,
+                )
+            elif getattr(solver.filament_refinement_config, "enabled", False):
+                references = getattr(solver, "_filament_reference_strengths", None)
+                lengths = getattr(solver, "_filament_reference_lengths", None)
+                if references is None or lengths is None or len(references) != n_particles:
+                    raise ValueError(
+                        "checkpoint has no filament-lineage state and its particle "
+                        "count does not match the initialized cloud; restarting an "
+                        "already-refined legacy checkpoint would reset its material "
+                        "stretch history"
+                    )
 
             print(f"Restored {solver.particles.number_of_particles} particles with full precision")
 
@@ -632,7 +768,10 @@ class BackupSystem:
         """
         try:
             hdf5_file = f"{backup_file_name}.h5"
-            config_file = f"{backup_file_name}_config.json"
+            config_file = f"{backup_file_name}.config.json"
+            legacy_config_file = f"{backup_file_name}_config.json"
+            if not os.path.exists(config_file) and os.path.exists(legacy_config_file):
+                config_file = legacy_config_file
             xdmf_file = f"{backup_file_name}.xdmf"
 
             if not (os.path.exists(hdf5_file) and os.path.exists(config_file)):

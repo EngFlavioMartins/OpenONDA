@@ -9,7 +9,23 @@ import numpy as np
 
 @dataclass
 class FieldState:
-    """Mutable cell and face fields with a strict contiguous float64 layout."""
+    """Cell-centred velocity, pressure, and face flux for one time step.
+
+    Enforces a contiguous ``float64`` memory layout and finite-value
+    validation in ``__post_init__``.  The three arrays share the same leading
+    dimension (number of cells including ghost layers).
+
+    Call :meth:`copy` to produce an independent checkpoint that is not
+    affected by subsequent solver updates.
+
+    Examples
+    --------
+    >>> state = FieldState(
+    ...     velocity=np.zeros((n_cells, 3)),
+    ...     pressure=np.zeros(n_cells),
+    ...     face_flux=np.zeros(n_faces),
+    ... )
+    """
 
     velocity: np.ndarray
     pressure: np.ndarray

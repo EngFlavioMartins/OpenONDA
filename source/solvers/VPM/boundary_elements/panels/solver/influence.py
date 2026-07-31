@@ -43,6 +43,23 @@ def build_AIC_matrix(
 
 
 @ti.kernel
+def build_source_AIC_matrix(
+    vertices: ti.template(),
+    centers: ti.template(),
+    normals: ti.template(),
+    AIC: ti.template(),
+    n: int,
+):
+    for i, j in ti.ndrange(n, n):
+        if i == j:
+            AIC[i, j] = 0.5
+        else:
+            v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]
+            velocity = compute_source_velocity(centers[i], v0, v1, v2, normals[j])
+            AIC[i, j] = velocity.dot(normals[i])
+
+
+@ti.kernel
 def build_AIC_matrix_dirichlet(
     vertices: ti.template(),
     centers: ti.template(),

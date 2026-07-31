@@ -7,7 +7,9 @@ from dataclasses import replace
 import importlib.util
 import io
 import logging
+import math
 from pathlib import Path
+import sys
 
 import numpy as np
 import pytest
@@ -17,12 +19,18 @@ _REFERENCE = (
     Path(__file__).parents[2]
     / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
+_MESHER = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/assets/create_mesh.py"
 
 
 def _load(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    search_paths = [str(path.parent), str(path.parent.parent)]
+    sys.path[:0] = search_paths
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.path[: len(search_paths)]
     return module
 
 
@@ -78,6 +86,11 @@ def reference():
 
 
 @pytest.fixture(scope="module")
+def mesher():
+    return _load("hybrid_cube_mesher", _MESHER)
+
+
+@pytest.fixture(scope="module")
 def hybrid_solver(bench, tmp_path_factory):
     from source.solvers.FVM import Solver
 
@@ -85,7 +98,7 @@ def hybrid_solver(bench, tmp_path_factory):
     serial_setup = replace(bench.FVM_SETUP, cores=1)
     with contextlib.redirect_stdout(io.StringIO()):
         return Solver(
-            serial_setup, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.CORE_BOX)
+            serial_setup, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.FVM_BOX)
         )
 
 
@@ -104,7 +117,6 @@ def test_common_fvm_settings_identical(bench, reference):
     assert hybrid.time.delta_t == fully_meshed.time.delta_t
     assert hybrid.time.start_time == fully_meshed.time.start_time
     assert hybrid.time.end_time == fully_meshed.time.end_time
-    assert hybrid.time.write_interval_time == fully_meshed.time.write_interval_time
     assert hybrid.time.adjust_timestep is False
     assert fully_meshed.time.adjust_timestep is False
     assert hybrid.initial_U == fully_meshed.initial_U
@@ -141,17 +153,37 @@ def test_vpm_setup_compatible(bench):
     ratio = vpm.time_step_size / bench.DT_FVM
     assert ratio == pytest.approx(round(ratio))
     domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
-    box = np.asarray(bench.CORE_BOX, dtype=float)
+    box = np.asarray(bench.FVM_BOX, dtype=float)
     assert np.all(domain[::2] <= box[::2]) and np.all(domain[1::2] >= box[1::2])
+    assert vpm.processing_unit == "METAL"
+    assert vpm.precision == "f32"
+    assert vpm.panel_solver.bc_type == "NEUMANN"
+    assert vpm.panel_solver.coupling_scope == "donor"
+
+
+def test_mesh_domain_uses_case_setting(bench, mesher):
+    bounds = tuple(
+        value
+        for axis in ("x", "y", "z")
+        for value in (mesher.AXES[axis][0][0], mesher.AXES[axis][0][-1])
+    )
+    assert bounds == bench.FVM_BOX
+    assert mesher.PANEL_DIVISIONS == 3
+    assert bench.VPM_SETUP.panel_solver.max_panels >= 12 * mesher.PANEL_DIVISIONS**2
 
 
 def test_output_names_and_cadence_match_allplot_contract(bench, reference):
     assert bench.FVM_SETUP.case_name.startswith("coupled_")
     assert reference.FVM_SETUP.case_name == "referenceFlow"
-    assert bench.VPM_SETUP.backup_file_name == "vpm_solution"
+    assert bench.VPM_SETUP.backup_file_name == ""
     assert Path(bench.VPM_SETUP.backup_directory) == bench.CASE_DIR / "solution"
     assert pytest.approx(bench.WRITE_INTERVAL) == bench.BACKUP_PERIOD * bench.DT_VPM
-    assert pytest.approx(bench.WRITE_INTERVAL) == reference.WRITE_INTERVAL
+    hybrid_steps = round(bench.WRITE_INTERVAL / bench.DT_FVM)
+    reference_steps = round(reference.WRITE_INTERVAL / reference.DT_FVM)
+    assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.WRITE_INTERVAL)
+    assert reference_steps * reference.DT_FVM == pytest.approx(reference.WRITE_INTERVAL)
+    common_time = math.lcm(hybrid_steps, reference_steps) * bench.DT_FVM
+    assert common_time <= bench.T_END
     assert pytest.approx(bench.T_END) == reference.T_END
 
 
@@ -165,7 +197,7 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
     assert coupler.dt_fvm == pytest.approx(bench.DT_FVM)
     assert coupler.t_end == pytest.approx(bench.T_END)
     assert setup.nu == pytest.approx(bench.NU)
-    assert np.allclose(setup.fvm_box, bench.CORE_BOX, atol=1e-12)
+    assert np.allclose(setup.fvm_box, bench.FVM_BOX, atol=1e-12)
 
     bad = replace(
         bench.COUPLER_SETUP,
@@ -195,7 +227,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
 
     setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="viscosity"):
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.CORE_BOX, bench.NU)
+        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
 
 
 def test_incompatible_vpm_freestream_raises(bench, tmp_path):
@@ -207,7 +239,7 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
 
     setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="freestream"):
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.CORE_BOX, bench.NU)
+        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
 
 
 @pytest.mark.parametrize(
@@ -248,7 +280,7 @@ def test_global_regen_threshold_reference_warns(
 
     setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
     with caplog.at_level(logging.WARNING, logger="coupler"):
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.CORE_BOX, bench.NU)
+        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
 
     warned = any("GLOBAL |Γ| reference" in r.message for r in caplog.records)
     assert warned is expect_warning

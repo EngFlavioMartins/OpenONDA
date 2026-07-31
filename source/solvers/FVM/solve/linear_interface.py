@@ -27,12 +27,51 @@ def _emit_warning(log_sink, message, *args) -> None:
 
 
 class LinearSolveError(RuntimeError):
-    """Raised when a configured linear backend does not converge."""
+    """Raised when a configured linear backend does not converge.
+
+    Both the SciPy and PETSc backends raise this exception when the Krylov
+    method fails to reach the requested tolerance, unless the
+    ``direct_fallback`` failure policy has been set.
+    """
 
 
 @dataclass(frozen=True)
 class LinearSolveResult:
-    """Backend-neutral convergence record for a sparse solve."""
+    """Backend-neutral convergence record for a single sparse solve.
+
+    Produced by :func:`solve_linear_system` and consumed by the solver's
+    diagnostic pipeline and log output.  The frozen tuple fields make
+    instances safe to store across time steps without accidental mutation.
+
+    Attributes
+    ----------
+    backend : str
+        Linear-algebra backend used (``"scipy"`` or ``"petsc"``).
+    method : str
+        Solver method (e.g. ``"bicgstab"``, ``"cg+gamg"``).
+    preconditioner : str or None
+        Preconditioner name, if one was applied.
+    nullspace : str or None
+        Null-space strategy (e.g. ``"constant"`` for pressure).
+    converged : bool
+        Whether the tolerance was met.
+    reason : str
+        Human-readable convergence or failure explanation.
+    iterations : int
+        Number of iterations performed (0 for direct solves).
+    initial_residual : float
+        Residual before the solve began.
+    final_residual : float
+        Residual after the solve completed.
+    setup_seconds : float
+        Wall time for preconditioner setup.
+    solve_seconds : float
+        Wall time for the iterative solve.
+    used_fallback : bool
+        Whether a direct fallback was invoked after iterative failure.
+    preconditioner_rebuilt : bool or None
+        Whether the preconditioner was rebuilt this call (``None`` for direct).
+    """
 
     backend: str
     method: str
@@ -55,7 +94,19 @@ LinearSolveInfo = LinearSolveResult
 
 @runtime_checkable
 class LinearSolver(Protocol):
-    """Backend-neutral sparse solve contract."""
+    """Protocol for backend-neutral sparse linear solves.
+
+    Any object that implements a ``solve`` method with the signature below
+    satisfies the protocol and can be used as a drop-in replacement for the
+    default SciPy or PETSc backends.
+
+    Examples
+    --------
+    >>> class MySolver:
+    ...     def solve(self, matrix, rhs, **options):
+    ...         result = LinearSolveResult(...)
+    ...         return solution, result
+    """
 
     def solve(self, matrix, rhs, **_options) -> tuple[np.ndarray, LinearSolveResult]: ...
 

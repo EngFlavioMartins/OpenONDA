@@ -474,7 +474,23 @@ class Logging:
 
 
 class Timer:
-    """Named wall-clock timers whose output is routed through :class:`Logging`."""
+    """Named wall-clock timers for profiling solver phases.
+
+    Provides static ``start`` / ``stop`` / ``log`` methods that operate on
+    a module-level dictionary of named timers.  Elapsed times are returned
+    as floats (seconds) and can be optionally emitted through a
+    :class:`Logging` sink.
+
+    Timers are intentionally simple (no nesting, no cumulative totals) to
+    keep the profiling overhead negligible.
+
+    Examples
+    --------
+    >>> Timer.start("assembly")
+    >>> ...  # do work
+    >>> elapsed = Timer.stop("assembly")
+    >>> print(f"Assembly took {elapsed:.3f} s")
+    """
 
     _timers: dict[str, float] = {}
 

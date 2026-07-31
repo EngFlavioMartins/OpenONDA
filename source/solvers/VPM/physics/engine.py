@@ -13,6 +13,7 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+import numpy as np
 import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
@@ -46,6 +47,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         # Applied at every RK stage after Biot-Savart; used by the FVM-VPM coupler
         # to blend in the FVM near-body velocity for overlap-region particles.
         self.velocity_override = None
+        self.body_velocity = None
 
         # Create specialized physics handlers
         self._advection = _AdvectionHandler(self)
@@ -231,14 +233,20 @@ class _AdvectionHandler:
             N,
             reuse_tree=reuse_tree and self._parent.velocity_override is None,
         )
-        if self._parent.velocity_override is not None:
+        body_velocity = self._parent.body_velocity
+        if body_velocity is not None or self._parent.velocity_override is not None:
             pos_np = pos_field.to_numpy()
             vel_np = out_field.to_numpy()
+            if body_velocity is not None:
+                vel_np[:N] += np.asarray(body_velocity(pos_np[:N]), dtype=vel_np.dtype).reshape(
+                    N, 3
+                )
             override = self._parent.velocity_override
-            if hasattr(override, "blend_into"):
-                override.blend_into(pos_np[:N], vel_np[:N], vel_np[:N])
-            else:
-                vel_np[:N] = override(pos_np[:N], vel_np[:N])
+            if override is not None:
+                if hasattr(override, "blend_into"):
+                    override.blend_into(pos_np[:N], vel_np[:N], vel_np[:N])
+                else:
+                    vel_np[:N] = override(pos_np[:N], vel_np[:N])
             out_field.from_numpy(vel_np)
 
     def _step(self, particles, dt, scheme, N, precomputed_k1=False):

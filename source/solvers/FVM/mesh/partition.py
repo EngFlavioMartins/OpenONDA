@@ -172,7 +172,24 @@ def _rank_for_cells(cell_ids: np.ndarray, offsets: np.ndarray) -> np.ndarray:
 
 @dataclass(frozen=True)
 class HaloSchedule:
-    """Global cell IDs sent to and received from each neighboring rank."""
+    """Global and local IDs for halo-cell exchange with neighbouring ranks.
+
+    For each rank in the communicator, stores the global cell IDs and local
+    (owned-plus-halo) indices of the cells that are sent (this rank's owned
+    cells that are ghosts on another rank) and received (this rank's ghost
+    cells that are owned on another rank).
+
+    Attributes
+    ----------
+    send_global_ids : tuple[np.ndarray, ...]
+        Per-rank global cell IDs to send.
+    receive_global_ids : tuple[np.ndarray, ...]
+        Per-rank global cell IDs to receive.
+    send_local_indices : tuple[np.ndarray, ...]
+        Per-rank local (owned) indices for the cells to send.
+    receive_local_indices : tuple[np.ndarray, ...]
+        Per-rank local (halo) indices where received values are stored.
+    """
 
     send_global_ids: tuple[np.ndarray, ...]
     receive_global_ids: tuple[np.ndarray, ...]
@@ -181,6 +198,7 @@ class HaloSchedule:
 
     @property
     def neighbor_ranks(self) -> tuple[int, ...]:
+        """Return a tuple of ranks that exchange at least one cell."""
         return tuple(
             rank
             for rank, (send, receive) in enumerate(
@@ -192,7 +210,35 @@ class HaloSchedule:
 
 @dataclass(frozen=True)
 class CellPartition:
-    """Owned/ghost cells and face fragments for one MPI rank."""
+    """Owned/ghost cell partitioning for one MPI rank.
+
+    Stores the mapping from global cell IDs to local indices, the set of
+    owned cells and ghost cells, and the :class:`HaloSchedule` for
+    communication.  Constructed via the :meth:`from_mesh_data` factory.
+
+    Attributes
+    ----------
+    rank : int
+        This MPI rank.
+    size : int
+        Total number of MPI ranks.
+    global_n_cells : int
+        Total number of cells in the global (unpartitioned) mesh.
+    owned_global_ids : np.ndarray
+        Global cell IDs owned by this rank.
+    ghost_global_ids : np.ndarray
+        Global cell IDs that are ghosts on this rank.
+    local_global_ids : np.ndarray
+        All global IDs in local index order (owned first, then ghosts).
+    local_face_global_ids : np.ndarray
+        Global face IDs for all locally relevant faces.
+    processor_face_global_ids : np.ndarray
+        Global face IDs for processor (inter-rank) boundary faces.
+    physical_boundary_face_global_ids : np.ndarray
+        Global face IDs for physical boundary patches.
+    halo : HaloSchedule
+        Halo-exchange schedule for neighbour communication.
+    """
 
     rank: int
     size: int

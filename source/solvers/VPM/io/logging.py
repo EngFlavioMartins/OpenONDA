@@ -505,11 +505,13 @@ class Logging:
     def _format_monitoring_io(system) -> list:
         """Format monitoring and I/O section."""
         lines = []
+        name = (system.backup_file_name or "").strip()
+        prefix = f"vpm_{name}" if name else "vpm"
         lines.append("\n" + "-" * 60)
         lines.append("MONITORING & I/O")
         lines.append("-" * 60)
-        lines.append(f"  Backup Frequency         : {system.backup_frequency} steps")
-        lines.append(f"  Backup File Name         : {system.backup_file_name}")
+        lines.append(f"  Snapshot Frequency       : {system.backup_frequency} steps")
+        lines.append(f"  Snapshot Prefix          : {prefix}")
         logging_freq = getattr(system.config, "logging_frequency", 0)
         lines.append(f"  Logging Frequency        : {logging_freq} steps")
         timing_freq = getattr(system, "timing_frequency", 0)
@@ -709,10 +711,12 @@ class Logging:
         lines.append(f"  Total Strength           : {total_strength:.2E} m³/s")
 
         # I/O and monitoring
+        name = (system.backup_file_name or "").strip()
+        prefix = f"vpm_{name}" if name else "vpm"
         lines.append("")
         lines.append("MONITORING & I/O:")
-        lines.append(f"  Backup Frequency         : {system.backup_frequency} steps")
-        lines.append(f"  Backup File Name         : {system.backup_file_name}")
+        lines.append(f"  Snapshot Frequency       : {system.backup_frequency} steps")
+        lines.append(f"  Snapshot Prefix          : {prefix}")
 
         lines.append("-" * 60)
         return "\n".join(lines)
@@ -937,15 +941,14 @@ class Logging:
         """Configure solver output as file-only, tee, or console-only.
 
         Naming policy:
-          - backup_file_name empty/None  → solution.log
-          - backup_file_name provided    → <backup_file_name>.log
+          - backup_file_name empty/None  → vpm.log
+          - backup_file_name provided    → vpm_<backup_file_name>.log
 
         Sets the following attributes on *solver*:
           log_file_path, _stdout_original, _stderr_original,
           _log_file_handle, _restore_output_streams.
         """
         import atexit
-        from pathlib import Path as _Path
         import sys
 
         log_mode = getattr(getattr(solver, "config", None), "log_mode", "file")
@@ -960,7 +963,7 @@ class Logging:
             raise ValueError(f"Unknown log_mode {log_mode!r}")
 
         backup_name = (getattr(solver, "backup_file_name", "") or "").strip()
-        log_basename = f"{_Path(backup_name).stem}.log" if backup_name else "solution.log"
+        log_basename = f"vpm_{backup_name}.log" if backup_name else "vpm.log"
         log_directory = getattr(solver, "backup_directory", None) or "solution"
         os.makedirs(log_directory, exist_ok=True)
 

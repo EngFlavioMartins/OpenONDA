@@ -49,7 +49,21 @@ def build_cell_face_csr(owners, neighbours, n_elements, n_faces):
 
 @dataclass(frozen=True)
 class BoundaryPatch:
-    """Stable patch identity independent of boundary operator state."""
+    """Stable identity of one mesh patch, independent of operator state.
+
+    Attributes
+    ----------
+    name : str
+        User-assigned patch name (e.g. ``"inlet"``).
+    start_face : int
+        Index of the first face belonging to this patch.
+    n_faces : int
+        Number of faces in the patch.
+    source_type : str or None
+        Original boundary type as read from the mesh file.
+    physical_tag : int or None
+        GMSH physical group tag, if the mesh came from GMSH.
+    """
 
     name: str
     start_face: int
@@ -60,7 +74,42 @@ class BoundaryPatch:
 
 @dataclass(frozen=True)
 class MeshTopology:
-    """Immutable contiguous topology used at backend boundaries."""
+    """Immutable cell-face topology used at backend boundaries.
+
+    Stores the CSR cell-to-face connectivity, owner/neighbour arrays, and
+    the list of boundary patches.  All arrays are read-only views into
+    already-contiguous storage; this object is intended to be constructed
+    once and shared across all time steps.
+
+    Attributes
+    ----------
+    face_nodes : np.ndarray
+        Flattened node indices for each face.
+    face_node_offsets : np.ndarray
+        Offsets into ``face_nodes`` for each face (polygonal faces).
+    owners : np.ndarray
+        Owner cell for every face.
+    neighbours : np.ndarray
+        Neighbour cell for interior faces (``-1`` for boundary faces).
+    cell_faces : np.ndarray
+        Flattened face indices for each cell.
+    cell_face_offsets : np.ndarray
+        Offsets into ``cell_faces`` for each cell.
+    patches : tuple[BoundaryPatch, ...]
+        Boundary patches of the mesh.
+    global_cell_ids : np.ndarray
+        Globally unique cell identifiers.
+    global_face_ids : np.ndarray
+        Globally unique face identifiers.
+    source_cell_ids : np.ndarray
+        Original cell numbering from the mesh file.
+    cell_type_codes : np.ndarray
+        VTK cell-type codes for export.
+    cell_orders : np.ndarray
+        VTK cell-order arrays for higher-order elements.
+    topology_version : int
+        Monotonically increasing version counter for cache invalidation.
+    """
 
     face_nodes: np.ndarray
     face_node_offsets: np.ndarray

@@ -13,7 +13,38 @@ def _readonly(values):
 
 @dataclass(frozen=True)
 class MeshGeometry:
-    """Immutable geometry arrays and quality metrics for backend dispatch."""
+    """Immutable geometric quantities computed from a static mesh.
+
+    Holds the cell centroids, volumes, face centroids, area vectors,
+    interpolation weights, wall distance, and optional least-squares
+    condition numbers.  All arrays are read-only and should be constructed
+    once through the :meth:`from_data` factory.
+
+    Attributes
+    ----------
+    points : np.ndarray
+        Vertex coordinates, shape ``(n_points, 3)``.
+    face_centroids : np.ndarray
+        Face centre coordinates, shape ``(n_faces, 3)``.
+    face_area_vectors : np.ndarray
+        Face area normal vectors, shape ``(n_faces, 3)``.
+    face_areas : np.ndarray
+        Face area magnitudes, shape ``(n_faces,)``.
+    cell_centroids : np.ndarray
+        Cell centre coordinates, shape ``(n_cells, 3)``.
+    cell_volumes : np.ndarray
+        Cell volumes, shape ``(n_cells,)``.
+    interpolation_weights : np.ndarray
+        Face interpolation weights (cell-to-face), shape ``(n_faces,)``.
+    cell_face_vectors : np.ndarray
+        Cell-centre-to-face-centre vectors, shape ``(n_faces, 3)``.
+    wall_distance : np.ndarray
+        Distance from each cell centre to the nearest wall, shape ``(n_cells,)``.
+    lsq_condition : np.ndarray or None
+        Least-squares gradient stencil condition numbers (optional).
+    geometry_version : int
+        Version counter for cache invalidation.
+    """
 
     points: np.ndarray
     face_centroids: np.ndarray

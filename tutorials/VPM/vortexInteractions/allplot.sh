@@ -13,9 +13,6 @@ mkdir -p "$XDG_CACHE_HOME" "$MPLCONFIGDIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
-    || command -v python3 \
-    || command -v python)}"
 SOLUTION_DIR="./solution"
 FIGURES_DIR="./figures"
 DPI=300
@@ -24,7 +21,7 @@ ALLOW_PARTIAL=0
 run_plot() {
     local fmt
     for fmt in png pdf; do
-        "$PYTHON" "$@" --format "$fmt"
+        python "$@" --format "$fmt"
     done
 }
 
@@ -42,7 +39,7 @@ VALIDATE_ARGS=(--solution-dir "$SOLUTION_DIR")
 if [[ "$ALLOW_PARTIAL" == "1" ]]; then
     VALIDATE_ARGS+=(--allow-partial)
 fi
-"$PYTHON" assets/validate_plot_inputs.py "${VALIDATE_ARGS[@]}"
+python assets/validate_plot_inputs.py "${VALIDATE_ARGS[@]}"
 
 mkdir -p "$FIGURES_DIR"
 

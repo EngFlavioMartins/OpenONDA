@@ -5,16 +5,13 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sys
 from pathlib import Path
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = CASE_DIR.parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     FVMConfig,
     Solver,
@@ -25,13 +22,13 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.fields.diagnostics import (  # noqa: E402
+from openonda.fvm import (
     compute_continuity_error,
     compute_enstrophy,
     compute_kinetic_energy,
 )
 
-from assets.mesh_periodic import periodic_square_mesh  # noqa: E402
+from assets.mesh_periodic import periodic_square_mesh
 
 
 def exact_velocity(centres: np.ndarray, time: float, nu: float) -> np.ndarray:

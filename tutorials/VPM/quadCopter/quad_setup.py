@@ -25,11 +25,10 @@ Date: February 2026
 import argparse
 import numpy as np
 from pathlib import Path
-import sys
 
-# OpenONDA imports
-from source.solvers.VPM.core.solver import Solver
-from source.solvers.VPM.config.types import (
+from assets.generate_blade import create_rotor_blade, save_blade
+from openonda.vpm import Solver
+from openonda.vpm import (
     VPMSetup,
     StabilizationConfig,
     StretchingConfig,
@@ -37,15 +36,9 @@ from source.solvers.VPM.config.types import (
     ViscousConfig,
     TurbulenceConfig,
 )
-from source.solvers.VPM.boundary_elements.vlm import VLMSurfaceSetup, VLMSetup
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import RotatingVLM
-from source.solvers.VPM.utils.field_samplers import SurfaceSampler
-
-_SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPT_DIR / "assets"))
-
-# Local helper for blade generation
-from generate_blade import create_rotor_blade, save_blade
+from openonda.vpm import VLMSurfaceSetup, VLMSetup
+from openonda.vpm import RotatingVLM
+from openonda.vpm import SurfaceSampler
 
 
 def main():

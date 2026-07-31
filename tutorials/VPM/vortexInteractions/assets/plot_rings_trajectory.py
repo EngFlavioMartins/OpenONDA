@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Leapfrogging-ring trajectory comparison — ``compare_trajectory.png``.
+"""Leapfrogging-ring trajectory comparison.
 
 Overlays the circulation-weighted ring trajectory (R/R₀ vs x/R₀) of every
-leapfrogging case found under ``solution/`` against the LBM literature
-reference.  Each case keeps one colour + linestyle for *both* of its rings
-(see :func:`_common.case_style`); the LBM reference uses the shared reference
-style so it never collides with a simulation style.
+leapfrogging case found under ``solution/``. Each case keeps one colour and
+linestyle for both rings.
 """
 
 from __future__ import annotations
@@ -17,11 +15,8 @@ import sys
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-from matplotlib.lines import Line2D
 
 ASSETS_DIR = Path(__file__).resolve().parent
-CASE_DIR = ASSETS_DIR.parent
 sys.path.insert(0, str(ASSETS_DIR))
 from _common import (  # noqa: E402
     build_arg_parser,
@@ -31,11 +26,8 @@ from _common import (  # noqa: E402
     figure_size,
     load_theme,
     mark_every,
-    reference_style,
     save_fig,
 )
-
-REFERENCE = ASSETS_DIR / "references" / "leapfrogging_lbm_trajectory.csv"
 
 
 def _step(path: Path) -> int:
@@ -67,27 +59,12 @@ def load_trajectory(case_dir: Path) -> dict[int, tuple[np.ndarray, np.ndarray]]:
     }
 
 
-def plot_reference(ax) -> bool:
-    """Draw both LBM reference rings as one shared reference source. Returns success."""
-    if not REFERENCE.exists():
-        print(f"  [WARNING] LBM reference not found: {REFERENCE}")
-        return False
-    reference = pd.read_csv(REFERENCE)
-    style = reference_style()
-    for ring in sorted(reference["ring"].unique()):
-        data = reference[reference["ring"] == ring]
-        ax.plot(data["x_over_R0"], data["R_over_R0"], **style)
-    return True
-
-
 def main() -> None:
     parser = build_arg_parser(__doc__)
     args = parser.parse_args()
 
     load_theme()
     fig, ax = plt.subplots(figsize=figure_size("trajectory"))
-
-    has_ref = plot_reference(ax)
 
     plotted = False
     for case_dir in discover_cases(args.solution_dir, family="leapfrog"):
@@ -110,8 +87,6 @@ def main() -> None:
         plotted = True
 
     legend_handles = compact_case_legend_handles(include_families=False) if plotted else []
-    if has_ref:
-        legend_handles.append(Line2D([0], [0], label="LBM reference", **reference_style()))
 
     ax.set_xlabel(r"Axial position, $x/R_0$")
     ax.set_ylabel(r"Ring radius, $R/R_0$")

@@ -12,6 +12,7 @@ import logging
 
 import numpy as np
 
+from source.coupler.core.helpers.fvm_velocity_trace import CachedVelocityTrace
 from source.coupler.diagnostics.injection_correction import recover_invariants
 from source.coupler.remesh import remesh_to_grid
 
@@ -231,6 +232,7 @@ class HandoffResult:
     pruned_circulation_fraction: float = 0.0
     n_population_pruned: int = 0
     population_pruned_circulation_fraction: float = 0.0
+    population_pruned_velocity_bound: float = 0.0
     cfl: float = 0.0  # U_max·dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
     # Invariant diagnostics around the conservative prune correction.  These
@@ -292,6 +294,8 @@ def continuous_handoff(
     eta_fn=None,
     lattice_anchor=None,
     max_output_particles: int | None = None,
+    reuse_aligned_grid: bool = False,
+    population_metric: str = "circulation",
 ) -> HandoffResult:
     """One continuous, conservative, dt-robust FVM→VPM hand-off.
 
@@ -418,7 +422,14 @@ def continuous_handoff(
     )
 
     # ── P2M: conservative M4′ scatter of the in-region wake onto the lattice ──
-    grid_pos, grid_circ = remesh_to_grid(pos[in_region], circ[in_region], lo_lat, h, shape)
+    grid_pos, grid_circ = remesh_to_grid(
+        pos[in_region],
+        circ[in_region],
+        lo_lat,
+        h,
+        shape,
+        reuse_aligned=reuse_aligned_grid,
+    )
 
     excluded_grid = np.zeros(len(grid_pos), dtype=bool)
     if excluded_at_node is not None:
@@ -564,28 +575,49 @@ def continuous_handoff(
 
     population_pruned = 0
     population_pruned_fraction = 0.0
+    population_pruned_velocity_bound = 0.0
     if max_output_particles is not None and len(out_pos) > max_output_particles:
         target_count = int(max_output_particles)
         combined_target = _invariants(out_pos, out_circ)
         combined_mag = np.linalg.norm(out_circ, axis=1)
 
-        n_remesh = len(new_pos)
-        n_free = len(out_pos) - n_remesh
-        if n_free < target_count:
-            remesh_budget = target_count - n_free
-            remesh_mag = combined_mag[:n_remesh]
-            remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
-            keep_indices = np.concatenate(
-                [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
+        if population_metric == "interface_velocity":
+            delta = np.maximum(np.maximum(lo - out_pos, out_pos - hi), 0.0)
+            distance_sq = np.einsum("ij,ij->i", delta, delta)
+            velocity_bound = combined_mag / (
+                4.0 * np.pi * np.maximum(distance_sq + out_rad**2, 1.0e-30)
             )
+            keep_indices = np.argpartition(velocity_bound, -target_count)[-target_count:]
         else:
-            free_mag = combined_mag[n_remesh:]
-            free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
-            keep_indices = free_keep
+            n_remesh = len(new_pos)
+            n_free = len(out_pos) - n_remesh
+            if n_free < target_count:
+                remesh_budget = target_count - n_free
+                remesh_mag = combined_mag[:n_remesh]
+                remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
+                keep_indices = np.concatenate(
+                    [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
+                )
+            else:
+                free_mag = combined_mag[n_remesh:]
+                free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
+                keep_indices = free_keep
 
         keep_mask = np.zeros(len(out_pos), dtype=bool)
         keep_mask[keep_indices] = True
         discarded_l1 = float(combined_mag[~keep_mask].sum())
+        delta = np.maximum(np.maximum(lo - out_pos, out_pos - hi), 0.0)
+        distance_sq = np.einsum("ij,ij->i", delta, delta)
+        population_pruned_velocity_bound = float(
+            np.sum(
+                combined_mag[~keep_mask]
+                / (
+                    4.0
+                    * np.pi
+                    * np.maximum(distance_sq[~keep_mask] + out_rad[~keep_mask] ** 2, 1.0e-30)
+                )
+            )
+        )
         population_pruned_fraction = discarded_l1 / (float(combined_mag.sum()) + 1e-30)
         population_pruned = int((~keep_mask).sum())
 
@@ -647,6 +679,7 @@ def continuous_handoff(
         pruned_circulation_fraction=pruned_l1 / (active_l1 + 1e-30),
         n_population_pruned=population_pruned,
         population_pruned_circulation_fraction=population_pruned_fraction,
+        population_pruned_velocity_bound=population_pruned_velocity_bound,
         cfl=cfl,
         conservation_drift=drift,
         conservation_raw_mismatch=raw_mismatch,
@@ -724,6 +757,7 @@ class ContinuousOverlapInjector:
         self._cell_volumes: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._lattice_anchor: np.ndarray | None = None
+        self._velocity_trace: CachedVelocityTrace | None = None
         self.step = 0
 
     # ── setup ────────────────────────────────────────────────────────────────
@@ -737,6 +771,12 @@ class ContinuousOverlapInjector:
         # inject() is only called on master, so the None tree is never queried.
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
+            if self.config.handoff_trace_interpolation == "weighted":
+                self._velocity_trace = CachedVelocityTrace(
+                    self._cell_centers,
+                    self._cell_tree,
+                    neighbours=self.config.handoff_trace_neighbors,
+                )
 
         # For an axis-aligned body the same exact bounds that carve the FVM
         # mesh also define the VPM exclusion region.  A nearest-cell query
@@ -793,6 +833,14 @@ class ContinuousOverlapInjector:
             max_stable_dt(self.u_inf, l_buf, self.h),
             self.config.prune_vorticity_min,
             self.threshold_abs,
+        )
+        logger.info(
+            "[Handoff] transfer=%s  interpolation=%s(k=%d)  remesh=%s  cap_metric=%s",
+            self.config.handoff_transfer_mode,
+            self.config.handoff_trace_interpolation,
+            self.config.handoff_trace_neighbors,
+            self.config.handoff_remesh_mode,
+            self.config.handoff_population_metric,
         )
 
     @property
@@ -877,11 +925,14 @@ class ContinuousOverlapInjector:
 
         def velocity_at(points):
             points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-            _, nearest = tree.query(points, workers=-1)
-            delta = points - cell_pos[nearest]
-            sampled = velocity_values[nearest] + np.einsum(
-                "ni,nij->nj", delta, gradient_values[nearest]
-            )
+            if self._velocity_trace is None:
+                _, nearest = tree.query(points, workers=-1)
+                delta = points - cell_pos[nearest]
+                sampled = velocity_values[nearest] + np.einsum(
+                    "ni,nij->nj", delta, gradient_values[nearest]
+                )
+            else:
+                sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
             if self._body_bounds is not None:
                 b = self._body_bounds
                 lo_body = b[[0, 2, 4]]
@@ -920,6 +971,8 @@ class ContinuousOverlapInjector:
             eta_fn=eta_fn,
             lattice_anchor=self._lattice_anchor,
             max_output_particles=self.config.handoff_max_particles,
+            reuse_aligned_grid=self.config.handoff_remesh_mode == "aligned",
+            population_metric=self.config.handoff_population_metric,
         )
 
         # Write the rebuilt cloud back to the VPM solver.
@@ -959,7 +1012,8 @@ class ContinuousOverlapInjector:
 
         logger.info(
             "[Handoff step=%d] in=%d → out=%d  free=%d  solid_removed=%d  "
-            "pruned=%d (%.3f%% Σ|Γ|)  cap_pruned=%d (%.3f%% Σ|Γ|)  "
+            "pruned=%d (%.3f%% Σ|Γ|)  cap_pruned=%d (%.3f%% Σ|Γ|, "
+            "δu_bound=%.3e m/s)  "
             "CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",
             self.step,
             res.n_remesh_in,
@@ -970,6 +1024,7 @@ class ContinuousOverlapInjector:
             100.0 * res.pruned_circulation_fraction,
             res.n_population_pruned,
             100.0 * res.population_pruned_circulation_fraction,
+            res.population_pruned_velocity_bound,
             res.cfl,
             res.conservation_drift.get("circulation_rel", 0.0),
             res.flux_ratio,

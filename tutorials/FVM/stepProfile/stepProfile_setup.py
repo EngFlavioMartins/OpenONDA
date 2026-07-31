@@ -4,17 +4,12 @@
 import argparse
 import csv
 import os
-import sys
 
 import numpy as np
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.append(project_root)
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
+from assets.mesh_step import backward_facing_step_mesh
 
-from mesh_step import backward_facing_step_mesh  # noqa: E402
-
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     FVMConfig,
     Solver,
@@ -25,7 +20,7 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.mesh import geometry  # noqa: E402
+from openonda.fvm import geometry
 
 
 def inlet_velocity(mesh_data, geo_data, step_height, mean_velocity):

@@ -55,8 +55,9 @@ def _clear_stale_taichi_cache() -> None:
             except OSError as exc:
                 _logger.debug("Could not clear Taichi cache at %s: %s", cache_dir, exc)
 
-    # Prevent Taichi from using a stale external cache path.
-    os.environ.pop("TI_OFFLINE_CACHE_FILE_PATH", None)
+    # Keep an explicitly selected cache path active.  It has just been
+    # cleared above, and callers use this override when the default user cache
+    # is read-only (for example in a sandboxed batch run).
 
 
 # -- Integrated-GPU detection -------------------------------------------
@@ -461,12 +462,6 @@ def initialize_taichi_backend(
     device_memory_fraction = clamped_fraction
 
     default_fp, default_ip = _PRECISION_MAP[precision]
-
-    # Stale Taichi offline-cache files (left by other scripts that use
-    # offline_cache=True) can cause 'Failed to allocate ext arr buffer'
-    # errors at runtime even when this process disables offline caching.
-    # Clear them before initialisation to avoid the issue.
-    _clear_stale_taichi_cache()
 
     last_exc: Exception | None = None
     for arch, name in chain:

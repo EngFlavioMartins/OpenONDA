@@ -38,7 +38,23 @@ def detected_world_size() -> int:
 
 @dataclass(frozen=True)
 class ParallelContext:
-    """Rank/communicator state used by solver, diagnostics, and coupling."""
+    """MPI rank and communicator state for the FVM solver.
+
+    Carries the parallel mode (``"serial"``, ``"petsc_replicated"``, or
+    ``"petsc_partitioned"``), the ``mpi4py`` communicator, rank and size,
+    and an optional local :class:`~source.solvers.FVM.mesh.partition.CellPartition`.
+
+    Use the :meth:`create` factory to validate an :class:`ExecutionConfig`
+    and build the appropriate context.  Properties like :attr:`is_root`,
+    :attr:`is_parallel`, and :attr:`is_partitioned` provide safe guards
+    around operations that may differ between serial and parallel modes.
+
+    Examples
+    --------
+    >>> ctx = ParallelContext.create(execution_config)
+    >>> if ctx.is_root:
+    ...     log.info("Running on %d rank(s)", ctx.size)
+    """
 
     mode: str = "serial"
     comm: Any | None = None

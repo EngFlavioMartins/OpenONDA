@@ -400,14 +400,7 @@ def read_integrals(case_dir):
         "overlap_ratio_max",
         "vorticity_divergence_error",
         "strength_misalignment_deg",
-        # Enstrophy envelope (solver ``EnvelopeConfig``).
         "enstrophy_test",
-        "rho_z",
-        "envelope_bound",
-        "envelope_applied",
-        "envelope_active_fraction",
-        "envelope_dissipation",
-        "envelope_chi",
     ]
     keep = [col for col in keep if col in df.columns]
     if "time" not in keep or "kinetic_energy" not in keep:

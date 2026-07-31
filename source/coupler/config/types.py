@@ -62,10 +62,6 @@ class CouplerSetup:
     backend: str = "ofw"
     """Eulerian backend: wrapped OpenFOAM (``ofw``) or native Python (``fvm``)."""
 
-    coupling_strategy: str = "current"
-    """Selected coupling-operation ordering. ``"current"`` is the
-    certified legacy algorithm expressed through the strategy interface."""
-
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     """Eulerian near-field box bounds [x0, x1, y0, y1, z0, z1] [m].
     ``ofw``: required.  ``fvm``: leave None — derived from the injected FVM
@@ -114,6 +110,30 @@ class CouplerSetup:
     """Advect overlap particles with the η-blended FVM velocity instead of pure
     Biot–Savart (velocity forcing).  Disable to recover reconstruction-only
     transport (A/B comparisons)."""
+
+    fringe_enabled: bool = True
+    """Enable FVM fringe relaxation toward the VPM velocity."""
+
+    handoff_enabled: bool = True
+    """Enable the FVM-to-VPM circulation hand-off."""
+
+    handoff_transfer_mode: str = "velocity_trace"
+    """FVM hand-off source: velocity trace or cell vorticity."""
+
+    handoff_trace_interpolation: str = "nearest"
+    """Velocity-trace interpolation: nearest-cell Taylor or weighted Taylor."""
+
+    handoff_trace_neighbors: int = 4
+    """Cell stencil size for weighted velocity-trace interpolation."""
+
+    handoff_remesh_mode: str = "m4"
+    """Particle remesh: full M4' scatter or aligned-lattice reuse."""
+
+    handoff_population_metric: str = "circulation"
+    """Population-cap ranking: circulation magnitude or interface influence."""
+
+    harmonic_correction_enabled: bool = True
+    """Include the VPM body-panel correction in donor and fringe velocities."""
 
     fringe_strength: float = 4.0
     """Fringe relaxation strength A (see fvm_fringe.py)."""
@@ -166,6 +186,9 @@ class CouplerSetup:
     donor_bc_mode: str = "dirichlet"
     """Donor velocity condition: full Dirichlet or normal-Dirichlet mixed mode."""
 
+    donor_pressure_mode: str = "fixed_flux"
+    """Pressure coupling: native fixed-flux closure or VPM momentum gradient."""
+
     overlap_radius_ratio: float = 1.5
     """Overlap-particle core radius divided by ``h``."""
 
@@ -174,11 +197,6 @@ class CouplerSetup:
         _valid_backends = ("ofw", "fvm")
         if self.backend not in _valid_backends:
             raise ValueError(f"backend must be one of {_valid_backends!r}, got {self.backend!r}.")
-        if self.coupling_strategy != "current":
-            raise ValueError(
-                "coupling_strategy must be 'current' until another strategy is "
-                f"implemented, got {self.coupling_strategy!r}."
-            )
         _valid_donor_interior_sources = ("particles", "fvm")
         if self.donor_interior_source not in _valid_donor_interior_sources:
             raise ValueError(
@@ -198,6 +216,34 @@ class CouplerSetup:
             raise ValueError(
                 f"donor_bc_mode must be one of {_valid_donor_bc_modes!r}, "
                 f"got {self.donor_bc_mode!r}."
+            )
+        if self.donor_pressure_mode not in ("fixed_flux", "vpm_gradient"):
+            raise ValueError(
+                "donor_pressure_mode must be 'fixed_flux' or 'vpm_gradient', "
+                f"got {self.donor_pressure_mode!r}."
+            )
+        if self.donor_pressure_mode == "vpm_gradient" and self.backend != "fvm":
+            raise ValueError("donor_pressure_mode='vpm_gradient' requires backend='fvm'")
+        if self.handoff_transfer_mode not in ("velocity_trace", "vorticity"):
+            raise ValueError(
+                "handoff_transfer_mode must be 'velocity_trace' or 'vorticity', "
+                f"got {self.handoff_transfer_mode!r}."
+            )
+        if self.handoff_trace_interpolation not in ("nearest", "weighted"):
+            raise ValueError(
+                "handoff_trace_interpolation must be 'nearest' or 'weighted', "
+                f"got {self.handoff_trace_interpolation!r}."
+            )
+        if self.handoff_trace_neighbors < 1:
+            raise ValueError("handoff_trace_neighbors must be positive")
+        if self.handoff_remesh_mode not in ("m4", "aligned"):
+            raise ValueError(
+                f"handoff_remesh_mode must be 'm4' or 'aligned', got {self.handoff_remesh_mode!r}."
+            )
+        if self.handoff_population_metric not in ("circulation", "interface_velocity"):
+            raise ValueError(
+                "handoff_population_metric must be 'circulation' or "
+                f"'interface_velocity', got {self.handoff_population_metric!r}."
             )
         if self.bc_coupling_iterations < 1:
             raise ValueError("bc_coupling_iterations must be at least one")
@@ -236,6 +282,18 @@ class CouplerSetup:
         ]
         if invalid:
             raise ValueError(f"Coupling values must be finite and positive: {', '.join(invalid)}")
+        if self.backup_period < 0 or self.log_period < 1:
+            raise ValueError("backup_period must be non-negative and log_period at least one")
+        if self.dead_zone_h < 0 or self.prune_vorticity_min < 0:
+            raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
+        if self.handoff_max_particles is not None and self.handoff_max_particles < 1:
+            raise ValueError("handoff_max_particles must be positive")
+        if not 0.0 < self.blend_relaxation <= 1.0:
+            raise ValueError("blend_relaxation must lie in (0, 1]")
+        if self.strength_correction_iterations < 0:
+            raise ValueError("strength_correction_iterations must be non-negative")
+        if not 0.0 < self.strength_correction_relax <= 1.0:
+            raise ValueError("strength_correction_relax must lie in (0, 1]")
 
     def require_case_fields(
         self, names: tuple[str, ...] = ("nu", "dt", "t_end", "fvm_box", "grid_spacing")
@@ -254,18 +312,6 @@ class CouplerSetup:
                 "backend='ofw' builds the Eulerian case from CouplerSetup and "
                 f"requires: {', '.join(missing)}"
             )
-        if self.backup_period < 0 or self.log_period < 1:
-            raise ValueError("backup_period must be non-negative and log_period at least one")
-        if self.dead_zone_h < 0 or self.prune_vorticity_min < 0:
-            raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
-        if self.handoff_max_particles is not None and self.handoff_max_particles < 1:
-            raise ValueError("handoff_max_particles must be positive")
-        if not 0.0 < self.blend_relaxation <= 1.0:
-            raise ValueError("blend_relaxation must lie in (0, 1]")
-        if self.strength_correction_iterations < 0:
-            raise ValueError("strength_correction_iterations must be non-negative")
-        if not 0.0 < self.strength_correction_relax <= 1.0:
-            raise ValueError("strength_correction_relax must lie in (0, 1]")
 
     # ── Derived properties ────────────────────────────────────────────────
     @property
@@ -308,7 +354,6 @@ class CouplerSetup:
             },
             "fvm_solver": {
                 "backend": self.backend,
-                "coupling_strategy": self.coupling_strategy,
                 "patch_name": self.patch_name,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
@@ -342,10 +387,19 @@ class CouplerSetup:
                 "strength_correction_relax": self.strength_correction_relax,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
                 "overlap_velocity_forcing": self.overlap_velocity_forcing,
+                "fringe_enabled": self.fringe_enabled,
+                "handoff_enabled": self.handoff_enabled,
+                "handoff_transfer_mode": self.handoff_transfer_mode,
+                "handoff_trace_interpolation": self.handoff_trace_interpolation,
+                "handoff_trace_neighbors": self.handoff_trace_neighbors,
+                "handoff_remesh_mode": self.handoff_remesh_mode,
+                "handoff_population_metric": self.handoff_population_metric,
+                "harmonic_correction_enabled": self.harmonic_correction_enabled,
                 "bc_coupling_iterations": self.bc_coupling_iterations,
                 "bc_coupling_tolerance": self.bc_coupling_tolerance,
                 "donor_interior_source": self.donor_interior_source,
                 "donor_bc_mode": self.donor_bc_mode,
+                "donor_pressure_mode": self.donor_pressure_mode,
             },
         }
 

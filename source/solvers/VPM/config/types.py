@@ -13,6 +13,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 # =========================================================
 from dataclasses import dataclass, field
 import json
+import re
 
 # Set traceback limit to 0 to avoid excessive output
 import sys
@@ -1045,120 +1046,208 @@ class StabilizationConfig:
         return StabilizationConfig(remove_particles_by_bounds=tuple(bounds))
 
 
-# =========================================================
-# ENSTROPHY ENVELOPE CONFIGURATION
-# =========================================================
+@dataclass(frozen=True)
+class FilamentRefinementConfig:
+    """Adaptive resolution for stretched Lagrangian vortex-line elements.
+
+    At each refinement event, a particle whose strength exceeds
+    ``max_strength_factor`` times its own lineage reference is bisected along
+    its circulation direction.  Each child starts a new lineage reference.
+    The transformation preserves circulation, total strength variation,
+    volume, linear impulse, and the Gaussian kernel-corrected angular impulse
+    without resetting the viscous core radius.
+    """
+
+    frequency: int = 0
+    max_strength_factor: float = 2.0
+    offset_fraction: float = 0.25
+    max_particles: int | None = None
+    energy_injection_tolerance: float = 1e-4
+    energy_dissipation_tolerance: float = 1e-4
+    enstrophy_transfer_tolerance: float = 1e-4
+    helicity_transfer_tolerance: float = 1e-4
+    cumulative_energy_tolerance: float = 1e-3
+    cumulative_enstrophy_tolerance: float = 2e-2
+    cumulative_helicity_tolerance: float = 2e-2
+    cumulative_moment_tolerance: float = 1e-4
+
+    def __post_init__(self) -> None:
+        if self.frequency < 0:
+            raise ValueError("filament-refinement frequency must be non-negative")
+        if self.max_strength_factor <= 1.0:
+            raise ValueError("max_strength_factor must be greater than one")
+        if not 0.0 <= self.offset_fraction <= 0.5:
+            raise ValueError("offset_fraction must be in [0, 0.5]")
+        if self.max_particles is not None and self.max_particles <= 0:
+            raise ValueError("max_particles must be positive or None")
+        if self.energy_injection_tolerance < 0.0:
+            raise ValueError("energy_injection_tolerance must be non-negative")
+        if self.energy_dissipation_tolerance < 0.0:
+            raise ValueError("energy_dissipation_tolerance must be non-negative")
+        if self.enstrophy_transfer_tolerance < 0.0:
+            raise ValueError("enstrophy_transfer_tolerance must be non-negative")
+        if self.helicity_transfer_tolerance < 0.0:
+            raise ValueError("helicity_transfer_tolerance must be non-negative")
+        if self.cumulative_energy_tolerance < 0.0:
+            raise ValueError("cumulative_energy_tolerance must be non-negative")
+        if self.cumulative_enstrophy_tolerance < 0.0:
+            raise ValueError("cumulative_enstrophy_tolerance must be non-negative")
+        if self.cumulative_helicity_tolerance < 0.0:
+            raise ValueError("cumulative_helicity_tolerance must be non-negative")
+        if self.cumulative_moment_tolerance < 0.0:
+            raise ValueError("cumulative_moment_tolerance must be non-negative")
+
+    @property
+    def enabled(self) -> bool:
+        return self.frequency > 0
+
+    @staticmethod
+    def disabled() -> "FilamentRefinementConfig":
+        return FilamentRefinementConfig()
+
+    @staticmethod
+    def adaptive(
+        *,
+        frequency: int,
+        max_strength_factor: float = 2.0,
+        offset_fraction: float = 0.25,
+        max_particles: int | None = None,
+        energy_injection_tolerance: float = 1e-4,
+        energy_dissipation_tolerance: float = 1e-4,
+        enstrophy_transfer_tolerance: float = 1e-4,
+        helicity_transfer_tolerance: float = 1e-4,
+        cumulative_energy_tolerance: float = 1e-3,
+        cumulative_enstrophy_tolerance: float = 2e-2,
+        cumulative_helicity_tolerance: float = 2e-2,
+        cumulative_moment_tolerance: float = 1e-4,
+    ) -> "FilamentRefinementConfig":
+        return FilamentRefinementConfig(
+            frequency=frequency,
+            max_strength_factor=max_strength_factor,
+            offset_fraction=offset_fraction,
+            max_particles=max_particles,
+            energy_injection_tolerance=energy_injection_tolerance,
+            energy_dissipation_tolerance=energy_dissipation_tolerance,
+            enstrophy_transfer_tolerance=enstrophy_transfer_tolerance,
+            helicity_transfer_tolerance=helicity_transfer_tolerance,
+            cumulative_energy_tolerance=cumulative_energy_tolerance,
+            cumulative_enstrophy_tolerance=cumulative_enstrophy_tolerance,
+            cumulative_helicity_tolerance=cumulative_helicity_tolerance,
+            cumulative_moment_tolerance=cumulative_moment_tolerance,
+        )
 
 
 @dataclass(frozen=True)
-class EnvelopeConfig:
-    """Control-barrier safety layer on the discrete enstrophy.
+class DivergenceRelaxationConfig:
+    """Reference-restoring Winckelmans relaxation with hard physics gates."""
 
-    See :mod:`..physics.envelope`.  This does not cap enstrophy magnitude --
-    vortex stretching legitimately produces enstrophy -- it caps *anomalous
-    scale-localized* production, i.e. particle-scale growth that the test-filter
-    scale does not corroborate.
-
-    The correction is the minimum-norm strength change that restores the bound
-    while holding total vorticity, linear impulse and angular impulse exactly and
-    forbidding kinetic-energy injection.
-    """
-
-    enabled: bool = False
-    """Off by default: the controls in a comparison must stay ungoverned."""
-
-    rho_max: float = 2.0
-    """Largest credible Z_Delta / Z_2Delta.  Calibrate from trusted runs as
-    Q_0.999(rho_Z) plus the resolution-convergence spread -- do not guess it."""
-
-    z_floor: float = 0.0
-    """Additive floor on the bound, for flows starting from near-zero vorticity."""
-
-    kappa: float = 1.0
-    """Barrier relaxation rate [1/s]."""
-
-    a_l: float = 0.0
-    """Coarse-scale production not proportional to existing enstrophy (shedding,
-    coupling sources).  Zero for a closed ring system."""
-
-    b_l: float = 1.0
-    """Coarse-scale exponential growth allowance [1/s], from Q_0.999 of
-    [P_2Delta]_+ / Z_2Delta over the trusted ensemble."""
-
-    r_loc_max: float = 15.0
-    """Local barrier: correct a particle whose |Gamma_p|/sigma_p^3 exceeds this
-    multiple of the median over its 20 nearest neighbours.
-
-    This is the L-infinity half of the guarantee and the one that actually fires.
-    A global enstrophy bound is an L2 certificate: on the h=0.036 leapfrog
-    breakdown, ten particles out of 13234 carried 39% of sum(q^2) while global
-    enstrophy was still 0.65 of its initial value, so the global envelope never
-    engaged at all.
-
-    Neighbourhood-relative rather than absolute because q_max is non-monotone
-    (27.9 -> 2.8 -> runaway): any absolute threshold either fires at t=0 or
-    arrives one sample before the crash.  Calibrated on that trajectory --
-    r > 15 gives zero violations across 25 healthy samples and first flags a
-    single particle 2.07 time units (27% of the run) before the blow-up, while
-    r > 10 already produces false positives during healthy evolution."""
-
-    max_iterations: int = 6
-    """Barrier iterations per step.  The enstrophy constraint is quadratic and
-    the solved row is its linearisation, so one solve undershoots; each extra
-    iteration costs one O(N^2) gradient pass."""
-
-    omega_hard: float | None = None
-    """Hard representability ceiling on max |Gamma_p| / sigma_p^3.  Reaching it
-    means the requested state is outside what this discretization can represent;
-    the run stops as under-resolved rather than being dissipated into looking
-    fine.  ``None`` disables."""
-
-    max_overlap: float | None = None
-    """Hard ceiling on mean h_nn/sigma, same intent as ``omega_hard``."""
+    frequency: int = 0
+    start_step: int = 0
+    grid_spacing: float | None = None
+    regularization: float = 0.1
+    solver_rtol: float = 1e-5
+    max_iterations: int = 30
+    max_grid_nodes: int = 8_000_000
+    max_correction_norm: float = 2e-2
+    max_residual_ratio: float = 0.9
+    max_direct_divergence_ratio: float = 0.98
+    energy_tolerance: float = 1e-6
+    enstrophy_tolerance: float = 1e-4
+    helicity_tolerance: float = 1e-4
+    variation_tolerance: float = 1e-3
+    spectral_convergence_fraction: float = 0.1
+    cumulative_energy_tolerance: float = 1e-3
+    cumulative_enstrophy_tolerance: float = 2e-2
+    cumulative_helicity_tolerance: float = 2e-2
+    cumulative_variation_tolerance: float = 2e-2
+    cumulative_moment_tolerance: float = 1e-4
 
     def __post_init__(self) -> None:
-        if self.rho_max <= 0.0:
-            raise ValueError("rho_max must be positive")
-        if self.r_loc_max <= 1.0:
-            raise ValueError("r_loc_max must exceed one")
-        if self.kappa <= 0.0:
-            raise ValueError("kappa must be positive")
-        if self.z_floor < 0.0 or self.a_l < 0.0 or self.b_l < 0.0:
-            raise ValueError("z_floor, a_l and b_l must be non-negative")
-        if self.max_iterations < 1:
-            raise ValueError("max_iterations must be at least one")
-        for name in ("omega_hard", "max_overlap"):
-            value = getattr(self, name)
-            if value is not None and value <= 0.0:
-                raise ValueError(f"{name} must be positive or None")
+        if self.frequency < 0:
+            raise ValueError("divergence-relaxation frequency must be non-negative")
+        if self.start_step < 0:
+            raise ValueError("divergence-relaxation start_step must be non-negative")
+        if self.frequency > 0 and (self.grid_spacing is None or self.grid_spacing <= 0.0):
+            raise ValueError("enabled divergence relaxation requires a positive grid_spacing")
+        if self.regularization <= 0.0 or self.solver_rtol <= 0.0:
+            raise ValueError("regularization and solver_rtol must be positive")
+        if self.max_iterations < 1 or self.max_grid_nodes < 1:
+            raise ValueError("iteration and grid-node limits must be positive")
+        if self.max_correction_norm <= 0.0:
+            raise ValueError("max_correction_norm must be positive")
+        if not 0.0 < self.max_residual_ratio < 1.0:
+            raise ValueError("max_residual_ratio must lie in (0, 1)")
+        if not 0.0 < self.max_direct_divergence_ratio < 1.0:
+            raise ValueError("max_direct_divergence_ratio must lie in (0, 1)")
+        if not 0.0 < self.spectral_convergence_fraction <= 1.0:
+            raise ValueError("spectral_convergence_fraction must lie in (0, 1]")
+        for name in (
+            "energy_tolerance",
+            "enstrophy_tolerance",
+            "helicity_tolerance",
+            "variation_tolerance",
+            "cumulative_energy_tolerance",
+            "cumulative_enstrophy_tolerance",
+            "cumulative_helicity_tolerance",
+            "cumulative_variation_tolerance",
+            "cumulative_moment_tolerance",
+        ):
+            if getattr(self, name) < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+
+    @property
+    def enabled(self) -> bool:
+        return self.frequency > 0
 
     @staticmethod
-    def disabled() -> "EnvelopeConfig":
-        """No governor (the default, and what the comparison controls use)."""
-        return EnvelopeConfig()
+    def disabled() -> "DivergenceRelaxationConfig":
+        return DivergenceRelaxationConfig()
 
     @staticmethod
-    def bounded(
-        rho_max: float,
-        b_l: float,
-        kappa: float = 1.0,
-        z_floor: float = 0.0,
-        a_l: float = 0.0,
-        r_loc_max: float = 15.0,
-        omega_hard: float | None = None,
-        max_overlap: float | None = None,
-    ) -> "EnvelopeConfig":
-        """Enable the governor with a calibrated envelope."""
-        return EnvelopeConfig(
-            enabled=True,
-            rho_max=rho_max,
-            z_floor=z_floor,
-            kappa=kappa,
-            a_l=a_l,
-            b_l=b_l,
-            r_loc_max=r_loc_max,
-            omega_hard=omega_hard,
-            max_overlap=max_overlap,
+    def constrained(
+        *,
+        frequency: int,
+        grid_spacing: float,
+        start_step: int = 0,
+        regularization: float = 0.1,
+        solver_rtol: float = 1e-5,
+        max_iterations: int = 30,
+        max_grid_nodes: int = 8_000_000,
+        max_correction_norm: float = 2e-2,
+        max_residual_ratio: float = 0.9,
+        max_direct_divergence_ratio: float = 0.98,
+        energy_tolerance: float = 1e-6,
+        enstrophy_tolerance: float = 1e-4,
+        helicity_tolerance: float = 1e-4,
+        variation_tolerance: float = 1e-3,
+        spectral_convergence_fraction: float = 0.1,
+        cumulative_energy_tolerance: float = 1e-3,
+        cumulative_enstrophy_tolerance: float = 2e-2,
+        cumulative_helicity_tolerance: float = 2e-2,
+        cumulative_variation_tolerance: float = 2e-2,
+        cumulative_moment_tolerance: float = 1e-4,
+    ) -> "DivergenceRelaxationConfig":
+        return DivergenceRelaxationConfig(
+            frequency=frequency,
+            start_step=start_step,
+            grid_spacing=grid_spacing,
+            regularization=regularization,
+            solver_rtol=solver_rtol,
+            max_iterations=max_iterations,
+            max_grid_nodes=max_grid_nodes,
+            max_correction_norm=max_correction_norm,
+            max_residual_ratio=max_residual_ratio,
+            max_direct_divergence_ratio=max_direct_divergence_ratio,
+            energy_tolerance=energy_tolerance,
+            enstrophy_tolerance=enstrophy_tolerance,
+            helicity_tolerance=helicity_tolerance,
+            variation_tolerance=variation_tolerance,
+            spectral_convergence_fraction=spectral_convergence_fraction,
+            cumulative_energy_tolerance=cumulative_energy_tolerance,
+            cumulative_enstrophy_tolerance=cumulative_enstrophy_tolerance,
+            cumulative_helicity_tolerance=cumulative_helicity_tolerance,
+            cumulative_variation_tolerance=cumulative_variation_tolerance,
+            cumulative_moment_tolerance=cumulative_moment_tolerance,
         )
 
 
@@ -1356,8 +1445,15 @@ class VPMSetup:
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
     """Optional particle-retention domain used by wake and coupled cases."""
 
-    envelope: EnvelopeConfig = field(default_factory=EnvelopeConfig.disabled)
-    """Optional enstrophy envelope (see :class:`EnvelopeConfig`)."""
+    filament_refinement: FilamentRefinementConfig = field(
+        default_factory=FilamentRefinementConfig.disabled
+    )
+    """Adaptive conservative subdivision of stretched vortex-line elements."""
+
+    divergence_relaxation: DivergenceRelaxationConfig = field(
+        default_factory=DivergenceRelaxationConfig.disabled
+    )
+    """Constrained divergence relaxation of the Gaussian particle field."""
 
     vlm: VLMSetup | None = None
     """Complete VLM definition. ``None`` selects a pure VPM simulation."""
@@ -1512,6 +1608,16 @@ class VPMSetup:
             object.__setattr__(self, "final_samplers", tuple(self.final_samplers))
         if self.vpm_domain_bounds is not None:
             object.__setattr__(self, "vpm_domain_bounds", tuple(self.vpm_domain_bounds))
+        output_name = self.backup_file_name.strip()
+        if output_name and (
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", output_name) is None
+            or output_name.startswith(("vpm_", "vlm_"))
+        ):
+            raise ValueError(
+                "backup_file_name must be a filename-safe infix without a path, "
+                "extension, or solver prefix"
+            )
+        object.__setattr__(self, "backup_file_name", output_name)
 
         if self.velocity is None:
             # The GPU LBVH currently implements Gaussian and Winckelmans
@@ -1601,6 +1707,26 @@ class VPMSetup:
             raise ValueError(
                 f"particles_kernel must be one of {valid_kernels}, got '{self.particles_kernel}'"
             )
+        if self.filament_refinement.enabled and _kernel_up != "GAUSSIAN":
+            raise ValueError(
+                "filament refinement currently requires the GAUSSIAN kernel so its "
+                "angular-impulse correction and exact transfer audit use the "
+                "same declared regularization"
+            )
+        if self.divergence_relaxation.enabled and _kernel_up != "GAUSSIAN":
+            raise ValueError("divergence relaxation currently requires the GAUSSIAN kernel")
+        if self.divergence_relaxation.enabled and not self.filament_refinement.enabled:
+            raise ValueError(
+                "divergence relaxation requires filament refinement so the "
+                "interpolation solve cannot hide inadequate vortex-line resolution"
+            )
+        if (
+            self.filament_refinement.max_particles is not None
+            and self.filament_refinement.max_particles > self.max_particles
+        ):
+            raise ValueError(
+                "filament-refinement max_particles cannot exceed VPMSetup.max_particles"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary for serialization.
@@ -1632,7 +1758,8 @@ class VPMSetup:
             "viscous": _as_dict(self.viscous),
             "turbulence": _as_dict(self.turbulence),
             "stabilization": _as_dict(self.stabilization),
-            "envelope": _as_dict(self.envelope),
+            "filament_refinement": _as_dict(self.filament_refinement),
+            "divergence_relaxation": _as_dict(self.divergence_relaxation),
             # Runtime geometry and kinematics are not particle-state backup data.
             "vlm": None,
             "particles_kernel": self.particles_kernel,
@@ -1675,7 +1802,8 @@ class VPMSetup:
             "viscous": ViscousConfig,
             "turbulence": TurbulenceConfig,
             "stabilization": StabilizationConfig,
-            "envelope": EnvelopeConfig,
+            "filament_refinement": FilamentRefinementConfig,
+            "divergence_relaxation": DivergenceRelaxationConfig,
             "velocity": VelocityConfig,
         }
         for name, config_type in nested_types.items():

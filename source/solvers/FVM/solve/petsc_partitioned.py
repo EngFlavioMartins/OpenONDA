@@ -13,7 +13,34 @@ from .linear_interface import LinearSolveError, LinearSolveResult
 
 @dataclass(frozen=True)
 class OwnedRowsCSR:
-    """Local CSR rows with global column indices and a local right-hand side."""
+    """Owned-row slice of a global CSR matrix with local RHS.
+
+    Each MPI rank stores the rows of the global sparse matrix that it owns
+    (determined by contiguous ownership ranges).  Column indices reference
+    global cell IDs so that the PETSc matrix can be assembled with global
+    indexing.  The local RHS vector is the corresponding slice of the
+    global right-hand side.
+
+    Constructed via :meth:`from_global` for test/reference use or directly
+    assembled by the partitioned assembly routines.
+
+    Attributes
+    ----------
+    global_size : int
+        Total number of rows in the unpartitioned matrix.
+    row_start : int
+        First owned row index (global, inclusive).
+    row_end : int
+        One past the last owned row index (global, exclusive).
+    indptr : np.ndarray
+        CSR row pointers for the local block, shape ``(n_local_rows + 1,)``.
+    indices : np.ndarray
+        CSR column indices (global IDs), shape ``(n_nonzeros,)``.
+    data : np.ndarray
+        CSR coefficient values, shape ``(n_nonzeros,)``.
+    rhs : np.ndarray
+        Local right-hand side values, shape ``(n_local_rows,)``.
+    """
 
     global_size: int
     row_start: int

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -37,6 +36,11 @@ COLORS.update(
     }
 )
 COLORMAPS = dict(_THEME.COLORMAPS)
+REFERENCE_FORCE_FILES = (
+    CASE_DIR / "referenceFlow" / "solution" / "forces_history.csv",
+    CASE_DIR / "postprocessed" / "reference" / "forces_history.csv",
+    CASE_DIR / "postprocessed" / "reference" / "forces_history.csv.gz",
+)
 
 
 def metadata() -> dict:
@@ -68,19 +72,6 @@ def run_constants() -> dict:
     }
 
 
-def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--format", default="png", help="figure format (png, pdf, svg)")
-    ap.add_argument("--dpi", type=int, default=160)
-    ap.add_argument("--times", default="all")
-    ap.add_argument("--force", action="store_true")
-    return ap.parse_args()
-
-
-def apply_style() -> None:
-    _THEME.set_style()
-
-
 def save(fig, name: str, fmt: str, dpi: int) -> Path:
     FIGURES.mkdir(parents=True, exist_ok=True)
     out = FIGURES / f"{name}.{fmt}"
@@ -89,62 +80,31 @@ def save(fig, name: str, fmt: str, dpi: int) -> Path:
     return out
 
 
-def load_forces() -> dict:
-    """Load the cube force history.
-
-    Prefers the wall-patch integration ``forces_history.csv`` (body-fitted
-    cube — the current tutorial), falling back to ``ibm_forces_history.csv``
-    from older immersed-boundary runs.  Both logs are appended to, so keep
-    only the last monotonic-in-step block (the latest run).  Returns a dict
-    of 1-D arrays with at least ``time``, ``Cd``, ``Cl``; wall data also has
-    the pressure/viscous split (``Fpx``, ``Fvx``), IBM data has ``slip``.
-    """
-    for fname in ("forces_history.csv", "ibm_forces_history.csv"):
-        path = SOLUTION / fname
-        if not path.exists():
-            continue
-        rows = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
-        rows = np.atleast_1d(rows)
-        if rows.size == 0:
-            continue
-        steps = rows["step"].astype(int)
-        # Last run = the final maximal run of strictly increasing step numbers.
-        start = 0
-        for i in range(1, len(steps)):
-            if steps[i] <= steps[i - 1]:
-                start = i
-        rows = rows[start:]
-        return {name: rows[name] for name in rows.dtype.names}
-    return {}
-
-
-def load_flow_integrals() -> dict:
-    """Load ``samples/flow_integrals.csv`` (VPM global diagnostics per step)."""
-    path = SOLUTION / "samples" / "flow_integrals.csv"
-    if not path.exists():
-        return {}
+def load_forces(path: Path | None = None) -> dict[str, np.ndarray]:
+    """Load one body-fitted wall-force history."""
+    source = path or SOLUTION / "forces_history.csv"
+    if not source.exists():
+        raise FileNotFoundError(source)
     rows = np.atleast_1d(
-        np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+        np.genfromtxt(source, delimiter=",", names=True, dtype=None, encoding="utf-8")
     )
     if rows.size == 0:
-        return {}
-    return {name: rows[name] for name in rows.dtype.names}
+        raise ValueError(f"empty force history: {source}")
+    if "step" in rows.dtype.names:
+        resets = np.flatnonzero(np.diff(rows["step"].astype(int)) <= 0)
+        rows = rows[resets[-1] + 1 :] if resets.size else rows
+    return {name: np.asarray(rows[name]) for name in rows.dtype.names}
 
 
-def latest_vtu() -> Path | None:
-    # Parallel FVM output is a PVTU collection plus one VTU piece per rank.
-    # Always sample the collection; selecting the lexicographically last piece
-    # would silently plot only one partition of the domain.
-    collections = sorted(SOLUTION.glob("coupled_*_*.pvtu"))
-    if collections:
-        return collections[-1]
-    files = sorted(SOLUTION.glob("coupled_*_*.vtu"))
-    return files[-1] if files else None
+def load_reference_forces() -> dict[str, np.ndarray]:
+    return load_forces(next(path for path in REFERENCE_FORCE_FILES if path.exists()))
 
 
-def latest_vpm_h5() -> Path | None:
-    files = sorted(SOLUTION.glob("vpm_vpm_solution_*.h5"))
-    return files[-1] if files else None
+def hybrid_pvd() -> Path:
+    files = sorted(SOLUTION.glob("coupled_*.pvd"))
+    if len(files) != 1:
+        raise FileNotFoundError(f"expected one hybrid PVD in {SOLUTION}, found {len(files)}")
+    return files[0]
 
 
 def load_vpm_particles(h5_path: Path) -> dict:

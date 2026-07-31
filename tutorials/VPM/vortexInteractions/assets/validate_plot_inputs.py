@@ -14,7 +14,7 @@ from _common import discover_cases, read_integrals
 FAMILIES = ("leapfrog", "collide")
 METHODS = ("baseline", "les", "les_stabilized")
 EXPECTED_CASES = tuple(f"{family}_{method}" for family, method in product(FAMILIES, METHODS))
-TERMINAL_STATUSES = {"completed", "crashed"}
+TERMINAL_STATUSES = {"completed", "terminated_nonphysical", "rejected"}
 
 
 def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
@@ -41,6 +41,18 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
                 status = manifest.get("status")
                 if status not in TERMINAL_STATUSES:
                     failures.append(f"{name}: non-terminal run status {status!r}")
+                if not allow_partial and name.endswith("_les_stabilized"):
+                    completed_steps = manifest.get("completed_steps")
+                    requested_steps = manifest.get("requested_steps")
+                    if status != "completed":
+                        failures.append(
+                            f"{name}: stabilized candidate ended with status {status!r}"
+                        )
+                    elif completed_steps != requested_steps:
+                        failures.append(
+                            f"{name}: completed {completed_steps!r} of "
+                            f"{requested_steps!r} requested steps"
+                        )
 
         diagnostics = read_integrals(case_dir)
         if diagnostics is None or len(diagnostics) < 2:

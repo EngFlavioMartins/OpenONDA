@@ -1,24 +1,22 @@
 #!/usr/bin/env bash
-# Six vortex-ring interactions: 3 methods x 2 interaction families.
+# Complete vortex-ring control and physics-gated stabilization matrix.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null \
-    || command -v python3 \
-    || command -v python)}"
 
 GAMMA_PI="3.14159265358979"
 
 RUN_ROOT="${RUN_ROOT:-solution}"
 FIGURES_ROOT="${FIGURES_ROOT:-figures}"
+PYTHON="${OPENONDA_PYTHON:-python}"
 
 # Widnall-resolving spacing.  The particle radius is 2h, and the initial field
 # is anti-diffused to a core sqrt(a0^2 - (2h)^2) so the *represented* core is
 # a0 = 0.1.  That anti-diffused core must stay wider than the spacing or the
 # initial Gaussian is aliased and the perturbation degenerates into numerical
-# noise -- which is why the old h=0.045 study had to run axisymmetric.
+# noise.
 #
 #   h       sigma0   anti-diffused core   aliased   a0/h   pts per mode-24 wave
 #   0.045   0.090    0.0436               YES       2.2    5.8
@@ -51,12 +49,6 @@ CLEAN_ALL="${CLEAN_ALL:-0}"
 # of the anti-diffused core, which this spacing clears.
 ALLOW_UNDERRESOLVED="${ALLOW_UNDERRESOLVED:-1}"
 EPSILON_W="${EPSILON_W:-0.025}"         # Widnall centreline perturbation
-# Enstrophy-envelope parameters for les_stabilized.  These are measurements, not
-# defaults: run the ungoverned controls, then
-#   python assets/calibrate_envelope.py --solution-dir solution
-# and paste the numbers it prints.  Shipped values are placeholders.
-RHO_MAX="${RHO_MAX:-2.0}"
-ENVELOPE_GROWTH="${ENVELOPE_GROWTH:-1.0}"
 RUN_PLOTS="${RUN_PLOTS:-1}"
 
 if [[ "$CLEAN_ALL" == "1" ]]; then
@@ -85,12 +77,11 @@ echo "Processing unit: $PROCESSING_UNIT"
 echo "Device memory fraction: $DEVICE_MEMORY_FRACTION"
 echo "Baseline: DNS, Gaussian, treecode, fractional RK3, transposed stretching, CS"
 echo "LES: Smagorinsky LES with the same baseline numerical core"
-echo "LES + stabilized: LES Cs=0.20, Gaussian, treecode, coupled RK2, transposed stretching, strain/displacement subcycling, CS"
+echo "LES stabilized: conservative split + reference-restoring constrained relaxation"
 echo "Methods: $METHODS"
 echo "Families: $RUN_FAMILIES"
 echo "Widnall perturbation amplitude: $EPSILON_W"
-echo "Envelope: rho_max=$RHO_MAX growth=$ENVELOPE_GROWTH (calibrate with assets/calibrate_envelope.py)"
-echo "Each case is replaced only once its rerun finishes or crashes"
+echo "Each case is replaced only after it records a terminal manifest"
 
 run_case() {
     local label="$1"
@@ -116,7 +107,7 @@ run_case() {
     rm -rf -- "$staged_case"
 
     if ! "${command[@]}"; then
-        echo "ERROR: $case_name crashed. Existing results were preserved." >&2
+        echo "ERROR: $case_name execution failed. Existing results were preserved." >&2
         if [[ -f "$staged_case/$case_name.log" ]]; then
             tail -80 "$staged_case/$case_name.log" >&2
         fi
@@ -124,7 +115,7 @@ run_case() {
     fi
 
     # The transactional guarantee is exactly this check: a case is replaced only
-    # once its rerun has recorded a terminal status.  A crash, or a run that
+    # once its rerun has recorded a terminal status.  An execution failure, or a run that
     # wrote no manifest, leaves the previous result untouched.
     #
     # Every terminal status is then promoted, including a blow-up.  All three
@@ -137,7 +128,7 @@ run_case() {
     # loudly by assets/validate_plot_inputs.py.
     local manifest="$staged_case/run_manifest.json"
     if [[ ! -s "$manifest" ]] || ! grep -Eq \
-        '"status": "(completed|crashed)"' "$manifest"; then
+        '"status": "(completed|terminated_nonphysical|rejected)"' "$manifest"; then
         echo "ERROR: $case_name did not record a valid terminal status." >&2
         echo "Existing results were preserved; staged output remains at $staged_case" >&2
         return 1
@@ -187,8 +178,6 @@ for family in $RUN_FAMILIES; do
             --device-memory-fraction "$DEVICE_MEMORY_FRACTION" \
             --method "$method" \
             --epsilon-w "$EPSILON_W" \
-            --rho-max "$RHO_MAX" \
-            --envelope-growth "$ENVELOPE_GROWTH" \
             --backup-frequency "$BACKUP_FREQUENCY" \
             --logging-frequency "$LOGGING_FREQUENCY" \
             --guard-frequency "$GUARD_FREQUENCY"

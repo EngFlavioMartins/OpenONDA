@@ -46,7 +46,6 @@ class SolverIO:
 
         self._vlm_pvd_entries = []  # Track VLM time-series entries
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
-        self._xdmf_series_entries = []  # Track VPM particle time-series entries
 
     @property
     def backup_frequency(self) -> int:
@@ -54,7 +53,7 @@ class SolverIO:
 
     @property
     def backup_file_name(self) -> str:
-        return os.path.basename((self.solver.backup_file_name or "").strip())
+        return (self.solver.backup_file_name or "").strip()
 
     @property
     def vpm_prefix(self) -> str:

@@ -13,9 +13,9 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from source.solvers.VPM.utils import LambOseenVPM, LineSampler, SurfaceSampler
-from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
-from source.solvers.VPM.config.types import (
+from openonda.vpm import LambOseenVPM, LineSampler, SurfaceSampler
+from openonda.vpm import ParticleDistributor, Solver, VPMSetup
+from openonda.vpm import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,

@@ -45,7 +45,20 @@ class PressureBoundaryLayout:
 
 @dataclass(frozen=True)
 class PressureCorrectionWorkspace:
-    """Dynamic Rhie--Chow data shared by assembly and its correction."""
+    """Dynamic Rhie–Chow data shared by pressure assembly and velocity correction.
+
+    ``DU`` (the inverse diagonal of the momentum matrix at each cell) and
+    ``face_conductance`` (the interpolated face flux coefficient) are
+    computed once per PIMPLE corrector and reused by both the pressure
+    Poisson assembly and the subsequent face-flux and velocity correction.
+
+    Attributes
+    ----------
+    DU : np.ndarray
+        Inverse of the momentum matrix diagonal, shape ``(n_cells,)``.
+    face_conductance : np.ndarray
+        Interpolated face flux coefficient, shape ``(n_faces,)``.
+    """
 
     DU: np.ndarray
     face_conductance: np.ndarray
@@ -166,26 +179,16 @@ def _compute_pressure_face_conductance(mesh_data, geo_data, DU):
 
 
 def _update_fixed_flux_pressure_boundaries(
-    p, U_star, DU, mesh_data, geo_data, boundaries, grad_p=None
+    p,
+    U_star,
+    DU,
+    mesh_data,
+    geo_data,
+    boundaries,
+    grad_p=None,
+    pressure_free_face_flux=None,
 ):
-    """Update ``fixedFluxPressure`` face values from the normal momentum balance.
-
-    For a prescribed boundary velocity ``U_b``, the pressure gradient must make
-    the pressure-free predictor ``H/A`` deliver the same normal flux::
-
-        U_b.n = (H/A).n - D_n dp/dn.
-
-    The native solver stores boundary scalar values at face centres (rather
-    than at reflected ghost-cell centres), so the resulting normal gradient is
-    converted to a face-minus-owner pressure increment.  The increment is
-    retained on the patch and re-applied after every pressure correction; this
-    is the discrete analogue of OpenFOAM's ``fixedFluxPressure`` update.
-
-    A diagnostic replay may set ``fixed_flux_pressure_external=True`` and
-    provide ``fixed_flux_pressure_delta`` itself.  That mode is intentionally
-    explicit: it is used only to measure the cropped-stencil floor against a
-    recorded monolithic oracle.
-    """
+    """Update ``fixedFluxPressure`` from the pressure-free face flux."""
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
@@ -206,11 +209,14 @@ def _update_fixed_flux_pressure_boundaries(
         if grad_p.ndim == 3:
             grad_p = grad_p.squeeze(-1)
 
-    # U_star was obtained with the *current* pressure gradient.  Reconstruct
-    # H/A once from that same pair.  Iterating this formula without resolving
-    # momentum would add the new gradient repeatedly and double the requested
-    # pressure slope on every sweep.
-    U_hbya = U_star[:n_elements] + DU * grad_p[:n_elements]
+    U_hbya = None
+    if pressure_free_face_flux is not None:
+        pressure_free_face_flux = np.asarray(pressure_free_face_flux, dtype=float)
+        if pressure_free_face_flux.shape != (mesh_data["n_faces"],):
+            raise ValueError("pressure_free_face_flux must have one value per face")
+    else:
+        U_hbya = U_star[:n_elements] + DU * grad_p[:n_elements]
+
     changed = False
     for boundary in fixed_flux_patches:
         start = boundary["startFace"]
@@ -230,9 +236,14 @@ def _update_fixed_flux_pressure_boundaries(
         dr = face_cf[start : start + nf]
         normal_distance = np.einsum("ij,ij->i", dr, normal)
         D_normal = np.einsum("ij,ij->i", DU[own], normal * normal)
-        target_normal = np.einsum("ij,ij->i", U_star[ghost], normal)
-        hbya_normal = np.einsum("ij,ij->i", U_hbya[own], normal)
-        dpdn = (hbya_normal - target_normal) / np.maximum(D_normal, 1.0e-30)
+        phi_target = np.einsum("ij,ij->i", U_star[ghost], sf)
+        if pressure_free_face_flux is None:
+            assert U_hbya is not None
+            phi_hbya = np.einsum("ij,ij->i", U_hbya[own], sf)
+        else:
+            phi_hbya = pressure_free_face_flux[start : start + nf]
+        pressure_flux_coefficient = mag_sf * D_normal
+        dpdn = (phi_hbya - phi_target) / np.maximum(pressure_flux_coefficient, 1.0e-30)
         delta = dpdn * normal_distance
         boundary["fixed_flux_pressure_delta"] = delta
         p[ghost] = p[own] + delta
@@ -503,6 +514,7 @@ def build_pressure_boundary_layout(boundaries, n_interior, n_faces) -> PressureB
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.CYCLIC,
         ):
             code = 0
@@ -947,6 +959,7 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.EMPTY,
         ):
             p_prime_ext[idx : idx + nf] = p_prime[own]
@@ -1017,6 +1030,7 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
+            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.EMPTY,
         ):
             raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
@@ -1323,8 +1337,16 @@ def _apply_scalar_bc(
     """
     if strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
         phi[indices] = phi[owners_b]
-    elif strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
-        delta = boundary.get("fixed_flux_pressure_delta")
+    elif strategy in (
+        BoundaryStrategy.FIXED_FLUX_PRESSURE,
+        BoundaryStrategy.FIXED_GRADIENT,
+    ):
+        key = (
+            "fixed_flux_pressure_delta"
+            if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE
+            else "fixed_gradient_delta"
+        )
+        delta = boundary.get(key)
         if delta is None:
             phi[indices] = phi[owners_b]
         else:
@@ -1406,23 +1428,43 @@ def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_fl
 
 
 class SIMPLESolver:
-    """
-    SIMPLE algorithm solver for incompressible Navier-Stokes.
+    """SIMPLE algorithm for incompressible Navier–Stokes.
+
+    Semi-Implicit Method for Pressure-Linked Equations: solves the
+    steady incompressible Navier–Stokes equations through a predictor–
+    corrector loop that alternates between a momentum solve and a
+    pressure-correction Poisson solve.
+
+    The algorithm iterates until ``max_iter`` is reached or the residuals
+    fall below ``tolerance``.  Under-relaxation is applied through
+    ``alpha_u`` (velocity) and ``alpha_p`` (pressure).
+
+    This class also serves as the base for the transient :class:`PIMPLESolver`.
+
+    References
+    ----------
+    - Patankar, S. V. and Spalding, D. B. "A calculation procedure for
+      heat, mass and momentum transfer in three-dimensional parabolic
+      flows." *Int. J. Heat Mass Transfer*, 15(10):1787–1806, 1972.
+    - Ferziger, J. H. and Perić, M. *Computational Methods for Fluid
+      Dynamics*, 3rd ed., Springer, 2002 (Chapter 8).
+
+    Examples
+    --------
+    >>> solver = SIMPLESolver(mesh_data, geo_data, boundaries)
+    >>> diagnostics = solver.solve_one_step()
     """
 
     def __init__(self, mesh_data, geo_data, boundaries, params=None):
-        """
-        Initialize SIMPLE solver.
+        """Initialise the SIMPLE solver.
 
         Args:
-            mesh_data: Mesh connectivity
-            geo_data: Geometric data
-            boundaries: Boundary conditions
-            params: Dict with solver parameters:
-                - alpha_u: Velocity under-relaxation (default: 0.7)
-                - alpha_p: Pressure under-relaxation (default: 0.3)
-                - max_iter: Maximum iterations (default: 100)
-                - tolerance: Convergence tolerance (default: 1e-6)
+            mesh_data: Mesh connectivity dictionary.
+            geo_data: Geometric quantities dictionary.
+            boundaries: List of boundary condition dictionaries.
+            params: Optional dict of solver parameters overriding defaults.
+                Supported keys: ``alpha_u``, ``alpha_p``, ``max_iter``,
+                ``tolerance``, ``convection_scheme``, ``linear_solver``.
         """
         self.mesh_data = mesh_data
         self.geo_data = geo_data

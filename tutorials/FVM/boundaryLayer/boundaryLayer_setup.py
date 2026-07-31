@@ -25,17 +25,12 @@ Usage:
 import argparse
 import csv
 import os
-import sys
 
 import numpy as np
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.append(project_root)
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
+from assets.mesh_plate import flat_plate_mesh
 
-from mesh_plate import flat_plate_mesh  # noqa: E402
-
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     FVMConfig,
     Solver,

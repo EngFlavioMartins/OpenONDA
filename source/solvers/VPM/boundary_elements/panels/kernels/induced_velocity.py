@@ -13,6 +13,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import taichi as ti
 
 from ....config.constants import PANEL_EPSILON
+from .source_velocity import compute_source_velocity
 
 
 @ti.func
@@ -60,3 +61,25 @@ def compute_induced_velocity_kernel(
         velocity[i, 0] = v_total[0]
         velocity[i, 1] = v_total[1]
         velocity[i, 2] = v_total[2]
+
+
+@ti.kernel
+def compute_source_induced_velocity_kernel(
+    vertices: ti.types.ndarray(ndim=3),
+    normals: ti.types.ndarray(ndim=2),
+    strengths: ti.types.ndarray(ndim=1),
+    points: ti.types.ndarray(ndim=2),
+    velocity: ti.types.ndarray(ndim=2),
+):
+    for i in range(points.shape[0]):
+        point = ti.Vector([points[i, 0], points[i, 1], points[i, 2]])
+        value = ti.Vector([0.0, 0.0, 0.0])
+        for j in range(strengths.shape[0]):
+            v0 = ti.Vector([vertices[j, 0, 0], vertices[j, 0, 1], vertices[j, 0, 2]])
+            v1 = ti.Vector([vertices[j, 1, 0], vertices[j, 1, 1], vertices[j, 1, 2]])
+            v2 = ti.Vector([vertices[j, 2, 0], vertices[j, 2, 1], vertices[j, 2, 2]])
+            normal = ti.Vector([normals[j, 0], normals[j, 1], normals[j, 2]])
+            value += strengths[j] * compute_source_velocity(point, v0, v1, v2, normal)
+        velocity[i, 0] = value[0]
+        velocity[i, 1] = value[1]
+        velocity[i, 2] = value[2]

@@ -7,7 +7,12 @@ from enum import Enum, auto
 
 
 class BoundaryStrategy(Enum):
-    """Canonical behavior selected by the boundary registry."""
+    """Enumeration of canonical boundary-condition behaviours.
+
+    Each member corresponds to one of the supported OpenFOAM boundary types
+    and determines how the discrete operators (gradient, convection,
+    diffusion, flux) treat the boundary faces.
+    """
 
     FIXED_VALUE = auto()
     ZERO_GRADIENT = auto()
@@ -20,11 +25,31 @@ class BoundaryStrategy(Enum):
     FREESTREAM = auto()
     DIRECTION_MIXED = auto()
     FIXED_FLUX_PRESSURE = auto()
+    FIXED_GRADIENT = auto()
 
 
 @dataclass(frozen=True)
 class BoundaryOperator:
-    """Boundary condition name and the discrete operators that implement it."""
+    """Registration record binding a boundary type to its discrete operators.
+
+    Associates a boundary-condition name (e.g. ``"fixedValue"``) with the
+    set of fields it applies to, the set of discrete operators it
+    implements, and the :class:`BoundaryStrategy` that controls the
+    numerical treatment.
+
+    Attributes
+    ----------
+    name : str
+        OpenFOAM boundary-condition name (e.g. ``"fixedValue"``).
+    fields : frozenset[str]
+        Fields this BC applies to (e.g. ``{"U", "p", "scalar"}``).
+    operators : frozenset[str]
+        Operators implemented (e.g. ``{"gradient", "convection"}``).
+    strategy : BoundaryStrategy
+        Canonical behaviour enum value.
+    coupling_only : bool
+        Whether this BC is only available through the FVM–VPM coupler.
+    """
 
     name: str
     fields: frozenset[str]
@@ -39,7 +64,17 @@ _ALL_OPERATORS = frozenset(
 
 
 class BoundaryRegistry:
-    """Single capability registry used for early boundary validation."""
+    """Registry of all supported boundary-condition operators.
+
+    Enforces uniqueness (each name can be registered only once) and provides
+    lookups that validate whether a given boundary name implements the
+    required operator for a given field.  Use :meth:`require` before applying
+    a boundary treatment; it raises a clear error if the combination is not
+    supported.
+
+    The module-level singleton :data:`BOUNDARIES` is pre-populated with all
+    standard OpenFOAM boundary types.
+    """
 
     def __init__(self) -> None:
         self._entries: dict[str, BoundaryOperator] = {}
@@ -104,6 +139,16 @@ BOUNDARIES.register(
         frozenset({"p"}),
         _ALL_OPERATORS,
         BoundaryStrategy.FIXED_FLUX_PRESSURE,
+        coupling_only=True,
+    )
+)
+
+BOUNDARIES.register(
+    BoundaryOperator(
+        "fixedGradient",
+        frozenset({"p"}),
+        _ALL_OPERATORS,
+        BoundaryStrategy.FIXED_GRADIENT,
         coupling_only=True,
     )
 )

@@ -1524,7 +1524,7 @@ class Particles:
 
         # Early return if no particles or no removal requested
         if N == 0 or percent <= 0.0:
-            return
+            return np.empty(0, dtype=np.int64)
 
         strengths = self.circulation_cpu()
         strength_mags = np.linalg.norm(strengths, axis=1)
@@ -1539,7 +1539,7 @@ class Particles:
                 print(
                     "(Warning) _remove_weak_particles: all particle strengths are zero — skipping removal to avoid emptying the system."
                 )
-                return
+                return np.empty(0, dtype=np.int64)
             else:
                 cutoff = (percent / 100.0) * max_strength_global
                 remove_mask = strength_mags < cutoff
@@ -1552,9 +1552,10 @@ class Particles:
                 print(
                     "(Warning) _remove_weak_particles would remove all particles — skipping to preserve at least one particle."
                 )
-                return
+                return np.empty(0, dtype=np.int64)
 
             self.remove_vortex_particles(indices=indices_to_remove, remove_all=False)
+        return indices_to_remove
 
     def update_circulations_masked(self, mask: np.ndarray, delta_circ: np.ndarray) -> None:
         """Apply an in-place circulation delta to a masked subset of particles.

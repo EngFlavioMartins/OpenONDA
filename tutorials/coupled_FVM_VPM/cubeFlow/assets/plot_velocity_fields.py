@@ -8,7 +8,6 @@ snapshots and VPM particle backups.
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 import sys
 
@@ -19,24 +18,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-from _plotutil import CASE_DIR, COLORMAPS, COLORS, run_constants, save
-from _reference_util import (
-    MATCH_TOL,
-    _pvd_times,
-    assert_same_time,
-    load_vpm_particles,
-    nearest_vpm_h5,
-    nearest_vtu,
-    sample_vtu,
-)
+from _plotutil import CASE_DIR, COLORMAPS, COLORS, hybrid_pvd, run_constants, save
+from _reference_util import particles_at, plot_frames, sample_vtu
 from _frames_util import CM, EPS, U_INF, body_mask, hybrid_velocity, vpm_velocity, _add_body
 
 FIG = CASE_DIR / "figures"
 REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
 CMAP_VEL = COLORMAPS["velocity"]
 CMAP_ERR = COLORMAPS["error"]
-H_MESH = 0.05  # VPM/FVM spacing (cubeFlow_setup.py H_CORE)
+FIGURE_FORMAT = "png"
+FIGURE_DPI = 300
+H_MESH = 0.05
 
 
 def _add_body_patch(ax):
@@ -76,7 +68,7 @@ def _style_axes(fig, axes, box, cf_vel, cf_err, vmax, p95):
     ).set_ticks(np.linspace(0, p95, 3))
 
 
-def fig_velocity_fields(t, hyb_vtu, particles, box, fmt, dpi):
+def fig_velocity_fields(t, hyb_vtu, particles, box):
     """Hybrid FVM vs VPM velocity field + error (OFW figure 1)."""
     n = 61
     xs = np.linspace(box["xmin"] + 0.01, box["xmax"] - 0.01, n)
@@ -104,40 +96,32 @@ def fig_velocity_fields(t, hyb_vtu, particles, box, fmt, dpi):
     cf1 = axes[1].contourf(X, Y, ux_v, levels=levels, cmap=CMAP_VEL, extend="both")
     axes[1].set_title(r"VPM, $u_x^\text{VPM}$")
 
-    # |FVM - VPM| error; masked inside the body (+margin) and where |u| ~ 0.
     error = np.abs(ux_h - ux_v) / U_INF * 100
     error[np.abs(ux_h) < U_INF / 100] = np.nan
     error[body_mask(X, Y)] = np.nan
 
-    p95 = np.nanpercentile(error, 95)
-    cf3 = axes[2].pcolormesh(X, Y, error, cmap=CMAP_ERR, vmin=0, vmax=max(p95, 1e-3))
+    p95 = max(float(np.nanpercentile(error, 95)), 1e-3)
+    cf3 = axes[2].pcolormesh(X, Y, error, cmap=CMAP_ERR, vmin=0, vmax=p95)
     axes[2].set_title(r"$\varepsilon$ [\%]")
 
-    _style_axes(fig, axes, box, cf1, cf3, vmax, max(p95, 1e-3))
+    _style_axes(fig, axes, box, cf1, cf3, vmax, p95)
 
-    save(fig, f"velocity_fields_t{t:.2f}", fmt, dpi or 300)
+    save(fig, f"velocity_fields_t{t:.2f}", FIGURE_FORMAT, FIGURE_DPI)
     plt.close(fig)
 
-    mean_err = np.nanmean(error)
-    outlet_msg = ""
-    valid = np.isfinite(error)
+    mean_err = float(np.nanmean(error))
     outlet_band = 3.0 * H_MESH
-    outlet_mask = valid & (X >= (box["xmax"] - outlet_band))
-    if np.any(outlet_mask):
-        outlet_err = error[outlet_mask]
-        outlet_msg = (
-            f", OutletMean={np.nanmean(outlet_err):.1f}%, "
-            f"OutletP95={np.nanpercentile(outlet_err, 95):.1f}% "
-            f"(x>={box['xmax'] - outlet_band:.2f})"
-        )
+    outlet_err = error[np.isfinite(error) & (X >= box["xmax"] - outlet_band)]
     print(
         f"  Velocity field plot: velocity_fields_t{t:.2f} "
-        f"(Mean={mean_err:.1f}%, P95={p95:.1f}%{outlet_msg})"
+        f"(Mean={mean_err:.1f}%, P95={p95:.1f}%, "
+        f"OutletMean={np.mean(outlet_err):.1f}%, "
+        f"OutletP95={np.percentile(outlet_err, 95):.1f}%)"
     )
     return mean_err
 
 
-def fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
+def fig_stitched_vs_reference(t, hyb_vtu, ref_vtu, particles, box):
     """Reference FVM vs stitched FVM+VPM velocity + error (OFW figure 2)."""
     n = 61
     xs = np.linspace(box["xmin"] + 0.01, box["xmax"] - 0.01, n)
@@ -145,7 +129,7 @@ def fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
     X, Y = np.meshgrid(xs, ys)
     pts = np.column_stack([X.ravel(), Y.ravel(), np.full(X.size, EPS)])
 
-    ux_ref = sample_vtu(ref_s[1], pts)["U"][:, 0].reshape(X.shape)
+    ux_ref = sample_vtu(ref_vtu, pts)["U"][:, 0].reshape(X.shape)
     ux_st = hybrid_velocity(hyb_vtu, particles, pts, box, sample_vtu)[0][:, 0].reshape(X.shape)
 
     err = np.abs(ux_ref - ux_st) / U_INF * 100.0
@@ -168,15 +152,14 @@ def fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
     cf2 = axes[1].contourf(X, Y, ux_st, levels=levels, cmap=CMAP_VEL, extend="both")
     axes[1].set_title(r"Stitched FVM+VPM, $u_x^{\mathrm{stitched}}$")
 
-    valid = np.isfinite(err)
-    p95 = float(np.nanpercentile(err[valid], 95)) if np.any(valid) else 5.0
-    cf3 = axes[2].pcolormesh(X, Y, err, cmap=CMAP_ERR, vmin=0, vmax=max(p95, 1e-3))
+    p95 = max(float(np.nanpercentile(err, 95)), 1e-3)
+    cf3 = axes[2].pcolormesh(X, Y, err, cmap=CMAP_ERR, vmin=0, vmax=p95)
     axes[2].set_title(r"$\varepsilon$ [\%]")
 
-    _style_axes(fig, axes, box, cf2, cf3, vmax, max(p95, 1e-3))
+    _style_axes(fig, axes, box, cf2, cf3, vmax, p95)
 
-    mean_err = float(np.nanmean(err[valid])) if np.any(valid) else np.nan
-    save(fig, f"Stitched_RefVsHybrid_t{t:.2f}", fmt, dpi or 300)
+    mean_err = float(np.nanmean(err))
+    save(fig, f"Stitched_RefVsHybrid_t{t:.2f}", FIGURE_FORMAT, FIGURE_DPI)
     plt.close(fig)
     print(
         f"  Stitched vs Reference: Stitched_RefVsHybrid_t{t:.2f} "
@@ -186,53 +169,15 @@ def fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, fmt, dpi):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--times", default="all", help="all | latest | comma list")
-    ap.add_argument("--force", action="store_true")
-    ap.add_argument("--format", default="png")
-    ap.add_argument("--dpi", type=int, default=300)
-    args = ap.parse_args()
-
     FIG.mkdir(exist_ok=True)
-    C = run_constants()
-    box = C["box"]
+    box = run_constants()["box"]
 
-    hyb_pvd = next(iter((CASE_DIR / "solution").glob("coupled_*.pvd")), None)
-    if hyb_pvd is None:
-        sys.exit("no hybrid .pvd in solution/")
-    entries = [(tt, f) for tt, f in _pvd_times(hyb_pvd) if tt > 1e-9]
-    if args.times == "latest":
-        entries = entries[-1:]
-    elif args.times != "all":
-        wanted = [float(v) for v in args.times.split(",")]
-        entries = [min(entries, key=lambda e: abs(e[0] - w)) for w in wanted]
-
-    for t, hyb_vtu in entries:
-        out1 = FIG / f"velocity_fields_t{t:.2f}.{args.format}"
-        out2 = FIG / f"Stitched_RefVsHybrid_t{t:.2f}.{args.format}"
-        if not args.force and out1.exists() and (out2.exists() or not REF_PVD.exists()):
-            continue
-        h5 = nearest_vpm_h5(t)
-        particles = (
-            load_vpm_particles(h5)
-            if h5
-            else {
-                "position": np.zeros((0, 3)),
-                "circulation": np.zeros((0, 3)),
-                "radius": np.zeros(0),
-            }
-        )
-        if args.force or not out1.exists():
-            fig_velocity_fields(t, hyb_vtu, particles, box, args.format, args.dpi)
-
-        ref_s = nearest_vtu(REF_PVD, t)
-        if ref_s is None or abs(ref_s[0] - t) > MATCH_TOL:
-            print(f"  stitched comparison t={t:.2f}: no coincident reference snapshot — skip")
-            continue
-        assert_same_time(t, ref_s[0])  # guard: identical physical time only
-        if args.force or not out2.exists():
-            fig_stitched_vs_reference(t, hyb_vtu, ref_s, particles, box, args.format, args.dpi)
-        print(f"  velocity_fields t={t:.2f} (ref t={ref_s[0]:.2f}) done")
+    for time, hybrid_vtu, reference_vtu in plot_frames(hybrid_pvd(), REF_PVD):
+        particles = particles_at(time)
+        fig_velocity_fields(time, hybrid_vtu, particles, box)
+        if reference_vtu is not None:
+            fig_stitched_vs_reference(time, hybrid_vtu, reference_vtu, particles, box)
+        print(f"  velocity_fields t={time:.2f} done")
 
 
 if __name__ == "__main__":

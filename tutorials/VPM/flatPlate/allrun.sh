@@ -38,7 +38,6 @@ cd "$SCRIPT_DIR"
 
 ./allclean.sh
 
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 FAILED=0
 
 run_case() {
@@ -54,7 +53,7 @@ run_case() {
     mkdir -p "$log_dir"
     echo "  Log: ${log_dir}/${name}.log"
     local rc=0
-    "$PYTHON" setup_plate.py "$@" > "${log_dir}/${name}.log" 2>&1 || rc=$?
+    python setup_plate.py "$@" > "${log_dir}/${name}.log" 2>&1 || rc=$?
     if [[ $rc -ne 0 ]]; then
         echo "  *** ${name} exited with code ${rc}" >&2
         FAILED=1

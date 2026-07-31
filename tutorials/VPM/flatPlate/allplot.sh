@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PYTHON="${OPENONDA_PYTHON:-$(conda run -n OpenONDA which python 2>/dev/null || command -v python3 || command -v python)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 SOLUTION_DIR="./solution"; DPI=300
@@ -8,7 +7,7 @@ SOLUTION_DIR="./solution"; DPI=300
 run_plot() {
     local fmt
     for fmt in png pdf; do
-        "$PYTHON" "$@" --format "$fmt"
+        python "$@" --format "$fmt"
     done
 }
 

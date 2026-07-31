@@ -119,6 +119,8 @@ def remesh_to_grid(
     origin: np.ndarray,
     h: float,
     shape: tuple[int, int, int],
+    *,
+    reuse_aligned: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Tensor-product M4' P2M scatter onto a regular lattice.
 
@@ -144,10 +146,26 @@ def remesh_to_grid(
         return grid_pos, np.zeros((len(grid_pos), 3))
 
     rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(h)
+    circ_f = np.asarray(circ, dtype=float)
+
+    if reuse_aligned:
+        nearest = np.rint(rel).astype(np.int64)
+        aligned = np.max(np.abs(rel - nearest), axis=1) <= 1.0e-5
+        aligned &= np.all((nearest >= 0) & (nearest < np.asarray(shape)), axis=1)
+        G = np.zeros((*shape, 3), dtype=np.float64)
+        if aligned.any():
+            index = nearest[aligned]
+            np.add.at(G, (index[:, 0], index[:, 1], index[:, 2]), circ_f[aligned])
+        if (~aligned).any():
+            rel_free = rel[~aligned]
+            base_free = np.floor(rel_free).astype(int) - 1
+            G += _scatter_m4p(rel_free, base_free, circ_f[~aligned], shape)
+        grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
+        return grid_pos, G.reshape(-1, 3)
+
     # Leftmost node index in the 4-node stencil: floor(q) - 1 → nodes at offsets 0..3
     base = np.floor(rel).astype(int) - 1  # (N, 3)
 
-    circ_f = np.asarray(circ, dtype=float)
     G = _scatter_m4p(rel, base, circ_f, shape)
     grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
     return grid_pos, G.reshape(-1, 3)

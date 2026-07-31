@@ -144,7 +144,7 @@ fi
 echo -e "${GREEN}✅ $CONDA_ENV uses Python $ACTUAL_PYTHON ($ENV_PYTHON)${NC}"
 
 echo "Installing OpenONDA in editable mode..."
-"$ENV_PYTHON" -m pip install --no-deps -e "$REPO_ROOT"
+"$ENV_PYTHON" -m pip install --no-deps --no-build-isolation -e "$REPO_ROOT"
 
 if [ "${OPENONDA_INSTALL_OPENVSP:-1}" = "1" ]; then
     echo "Installing OpenVSP and its Python API..."
