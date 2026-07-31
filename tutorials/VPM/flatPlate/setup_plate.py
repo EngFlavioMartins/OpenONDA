@@ -526,16 +526,17 @@ def main():
             df_sp_final.to_csv(span_dst, index=False)
 
     # -- D4: Per-station VPM→VLM induced downwash diagnostic ------------------
-    # external_velocity holds the last step's VPM-induced velocity (body frame:
-    # include_freestream=False so this is PURE VPM contribution). Grouped by span
-    # station, w_j = V_ext·n_hat gives the normal downwash the VPM wake feeds into
-    # the no-penetration BC. Compare to Glauert-required induced AoA to localize
-    # the tip downwash deficit (Bug 2e).
+    # external_velocity holds the total velocity supplied to the VLM boundary
+    # condition.  Remove the configured background flow so both the moving-body
+    # and fixed-wing frames report the same pure VPM-wake contribution. Grouped
+    # by span station, w_j = V_wake·n_hat gives the normal downwash the particle
+    # wake feeds into the no-penetration BC.
     try:
-        from theoretical_model import liftingline_circulation
+        from assets.theoretical_model import liftingline_circulation
 
         n_p = vlm.lattice.num_panels
         V_ext_all = vlm.lattice.external_velocity.to_numpy()[:n_p]  # (N, 3)
+        V_wake_all = V_ext_all - np.asarray(bg_vel, dtype=float)
         normals_all = vlm.lattice.normals.to_numpy()[:n_p]  # (N, 3)
         bm_all = vlm.lattice.bound_midpoints.to_numpy()[:n_p]  # (N, 3)
 
@@ -549,7 +550,7 @@ def main():
                     continue
                 for j in range(ns):
                     cidx = idx2d[j]
-                    w_panels = np.einsum("ki,ki->k", V_ext_all[cidx], normals_all[cidx])
+                    w_panels = np.einsum("ki,ki->k", V_wake_all[cidx], normals_all[cidx])
                     w_j = float(np.mean(w_panels))
                     y_j = float(np.mean(bm_all[cidx, 1]))
                     rows.append({"half": half, "span_index": j, "y": y_j, "w_VPM": w_j})

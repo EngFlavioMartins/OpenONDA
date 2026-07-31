@@ -30,7 +30,7 @@ from assets.mesh_square import square_cylinder_mesh
 
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -63,7 +63,7 @@ def build_config(args, depth):
         force_log_interval=1,  # every step: St comes from the Cl signal
     )
 
-    return FVMConfig(
+    return FVMSetup(
         case_name=args.case_name,
         time=TimeConfig(
             delta_t=args.initial_dt,

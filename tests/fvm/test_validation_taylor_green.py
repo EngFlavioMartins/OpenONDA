@@ -26,7 +26,7 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -60,7 +60,7 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         BoundaryConfig.cyclic("ymax", "ymin"),
     ]
     bnds += [BoundaryConfig.empty("zmin"), BoundaryConfig.empty("zmax")]
-    cfg = FVMConfig(
+    cfg = FVMSetup(
         case_name="tgv",
         time=TimeConfig(delta_t=dt, end_time=dt * nsteps, write_interval=10**9),
         schemes=sp_schemes,

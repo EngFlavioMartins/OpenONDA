@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "s
 
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import assemble_matrix_from_fluxes_vectorized
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
@@ -175,7 +175,7 @@ def main():
     )
     phi = np.concatenate([phi_elem, phi_b])
 
-    grad_phi = compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data)
+    grad_phi = compute_gauss_gradient(phi, mesh_data, geo_data)
     grad_elem = grad_phi[:n_elements]
     print("Gradient phi (element average):\n", grad_elem.mean(axis=0))
     expected = np.array([1.0, 1.0, 1.0])

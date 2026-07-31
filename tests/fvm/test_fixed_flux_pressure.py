@@ -74,7 +74,7 @@ def test_fixed_flux_pressure_accepts_explicit_pressure_free_face_flux():
     np.testing.assert_allclose(p[1:], [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0], atol=1e-14)
     np.testing.assert_allclose(grad[0], [2.0, 0.0, 0.0], atol=1e-14)
     # Re-evaluating the public gradient operator must see the same trace.
-    got = gradients.compute_gradient_gauss_linear_vectorized(p, mesh, geo).squeeze(-1)
+    got = gradients.compute_gauss_gradient(p, mesh, geo).squeeze(-1)
     np.testing.assert_allclose(got[0], [2.0, 0.0, 0.0], atol=1e-14)
 
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.gradients import compute_gradient_lsq_vectorized
+from source.solvers.FVM.fields.gradients import compute_lsq_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 from ._polyhedral_mesh import split_prism_box
@@ -41,7 +41,7 @@ class TestGradientConvergence:
         phi[:n_elem] = np.array([phi_func(c) for c in cents])
         _set_ghost_cells_to_analytic(phi, mesh, geo, phi_func)
 
-        grad = compute_gradient_lsq_vectorized(phi, mesh, geo)
+        grad = compute_lsq_gradient(phi, mesh, geo)
         g = grad[:n_elem].squeeze()
         grad_exact = 2.0 * cents
         err = _l2_error(g, grad_exact, geo["element_volumes"])
@@ -78,7 +78,7 @@ class TestGradientConvergence:
             phi = np.zeros(n_elem + n_bnd)
             phi[:n_elem] = np.array([phi_func(c) for c in cents])
             _set_ghost_cells_to_analytic(phi, mesh, geo, phi_func)
-            grad = compute_gradient_lsq_vectorized(phi, mesh, geo)
+            grad = compute_lsq_gradient(phi, mesh, geo)
             g = grad[:n_elem].squeeze()
             grad_exact = 2.0 * cents
             err = _l2_error(g, grad_exact, geo["element_volumes"])
@@ -103,7 +103,7 @@ class TestGradientConvergence:
             field = np.zeros(n_cells + n_boundary)
             field[:n_cells] = np.sum(centres**2, axis=1)
             _set_ghost_cells_to_analytic(field, mesh, geo, lambda point: np.sum(point**2))
-            computed = compute_gradient_lsq_vectorized(field, mesh, geo)[:n_cells].squeeze()
+            computed = compute_lsq_gradient(field, mesh, geo)[:n_cells].squeeze()
             errors.append(_l2_error(computed, 2.0 * centres, geo["element_volumes"]))
             sizes.append(1.0 / n)
 

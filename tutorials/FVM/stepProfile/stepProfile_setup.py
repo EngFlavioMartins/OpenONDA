@@ -11,7 +11,7 @@ from assets.mesh_step import backward_facing_step_mesh
 
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -115,7 +115,7 @@ def build_config(args, inlet_values, nu):
         n_correctors=args.n_correctors,
         n_outer_correctors=args.n_outer,
     )
-    return FVMConfig(
+    return FVMSetup(
         case_name=args.case_name,
         time=TimeConfig(
             delta_t=args.initial_dt,

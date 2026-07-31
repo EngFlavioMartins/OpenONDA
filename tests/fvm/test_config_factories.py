@@ -3,7 +3,7 @@ import pytest
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     MeshConfig,
     OutputSetup,
@@ -83,7 +83,7 @@ class TestConfigFactories:
         assert tc.Cs == 0.17
 
     def test_fvm_config_roundtrip_json(self, tmp_path):
-        config = FVMConfig(
+        config = FVMSetup(
             case_name="test_case",
             cores=3,
             mesh=MeshConfig.block_mesh(),
@@ -93,7 +93,7 @@ class TestConfigFactories:
         )
         path = tmp_path / "test_config.json"
         config.save(path)
-        loaded = FVMConfig.load(path)
+        loaded = FVMSetup.load(path)
         assert loaded.case_name == "test_case"
         assert loaded.cores == 3
         assert loaded.time.delta_t == 0.1
@@ -103,7 +103,7 @@ class TestConfigFactories:
     def test_fvm_config_roundtrip_preserves_every_solver_setting(self, tmp_path):
         # Grouped configs: linear (fvSolution/solvers), pimple (PIMPLE/IBM),
         # forces (functionObjects/forces) round-trip through JSON intact.
-        config = FVMConfig(
+        config = FVMSetup(
             case_name="complete",
             linear=LinearSolverConfig(reuse_ilu=False),
             output=OutputSetup(
@@ -125,16 +125,16 @@ class TestConfigFactories:
         path = tmp_path / "complete.json"
         config.save(path)
 
-        assert FVMConfig.load(path) == config
+        assert FVMSetup.load(path) == config
 
     def test_fvm_setup_validates_cores(self):
         with pytest.raises(ValueError, match="at least one"):
-            FVMConfig(case_name="invalid", cores=0)
+            FVMSetup(case_name="invalid", cores=0)
         with pytest.raises(TypeError, match="integer"):
-            FVMConfig(case_name="invalid", cores=True)
+            FVMSetup(case_name="invalid", cores=True)
 
     def test_cores_select_partitioned_petsc_internally(self):
-        user_setup = FVMConfig(case_name="parallel", cores=4)
+        user_setup = FVMSetup(case_name="parallel", cores=4)
         runtime_setup = _runtime_setup(user_setup)
 
         assert user_setup.execution.parallel_mode == "serial"
@@ -172,4 +172,3 @@ class TestConfigFactories:
 
         setup = FVMSetup(case_name="named")
         assert type(setup).__name__ == "FVMSetup"
-        assert FVMConfig is FVMSetup

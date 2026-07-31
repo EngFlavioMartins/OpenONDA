@@ -484,49 +484,27 @@ class VLMLattice:
         n = self.num_panels
         return self.AIC.to_numpy()[:n, :n]
 
-    def set_circulation(self, gamma: np.ndarray):
-        """Set circulation distribution from numpy array."""
-        if len(gamma) != self.num_panels:
-            raise ValueError(f"Expected {self.num_panels} values, got {len(gamma)}")
+    def set_circulation(self, gamma: np.ndarray) -> None:
+        """Upload bound circulation values to the device.
 
-        # Convert to correct shape if needed
-        if gamma.ndim == 1:
-            gamma = gamma.reshape(-1)
+        Parameters
+        ----------
+        gamma
+            One value per panel, in square metres per second (m²/s). The input
+            may have any shape but must contain exactly ``num_panels`` values.
 
-        # Copy to Taichi field
-        for i in range(self.num_panels):
-            self.circulation[i] = float(gamma[i])
-
-    @ti.kernel
-    def compute_panel_velocities(self, V_inf: ti.types.vector(3, float), q_inf: float):
+        Raises
+        ------
+        ValueError
+            If the input does not contain one value per panel.
         """
-        Compute velocity and pressure coefficient at each panel.
+        gamma = np.asarray(gamma, dtype=self.np_dtype).reshape(-1)
+        if gamma.size != self.num_panels:
+            raise ValueError(f"Expected {self.num_panels} values, got {gamma.size}")
 
-        Args:
-            V_inf: Freestream velocity vector
-            q_inf: Dynamic pressure (0.5 * density * |V_inf|²)
-        """
-        for i in range(self.num_panels):
-            # Induced velocity from all panels
-            vel_induced = ti.Vector([0.0, 0.0, 0.0])
-
-            for _j in range(self.num_panels):
-                # Add contribution from panel j
-                # This requires calling horseshoe_velocity kernel
-                # (will be implemented in compute_induced_velocity method)
-                pass
-
-            # Total velocity = freestream + induced
-            self.velocity[i] = V_inf + vel_induced
-
-            # Pressure coefficient: Cp = 1 - (V/V_inf)²
-            v_mag_sq = self.velocity[i].dot(self.velocity[i])
-            v_inf_mag_sq = V_inf.dot(V_inf)
-
-            if v_inf_mag_sq > 1e-10:
-                self.pressure_coefficient[i] = 1.0 - v_mag_sq / v_inf_mag_sq
-            else:
-                self.pressure_coefficient[i] = 0.0
+        gamma_full = np.zeros(self.circulation.shape[0], dtype=self.np_dtype)
+        gamma_full[: self.num_panels] = gamma
+        self.circulation.from_numpy(gamma_full)
 
     @ti.kernel
     def compute_panel_centers(self):

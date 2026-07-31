@@ -20,7 +20,7 @@ WAKE_MIN_AXIAL_RATIO = 0.15  # ensure axial convection ≥ ratio·|V_kin|
 
 @ti.kernel
 def update_geometry_translating_kernel(
-    dX: ti.types.vector(3, ti.f32),
+    dX: ti.types.vector(3, float),
     start_idx: ti.i32,
     end_idx: ti.i32,
     # Lattice fields

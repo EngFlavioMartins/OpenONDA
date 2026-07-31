@@ -12,7 +12,7 @@ from scipy import sparse
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     RunAcceptancePolicy,
@@ -38,7 +38,7 @@ def _config(time_scheme="euler_implicit", **solver_overrides):
                 break
         else:
             raise AttributeError(f"no solver group owns field {name!r}")
-    return FVMConfig(
+    return FVMSetup(
         case_name="restart_contract",
         time=TimeConfig.transient(dt=0.01, duration=0.1, write_interval=100),
         schemes=solver_schemes,
@@ -171,7 +171,7 @@ def test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence(monkeyp
 
     solver.step = step
     monkeypatch.setattr(
-        "source.solvers.FVM.assemble.convection.compute_mass_flow_rate",
+        "source.solvers.FVM.assemble.convection.compute_volumetric_face_flux",
         lambda *args: np.zeros(1),
     )
     with contextlib.redirect_stdout(io.StringIO()):

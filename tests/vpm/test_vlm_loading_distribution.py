@@ -126,7 +126,7 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
 
 
 def test_spanwise_stations_are_sane():
-    """Stations: monotonic y, y_over_b ∈ [−1, 1], positive cl at +α, loaded center."""
+    """Stations use physical span edges and keep cell centres inside the tips."""
     aircraft = _flat_plate_aircraft(n_chord=4, n_span=12, span=4.0, chord=0.5)
     vlm = VLMSolver(
         VLMSetup(
@@ -142,9 +142,17 @@ def test_spanwise_stations_are_sane():
 
     y = sp["y"].to_numpy()
     assert np.all(np.diff(y) > 0), "spanwise stations must be sorted and distinct"
-    assert sp["y_over_b"].between(-1.0, 1.0).all()
+    assert sp["y_over_b"].between(-1.0, 1.0, inclusive="neither").all()
     np.testing.assert_allclose(sp["dy"], 4.0 / 12, rtol=1e-4)
     np.testing.assert_allclose(sp["chord_local"], 0.5, rtol=1e-4)
+
+    # Regression: the old exporter inferred b from the first and last cell
+    # centres, incorrectly labelling them as the physical tips (±1).  The
+    # one-sided 0..4 m plate has its mid-span at y=2 m and a physical span of
+    # 4 m, so the cell-centred coordinates are 2*(y-2)/4.
+    np.testing.assert_allclose(sp["y_over_b"], 2.0 * (y - 2.0) / 4.0, rtol=1e-5)
+    assert sp["span_edge_min"].min() == pytest.approx(0.0, abs=1e-6)
+    assert sp["span_edge_max"].max() == pytest.approx(4.0, abs=1e-6)
 
     cl = sp["cl"].to_numpy()
     assert np.all(cl > 0.0), "flat plate at +5° must lift everywhere"

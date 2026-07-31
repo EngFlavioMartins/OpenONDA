@@ -10,15 +10,13 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import copy
 import time
+import warnings
 
 import numpy as np
+from numpy.typing import ArrayLike
 import taichi as ti
 
-# Import VLM constants from centralized config
 from ....config.constants import VLM_SMALL_VELOCITY
-
-EPSILON = VLM_SMALL_VELOCITY
-
 from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
@@ -41,6 +39,8 @@ from .mesh import (
     update_trailing_directions_local,
     update_trailing_edge_directions,
 )
+
+EPSILON = VLM_SMALL_VELOCITY
 
 
 class VLMSolver:
@@ -703,19 +703,80 @@ class VLMSolver:
         )
         self._AIC_computed = True
 
-    def check_coupling_stability(
-        self, dt: float, background_velocity: list[float] | None = None
-    ) -> None:
-        """
-        Check if time step is stable for VLM-VPM coupling (CFL-like condition).
+    def _minimum_panel_chord(self) -> float:
+        """Return the shortest chordwise panel edge in the geometry [m]."""
+        panel_chords = []
+        for wing in self.aircraft.wings.values():
+            for segment in wing.segments.values():
+                root_chord = np.linalg.norm(segment.vertices["d"] - segment.vertices["a"])
+                tip_chord = np.linalg.norm(segment.vertices["c"] - segment.vertices["b"])
+                minimum_panel_chord = min(root_chord, tip_chord) / segment.panels_chord
+                if minimum_panel_chord > EPSILON:
+                    panel_chords.append(float(minimum_panel_chord))
+        if not panel_chords:
+            raise ValueError("VLM geometry has no positive panel chord length")
+        return min(panel_chords)
 
-        Condition: dt >= min_chord / V_characteristic
+    def check_coupling_stability(
+        self, dt: float, background_velocity: ArrayLike | None = None
+    ) -> dict[str, float | bool]:
+        """
+        Check the convective time-step resolution of VLM-VPM coupling.
+
+        The wake-convection Courant number is
+
+        ``C_wake = U_characteristic * dt / minimum_panel_chord``.
+
+        ``C_wake <= 1`` keeps one explicit wake displacement within the
+        shortest chordwise panel. The characteristic speed is a conservative
+        upper bound: background-flow magnitude plus the maximum surface speed.
 
         Args:
             dt: Time step size [s]
-            background_velocity: Background flow velocity [vx, vy, vz] or None
+            background_velocity: Background flow velocity [vx, vy, vz] [m/s].
+                When omitted, the solver freestream is used.
+
+        Returns:
+            Diagnostic values ``stable``, ``courant``, ``max_dt``,
+            ``characteristic_speed``, and ``minimum_panel_chord``.
+
+        Warns:
+            RuntimeWarning: If ``C_wake > 1``.
         """
-        return
+        if not np.isfinite(dt) or dt <= 0:
+            raise ValueError(f"dt must be finite and positive, got {dt}")
+
+        if background_velocity is None:
+            background = self.U_inf if self.U_inf is not None else np.zeros(3)
+        else:
+            background = np.asarray(background_velocity, dtype=float)
+        if np.shape(background) != (3,) or not np.all(np.isfinite(background)):
+            raise ValueError("background_velocity must contain three finite components")
+
+        minimum_panel_chord = self._minimum_panel_chord()
+        characteristic_speed = float(np.linalg.norm(background)) + self._get_max_kinematic_speed()
+        courant = characteristic_speed * dt / minimum_panel_chord
+        max_dt = (
+            minimum_panel_chord / characteristic_speed
+            if characteristic_speed > EPSILON
+            else float("inf")
+        )
+        stable = courant <= 1.0
+        result: dict[str, float | bool] = {
+            "stable": stable,
+            "courant": courant,
+            "max_dt": max_dt,
+            "characteristic_speed": characteristic_speed,
+            "minimum_panel_chord": minimum_panel_chord,
+        }
+        if not stable:
+            warnings.warn(
+                "VLM-VPM wake convection is under-resolved: "
+                f"C_wake={courant:.3g} > 1. Reduce dt to <= {max_dt:.3g} s.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return result
 
     def _run_linear_solver(self, n_panels: int) -> np.ndarray:
         """Solve AIC@gamma=rhs and return gamma numpy array."""

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from source.solvers.FVM import DynamicMeshConfig, FVMConfig, Solver
+from source.solvers.FVM import DynamicMeshConfig, FVMSetup, Solver
 from source.solvers.FVM.core.solver import _load_pressure_field, _load_velocity_field
 from source.solvers.FVM.fields.diagnostics import _should_compute_yplus
 from source.solvers.FVM.fields.field_io import (
@@ -80,7 +80,7 @@ divSchemes { div(phi,U) bounded Gauss limitedLinear 1; }
     assert solver.config.schemes.gradient_scheme == "lsq"
     assert solver.config.schemes.convection_scheme == "limitedLinear"
 
-    with pytest.raises(TypeError, match="Unknown FVMConfig override"):
+    with pytest.raises(TypeError, match="Unknown FVMSetup override"):
         Solver.from_case(str(tmp_path), presure_solver="cg")
 
 
@@ -93,7 +93,7 @@ def test_from_case_requires_authoritative_files(tmp_path):
 
 
 def test_case_field_loaders_propagate_read_errors(monkeypatch, tmp_path):
-    config = FVMConfig(case_name="case", initial_U=None, initial_p=None)
+    config = FVMSetup(case_name="case", initial_U=None, initial_p=None)
 
     def fail(*args, **kwargs):
         raise ValueError("malformed field")
@@ -177,7 +177,7 @@ def test_field_writer_does_not_invent_missing_boundary_conditions(tmp_path, hand
 
 
 def test_dynamic_mesh_is_explicitly_unsupported(hand_built_3d_mesh, tmp_path):
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="moving",
         dynamic_mesh=DynamicMeshConfig.rigid(velocity=[1.0, 0.0, 0.0]),
     )
@@ -195,7 +195,7 @@ def test_turbulence_failure_does_not_switch_to_laminar():
     solver.U = np.zeros((1, 3))
     solver.mesh_data = {}
     solver.geo_data = {}
-    solver.config = FVMConfig(case_name="les")
+    solver.config = FVMSetup(case_name="les")
     with pytest.raises(RuntimeError, match="LES failed"):
         solver.compute_effective_viscosity()
 

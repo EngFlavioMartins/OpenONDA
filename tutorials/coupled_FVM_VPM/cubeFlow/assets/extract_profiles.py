@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 
 from _reference_util import sample_vtu
-from source.coupler.core.helpers.interior_bs import gaussian_bs_velocity_treecode
+from _frames_util import vpm_velocity
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 TIME = 3.0
@@ -42,13 +42,7 @@ def _hybrid_velocity(vtu: Path, particles: dict, points: np.ndarray, box: dict):
     inside = np.all((points >= lower) & (points <= upper), axis=1)
     velocity = np.empty((len(points), 3))
     velocity[inside] = sample_vtu(vtu, points[inside])["U"]
-    velocity[~inside] = gaussian_bs_velocity_treecode(
-        points[~inside],
-        particles["position"],
-        particles["circulation"],
-        particles["radius"],
-        theta=0.3,
-    ) + np.array([1.0, 0.0, 0.0])
+    velocity[~inside] = vpm_velocity(particles, points[~inside])
     return velocity, inside
 
 

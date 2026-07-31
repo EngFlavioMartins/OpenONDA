@@ -8,7 +8,7 @@ exact).
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.fields.diagnostics import compute_continuity_error
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
@@ -40,7 +40,7 @@ def test_uniform_flow_is_divergence_free():
             [np.ones_like(x), 0.3 * np.ones_like(x), -0.5 * np.ones_like(x)]
         ),
     )
-    phi = compute_mass_flow_rate(U, mesh, geo)
+    phi = compute_volumetric_face_flux(U, mesh, geo)
     div = compute_continuity_error(phi, mesh, geo)
     assert np.max(np.abs(div)) < 1e-12, (
         f"uniform flow not divergence-free: {np.max(np.abs(div)):.2e}"
@@ -52,7 +52,7 @@ def test_linear_field_recovers_known_divergence():
     mesh = structured_box(8, 8, 8)
     geo = compute_mesh_geometry(mesh)
     U = _field(mesh, geo, lambda x, y, z: np.column_stack([x, 2.0 * y, np.zeros_like(x)]))
-    phi = compute_mass_flow_rate(U, mesh, geo)
+    phi = compute_volumetric_face_flux(U, mesh, geo)
     div = compute_continuity_error(phi, mesh, geo)
     local_div = div / geo["element_volumes"]
     assert np.allclose(local_div, 3.0, atol=1e-10), (

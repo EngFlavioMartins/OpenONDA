@@ -3,11 +3,12 @@
 
 import numpy as np
 
-from ..assemble import matrix_assembly, momentum
+from ..assemble import momentum
 from ..fields import diagnostics as field_diagnostics
 from ..io import logging
 from . import simple_solver
 from .contracts import OuterCorrectorDiagnostics
+from .linear_interface import normalized_residual, solve_linear_system
 
 
 class PIMPLESolver(simple_solver.SIMPLESolver):
@@ -31,9 +32,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
     Examples
     --------
-    >>> solver = PIMPLESolver(mesh_data, geo_data, boundaries)
-    >>> solver.setup_pimple(params)
-    >>> diagnostics = solver.solve_one_step(dt=0.01)
+    >>> solver = PIMPLESolver(mesh_data, geo_data, boundaries, params)  # doctest: +SKIP
+    >>> U, p, phi, residuals = solver.step(  # doctest: +SKIP
+    ...     U, p, phi, U_old=U_old, dt=0.01, rho=1.225, nu=1.5e-5
+    ... )
     """
 
     def __init__(self, mesh_data, geo_data, boundaries, params=None):
@@ -94,7 +96,25 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         source_explicit=None,
         source_implicit=None,
     ):
-        """Perform one PIMPLE time step and return fields plus residuals."""
+        """Perform one PIMPLE time step.
+
+        Args:
+            U: Cell and boundary-ghost velocity [m/s].
+            p: Kinematic pressure ``p/ρ`` [m²/s²].
+            phi: Volumetric face flux ``U·Sf`` [m³/s].
+            U_old: Velocity at the previous committed time [m/s].
+            dt: Positive time-step size [s].
+            rho: Positive constant reference density [kg/m³]. It cancels
+                from the kinematic-pressure flow equations.
+            nu: Positive kinematic viscosity [m²/s].
+            U_old_old: Velocity two committed time levels ago [m/s], required
+                after BDF2 startup.
+            source_explicit: Explicit acceleration source [m/s²].
+            source_implicit: Non-negative implicit source coefficient [1/s].
+
+        Returns:
+            tuple: Updated ``(U, p, phi, residuals)``.
+        """
         if U_old is None or dt is None:
             raise ValueError("PIMPLESolver.step requires U_old and dt")
         n_elem = self.mesh_data["n_elements"]
@@ -239,15 +259,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     )
 
                     zero_guess = np.zeros_like(b_p)
-                    pressure_initial_residual = matrix_assembly.normalized_residual(
-                        A_p, zero_guess, b_p
-                    )
+                    pressure_initial_residual = normalized_residual(A_p, zero_guess, b_p)
                     logging.Timer.start("Pressure Solve")
                     pressure_tol = float(self.params.get("pressure_tol", 1e-8))
                     pressure_maxiter = int(self.params.get("pressure_maxiter", 500))
                     amg_tol = self.params.get("amg_tol")
                     amg_maxiter = self.params.get("amg_maxiter")
-                    p_prime, pressure_result = matrix_assembly.solve_linear_system(
+                    p_prime, pressure_result = solve_linear_system(
                         A_p,
                         b_p,
                         method=pressure_method,
@@ -276,9 +294,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         pressure_initial_residual = pressure_result.initial_residual
                         pressure_final_residual = pressure_result.final_residual
                     else:
-                        pressure_final_residual = matrix_assembly.normalized_residual(
-                            A_p, p_prime, b_p
-                        )
+                        pressure_final_residual = normalized_residual(A_p, p_prime, b_p)
                     logging.Timer.log(
                         "Pressure Solve",
                         sink=logger,

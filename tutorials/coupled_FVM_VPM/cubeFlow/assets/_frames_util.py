@@ -3,11 +3,6 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from source.coupler.core.helpers.interior_bs import (
-    gaussian_bs_velocity,
-    gaussian_bs_velocity_treecode,
-)
-
 try:
     from numba import njit, prange
 
@@ -50,14 +45,29 @@ if _HAVE_NUMBA:
 
 
 def vpm_velocity(particles, pts):
-    targets = np.asarray(pts, np.float64)
-    position = np.asarray(particles["position"], np.float64)
-    circulation = np.asarray(particles["circulation"], np.float64)
-    radius = np.asarray(particles["radius"], np.float64)
-    evaluator = gaussian_bs_velocity_treecode if len(position) > 20_000 else gaussian_bs_velocity
-    kwargs = {"theta": 0.3} if evaluator is gaussian_bs_velocity_treecode else {}
-    u = evaluator(targets, position, circulation, radius, **kwargs)
-    return u + np.array([U_INF, 0.0, 0.0])[None, :]
+    from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+    from source.solvers.VPM.config.backend import initialize_taichi_backend
+
+    targets = np.asarray(pts, np.float32)
+    position = np.asarray(particles["position"], np.float32)
+    circulation = np.asarray(particles["circulation"], np.float32)
+    radius = np.asarray(particles["radius"], np.float32)
+    if not len(position):
+        return np.tile([U_INF, 0.0, 0.0], (len(targets), 1))
+    initialize_taichi_backend("METAL", precision="f32")
+    capacity = max(len(position), len(targets))
+    tree = TaichiTreecode(
+        max_particles=capacity,
+        max_nodes=2 * len(position),
+        theta=0.3,
+        kernel_type="GAUSSIAN",
+        multipole_order=2,
+    )
+    tree.build(position, circulation, radius)
+    return tree.compute_target_velocities(
+        targets,
+        background_velocity=np.array([U_INF, 0.0, 0.0], dtype=np.float32),
+    )
 
 
 def vpm_vorticity(particles, pts):

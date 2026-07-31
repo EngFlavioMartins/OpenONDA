@@ -1,36 +1,15 @@
-"""
-OpenONDA Vortex Particle Method (VPM) solver package.
+"""Vortex-particle and vortex-lattice solvers for OpenONDA.
 
-Public API: Solver, VPMSetup, StabilizationConfig, VelocityConfig,
-ForceConfig, ParticleDistributor, and PanelSolver.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+The package exposes the main VPM solver and configuration objects together with
+the boundary-element solvers used to represent lifting and solid surfaces.
+Numerical kernels run through Taichi on the configured CPU or GPU backend.
 """
 
-# OpenONDA/solvers/VPM/__init__.py
-"""
-Vortex Particle Method (VPM) solver module for OpenONDA.
+import logging
+import os
+import sys
 
-This module provides a complete VPM implementation with:
-- DNS, LES, and inviscid flow models
-- GPU acceleration via Taichi
-- Robust backup/restore functionality
-- Advanced turbulence modeling
-- Comprehensive diagnostics
-
-The module is organized into several sub-packages:
-- config: Constants, types, and configuration
-- core: Main solver implementation
-- particles: Particle data structures and physics
-- turbulence: LES turbulence models
-- spatial: Spatial algorithms (neighbor search, etc.)
-- io: Input/output and backup systems
-- utils: Utility functions and logging
-"""
-
+from .boundary_elements import vlm
 from .boundary_elements.panels.solver.panel_solver import PanelSolver
 from .boundary_elements.vlm.config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .config.types import (
@@ -49,15 +28,6 @@ from .factory import setup_vpm_solver
 from .numerics.divergence_relaxation import DivergenceRelaxationError
 from .numerics.filament_refinement import FilamentRefinementError
 from .particles.distribution import ParticleDistributor
-
-# VLM module (optional import)
-try:
-    from .boundary_elements import vlm
-
-    _has_vlm = True
-except ImportError:
-    _has_vlm = False
-    vlm = None
 
 __all__ = [
     "Solver",
@@ -79,12 +49,9 @@ __all__ = [
     "VLMMeshSetup",
     "ParticleDistributor",
     "PanelSolver",
+    "vlm",
 ]
 
-if _has_vlm:
-    __all__.append("vlm")
-
-# -----------------------------------------------------------------------------
 # VPM package logging setup
 #
 # When workers set the VPM_LOG environment variable (as allrun_*.py scripts do)
@@ -92,11 +59,6 @@ if _has_vlm:
 # into that file.  Without VPM_LOG the package is silent: no log file is
 # created at import time and stdout/stderr are left untouched so that
 # interactive / coupled runs stay in control of their own output.
-# -----------------------------------------------------------------------------
-import logging
-import os
-import sys
-
 _log_file = os.environ.get("VPM_LOG", "")
 
 if _log_file:

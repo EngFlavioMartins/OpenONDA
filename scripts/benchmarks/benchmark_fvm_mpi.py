@@ -19,7 +19,7 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     ExecutionConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -52,7 +52,7 @@ def main() -> None:
     nx_per_rank = args.cells_per_rank // 64
     mesh = structured_box(nx_per_rank * size, 8, 8) if rank == 0 else None
     execution = ExecutionConfig.petsc_partitioned()
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="partitioned-weak-scaling",
         execution=execution,
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=10**9),

@@ -8,7 +8,7 @@ import types
 import numpy as np
 import pytest
 
-from source.solvers.FVM import ExecutionConfig, FVMConfig
+from source.solvers.FVM import ExecutionConfig, FVMSetup
 from source.solvers.FVM.core.parallel import ParallelContext, detected_world_size
 
 
@@ -35,11 +35,6 @@ def test_serial_context_is_default():
     assert context.rank == 0
     assert context.size == 1
     assert context.is_root
-
-
-def test_unqualified_taichi_device_fails_before_solver_start():
-    with pytest.raises(ValueError, match="device='metal'"):
-        ParallelContext.create(ExecutionConfig(operator_backend="taichi", device="metal"))
 
 
 def test_serial_context_rejects_accidental_mpi_launch(monkeypatch):
@@ -72,10 +67,10 @@ def test_petsc_context_records_injected_communicator(monkeypatch):
 
 def test_execution_config_round_trip(tmp_path):
     path = tmp_path / "fvm.json"
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="parallel",
         execution=ExecutionConfig.petsc_replicated(),
     )
     config.save(path)
-    loaded = FVMConfig.load(path)
+    loaded = FVMSetup.load(path)
     assert loaded.execution == config.execution

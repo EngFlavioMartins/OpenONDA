@@ -11,7 +11,7 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -46,7 +46,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
     params_schemes = SchemesConfig(convection_scheme="limitedLinear")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
     params_pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name=f"cubic-cavity-{level}",
         time=TimeConfig.transient(dt=0.01, duration=50.0, write_interval=10**9),
         schemes=params_schemes,

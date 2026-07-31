@@ -18,12 +18,15 @@ the baseline number for the existing schemes.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import (
+    assemble_convection_term,
+    compute_volumetric_face_flux,
+)
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 from ._structured_mesh import structured_box
@@ -59,11 +62,11 @@ def _energy_production(mesh, geo, U, scheme):
     """P = Σ_c u_c·(du/dt|_conv)_c V_c, with du/dt|_conv = (−A_conv u + b_conv)/V."""
     n_elem = mesh["n_elements"]
     vol = geo["element_volumes"]
-    mdot = compute_mass_flow_rate(U, mesh, geo)
+    mdot = compute_volumetric_face_flux(U, mesh, geo)
     P = 0.0
     for i in range(3):
         u_comp = U[:, i]
-        grad = compute_gradient_gauss_linear_vectorized(u_comp, mesh, geo)[:, :, 0]
+        grad = compute_gauss_gradient(u_comp, mesh, geo)[:, :, 0]
         conv = assemble_convection_term(
             u_comp, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
         )
@@ -78,7 +81,7 @@ class TestConvectionDissipation:
     def test_tgv_zero_boundary_flux(self):
         """Precondition: the TGV normal velocity vanishes on all box faces."""
         mesh, geo, U = _setup()
-        mdot = compute_mass_flow_rate(U, mesh, geo)
+        mdot = compute_volumetric_face_flux(U, mesh, geo)
         n_int = mesh["n_interior_faces"]
         assert np.abs(mdot[n_int:]).max() < 1e-12
 

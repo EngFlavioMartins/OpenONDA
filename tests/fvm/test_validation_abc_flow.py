@@ -11,7 +11,7 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -19,7 +19,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
 
 from ._structured_mesh import structured_box
@@ -49,7 +49,7 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
     params_schemes = SchemesConfig(convection_scheme="central", time_scheme="backward")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=2)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="abc-periodic-3d",
         time=TimeConfig(delta_t=dt, end_time=steps * dt, write_interval=10**9),
         schemes=params_schemes,
@@ -70,7 +70,7 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         solver.p[:n_cells] = -0.5 * np.sum(initial_velocity**2, axis=1)
         solver.p[:n_cells] -= np.mean(solver.p[:n_cells])
         update_scalar_boundaries(solver.p, mesh, solver.boundaries, field_name="p")
-        solver.phi = compute_mass_flow_rate(solver.U, mesh, solver.geo_data)
+        solver.phi = compute_volumetric_face_flux(solver.U, mesh, solver.geo_data)
 
         for _ in range(steps):
             solver.solve_pimple(dt)

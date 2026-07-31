@@ -10,7 +10,7 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -19,7 +19,7 @@ from source.solvers.FVM import (
     TransportConfig,
     TurbulenceConfig,
 )
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
 
 from ._structured_mesh import structured_box
@@ -42,7 +42,7 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         BoundaryConfig.cyclic("zmin", "zmax"),
         BoundaryConfig.cyclic("zmax", "zmin"),
     ]
-    config = FVMConfig(
+    config = FVMSetup(
         case_name=f"tgv-wale-{level}",
         time=TimeConfig.transient(dt=dt, duration=steps * dt, write_interval=10**9),
         schemes=SchemesConfig(convection_scheme="central", time_scheme="backward"),
@@ -76,7 +76,7 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         solver.set_initial_velocity(velocity)
         solver.p[:n_cells] = pressure - np.mean(pressure)
         update_scalar_boundaries(solver.p, mesh, solver.boundaries, field_name="p")
-        solver.phi = compute_mass_flow_rate(solver.U, mesh, solver.geo_data)
+        solver.phi = compute_volumetric_face_flux(solver.U, mesh, solver.geo_data)
 
         volumes = solver.geo_data["element_volumes"]
         total_volume = np.sum(volumes)

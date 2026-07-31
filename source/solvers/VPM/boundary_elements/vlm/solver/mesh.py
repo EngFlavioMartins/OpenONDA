@@ -70,7 +70,7 @@ def generate_vlm_mesh(
     spanwise_spacing: str = "uniform",
     spanwise_spacing_ratio: float = 1.0,
     spanwise_spacing_region: str = "both",
-):
+) -> None:
     """
     Generate a VLM mesh from aircraft geometry.
 
@@ -80,7 +80,8 @@ def generate_vlm_mesh(
 
     Args:
         aircraft: Aircraft geometry definition
-        lattice: VLMLattice object to populate
+        lattice: VLMLattice object to populate. Mesh arrays use its configured
+            precision (``float32`` or ``float64``).
         trailing_edge_infty: Distance for "infinity" trailing legs (chord lengths)
         spanwise_spacing: Panel distribution method ('uniform' or 'geometric')
         spanwise_spacing_ratio: Concentration ratio for geometric spacing
@@ -89,15 +90,15 @@ def generate_vlm_mesh(
     # Pre-allocate numpy arrays for all mesh data
     max_panels = lattice.max_panels
 
-    corners_np = np.zeros((max_panels, 4, 3), dtype=np.float32)
-    vortex_np = np.zeros((max_panels, 4, 3), dtype=np.float32)
-    colloc_np = np.zeros((max_panels, 3), dtype=np.float32)
-    normals_np = np.zeros((max_panels, 3), dtype=np.float32)
-    areas_np = np.zeros(max_panels, dtype=np.float32)
-    bound_np = np.zeros((max_panels, 3), dtype=np.float32)
-    trail_np = np.zeros((max_panels, 2, 3), dtype=np.float32)
+    np_dtype = lattice.np_dtype
+    corners_np = np.zeros((max_panels, 4, 3), dtype=np_dtype)
+    vortex_np = np.zeros((max_panels, 4, 3), dtype=np_dtype)
+    colloc_np = np.zeros((max_panels, 3), dtype=np_dtype)
+    normals_np = np.zeros((max_panels, 3), dtype=np_dtype)
+    areas_np = np.zeros(max_panels, dtype=np_dtype)
+    bound_np = np.zeros((max_panels, 3), dtype=np_dtype)
+    trail_np = np.zeros((max_panels, 2, 3), dtype=np_dtype)
     wing_id_np = np.zeros(max_panels, dtype=np.int32)
-    seg_id_np = np.zeros(max_panels, dtype=np.int32)
     seg_id_np = np.zeros(max_panels, dtype=np.int32)
     mirror_np = np.zeros(max_panels, dtype=np.int32)
 

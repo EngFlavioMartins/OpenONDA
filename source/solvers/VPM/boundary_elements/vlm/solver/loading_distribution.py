@@ -262,6 +262,16 @@ class VLMLoadingDistribution:
                     span_coordinate = float(np.mean(bm_j @ s_hat))
                     span_coordinate_abs = abs(span_coordinate)
 
+                    # Physical strip edges projected on the same span axis.  The
+                    # loading lives at panel centres, but the surface span is set
+                    # by its corner coordinates.  Inferring the span from the
+                    # first/last panel centres maps those centres to ±1 and makes
+                    # a finite, cell-centred circulation look non-zero at the
+                    # physical wing tip in exported plots.
+                    station_corner_coordinates = corners_np[cidx].reshape(-1, 3) @ s_hat
+                    span_edge_min = float(station_corner_coordinates.min())
+                    span_edge_max = float(station_corner_coordinates.max())
+
                     # station width: bound-leg length (V3−V2) projected on ŝ
                     bound_legs = vp_np[cidx, 2] - vp_np[cidx, 1]  # (nc, 3)
                     dy = float(np.mean(np.abs(bound_legs @ s_hat)))
@@ -295,6 +305,8 @@ class VLMLoadingDistribution:
                             "span_index": j,
                             "span_coordinate": span_coordinate,
                             "span_coordinate_abs": span_coordinate_abs,
+                            "span_edge_min": span_edge_min,
+                            "span_edge_max": span_edge_max,
                             "r": span_coordinate_abs,
                             "y": span_coordinate,
                             "chord_local": chord_local,
@@ -338,6 +350,8 @@ class VLMLoadingDistribution:
                                 "span_index": j,
                                 "span_coordinate": span_coordinate,
                                 "span_coordinate_abs": span_coordinate_abs,
+                                "span_edge_min": span_edge_min,
+                                "span_edge_max": span_edge_max,
                                 "r": span_coordinate_abs,
                                 "y": span_coordinate,
                                 "chord_index": i,
@@ -366,11 +380,16 @@ class VLMLoadingDistribution:
             .reset_index(drop=True)
         )
 
-        # full span b for y_over_b
+        # Full physical span for y_over_b.  Use strip edges, not the outermost
+        # cell centres: panel-centred output should remain strictly inside
+        # [-1, 1], leaving the actual tip locations available for the Γ=0
+        # closure used by visualisation and higher-order reconstruction.
         if not df_span.empty:
-            b = float(df_span["y"].max() - df_span["y"].min())
+            span_min = float(df_span["span_edge_min"].min())
+            span_max = float(df_span["span_edge_max"].max())
+            b = span_max - span_min
             b = max(b, 1e-10)
-            y_mid = 0.5 * (df_span["y"].max() + df_span["y"].min())
+            y_mid = 0.5 * (span_max + span_min)
             df_span["y_over_b"] = 2.0 * (df_span["y"] - y_mid) / b
             df_chord["y_over_b"] = 2.0 * (df_chord["y"] - y_mid) / b
         else:

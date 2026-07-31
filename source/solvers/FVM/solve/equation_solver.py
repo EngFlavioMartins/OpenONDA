@@ -1,20 +1,10 @@
-#!/usr/bin/env python3
-"""
-Complete Equation Solver for OpenONDA FVM
-
-Integrates all discretization terms:
-- Diffusion
-- Convection
-- Transient
-- Source terms
-
-Solves: ∂(ρφ)/∂t + ∇·(ρUφ) = ∇·(γ∇φ) + S
-"""
+"""Solve finite-volume scalar transport equations."""
 
 import numpy as np
 
 from ..assemble import convection, diffusion, matrix_assembly, time_integration
 from ..fields import gradients
+from .linear_interface import solve_linear_system
 from .simple_solver import update_scalar_boundaries
 
 
@@ -41,6 +31,44 @@ class ScalarEquationSolver:
         self.n_elements = mesh_data["n_elements"]
         self._grad_fn = gradients._resolve_gradient_fn(geo_data)
 
+    def _advance_transient_step(
+        self,
+        phi_old,
+        spatial_matrix,
+        spatial_rhs,
+        density,
+        dt,
+        time_scheme,
+        solver,
+        linear_options,
+    ):
+        """Advance one scalar step from the assembled steady spatial balance."""
+        if time_scheme == "euler_explicit":
+            return time_integration.advance_euler_explicit(
+                phi_old,
+                spatial_matrix,
+                spatial_rhs,
+                dt,
+                density,
+                self.geo_data["element_volumes"],
+            )
+        if time_scheme != "euler_implicit":
+            raise ValueError(f"Unknown scalar time scheme: {time_scheme}")
+
+        transient = time_integration.assemble_transient_term_euler_implicit(
+            phi_old, dt, density, self.geo_data
+        )
+        spatial_matrix.setdiag(spatial_matrix.diagonal() + transient["ac"])
+        rhs = spatial_rhs + transient["bc"]
+        return solve_linear_system(
+            spatial_matrix,
+            rhs,
+            method=solver,
+            equation_type="scalar",
+            tol=1e-6,
+            **linear_options,
+        )
+
     def _mass_flow_rate(self, velocity, density):
         """Return face mass flux using linearly interpolated density."""
         density = np.asarray(density, dtype=np.float64)
@@ -55,7 +83,9 @@ class ScalarEquationSolver:
         ):
             raise ValueError("density values must be finite and positive")
 
-        volumetric_flux = convection.compute_mass_flow_rate(velocity, self.mesh_data, self.geo_data)
+        volumetric_flux = convection.compute_volumetric_face_flux(
+            velocity, self.mesh_data, self.geo_data
+        )
         owners = self.mesh_data["owners"]
         neighbours = self.mesh_data["neighbours"]
         n_interior = self.mesh_data["n_interior_faces"]
@@ -98,7 +128,7 @@ class ScalarEquationSolver:
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(flux_data, self.mesh_data)
 
         # Solve for interior cells only
-        phi_interior = matrix_assembly.solve_linear_system(
+        phi_interior = solve_linear_system(
             A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
         )
 
@@ -170,7 +200,7 @@ class ScalarEquationSolver:
         A = matrix_assembly.assemble_matrix_from_fluxes_vectorized(combined_flux, self.mesh_data)
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, self.mesh_data)
 
-        phi_interior = matrix_assembly.solve_linear_system(
+        phi_interior = solve_linear_system(
             A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
         )
         phi_solution = np.asarray(phi_initial, dtype=np.float64).copy()
@@ -208,20 +238,16 @@ class ScalarEquationSolver:
 
         # Ensure arrays
         if np.isscalar(density):
-            density = np.full(self.n_elements, density)
+            density = np.full(self.n_elements, density, dtype=np.float64)
         if np.isscalar(gamma):
-            gamma = np.full(self.n_elements, gamma)
-
-        # Initialize time integrator
-        integrator = time_integration.TimeIntegrator(dt, scheme=time_scheme)
+            gamma = np.full(self.n_elements, gamma, dtype=np.float64)
 
         # Storage
         solutions = [phi_initial.copy()]  # Store full field including boundaries
         phi = phi_initial.copy()
 
         for _step in range(n_steps):
-            # Store old field
-            integrator.store_old_fields(phi=phi[: self.n_elements])
+            phi_old = phi[: self.n_elements].copy()
 
             # Compute gradient
             grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
@@ -231,33 +257,25 @@ class ScalarEquationSolver:
                 phi, grad_phi, gamma, self.mesh_data, self.geo_data, self.boundaries
             )
 
-            # Assemble transient term
-            trans_contrib = integrator.get_transient_contribution(
-                "phi", phi, density, self.mesh_data, self.geo_data
-            )
-
-            # Build matrix: A = A_diff + A_trans
+            # Assemble the steady spatial balance Aφ = b.  The selected time
+            # scheme determines whether it is solved implicitly or used as the
+            # residual in a forward-Euler update.
             A_diff = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
                 diff_flux, self.mesh_data
             )
-
-            # Add transient diagonal contribution (in-place on CSR)
-            A_diff.setdiag(A_diff.diagonal() + trans_contrib["ac"])
-            A = A_diff
-
-            # Build RHS: b = b_diff + b_trans
             b_diff = matrix_assembly.assemble_rhs_from_fluxes_vectorized(diff_flux, self.mesh_data)
-            b = b_diff + trans_contrib["bc"]
-
-            # Solve for interior cells
-            phi_new_interior = matrix_assembly.solve_linear_system(
-                A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
+            phi_new_interior = self._advance_transient_step(
+                phi_old,
+                A_diff,
+                b_diff,
+                density,
+                dt,
+                time_scheme,
+                solver,
+                kwargs,
             )
             phi[: self.n_elements] = phi_new_interior
             update_scalar_boundaries(phi, self.mesh_data, self.boundaries, field_name="phi")
-
-            # Advance time
-            integrator.advance_time()
 
             # Store full solution including boundaries
             solutions.append(phi.copy())
@@ -311,12 +329,9 @@ class ScalarEquationSolver:
 
         # Ensure arrays
         if np.isscalar(density):
-            density = np.full(self.n_elements, density)
+            density = np.full(self.n_elements, density, dtype=np.float64)
         if np.isscalar(gamma):
-            gamma = np.full(self.n_elements, gamma)
-
-        # Initialize time integrator
-        integrator = time_integration.TimeIntegrator(dt, scheme=time_scheme)
+            gamma = np.full(self.n_elements, gamma, dtype=np.float64)
 
         # Storage
         solutions = [phi_initial.copy()]
@@ -326,8 +341,7 @@ class ScalarEquationSolver:
         mdot = self._mass_flow_rate(velocity, density)
 
         for _step in range(n_steps):
-            # Store old field
-            integrator.store_old_fields(phi=phi[: self.n_elements])
+            phi_old = phi[: self.n_elements].copy()
 
             # Compute gradient
             grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
@@ -348,11 +362,6 @@ class ScalarEquationSolver:
                 grad_phi=grad_phi,
             )
 
-            # Assemble transient term
-            trans_contrib = integrator.get_transient_contribution(
-                "phi", phi, density, self.mesh_data, self.geo_data
-            )
-
             # Combine fluxes
             combined_flux = {
                 "flux_cf": diff_flux["flux_cf"] + conv_flux["flux_cf"],
@@ -369,21 +378,18 @@ class ScalarEquationSolver:
                 combined_flux, self.mesh_data
             )
 
-            # Add transient contributions (in-place on CSR)
-            A_combined.setdiag(A_combined.diagonal() + trans_contrib["ac"])
-            A = A_combined
-
-            b = b_combined + trans_contrib["bc"]
-
-            # Solve
-            phi_new_interior = matrix_assembly.solve_linear_system(
-                A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
+            phi_new_interior = self._advance_transient_step(
+                phi_old,
+                A_combined,
+                b_combined,
+                density,
+                dt,
+                time_scheme,
+                solver,
+                kwargs,
             )
             phi[: self.n_elements] = phi_new_interior
             update_scalar_boundaries(phi, self.mesh_data, self.boundaries, field_name="phi")
-
-            # Advance
-            integrator.advance_time()
             solutions.append(phi.copy())
 
         return solutions

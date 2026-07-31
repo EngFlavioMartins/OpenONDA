@@ -290,9 +290,16 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
                 max_residual_ratio=0.9,
                 max_direct_divergence_ratio=0.98,
                 energy_tolerance=1e-6,
-                enstrophy_tolerance=1.5e-4,
+                enstrophy_tolerance=1e-6,
                 helicity_tolerance=1e-4,
                 variation_tolerance=1e-3,
+                cumulative_enstrophy_tolerance=1e-3,
+                circulation_reference_scale=GAMMA_REF,
+                linear_impulse_reference_scale=(2.0 * np.pi * GAMMA_REF * RING_RADIUS**2),
+                angular_impulse_reference_scale=GAMMA_REF * RING_RADIUS**3,
+                circulation_reference_tolerance=1e-3,
+                linear_impulse_reference_tolerance=1e-2,
+                angular_impulse_reference_tolerance=1e-2,
             )
             if stabilized
             else DivergenceRelaxationConfig.disabled()
@@ -311,7 +318,7 @@ def enforce_numerical_bound(
     initial_max_strength: float,
     blowup_factor: float,
 ) -> float:
-    """Stop only when the strengths have actually run away or gone non-finite."""
+    """Reject a runaway field or a stabilized state outside its invariant envelope."""
     circulation = solver.particles_circulation
     magnitudes = np.linalg.norm(circulation, axis=1)
     maximum = float(magnitudes.max()) if len(magnitudes) else 0.0
@@ -335,6 +342,53 @@ def enforce_numerical_bound(
             f"{maximum / max(initial_max_strength, np.finfo(float).tiny):.0f}x its "
             f"starting value of {initial_max_strength:.4e}."
         )
+    cfg = solver.divergence_relaxation_config
+    if cfg.enabled:
+        reference = solver._divergence_relaxation_reference_moments
+        position = solver.particles_positions.astype(np.float64)
+        strength = circulation.astype(np.float64)
+        radius = solver.particles_radii.astype(np.float64)
+        moments = (
+            strength.sum(axis=0, dtype=np.float64),
+            0.5 * np.cross(position, strength).sum(axis=0, dtype=np.float64),
+            np.cross(position, np.cross(position, strength)).sum(
+                axis=0,
+                dtype=np.float64,
+            )
+            / 3.0
+            - (radius[:, None] ** 2 * strength).sum(axis=0, dtype=np.float64) / 3.0,
+        )
+        scales = (
+            cfg.circulation_reference_scale,
+            cfg.linear_impulse_reference_scale,
+            cfg.angular_impulse_reference_scale,
+        )
+        tolerances = (
+            cfg.circulation_reference_tolerance,
+            cfg.linear_impulse_reference_tolerance,
+            cfg.angular_impulse_reference_tolerance,
+        )
+        names = ("circulation", "linear impulse", "angular impulse")
+        for name, value, target, scale, tolerance in zip(
+            names,
+            moments,
+            reference,
+            scales,
+            tolerances,
+            strict=True,
+        ):
+            if scale is None:
+                raise DivergenceRelaxationError(
+                    "stabilized vortex-ring runs require declared physical reference scales"
+                )
+            relative_error = float(np.linalg.norm(value - target) / scale)
+            if not np.isfinite(relative_error) or relative_error > tolerance:
+                raise DivergenceRelaxationError(
+                    f"whole-state {name} reference error {relative_error:.3e} "
+                    f"exceeds the admissible {tolerance:.3e} at step "
+                    f"{solver.time_step}",
+                    gate=f"{name} reference error",
+                )
     return maximum
 
 
@@ -423,6 +477,24 @@ def write_manifest(
         "divergence_relaxation_helicity_tolerance": (cfg.divergence_relaxation.helicity_tolerance),
         "divergence_relaxation_variation_tolerance": (
             cfg.divergence_relaxation.variation_tolerance
+        ),
+        "divergence_relaxation_circulation_reference_scale": (
+            cfg.divergence_relaxation.circulation_reference_scale
+        ),
+        "divergence_relaxation_linear_impulse_reference_scale": (
+            cfg.divergence_relaxation.linear_impulse_reference_scale
+        ),
+        "divergence_relaxation_angular_impulse_reference_scale": (
+            cfg.divergence_relaxation.angular_impulse_reference_scale
+        ),
+        "divergence_relaxation_circulation_reference_tolerance": (
+            cfg.divergence_relaxation.circulation_reference_tolerance
+        ),
+        "divergence_relaxation_linear_impulse_reference_tolerance": (
+            cfg.divergence_relaxation.linear_impulse_reference_tolerance
+        ),
+        "divergence_relaxation_angular_impulse_reference_tolerance": (
+            cfg.divergence_relaxation.angular_impulse_reference_tolerance
         ),
         "divergence_relaxation_spectral_convergence_fraction": (
             cfg.divergence_relaxation.spectral_convergence_fraction

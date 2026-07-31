@@ -1,22 +1,4 @@
-"""
-WS1: Scheme-independent M4' remeshing for the FVM-VPM coupler.
-
-Implements the M4' (Monaghan 1985; Cottet–Koumoutsakos Λ₂,₃) interpolating
-kernel and a P2M (particle-to-mesh) scatter onto a regular lattice.
-
-Why M4' and not the cubic-spline M4?
--------------------------------------
-The existing ``kernels.m4_kernel`` is the *smoothing* cubic spline
-(W(1) = 0.25 ≠ 0).  Applied to remeshing it leaks circulation to neighbouring
-nodes every pass, acting as an extra diffusion step.  M4' is *interpolating*:
-W(0)=1, W(n)=0 for all non-zero integers, so the scatter is exact at the nodes
-and conserves the 0th (circulation) and 1st (linear impulse) moments by the
-partition-of-unity property.
-
-Reference: Monaghan (1985); Cottet & Koumoutsakos (2000) §7.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-"""
+"""Conservative M4-prime particle-to-lattice remeshing."""
 
 from __future__ import annotations
 
@@ -119,8 +101,6 @@ def remesh_to_grid(
     origin: np.ndarray,
     h: float,
     shape: tuple[int, int, int],
-    *,
-    reuse_aligned: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Tensor-product M4' P2M scatter onto a regular lattice.
 
@@ -148,68 +128,16 @@ def remesh_to_grid(
     rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(h)
     circ_f = np.asarray(circ, dtype=float)
 
-    if reuse_aligned:
-        nearest = np.rint(rel).astype(np.int64)
-        aligned = np.max(np.abs(rel - nearest), axis=1) <= 1.0e-5
-        aligned &= np.all((nearest >= 0) & (nearest < np.asarray(shape)), axis=1)
-        G = np.zeros((*shape, 3), dtype=np.float64)
-        if aligned.any():
-            index = nearest[aligned]
-            np.add.at(G, (index[:, 0], index[:, 1], index[:, 2]), circ_f[aligned])
-        if (~aligned).any():
-            rel_free = rel[~aligned]
-            base_free = np.floor(rel_free).astype(int) - 1
-            G += _scatter_m4p(rel_free, base_free, circ_f[~aligned], shape)
-        grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
-        return grid_pos, G.reshape(-1, 3)
-
-    # Leftmost node index in the 4-node stencil: floor(q) - 1 → nodes at offsets 0..3
-    base = np.floor(rel).astype(int) - 1  # (N, 3)
-
-    G = _scatter_m4p(rel, base, circ_f, shape)
+    nearest = np.rint(rel).astype(np.int64)
+    aligned = np.max(np.abs(rel - nearest), axis=1) <= 1.0e-5
+    aligned &= np.all((nearest >= 0) & (nearest < np.asarray(shape)), axis=1)
+    G = np.zeros((*shape, 3), dtype=np.float64)
+    if aligned.any():
+        index = nearest[aligned]
+        np.add.at(G, (index[:, 0], index[:, 1], index[:, 2]), circ_f[aligned])
+    if (~aligned).any():
+        rel_free = rel[~aligned]
+        base_free = np.floor(rel_free).astype(int) - 1
+        G += _scatter_m4p(rel_free, base_free, circ_f[~aligned], shape)
     grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
     return grid_pos, G.reshape(-1, 3)
-
-
-def grid_vorticity(grid_circ: np.ndarray, cell_volume: float) -> np.ndarray:
-    """Convert grid circulation to vorticity: ω_m = Γ_m / V_cell."""
-    return grid_circ / (cell_volume + 1e-30)
-
-
-def particles_from_grid(
-    grid_pos: np.ndarray,
-    grid_circ: np.ndarray,
-    h: float,
-    threshold_abs: float = 0.0,
-    threshold_rel: float = 0.0,
-    radius_ratio: float = 1.5,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Create new particles from grid nodes whose circulation exceeds threshold.
-
-    Parameters
-    ----------
-    grid_pos      : (M, 3) grid node positions
-    grid_circ     : (M, 3) accumulated circulations on grid
-    h             : grid spacing (used to set particle volume and radius)
-    threshold_abs : discard nodes with |Γ| < threshold_abs
-    threshold_rel : discard nodes with |Γ| < threshold_rel * max|Γ|
-    radius_ratio  : new_sigma = h * radius_ratio
-
-    Returns
-    -------
-    new_pos    : (K, 3) positions of kept nodes
-    new_circ   : (K, 3) circulations
-    new_vol    : (K,) volumes h³
-    new_radius : (K,) core radii h * radius_ratio
-    """
-    mag = np.linalg.norm(grid_circ, axis=1)
-    max_mag = float(np.max(mag)) if len(mag) > 0 else 0.0
-    threshold = max(threshold_abs, threshold_rel * max_mag)
-    keep = mag >= threshold
-    vol = h**3
-    return (
-        grid_pos[keep],
-        grid_circ[keep],
-        np.full(keep.sum(), vol),
-        np.full(keep.sum(), h * radius_ratio),
-    )

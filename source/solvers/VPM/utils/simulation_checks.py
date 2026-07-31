@@ -199,9 +199,10 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     if u_max < EPSILON:
         issues.append("Maximum velocity is very small. Flow appears to be static.")
 
-    if h_min / h_max > 2.0:
+    h_ratio = h_min / h_max if h_max > 0 else 1.0
+    if h_ratio < 0.5:
         issues.append(
-            f"Large variation in particle spacing (h_min/h_max = {h_min / h_max:.2f}). "
+            f"Large variation in particle spacing (h_min/h_max = {h_ratio:.2f}). "
             "Consider more uniform distribution."
         )
 
@@ -211,7 +212,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
         "h_min": h_min,
         "h_max": h_max,
         "h_mean": h_mean,
-        "h_ratio": h_min / h_max if h_max > 0 else 1.0,
+        "h_ratio": h_ratio,
         "u_max": u_max,
         "u_mean": u_mean,
         "nu_molecular": nu_molecular,

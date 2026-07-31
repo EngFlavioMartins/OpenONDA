@@ -12,11 +12,23 @@ class FieldState:
     """Cell-centred velocity, pressure, and face flux for one time step.
 
     Enforces a contiguous ``float64`` memory layout and finite-value
-    validation in ``__post_init__``.  The three arrays share the same leading
-    dimension (number of cells including ghost layers).
+    validation in ``__post_init__``. Velocity and pressure contain one row per
+    cell including boundary ghost cells; ``face_flux`` instead contains one
+    value per mesh face.
 
     Call :meth:`copy` to produce an independent checkpoint that is not
     affected by subsequent solver updates.
+
+    Attributes
+    ----------
+    velocity : np.ndarray
+        Cell and boundary-ghost velocity [m/s], shape
+        ``(n_cells_with_ghosts, 3)``.
+    pressure : np.ndarray
+        Cell and boundary-ghost kinematic pressure ``p/ρ`` [m²/s²], shape
+        ``(n_cells_with_ghosts,)``.
+    face_flux : np.ndarray
+        Volumetric face flux ``U·Sf`` [m³/s], shape ``(n_faces,)``.
 
     Examples
     --------

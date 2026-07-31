@@ -1,6 +1,6 @@
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.fields.diagnostics import compute_courant_number
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
@@ -16,7 +16,7 @@ class TestCourant:
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
         U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        phi = compute_mass_flow_rate(U, mesh, geo)
+        phi = compute_volumetric_face_flux(U, mesh, geo)
         dt = 0.1
 
         co = compute_courant_number(U, phi, dt, mesh, geo)
@@ -36,8 +36,8 @@ class TestCourant:
 
         U1 = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
         U2 = np.tile([2.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        phi1 = compute_mass_flow_rate(U1, mesh, geo)
-        phi2 = compute_mass_flow_rate(U2, mesh, geo)
+        phi1 = compute_volumetric_face_flux(U1, mesh, geo)
+        phi2 = compute_volumetric_face_flux(U2, mesh, geo)
         dt = 0.1
 
         co1 = compute_courant_number(U1, phi1, dt, mesh, geo)[:n_elem]

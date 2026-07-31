@@ -63,7 +63,7 @@ class StepDiagnostics:
     continuity_sum : float
         Sum of absolute cell divergences in 1/s.
     boundary_mass_balance : float
-        Net boundary mass flux (should be near zero for incompressible flow).
+        Net boundary volumetric flux [m³/s] (near zero for incompressible flow).
     cfl_max : float
         Maximum Courant number.
     velocity_min / velocity_max : tuple[float, float, float]

@@ -5,6 +5,10 @@ SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. It is qualified at
 R3 for the configurations listed in `capabilities.json`; configurations
 outside that matrix fail during setup or remain explicitly experimental.
 
+The solver stores kinematic pressure ``p/ρ`` in m²/s² and volumetric face
+flux ``U·Sf`` in m³/s. Constant density therefore cancels from the flow
+evolution; it is applied when reporting dimensional pressure and viscous forces.
+
 ## Public API
 
 ```python
@@ -22,7 +26,7 @@ from source.solvers.FVM import (
 
 setup = FVMSetup(
     case_name="cube",
-    cores=4,
+    cores=1,
     output=OutputSetup(
         compression="lz4",
         asynchronous=True,
@@ -44,7 +48,8 @@ setup = FVMSetup(
         BoundaryConfig.outlet("outlet", 0.0),
     ],
 )
-solver = setup_fvm_solver(setup, case_dir="path/to/case", mesh=build_mesh)
+# ``mesh`` may also be a mesh dictionary or a callable returning one.
+solver = setup_fvm_solver(setup, case_dir="path/to/case", mesh="mesh.msh")
 solver.evolve()
 solver.save_state("solution/restart.npz")
 solver.write_run_manifest()
@@ -114,3 +119,5 @@ provenance records the exact contract and runtime/API version in run manifests.
 
 The test commands and evidence files are listed in `tests/fvm/README.md`; the
 machine-readable support contract is `capabilities.json`.
+Measured optimization results and retained design decisions are recorded in
+[`docs/fvm-performance-and-code-audit.md`](../../../docs/fvm-performance-and-code-audit.md).

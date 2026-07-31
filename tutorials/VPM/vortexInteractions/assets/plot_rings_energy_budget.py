@@ -215,7 +215,9 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
     strength_cols = [f"strength_{axis}" for axis in "xyz"]
     if all(col in df.columns for col in strength_cols):
         strength = df[strength_cols].to_numpy(float)
-        circulation_drift = float(np.linalg.norm(strength[-1] - strength[0]) / max(GAMMA, 1e-30))
+        circulation_drift = float(
+            np.linalg.norm(strength - strength[0], axis=1).max() / max(GAMMA, 1e-30)
+        )
     else:
         circulation_drift = np.nan
 
@@ -223,7 +225,7 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
     if all(col in df.columns for col in imp_cols):
         imp = df[imp_cols].to_numpy(float)
         impulse_scale = max(float(np.linalg.norm(imp[0])), GAMMA * R0**2)
-        impulse_drift = float(np.linalg.norm(imp[-1] - imp[0]) / impulse_scale)
+        impulse_drift = float(np.linalg.norm(imp - imp[0], axis=1).max() / impulse_scale)
     else:
         impulse_drift = np.nan
 
@@ -231,7 +233,9 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
     if all(col in df.columns for col in ang_cols):
         angular = df[ang_cols].to_numpy(float)
         angular_scale = max(float(np.linalg.norm(angular[0])), GAMMA * R0**3)
-        angular_impulse_drift = float(np.linalg.norm(angular[-1] - angular[0]) / angular_scale)
+        angular_impulse_drift = float(
+            np.linalg.norm(angular - angular[0], axis=1).max() / angular_scale
+        )
     else:
         angular_impulse_drift = np.nan
 
@@ -382,7 +386,8 @@ def main() -> None:
     make_figure(timeseries, summary, figures_dir, args.dpi, args.format)
 
     # Objective verdict: a method succeeds only if it never injects energy and
-    # preserves circulation and both impulses. Ranked worst-violation first.
+    # preserves circulation and both impulses at every recorded state. Ranked
+    # worst-violation first.
     verdict = summary.copy()
     verdict["PASS"] = (
         (verdict["frac_dEdt_pos"] <= 0.0)
@@ -407,10 +412,14 @@ def main() -> None:
     print(verdict[cols].to_string(index=False, float_format=lambda x: f"{x:.4g}"))
     print(
         "\nPASS requires: frac_dEdt_pos=0, |circulation_drift|≤1e-3, "
-        "and both impulse drifts≤1e-2.\n"
+        "and the maximum observed drift of both impulses≤1e-2.\n"
         "frac_dEdt_pos = fraction of samples with dE/dt>0 (spurious energy gain);\n"
         "spurious_E_in_E0 = total injected energy ∫max(dE/dt,0)dt / E0."
     )
+    failed_stabilized = verdict[verdict["case"].str.endswith("_les_stabilized") & ~verdict["PASS"]]
+    if not failed_stabilized.empty:
+        names = ", ".join(failed_stabilized["case"].astype(str))
+        raise SystemExit(f"Stabilized energy/conservation verdict failed: {names}")
 
 
 if __name__ == "__main__":

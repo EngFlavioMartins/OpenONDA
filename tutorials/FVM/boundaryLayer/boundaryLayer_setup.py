@@ -32,7 +32,7 @@ from assets.mesh_plate import flat_plate_mesh
 
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -60,7 +60,7 @@ def build_config(args, nu):
         force_patches=["plate"], ref_velocity=args.u_inf, ref_length=args.plate_length
     )
 
-    return FVMConfig(
+    return FVMSetup(
         case_name=args.case_name,
         time=TimeConfig(
             delta_t=args.initial_dt,

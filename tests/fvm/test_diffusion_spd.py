@@ -6,7 +6,7 @@ from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
@@ -27,7 +27,7 @@ def diff_data(hand_built_3d_mesh):
     phi[:n_elem] = 1.0  # φ=1 everywhere → zero gradient → no diffusion flux
 
     # Compute gradient
-    grad_phi = compute_gradient_gauss_linear_vectorized(phi, mesh, geo)
+    grad_phi = compute_gauss_gradient(phi, mesh, geo)
 
     # Diffusion coefficient = 1 everywhere
     gamma = np.ones(n_elem)

@@ -17,9 +17,9 @@ near-null modes creates large, non-physical strength oscillations.  A
 minimum-norm particular correction first restores the reference vector
 circulation, linear impulse, and Gaussian-corrected angular impulse.  The
 divergence solve is restricted to the exact null space of those nine moments,
-and a second null-space direction restores the quadratic kinetic energy exactly
-in the Fourier audit.  Enstrophy, helicity, total variation, correction size,
-and residual reduction are then hard acceptance gates.
+and two independent null-space directions restore the quadratic kinetic energy
+and enstrophy exactly in the Fourier audit.  Helicity, total variation,
+correction size, and residual reduction are then hard acceptance gates.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import fft
 from scipy.ndimage import gaussian_filter
+from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, cg
 
 from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
@@ -55,7 +56,7 @@ class DivergenceRelaxationResult:
     initial_residual_norm: float
     final_residual_ratio: float
     correction_norm_relative: float
-    energy_restoration_fraction: float
+    quadratic_restoration_fraction: float
     reference_restoration_scale: float
     circulation_restored: float
     linear_impulse_restored: float
@@ -390,6 +391,8 @@ def _constrained_divergence_relaxation_once(
     helicity_tolerance: float = 1e-4,
     variation_tolerance: float = 1e-3,
     spectral_convergence_fraction: float = 0.1,
+    reference_scales: tuple[float, float, float] | None = None,
+    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
     correction_scale: float = 1.0,
     restoration_scale: float = 1.0,
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
@@ -414,6 +417,12 @@ def _constrained_divergence_relaxation_once(
         raise ValueError("spectral_convergence_fraction must be in (0, 1]")
     if not 0.0 < restoration_scale <= 1.0:
         raise ValueError("restoration_scale must be in (0, 1]")
+    if len(reference_tolerances) != 3 or any(value < 0.0 for value in reference_tolerances):
+        raise ValueError("reference_tolerances must contain three non-negative values")
+    if reference_scales is not None and (
+        len(reference_scales) != 3 or any(value <= 0.0 for value in reference_scales)
+    ):
+        raise ValueError("reference_scales must contain three positive values")
 
     before_moments = gaussian_particle_moments(position, circulation, radius)
     if target_moments is None:
@@ -506,7 +515,7 @@ def _constrained_divergence_relaxation_once(
             initial_residual_norm=initial_residual_norm,
             final_residual_ratio=0.0,
             correction_norm_relative=0.0,
-            energy_restoration_fraction=0.0,
+            quadratic_restoration_fraction=0.0,
             reference_restoration_scale=restoration_scale,
             circulation_restored=0.0,
             linear_impulse_restored=0.0,
@@ -581,9 +590,32 @@ def _constrained_divergence_relaxation_once(
     energy_direction_norm = float(np.linalg.norm(energy_direction))
     if energy_direction_norm <= np.finfo(float).tiny:
         raise DivergenceRelaxationError(
-            "no moment-preserving direction is available to restore kinetic energy"
+            "no moment-preserving direction is available to restore quadratic invariants"
         )
     energy_direction *= circulation_norm / energy_direction_norm
+
+    enstrophy_gradient = operator.apply(circulation)
+    enstrophy_direction = nullspace.to_correction(enstrophy_gradient / sqrt_volume[:, None])
+    enstrophy_direction -= (
+        np.vdot(enstrophy_direction, energy_direction) / np.vdot(energy_direction, energy_direction)
+    ) * energy_direction
+    enstrophy_direction_norm = float(np.linalg.norm(enstrophy_direction))
+    for axis in range(3):
+        trial = nullspace.to_correction(
+            position[:, axis, None] * circulation / sqrt_volume[:, None]
+        )
+        trial -= (
+            np.vdot(trial, energy_direction) / np.vdot(energy_direction, energy_direction)
+        ) * energy_direction
+        trial_norm = float(np.linalg.norm(trial))
+        if enstrophy_direction_norm <= 1e-10 * circulation_norm and trial_norm > 0.0:
+            enstrophy_direction = trial
+            enstrophy_direction_norm = trial_norm
+    if enstrophy_direction_norm <= 1e-10 * circulation_norm:
+        raise DivergenceRelaxationError(
+            "no second moment-preserving direction is available to restore quadratic invariants"
+        )
+    enstrophy_direction *= circulation_norm / enstrophy_direction_norm
 
     before_integrals = gaussian_fourier_integrals(
         position,
@@ -605,52 +637,153 @@ def _constrained_divergence_relaxation_once(
         radius,
         volume,
         spacing=grid_spacing,
-    ).energy
+    )
     minus_energy = gaussian_fourier_integrals(
         position,
         candidate - energy_direction,
         radius,
         volume,
         spacing=grid_spacing,
-    ).energy
-    linear_coefficient = 0.5 * (plus_energy - minus_energy)
-    quadratic_coefficient = 0.5 * (plus_energy + minus_energy) - candidate_integrals.energy
-    roots = np.roots(
-        [
-            quadratic_coefficient,
-            linear_coefficient,
-            candidate_integrals.energy - before_integrals.energy,
-        ]
     )
-    real_roots = [
-        float(root.real) for root in roots if np.isfinite(root) and abs(root.imag) <= 1e-10
+    plus_enstrophy = gaussian_fourier_integrals(
+        position,
+        candidate + enstrophy_direction,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
+    minus_enstrophy = gaussian_fourier_integrals(
+        position,
+        candidate - enstrophy_direction,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
+    plus_both = gaussian_fourier_integrals(
+        position,
+        candidate + energy_direction + enstrophy_direction,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
+    values = np.array(
+        [
+            [candidate_integrals.energy, candidate_integrals.enstrophy],
+            [plus_energy.energy, plus_energy.enstrophy],
+            [minus_energy.energy, minus_energy.enstrophy],
+            [plus_enstrophy.energy, plus_enstrophy.enstrophy],
+            [minus_enstrophy.energy, minus_enstrophy.enstrophy],
+            [plus_both.energy, plus_both.enstrophy],
+        ],
+        dtype=np.float64,
+    ).T
+    linear = np.stack(
+        (
+            0.5 * (values[:, 1] - values[:, 2]),
+            0.5 * (values[:, 3] - values[:, 4]),
+        ),
+        axis=1,
+    )
+    diagonal = np.stack(
+        (
+            0.5 * (values[:, 1] + values[:, 2]) - values[:, 0],
+            0.5 * (values[:, 3] + values[:, 4]) - values[:, 0],
+        ),
+        axis=1,
+    )
+    cross = 0.5 * (
+        values[:, 5] - values[:, 0] - linear[:, 0] - linear[:, 1] - diagonal[:, 0] - diagonal[:, 1]
+    )
+    energy_roots = np.roots(
+        (
+            diagonal[0, 0],
+            linear[0, 0],
+            values[0, 0] - before_integrals.energy,
+        )
+    )
+    real_energy_roots = [
+        float(value.real)
+        for value in energy_roots
+        if np.isfinite(value) and abs(value.imag) <= 1e-10
     ]
-    if not real_roots:
+    if not real_energy_roots:
         raise DivergenceRelaxationError(
-            "kinetic energy could not be restored along the moment-null direction"
+            "kinetic energy could not be restored in the moment null space",
+            gate="quadratic restoration",
         )
-    energy_multiplier = min(real_roots, key=abs)
-    for _ in range(3):
-        correction = raw_correction + energy_multiplier * energy_direction
-        relaxed = circulation + correction
-        after_integrals = gaussian_fourier_integrals(
-            position,
-            relaxed,
-            radius,
-            volume,
-            spacing=grid_spacing,
+    energy_multiplier = min(real_energy_roots, key=abs)
+    scalar_restored_enstrophy = (
+        values[1, 0] + linear[1, 0] * energy_multiplier + diagonal[1, 0] * energy_multiplier**2
+    )
+    targets = np.array(
+        [
+            before_integrals.energy,
+            (
+                before_integrals.enstrophy
+                if reference_scales is not None
+                else scalar_restored_enstrophy
+            ),
+        ],
+        dtype=np.float64,
+    )
+    scales = np.maximum(np.abs(targets), np.finfo(float).tiny)
+
+    def quadratic_errors(multipliers: np.ndarray) -> np.ndarray:
+        first, second = multipliers
+        restored = (
+            values[:, 0]
+            + linear @ multipliers
+            + diagonal[:, 0] * first * first
+            + 2.0 * cross * first * second
+            + diagonal[:, 1] * second * second
         )
-        energy_error = after_integrals.energy - before_integrals.energy
-        energy_scale = max(
-            abs(before_integrals.energy),
-            np.finfo(float).tiny,
+        return (restored - targets) / scales
+
+    def quadratic_jacobian(multipliers: np.ndarray) -> np.ndarray:
+        first, second = multipliers
+        return (
+            np.stack(
+                (
+                    linear[:, 0] + 2.0 * diagonal[:, 0] * first + 2.0 * cross * second,
+                    linear[:, 1] + 2.0 * cross * first + 2.0 * diagonal[:, 1] * second,
+                ),
+                axis=1,
+            )
+            / scales[:, None]
         )
-        if abs(energy_error) <= 64.0 * np.finfo(float).eps * energy_scale:
-            break
-        energy_derivative = linear_coefficient + 2.0 * quadratic_coefficient * energy_multiplier
-        if abs(energy_derivative) <= np.finfo(float).tiny:
-            break
-        energy_multiplier -= energy_error / energy_derivative
+
+    initial_multipliers = (
+        np.linalg.lstsq(
+            linear / scales[:, None],
+            (targets - values[:, 0]) / scales,
+            rcond=1e-12,
+        )[0]
+        if reference_scales is not None
+        else np.array([energy_multiplier, 0.0])
+    )
+    restoration = root(
+        quadratic_errors,
+        initial_multipliers,
+        jac=quadratic_jacobian,
+        method="hybr",
+    )
+    if not restoration.success or not np.isfinite(restoration.x).all():
+        raise DivergenceRelaxationError(
+            "kinetic energy and enstrophy could not be restored in the moment null space",
+            gate="quadratic restoration",
+        )
+    invariant_correction = (
+        restoration.x[0] * energy_direction + restoration.x[1] * enstrophy_direction
+    )
+    correction = raw_correction + invariant_correction
+    relaxed = circulation + correction
+    after_integrals = gaussian_fourier_integrals(
+        position,
+        relaxed,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
 
     after_moments = gaussian_particle_moments(position, relaxed, radius)
     circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
@@ -709,9 +842,8 @@ def _constrained_divergence_relaxation_once(
     correction_norm_relative = float(np.linalg.norm(correction) / circulation_norm)
     relaxed_residual, relaxed_grid_divergence, _ = operator.relaxation_residual(relaxed)
     final_residual_ratio = float(np.linalg.norm(relaxed_residual) / initial_residual_norm)
-    energy_restoration_fraction = float(
-        abs(energy_multiplier)
-        * np.linalg.norm(energy_direction)
+    quadratic_restoration_fraction = float(
+        np.linalg.norm(invariant_correction)
         / max(np.linalg.norm(raw_correction), np.finfo(float).tiny)
     )
 
@@ -728,6 +860,27 @@ def _constrained_divergence_relaxation_once(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
+    reference_gates = (
+        (
+            (
+                "circulation reference error",
+                circulation_reference_error / reference_scales[0],
+                reference_tolerances[0],
+            ),
+            (
+                "linear-impulse reference error",
+                linear_impulse_reference_error / reference_scales[1],
+                reference_tolerances[1],
+            ),
+            (
+                "angular-impulse reference error",
+                angular_impulse_reference_error / reference_scales[2],
+                reference_tolerances[2],
+            ),
+        )
+        if reference_scales is not None
+        else ()
+    )
     moment_tolerance = 4096.0 * np.finfo(float).eps
     moment_checks = (
         ("vector circulation", circulation_error, moment_scale),
@@ -740,7 +893,7 @@ def _constrained_divergence_relaxation_once(
                 f"divergence relaxation changed {name} by {error:.3e}, beyond "
                 f"its roundoff allowance {moment_tolerance * scale:.3e}"
             )
-    gates = (
+    gates = reference_gates + (
         ("correction norm", correction_norm_relative, max_correction_norm),
         ("residual ratio", final_residual_ratio, max_residual_ratio),
         ("kinetic-energy transfer", abs(energy_change_relative), energy_tolerance),
@@ -778,7 +931,7 @@ def _constrained_divergence_relaxation_once(
         initial_residual_norm=initial_residual_norm,
         final_residual_ratio=final_residual_ratio,
         correction_norm_relative=correction_norm_relative,
-        energy_restoration_fraction=energy_restoration_fraction,
+        quadratic_restoration_fraction=quadratic_restoration_fraction,
         reference_restoration_scale=restoration_scale,
         circulation_restored=circulation_restored,
         linear_impulse_restored=linear_impulse_restored,
@@ -819,6 +972,8 @@ def constrained_divergence_relaxation(
     helicity_tolerance: float = 1e-4,
     variation_tolerance: float = 1e-3,
     spectral_convergence_fraction: float = 0.1,
+    reference_scales: tuple[float, float, float] | None = None,
+    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
     max_line_search_steps: int = 8,
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> DivergenceRelaxationResult:
@@ -835,6 +990,7 @@ def constrained_divergence_relaxation(
         "kinetic-energy spectral convergence",
         "enstrophy spectral convergence",
         "helicity spectral convergence",
+        "quadratic restoration",
     }
     last_error: DivergenceRelaxationError | None = None
     for restoration_attempt in range(max_line_search_steps):
@@ -857,6 +1013,8 @@ def constrained_divergence_relaxation(
                     helicity_tolerance=helicity_tolerance,
                     variation_tolerance=variation_tolerance,
                     spectral_convergence_fraction=spectral_convergence_fraction,
+                    reference_scales=reference_scales,
+                    reference_tolerances=reference_tolerances,
                     correction_scale=0.5**divergence_attempt,
                     restoration_scale=0.5**restoration_attempt,
                     target_moments=target_moments,

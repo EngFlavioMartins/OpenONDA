@@ -77,7 +77,7 @@ def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
     scalar = np.ones(n_total)
     update_scalar_boundaries(scalar, mesh, mesh["boundary"], field_name="p")
 
-    grad = gradients.compute_gradient_lsq_vectorized(scalar, mesh, geo)
+    grad = gradients.compute_lsq_gradient(scalar, mesh, geo)
     diffusive = diffusion.assemble_diffusion_term(
         scalar, grad, np.ones(n_cells), mesh, geo, mesh["boundary"]
     )
@@ -88,7 +88,7 @@ def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
 
     velocity = np.zeros((n_total, 3))
     velocity[:, 0] = 1.0
-    mdot = convection.compute_mass_flow_rate(velocity, mesh, geo)
+    mdot = convection.compute_volumetric_face_flux(velocity, mesh, geo)
     convective = convection.assemble_convection_term(
         scalar, mdot, mesh, geo, mesh["boundary"], scheme="central"
     )

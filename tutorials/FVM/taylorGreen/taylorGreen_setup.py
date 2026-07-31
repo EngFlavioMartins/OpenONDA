@@ -13,7 +13,7 @@ CASE_DIR = Path(__file__).resolve().parent
 
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -81,7 +81,7 @@ def main() -> None:
         BoundaryConfig.empty("zmin"),
         BoundaryConfig.empty("zmax"),
     ]
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="taylorGreen",
         time=TimeConfig(
             delta_t=args.dt,

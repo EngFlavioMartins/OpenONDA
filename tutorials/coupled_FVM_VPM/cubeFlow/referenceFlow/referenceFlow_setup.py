@@ -61,7 +61,7 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="lust",
+        convection_scheme="LUST",
         gradient_scheme="lsq",
         time_scheme="backward",
     ),

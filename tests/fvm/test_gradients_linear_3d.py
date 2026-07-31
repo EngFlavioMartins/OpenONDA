@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
@@ -34,7 +34,7 @@ class TestGradientOfLinearField:
         phi = np.zeros(n_elem + n_bnd)
         phi[:n_elem] = cents[:, 0] + cents[:, 1] + cents[:, 2]
         self._set_ghost_cells(phi, lambda c: c[0] + c[1] + c[2])
-        grad = compute_gradient_gauss_linear_vectorized(phi, self.mesh, self.geo)
+        grad = compute_gauss_gradient(phi, self.mesh, self.geo)
         assert grad.ndim == 3 and grad.shape[1] == 3
         g = grad[:n_elem].squeeze()
         assert np.allclose(g, 1.0), f"max error = {np.max(np.abs(g - 1.0)):.2e}"
@@ -50,7 +50,7 @@ class TestGradientOfLinearField:
         self._set_ghost_cells(phi[:, 0], lambda c: c[0] + c[1] + c[2])
         self._set_ghost_cells(phi[:, 1], lambda c: 2 * c[0] - c[2])
         self._set_ghost_cells(phi[:, 2], lambda c: c[1])
-        grad = compute_gradient_gauss_linear_vectorized(phi, self.mesh, self.geo)
+        grad = compute_gauss_gradient(phi, self.mesh, self.geo)
         assert grad.ndim == 3 and grad.shape[1] == 3
         assert np.allclose(grad[:n_elem, :, 0], 1.0)
         assert np.allclose(grad[:n_elem, :, 1], [2.0, 0.0, -1.0])
@@ -61,5 +61,5 @@ class TestGradientOfLinearField:
         n_elem = self.mesh["n_elements"]
         n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
         phi = np.ones(n_elem + n_bnd)
-        grad = compute_gradient_gauss_linear_vectorized(phi, self.mesh, self.geo)
+        grad = compute_gauss_gradient(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem], 0.0)

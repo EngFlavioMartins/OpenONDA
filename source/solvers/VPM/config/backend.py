@@ -267,66 +267,34 @@ def _cpu_candidates() -> list[tuple]:
 
 
 def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list[tuple]:
-    """Build the ordered ``[(arch, name), …]`` chain to attempt, GPUs first.
-
-    The chain always tries every viable GPU for the platform **before** falling
-    back to the CPU, so a transient failure on the user's first-choice GPU API
-    (e.g. a Vulkan driver hiccup) still lands on another GPU (e.g. CUDA) instead
-    of silently dropping to the (much slower) CPU.
-
-    Ordering rules:
-    * **macOS**            → Metal → CPU.  (Vulkan/CUDA are unavailable on Apple
-                             hardware, so any GPU request maps to Metal.)
-    * **CPU** (explicit)   → CPU only.
-    * **Linux / Windows**  → requested GPU API, then CPU:
-        - ``AUTO``               → platform-best GPU (CUDA if an NVIDIA device is
-                                   present, else Vulkan) → the other GPU → CPU.
-        - ``VULKAN``             → Vulkan → CPU.
-        - ``CUDA``               → CUDA → CPU.
-        - ``METAL``              → Metal → CPU.
-
-    Precision rule: Metal has **no fp64 support**.  ``ti.init(arch=ti.metal,
-    default_fp=ti.f64)`` succeeds, but the first f64 kernel then fails SPIRV
-    codegen and aborts the process with an uncatchable C++ assertion
-    (``metal_device.mm: bind_pipeline``).  Metal is therefore excluded from
-    the chain up-front when ``precision == 'f64'``.
-
-    The returned chain is de-duplicated (preserving order) and always ends with
-    the CPU candidates.
-    """
+    """Return backend candidates; explicit GPU requests never fall back to CPU."""
     cpu_chain = _cpu_candidates()
 
-    # Explicit CPU request: never touch a GPU.
     if preferred_backend == "CPU":
         return cpu_chain
 
-    # macOS: the only GPU API is Metal.
+    if preferred_backend == "METAL":
+        if precision == "f64":
+            raise ValueError(
+                "precision='f64' is not supported by the Metal backend; use f32 or CPU"
+            )
+        return [(ti.metal, "METAL")]
+
+    if preferred_backend == "CUDA":
+        return [(ti.cuda, "CUDA")]
+
+    if preferred_backend == "VULKAN":
+        return [(ti.vulkan, "VULKAN")]
+
     if platform.system() == "Darwin":
         if precision == "f64":
-            print(
-                "[OpenONDA] precision='f64' is not supported by the Metal "
-                "backend (no fp64) — using the CPU backend instead.",
-                file=sys.stderr,
-            )
             return cpu_chain
         return [(ti.metal, "METAL"), *cpu_chain]
 
-    # Linux / Windows GPU ordering.
     vulkan = (ti.vulkan, "VULKAN")
     cuda = (ti.cuda, "CUDA")
-
-    if preferred_backend == "VULKAN":
-        gpu_order = [vulkan]
-    elif preferred_backend == "CUDA":
-        gpu_order = [cuda]
-    elif preferred_backend == "METAL":
-        gpu_order = [(ti.metal, "METAL")]
-    else:
-        # AUTO uses the platform-best GPU first, then the other portable API.
-        best = _resolve_gpu_backend()
-        gpu_order = [best, cuda if best[1] != "CUDA" else vulkan]
-
-    # De-duplicate while preserving order, then append CPU fallback.
+    best = _resolve_gpu_backend()
+    gpu_order = [best, cuda if best[1] != "CUDA" else vulkan]
     chain: list[tuple] = []
     for cand in [*gpu_order, *cpu_chain]:
         if cand not in chain:
@@ -386,17 +354,8 @@ def initialize_taichi_backend(
     """
     Initialize Taichi with user-specified backend and precision settings.
 
-    The backend is chosen automatically based on the current platform when
-    a generic GPU backend is requested:
-
-    * **macOS** — ``AUTO`` selects Metal. Fallback order: Metal → CPU.
-      Exception: with
-      ``precision='f64'`` Metal is skipped entirely (no fp64 support;
-      f64 kernels abort the process at SPIRV codegen) and the chain is
-      CPU-only.
-    * **Linux / Windows** — ``AUTO`` selects CUDA when available and Vulkan
-      otherwise. Explicit ``CUDA``, ``VULKAN``, ``METAL``, and ``CPU`` requests
-      try only that accelerator before a CPU fallback.
+    ``AUTO`` tries compatible GPU backends before CPU. Explicit GPU requests
+    are strict and raise if initialization fails.
 
     Args:
           preferred_backend: ``'AUTO'``, ``'METAL'``, ``'VULKAN'``,
@@ -420,22 +379,9 @@ def initialize_taichi_backend(
     if precision not in _PRECISION_MAP:
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
 
-    # -- Environment-variable override (highest priority) ----------------
-    # Users (and install.sh) can set OPENONDA_PROCESSING_UNIT to control
-    # the backend without modifying any Python config:
-    #   export OPENONDA_PROCESSING_UNIT=AUTO   # best GPU for this platform
-    #   export OPENONDA_PROCESSING_UNIT=CPU    # force CPU
-    # Any explicit value in VPMSetup is used as the fallback when the
-    # env var is not set.
     _VALID_ENV_KEYS = {"AUTO", "CPU", "METAL", "VULKAN", "CUDA"}
     env_unit = os.environ.get("OPENONDA_PROCESSING_UNIT", "").strip().upper()
-    if env_unit in _VALID_ENV_KEYS:
-        if env_unit != preferred_backend:
-            _logger.debug(
-                "OPENONDA_PROCESSING_UNIT='%s' overrides preferred_backend='%s'",
-                env_unit,
-                preferred_backend,
-            )
+    if preferred_backend == "AUTO" and env_unit in _VALID_ENV_KEYS:
         preferred_backend = env_unit
 
     # -- Platform-aware backend chain (GPU first, CPU last) --------------
@@ -447,6 +393,7 @@ def initialize_taichi_backend(
     # their failure mode is an uncatchable process abort at kernel-compile
     # time, not a Python exception the fallback loop could recover from.
     chain = _build_backend_chain(preferred_backend, precision)
+    strict_gpu = preferred_backend in {"METAL", "VULKAN", "CUDA"}
 
     # Clamp to a safe range.  Values above ~0.7 almost always trigger
     # 'Failed to allocate ext arr buffer' on Vulkan/CUDA.  This is a hardware
@@ -501,7 +448,7 @@ def initialize_taichi_backend(
             ti.init(**init_kwargs)
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
-            if name == "CPU" and preferred_backend != "CPU":
+            if name == "CPU" and preferred_backend == "AUTO":
                 _logger.warning(
                     "No GPU backend available (tried %s) — falling back to CPU.",
                     ", ".join(n for _, n in chain if n != "CPU"),
@@ -516,5 +463,9 @@ def initialize_taichi_backend(
             with contextlib.suppress(Exception):
                 ti.reset()
 
+    if strict_gpu:
+        raise RuntimeError(
+            f"Requested Taichi backend {preferred_backend} failed to initialise"
+        ) from last_exc
     _logger.error("All Taichi backends failed to initialise (last error: %s)", last_exc)
     return getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")

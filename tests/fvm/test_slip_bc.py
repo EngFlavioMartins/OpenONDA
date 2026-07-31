@@ -17,7 +17,7 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -36,7 +36,7 @@ def _slip_channel_solver(tmp_path):
     sp_schemes = SchemesConfig(convection_scheme="central")
     sp_linear = LinearSolverConfig(linear_solver="spsolve")
     sp_pimple = PimpleControl(n_correctors=2)
-    cfg = FVMConfig(
+    cfg = FVMSetup(
         case_name="slip_channel",
         time=TimeConfig(delta_t=0.05, end_time=1.0, write_interval=10**9),
         schemes=sp_schemes,

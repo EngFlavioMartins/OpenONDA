@@ -1,18 +1,4 @@
-#!/usr/bin/env python3
-"""
-Momentum Equation Assembly for OpenONDA FVM Solver
-
-Assembles momentum equation for incompressible Navier-Stokes:
-∂U/∂t + ∇·(UU) = -∇p/ρ + ∇·(nu∇U) + f
-
-Components:
-- Convection: ∇·(ρUU)
-- Diffusion: ∇·(μ∇U)  where μ = ρnu
-- Pressure gradient: -∇p
-- Source terms: f (gravity, etc.)
-
-Converted from uFVM NSAssembly/Momentum modules
-"""
+"""Assemble ``∂U/∂t + ∇·(UU) = -∇(p/ρ) + ∇·(ν∇U) + f``."""
 
 from dataclasses import replace
 
@@ -20,6 +6,7 @@ import numpy as np
 
 from ..fields import gradients
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..solve.linear_interface import normalized_residual, solve_linear_system
 from . import convection, diffusion, matrix_assembly
 
 
@@ -45,22 +32,22 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
 
 
 def _add_transient_term(
-    A, b_vec, rho, vol, dt, U_old_comp, U_curr_comp, U_old_old_comp=None, scheme="euler"
+    A, b_vec, vol, dt, U_old_comp, U_curr_comp, U_old_old_comp=None, scheme="euler"
 ):
-    """Apply the implicit transient ``∂(ρu)/∂t`` term (only called when dt is not None).
+    """Apply the implicit transient ``∂u/∂t`` term (only called when dt is not None).
 
     Schemes (constant Δt):
       * ``"euler"`` / ``"backward_euler"`` — BDF1, first order:
-        ``(ρV/Δt)(uⁿ⁺¹ − uⁿ)``.
+        ``(V/Δt)(uⁿ⁺¹ − uⁿ)``.
       * ``"backward"`` — BDF2, second order:
-        ``(ρV/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  Falls back to BDF1 on the
+        ``(V/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  Falls back to BDF1 on the
         first step (when ``U_old_old_comp`` is None), which is the standard
         self-starting BDF2 procedure.
 
     BDF2 here assumes a constant time step. Configuration validation rejects
     adaptive time stepping with BDF2 before assembly.
     """
-    coeff = rho * vol / dt
+    coeff = vol / dt
     if scheme == "backward" and U_old_comp is not None and U_old_old_comp is not None:
         A.setdiag(A.diagonal() + 1.5 * coeff)
         b_vec += coeff * (2.0 * U_old_comp - 0.5 * U_old_old_comp)
@@ -125,7 +112,6 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     if strategy in (
         BoundaryStrategy.ZERO_GRADIENT,
         BoundaryStrategy.INLET_OUTLET,
-        BoundaryStrategy.DIRECTION_MIXED,
     ):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         U_star[b_elem_indices] = U_star[owners_b]
@@ -183,8 +169,10 @@ def assemble_momentum_equation(
 
     Args:
         U: Velocity field (n_elements + n_boundary, 3)
-        p: Pressure field (n_elements + n_boundary,)
-        rho: Density (scalar or array)
+        p: Kinematic pressure ``p/ρ`` [m²/s²], shape
+            ``(n_elements + n_boundary,)``.
+        rho: Positive constant reference density [kg/m³]. It cancels from
+            this kinematic-pressure formulation and is validated only.
         nu: Kinematic viscosity (scalar or array)
         mesh_data: Mesh connectivity
         geo_data: Geometric data
@@ -192,12 +180,12 @@ def assemble_momentum_equation(
         convection_scheme: Convection discretization scheme
         dt: Time step size (optional)
         U_old: Previous time step velocity (optional, for transient term)
-        source_explicit: Optional explicit volumetric source Su (n_elements, 3),
-            per unit volume.  Added to the RHS as ``Su * V`` for each component
-            (e.g. body force, MMS forcing, or the explicit part λ·Utarget of the
-            coupling fringe source).
+        source_explicit: Optional acceleration source Su [m/s²], shape
+            ``(n_elements, 3)``. Added to the RHS as ``Su * V`` for each
+            component (e.g. body acceleration, MMS forcing, or the explicit
+            part λ·Utarget of the coupling fringe source).
         source_implicit: Optional implicit volumetric source coefficient Sp
-            (n_elements,), per unit volume.  Added to the diagonal as ``Sp * V``
+            [1/s], shape ``(n_elements,)``. Added to the diagonal as ``Sp * V``
             (e.g. the implicit part λ of the fringe source S = λ(Utarget − U)).
             Must be >= 0 to preserve diagonal dominance.
 
@@ -210,28 +198,22 @@ def assemble_momentum_equation(
 
     n_elements = mesh_data["n_elements"]
 
-    rho_is_scalar = np.isscalar(rho)
-    nu_is_scalar = np.isscalar(nu)
-    if rho_is_scalar:
-        rho = float(rho)
-        if not np.isfinite(rho) or rho <= 0.0:
-            raise ValueError("rho must be finite and positive")
-    else:
-        rho = np.asarray(rho, dtype=np.float64)
-        if rho.shape != (n_elements,) or not np.all(np.isfinite(rho)) or np.any(rho <= 0.0):
-            raise ValueError(f"rho must be finite and positive with shape ({n_elements},)")
-    if nu_is_scalar:
-        nu = float(nu)
+    density = np.asarray(rho, dtype=np.float64)
+    if density.ndim != 0:
+        raise ValueError("constant-density FVM requires rho to be a scalar")
+    density_value = float(density.item())
+    if not np.isfinite(density_value) or density_value <= 0.0:
+        raise ValueError("rho must be finite and positive")
+
+    viscosity = np.asarray(nu, dtype=np.float64)
+    if viscosity.ndim == 0:
+        nu = float(viscosity.item())
         if not np.isfinite(nu) or nu <= 0.0:
             raise ValueError("nu must be finite and positive")
     else:
-        nu = np.asarray(nu, dtype=np.float64)
+        nu = viscosity
         if nu.shape != (n_elements,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
             raise ValueError(f"nu must be finite and positive with shape ({n_elements},)")
-
-    # Dynamic viscosity: μ = ρν.  Preserve scalar transport coefficients so
-    # large laminar runs do not allocate two redundant cell arrays.
-    mu = rho * nu
 
     # Resolve gradient scheme
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
@@ -244,30 +226,10 @@ def assemble_momentum_equation(
     if grad_p.ndim == 3:
         grad_p = grad_p.squeeze(-1)  # (n, 3, 1) -> (n, 3)
 
-    # ``phi`` is volumetric flux U·Sf. Interpolate density to each face to
-    # obtain mass flux without collapsing variable-density input to rho[0].
-    if rho_is_scalar:
-        mdot = np.asarray(phi) * rho
-    else:
-        owners = mesh_data["owners"]
-        neighbours = mesh_data["neighbours"]
-        n_interior = mesh_data["n_interior_faces"]
-        face_rho = rho[owners].copy()
-        weights = geo_data["face_weights"][:n_interior]
-        face_rho[:n_interior] = (
-            weights * rho[neighbours[:n_interior]] + (1.0 - weights) * rho[owners[:n_interior]]
-        )
-        boundary_neighbours = np.asarray(
-            mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1, dtype=np.int32))
-        )
-        cyclic_faces = np.flatnonzero(boundary_neighbours >= 0)
-        if cyclic_faces.size:
-            weights_b = geo_data["face_weights"][cyclic_faces]
-            face_rho[cyclic_faces] = (
-                weights_b * rho[boundary_neighbours[cyclic_faces]]
-                + (1.0 - weights_b) * rho[owners[cyclic_faces]]
-            )
-        mdot = np.asarray(phi) * face_rho
+    # The incompressible equation is divided by the constant reference
+    # density. ``phi`` therefore remains volumetric flux and ``nu`` remains
+    # kinematic viscosity throughout the operator.
+    volumetric_flux = np.asarray(phi, dtype=np.float64)
 
     results = {}
     spatial_matrix = None
@@ -285,22 +247,22 @@ def assemble_momentum_equation(
 
         momentum_boundaries = [_make_momentum_boundary(b, i_comp) for b in boundaries]
 
-        # 1. Diffusion term: ∇·(μ∇U)
+        # 1. Diffusion term: ∇·(ν∇U)
         diff_flux = diffusion.assemble_diffusion_term(
             U_comp,
             grad_U_comp,
-            mu,
+            nu,
             mesh_data,
             geo_data,
             momentum_boundaries,
             face_flux=phi,
         )
 
-        # 2. Convection term: ∇·(ρUU).  grad_U_comp feeds the gradient-based
+        # 2. Convection term: ∇·(UU). grad_U_comp feeds the gradient-based
         #    TVD limiter for high-resolution schemes (ignored by the others).
         conv_flux = convection.assemble_convection_term(
             U_comp,
-            mdot,
+            volumetric_flux,
             mesh_data,
             geo_data,
             boundaries,
@@ -340,7 +302,6 @@ def assemble_momentum_equation(
             _add_transient_term(
                 A,
                 b,
-                rho,
                 vol,
                 dt,
                 U_old[:n_elements, i_comp] if U_old is not None else None,
@@ -349,7 +310,7 @@ def assemble_momentum_equation(
                 scheme=ddt_scheme,
             )
 
-        # 6b. Generic volumetric source terms: S = Su + Sp·U (per unit volume).
+        # 6b. Generic acceleration source terms: S = Su + Sp·U.
         #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping U implicit.
         #     Used by MMS forcing and the coupling fringe S = λ(Utarget − U).
         if source_explicit is not None:
@@ -446,9 +407,7 @@ def solve_momentum_predictor(
             source_relax = (1.0 - under_relaxation) * diag_new * U[:n_elements, i_comp]
             rhs_columns.append(b + source_relax)
         B = np.column_stack(rhs_columns)
-        X, shared_result = matrix_assembly.solve_linear_system(
-            A_shared, B, method="spsolve", return_info=True
-        )
+        X, shared_result = solve_linear_system(A_shared, B, method="spsolve", return_info=True)
         if X.ndim == 1:
             X = X[:, np.newaxis]
 
@@ -458,12 +417,8 @@ def solve_momentum_predictor(
             b_relaxed = B[:, i_comp]
             x_initial = U_old[:n_elements, i_comp] if U_old is not None else np.zeros(n_elements)
             solve_diagnostics[comp_name] = {
-                "initial_residual": matrix_assembly.normalized_residual(
-                    A_shared, x_initial, b_relaxed
-                ),
-                "final_residual": matrix_assembly.normalized_residual(
-                    A_shared, X[:, i_comp], b_relaxed
-                ),
+                "initial_residual": normalized_residual(A_shared, x_initial, b_relaxed),
+                "final_residual": normalized_residual(A_shared, X[:, i_comp], b_relaxed),
             }
             solve_diagnostics[comp_name]["linear_result"] = replace(
                 shared_result,
@@ -491,14 +446,7 @@ def solve_momentum_predictor(
         A = mom_eqs[comp_name]["A"]
         b = mom_eqs[comp_name]["b"]
 
-        # Apply under-relaxation to diagonal (Patankar method)
-        # A_ii_new = A_ii / alpha
-        # b_new = b + (1 - alpha) * A_ii_new * U_old
-        # Note: we modify A in-place to avoid a full CSR copy.
-        # This is safe because A is not used again after this point.
-
-        diag_old = A.diagonal()
-        diag_new = diag_old / under_relaxation
+        diag_new = A.diagonal() / under_relaxation
         A.setdiag(diag_new)
         A_relaxed = A
 
@@ -517,8 +465,8 @@ def solve_momentum_predictor(
 
         # Solve with optional initial guess and tuned tolerance
         x_initial = x0_vec if x0_vec is not None else np.zeros(n_elements)
-        initial_residual = matrix_assembly.normalized_residual(A_relaxed, x_initial, b_relaxed)
-        U_comp_star, linear_result = matrix_assembly.solve_linear_system(
+        initial_residual = normalized_residual(A_relaxed, x_initial, b_relaxed)
+        U_comp_star, linear_result = solve_linear_system(
             A_relaxed,
             b_relaxed,
             method=solver,
@@ -536,7 +484,7 @@ def solve_momentum_predictor(
             initial_residual = linear_result.initial_residual
             final_residual = linear_result.final_residual
         else:
-            final_residual = matrix_assembly.normalized_residual(A_relaxed, U_comp_star, b_relaxed)
+            final_residual = normalized_residual(A_relaxed, U_comp_star, b_relaxed)
         solve_diagnostics[comp_name] = {
             "initial_residual": initial_residual,
             "final_residual": final_residual,
@@ -545,8 +493,6 @@ def solve_momentum_predictor(
 
         # Store results
         U_star[:n_elements, i_comp] = U_comp_star
-        # Return relaxed diagonal coefficients for pressure correction
-        # A_U = A_ii / alpha (matching uFVM: DU = volumes/ac where ac is relaxed)
         A_U[:, i_comp] = diag_new
 
     if parallel_context is not None and parallel_context.is_partitioned:

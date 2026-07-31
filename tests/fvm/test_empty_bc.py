@@ -17,7 +17,7 @@ gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not insta
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -106,7 +106,7 @@ class TestEmptyBCQuasi3D:
         assert "walls" in boundary_names, f"Missing walls patch: {boundary_names}"
         assert "empty" in boundary_names, f"Missing empty patch: {boundary_names}"
 
-        config = FVMConfig(
+        config = FVMSetup(
             case_name="quasi3d_duct",
             time=TimeConfig.transient(dt=0.05, duration=2.0, write_interval=100),
             schemes=SchemesConfig(convection_scheme="upwind"),

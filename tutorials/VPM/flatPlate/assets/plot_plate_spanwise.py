@@ -109,7 +109,27 @@ def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | 
     if not csv.exists():
         return None
     df = pd.read_csv(csv).sort_values("y").reset_index(drop=True)
-    return df["y"].to_numpy(), df["cl"].to_numpy(), df["y_over_b"].to_numpy()
+    y = df["y"].to_numpy()
+    cl = df["cl"].to_numpy()
+    # Reconstruct this case's known physical coordinate so legacy CSVs (whose
+    # outer panel centres were incorrectly normalised to ±1) also plot correctly.
+    y_over_b = 2.0 * y / SPAN
+
+    # VLM unknowns are cell-centred, so the outermost samples sit just inside
+    # the physical tips.  Close the plotted circulation distribution with the
+    # finite-wing boundary condition Γ(±b/2)=0 instead of stretching those
+    # samples to ±1 (which falsely displayed non-zero lift at the tips).
+    if y_over_b.size:
+        if y_over_b[0] > -1.0:
+            y = np.insert(y, 0, -SPAN / 2.0)
+            cl = np.insert(cl, 0, 0.0)
+            y_over_b = np.insert(y_over_b, 0, -1.0)
+        if y_over_b[-1] < 1.0:
+            y = np.append(y, SPAN / 2.0)
+            cl = np.append(cl, 0.0)
+            y_over_b = np.append(y_over_b, 1.0)
+
+    return y, cl, y_over_b
 
 
 moving_data = load_spanwise_csv(args.case_moving)

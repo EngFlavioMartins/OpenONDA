@@ -2989,6 +2989,25 @@ class Solver:
             helicity_tolerance=cfg.helicity_tolerance,
             variation_tolerance=cfg.variation_tolerance,
             spectral_convergence_fraction=(cfg.spectral_convergence_fraction),
+            reference_scales=(
+                cfg.circulation_reference_scale,
+                cfg.linear_impulse_reference_scale,
+                cfg.angular_impulse_reference_scale,
+            )
+            if all(
+                value is not None
+                for value in (
+                    cfg.circulation_reference_scale,
+                    cfg.linear_impulse_reference_scale,
+                    cfg.angular_impulse_reference_scale,
+                )
+            )
+            else None,
+            reference_tolerances=(
+                cfg.circulation_reference_tolerance,
+                cfg.linear_impulse_reference_tolerance,
+                cfg.angular_impulse_reference_tolerance,
+            ),
             target_moments=target_moments,
         )
 
@@ -3130,6 +3149,11 @@ class Solver:
             float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
             np.finfo(float).tiny,
         )
+        declared_reference_scales = (
+            cfg.circulation_reference_scale or float(before_moments[1]),
+            cfg.linear_impulse_reference_scale or impulse_scale,
+            cfg.angular_impulse_reference_scale or angular_scale,
+        )
         roundoff_factor = 512.0 * np.finfo(self.np_dtype).eps
         moment_checks = (
             ("vector circulation", circulation_error, before_moments[1]),
@@ -3178,18 +3202,39 @@ class Solver:
         relative_reference_errors = (
             (
                 "circulation",
-                circulation_reference_error / max(float(before_moments[1]), np.finfo(float).tiny),
+                circulation_reference_error / declared_reference_scales[0],
             ),
             (
                 "linear_impulse",
-                linear_impulse_reference_error / impulse_scale,
+                linear_impulse_reference_error / declared_reference_scales[1],
             ),
             (
                 "angular_impulse",
-                angular_impulse_reference_error / angular_scale,
+                angular_impulse_reference_error / declared_reference_scales[2],
             ),
         )
-        gates = (
+        reference_gates = (
+            (
+                (
+                    "circulation reference error",
+                    relative_reference_errors[0][1],
+                    cfg.circulation_reference_tolerance,
+                ),
+                (
+                    "linear-impulse reference error",
+                    relative_reference_errors[1][1],
+                    cfg.linear_impulse_reference_tolerance,
+                ),
+                (
+                    "angular-impulse reference error",
+                    relative_reference_errors[2][1],
+                    cfg.angular_impulse_reference_tolerance,
+                ),
+            )
+            if cfg.circulation_reference_scale is not None
+            else ()
+        )
+        gates = reference_gates + (
             ("correction norm", correction_norm, cfg.max_correction_norm),
             ("residual ratio", residual_ratio, cfg.max_residual_ratio),
             ("kinetic-energy transfer", abs(energy_change), cfg.energy_tolerance),
@@ -3304,7 +3349,7 @@ class Solver:
             "trust_region_scale": result.trust_region_scale,
             "residual_ratio": residual_ratio,
             "correction_norm_relative": correction_norm,
-            "energy_restoration_fraction": result.energy_restoration_fraction,
+            "quadratic_restoration_fraction": result.quadratic_restoration_fraction,
             "reference_restoration_scale": restoration_scale,
             "circulation_restored": circulation_restored,
             "linear_impulse_restored": linear_impulse_restored,

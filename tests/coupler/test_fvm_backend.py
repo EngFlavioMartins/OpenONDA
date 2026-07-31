@@ -25,7 +25,6 @@ CONTRACT_METHODS = [
     "set_time_step",
     "set_kinematic_viscosity",
     "set_dirichlet_velocity_boundary_condition_vec",
-    "set_robin_velocity_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]
@@ -72,7 +71,7 @@ def test_coupler_imports_without_ofw():
 
 
 def test_backend_field_validation():
-    assert CouplerSetup().backend == "ofw"
+    assert CouplerSetup().backend == "fvm"
     assert CouplerSetup(backend="fvm").backend == "fvm"
     with pytest.raises(ValueError, match="backend"):
         CouplerSetup(backend="openfoam")

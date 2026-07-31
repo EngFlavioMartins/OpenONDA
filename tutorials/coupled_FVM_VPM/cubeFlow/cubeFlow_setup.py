@@ -89,7 +89,7 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="lust",
+        convection_scheme="LUST",
         gradient_scheme="lsq",
         time_scheme="backward",
     ),
@@ -168,12 +168,6 @@ COUPLER_SETUP = CouplerSetup(
     prune_vorticity_min=0.005,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
-    overlap_velocity_forcing=False,
-    strength_correction_iterations=1,
-    donor_pressure_mode="fixed_flux",
-    handoff_trace_interpolation="weighted",
-    handoff_remesh_mode="aligned",
-    handoff_population_metric="circulation",
     log_period=5,
     backup_period=BACKUP_PERIOD,
 )

@@ -69,8 +69,6 @@ class ParallelContext:
         operator = str(execution.operator_backend).lower()
         linear = str(execution.linear_backend).lower()
         mode = str(execution.parallel_mode).lower()
-        device = str(execution.device).lower()
-        precision = str(execution.precision).lower()
         output_mode = str(execution.output_mode).lower()
 
         unsupported = []
@@ -80,10 +78,6 @@ class ParallelContext:
             unsupported.append(f"linear_backend={linear!r}")
         if mode not in {"serial", "petsc_replicated", "petsc_partitioned"}:
             unsupported.append(f"parallel_mode={mode!r}")
-        if device != "cpu":
-            unsupported.append(f"device={device!r}")
-        if precision != "float64":
-            unsupported.append(f"precision={precision!r}")
         if output_mode not in {"synchronous", "threaded"}:
             unsupported.append(f"output_mode={output_mode!r}")
         if mode == "petsc_partitioned" and output_mode == "threaded":

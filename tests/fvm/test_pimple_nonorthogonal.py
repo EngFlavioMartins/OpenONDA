@@ -8,7 +8,7 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -26,7 +26,7 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
     params_schemes = SchemesConfig(convection_scheme="upwind")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
     params_pimple = PimpleControl(n_correctors=1, n_orthogonal_correctors=1)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="skewed_pimple",
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
         schemes=params_schemes,

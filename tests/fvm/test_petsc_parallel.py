@@ -24,7 +24,7 @@ pytest.importorskip("petsc4py", reason="parallel FVM test requires petsc4py")
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -183,7 +183,7 @@ def test_collective_petsc_constant_pressure_nullspace():
 def test_collective_pimple_step_is_rank_invariant(tmp_path):
     context = ParallelContext.create(ExecutionConfig.petsc_replicated())
     mesh = structured_box(3, 3, 3)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="petsc_pimple",
         execution=ExecutionConfig.petsc_replicated(),
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
@@ -214,7 +214,7 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
 
 
 def _pimple_config(execution, case_name):
-    return FVMConfig(
+    return FVMSetup(
         case_name=case_name,
         execution=execution,
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),

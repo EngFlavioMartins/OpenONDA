@@ -27,6 +27,11 @@ def test_hand_built_mesh_passes_and_reports_quality(hand_built_3d_mesh):
 
 def test_typed_mesh_schema_is_contiguous_and_read_only(hand_built_3d_mesh):
     geo = compute_mesh_geometry(hand_built_3d_mesh, gradient_scheme="lsq")
+    source_owners = hand_built_3d_mesh["owners"]
+    source_volumes = geo["element_volumes"]
+    assert source_owners.flags.writeable
+    assert source_volumes.flags.writeable
+
     topology = MeshTopology.from_mesh_data(hand_built_3d_mesh)
     geometry = MeshGeometry.from_data(hand_built_3d_mesh, geo)
 
@@ -34,6 +39,10 @@ def test_typed_mesh_schema_is_contiguous_and_read_only(hand_built_3d_mesh):
     assert topology.cell_face_offsets[-1] == len(topology.cell_faces)
     assert not topology.owners.flags.writeable
     assert not geometry.cell_volumes.flags.writeable
+    assert source_owners.flags.writeable
+    assert source_volumes.flags.writeable
+    assert np.shares_memory(topology.owners, source_owners)
+    assert np.shares_memory(geometry.cell_volumes, source_volumes)
     assert geometry.lsq_condition.shape == (hand_built_3d_mesh["n_elements"],)
 
 

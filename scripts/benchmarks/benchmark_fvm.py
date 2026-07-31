@@ -27,7 +27,7 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -119,7 +119,7 @@ def _run(
         pressure_tol=1e-9,
     )
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name=f"benchmark_{n}",
         execution=ExecutionConfig(operator_backend=operator_backend),
         time=TimeConfig(delta_t=0.001, end_time=0.001, write_interval=2),

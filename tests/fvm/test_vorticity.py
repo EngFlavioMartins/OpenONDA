@@ -1,7 +1,7 @@
 import numpy as np
 
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 
@@ -47,7 +47,7 @@ class TestVorticity:
                 U[gi, 0] = -fc[fi, 1]
                 U[gi, 1] = fc[fi, 0]
 
-        gradU = compute_gradient_gauss_linear_vectorized(U, mesh, geo)
+        gradU = compute_gauss_gradient(U, mesh, geo)
         # ω = ∇ × U = (∂w/∂y − ∂v/∂z, ∂u/∂z − ∂w/∂x, ∂v/∂x − ∂u/∂y)
         # gradU[i, j, k] = ∂U_k/∂x_j
         dUdx = gradU[:n_elem, 0, :]  # (n_elem, 3): ∂u/∂x, ∂v/∂x, ∂w/∂x

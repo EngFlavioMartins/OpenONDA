@@ -6,7 +6,7 @@ import numpy as np
 
 
 def _readonly(values):
-    result = np.ascontiguousarray(values, dtype=np.float64)
+    result = np.ascontiguousarray(values, dtype=np.float64).view()
     result.setflags(write=False)
     return result
 
@@ -39,7 +39,8 @@ class MeshGeometry:
     cell_face_vectors : np.ndarray
         Cell-centre-to-face-centre vectors, shape ``(n_faces, 3)``.
     wall_distance : np.ndarray
-        Distance from each cell centre to the nearest wall, shape ``(n_cells,)``.
+        Owner-cell-centre to boundary-face distance [mesh length unit], stored
+        per face with shape ``(n_faces,)``. Interior-face entries are zero.
     lsq_condition : np.ndarray or None
         Least-squares gradient stencil condition numbers (optional).
     geometry_version : int
@@ -60,7 +61,12 @@ class MeshGeometry:
 
     @classmethod
     def from_data(cls, mesh_data, geo_data) -> MeshGeometry:
-        """Create a read-only typed view without changing legacy operators."""
+        """Create read-only array views without freezing the source arrays.
+
+        The facade shares memory with already-contiguous ``float64`` source
+        arrays, so later source updates remain visible. Only writes through the
+        facade are prohibited.
+        """
         condition = geo_data.get("lsq_condition")
         return cls(
             points=_readonly(mesh_data["points"]),

@@ -305,7 +305,6 @@ def assemble_convection_term_boundary(
     if strategy in (
         BoundaryStrategy.FIXED_VALUE,
         BoundaryStrategy.NO_SLIP,
-        BoundaryStrategy.DIRECTION_MIXED,
     ):
         # A Dirichlet face value is authoritative for either flow direction.
         flux_cf = np.zeros_like(mdot_b)
@@ -476,19 +475,21 @@ def assemble_convection_term(
     return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
 
-def compute_mass_flow_rate(velocity, mesh_data, geo_data):
-    """
-    Compute mass flow rate through faces: mdot = rho * U · Sf
+def compute_volumetric_face_flux(velocity, mesh_data, geo_data):
+    """Compute volumetric flux through faces: ``phi = U · Sf``.
 
-    For incompressible flow: mdot = U · Sf
+    Density is deliberately absent; callers that need mass flux must multiply
+    ``phi`` by face-interpolated density.
 
     Args:
-        velocity: Velocity field (n_elements + n_boundary, 3)
+        velocity: Cell and boundary-ghost velocity [m/s], shape
+            ``(n_cells_with_ghosts, 3)``.
         mesh_data: Mesh connectivity
         geo_data: Geometric data
 
     Returns:
-        numpy.ndarray: Mass flow rate (n_faces,)
+        numpy.ndarray: Volumetric face flux [m³/s], shape ``(n_faces,)``;
+        positive from owner to neighbour on interior faces.
     """
 
     n_faces = mesh_data["n_faces"]
@@ -499,7 +500,7 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
     face_sf = geo_data["face_sf"]
     face_weights = geo_data["face_weights"]
 
-    mdot = np.zeros(n_faces)
+    phi = np.zeros(n_faces)
 
     # Interior faces: interpolate velocity to face
     # u_face = w * U[nei] + (1-w) * U[own]
@@ -508,9 +509,9 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
         + (1.0 - face_weights[:n_interior, np.newaxis]) * velocity[owners[:n_interior]]
     )
 
-    # mdot = U_face · Sf
+    # phi = U_face · Sf
     # Dot product along axis 1 (N, 3) * (N, 3) -> (N,)
-    mdot[:n_interior] = np.sum(u_face * face_sf[:n_interior], axis=1)
+    phi[:n_interior] = np.sum(u_face * face_sf[:n_interior], axis=1)
 
     # Boundary faces: use boundary velocity
     n_elements = mesh_data["n_elements"]
@@ -520,7 +521,7 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
     b_elem_indices = n_elements + (b_face_indices - n_interior)
 
     u_face_b = velocity[b_elem_indices]
-    mdot[n_interior:] = np.sum(u_face_b * face_sf[n_interior:], axis=1)
+    phi[n_interior:] = np.sum(u_face_b * face_sf[n_interior:], axis=1)
 
     boundary_neighbours = np.asarray(
         mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
@@ -532,6 +533,6 @@ def compute_mass_flow_rate(velocity, mesh_data, geo_data):
             weights_b * velocity[boundary_neighbours[coupled]]
             + (1.0 - weights_b) * velocity[owners[coupled]]
         )
-        mdot[coupled] = np.sum(u_face_coupled * face_sf[coupled], axis=1)
+        phi[coupled] = np.sum(u_face_coupled * face_sf[coupled], axis=1)
 
-    return mdot
+    return phi

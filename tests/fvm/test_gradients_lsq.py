@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from source.solvers.FVM.fields.gradients import (
-    compute_gradient_lsq_vectorized,
+    compute_lsq_gradient,
 )
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
@@ -37,7 +37,7 @@ class TestLSQOnHexMesh:
         phi = np.zeros(n_elem + n_bnd)
         phi[:n_elem] = cents[:, 0] + cents[:, 1] + cents[:, 2]
         _set_ghost_cells(phi, self.mesh, self.geo, lambda c: c[0] + c[1] + c[2])
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         g = grad[:n_elem].squeeze()
         assert np.allclose(g, 1.0), f"max error = {np.max(np.abs(g - 1.0)):.2e}"
 
@@ -52,7 +52,7 @@ class TestLSQOnHexMesh:
         _set_ghost_cells(phi[:, 0], self.mesh, self.geo, lambda c: c[0] + c[1] + c[2])
         _set_ghost_cells(phi[:, 1], self.mesh, self.geo, lambda c: 2 * c[0] - c[2])
         _set_ghost_cells(phi[:, 2], self.mesh, self.geo, lambda c: c[1])
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem, :, 0], 1.0)
         assert np.allclose(grad[:n_elem, :, 1], [2.0, 0.0, -1.0])
         assert np.allclose(grad[:n_elem, :, 2], [0.0, 1.0, 0.0])
@@ -61,7 +61,7 @@ class TestLSQOnHexMesh:
         n_elem = self.mesh["n_elements"]
         n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
         phi = np.ones(n_elem + n_bnd)
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem], 0.0)
 
     def test_well_conditioned_3d_stencils_select_qr(self):
@@ -85,7 +85,7 @@ class TestLSQOnTetMesh:
         phi = np.zeros(n_elem + n_bnd)
         phi[:n_elem] = cents[:, 0] + cents[:, 1] + cents[:, 2]
         _set_ghost_cells(phi, self.mesh, self.geo, lambda c: c[0] + c[1] + c[2])
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         g = grad[:n_elem].squeeze()
         assert np.allclose(g, 1.0, atol=1e-10), f"max error = {np.max(np.abs(g - 1.0)):.2e}"
 
@@ -100,7 +100,7 @@ class TestLSQOnTetMesh:
         _set_ghost_cells(phi[:, 0], self.mesh, self.geo, lambda c: c[0] + c[1] + c[2])
         _set_ghost_cells(phi[:, 1], self.mesh, self.geo, lambda c: 2 * c[0] - c[2])
         _set_ghost_cells(phi[:, 2], self.mesh, self.geo, lambda c: c[1])
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem, :, 0], 1.0, atol=1e-10)
         assert np.allclose(grad[:n_elem, :, 1], [2.0, 0.0, -1.0], atol=1e-10)
         assert np.allclose(grad[:n_elem, :, 2], [0.0, 1.0, 0.0], atol=1e-10)
@@ -109,7 +109,7 @@ class TestLSQOnTetMesh:
         n_elem = self.mesh["n_elements"]
         n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
         phi = np.ones(n_elem + n_bnd)
-        grad = compute_gradient_lsq_vectorized(phi, self.mesh, self.geo)
+        grad = compute_lsq_gradient(phi, self.mesh, self.geo)
         assert np.allclose(grad[:n_elem], 0.0, atol=1e-10)
 
     def test_solver_selection_is_reported(self):

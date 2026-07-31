@@ -25,7 +25,7 @@ from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
@@ -55,7 +55,7 @@ def _assemble_system(mesh, geo):
             gi = n_elem + (fi - n_int)
             phi[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
 
-    grad_phi = compute_gradient_gauss_linear_vectorized(phi, mesh, geo)
+    grad_phi = compute_gauss_gradient(phi, mesh, geo)
     gamma = np.ones(n_elem)
     flux_data = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
     A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)

@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""
-Matrix Assembly for OpenONDA FVM Solver
-
-Converts flux coefficients into sparse matrix format for linear system solution.
-
-Implements: A * phi = b
-where A is the coefficient matrix and b is the RHS vector.
-
-Converted from uFVM cfdAssembleIntoGlobalMatrixFaceFluxes.m
-"""
+"""Assemble finite-volume face coefficients into ``A φ = b``."""
 
 from dataclasses import dataclass, field
 from itertools import count
@@ -16,7 +6,7 @@ import logging
 
 from numba import njit
 import numpy as np
-from scipy.sparse import csr_matrix, lil_matrix
+from scipy.sparse import csr_matrix
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -25,23 +15,7 @@ _WORKSPACE_IDS = count()
 
 @dataclass(frozen=True)
 class _CSRPattern:
-    """Structural CSR (compressed sparse row) pattern for a static mesh.
-
-    Stores the column indices, row pointers, and contribution-slot mapping
-    that remain invariant as long as the mesh topology does not change.
-    Instances are created once by :meth:`MatrixAssemblyWorkspace.create` and
-    reused across every time step.
-
-    Attributes
-    ----------
-    indices : np.ndarray
-        Column indices of the sparse matrix (CSR format).
-    indptr : np.ndarray
-        Row pointers into ``indices`` (CSR format), shape ``(n_rows + 1,)``.
-    contribution_slots : np.ndarray
-        Mapping from flux-contribution entries to their target positions in
-        the flattened coefficient array.
-    """
+    """Static CSR indices and face-contribution locations for one mesh."""
 
     indices: np.ndarray
     indptr: np.ndarray
@@ -92,73 +66,6 @@ class MatrixAssemblyWorkspace:
         )
         self.matrix.data[:] = values
         return self.matrix
-
-
-def assemble_matrix_from_fluxes(flux_data, mesh_data):
-    """
-    Assemble sparse coefficient matrix from face flux data.
-
-    For each face:
-    - A[owner, owner] += FluxCf[face]
-    - A[owner, neighbor] += FluxFf[face]
-    - A[neighbor, owner] -= FluxFf[face]
-    - A[neighbor, neighbor] -= FluxCf[face]
-
-    Args:
-        flux_data: Dict with flux coefficients
-            - flux_cf: Owner coefficients (n_faces,)
-            - flux_ff: Neighbor coefficients (n_faces,)
-        mesh_data: Mesh connectivity
-
-    Returns:
-        scipy.sparse.csr_matrix: Coefficient matrix A (n_elements, n_elements)
-    """
-
-    n_elements = mesh_data["n_elements"]
-    n_interior_faces = mesh_data["n_interior_faces"]
-
-    owners = mesh_data["owners"]
-    neighbours = mesh_data["neighbours"]
-
-    flux_cf = flux_data["flux_cf"]
-    flux_ff = flux_data["flux_ff"]
-
-    # Use LIL format for efficient construction
-    A = lil_matrix((n_elements, n_elements), dtype=np.float64)
-
-    # Assemble interior faces
-    for i_face in range(n_interior_faces):
-        own = owners[i_face]
-        nei = neighbours[i_face]
-
-        cf = flux_cf[i_face]
-        ff = flux_ff[i_face]
-
-        # Owner row
-        A[own, own] += cf
-        A[own, nei] += ff
-
-        # Neighbor row
-        # F_nei = -F_own = -(cf * own + ff * nei) = -cf * own - ff * nei
-        # A[nei, own] += -cf
-        # A[nei, nei] += -ff
-        A[nei, own] -= cf
-        A[nei, nei] -= ff
-
-    # Assemble boundary faces
-    # For boundary faces, only owner equation is affected
-    for i_face in range(n_interior_faces, len(flux_cf)):
-        own = owners[i_face]
-        cf = flux_cf[i_face]
-
-        # Boundary contribution to diagonal
-        A[own, own] += cf
-        boundary_neighbours = mesh_data.get("boundary_neighbours")
-        if boundary_neighbours is not None and boundary_neighbours[i_face] >= 0:
-            A[own, boundary_neighbours[i_face]] += flux_ff[i_face]
-
-    # Convert to CSR format for efficient arithmetic
-    return A.tocsr()
 
 
 def build_sparsity_pattern(mesh_data):
@@ -375,52 +282,6 @@ def assemble_matrix_from_fluxes_vectorized(
     )
 
 
-def assemble_rhs_from_fluxes(flux_data, mesh_data):
-    """
-    Assemble RHS vector from explicit flux corrections.
-
-    b[owner] -= FluxVf[face]
-    b[neighbor] += FluxVf[face]
-
-    Args:
-        flux_data: Dict with flux coefficients
-            - flux_vf: Explicit correction (n_faces,)
-        mesh_data: Mesh connectivity
-
-    Returns:
-        numpy.ndarray: RHS vector b (n_elements,)
-    """
-
-    n_elements = mesh_data["n_elements"]
-    n_interior_faces = mesh_data["n_interior_faces"]
-
-    owners = mesh_data["owners"]
-    neighbours = mesh_data["neighbours"]
-
-    flux_vf = flux_data["flux_vf"]
-
-    # Initialize RHS
-    b = np.zeros(n_elements, dtype=np.float64)
-
-    # Interior faces
-    for i_face in range(n_interior_faces):
-        own = owners[i_face]
-        nei = neighbours[i_face]
-        vf = flux_vf[i_face]
-
-        b[own] -= vf
-        b[nei] += vf
-
-    # Boundary faces
-    for i_face in range(n_interior_faces, len(flux_vf)):
-        own = owners[i_face]
-        vf = flux_vf[i_face]
-
-        b[own] -= vf
-
-    return b
-
-
 @njit(cache=True)
 def _assemble_rhs_numba(flux_vf, owners, neighbours, n_elements, n_interior_faces):
     result = np.zeros(n_elements, dtype=np.float64)
@@ -476,50 +337,3 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
         b += np.bincount(owners_b, weights=-flux_vf_b, minlength=n_elements)
 
     return b
-
-
-# Delegated linear solver implementation lives in `..solve.linear_interface`.
-# This keeps matrix assembly focused on building numerics and allows swapping solver backends.
-from ..solve.linear_interface import normalized_residual, solve_linear_system  # noqa: F401
-
-
-def solve_diffusion_equation(
-    phi_initial, gamma, boundaries, mesh_data, geo_data, solver="spsolve", **solver_kwargs
-):
-    """
-    Complete workflow: assemble and solve diffusion equation.
-
-    ∇·(γ∇φ) = 0
-
-    Args:
-        phi_initial: Initial field values
-        gamma: Diffusion coefficient
-        boundaries: Boundary conditions
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
-        solver: Linear solver method
-        **solver_kwargs: Solver options
-
-    Returns:
-        numpy.ndarray: Solution field
-    """
-
-    from ..fields import gradients
-    from . import diffusion
-
-    # Compute gradient
-    grad_phi = gradients.compute_gradient_gauss_linear_vectorized(phi_initial, mesh_data, geo_data)
-
-    # Assemble diffusion term
-    flux_data = diffusion.assemble_diffusion_term(
-        phi_initial, grad_phi, gamma, mesh_data, geo_data, boundaries
-    )
-
-    # Assemble matrix and RHS
-    A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data)
-    b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data)
-
-    # Solve
-    phi_solution = solve_linear_system(A, b, method=solver, equation_type="scalar", **solver_kwargs)
-
-    return phi_solution

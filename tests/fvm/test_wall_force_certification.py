@@ -24,7 +24,7 @@ from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -189,6 +189,30 @@ def test_yplus_on_couette_field_matches_analytic(cube_mesh):
     assert s["max"] == pytest.approx(yplus_ref, rel=1e-6)
 
 
+def test_yplus_uses_local_cell_viscosity():
+    """A viscosity field is sampled at each wall-face owner, not averaged."""
+    velocity = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    viscosity = np.array([1.0e-6, 4.0e-6])
+    mesh = {
+        "n_elements": 2,
+        "owners": np.array([0, 1], dtype=np.int32),
+    }
+    geometry = {
+        "wall_dist": np.array([1.0e-3, 1.0e-3]),
+        "face_sf": np.array([[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
+    }
+    boundaries = [{"name": "wall", "type": "wall", "startFace": 0, "nFaces": 2}]
+
+    stats = compute_y_plus(velocity, viscosity, mesh, geometry, boundaries, patch_names=["wall"])[
+        "wall"
+    ]
+    expected = np.sqrt(viscosity / 1.0e-3) * 1.0e-3 / viscosity
+
+    assert stats["min"] == pytest.approx(float(np.min(expected)))
+    assert stats["max"] == pytest.approx(float(np.max(expected)))
+    assert stats["avg"] == pytest.approx(float(np.mean(expected)))
+
+
 def _split_outer_patches(mesh):
     """Split the single merged coupling patch of coupling_box_mesh into the six
     named outer patches (inlet/outlet/ymin/ymax/zmin/zmax) + cube wall, so a
@@ -234,7 +258,7 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
         ref_length=1.0,
         force_log_interval=1,
     )
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="ghost-cert",
         time=TimeConfig.transient(dt=0.05, duration=0.5, write_interval=10**9),
         schemes=params_schemes,

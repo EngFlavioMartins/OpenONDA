@@ -1,9 +1,4 @@
-"""Build the native FVM backend used by the FVM–VPM coupler.
-
-The generated mesh is a uniform hexahedral box with one coupling patch.
-Execution is serial by default; ``ExecutionConfig.petsc_replicated()`` enables
-collective PETSc linear solves with replicated NumPy assembly.
-"""
+"""Native FVM backend for the FVM–VPM coupler."""
 
 from __future__ import annotations
 
@@ -13,8 +8,6 @@ import os
 
 import numpy as np
 
-# Mesh generation lives with the FVM solver; re-exported here because the
-# coupler and its tests historically imported it from this module.
 from source.solvers.FVM.mesh.rectilinear import (  # noqa: F401
     coupling_box_mesh,
     wall_refined_axis,
@@ -55,38 +48,11 @@ def box_surface_markers(
 def coupling_patch_boundaries(
     patch_name: str,
     u_inf,
-    donor_bc_mode: str = "dirichlet",
 ) -> list:
-    """Boundary condition for the coupling patch, per the donor mode.
-
-    * dirichlet / mixed — Dirichlet velocity (the coupler overwrites the
-      value each sub-step) + momentum-compatible fixed-flux pressure on ALL
-      faces.  The donor trace is projected to zero net flux, so the
-      all-Neumann pressure problem is compatible and the solver pins the
-      level at a reference cell (pRefCell equivalent).
-
-    * characteristic — donor velocity applied on INFLOW faces only, with
-      convective (owner-extrapolated) outflow and the matching per-face
-      freestream pressure (zero-gradient inflow / fixed p outflow).  The
-      all-face Dirichlet cut couples the donor's Biot–Savart self-image to
-      the box's own wake vorticity with loop gain ≥ 1 (measured secular
-      face-deficit growth 0.9 → −3 U∞ and blow-up by t≈2, against a
-      monolith truth of ≈0.89); letting the outflow state come from the
-      FVM's own transport breaks that loop.
-    """
+    """Supported velocity and pressure conditions for the coupling patch."""
     from source.solvers.FVM import BoundaryConfig
 
     u_inf = [float(v) for v in u_inf]
-    if donor_bc_mode == "characteristic":
-        return [
-            BoundaryConfig(
-                name=patch_name,
-                type_U="freestream",
-                value_U=u_inf,
-                type_p="freestream",
-                value_p=0.0,
-            )
-        ]
     return [
         BoundaryConfig(
             name=patch_name,
@@ -132,7 +98,6 @@ def build_fvm_backend(
     rho: float = 1.0,
     patch_name: str = "numericalBoundary",
     wall_patch_name: str | None = None,
-    donor_bc_mode: str = "dirichlet",
     initial_U=None,
     schemes=None,
     linear=None,
@@ -142,25 +107,12 @@ def build_fvm_backend(
     write_interval_time: float | None = None,
     quiet: bool = False,
 ):
-    """Build a complete, self-owned native FVM solver for coupled use.
-
-    All physics/time/mesh inputs are explicit — this factory never reads a
-    :class:`CouplerSetup` (the coupler validates against the returned solver's
-    own configuration instead).  ``mesh_data`` must contain the coupling patch
-    ``patch_name`` (e.g. from ``coupling_box_mesh``) and, when
-    ``wall_patch_name`` is given, a body-fitted wall patch of that name, for
-    which force integration is configured automatically (Cd/Cl in
-    ``solution/forces_history.csv``).
-
-    ``write_interval_time=None`` disables automatic FVM output.  Adaptive time
-    stepping is disabled because the coupler requires an integer subcycle
-    ratio.
-    """
+    """Build a complete native FVM solver for coupled use."""
     from source.solvers.FVM import (
         BoundaryConfig,
         ExecutionConfig,
         ForcesConfig,
-        FVMConfig,
+        FVMSetup,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
@@ -171,38 +123,44 @@ def build_fvm_backend(
 
     u_inf = [float(v) for v in u_inf]
     execution = execution or ExecutionConfig()
-    schemes = schemes or SchemesConfig(convection_scheme="central", gradient_scheme="lsq")
+    schemes = schemes or SchemesConfig(
+        convection_scheme="LUST",
+        gradient_scheme="lsq",
+        time_scheme="backward",
+    )
     linear = linear or LinearSolverConfig(
         linear_solver="bicgstab",
         pressure_solver="amg",
-        ilu_drop_tol=1e-3,
-        ilu_fill_factor=3.0,
+        pressure_tol=1e-8,
+        momentum_maxiter=2000,
+        ilu_drop_tol=1e-4,
+        ilu_fill_factor=10.0,
+        ilu_reuse_tol=0.05,
     )
-    pimple = pimple or PimpleControl(n_correctors=2)
-    forces = forces or ForcesConfig()
-
+    pimple = pimple or PimpleControl(n_correctors=2, n_outer_correctors=2)
     time_cfg = TimeConfig(
         delta_t=float(dt),
         end_time=float(t_end),
-        write_interval=10**9,  # step-based writing off; time-based below
+        write_interval=10**9,
         write_interval_time=write_interval_time,
-        adjust_timestep=False,  # coupler needs a fixed integer sub-cycle ratio
+        adjust_timestep=False,
     )
 
-    boundaries = coupling_patch_boundaries(patch_name, u_inf, donor_bc_mode)
+    boundaries = coupling_patch_boundaries(patch_name, u_inf)
     if wall_patch_name is not None:
         boundaries.append(BoundaryConfig.wall(wall_patch_name))
-        # Wall-patch force integration, replacing the OFW case's OpenFOAM
-        # force function object.  References from the body's actual bounds.
-        if forces.force_patches is None:
+        if forces is None:
             body = wall_patch_bounds(mesh_data, wall_patch_name)
-            forces.force_patches = [wall_patch_name]
-            forces.ref_velocity = float(np.linalg.norm(u_inf)) or 1.0
-            forces.ref_area = float((body[3] - body[2]) * (body[5] - body[4]))
-            forces.ref_length = float(body[1] - body[0])
-            forces.force_log_interval = 1
+            forces = ForcesConfig(
+                force_patches=[wall_patch_name],
+                ref_velocity=float(np.linalg.norm(u_inf)) or 1.0,
+                ref_area=float((body[3] - body[2]) * (body[5] - body[4])),
+                ref_length=float(body[1] - body[0]),
+                force_log_interval=1,
+            )
+    forces = forces or ForcesConfig()
 
-    fvm_config = FVMConfig(
+    fvm_config = FVMSetup(
         case_name=f"coupled_{patch_name}",
         execution=execution,
         time=time_cfg,

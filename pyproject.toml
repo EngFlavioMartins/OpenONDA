@@ -55,6 +55,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Native vortex-particle and vortex-lattice solvers (Taichi CPU/GPU runtime).
+vpm = [
+    "taichi>=1.7.3,<2.0",
+]
+
 # Incompressible Python FVM runtime (mesh import, scalable serial pressure solve,
 # and visualization output are optional to the OpenFOAM wrapper itself).
 fvm = [
@@ -92,6 +97,7 @@ full = [
 
 # Development dependencies
 dev = [
+    "taichi>=1.7.3,<2.0",
     "cython>=0.29.0",
     "pytest>=6.0.0",
     "pytest-cov>=2.10.0",
@@ -146,6 +152,7 @@ all = [
     "plotly>=5.0.0",
     "pyamg>=4.0.0",
     "gmsh>=4.11.0",
+    "taichi>=1.7.3,<2.0",
 ]
 
 [tool.vulture]

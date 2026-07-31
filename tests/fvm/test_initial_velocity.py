@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM import BoundaryConfig, FVMConfig, Solver, TransportConfig
+from source.solvers.FVM import BoundaryConfig, FVMSetup, Solver, TransportConfig
 
 
-def _config() -> FVMConfig:
-    return FVMConfig(
+def _config() -> FVMSetup:
+    return FVMSetup(
         case_name="initial_velocity",
         transport=TransportConfig(nu=0.01),
         boundaries=[

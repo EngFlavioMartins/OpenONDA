@@ -97,9 +97,14 @@ class TestAdaptiveSolverSelection:
         n_panels = vlm.lattice.num_panels
         V_ext = np.tile([1.0, 0.0, 0.0], (n_panels, 1))
 
-        t0 = time.time()
+        # Compile Taichi kernels before timing steady-state execution.
+        vlm.solve(V_external=V_ext)
+        ti.sync()
+
+        t0 = time.perf_counter()
         gamma = vlm.solve(V_external=V_ext)
-        dt = time.time() - t0
+        ti.sync()
+        dt = time.perf_counter() - t0
 
         assert dt < 1.0, f"SCIPY solve took {dt:.2f}s, expected < 1.0s"
         assert gamma is not None

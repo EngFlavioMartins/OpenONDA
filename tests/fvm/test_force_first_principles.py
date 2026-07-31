@@ -37,7 +37,7 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     ForcesConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -247,7 +247,7 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.
         hole_box=HOLE,
         wall_patch_name="cube",
     )
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="cv-balance",
         time=TimeConfig.transient(dt=dt, duration=n_steps * dt, write_interval=10**9),
         schemes=SchemesConfig(

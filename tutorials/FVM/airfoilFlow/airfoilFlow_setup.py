@@ -16,7 +16,7 @@ from assets import mesh_airfoil as mesher
 
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -60,7 +60,7 @@ def build_config(args, u_vec):
         min_delta_t=1e-5,
     )
 
-    return FVMConfig(
+    return FVMSetup(
         case_name=args.case_name,
         time=tc,
         schemes=solver_params_schemes,

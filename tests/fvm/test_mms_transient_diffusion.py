@@ -19,7 +19,7 @@ from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_rhs_from_fluxes_vectorized,
 )
 from source.solvers.FVM.assemble.time_integration import assemble_transient_term_euler_implicit
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
@@ -81,7 +81,7 @@ class TestMMSTransientDiffusion:
             phi_exact_new = _phi_exact_t(t, cents[:, 0], cents[:, 1], cents[:, 2])
             phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
 
-            grad = compute_gradient_gauss_linear_vectorized(phi_full, mesh, geo)
+            grad = compute_gauss_gradient(phi_full, mesh, geo)
             diff_flux = assemble_diffusion_term(
                 phi_full, grad, np.ones(n_elem), mesh, geo, mesh["boundary"]
             )
@@ -89,9 +89,7 @@ class TestMMSTransientDiffusion:
             b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
 
             # Transient term
-            transient = assemble_transient_term_euler_implicit(
-                phi_full, phi_old, dt, 1.0, mesh, geo
-            )
+            transient = assemble_transient_term_euler_implicit(phi_old, dt, 1.0, geo)
             # transient → {"ac": V/dt (diagonal), "bc": V·φ_old/dt (RHS source)}
 
             # Discrete residual at φ_exact(t)
@@ -126,13 +124,13 @@ class TestMMSTransientDiffusion:
         phi_exact_new = _phi_exact_t(t, cents[:, 0], cents[:, 1], cents[:, 2])
         phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
 
-        grad = compute_gradient_gauss_linear_vectorized(phi_full, mesh, geo)
+        grad = compute_gauss_gradient(phi_full, mesh, geo)
         diff_flux = assemble_diffusion_term(
             phi_full, grad, np.ones(n_elem), mesh, geo, mesh["boundary"]
         )
         A = assemble_matrix_from_fluxes_vectorized(diff_flux, mesh)
         b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
-        transient = assemble_transient_term_euler_implicit(phi_full, phi_old, dt, 1.0, mesh, geo)
+        transient = assemble_transient_term_euler_implicit(phi_old, dt, 1.0, geo)
 
         R = A @ phi_exact_new - b
         S_mms = R + (vol / dt) * (phi_exact_new - phi_old)

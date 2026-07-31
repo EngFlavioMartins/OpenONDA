@@ -270,7 +270,6 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
         elif strategy in (
             BoundaryStrategy.FIXED_VALUE,
             BoundaryStrategy.NO_SLIP,
-            BoundaryStrategy.DIRECTION_MIXED,
         ):
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 phi, gamma, boundary, mesh_data, geo_data

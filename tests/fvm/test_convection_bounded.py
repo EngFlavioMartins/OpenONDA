@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import (
+    assemble_convection_term,
+    compute_volumetric_face_flux,
+)
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
@@ -24,7 +27,7 @@ def conv_data(hand_built_3d_mesh):
     U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
 
     # Mass flow rate
-    mdot = compute_mass_flow_rate(U, mesh, geo)
+    mdot = compute_volumetric_face_flux(U, mesh, geo)
 
     return {"mesh": mesh, "geo": geo, "U": U, "mdot": mdot}
 

@@ -44,7 +44,7 @@ def _diffusion_solution(mesh):
     field = np.empty(n_total)
     field[:n_cells] = np.sum(geo["element_centroids"], axis=1)
     field[n_cells:] = np.sum(geo["face_centroids"][mesh["n_interior_faces"] :], axis=1)
-    grad = gradients.compute_gradient_lsq_vectorized(field, mesh, geo)
+    grad = gradients.compute_lsq_gradient(field, mesh, geo)
     flux = diffusion.assemble_diffusion_term(
         field, grad, np.ones(n_cells), mesh, geo, mesh["boundary"]
     )

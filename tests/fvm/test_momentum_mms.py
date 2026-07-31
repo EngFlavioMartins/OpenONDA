@@ -27,7 +27,7 @@ its most basic form.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
@@ -89,7 +89,7 @@ def _solve_momentum_operator(mesh, geo, nu, scheme):
 
     U = _setup_exact_field(mesh, geo)
     p = np.zeros(n_elem + n_bnd)
-    phi = compute_mass_flow_rate(U, mesh, geo)
+    phi = compute_volumetric_face_flux(U, mesh, geo)
     S = _momentum_source(cc[:, 0], cc[:, 1], cc[:, 2], nu)
 
     mom = assemble_momentum_equation(

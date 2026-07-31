@@ -1155,6 +1155,12 @@ class DivergenceRelaxationConfig:
     enstrophy_tolerance: float = 1e-4
     helicity_tolerance: float = 1e-4
     variation_tolerance: float = 1e-3
+    circulation_reference_scale: float | None = None
+    linear_impulse_reference_scale: float | None = None
+    angular_impulse_reference_scale: float | None = None
+    circulation_reference_tolerance: float = 1e-3
+    linear_impulse_reference_tolerance: float = 1e-2
+    angular_impulse_reference_tolerance: float = 1e-2
     spectral_convergence_fraction: float = 0.1
     cumulative_energy_tolerance: float = 1e-3
     cumulative_enstrophy_tolerance: float = 2e-2
@@ -1182,10 +1188,30 @@ class DivergenceRelaxationConfig:
         if not 0.0 < self.spectral_convergence_fraction <= 1.0:
             raise ValueError("spectral_convergence_fraction must lie in (0, 1]")
         for name in (
+            "circulation_reference_scale",
+            "linear_impulse_reference_scale",
+            "angular_impulse_reference_scale",
+        ):
+            value = getattr(self, name)
+            if value is not None and value <= 0.0:
+                raise ValueError(f"{name} must be positive when provided")
+        reference_scales = (
+            self.circulation_reference_scale,
+            self.linear_impulse_reference_scale,
+            self.angular_impulse_reference_scale,
+        )
+        if any(value is not None for value in reference_scales) and not all(
+            value is not None for value in reference_scales
+        ):
+            raise ValueError("all three reference scales must be provided together")
+        for name in (
             "energy_tolerance",
             "enstrophy_tolerance",
             "helicity_tolerance",
             "variation_tolerance",
+            "circulation_reference_tolerance",
+            "linear_impulse_reference_tolerance",
+            "angular_impulse_reference_tolerance",
             "cumulative_energy_tolerance",
             "cumulative_enstrophy_tolerance",
             "cumulative_helicity_tolerance",
@@ -1220,6 +1246,12 @@ class DivergenceRelaxationConfig:
         enstrophy_tolerance: float = 1e-4,
         helicity_tolerance: float = 1e-4,
         variation_tolerance: float = 1e-3,
+        circulation_reference_scale: float | None = None,
+        linear_impulse_reference_scale: float | None = None,
+        angular_impulse_reference_scale: float | None = None,
+        circulation_reference_tolerance: float = 1e-3,
+        linear_impulse_reference_tolerance: float = 1e-2,
+        angular_impulse_reference_tolerance: float = 1e-2,
         spectral_convergence_fraction: float = 0.1,
         cumulative_energy_tolerance: float = 1e-3,
         cumulative_enstrophy_tolerance: float = 2e-2,
@@ -1242,6 +1274,12 @@ class DivergenceRelaxationConfig:
             enstrophy_tolerance=enstrophy_tolerance,
             helicity_tolerance=helicity_tolerance,
             variation_tolerance=variation_tolerance,
+            circulation_reference_scale=circulation_reference_scale,
+            linear_impulse_reference_scale=linear_impulse_reference_scale,
+            angular_impulse_reference_scale=angular_impulse_reference_scale,
+            circulation_reference_tolerance=circulation_reference_tolerance,
+            linear_impulse_reference_tolerance=linear_impulse_reference_tolerance,
+            angular_impulse_reference_tolerance=angular_impulse_reference_tolerance,
             spectral_convergence_fraction=spectral_convergence_fraction,
             cumulative_energy_tolerance=cumulative_energy_tolerance,
             cumulative_enstrophy_tolerance=cumulative_enstrophy_tolerance,

@@ -19,7 +19,7 @@ from source.coupler.remesh import remesh_to_grid
 logger = logging.getLogger("coupler")
 
 # Particle core radius relative to the regular overlap lattice spacing.
-RADIUS_RATIO = 1.5
+RADIUS_RATIO = 1.0
 
 # M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
@@ -87,7 +87,7 @@ def _outflow_band_mask(
 
     Direction-agnostic: the outflow face is the box face whose outward normal
     is most aligned with the freestream ``u_inf``.  With ``u_inf=None`` (or a
-    zero vector) it defaults to the +x face, preserving the legacy behaviour.
+    zero vector) it defaults to the +x face.
     Used only by the flux-ratio diagnostic — the hand-off itself treats every
     face identically.
     """
@@ -148,30 +148,8 @@ def beale_strength_correction(
     h: float,
     *,
     sigma: float,
-    iterations: int,
-    relax: float = 1.0,
 ) -> tuple[np.ndarray, float, float]:
-    """Iterate lattice strengths against Gaussian-mollified target vorticity.
-
-    The partition weight localizes the correction to FVM-controlled nodes.
-    ``iterations=0`` leaves the blended circulation unchanged.
-
-    Parameters
-    ----------
-    circ_grid   : (M, 3) blended node circulations Γ [m³/s] (flat, C-order)
-    target_circ : (M, 3) FVM target circulations ω_FVM·h³ on the same lattice
-    eta         : (M,)  correction weight in [0, 1]
-    shape       : lattice dimensions (Nx, Ny, Nz)
-    h           : lattice spacing [m]
-    sigma       : particle core radius σ in the e^{-r²/σ²} convention [m]
-    iterations  : number of Picard iterations M (2–3 recovers resolved scales)
-    relax       : under-relaxation λ ∈ (0, 1]
-
-    Returns
-    -------
-    (corrected (M, 3) circulations, η-weighted relative residual before,
-     same residual after)
-    """
+    """Apply one Gaussian mollification correction in the FVM authority zone."""
     from scipy.ndimage import gaussian_filter
 
     # ζ_σ ∝ e^{-r²/σ²} = e^{-r²/(2 s²)} with s = σ/√2; gaussian_filter takes
@@ -197,16 +175,11 @@ def beale_strength_correction(
         )
 
     denom = float(np.linalg.norm(t_omega * eta_g)) + 1e-30
-    res_pre = res_post = 0.0
-    for m in range(iterations + 1):
-        r = (t_omega - omega_sigma(g)) * eta_g
-        rn = float(np.linalg.norm(r)) / denom
-        if m == 0:
-            res_pre = rn
-        res_post = rn
-        if m == iterations:
-            break
-        g += relax * r * h3
+    residual = (t_omega - omega_sigma(g)) * eta_g
+    res_pre = float(np.linalg.norm(residual)) / denom
+    g += residual * h3
+    residual = (t_omega - omega_sigma(g)) * eta_g
+    res_post = float(np.linalg.norm(residual)) / denom
 
     return g.reshape(-1, 3), res_pre, res_post
 
@@ -273,10 +246,7 @@ def continuous_handoff(
     box: np.ndarray | list[float],
     h: float,
     *,
-    omega_at_node=None,
-    circulation_at_node=None,
-    fvm_cell_pos=None,
-    fvm_cell_circ=None,
+    circulation_at_node,
     u_inf=None,
     inside_mesh_at_node=None,
     excluded_at_node=None,
@@ -285,17 +255,10 @@ def continuous_handoff(
     buffer_length: float = 0.0,
     threshold_abs: float = 0.0,
     radius_ratio: float = RADIUS_RATIO,
-    blend_relaxation: float = 1.0,
-    strength_correction_iterations: int = 0,
-    strength_correction_relax: float = 1.0,
     u_max: float = 0.0,
     dt: float = 0.0,
-    conserve: bool = True,
-    eta_fn=None,
     lattice_anchor=None,
     max_output_particles: int | None = None,
-    reuse_aligned_grid: bool = False,
-    population_metric: str = "circulation",
 ) -> HandoffResult:
     """One continuous, conservative, dt-robust FVM→VPM hand-off.
 
@@ -307,19 +270,10 @@ def continuous_handoff(
         FVM domain bounds (the interface Γ is the box surface).
     h : float
         Lattice spacing (= VPM particle spacing).
-    fvm_cell_pos, fvm_cell_circ : ndarray (M, 3) or None
-        Conservative FVM→lattice source: cell centres and their circulation
-        ``Γ_cell = ω_cell · V_cell``, scattered onto the lattice with the same
-        M4′ kernel as the wake.  The injected target circulation equals
-        ``Σω_cell·V_cell`` exactly, independent of the FVM mesh refinement.
+    circulation_at_node : callable
+        FVM circulation reconstructed from the weighted velocity trace.
     u_inf : ndarray (3,) or None
         Freestream velocity vector used to orient the outflow-band diagnostic.
-    omega_at_node : callable ``grid_pos -> ω (M, 3)`` or None
-        Test/no-body path (``target = ω·h³``); ignored when ``fvm_cell_pos``
-        is given.  When both are None the hand-off is pure transport.
-    circulation_at_node : callable ``grid_pos -> Γ (M, 3)`` or None
-        Direct particle-control-volume circulation. Takes precedence over
-        cell-centred and vorticity sources.
     max_output_particles : int or None
         Post-handoff population cap. Transported exterior particles are
         retained before weak reconstructed overlap particles are discarded.
@@ -339,20 +293,8 @@ def continuous_handoff(
         (size with :func:`required_buffer_length`).
     threshold_abs : float
         |Γ| below which a lattice node is pruned (then redistributed).
-    blend_relaxation : float
-        Under-relaxation α ∈ (0, 1] of the η-blend toward the FVM target.
-        α = 1 is the hard overwrite ``(1−η)Γ + η·target``.
-    strength_correction_iterations : int
-        Beale/Picard iterations after the blend (0 = direct assignment).
-        Body-guarded: see :func:`beale_strength_correction` and the inline
-        comment at the call site.
-    strength_correction_relax : float
-        Under-relaxation λ ∈ (0, 1] of the Beale iteration.
     u_max, dt : float
         Used only for the CFL diagnostic.
-    conserve : bool
-        If True, redistribute pruned moments so the invariants are exact.
-
     Returns
     -------
     HandoffResult
@@ -381,26 +323,11 @@ def continuous_handoff(
     lo_lat = lo_active - guard
     hi_lat = hi_active + guard
 
-    # When the FVM cell centres themselves form an h-lattice (the native cube
-    # case), preserve that phase exactly.  The previous origin was determined
-    # by the dt-dependent buffer length; for dt=0.075 and h=0.05 this shifted
-    # the remesh lattice by h/4.  M4' is interpolating only at integer offsets,
-    # so the shift spread every wall-adjacent FVM circulation over the solid
-    # before the body mask could act.
+    # Keep the remesh lattice aligned with the FVM lattice.
     if lattice_anchor is not None:
         anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
         shift = np.floor((lo_lat - anchor) / float(h))
         lo_lat = anchor + shift * float(h)
-    elif fvm_cell_pos is not None and len(fvm_cell_pos) > 0:
-        source_pos = np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3)
-        anchor = source_pos[0]
-        q = (source_pos - anchor) / float(h)
-        lattice_residual = np.max(np.abs(q - np.rint(q)), axis=0)
-        aligned_axes = lattice_residual < 1e-7
-        if np.any(aligned_axes):
-            shift = np.floor((lo_lat - anchor) / float(h))
-            lo_aligned = anchor + shift * float(h)
-            lo_lat[aligned_axes] = lo_aligned[aligned_axes]
 
     excluded_input = np.zeros(n, dtype=bool)
     if excluded_at_node is not None and n > 0:
@@ -428,7 +355,6 @@ def continuous_handoff(
         lo_lat,
         h,
         shape,
-        reuse_aligned=reuse_aligned_grid,
     )
 
     excluded_grid = np.zeros(len(grid_pos), dtype=bool)
@@ -442,42 +368,23 @@ def continuous_handoff(
     grid_circ[excluded_grid] = 0.0
 
     # ── η partition of unity (FVM authority) ─────────────────────────────────
-    if eta_fn is not None:
-        eta = np.asarray(eta_fn(grid_pos), dtype=np.float64).reshape(-1)
-    else:
-        eta = cosine_eta(grid_pos, box, ramp_width, dead_zone)
+    eta = cosine_eta(grid_pos, box, ramp_width, dead_zone)
 
     # ── Build the FVM target circulation on the lattice ──────────────────────
-    target = None
-    if circulation_at_node is not None:
-        target = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
-    elif fvm_cell_pos is not None and fvm_cell_circ is not None and len(fvm_cell_pos) > 0:
-        _, target = remesh_to_grid(
-            np.asarray(fvm_cell_pos, dtype=np.float64).reshape(-1, 3),
-            np.asarray(fvm_cell_circ, dtype=np.float64).reshape(-1, 3),
-            lo_lat,
-            h,
-            shape,
-        )
-    elif omega_at_node is not None:
-        target = np.asarray(omega_at_node(grid_pos), dtype=np.float64).reshape(-1, 3) * (h**3)
+    target = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
 
     excluded_target_l1 = 0.0
-    if target is not None and excluded_grid.any():
+    if excluded_grid.any():
         excluded_target_l1 = float(np.linalg.norm(target[excluded_grid], axis=1).sum())
         target[excluded_grid] = 0.0
 
     # ── Blend toward the FVM target where η > 0 (under-relaxed by α) ──────────
     ok = None
-    if target is not None:
-        if inside_mesh_at_node is not None:
-            ok = np.asarray(inside_mesh_at_node(grid_pos), dtype=bool)
-            eta = eta * ok  # no FVM data → pure Lagrangian
-            target[~ok] = 0.0
-        grid_blended = grid_circ + (blend_relaxation * eta)[:, None] * (target - grid_circ)
-    else:
-        # Pure transport: no FVM source — leave the remeshed wake untouched.
-        grid_blended = grid_circ
+    if inside_mesh_at_node is not None:
+        ok = np.asarray(inside_mesh_at_node(grid_pos), dtype=bool)
+        eta = eta * ok
+        target[~ok] = 0.0
+    grid_blended = grid_circ + eta[:, None] * (target - grid_circ)
 
     # ── Beale/Picard strength correction (η-localized deconvolution) ─────────
     # BODY GUARD: the target ends in a step at the body wall (no cells inside).
@@ -487,27 +394,23 @@ def continuous_handoff(
     # centres), injecting circulation INSIDE the body.  Restrict the correction
     # to nodes whose entire kernel support sees valid FVM data: erode the ok
     # mask by the kernel support (≈ 2σ/h cells) before weighting.
-    corr_pre = corr_post = 0.0
-    if strength_correction_iterations > 0 and target is not None:
-        corr_weight = eta
-        if ok is not None:
-            from scipy.ndimage import binary_erosion
+    corr_weight = eta
+    if ok is not None:
+        from scipy.ndimage import binary_erosion
 
-            support_cells = max(int(np.ceil(2.0 * radius_ratio)), 1)
-            ok_eroded = binary_erosion(
-                ok.reshape(shape), iterations=support_cells, border_value=0
-            ).ravel()
-            corr_weight = eta * ok_eroded
-        grid_blended, corr_pre, corr_post = beale_strength_correction(
-            grid_blended,
-            target,
-            corr_weight,
-            shape,
-            h,
-            sigma=radius_ratio * h,
-            iterations=strength_correction_iterations,
-            relax=strength_correction_relax,
-        )
+        support_cells = max(int(np.ceil(2.0 * radius_ratio)), 1)
+        ok_eroded = binary_erosion(
+            ok.reshape(shape), iterations=support_cells, border_value=0
+        ).ravel()
+        corr_weight = eta * ok_eroded
+    grid_blended, corr_pre, corr_post = beale_strength_correction(
+        grid_blended,
+        target,
+        corr_weight,
+        shape,
+        h,
+        sigma=radius_ratio * h,
+    )
 
     # Deconvolution and remeshing have non-compact physical kernels near a
     # wall.  Re-assert the exact solid mask after every correction so no
@@ -538,7 +441,7 @@ def continuous_handoff(
     applied_correction = _invariant_norms(pre_correction, post_correction)
     corrected_mismatch = _invariant_norms(target_inv, post_correction)
     drift: dict[str, float] = {}
-    if conserve and len(new_pos) > 0:
+    if len(new_pos) > 0:
         new_vol_tmp = np.full(len(new_pos), h**3)
         # Angular impulse is intentionally excluded because the remeshing
         # operator does not conserve that second moment.
@@ -547,10 +450,6 @@ def continuous_handoff(
             new_circ,
             target_inv,
             volumes=new_vol_tmp,
-            weighting="volume",
-            conserve_circulation=True,
-            conserve_linear_impulse=True,
-            conserve_angular_impulse=False,
         )
         post_correction = _invariants(new_pos, new_circ)
         applied_correction = _invariant_norms(pre_correction, post_correction)
@@ -581,27 +480,19 @@ def continuous_handoff(
         combined_target = _invariants(out_pos, out_circ)
         combined_mag = np.linalg.norm(out_circ, axis=1)
 
-        if population_metric == "interface_velocity":
-            delta = np.maximum(np.maximum(lo - out_pos, out_pos - hi), 0.0)
-            distance_sq = np.einsum("ij,ij->i", delta, delta)
-            velocity_bound = combined_mag / (
-                4.0 * np.pi * np.maximum(distance_sq + out_rad**2, 1.0e-30)
+        n_remesh = len(new_pos)
+        n_free = len(out_pos) - n_remesh
+        if n_free < target_count:
+            remesh_budget = target_count - n_free
+            remesh_mag = combined_mag[:n_remesh]
+            remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
+            keep_indices = np.concatenate(
+                [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
             )
-            keep_indices = np.argpartition(velocity_bound, -target_count)[-target_count:]
         else:
-            n_remesh = len(new_pos)
-            n_free = len(out_pos) - n_remesh
-            if n_free < target_count:
-                remesh_budget = target_count - n_free
-                remesh_mag = combined_mag[:n_remesh]
-                remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
-                keep_indices = np.concatenate(
-                    [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
-                )
-            else:
-                free_mag = combined_mag[n_remesh:]
-                free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
-                keep_indices = free_keep
+            free_mag = combined_mag[n_remesh:]
+            free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
+            keep_indices = free_keep
 
         keep_mask = np.zeros(len(out_pos), dtype=bool)
         keep_mask[keep_indices] = True
@@ -625,17 +516,12 @@ def continuous_handoff(
         out_circ = out_circ[keep_indices]
         out_vol = out_vol[keep_indices]
         out_rad = out_rad[keep_indices]
-        if conserve:
-            out_circ = recover_invariants(
-                out_pos,
-                out_circ,
-                combined_target,
-                volumes=out_vol,
-                weighting="volume",
-                conserve_circulation=True,
-                conserve_linear_impulse=True,
-                conserve_angular_impulse=False,
-            )
+        out_circ = recover_invariants(
+            out_pos,
+            out_circ,
+            combined_target,
+            volumes=out_vol,
+        )
 
     # ── Diagnostics ──────────────────────────────────────────────────────────
     # CFL = fraction of the active buffer a freestream particle crosses per
@@ -658,7 +544,7 @@ def continuous_handoff(
     # particle field carry the same vorticity content out of the box as the FVM
     # holds at the exit?  1.0 = agreement.
     flux_ratio = 0.0
-    if target is not None and len(grid_pos) > 0:
+    if len(grid_pos) > 0:
         band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
         if band.any():
             g_vpm = float(np.linalg.norm(grid_blended[band], axis=1).sum())
@@ -707,54 +593,20 @@ class ContinuousOverlapInjector:
         self.nu = float(cfg.nu)
         self.threshold_abs = float(cfg.prune_vorticity_min) * self.h**3
 
-        # η geometry
         self.ramp_width = float(cfg.buffer_thickness)
         self.dead_zone = float(cfg.dead_zone_h) * self.h
-        if self.ramp_width <= self.dead_zone:
-            logger.warning(
-                "[Handoff] η ramp has ZERO width (buffer_thickness=%.3f ≤ "
-                "dead_zone=%.3f): the FVM-authority weight is a step function, "
-                "not the designed C¹ ramp.  Set buffer_thickness > dead_zone_h·h "
-                "(e.g. buffer_thickness=%.3f for a %d-cell ramp).",
-                self.ramp_width,
-                self.dead_zone,
-                self.dead_zone + 3.0 * self.h,
-                3,
-            )
-
-        # Particle core radius σ = radius_ratio·h (sets Beale deconvolution bandwidth)
         self.radius_ratio = float(cfg.overlap_radius_ratio)
-        if self.radius_ratio < 1.0:
-            logger.warning(
-                "[Handoff] overlap_radius_ratio=%.2f < 1.0 breaks particle "
-                "overlap — the Biot-Savart field will ripple between particles.",
-                self.radius_ratio,
-            )
-
-        # dt-robust downstream buffer, sized from U_inf and dt (CFL criterion)
         self.u_inf = float(np.linalg.norm(cfg.u_inf))
         self.dt = float(coupler.dt_vpm)
 
-        self.blend_relaxation = float(cfg.blend_relaxation)
-        self.strength_corr_iters = int(cfg.strength_correction_iterations)
-        self.strength_corr_relax = float(cfg.strength_correction_relax)
-        # The Beale deconvolution assumes the GAUSSIAN mollifier; read the
-        # actual kernel from the injected VPM (the coupling config no longer
-        # owns it).  Skipped on non-master (coupler.vpm is None there).
         kernel = getattr(getattr(coupler, "vpm", None), "config", None)
         kernel = getattr(kernel, "particles_kernel", None)
-        if self.strength_corr_iters > 0 and kernel is not None and kernel != "GAUSSIAN":
-            logger.warning(
-                "[Handoff] strength_correction assumes the GAUSSIAN particle "
-                "kernel (mollifier e^{-r²/σ²}); the injected VPM uses %s — the "
-                "deconvolution operator will not match the induced field.",
-                kernel,
-            )
+        if kernel is not None and kernel != "GAUSSIAN":
+            raise ValueError("The FVM–VPM handoff requires the GAUSSIAN particle kernel")
 
         self._box: np.ndarray | None = None
         self._cell_tree = None
         self._cell_centers: np.ndarray | None = None
-        self._cell_volumes: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._lattice_anchor: np.ndarray | None = None
         self._velocity_trace: CachedVelocityTrace | None = None
@@ -766,17 +618,15 @@ class ContinuousOverlapInjector:
         from scipy.spatial import cKDTree
 
         self._cell_centers = np.asarray(fvm.get_cell_center_coordinates(), dtype=np.float64)
-        self._cell_volumes = np.asarray(fvm.get_cell_volumes(), dtype=np.float64)
         # Non-master MPI ranks receive empty arrays from the gather; skip tree.
         # inject() is only called on master, so the None tree is never queried.
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
-            if self.config.handoff_trace_interpolation == "weighted":
-                self._velocity_trace = CachedVelocityTrace(
-                    self._cell_centers,
-                    self._cell_tree,
-                    neighbours=self.config.handoff_trace_neighbors,
-                )
+            self._velocity_trace = CachedVelocityTrace(
+                self._cell_centers,
+                self._cell_tree,
+                neighbours=4,
+            )
 
         # For an axis-aligned body the same exact bounds that carve the FVM
         # mesh also define the VPM exclusion region.  A nearest-cell query
@@ -819,7 +669,7 @@ class ContinuousOverlapInjector:
         l_buf = self.buffer_length
         logger.info(
             "[Handoff] ready: box x∈[%.2f,%.2f]  h=%.3f  σ=%.2fh  ramp=%.3f  "
-            "dead_zone=%.3f  L_buf=%.3f  α=%.2f  beale_iters=%d  "
+            "dead_zone=%.3f  L_buf=%.3f  "
             "(CFL max_dt=%.3e s)  prune: |ω|<%.3g 1/s  (|Γ|<%.3g m³/s)",
             self._box[0],
             self._box[1],
@@ -828,20 +678,11 @@ class ContinuousOverlapInjector:
             self.ramp_width,
             self.dead_zone,
             l_buf,
-            self.blend_relaxation,
-            self.strength_corr_iters,
             max_stable_dt(self.u_inf, l_buf, self.h),
             self.config.prune_vorticity_min,
             self.threshold_abs,
         )
-        logger.info(
-            "[Handoff] transfer=%s  interpolation=%s(k=%d)  remesh=%s  cap_metric=%s",
-            self.config.handoff_transfer_mode,
-            self.config.handoff_trace_interpolation,
-            self.config.handoff_trace_neighbors,
-            self.config.handoff_remesh_mode,
-            self.config.handoff_population_metric,
-        )
+        logger.info("[Handoff] weighted trace (k=4), aligned remesh, circulation cap")
 
     @property
     def buffer_length(self) -> float:
@@ -850,25 +691,13 @@ class ContinuousOverlapInjector:
     # ── inject ────────────────────────────────────────────────────────────────
     def inject(
         self,
-        fvm,
         vpm,
-        eta_fn=None,
-        omega=None,
-        velocity=None,
-        velocity_gradient=None,
+        velocity,
+        velocity_gradient,
     ):
         """Execute one continuous overlap hand-off and write the VPM field.
 
-        Parameters
-        ----------
-        fvm : fvm_solver
-        vpm : VPM_Solver
-        eta_fn : callable, optional
-        omega : ndarray (N_cells, 3), optional
-            Pre-fetched global vorticity field.  If provided, skips the
-            collective ``fvm.get_vorticity_field()`` call.  Pass when this
-            method is called inside a rank-0-only section so other ranks can
-            pre-fetch omega collectively before the gate.
+        The source is the weighted, gradient-corrected FVM velocity trace.
         """
         self.step += 1
         assert self._box is not None and self._cell_tree is not None
@@ -884,30 +713,12 @@ class ContinuousOverlapInjector:
         tree = self._cell_tree
         h = self.h
         cell_pos = self._cell_centers
+        assert cell_pos is not None
 
-        use_velocity_trace = velocity is not None and velocity_gradient is not None
-        if use_velocity_trace:
-            velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
-            gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
-            if len(velocity_values) != len(cell_pos) or len(gradient_values) != len(cell_pos):
-                raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
-            source_pos = None
-            source_circ = None
-        else:
-            velocity_values = np.empty((0, 3), dtype=np.float64)
-            gradient_values = np.empty((0, 3, 3), dtype=np.float64)
-            if omega is None:
-                omega = np.asarray(fvm.get_vorticity_field(), dtype=np.float64).reshape(-1, 3)
-            else:
-                omega = np.asarray(omega, dtype=np.float64).reshape(-1, 3)
-            cell_circ = omega * self._cell_volumes[:, None]
-            box = self._box
-            lo = np.array([box[0], box[2], box[4]])
-            hi = np.array([box[1], box[3], box[5]])
-            margin = self.buffer_length + (_M4P_SUPPORT + 2.0) * h
-            in_bbox = np.all((cell_pos >= lo - margin) & (cell_pos <= hi + margin), axis=1)
-            source_pos = cell_pos[in_bbox]
-            source_circ = cell_circ[in_bbox]
+        velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
+        gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
+        if len(velocity_values) != len(cell_pos) or len(gradient_values) != len(cell_pos):
+            raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
 
         def inside_mesh_at_node(grid_pos):
             d, _ = tree.query(grid_pos)
@@ -925,14 +736,8 @@ class ContinuousOverlapInjector:
 
         def velocity_at(points):
             points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-            if self._velocity_trace is None:
-                _, nearest = tree.query(points, workers=-1)
-                delta = points - cell_pos[nearest]
-                sampled = velocity_values[nearest] + np.einsum(
-                    "ni,nij->nj", delta, gradient_values[nearest]
-                )
-            else:
-                sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
+            assert self._velocity_trace is not None
+            sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
             if self._body_bounds is not None:
                 b = self._body_bounds
                 lo_body = b[[0, 2, 4]]
@@ -952,9 +757,7 @@ class ContinuousOverlapInjector:
             circ,
             self._box,
             h,
-            circulation_at_node=circulation_at_node if use_velocity_trace else None,
-            fvm_cell_pos=source_pos,
-            fvm_cell_circ=source_circ,
+            circulation_at_node=circulation_at_node,
             u_inf=self.config.U_inf,
             inside_mesh_at_node=inside_mesh_at_node,
             excluded_at_node=excluded_at_node,
@@ -963,52 +766,24 @@ class ContinuousOverlapInjector:
             buffer_length=self.buffer_length,
             threshold_abs=self.threshold_abs,
             radius_ratio=self.radius_ratio,
-            blend_relaxation=self.blend_relaxation,
-            strength_correction_iterations=self.strength_corr_iters,
-            strength_correction_relax=self.strength_corr_relax,
             u_max=self.u_inf,
             dt=self.dt,
-            eta_fn=eta_fn,
             lattice_anchor=self._lattice_anchor,
             max_output_particles=self.config.handoff_max_particles,
-            reuse_aligned_grid=self.config.handoff_remesh_mode == "aligned",
-            population_metric=self.config.handoff_population_metric,
         )
 
-        # Write the rebuilt cloud back to the VPM solver.
-        # Match the VPM's configured float precision so the hand-off is exact
-        # (no f32←f64 / f64←f32 precision-loss warnings) and a precision='f64'
-        # coupled run stays end-to-end double-precision.  ``particles._np_float_dtype``
-        # is the ground-truth dtype of the Taichi fields we write into.
         vpm_dt = getattr(vpm.particles, "_np_float_dtype", np.float32)
         k = res.n_total
-        if hasattr(vpm, "replace_vortex_particles"):
-            vpm.replace_vortex_particles(
-                position=res.pos.astype(vpm_dt),
-                velocity=np.zeros((k, 3), dtype=vpm_dt),
-                circulation=res.circ.astype(vpm_dt),
-                radius=res.rad.astype(vpm_dt),
-                volume=res.vol.astype(vpm_dt),
-                viscosity=np.full(k, self.nu, dtype=vpm_dt),
-                # ν_t starts at zero: the VPM Smagorinsky model computes the
-                # real eddy viscosity before diffusion (solver.py:743).  Stamping
-                # ν_t = ν here previously made ν_eff = 2ν whenever LES was off.
-                viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
-                zone_id=np.zeros(k, dtype=np.int32),
-            )
-        else:
-            vpm.remove_particles(remove_all=True)
-            if k > 0:
-                vpm.add_vortex_particles(
-                    position=res.pos.astype(vpm_dt),
-                    velocity=np.zeros((k, 3), dtype=vpm_dt),
-                    circulation=res.circ.astype(vpm_dt),
-                    radius=res.rad.astype(vpm_dt),
-                    volume=res.vol.astype(vpm_dt),
-                    viscosity=np.full(k, self.nu, dtype=vpm_dt),
-                    viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
-                    zone_id=np.zeros(k, dtype=np.int32),
-                )
+        vpm.replace_vortex_particles(
+            position=res.pos.astype(vpm_dt),
+            velocity=np.zeros((k, 3), dtype=vpm_dt),
+            circulation=res.circ.astype(vpm_dt),
+            radius=res.rad.astype(vpm_dt),
+            volume=res.vol.astype(vpm_dt),
+            viscosity=np.full(k, self.nu, dtype=vpm_dt),
+            viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
+            zone_id=np.zeros(k, dtype=np.int32),
+        )
 
         logger.info(
             "[Handoff step=%d] in=%d → out=%d  free=%d  solid_removed=%d  "
@@ -1040,14 +815,11 @@ class ContinuousOverlapInjector:
                 res.excluded_remesh_circulation_l1,
                 res.excluded_target_circulation_l1,
             )
-        if self.strength_corr_iters > 0:
-            logger.info(
-                "     [Beale] mollification residual: %.1f%% → %.1f%%  (%d iters, λ=%.2f)",
-                100.0 * res.strength_corr_residual_pre,
-                100.0 * res.strength_corr_residual_post,
-                self.strength_corr_iters,
-                self.strength_corr_relax,
-            )
+        logger.info(
+            "     [Beale] mollification residual: %.1f%% → %.1f%%",
+            100.0 * res.strength_corr_residual_pre,
+            100.0 * res.strength_corr_residual_post,
+        )
         if res.cfl > 0.7:
             logger.warning(
                 "[Handoff] CFL=%.2f > 0.7 — buffer too short for this dt; "

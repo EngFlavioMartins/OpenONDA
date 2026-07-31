@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-"""
-Gradient Computation for OpenONDA FVM Solver
-
-Implements Gauss linear gradient computation using Green-Gauss theorem.
-
-Converted from uFVM cfdComputeGradientGaussLinear0.m
-"""
+"""Gauss and inverse-distance least-squares gradients."""
 
 import numpy as np
 
@@ -25,167 +18,7 @@ def _is_empty_boundary(boundary, *, allow_source_type: bool = False) -> bool:
     return strategy is BoundaryStrategy.EMPTY
 
 
-def _accumulate_interior_gradients(
-    grad_phi, phi, owners, neighbours, face_sf, face_weights, n_interior_faces, n_components
-):
-    """Accumulate interior-face flux contributions into the cell gradient.
-
-    For each interior face, interpolates *phi* to the face using
-    geometric weights, then adds ``phi_f · S_f`` to the owner and
-    subtracts it from the neighbour (the Gauss theorem contribution).
-
-    Args:
-        grad_phi:      Gradient accumulator array (mutated in place).
-        phi:           Field values ``(n_total, n_components)``.
-        owners:        Owner index array.
-        neighbours:    Neighbour index array.
-        face_sf:       Face area vectors ``(n_faces, 3)``.
-        face_weights:  Interpolation weights ``(n_faces,)``.
-        n_interior_faces: Number of interior faces.
-        n_components:  Number of field components (1 for scalar, 3 for vector).
-    """
-    for i_component in range(n_components):
-        phi_owner = phi[owners[:n_interior_faces], i_component]
-        phi_neighbor = phi[neighbours[:n_interior_faces], i_component]
-        phi_f = (
-            face_weights[:n_interior_faces] * phi_neighbor
-            + (1 - face_weights[:n_interior_faces]) * phi_owner
-        )
-        for i_face in range(n_interior_faces):
-            sf = face_sf[i_face]
-            grad_phi[owners[i_face], :, i_component] += phi_f[i_face] * sf
-            grad_phi[neighbours[i_face], :, i_component] -= phi_f[i_face] * sf
-
-
-def _accumulate_boundary_gradients(
-    grad_phi,
-    phi,
-    owners_b,
-    sf_b,
-    boundaries,
-    n_interior_faces,
-    n_elements,
-    n_components,
-    boundary_neighbours,
-    face_weights,
-):
-    """Accumulate boundary-face flux contributions into the cell gradient.
-
-    Skips patches with type ``"empty"`` (2D front/back).  For each
-    remaining boundary face, adds the boundary value times the area
-    vector to the owner cell's gradient.
-
-    Args:
-        grad_phi:      Gradient accumulator array (mutated in place).
-        phi:           Field values ``(n_total, n_components)``.
-        owners_b:      Owner array for boundary faces ``(n_boundary_faces,)``.
-        sf_b:          Face area vectors for boundary faces.
-        boundaries:    List of boundary patch dictionaries.
-        n_interior_faces: Number of interior faces.
-        n_elements:    Number of interior elements.
-        n_components:  Number of field components.
-    """
-    for boundary in boundaries:
-        if _is_empty_boundary(boundary):
-            continue
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
-        rel_start = start - n_interior_faces
-        rel_end = rel_start + nf
-        for i_component in range(n_components):
-            for k in range(rel_start, rel_end):
-                face = n_interior_faces + k
-                paired = boundary_neighbours[face]
-                if paired >= 0:
-                    weight = face_weights[face]
-                    face_value = (
-                        weight * phi[paired, i_component]
-                        + (1.0 - weight) * phi[owners_b[k], i_component]
-                    )
-                else:
-                    face_value = phi[n_elements + k, i_component]
-                grad_phi[owners_b[k], :, i_component] += face_value * sf_b[k]
-
-
-def compute_gradient_gauss_linear(phi, mesh_data, geo_data):
-    """
-    Compute gradient using Gauss linear method (Green-Gauss theorem).
-
-    Algorithm:
-    1. Interpolate field to faces using geometric weights
-    2. Accumulate face contributions: grad += phi_f * Sf
-    3. Divide by element volume
-
-    Args:
-        phi: Field values (n_elements + n_boundary_elements, [n_components])
-            For scalar: (N,) or (N, 1)
-            For vector: (N, 3)
-        mesh_data: Dictionary with mesh connectivity
-        geo_data: Dictionary with geometric data
-
-    Returns:
-        grad_phi: Gradient field (n_elements + n_boundary_elements, 3, n_components)
-    """
-
-    # Determine field type
-    if phi.ndim == 1:
-        phi = phi.reshape(-1, 1)
-
-    n_total = phi.shape[0]
-    n_components = phi.shape[1]
-
-    n_elements = mesh_data["n_elements"]
-    n_interior_faces = mesh_data["n_interior_faces"]
-    n_faces = mesh_data["n_faces"]
-    n_boundary_faces = n_faces - n_interior_faces
-
-    owners = mesh_data["owners"]
-    neighbours = mesh_data["neighbours"]
-
-    face_sf = geo_data["face_sf"]
-    face_weights = geo_data["face_weights"]
-    element_volumes = geo_data["element_volumes"]
-
-    # Initialize gradient array
-    grad_phi = np.zeros((n_total, 3, n_components), dtype=np.float64)
-
-    _accumulate_interior_gradients(
-        grad_phi, phi, owners, neighbours, face_sf, face_weights, n_interior_faces, n_components
-    )
-
-    owners_b = owners[n_interior_faces:n_faces]
-    sf_b = geo_data["face_sf"][n_interior_faces:n_faces]
-    _accumulate_boundary_gradients(
-        grad_phi,
-        phi,
-        owners_b,
-        sf_b,
-        mesh_data["boundary"],
-        n_interior_faces,
-        n_elements,
-        n_components,
-        np.asarray(mesh_data.get("boundary_neighbours", np.full(n_faces, -1))),
-        face_weights,
-    )
-
-    # Volume-average the cell gradients (vectorized)
-    grad_phi[:n_elements] /= element_volumes[:, np.newaxis, np.newaxis]
-    parallel = mesh_data.get("_parallel_context")
-    if parallel is not None and parallel.is_partitioned:
-        parallel.exchange_halo(grad_phi[:n_elements])
-
-    # Boundary element gradients equal owner cell gradients
-    i_boundary_elements = np.arange(n_elements, n_elements + n_boundary_faces)
-    boundary_neighbours = np.asarray(
-        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
-    )[n_interior_faces:n_faces]
-    gradient_owners = np.where(boundary_neighbours >= 0, boundary_neighbours, owners_b)
-    grad_phi[i_boundary_elements, :, :] = grad_phi[gradient_owners, :, :]
-
-    return grad_phi
-
-
-def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
+def compute_gauss_gradient(phi, mesh_data, geo_data):
     """Compute the gradient using the Gauss linear method (vectorised).
 
     Uses deterministic ``bincount`` reductions for face accumulation. The
@@ -297,9 +130,6 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
                     minlength=n_elements,
                 )
 
-        # Collect indices for setting boundary gradients later
-        owners_b[rel_indices]
-
     # --- Volume Averaging (Vectorized) ---
     for i_component in range(n_components):
         grad_phi[:n_elements, :, i_component] /= element_volumes[:, np.newaxis]
@@ -321,26 +151,11 @@ def compute_gradient_gauss_linear_vectorized(phi, mesh_data, geo_data):
     return grad_phi
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Least‑Squares Gradient (inverse‑distance weighted)
-# ═══════════════════════════════════════════════════════════════════════
-
-
 def compute_lsq_geometry(mesh_data, geo_data):
-    """
-    Pre‑compute LSQ gradient geometry data.
+    """Precompute inverse-distance LSQ stencils and 3×3 inverses.
 
-    For each cell, builds a stencil of neighbour cells and boundary faces,
-    pre‑computes inverse‑distance weights and the 3×3 moment matrix inverse.
-
-    Returns a dict of flat arrays for vectorised RHS assembly:
-
-        lsq_nei_phi_idx   — index into phi array for each stencil point
-        lsq_owner_cell    — owning cell for each stencil point
-        lsq_nei_w2_dr     — w² · dr  (3‑vector per stencil point)
-        lsq_sum_w2dr      — Σ w² · dr  per cell (3‑vector)
-        lsq_M_inv         — M⁻¹ per cell (n, 3, 3)
-        gradient_scheme   — "lsq" flag
+    Distances are in metres. ``lsq_nei_w2_dr`` therefore has units 1/m and
+    ``lsq_M_inv`` has units m². Rank-deficient stencils use a pseudoinverse.
     """
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
@@ -350,92 +165,76 @@ def compute_lsq_geometry(mesh_data, geo_data):
     elem_c = geo_data["element_centroids"]
     face_c = geo_data["face_centroids"]
 
-    stencil_nei = [[] for _ in range(n_elements)]
-    stencil_dr = [[] for _ in range(n_elements)]
+    owners_i = np.asarray(owners[:n_interior], dtype=np.int32)
+    neighbours_i = np.asarray(neighbours[:n_interior], dtype=np.int32)
+    dr_i = elem_c[neighbours_i] - elem_c[owners_i]
 
-    # Interior faces: each face connects owner ↔ neighbour
-    for face in range(n_interior):
-        own = owners[face]
-        nei = neighbours[face]
-        dr = elem_c[nei] - elem_c[own]
-        stencil_nei[own].append(nei)
-        stencil_dr[own].append(dr)
-        stencil_nei[nei].append(own)
-        stencil_dr[nei].append(-dr)
+    owner_parts = [owners_i, neighbours_i]
+    neighbour_parts = [neighbours_i, owners_i]
+    displacement_parts = [dr_i, -dr_i]
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(mesh_data["n_faces"], -1)),
+        dtype=np.int32,
+    )
 
-    # Boundary faces (exclude empty patches)
     for patch in boundary:
         if _is_empty_boundary(patch, allow_source_type=True):
             continue
         start = patch["startFace"]
-        nf = patch["nFaces"]
-        for j in range(nf):
-            face_idx = start + j
-            own = owners[face_idx]
-            boundary_neighbours = mesh_data.get("boundary_neighbours")
-            if boundary_neighbours is not None and boundary_neighbours[face_idx] >= 0:
-                stencil_nei[own].append(int(boundary_neighbours[face_idx]))
-                stencil_dr[own].append(geo_data["face_cf_vector"][face_idx])
-                continue
-            bf_idx = face_idx - n_interior  # 0‑based boundary‑face number
-            phi_idx = n_elements + bf_idx  # position in the phi array
-            dr = face_c[face_idx] - elem_c[own]
-            stencil_nei[own].append(-phi_idx - 1)  # negative ⇒ boundary
-            stencil_dr[own].append(dr)
+        faces = np.arange(start, start + patch["nFaces"], dtype=np.int64)
+        patch_owners = np.asarray(owners[faces], dtype=np.int32)
+        paired = boundary_neighbours[faces]
+        coupled = paired >= 0
+        neighbour_indices = np.empty(len(faces), dtype=np.int32)
+        displacements = np.empty((len(faces), 3), dtype=np.float64)
+        neighbour_indices[coupled] = paired[coupled]
+        displacements[coupled] = geo_data["face_cf_vector"][faces[coupled]]
+        uncoupled = ~coupled
+        neighbour_indices[uncoupled] = n_elements + faces[uncoupled] - n_interior
+        displacements[uncoupled] = face_c[faces[uncoupled]] - elem_c[patch_owners[uncoupled]]
+        owner_parts.append(patch_owners)
+        neighbour_parts.append(neighbour_indices)
+        displacement_parts.append(displacements)
 
-    # Build flat CSR‑like arrays
-    offsets = np.zeros(n_elements + 1, dtype=np.int64)
-    for c in range(n_elements):
-        offsets[c + 1] = offsets[c] + len(stencil_nei[c])
-    total = int(offsets[-1])
+    owner_cell = np.concatenate(owner_parts)
+    nei_phi_idx = np.concatenate(neighbour_parts)
+    dr = np.concatenate(displacement_parts)
+    distance_squared = np.einsum("ij,ij->i", dr, dr)
+    w2 = 1.0 / np.maximum(distance_squared, 1e-60)
+    nei_w2_dr = w2[:, np.newaxis] * dr
 
-    nei_phi_idx = np.zeros(total, dtype=np.int32)
-    owner_cell = np.zeros(total, dtype=np.int32)
-    nei_w2_dr = np.zeros((total, 3), dtype=np.float64)
-    sum_w2dr = np.zeros((n_elements, 3), dtype=np.float64)
-    M_inv = np.zeros((n_elements, 3, 3), dtype=np.float64)
-    lsq_condition = np.zeros(n_elements, dtype=np.float64)
-    lsq_rank = np.zeros(n_elements, dtype=np.int8)
-    lsq_solver_method = np.empty(n_elements, dtype="U3")
+    sum_w2dr = np.column_stack(
+        [
+            np.bincount(owner_cell, weights=nei_w2_dr[:, axis], minlength=n_elements)
+            for axis in range(3)
+        ]
+    )
+    moment = np.empty((n_elements, 3, 3), dtype=np.float64)
+    for row in range(3):
+        for column in range(row, 3):
+            values = np.bincount(
+                owner_cell,
+                weights=w2 * dr[:, row] * dr[:, column],
+                minlength=n_elements,
+            )
+            moment[:, row, column] = values
+            moment[:, column, row] = values
 
-    for c in range(n_elements):
-        s, e = int(offsets[c]), int(offsets[c + 1])
-        M = np.zeros((3, 3))
-        for j in range(s, e):
-            k = j - s
-            raw_idx = stencil_nei[c][k]
-            dr = stencil_dr[c][k]
-            w2 = 1.0 / max(dr[0] * dr[0] + dr[1] * dr[1] + dr[2] * dr[2], 1e-60)
+    singular_values = np.linalg.svd(moment, compute_uv=False, hermitian=True)
+    tolerance = 3.0 * np.finfo(np.float64).eps * singular_values[:, 0]
+    lsq_rank = np.sum(singular_values > tolerance[:, np.newaxis], axis=1).astype(np.int8)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lsq_condition = singular_values[:, 0] / singular_values[:, -1]
+    lsq_condition[singular_values[:, -1] == 0.0] = np.inf
 
-            if raw_idx >= 0:
-                nei_phi_idx[j] = raw_idx
-            else:
-                nei_phi_idx[j] = -raw_idx - 1  # back to positive phi index
-            owner_cell[j] = c
-            nei_w2_dr[j] = w2 * dr
-            sum_w2dr[c] += w2 * dr
-
-            M[0, 0] += w2 * dr[0] * dr[0]
-            M[0, 1] += w2 * dr[0] * dr[1]
-            M[0, 2] += w2 * dr[0] * dr[2]
-            M[1, 1] += w2 * dr[1] * dr[1]
-            M[1, 2] += w2 * dr[1] * dr[2]
-            M[2, 2] += w2 * dr[2] * dr[2]
-        M[1, 0] = M[0, 1]
-        M[2, 0] = M[0, 2]
-        M[2, 1] = M[1, 2]
-
-        lsq_condition[c] = np.linalg.cond(M)
-        lsq_rank[c] = np.linalg.matrix_rank(M)
-        if lsq_rank[c] == 3 and lsq_condition[c] <= _LSQ_QR_CONDITION_LIMIT:
-            q, r = np.linalg.qr(M)
-            M_inv[c] = np.linalg.solve(r, q.T)
-            lsq_solver_method[c] = "qr"
-        else:
-            # SVD is deliberate for rank-deficient 2D stencils and severely
-            # conditioned 3D cells; it returns the minimum-norm gradient.
-            M_inv[c] = np.linalg.pinv(M)
-            lsq_solver_method[c] = "svd"
+    well_conditioned = (lsq_rank == 3) & (lsq_condition <= _LSQ_QR_CONDITION_LIMIT)
+    M_inv = np.empty_like(moment)
+    if np.any(well_conditioned):
+        q, r = np.linalg.qr(moment[well_conditioned])
+        M_inv[well_conditioned] = np.linalg.solve(r, np.swapaxes(q, 1, 2))
+    if np.any(~well_conditioned):
+        M_inv[~well_conditioned] = np.linalg.pinv(moment[~well_conditioned])
+    lsq_solver_method = np.where(well_conditioned, "qr", "svd")
 
     return {
         "lsq_nei_phi_idx": nei_phi_idx,
@@ -450,14 +249,10 @@ def compute_lsq_geometry(mesh_data, geo_data):
     }
 
 
-def compute_gradient_lsq_vectorized(phi, mesh_data, geo_data):
-    """
-    Inverse‑distance‑weighted least‑squares gradient.
+def compute_lsq_gradient(phi, mesh_data, geo_data):
+    """Compute the inverse-distance-weighted least-squares gradient.
 
     For each cell minimises  Σ w²(φ_n − φ_c − ∇φ·dr)².
-
-    Signature is identical to compute_gradient_gauss_linear_vectorized
-    so the two are drop‑in replacements.
     """
     if phi.ndim == 1:
         phi = phi.reshape(-1, 1)
@@ -524,8 +319,8 @@ def _resolve_gradient_fn(geo_data):
     """Return the gradient function matching the configured scheme.
 
     Checks ``geo_data["gradient_scheme"]``:
-    - ``"lsq"`` → :func:`compute_gradient_lsq_vectorized`
-    - anything else → :func:`compute_gradient_gauss_linear_vectorized`
+    - ``"lsq"`` → :func:`compute_lsq_gradient`
+    - anything else → :func:`compute_gauss_gradient`
 
     Args:
         geo_data: Geometry dictionary (must contain ``"gradient_scheme"``).
@@ -534,5 +329,5 @@ def _resolve_gradient_fn(geo_data):
         A callable ``grad_fn(phi, mesh_data, geo_data) -> gradient``.
     """
     if geo_data.get("gradient_scheme") == "lsq":
-        return compute_gradient_lsq_vectorized
-    return compute_gradient_gauss_linear_vectorized
+        return compute_lsq_gradient
+    return compute_gauss_gradient

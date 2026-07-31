@@ -11,7 +11,7 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ExecutionConfig,
     FieldState,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -19,10 +19,10 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.assemble.matrix_assembly import MatrixAssemblyWorkspace
-from source.solvers.FVM.core.operators import (
-    DiscreteOperators,
-    create_discrete_operators,
+from source.solvers.FVM.assemble.matrix_assembly import (
+    MatrixAssemblyWorkspace,
+    assemble_matrix_from_fluxes_vectorized,
+    assemble_rhs_from_fluxes_vectorized,
 )
 
 from ._structured_mesh import structured_box
@@ -44,20 +44,22 @@ def test_numba_assembly_matches_numpy(hand_built_3d_mesh):
         "flux_ff": np.linspace(-1.0, -0.2, n_faces),
         "flux_vf": np.sin(np.arange(n_faces, dtype=np.float64)),
     }
-    numpy_ops = create_discrete_operators("numpy")
-    numba_ops = create_discrete_operators("numba")
-    assert isinstance(numba_ops, DiscreteOperators)
-
-    numpy_matrix = numpy_ops.assemble_matrix(
-        flux, mesh, workspace=MatrixAssemblyWorkspace.create(mesh)
+    numpy_matrix = assemble_matrix_from_fluxes_vectorized(
+        flux,
+        mesh,
+        workspace=MatrixAssemblyWorkspace.create(mesh),
+        backend="numpy",
     )
-    numba_matrix = numba_ops.assemble_matrix(
-        flux, mesh, workspace=MatrixAssemblyWorkspace.create(mesh)
+    numba_matrix = assemble_matrix_from_fluxes_vectorized(
+        flux,
+        mesh,
+        workspace=MatrixAssemblyWorkspace.create(mesh),
+        backend="numba",
     )
     np.testing.assert_array_equal(numba_matrix.toarray(), numpy_matrix.toarray())
     np.testing.assert_allclose(
-        numba_ops.assemble_rhs(flux, mesh),
-        numpy_ops.assemble_rhs(flux, mesh),
+        assemble_rhs_from_fluxes_vectorized(flux, mesh, backend="numba"),
+        assemble_rhs_from_fluxes_vectorized(flux, mesh, backend="numpy"),
         rtol=0.0,
         atol=5e-16,
     )
@@ -65,7 +67,7 @@ def test_numba_assembly_matches_numpy(hand_built_3d_mesh):
 
 def _run_steps(tmp_path, backend, steps=1):
     mesh = structured_box(3, 2, 2)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name=f"pimple_{backend}",
         execution=ExecutionConfig(operator_backend=backend),
         time=TimeConfig.transient(dt=0.01, duration=steps * 0.01, write_interval=100),

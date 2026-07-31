@@ -16,7 +16,7 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -37,7 +37,7 @@ def _run(scheme, n_steps=4):
     lid = BoundaryConfig(
         name="ymax", type_U="fixedValue", value_U=[1.0, 0, 0], type_p="zeroGradient"
     )
-    cfg = FVMConfig(
+    cfg = FVMSetup(
         case_name="bdf2",
         time=TimeConfig(delta_t=0.05, end_time=0.25, write_interval=999),
         schemes=schemes,

@@ -14,7 +14,6 @@ from .config.types import (
     DynamicMeshConfig,
     ExecutionConfig,
     ForcesConfig,
-    FVMConfig,
     FVMSetup,
     LinearSolverConfig,
     MeshConfig,
@@ -39,7 +38,6 @@ __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 __all__ = [
     "Solver",
     "__version__",
-    "FVMConfig",
     "FVMSetup",
     "setup_fvm_solver",
     "ExecutionConfig",

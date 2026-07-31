@@ -1,19 +1,4 @@
-#!/usr/bin/env python3
-"""
-SIMPLE Algorithm for OpenONDA FVM Solver
-
-Semi-Implicit Method for Pressure-Linked Equations
-Solves incompressible Navier-Stokes with pressure-velocity coupling.
-
-Algorithm:
-1. Solve momentum predictor: A_U * U* = H_U - ∇p
-2. Solve pressure correction: ∇·(1/A_U ∇p') = ∇·U*
-3. Correct velocity: U = U* - (1/A_U)∇p'
-4. Update pressure: p = p + α_p * p'
-5. Iterate until convergence
-
-Converted from uFVM solve/ modules
-"""
+"""SIMPLE pressure-velocity coupling for incompressible flow."""
 
 from dataclasses import dataclass
 from typing import Any, Literal, overload
@@ -27,6 +12,7 @@ from ..fields import gradients
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from .contracts import OuterCorrectorDiagnostics
+from .linear_interface import normalized_residual, solve_linear_system
 
 
 @dataclass(frozen=True)
@@ -123,6 +109,21 @@ def _compute_rhie_chow_coefficients(volumes, A_U):
     return volumes[:, np.newaxis] / (A_U + 1e-10)
 
 
+def _validate_reference_density(rho) -> float:
+    """Validate the scalar reference density used for dimensional forces.
+
+    Constant density cancels from the kinematic-pressure flow equations, but
+    remains part of the public setup because dimensional forces scale with it.
+    """
+    density = np.asarray(rho, dtype=np.float64)
+    if density.ndim != 0:
+        raise ValueError("constant-density FVM requires rho to be a scalar")
+    value = float(density.item())
+    if not np.isfinite(value) or value <= 0.0:
+        raise ValueError("rho must be finite and positive")
+    return value
+
+
 def _compute_pressure_face_conductance(mesh_data, geo_data, DU):
     """Return the geometric Rhie--Chow conductance for every face.
 
@@ -133,8 +134,8 @@ def _compute_pressure_face_conductance(mesh_data, geo_data, DU):
 
     ``DU`` is the cell-centred diagonal pressure-to-velocity coefficient.  It
     is linearly interpolated on interior faces and taken from the owner on
-    boundary faces.  The returned value excludes density; callers apply the
-    same ``rho`` scaling to matrix and correction terms.
+    boundary faces. Because pressure is kinematic and ``phi`` is volumetric
+    flux, density does not enter this conductance.
     """
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
@@ -256,118 +257,11 @@ def _update_fixed_flux_pressure_boundaries(
     return grad_p
 
 
-def _compute_geometric_diffusion(DU_f, Sf, e, mag_CF):
-    """
-    Compute anisotropic geometric diffusion term for Rhie-Chow interpolation.
-
-    Returns:
-        geoDiff: Orthogonal diffusion conductance D_eff * (Sf·e) / |CF|
-        k: Non-orthogonal vector Sf - (Sf·e)e
-    """
-    mag_Sf = np.linalg.norm(Sf)
-
-    if mag_Sf < 1e-30:
-        return 0.0, np.zeros(3)
-
-    n = Sf / mag_Sf
-
-    # D_eff = n . D . n = n_x^2*D_x + n_y^2*D_y + n_z^2*D_z
-    D_eff = (n[0] ** 2 * DU_f[0]) + (n[1] ** 2 * DU_f[1]) + (n[2] ** 2 * DU_f[2])
-
-    # Orthogonal decomposition: Sf = Δ + k
-    # Δ = (Sf·e) e  — orthogonal (implicit)
-    # k = Sf - Δ    — explicit (non-orthogonal correction)
-    sf_dot_e = np.dot(Sf, e)
-    geoDiff = D_eff * sf_dot_e / (mag_CF + 1e-12)
-
-    k = Sf - sf_dot_e * e
-
-    return geoDiff, k
-
-
-def _process_interior_face_rhie_chow(
-    i_face, owners, neighbours, face_weights, face_sf, face_cf_vector, DU, U_star, grad_p, rho, p
-):
-    """Process a single interior face for Rhie-Chow pressure-correction flux.
-
-    Computes the interpolated velocity flux, geometric-diffusion (orthogonal)
-    coefficients, and the explicit non-orthogonal and pressure-gradient
-    correction terms for one interior face.
-
-    Args:
-        i_face:         Face index.
-        owners:         Owner index array.
-        neighbours:     Neighbour index array.
-        face_weights:   Interpolation weights ``(n_faces,)``.
-        face_sf:        Face area vectors ``(n_faces, 3)``.
-        face_cf_vector: Centre-to-centre vectors ``(n_faces, 3)``.
-        DU:             Rhie-Chow coefficients ``(n_elements, 3)``.
-        U_star:         Predicted velocity ``(n_total, 3)``.
-        grad_p:         Pressure gradient ``(n_total, 3)``.
-        rho:            Density.
-        p:              Pressure field ``(n_total,)``.
-
-    Returns:
-        Tuple ``(flux_cf, flux_ff, flux_vf)``: the owner coefficient,
-        neighbour coefficient, and explicit RHS flux for this face.
-    """
-    own = owners[i_face]
-    nei = neighbours[i_face]
-    w = face_weights[i_face]
-
-    Sf = face_sf[i_face]
-    CF = face_cf_vector[i_face]
-    e = CF / (np.linalg.norm(CF) + 1e-10)
-    mag_CF = np.linalg.norm(CF)
-
-    # Interpolate to face
-    DU_f = w * DU[nei] + (1 - w) * DU[own]
-    U_f = w * U_star[nei] + (1 - w) * U_star[own]
-    grad_p_f = w * grad_p[nei] + (1 - w) * grad_p[own]
-
-    # Term I: Interpolated Velocity Flux (contains implicit -grad_p_interpolated)
-    flux_interpolated = rho * np.dot(U_f, Sf)
-
-    # Term II: Geometric Diffusion (Coefficient Calculation)
-    geoDiff, k = _compute_geometric_diffusion(DU_f, Sf, e, mag_CF)
-
-    if geoDiff > 0:
-        flux_cf = rho * geoDiff  # Owner Coeff (Positive)
-        flux_ff = -rho * geoDiff  # Neighbor Coeff (Negative)
-    else:
-        flux_cf = 0.0
-        flux_ff = 0.0
-
-    # Term III: Rhie-Chow Smoothing
-    # flux_vf = flux_interpolated + (Flux_GradP_Interp - Flux_GradP_Compact)
-
-    # 1. Full Interpolated Gradient Flux
-    DUSf = DU_f * Sf
-    term_interp = rho * np.dot(grad_p_f, DUSf)
-
-    # 2. Compact Gradient Flux (Orthogonal — uses orthogonal geoDiff)
-    # Flux out = Gamma * (p_P - p_N)
-    #          = Gamma * p_P - Gamma * p_N
-    #          = flux_cf * p[own] + flux_ff * p[nei]
-    term_compact = flux_cf * p[own] + flux_ff * p[nei]
-
-    # 3. Non-Orthogonal Correction (explicit)
-    # k = Sf - (Sf·e)e, handled explicitly in the RHS
-    k_norm = np.linalg.norm(k)
-    flux_nonortho = rho * np.dot(k, DU_f * grad_p_f) if k_norm > 1e-12 else 0.0
-
-    # Total Flux
-    flux_vf = flux_interpolated + term_interp + term_compact + flux_nonortho
-
-    return flux_cf, flux_ff, flux_vf
-
-
 @njit(cache=True)
 def _process_boundary_faces_jit(
     n_boundary_faces,
     n_interior,
     n_elements,
-    rho,
     owners,
     face_sf,
     face_cf_vector,
@@ -389,7 +283,6 @@ def _process_boundary_faces_jit(
         n_boundary_faces:     Total number of boundary faces.
         n_interior:           Number of interior faces.
         n_elements:           Number of interior elements.
-        rho:                  Density.
         owners:               Owner index array.
         face_sf:              Face area vectors ``(n_faces, 3)``.
         face_cf_vector:       Centre-to-centre vectors ``(n_faces, 3)``.
@@ -424,7 +317,7 @@ def _process_boundary_faces_jit(
 
         # zeroGradient pressure, including the inflow side of freestream
         if bc_code == 0 or (bc_code == 3 and velocity_flux < 0.0):
-            flux_vf_out[i] = rho * (Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2)
+            flux_vf_out[i] = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
             continue
 
         # fixedValue pressure, including the outflow side of freestream
@@ -444,7 +337,7 @@ def _process_boundary_faces_jit(
             gp0, gp1, gp2 = grad_p[own, 0], grad_p[own, 1], grad_p[own, 2]
 
             # Base velocity flux
-            flux_vf = rho * (Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2)
+            flux_vf = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
 
             # Geometric diffusion.  This value is shared with pressure-matrix
             # assembly and post-solve flux correction.
@@ -455,11 +348,11 @@ def _process_boundary_faces_jit(
             geoDiff = face_conductance[i_face]
 
             if geoDiff > 0:
-                cf = rho * geoDiff
-                ff = -rho * geoDiff
+                cf = geoDiff
+                ff = -geoDiff
 
                 # Interpolated gradient flux
-                term_interp = rho * (DU0 * gp0 * Sf0 + DU1 * gp1 * Sf1 + DU2 * gp2 * Sf2)
+                term_interp = DU0 * gp0 * Sf0 + DU1 * gp1 * Sf1 + DU2 * gp2 * Sf2
 
                 # Compact pressure drive
                 val = p_boundary_values[i]
@@ -471,7 +364,7 @@ def _process_boundary_faces_jit(
                 k2 = Sf2 - sf_dot_e * e2
                 k_norm = (k0 * k0 + k1 * k1 + k2 * k2) ** 0.5
                 if k_norm > 1e-12:
-                    flux_nonortho = rho * (k0 * DU0 * gp0 + k1 * DU1 * gp1 + k2 * DU2 * gp2)
+                    flux_nonortho = k0 * DU0 * gp0 + k1 * DU1 * gp1 + k2 * DU2 * gp2
                 else:
                     flux_nonortho = 0.0
 
@@ -525,7 +418,7 @@ def build_pressure_boundary_layout(boundaries, n_interior, n_faces) -> PressureB
 
 
 def _pressure_boundary_values(boundaries, n_interior, n_faces) -> np.ndarray:
-    """Read dynamic pressure values without rebuilding face topology."""
+    """Read kinematic-pressure values without rebuilding face topology."""
     values = np.zeros(n_faces - n_interior, dtype=np.float64)
     for boundary in boundaries:
         start = int(boundary["startFace"])
@@ -685,8 +578,9 @@ def assemble_pressure_correction_equation_rhie_chow(
     Args:
         U_star: Predicted velocity field
         A_U: Momentum diagonal coefficients
-        p: Current pressure field
-        rho: Density
+        p: Current kinematic-pressure field ``p/ρ`` [m²/s²].
+        rho: Positive constant reference density [kg/m³]. It is validated
+            for API compatibility but cancels from this pressure equation.
         mesh_data: Mesh connectivity
         geo_data: Geometric data
         boundaries: Boundary conditions
@@ -700,6 +594,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
+    _validate_reference_density(rho)
 
     # 1. Compute DU and grad_p
     volumes = geo_data["element_volumes"]
@@ -762,23 +657,23 @@ def assemble_pressure_correction_equation_rhie_chow(
 
     # Non-orthogonal vector k = Sf - (Sf·e)e
     k_vec = sf - (sf_dot_e[:, np.newaxis] * e_vec)
-    # Non-orthogonal flux: rho * k · (DU_f * grad_p_f)
+    # Non-orthogonal volumetric flux: k · (DU_f * grad_p_f)
     grad_p_interior = grad_p[:n_elements]
     grad_own = grad_p_interior[own]
     grad_nei = grad_p_interior[nei]
     grad_f = w[:, np.newaxis] * grad_nei + (1.0 - w[:, np.newaxis]) * grad_own
-    flux_nonortho = rho * np.sum(k_vec * du_f * grad_f, axis=1)
+    flux_nonortho = np.sum(k_vec * du_f * grad_f, axis=1)
 
     # 4. Construct Flux
     # Term I: HbyA Flux
-    flux_hbya = rho * np.sum(u_hbya_f * sf, axis=1)
+    flux_hbya = np.sum(u_hbya_f * sf, axis=1)
 
     # Term II: Compact Pressure Drive (orthogonal implicit)
-    term_compact = rho * geo_diff * (p[own] - p[nei])
+    term_compact = geo_diff * (p[own] - p[nei])
 
     # Coefficients for Pressure Equation (Laplacian) — orthogonal part only
-    flux_cf[:n_interior] = rho * geo_diff
-    flux_ff[:n_interior] = -rho * geo_diff
+    flux_cf[:n_interior] = geo_diff
+    flux_ff[:n_interior] = -geo_diff
 
     # Total Flux = HbyA + Implicit Pressure + Non-Orthogonal Correction
     flux_vf[:n_interior] = flux_hbya + term_compact + flux_nonortho
@@ -813,7 +708,6 @@ def assemble_pressure_correction_equation_rhie_chow(
             n_boundary_faces,
             n_interior,
             n_elements,
-            rho,
             owners,
             geo_data["face_sf"],
             geo_data["face_cf_vector"],
@@ -867,11 +761,11 @@ def assemble_pressure_correction_equation_rhie_chow(
             orthogonal_area = np.sum(sf_b * edge_b, axis=1)
             nonorthogonal = sf_b - orthogonal_area[:, np.newaxis] * edge_b
             conductance_b = face_conductance[cyclic_faces]
-            flux_cf[cyclic_faces] = rho * conductance_b
-            flux_ff[cyclic_faces] = -rho * conductance_b
-            flux_hbya = rho * np.sum(hbya_b * sf_b, axis=1)
-            compact = rho * conductance_b * (p[own_b] - p[nei_b])
-            nonorthogonal_flux = rho * np.sum(nonorthogonal * du_b * grad_b, axis=1)
+            flux_cf[cyclic_faces] = conductance_b
+            flux_ff[cyclic_faces] = -conductance_b
+            flux_hbya = np.sum(hbya_b * sf_b, axis=1)
+            compact = conductance_b * (p[own_b] - p[nei_b])
+            nonorthogonal_flux = np.sum(nonorthogonal * du_b * grad_b, axis=1)
             flux_vf[cyclic_faces] = flux_hbya + compact + nonorthogonal_flux
 
     # 3b. Enforce global continuity of the predicted boundary flux (adjustPhi)
@@ -968,10 +862,10 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
     return p_prime_ext
 
 
-def _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance, rho):
+def _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance):
     """Correct interior face fluxes with the Rhie-Chow pressure correction.
 
-    Applies the flux correction ``Δφ = ρ⋅g⋅(p'_P − p'_N)`` where *g* is
+    Applies the volumetric-flux correction ``Δφ = g⋅(p'_P − p'_N)`` where *g* is
     the geometric diffusion coefficient based on the interpolated DU and
     face-normal projection.
 
@@ -980,18 +874,15 @@ def _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance, rho):
         p_prime:  Pressure correction ``(n_elements,)``.
         mesh_data: Mesh dictionary.
         face_conductance: Shared pressure-face conductance array.
-        rho:      Density.
     """
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
     geo_diff = face_conductance[:n_interior]
-    phi[:n_interior] += (
-        rho * geo_diff * (p_prime[owners[:n_interior]] - p_prime[neighbours[:n_interior]])
-    )
+    phi[:n_interior] += geo_diff * (p_prime[owners[:n_interior]] - p_prime[neighbours[:n_interior]])
 
 
-def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance, rho):
+def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance):
     """Correct boundary-face fluxes for ``fixedValue`` pressure boundaries.
 
     Only patches whose pressure BC type is ``fixedValue`` receive a
@@ -1003,7 +894,6 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         boundaries: List of boundary patch dictionaries.
         owners:     Owner index array.
         face_conductance: Shared pressure-face conductance array.
-        rho:        Density.
     """
     for boundary in boundaries:
         start = boundary["startFace"]
@@ -1014,19 +904,19 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance,
         bc_type = boundary.get("bc_type_p")
         strategy = BOUNDARIES.strategy(bc_type, "p", "flux")
         if strategy is BoundaryStrategy.FIXED_VALUE:
-            phi[idx] += rho * geo_diff_b * p_prime[own]
+            phi[idx] += geo_diff_b * p_prime[own]
         elif strategy is BoundaryStrategy.CYCLIC:
             paired = boundary.get("_paired_cells")
             if paired is None:
                 # The mesh-level array is not part of this helper's historical
                 # signature; cyclic setup stores the same view on each patch.
                 raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
-            phi[idx] += rho * geo_diff_b * (p_prime[own] - p_prime[paired])
+            phi[idx] += geo_diff_b * (p_prime[own] - p_prime[paired])
         elif strategy is BoundaryStrategy.FREESTREAM:
             outflow = boundary.get("_freestream_outflow")
             if outflow is None:
                 outflow = phi[idx] >= 0.0
-            phi[idx] += np.where(outflow, rho * geo_diff_b * p_prime[own], 0.0)
+            phi[idx] += np.where(outflow, geo_diff_b * p_prime[own], 0.0)
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
@@ -1068,40 +958,6 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     if outflow is None:
         outflow = phi[start : start + nf] >= 0.0
     U[idx : idx + nf] = np.where(outflow[:, np.newaxis], U[own], inlet_val)
-
-
-def _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior):
-    """directionMixed / Robin velocity BC (Billuart 2023, Eq. 11–14).
-
-    Per face reconstruct the ghost value so the normal component is Dirichlet
-    (``u·n̂ = u_target·n̂``) and the tangential component satisfies a vorticity-
-    matched Neumann condition (``∂u_t/∂n = ω_target × n̂``):
-
-        u_b = (u_target·n̂) n̂ + u_owner_t + d (ω_target × n̂),
-
-    with ``u_owner_t`` the owner's tangential velocity and ``d`` the wall
-    distance.  ``ω_target × n̂`` is already tangential.  Targets are stored per
-    face by ``set_robin_velocity_boundary_condition``.
-    """
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
-    own = owners[start : start + nf]
-    sf = geo_data["face_sf"][start : start + nf]
-    n = sf / (np.linalg.norm(sf, axis=1, keepdims=True) + 1e-30)
-    d = geo_data["wall_dist"][start : start + nf][:, np.newaxis]
-
-    ut = boundary.get("u_target_field")
-    om = boundary.get("omega_target_field")
-    if ut is None:
-        ut = np.zeros((nf, 3))
-    if om is None:
-        om = np.zeros((nf, 3))
-
-    u_owner = U[own]
-    u_owner_t = u_owner - np.sum(u_owner * n, axis=1, keepdims=True) * n
-    u_target_n = np.sum(ut * n, axis=1, keepdims=True) * n
-    U[idx : idx + nf] = u_target_n + u_owner_t + d * np.cross(om, n)
 
 
 def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries):
@@ -1196,7 +1052,6 @@ def _update_velocity_bcs(
 
     - ``zeroGradient`` → :func:`_apply_zero_gradient_bc`
     - ``inletOutlet``  → :func:`_apply_inlet_outlet_bc`
-    - ``directionMixed`` → :func:`_apply_robin_bc`
     - ``fixedValue`` / ``noSlip`` → :func:`_apply_fixed_value_bc`
     - ``empty`` / ``slip`` / ``symmetry`` → :func:`_apply_slip_bc`
 
@@ -1216,8 +1071,6 @@ def _update_velocity_bcs(
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
         elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
             _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
-        elif strategy is BoundaryStrategy.DIRECTION_MIXED:
-            _apply_robin_bc(U, boundary, owners, geo_data, n_elements, n_interior)
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
             _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy)
         elif strategy in (
@@ -1250,7 +1103,7 @@ def correct_velocity_and_flux(
     Apply pressure correction to velocity and persistent flux.
 
     U = U* - DU * grad(p')
-    phi = phi* - rho * DU_f * (grad(p') . S)
+    phi = phi* - DU_f * (grad(p') . S)
 
     Uses UN-RELAXED diagonal for DU consistency: DU = V / (A_U * alpha_u).
     This matches the Rhie-Chow assembly which also uses the un-relaxed A_U.
@@ -1258,6 +1111,7 @@ def correct_velocity_and_flux(
     n_elements = mesh_data["n_elements"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
+    _validate_reference_density(rho)
 
     if workspace is None:
         volumes = geo_data["element_volumes"]
@@ -1278,8 +1132,8 @@ def correct_velocity_and_flux(
     U[:n_elements] -= DU * grad_p_prime[:n_elements]
 
     # 2. Correct Face Fluxes
-    _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance, rho)
-    _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance, rho)
+    _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance)
+    _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance)
 
     # 3. Update Velocity BCs
     _update_velocity_bcs(
@@ -1451,8 +1305,10 @@ class SIMPLESolver:
 
     Examples
     --------
-    >>> solver = SIMPLESolver(mesh_data, geo_data, boundaries)
-    >>> diagnostics = solver.solve_one_step()
+    >>> solver = SIMPLESolver(mesh_data, geo_data, boundaries)  # doctest: +SKIP
+    >>> U, p, phi, converged = solver.solve(  # doctest: +SKIP
+    ...     U_initial, p_initial, rho=1.225, nu=1.5e-5
+    ... )
     """
 
     def __init__(self, mesh_data, geo_data, boundaries, params=None):
@@ -1519,13 +1375,32 @@ class SIMPLESolver:
         source_explicit=None,
         source_implicit=None,
     ):
-        """
-        Perform a single SIMPLE iteration.
+        """Perform one SIMPLE pressure–velocity correction.
 
         ``U_old_old`` is accepted for interface parity with the transient driver
         but is unused by steady SIMPLE.  ``source_explicit``/``source_implicit``
         are optional volumetric momentum sources (e.g. the coupling fringe
         S = λ(Utarget − U)) forwarded to the momentum predictor.
+
+        Args:
+            U: Cell and boundary-ghost velocity [m/s], shape
+                ``(n_cells_with_ghosts, 3)``.
+            p: Kinematic pressure ``p/ρ`` [m²/s²], shape
+                ``(n_cells_with_ghosts,)``.
+            phi: Volumetric face flux ``U·Sf`` [m³/s], shape
+                ``(n_faces,)``.
+            U_old: Previous velocity [m/s], unused by steady SIMPLE.
+            dt: Time-step size [s], normally ``None`` for steady SIMPLE.
+            rho: Positive constant reference density [kg/m³]. It cancels
+                from the kinematic-pressure flow equations.
+            nu: Positive kinematic viscosity [m²/s].
+            U_old_old: Older velocity [m/s], unused by steady SIMPLE.
+            source_explicit: Explicit acceleration source [m/s²].
+            source_implicit: Non-negative implicit source coefficient [1/s].
+
+        Returns:
+            tuple: Updated ``(U, p, phi, residuals)``. The three field arrays
+            retain the shapes and units described above.
         """
         # 1. Solve momentum predictor
         U_star, A_U, momentum_diagnostics = momentum.solve_momentum_predictor(
@@ -1577,7 +1452,7 @@ class SIMPLESolver:
             operator_backend=self.params.get("_operator_backend", "numpy"),
         )
 
-        p_prime, pressure_result = matrix_assembly.solve_linear_system(
+        p_prime, pressure_result = solve_linear_system(
             A_p,
             b_p,
             method=self.params.get("pressure_solver") or self.params["linear_solver"],
@@ -1621,7 +1496,7 @@ class SIMPLESolver:
         update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi)
 
         # 5. Residuals
-        self.last_res_p = matrix_assembly.normalized_residual(A_p, p_prime, b_p)
+        self.last_res_p = normalized_residual(A_p, p_prime, b_p)
         self.last_res_u = max(
             (values["final_residual"] for values in momentum_diagnostics.values()),
             default=0.0,
@@ -1659,10 +1534,12 @@ class SIMPLESolver:
         and velocity residuals fall below ``tolerance``.
 
         Args:
-            U_init: Initial velocity field ``(n_total, 3)``.
-            p_init: Initial pressure field ``(n_total,)``.
-            rho:    Fluid density (default 1.0).
-            nu:     Kinematic viscosity (default 0.01).
+            U_init: Initial velocity [m/s], shape ``(n_total, 3)``.
+            p_init: Initial kinematic pressure ``p/ρ`` [m²/s²], shape
+                ``(n_total,)``.
+            rho: Positive constant reference density [kg/m³]. It cancels
+                from the kinematic-pressure flow equations. Defaults to 1.0.
+            nu: Kinematic viscosity [m²/s]. Defaults to 0.01.
 
         Returns:
             Tuple ``(U, p, phi, converged)`` where *converged* is a bool.
@@ -1687,7 +1564,7 @@ class SIMPLESolver:
         # Initialize Flux (phi) if not provided
         from ..assemble import convection
 
-        phi = convection.compute_mass_flow_rate(U, self.mesh_data, self.geo_data)
+        phi = convection.compute_volumetric_face_flux(U, self.mesh_data, self.geo_data)
 
         for iteration in range(int(self.params["max_iter"])):
             U, p, phi, residuals = self.step(U, p, phi, rho=rho, nu=nu)

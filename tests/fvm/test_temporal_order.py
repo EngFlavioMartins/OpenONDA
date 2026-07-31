@@ -21,7 +21,7 @@ Crank–Nicolson schemes, which must lift it to ≈ 2.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
 from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
@@ -84,7 +84,7 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
 
     # Frozen advecting flux from the constant velocity a.
     a_field = np.tile(a, (n_elem + n_bnd, 1)).astype(np.float64)
-    phi_flux = compute_mass_flow_rate(a_field, mesh, geo)
+    phi_flux = compute_volumetric_face_flux(a_field, mesh, geo)
 
     U = np.zeros((n_elem + n_bnd, 3))
     U[:n_elem] = _phi(cc[:, 0], cc[:, 1])  # u(0) = φ

@@ -7,12 +7,11 @@ from typing import Any
 
 import numpy as np
 
-from ..config.types import FVMConfig
+from ..config.types import FVMSetup
 from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
 from ..mesh import geometry, mesh_io
 from ..solve import pimple_solver, simple_solver
-from .operators import create_discrete_operators
 from .parallel import ParallelContext
 from .state import FieldState
 
@@ -25,7 +24,7 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     cannot silently start from a different field.
 
     Args:
-        config:   FVMConfig (may have ``initial_U``).
+        config:   FVMSetup (may have ``initial_U``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -54,7 +53,7 @@ def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     Otherwise reads the ``0/p`` OpenFOAM file.  Parsing errors are fatal.
 
     Args:
-        config:   FVMConfig (may have ``initial_p``).
+        config:   FVMSetup (may have ``initial_p``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -113,7 +112,6 @@ def _enforce_u_boundary_constraints(
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.INLET_OUTLET,
-            BoundaryStrategy.DIRECTION_MIXED,
         ):
             owners_b = mesh_data["owners"][
                 boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
@@ -155,13 +153,14 @@ class Solver(OFWInterfaceMixin):
     Supports PIMPLE/SIMPLE algorithms, Smagorinsky turbulence models, and VTK/PVD export.
 
     Attributes:
-        config (FVMConfig): Simulation configuration object.
+        config (FVMSetup): Simulation configuration object.
         case_dir (str): Root directory for simulation outputs and logs.
         mesh_data (Dict[str, Any]): Mesh connectivity and naming data.
         geo_data (Dict[str, Any]): Computed geometric properties (volumes, areas, etc.).
         U (np.ndarray): Velocity field [m/s] (includes ghost boundary cells).
         p (np.ndarray): Kinematic pressure field [m^2/s^2] (includes ghost boundary cells).
-        phi (np.ndarray): Mass flow rate flux on faces [m^3/s].
+        phi (np.ndarray): Volumetric face flux ``U·Sf`` [m³/s], positive
+            from owner to neighbour on interior faces.
         flow_time (float): Current physical time in the simulation.
         time_step (int): Current time step index.
         auto_write (bool): If True, automatically writes results based on writeInterval.
@@ -226,14 +225,14 @@ class Solver(OFWInterfaceMixin):
 
     def __init__(
         self,
-        config: FVMConfig,
+        config: FVMSetup,
         case_dir: str | None = None,
         mesh_data: dict[str, Any] | None = None,
     ):
         """Initializes the FVM solver instance.
 
         Args:
-            config: FVMConfig object containing all simulation and time parameters.
+            config: FVMSetup object containing all simulation and time parameters.
             case_dir: Root directory for the case. Defaults to current working directory.
             mesh_data: Optional pre-loaded mesh dictionary. If None, loaded from disk.
         """
@@ -245,7 +244,7 @@ class Solver(OFWInterfaceMixin):
             self.case_dir,
             enabled=self.parallel.is_root,
         )
-        self.operators = create_discrete_operators(self.config.execution.operator_backend)
+        self.operator_backend = self.config.execution.operator_backend
         if self.config.execution.linear_backend == "petsc":
             methods = {
                 "momentum": self.config.linear.momentum_solver or self.config.linear.linear_solver,
@@ -320,7 +319,7 @@ class Solver(OFWInterfaceMixin):
             )
 
         # 0. UI Header
-        self.logger.header(self.config.execution.precision.replace("float", "f"))
+        self.logger.header("f64")
         logging.Timer.start("Total Initialization")
 
         # 1. Mesh Management
@@ -554,16 +553,16 @@ class Solver(OFWInterfaceMixin):
     def from_case(cls, case_dir: str, **overrides):
         """Build a Solver from an OpenFOAM case directory.
 
-        Assembles an :class:`FVMConfig` from the case's ``system``/``constant``/``0``
+        Assembles an :class:`FVMSetup` from the case's ``system``/``constant``/``0``
         dictionaries (reusing the ``from_*`` loaders) so the FVM is constructable
         the same way the coupler builds the OFW backend (``backend(case_dir)``).
         Required case dictionaries and initial fields must exist and parse
         successfully. ``overrides`` may replace known top-level
-        :class:`FVMConfig` fields.
+        :class:`FVMSetup` fields.
         """
         from ..config.types import (
             BoundaryConfig,
-            FVMConfig,
+            FVMSetup,
             TimeConfig,
             TransportConfig,
             TurbulenceConfig,
@@ -593,7 +592,7 @@ class Solver(OFWInterfaceMixin):
         turbulence_path = os.path.join(case_dir, "constant", "turbulenceProperties")
 
         schemes, linear, pimple, forces = solver_configs_from_case(case_dir)
-        cfg = FVMConfig(
+        cfg = FVMSetup(
             case_name=os.path.basename(case_dir.rstrip("/")) or "case",
             time=TimeConfig.from_control_dict(case_dir),
             schemes=schemes,
@@ -613,7 +612,7 @@ class Solver(OFWInterfaceMixin):
         valid_overrides = set(cfg.__dataclass_fields__)
         unknown = sorted(set(overrides) - valid_overrides)
         if unknown:
-            raise TypeError(f"Unknown FVMConfig override(s): {', '.join(unknown)}")
+            raise TypeError(f"Unknown FVMSetup override(s): {', '.join(unknown)}")
         for key, val in overrides.items():
             setattr(cfg, key, val)
         return cls(cfg, case_dir=case_dir)
@@ -669,8 +668,8 @@ class Solver(OFWInterfaceMixin):
         """Initialise velocity (U), pressure (p), and flux (phi) fields.
 
         Loads or creates the initial fields, enforces boundary constraints
-        on the velocity ghost layer, and computes the initial mass-flow
-        rate ``phi`` from the velocity field.
+        on the velocity ghost layer, and computes the initial volumetric face
+        flux ``phi = U·Sf`` from the velocity field.
         """
         n_elements = self.mesh_data["n_elements"]
         n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_elements
@@ -690,7 +689,7 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("Flux Init")
         from ..assemble import convection
 
-        self.phi = convection.compute_mass_flow_rate(self.U, self.mesh_data, self.geo_data)
+        self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
         logging.Timer.log("Flux Init", sink=self.logger, detailed=True)
 
     def _initialize_algorithm(self):
@@ -707,7 +706,7 @@ class Solver(OFWInterfaceMixin):
         logging.Timer.start("Algorithm Init")
         params = dict(self.config.algorithm_params())
         params["_linear_backend"] = self.config.execution.linear_backend
-        params["_operator_backend"] = self.operators.name
+        params["_operator_backend"] = self.operator_backend
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
         algo = self.config.pimple.algorithm.upper()
@@ -737,7 +736,7 @@ class Solver(OFWInterfaceMixin):
         if self.parallel.is_partitioned:
             raise NotImplementedError(
                 "set_initial_velocity is not defined for distributed ownership; provide "
-                "FVMConfig.initial_U before constructing the partitioned solver"
+                "FVMSetup.initial_U before constructing the partitioned solver"
             )
 
         n_elements = self.mesh_data["n_elements"]
@@ -757,7 +756,7 @@ class Solver(OFWInterfaceMixin):
         from ..assemble import convection
         from ..solve import simple_solver
 
-        self.phi = convection.compute_mass_flow_rate(self.U, self.mesh_data, self.geo_data)
+        self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
         self.state = FieldState(self.U, self.p, self.phi)
         simple_solver.update_scalar_boundaries(
             self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi

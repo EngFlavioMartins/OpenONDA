@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from source.solvers.FVM.assemble import diffusion, matrix_assembly
-from source.solvers.FVM.fields.gradients import compute_gradient_lsq_vectorized
+from source.solvers.FVM.fields.gradients import compute_lsq_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
@@ -35,7 +35,7 @@ def _solve_poisson(mesh):
     volumes = geo["element_volumes"]
 
     for _ in range(80):
-        gradient = compute_gradient_lsq_vectorized(field, mesh, geo)
+        gradient = compute_lsq_gradient(field, mesh, geo)
         flux = diffusion.assemble_diffusion_term(
             field, gradient, np.ones(n_cells), mesh, geo, mesh["boundary"]
         )

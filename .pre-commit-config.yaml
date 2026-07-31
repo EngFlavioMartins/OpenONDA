@@ -36,7 +36,7 @@ repos:
         additional_dependencies: ["vulture>=2"]
         types: [python]
         pass_filenames: false
-        args: [source/solvers/VPM, --min-confidence, "90"]
+        args: [source/solvers/FVM, source/solvers/VPM, --min-confidence, "90"]
 
   # ── Security audit (report only) ─────────────────────────────────────────────
   - repo: local
@@ -50,6 +50,7 @@ repos:
         pass_filenames: false
         args:
           - -r
+          - source/solvers/FVM
           - source/solvers/VPM
           - --skip
           - B101       # assert_used (fine in tests and physics kernels)

@@ -3,7 +3,7 @@
 import numpy as np
 
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 
 from ._structured_mesh import structured_box
@@ -24,7 +24,7 @@ def test_no_slip_diffusion_does_not_trust_stale_ghost_value():
     wall = mesh["boundary"][0]
     wall["bc_type_U"] = "noSlip"
 
-    grad = compute_gradient_gauss_linear_vectorized(field, mesh, geo)
+    grad = compute_gauss_gradient(field, mesh, geo)
     flux = assemble_diffusion_term(
         field, grad, np.ones(mesh["n_elements"]), mesh, geo, mesh["boundary"]
     )
@@ -45,7 +45,7 @@ def test_inlet_outlet_diffusion_acts_only_on_inflow_faces():
     indices = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
     face_flux[indices] = -1.0
 
-    grad = compute_gradient_gauss_linear_vectorized(field, mesh, geo)
+    grad = compute_gauss_gradient(field, mesh, geo)
     inflow = assemble_diffusion_term(
         field,
         grad,

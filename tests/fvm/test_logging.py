@@ -10,7 +10,7 @@ from scipy import sparse
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -24,8 +24,8 @@ from source.solvers.FVM.solve import linear_interface
 from ._structured_mesh import structured_box
 
 
-def _logging_config() -> FVMConfig:
-    return FVMConfig(
+def _logging_config() -> FVMSetup:
+    return FVMSetup(
         case_name="logging-contract",
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),

@@ -68,14 +68,27 @@ def validate_topology(mesh_data):
     )
 
     n_points = points.shape[0]
-    for i, face in enumerate(faces):
-        nodes = np.asarray(face)
-        _require(nodes.ndim == 1 and len(nodes) >= 3, f"Face {i} has fewer than three nodes")
-        _require(len(np.unique(nodes)) == len(nodes), f"Face {i} repeats a node")
-        _require(
-            np.all((nodes >= 0) & (nodes < n_points)),
-            f"Face {i} contains a point index outside [0, {n_points})",
-        )
+    try:
+        face_nodes = np.asarray(faces)
+    except ValueError:
+        face_nodes = np.asarray(faces, dtype=object)
+    if face_nodes.ndim == 2 and np.issubdtype(face_nodes.dtype, np.integer):
+        _require(face_nodes.shape[1] >= 3, "Mesh faces must have at least three nodes")
+        invalid = np.flatnonzero((face_nodes < 0) | (face_nodes >= n_points))
+        _require(not invalid.size, "Mesh contains a face-node index outside the point range")
+        repeated = np.any(np.diff(np.sort(face_nodes, axis=1), axis=1) == 0, axis=1)
+        duplicate_faces = np.flatnonzero(repeated)
+        if duplicate_faces.size:
+            raise MeshValidationError(f"Face {int(duplicate_faces[0])} repeats a node")
+    else:
+        for i, face in enumerate(faces):
+            nodes = np.asarray(face)
+            _require(nodes.ndim == 1 and len(nodes) >= 3, f"Face {i} has fewer than three nodes")
+            _require(len(np.unique(nodes)) == len(nodes), f"Face {i} repeats a node")
+            _require(
+                np.all((nodes >= 0) & (nodes < n_points)),
+                f"Face {i} contains a point index outside [0, {n_points})",
+            )
 
     expected_start = n_internal
     seen_names = set()

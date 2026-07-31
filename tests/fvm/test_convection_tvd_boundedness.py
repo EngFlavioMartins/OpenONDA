@@ -13,12 +13,15 @@ oscillation-free where central is not.
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import (
+    assemble_convection_term,
+    compute_volumetric_face_flux,
+)
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.schemes.limiters import apply_limiter
 
@@ -36,7 +39,7 @@ def _setup():
 
     # Uniform +x advection; ghosts included.
     U = np.tile([1.0, 0.0, 0.0], (n_elem + mesh["n_faces"] - n_int, 1)).astype(float)
-    mdot = compute_mass_flow_rate(U, mesh, geo)
+    mdot = compute_volumetric_face_flux(U, mesh, geo)
 
     # Step initial field: 1 upstream (x<0.5), 0 downstream.
     phi = np.zeros(n_elem + mesh["n_faces"] - n_int)
@@ -58,7 +61,7 @@ def _setup():
 def _one_explicit_step(mesh, geo, mdot, phi, scheme, cfl=0.5):
     n_elem = mesh["n_elements"]
     vol = geo["element_volumes"]
-    grad = compute_gradient_gauss_linear_vectorized(phi, mesh, geo)[:, :, 0]
+    grad = compute_gauss_gradient(phi, mesh, geo)[:, :, 0]
     conv = assemble_convection_term(
         phi, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
     )

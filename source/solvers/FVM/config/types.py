@@ -283,7 +283,8 @@ class BoundaryConfig:
 
         Args:
             name: Patch name (e.g. ``"outlet"``).
-            p:    Prescribed static pressure (default 0.0).
+            p: Prescribed kinematic pressure ``p/ρ`` [m²/s²]. Defaults
+                to 0.0. Do not supply pressure in pascals.
 
         Returns:
             A new :class:`BoundaryConfig` suitable for outflow boundaries.
@@ -518,16 +519,11 @@ class MeshConfig:
 
 @dataclass
 class TimeConfig:
-    """Temporal control for the simulation run.
+    """Time integration and output cadence.
 
-    Defines the time-step size, total run duration, output frequency, and
-    optional adaptive time-stepping with CFL-based adjustment.  The solver
-    advances from ``start_time`` to ``end_time`` in increments of ``delta_t``
-    (or less when ``adjust_timestep`` is enabled).
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 4.3 ``controlDict``
+    Times are in seconds. ``write_interval`` counts solver steps;
+    ``write_interval_time`` is a physical-time interval. Set
+    ``adjust_timestep=True`` to enforce ``max_cfl``.
 
     Examples
     --------
@@ -611,25 +607,10 @@ class TimeConfig:
 
 @dataclass
 class SchemesConfig:
-    """Numerical discretisation schemes for the finite-volume solver.
+    """Spatial and temporal discretisation, analogous to ``fvSchemes``.
 
-    Selects the interpolation and derivative operators used to approximate
-    the convection, gradient, and time-advancement terms in the governing
-    equations.  The mapping from these user-facing names to internal dispatch
-    follows the conventions established by OpenFOAM's ``fvSchemes`` dictionary.
-
-    The choice of schemes has a direct impact on accuracy, numerical stability,
-    and the effective dissipation of the solver.  Low-dissipation schemes
-    (``LUST``, ``central``) are recommended for LES and DNS, while bounded
-    upwind-biased schemes (``limitedLinear``, ``upwind``) improve robustness on
-    coarse or low-quality meshes.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 4.4 ``fvSchemes``
-    - Jasak, H. "Error Analysis and Estimation for the Finite Volume
-      Method with Applications to Fluid Flows." PhD thesis, Imperial
-      College London, 1996.
+    ``LUST`` is the production LES/DNS choice. ``limitedLinear`` or
+    ``upwind`` is more dissipative and useful for difficult coarse meshes.
 
     Examples
     --------
@@ -654,20 +635,11 @@ class SchemesConfig:
 
 @dataclass
 class LinearSolverConfig:
-    """Linear-system solver settings for momentum and pressure.
+    """Momentum and pressure linear solvers, analogous to ``fvSolution``.
 
-    Mirrors the ``solvers`` sub-dictionary of an OpenFOAM ``fvSolution`` file.
-    Separate tolerances and iteration limits can be set for the momentum
-    (velocity) and pressure (Poisson) equations.
-
-    The pressure solve supports algebraic multigrid (AMG) preconditioning via
-    ``pyamg``; ILU preconditioning with optional reuse is available for the
-    momentum equation.  A ``direct_fallback`` failure policy allows the solver
-    to degrade gracefully when iterative convergence fails.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 4.5 ``fvSolution``
+    Tolerances are dimensionless relative residuals. Iteration limits are
+    per component and pressure correction. ``amg`` uses PyAMG in serial and
+    PETSc GAMG in partitioned runs.
 
     Examples
     --------
@@ -694,10 +666,10 @@ class LinearSolverConfig:
 
 @dataclass
 class PimpleControl:
-    """Pressure-velocity coupling — OpenFOAM ``fvSolution/PIMPLE`` (or SIMPLE).
+    """PIMPLE, PISO, or SIMPLE pressure-velocity coupling.
 
-    Under-relaxation defaults to 1.0 (transient PIMPLE); set alpha_u=0.7,
-    alpha_p=0.3 for steady SIMPLE.
+    Corrector counts are dimensionless. Relaxation factors lie in ``(0, 1]``;
+    transient PIMPLE normally uses 1.0.
     """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
@@ -717,13 +689,10 @@ class PimpleControl:
 
 @dataclass
 class ForcesConfig:
-    """Force, moment, and y+ diagnostics for wall patches.
+    """Wall loads and y+ diagnostics, analogous to OpenFOAM function objects.
 
-    Corresponds to the OpenFOAM ``functionObjects/forces`` and
-    ``functionObjects/yPlus`` utilities.  Forces are integrated over the
-    specified ``force_patches`` and non-dimensionalised with the reference
-    velocity, area, and length.  A separate ``yplus_patches`` list controls
-    which patches produce wall-distance and y+ output.
+    ``ref_velocity`` is in m/s, ``ref_area`` in m², ``ref_length`` and
+    ``moment_centre`` in m. Pressure and viscous traction are both integrated.
 
     Examples
     --------
@@ -775,158 +744,151 @@ def solver_configs_from_case(
         defaults.update(vars(group))
     params = SimpleNamespace(**defaults)
 
-    if True:
-        system_dir = _resolve_system_dir(path)
-        control = os.path.join(system_dir, "controlDict")
-        fvsolution = os.path.join(system_dir, "fvSolution")
-        fvschemes = os.path.join(system_dir, "fvSchemes")
-        if os.path.exists(control):
-            data = parse_simple_dictionary(control)
-            dt = data.get("deltaT")
-            dt_value = _extract_foam_number(dt)
-            if dt_value is not None:
-                params.time_scheme = "euler_implicit" if dt_value > 0 else params.time_scheme
-            with open(control) as f:
-                content = f.read()
-            patches = _parse_yplus_patches(content)
-            if patches:
-                params.yplus_patches = patches
-        if not os.path.exists(fvsolution):
-            raise FileNotFoundError(f"fvSolution not found: {fvsolution}")
-        if not os.path.exists(fvschemes):
-            raise FileNotFoundError(f"fvSchemes not found: {fvschemes}")
+    system_dir = _resolve_system_dir(path)
+    control = os.path.join(system_dir, "controlDict")
+    fvsolution = os.path.join(system_dir, "fvSolution")
+    fvschemes = os.path.join(system_dir, "fvSchemes")
+    if os.path.exists(control):
+        data = parse_simple_dictionary(control)
+        dt = data.get("deltaT")
+        dt_value = _extract_foam_number(dt)
+        if dt_value is not None:
+            params.time_scheme = "euler_implicit" if dt_value > 0 else params.time_scheme
+        with open(control) as f:
+            content = f.read()
+        patches = _parse_yplus_patches(content)
+        if patches:
+            params.yplus_patches = patches
+    if not os.path.exists(fvsolution):
+        raise FileNotFoundError(f"fvSolution not found: {fvsolution}")
+    if not os.path.exists(fvschemes):
+        raise FileNotFoundError(f"fvSchemes not found: {fvschemes}")
 
-        from ..fields.field_io import _extract_braced_block, _strip_comments
+    from ..fields.field_io import _extract_braced_block, _strip_comments
 
-        with open(fvsolution) as f:
-            content = _strip_comments(f.read())
+    with open(fvsolution) as f:
+        content = _strip_comments(f.read())
 
-        algorithm_blocks = []
-        for algorithm in ("PIMPLE", "PISO", "SIMPLE"):
-            try:
-                body = _extract_braced_block(content, algorithm)
-            except ValueError:
-                continue
-            algorithm_blocks.append((algorithm, body))
-        if len(algorithm_blocks) != 1:
-            names = ", ".join(name for name, _ in algorithm_blocks)
-            detail = f"found {names}" if names else "found none"
-            raise ValueError(
-                f"fvSolution must define exactly one PIMPLE/PISO/SIMPLE block; {detail}"
-            )
-        algorithm, body = algorithm_blocks[0]
-        params.algorithm = algorithm
-        entries = {key: value.strip() for key, value in re.findall(r"(\w+)\s+([^;{}]+);", body)}
-        if "nCorrectors" in entries:
-            params.n_correctors = int(entries["nCorrectors"])
-        if "nOuterCorrectors" in entries:
-            params.n_outer_correctors = int(entries["nOuterCorrectors"])
-        if "nNonOrthogonalCorrectors" in entries:
-            params.n_orthogonal_correctors = int(entries["nNonOrthogonalCorrectors"])
-
+    algorithm_blocks = []
+    for algorithm in ("PIMPLE", "PISO", "SIMPLE"):
         try:
-            solvers_body = _extract_braced_block(content, "solvers")
-        except ValueError as error:
-            raise ValueError(f"fvSolution {fvsolution!r} has no solvers dictionary") from error
+            body = _extract_braced_block(content, algorithm)
+        except ValueError:
+            continue
+        algorithm_blocks.append((algorithm, body))
+    if len(algorithm_blocks) != 1:
+        names = ", ".join(name for name, _ in algorithm_blocks)
+        detail = f"found {names}" if names else "found none"
+        raise ValueError(f"fvSolution must define exactly one PIMPLE/PISO/SIMPLE block; {detail}")
+    algorithm, body = algorithm_blocks[0]
+    params.algorithm = algorithm
+    entries = {key: value.strip() for key, value in re.findall(r"(\w+)\s+([^;{}]+);", body)}
+    if "nCorrectors" in entries:
+        params.n_correctors = int(entries["nCorrectors"])
+    if "nOuterCorrectors" in entries:
+        params.n_outer_correctors = int(entries["nOuterCorrectors"])
+    if "nNonOrthogonalCorrectors" in entries:
+        params.n_orthogonal_correctors = int(entries["nNonOrthogonalCorrectors"])
 
-        selected = {}
-        for unsupported_name in ("UFinal", "pFinal"):
-            try:
-                _extract_braced_block(solvers_body, unsupported_name)
-            except ValueError:
-                continue
-            raise ValueError(
-                f"fvSolution entry {unsupported_name!r} is unsupported because the Python "
-                "solver has no separate final linear-solve stage"
-            )
-        for field_name, attribute in (("U", "momentum_solver"), ("p", "pressure_solver")):
-            try:
-                field_body = _extract_braced_block(solvers_body, field_name)
-            except ValueError:
-                continue
-            solver_match = re.search(r"\bsolver\s+(\w+)\s*;", field_body)
-            if solver_match is None:
-                raise ValueError(f"fvSolution solver entry {field_name!r} has no solver method")
-            method = _normalise_openfoam_linear_solver(solver_match.group(1), field_name)
-            setattr(params, attribute, method)
-            selected[field_name] = method
-            tolerance_match = re.search(
-                r"\btolerance\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
-            )
-            if tolerance_match:
-                setattr(
-                    params,
-                    "momentum_tol" if field_name == "U" else "pressure_tol",
-                    float(tolerance_match.group(1)),
-                )
-            reltol_match = re.search(
-                r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
-            )
-            if reltol_match and float(reltol_match.group(1)) != 0.0:
-                raise ValueError(
-                    f"fvSolution {field_name} relTol is unsupported; set relTol 0 and use tolerance"
-                )
-            maxiter_match = re.search(r"\bmaxIter\s+(\d+)\s*;", field_body)
-            if maxiter_match:
-                setattr(
-                    params,
-                    "momentum_maxiter" if field_name == "U" else "pressure_maxiter",
-                    int(maxiter_match.group(1)),
-                )
-        missing_solvers = sorted({"U", "p"} - set(selected))
-        if missing_solvers:
-            raise ValueError(
-                f"fvSolution must define explicit solver blocks for: {', '.join(missing_solvers)}"
-            )
-        params.linear_solver = selected["U"]
+    try:
+        solvers_body = _extract_braced_block(content, "solvers")
+    except ValueError as error:
+        raise ValueError(f"fvSolution {fvsolution!r} has no solvers dictionary") from error
 
-        with open(fvschemes) as f:
-            schemes_content = _strip_comments(f.read())
+    selected = {}
+    for unsupported_name in ("UFinal", "pFinal"):
         try:
-            ddt_body = _extract_braced_block(schemes_content, "ddtSchemes")
-            grad_body = _extract_braced_block(schemes_content, "gradSchemes")
-            div_body = _extract_braced_block(schemes_content, "divSchemes")
-        except ValueError as error:
-            raise ValueError(
-                f"fvSchemes {fvschemes!r} is missing a required scheme block"
-            ) from error
-
-        ddt_match = re.search(r"\bdefault\s+([^;]+);", ddt_body)
-        grad_match = re.search(r"\bdefault\s+([^;]+);", grad_body)
-        div_match = re.search(r"div\s*\(\s*phi\s*,\s*U\s*\)\s+([^;]+);", div_body)
-        if ddt_match is None or grad_match is None or div_match is None:
-            raise ValueError(
-                "fvSchemes must define ddtSchemes/default, gradSchemes/default, "
-                "and divSchemes/div(phi,U)"
+            _extract_braced_block(solvers_body, unsupported_name)
+        except ValueError:
+            continue
+        raise ValueError(
+            f"fvSolution entry {unsupported_name!r} is unsupported because the Python "
+            "solver has no separate final linear-solve stage"
+        )
+    for field_name, attribute in (("U", "momentum_solver"), ("p", "pressure_solver")):
+        try:
+            field_body = _extract_braced_block(solvers_body, field_name)
+        except ValueError:
+            continue
+        solver_match = re.search(r"\bsolver\s+(\w+)\s*;", field_body)
+        if solver_match is None:
+            raise ValueError(f"fvSolution solver entry {field_name!r} has no solver method")
+        method = _normalise_openfoam_linear_solver(solver_match.group(1), field_name)
+        setattr(params, attribute, method)
+        selected[field_name] = method
+        tolerance_match = re.search(
+            r"\btolerance\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
+        )
+        if tolerance_match:
+            setattr(
+                params,
+                "momentum_tol" if field_name == "U" else "pressure_tol",
+                float(tolerance_match.group(1)),
             )
-        params.time_scheme = _find_supported_scheme(
-            ddt_match.group(1),
-            {"euler": "euler_implicit", "backward": "backward"},
-            "time",
+        reltol_match = re.search(r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body)
+        if reltol_match and float(reltol_match.group(1)) != 0.0:
+            raise ValueError(
+                f"fvSolution {field_name} relTol is unsupported; set relTol 0 and use tolerance"
+            )
+        maxiter_match = re.search(r"\bmaxIter\s+(\d+)\s*;", field_body)
+        if maxiter_match:
+            setattr(
+                params,
+                "momentum_maxiter" if field_name == "U" else "pressure_maxiter",
+                int(maxiter_match.group(1)),
+            )
+    missing_solvers = sorted({"U", "p"} - set(selected))
+    if missing_solvers:
+        raise ValueError(
+            f"fvSolution must define explicit solver blocks for: {', '.join(missing_solvers)}"
         )
-        params.gradient_scheme = _find_supported_scheme(
-            grad_match.group(1),
-            {"linear": "gauss", "leastsquares": "lsq"},
-            "gradient",
-            {"gauss"},
+    params.linear_solver = selected["U"]
+
+    with open(fvschemes) as f:
+        schemes_content = _strip_comments(f.read())
+    try:
+        ddt_body = _extract_braced_block(schemes_content, "ddtSchemes")
+        grad_body = _extract_braced_block(schemes_content, "gradSchemes")
+        div_body = _extract_braced_block(schemes_content, "divSchemes")
+    except ValueError as error:
+        raise ValueError(f"fvSchemes {fvschemes!r} is missing a required scheme block") from error
+
+    ddt_match = re.search(r"\bdefault\s+([^;]+);", ddt_body)
+    grad_match = re.search(r"\bdefault\s+([^;]+);", grad_body)
+    div_match = re.search(r"div\s*\(\s*phi\s*,\s*U\s*\)\s+([^;]+);", div_body)
+    if ddt_match is None or grad_match is None or div_match is None:
+        raise ValueError(
+            "fvSchemes must define ddtSchemes/default, gradSchemes/default, "
+            "and divSchemes/div(phi,U)"
         )
-        params.convection_scheme = _find_supported_scheme(
-            div_match.group(1),
-            {
-                "upwind": "upwind",
-                "linear": "central",
-                "limitedlinear": "limitedLinear",
-                "lust": "LUST",
-                "linearupwind": "linearUpwind",
-                "vanleer": "vanLeer",
-                "muscl": "MUSCL",
-                "minmod": "minmod",
-                "superbee": "superbee",
-            },
-            "convection",
-            {"bounded", "gauss"},
-        )
-        return _groups_from_flat(vars(params))
+    params.time_scheme = _find_supported_scheme(
+        ddt_match.group(1),
+        {"euler": "euler_implicit", "backward": "backward"},
+        "time",
+    )
+    params.gradient_scheme = _find_supported_scheme(
+        grad_match.group(1),
+        {"linear": "gauss", "leastsquares": "lsq"},
+        "gradient",
+        {"gauss"},
+    )
+    params.convection_scheme = _find_supported_scheme(
+        div_match.group(1),
+        {
+            "upwind": "upwind",
+            "linear": "central",
+            "limitedlinear": "limitedLinear",
+            "lust": "LUST",
+            "linearupwind": "linearUpwind",
+            "vanleer": "vanLeer",
+            "muscl": "MUSCL",
+            "minmod": "minmod",
+            "superbee": "superbee",
+        },
+        "convection",
+        {"bounded", "gauss"},
+    )
+    return _groups_from_flat(vars(params))
 
 
 @dataclass
@@ -941,6 +903,11 @@ class TransportConfig:
     the freestream velocity and a reference length:
 
         Re = U_ref * L_ref / nu
+
+    The flow equations use kinematic pressure ``p/ρ`` and volumetric face
+    flux, so a spatially constant density cancels from velocity/pressure
+    evolution. ``density`` converts kinematic pressure and viscosity to
+    dimensional surface forces.
 
     References
     ----------
@@ -1179,18 +1146,16 @@ class TurbulenceConfig:
 
 @dataclass
 class ExecutionConfig:
-    """Execution and sparse-linear-algebra backend selection.
+    """Sparse assembly, linear algebra, and output execution.
 
     ``petsc_partitioned`` stores owned cells plus one halo layer per rank and
-    assembles only owned PETSc rows. ``petsc_replicated`` remains available as
-    a compatibility/reference mode.
+    assembles only owned PETSc rows. The FVM state is always float64 on CPU;
+    ``OutputSetup.precision`` independently controls visualization storage.
     """
 
     operator_backend: Literal["numpy", "numba", "taichi"] = "numpy"
     linear_backend: Literal["scipy", "petsc"] = "scipy"
     parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
-    device: Literal["cpu", "cuda", "metal", "vulkan"] = "cpu"
-    precision: Literal["float32", "float64"] = "float64"
     output_mode: Literal["synchronous", "threaded"] = "synchronous"
 
     @staticmethod
@@ -1224,7 +1189,7 @@ class OutputSetup:
     data_location: Literal["cell"] = "cell"
     encoding: Literal["appended"] = "appended"
     compression: Literal["lz4", "none", "zlib"] = "lz4"
-    precision: Literal["float64"] = "float64"
+    precision: Literal["float32", "float64"] = "float64"
     asynchronous: bool = True
     ghost_layers: Literal[0, 1] = 1
     point_interpolation: Literal["none", "boundary_weighted"] = "none"
@@ -1294,9 +1259,9 @@ class FVMSetup:
     case_name: str
     cores: int = 1
     mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
-    execution: "ExecutionConfig" = field(default_factory=lambda: ExecutionConfig())
-    output: "OutputSetup" = field(default_factory=lambda: OutputSetup())
-    acceptance: "RunAcceptancePolicy" = field(default_factory=lambda: RunAcceptancePolicy())
+    execution: "ExecutionConfig" = field(default_factory=ExecutionConfig)
+    output: "OutputSetup" = field(default_factory=OutputSetup)
+    acceptance: "RunAcceptancePolicy" = field(default_factory=RunAcceptancePolicy)
     time: TimeConfig = field(default_factory=TimeConfig)
     schemes: SchemesConfig = field(default_factory=SchemesConfig)
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
@@ -1370,9 +1335,6 @@ class FVMSetup:
         time = TimeConfig(**time_data)
         dynamic_mesh = DynamicMeshConfig(**dynamic_mesh_data)
 
-        # Dataclass defaults provide backward compatibility for fields absent
-        # from old files.  Passing the complete dictionary preserves every
-        # supported setting and rejects misspelled or obsolete keys.
         transport = TransportConfig(**transport_data)
         boundaries = [BoundaryConfig(**b) for b in data.get("boundaries", [])]
         turbulence = TurbulenceConfig(**turbulence_data) if turbulence_data else None
@@ -1396,7 +1358,3 @@ class FVMSetup:
             initial_U=data.get("initial_U", [0.0, 0.0, 0.0]),
             initial_p=data.get("initial_p", 0.0),
         )
-
-
-# Backward-compatible name for existing cases and serialized configurations.
-FVMConfig = FVMSetup

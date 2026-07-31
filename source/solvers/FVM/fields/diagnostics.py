@@ -20,9 +20,9 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     Co = 0.5 * dt * sum(|phi_f|) / V_c
 
     Args:
-        U: Velocity field (not strictly needed if phi is provided)
-        phi: Face mass flux (rho*U.Sf)
-        dt: Time step
+        U: Velocity field [m/s] (unused; retained for API compatibility).
+        phi: Face volumetric flux ``U·Sf`` [m³/s], shape ``(n_faces,)``.
+        dt: Time-step size [s].
         mesh_data: Mesh connectivity
         geo_data: Geometric data
 
@@ -33,7 +33,9 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
-    volumes = geo_data["element_volumes"]
+    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+    if not np.all(np.isfinite(volumes)) or np.any(volumes <= 0.0):
+        raise ValueError("element volumes must be finite and positive")
 
     # Absolute flux
     abs_phi = np.abs(phi)
@@ -49,7 +51,7 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     np.add.at(Co, owners[n_interior:], abs_phi[n_interior:])
 
     # Final scaling
-    Co = 0.5 * dt * Co / (volumes + 1e-12)
+    Co = 0.5 * dt * Co / volumes
 
     return Co
 
@@ -63,7 +65,7 @@ def compute_continuity_error(phi, mesh_data, geo_data):
     max|residual / V|.
 
     Args:
-        phi: Face volumetric/mass flux (U·Sf), length n_faces.
+        phi: Face volumetric flux ``U·Sf`` [m³/s], length n_faces.
         mesh_data: Mesh connectivity.
         geo_data: Geometric data (unused; kept for signature parity).
 
@@ -239,7 +241,8 @@ def _compute_face_viscous_forces(
     dev_two_symm[:, diagonal, diagonal] -= (2.0 / 3.0) * divergence[:, None]
 
     t_faces = np.einsum("fij,fj->fi", dev_two_symm, n_vec)
-    mu_face = float(mu) if np.isscalar(mu) else np.asarray(mu)[owners_idx, None]
+    mu_values = np.asarray(mu, dtype=np.float64)
+    mu_face = float(mu_values.item()) if mu_values.ndim == 0 else mu_values[owners_idx, None]
     t_faces = t_faces * mu_face
     return t_faces * mag_Sf[:, np.newaxis]
 
@@ -279,8 +282,9 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
     Compute y+ for wall boundaries and return statistics.
 
     Args:
-        U: Velocity field
-        nu: Kinematic viscosity (scalar or field)
+        U: Cell-centred velocity [m/s], shape ``(n_cells_with_ghosts, 3)``.
+        nu: Positive kinematic viscosity [m²/s], either a scalar or one
+            value per interior cell.
         mesh_data: Mesh connectivity
         geo_data: Geometric data
         boundaries: Boundary list
@@ -296,8 +300,20 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
     if patch_names is not None and len(patch_names) == 0:
         return {}
 
-    # Ensure nu is reachable
-    nu_val = nu if isinstance(nu, float | int) else np.mean(nu)
+    nu_values = np.asarray(nu, dtype=np.float64)
+    if nu_values.ndim == 0:
+        if not np.isfinite(nu_values) or nu_values <= 0.0:
+            raise ValueError("nu must be finite and positive")
+        cell_nu = None
+        scalar_nu = float(nu_values)
+    else:
+        n_elements = mesh_data["n_elements"]
+        if nu_values.ndim != 1 or len(nu_values) < n_elements:
+            raise ValueError(f"nu must be scalar or contain at least {n_elements} cell values")
+        cell_nu = nu_values[:n_elements]
+        if not np.all(np.isfinite(cell_nu)) or np.any(cell_nu <= 0.0):
+            raise ValueError("nu must contain finite positive values")
+        scalar_nu = None
 
     y_plus_stats = {}
 
@@ -319,12 +335,16 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
             # Fallback: CF vector projection
             cf_vec = geo_data["face_cf_vector"][idx]
             d = np.linalg.norm(cf_vec, axis=1)
+        if not np.all(np.isfinite(d)) or np.any(d <= 0.0):
+            raise ValueError(f"wall distance must be finite and positive on patch {name!r}")
 
         # 2. Velocity at cell center (tangential to wall)
         U_c = U[own]
         sf = geo_data["face_sf"][idx]
         mag_sf = np.linalg.norm(sf, axis=1)
-        n_vec = sf / (mag_sf[:, np.newaxis] + 1e-30)
+        if not np.all(np.isfinite(mag_sf)) or np.any(mag_sf <= 0.0):
+            raise ValueError(f"face areas must be finite and positive on patch {name!r}")
+        n_vec = sf / mag_sf[:, np.newaxis]
 
         # Normal velocity: Un = (U . n) * n
         U_n_mag = np.sum(U_c * n_vec, axis=1)
@@ -337,15 +357,16 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
         # 3. Wall Shear Stress (Assuming linear profile: du/dn = Ut/d)
         # tau_w = nu * rho * (Ut/d)
         # u_tau = sqrt(tau_w / rho) = sqrt(nu * Ut / d)
-        u_tau = np.sqrt(nu_val * U_t_mag / (d + 1e-12))
+        nu_wall = scalar_nu if cell_nu is None else cell_nu[own]
+        u_tau = np.sqrt(nu_wall * U_t_mag / d)
 
         # 4. y+ = u_tau * d / nu
-        y_plus = u_tau * d / (nu_val + 1e-12)
+        y_plus = u_tau * d / nu_wall
 
         y_plus_stats[name] = {
-            "min": np.min(y_plus),
-            "max": np.max(y_plus),
-            "avg": np.mean(y_plus),
+            "min": float(np.min(y_plus)),
+            "max": float(np.max(y_plus)),
+            "avg": float(np.mean(y_plus)),
             "nFaces": nf,
         }
 

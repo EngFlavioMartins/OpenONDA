@@ -221,14 +221,11 @@ class PartitionedLinearWorkspace:
         assert self.ksp is not None
 
         self.matrix.zeroEntries()
-        for local_row, global_row in enumerate(range(system.row_start, system.row_end)):
-            start, end = system.indptr[local_row : local_row + 2]
-            if end > start:
-                self.matrix.setValues(
-                    global_row,
-                    np.asarray(system.indices[start:end], dtype=PETSc.IntType),
-                    system.data[start:end],
-                )
+        self.matrix.setValuesCSR(
+            np.asarray(system.indptr, dtype=PETSc.IntType),
+            np.asarray(system.indices, dtype=PETSc.IntType),
+            system.data,
+        )
         self.matrix.assemblyBegin()
         self.matrix.assemblyEnd()
 
@@ -275,9 +272,6 @@ class PartitionedLinearWorkspace:
             uniform.destroy()
         self.ksp.setTolerances(rtol=rtol_eff, max_it=max_iterations)
         self.ksp.setInitialGuessNonzero(initial_guess is not None)
-        # Coefficients are dynamic.  PETSc's default KSP policy rebuilds the
-        # PC after a numeric matrix update; do not call version-specific API
-        # here merely to request the default.
         setup_seconds = time.perf_counter() - setup_start
 
         solve_start = time.perf_counter()
@@ -325,7 +319,7 @@ def solve_owned_rows(
     constant_nullspace: bool = False,
     initial_guess: np.ndarray | None = None,
 ):
-    """One-shot compatibility wrapper around a temporary workspace."""
+    """Solve one owned-row system without retaining a PETSc workspace."""
     workspace = PartitionedLinearWorkspace(context)
     try:
         return workspace.solve(

@@ -136,7 +136,7 @@ def test_cylinder_step_integration():
     drag, and a small no-slip error at the markers."""
     from source.solvers.FVM import (
         BoundaryConfig,
-        FVMConfig,
+        FVMSetup,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
@@ -146,7 +146,7 @@ def test_cylinder_step_integration():
     )
 
     m, _ = _mesh_2d(nx=60, ny=40, lx=6.0, ly=4.0)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="ibm_smoke",
         time=TimeConfig(delta_t=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
         schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
@@ -192,7 +192,7 @@ def test_cylinder_step_integration():
 def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     from source.solvers.FVM import (
         BoundaryConfig,
-        FVMConfig,
+        FVMSetup,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
@@ -202,7 +202,7 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     )
 
     mesh, _ = _mesh_2d(nx=20, ny=20)
-    config = FVMConfig(
+    config = FVMSetup(
         case_name="moving_ibm_rejected",
         time=TimeConfig.transient(dt=0.01, duration=0.01),
         schemes=SchemesConfig(),
@@ -231,7 +231,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     from source.solvers.FVM import (
         BoundaryConfig,
         ForcesConfig,
-        FVMConfig,
+        FVMSetup,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
@@ -265,7 +265,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
             ref_velocity=1.0,
             ref_area=h,
         )
-        return FVMConfig(
+        return FVMSetup(
             case_name="body-fitted" if with_square else "ibm",
             time=TimeConfig.transient(dt=0.02, duration=0.16, write_interval=1000),
             schemes=schemes,

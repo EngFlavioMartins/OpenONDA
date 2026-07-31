@@ -1,13 +1,16 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.convection import assemble_convection_term, compute_mass_flow_rate
+from source.solvers.FVM.assemble.convection import (
+    assemble_convection_term,
+    compute_volumetric_face_flux,
+)
 from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
 from source.solvers.FVM.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gradient_gauss_linear_vectorized
+from source.solvers.FVM.fields.gradients import compute_gauss_gradient
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
@@ -111,10 +114,10 @@ class TestMMSSteadyAdvectionDiffusion:
             U_field = np.tile(U, (n_elem + n_bnd, 1))
 
             # Mass flow rate
-            mdot = compute_mass_flow_rate(U_field, mesh, geo)
+            mdot = compute_volumetric_face_flux(U_field, mesh, geo)
 
             # Diffusion
-            grad_phi = compute_gradient_gauss_linear_vectorized(phi, mesh, geo)
+            grad_phi = compute_gauss_gradient(phi, mesh, geo)
             gamma = nu * np.ones(n_elem)
             diff_flux = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
 

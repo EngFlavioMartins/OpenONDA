@@ -8,7 +8,7 @@ import numpy as np
 
 
 def _readonly(values, dtype=None):
-    result = np.ascontiguousarray(values, dtype=dtype)
+    result = np.ascontiguousarray(values, dtype=dtype).view()
     result.setflags(write=False)
     return result
 
@@ -127,7 +127,11 @@ class MeshTopology:
 
     @classmethod
     def from_mesh_data(cls, mesh_data) -> MeshTopology:
-        """Normalize the legacy mesh dictionary into immutable CSR-style arrays."""
+        """Normalize legacy mesh data into read-only CSR-style array views.
+
+        Already-contiguous arrays share memory with ``mesh_data`` without
+        making the source arrays read-only.
+        """
         faces = mesh_data["faces"]
         face_array = faces if isinstance(faces, np.ndarray) else None
         if face_array is not None and face_array.ndim == 2:
@@ -192,7 +196,7 @@ def get_element_faces(owners, neighbours, n_elements, n_faces):
     boundary faces and belong only to their owner cell.
     """
     n_interior_faces = len(neighbours)
-    element_faces = [[] for _ in range(n_elements)]
+    element_faces: list[list[int]] = [[] for _ in range(n_elements)]
 
     for face_index in range(n_interior_faces):
         owner = owners[face_index]

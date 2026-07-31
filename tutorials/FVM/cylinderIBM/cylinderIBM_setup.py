@@ -27,7 +27,7 @@ import numpy as np
 from assets.mesh_rectilinear import cylinder_ibm_mesh
 from openonda.fvm import (
     BoundaryConfig,
-    FVMConfig,
+    FVMSetup,
     Solver,
     ForcesConfig,
     LinearSolverConfig,
@@ -55,7 +55,7 @@ def build_config(args, depth):
         ref_velocity=args.u_inf, ref_area=args.diameter * depth, ref_length=args.diameter
     )
 
-    return FVMConfig(
+    return FVMSetup(
         case_name="cylinderIBM",
         time=TimeConfig(
             delta_t=args.initial_dt,
