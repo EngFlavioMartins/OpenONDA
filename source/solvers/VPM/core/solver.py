@@ -470,6 +470,8 @@ class Solver:
         self._filament_refinement_enstrophy_reference = None
         self._divergence_relaxation_diagnostics = {
             "relaxation_events": 0,
+            "relaxation_last_projection_sweeps": 0,
+            "relaxation_max_projection_sweeps": 0,
             "relaxation_last_iterations": 0,
             "relaxation_last_regularization": 0.0,
             "relaxation_last_trust_region_scale": 1.0,
@@ -2981,6 +2983,7 @@ class Solver:
             regularization=cfg.regularization,
             solver_rtol=cfg.solver_rtol,
             max_iterations=cfg.max_iterations,
+            max_projection_sweeps=cfg.max_projection_sweeps,
             max_grid_nodes=cfg.max_grid_nodes,
             max_correction_norm=cfg.max_correction_norm,
             max_residual_ratio=cfg.max_residual_ratio,
@@ -3344,6 +3347,7 @@ class Solver:
         self.set_particles_properties(strengths=uploaded_circulation)
         self._filament_reference_strengths = updated_reference
         self._last_divergence_relaxation = {
+            "projection_sweeps": result.projection_sweeps,
             "iterations": result.iterations,
             "regularization": result.regularization,
             "trust_region_scale": result.trust_region_scale,
@@ -3374,6 +3378,11 @@ class Solver:
             "direct_divergence_ratio": direct_divergence_ratio,
         }
         diagnostics["relaxation_events"] += 1
+        diagnostics["relaxation_last_projection_sweeps"] = result.projection_sweeps
+        diagnostics["relaxation_max_projection_sweeps"] = max(
+            diagnostics["relaxation_max_projection_sweeps"],
+            result.projection_sweeps,
+        )
         diagnostics["relaxation_last_iterations"] = result.iterations
         diagnostics["relaxation_last_regularization"] = result.regularization
         diagnostics["relaxation_last_trust_region_scale"] = result.trust_region_scale
@@ -3434,6 +3443,7 @@ class Solver:
         diagnostics["relaxation_direct_divergence_ratio"] = direct_divergence_ratio
         Logging.message(
             "[Divergence relaxation] "
+            f"sweeps={result.projection_sweeps}, "
             f"iterations={result.iterations}, "
             f"trust={result.trust_region_scale:.3e}, "
             f"restore_scale={restoration_scale:.3e}, "

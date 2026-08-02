@@ -19,7 +19,10 @@ circulation, linear impulse, and Gaussian-corrected angular impulse.  The
 divergence solve is restricted to the exact null space of those nine moments,
 and two independent null-space directions restore the quadratic kinetic energy
 and enstrophy exactly in the Fourier audit.  Helicity, total variation,
-correction size, and residual reduction are then hard acceptance gates.
+correction size, and residual reduction are then hard acceptance gates.  If
+one admissible sweep does not reach the global residual target, later sweeps
+are searched by amplitude and audited together as one atomic original-to-final
+transaction.
 """
 
 from __future__ import annotations
@@ -50,6 +53,7 @@ class DivergenceRelaxationResult:
 
     circulation: np.ndarray
     correction: np.ndarray
+    projection_sweeps: int
     iterations: int
     regularization: float
     trust_region_scale: float
@@ -509,6 +513,7 @@ def _constrained_divergence_relaxation_once(
         return DivergenceRelaxationResult(
             circulation=circulation.copy(),
             correction=np.zeros_like(circulation),
+            projection_sweeps=1,
             iterations=0,
             regularization=regularization,
             trust_region_scale=1.0,
@@ -925,6 +930,7 @@ def _constrained_divergence_relaxation_once(
     return DivergenceRelaxationResult(
         circulation=relaxed,
         correction=correction,
+        projection_sweeps=1,
         iterations=iterations,
         regularization=regularization,
         trust_region_scale=trust_region_scale,
@@ -954,7 +960,7 @@ def _constrained_divergence_relaxation_once(
     )
 
 
-def constrained_divergence_relaxation(
+def _constrained_divergence_relaxation_sweep(
     position: np.ndarray,
     circulation: np.ndarray,
     radius: np.ndarray,
@@ -975,12 +981,15 @@ def constrained_divergence_relaxation(
     reference_scales: tuple[float, float, float] | None = None,
     reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
     max_line_search_steps: int = 8,
+    initial_correction_scale: float = 1.0,
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> DivergenceRelaxationResult:
-    """Return one physics-gated correction, backtracking its amplitude if needed."""
+    """Return one monotone projection sweep, backtracking its amplitude if needed."""
 
     if max_line_search_steps < 1:
         raise ValueError("max_line_search_steps must be at least one")
+    if not 0.0 < initial_correction_scale <= 1.0:
+        raise ValueError("initial_correction_scale must lie in (0, 1]")
     scalable_gates = {
         "correction norm",
         "kinetic-energy transfer",
@@ -1015,7 +1024,7 @@ def constrained_divergence_relaxation(
                     spectral_convergence_fraction=spectral_convergence_fraction,
                     reference_scales=reference_scales,
                     reference_tolerances=reference_tolerances,
-                    correction_scale=0.5**divergence_attempt,
+                    correction_scale=initial_correction_scale * 0.5**divergence_attempt,
                     restoration_scale=0.5**restoration_attempt,
                     target_moments=target_moments,
                 )
@@ -1034,3 +1043,359 @@ def constrained_divergence_relaxation(
         f"amplitudes; last rejection: {last_error}",
         gate=last_error.gate,
     )
+
+
+def _combine_projection_sweeps(
+    position: np.ndarray,
+    circulation: np.ndarray,
+    radius: np.ndarray,
+    volume: np.ndarray,
+    sweeps: list[DivergenceRelaxationResult],
+    *,
+    grid_spacing: float,
+    regularization: float,
+    max_grid_nodes: int,
+    max_correction_norm: float,
+    max_residual_ratio: float,
+    energy_tolerance: float,
+    enstrophy_tolerance: float,
+    helicity_tolerance: float,
+    variation_tolerance: float,
+    spectral_convergence_fraction: float,
+    reference_scales: tuple[float, float, float] | None,
+    reference_tolerances: tuple[float, float, float],
+    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+) -> DivergenceRelaxationResult:
+    """Audit several monotone sweeps as one original-to-final transaction."""
+
+    relaxed = sweeps[-1].circulation
+    correction = relaxed - circulation
+    before_moments = gaussian_particle_moments(position, circulation, radius)
+    after_moments = gaussian_particle_moments(position, relaxed, radius)
+    if target_moments is None:
+        target_total = before_moments[0]
+        target_impulse = before_moments[2]
+        target_angular = before_moments[3]
+    else:
+        target_total, target_impulse, target_angular = (
+            np.asarray(value, dtype=np.float64) for value in target_moments
+        )
+
+    unrestored_fraction = float(
+        np.prod([1.0 - sweep.reference_restoration_scale for sweep in sweeps])
+    )
+    restoration_scale = 1.0 - unrestored_fraction
+    achieved_total = before_moments[0] + restoration_scale * (target_total - before_moments[0])
+    achieved_impulse = before_moments[2] + restoration_scale * (target_impulse - before_moments[2])
+    achieved_angular = before_moments[3] + restoration_scale * (target_angular - before_moments[3])
+    circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
+    linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
+    angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
+    circulation_error = float(np.linalg.norm(after_moments[0] - achieved_total))
+    linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
+    angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
+    circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
+    linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
+    angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
+    variation_change_relative = (after_moments[1] - before_moments[1]) / max(
+        before_moments[1], np.finfo(float).tiny
+    )
+
+    before_integrals = gaussian_fourier_integrals(
+        position,
+        circulation,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
+    after_integrals = gaussian_fourier_integrals(
+        position,
+        relaxed,
+        radius,
+        volume,
+        spacing=grid_spacing,
+    )
+    energy_change_relative = (after_integrals.energy - before_integrals.energy) / max(
+        abs(before_integrals.energy), np.finfo(float).tiny
+    )
+    enstrophy_change_relative = (after_integrals.enstrophy - before_integrals.enstrophy) / max(
+        abs(before_integrals.enstrophy), np.finfo(float).tiny
+    )
+    helicity_scale = np.sqrt(
+        max(
+            2.0 * abs(before_integrals.energy) * abs(before_integrals.enstrophy),
+            np.finfo(float).tiny,
+        )
+    )
+    helicity_change_relative = (
+        after_integrals.helicity - before_integrals.helicity
+    ) / helicity_scale
+    previous_energy_change = (
+        after_integrals.previous_order_energy - before_integrals.previous_order_energy
+    ) / max(abs(before_integrals.previous_order_energy), np.finfo(float).tiny)
+    previous_enstrophy_change = (
+        after_integrals.previous_order_enstrophy - before_integrals.previous_order_enstrophy
+    ) / max(abs(before_integrals.previous_order_enstrophy), np.finfo(float).tiny)
+    previous_helicity_scale = np.sqrt(
+        max(
+            2.0
+            * abs(before_integrals.previous_order_energy)
+            * abs(before_integrals.previous_order_enstrophy),
+            np.finfo(float).tiny,
+        )
+    )
+    previous_helicity_change = (
+        after_integrals.previous_order_helicity - before_integrals.previous_order_helicity
+    ) / previous_helicity_scale
+    energy_spectral_error = abs(energy_change_relative - previous_energy_change)
+    enstrophy_spectral_error = abs(enstrophy_change_relative - previous_enstrophy_change)
+    helicity_spectral_error = abs(helicity_change_relative - previous_helicity_change)
+
+    circulation_norm = max(float(np.linalg.norm(circulation)), np.finfo(float).tiny)
+    correction_norm_relative = float(np.linalg.norm(correction) / circulation_norm)
+    operator = GaussianParticleGridOperator(
+        position,
+        radius,
+        np.linalg.norm(circulation, axis=1),
+        spacing=grid_spacing,
+        max_grid_nodes=max_grid_nodes,
+    )
+    initial_residual, grid_divergence_before, _ = operator.relaxation_residual(circulation)
+    final_residual, grid_divergence_after, _ = operator.relaxation_residual(relaxed)
+    initial_residual_norm = float(np.linalg.norm(initial_residual))
+    final_residual_ratio = (
+        float(np.linalg.norm(final_residual) / initial_residual_norm)
+        if initial_residual_norm > np.finfo(float).tiny
+        else 0.0
+    )
+
+    moment_scale = max(before_moments[1], np.finfo(float).tiny)
+    impulse_scale = max(
+        0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+        np.finfo(float).tiny,
+    )
+    angular_terms = (
+        np.cross(position, np.cross(position, circulation)) / 3.0
+        - radius[:, None] ** 2 * circulation / 3.0
+    )
+    angular_scale = max(
+        float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
+        np.finfo(float).tiny,
+    )
+    moment_tolerance = 4096.0 * np.finfo(float).eps
+    for name, error, scale in (
+        ("vector circulation", circulation_error, moment_scale),
+        ("linear impulse", linear_impulse_error, impulse_scale),
+        ("angular impulse", angular_impulse_error, angular_scale),
+    ):
+        if error > moment_tolerance * scale:
+            raise DivergenceRelaxationError(
+                f"iterated divergence relaxation changed {name} by {error:.3e}, beyond "
+                f"its roundoff allowance {moment_tolerance * scale:.3e}"
+            )
+
+    reference_gates = (
+        (
+            (
+                "circulation reference error",
+                circulation_reference_error / reference_scales[0],
+                reference_tolerances[0],
+            ),
+            (
+                "linear-impulse reference error",
+                linear_impulse_reference_error / reference_scales[1],
+                reference_tolerances[1],
+            ),
+            (
+                "angular-impulse reference error",
+                angular_impulse_reference_error / reference_scales[2],
+                reference_tolerances[2],
+            ),
+        )
+        if reference_scales is not None
+        else ()
+    )
+    gates = reference_gates + (
+        ("correction norm", correction_norm_relative, max_correction_norm),
+        ("residual ratio", final_residual_ratio, max_residual_ratio),
+        ("kinetic-energy transfer", abs(energy_change_relative), energy_tolerance),
+        ("enstrophy transfer", abs(enstrophy_change_relative), enstrophy_tolerance),
+        ("helicity transfer", abs(helicity_change_relative), helicity_tolerance),
+        ("total-variation transfer", abs(variation_change_relative), variation_tolerance),
+        (
+            "kinetic-energy spectral convergence",
+            energy_spectral_error,
+            spectral_convergence_fraction * energy_tolerance,
+        ),
+        (
+            "enstrophy spectral convergence",
+            enstrophy_spectral_error,
+            spectral_convergence_fraction * enstrophy_tolerance,
+        ),
+        (
+            "helicity spectral convergence",
+            helicity_spectral_error,
+            spectral_convergence_fraction * helicity_tolerance,
+        ),
+    )
+    for name, value, limit in gates:
+        if not np.isfinite(value) or value > limit:
+            raise DivergenceRelaxationError(
+                f"iterated divergence-relaxation {name} {value:.3e} "
+                f"exceeds the admissible {limit:.3e}",
+                gate=name,
+            )
+
+    return DivergenceRelaxationResult(
+        circulation=relaxed,
+        correction=correction,
+        projection_sweeps=len(sweeps),
+        iterations=sum(sweep.iterations for sweep in sweeps),
+        regularization=regularization,
+        trust_region_scale=min(sweep.trust_region_scale for sweep in sweeps),
+        initial_residual_norm=initial_residual_norm,
+        final_residual_ratio=final_residual_ratio,
+        correction_norm_relative=correction_norm_relative,
+        quadratic_restoration_fraction=max(
+            sweep.quadratic_restoration_fraction for sweep in sweeps
+        ),
+        reference_restoration_scale=restoration_scale,
+        circulation_restored=circulation_restored,
+        linear_impulse_restored=linear_impulse_restored,
+        angular_impulse_restored=angular_impulse_restored,
+        circulation_reference_error=circulation_reference_error,
+        linear_impulse_reference_error=linear_impulse_reference_error,
+        angular_impulse_reference_error=angular_impulse_reference_error,
+        circulation_error=circulation_error,
+        linear_impulse_error=linear_impulse_error,
+        angular_impulse_error=angular_impulse_error,
+        total_variation_change_relative=variation_change_relative,
+        energy_change_relative=energy_change_relative,
+        enstrophy_change_relative=enstrophy_change_relative,
+        helicity_change_relative=helicity_change_relative,
+        energy_spectral_error=energy_spectral_error,
+        enstrophy_spectral_error=enstrophy_spectral_error,
+        helicity_spectral_error=helicity_spectral_error,
+        grid_divergence_before=grid_divergence_before,
+        grid_divergence_after=grid_divergence_after,
+    )
+
+
+def constrained_divergence_relaxation(
+    position: np.ndarray,
+    circulation: np.ndarray,
+    radius: np.ndarray,
+    volume: np.ndarray,
+    *,
+    grid_spacing: float,
+    regularization: float = 0.1,
+    solver_rtol: float = 1e-5,
+    max_iterations: int = 30,
+    max_grid_nodes: int = 8_000_000,
+    max_correction_norm: float = 2e-2,
+    max_residual_ratio: float = 0.9,
+    energy_tolerance: float = 1e-6,
+    enstrophy_tolerance: float = 1e-4,
+    helicity_tolerance: float = 1e-4,
+    variation_tolerance: float = 1e-3,
+    spectral_convergence_fraction: float = 0.1,
+    reference_scales: tuple[float, float, float] | None = None,
+    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
+    max_line_search_steps: int = 8,
+    max_projection_sweeps: int = 3,
+    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+) -> DivergenceRelaxationResult:
+    """Return an atomic, iterated, physics-gated Helmholtz projection."""
+
+    if max_projection_sweeps < 1:
+        raise ValueError("max_projection_sweeps must be at least one")
+    sweep_residual_limit = max_residual_ratio ** (1.0 / max_projection_sweeps)
+    monotone_residual_limit = np.nextafter(1.0, 0.0)
+    amplitude_retryable_gates = {
+        "correction norm",
+        "kinetic-energy transfer",
+        "enstrophy transfer",
+        "helicity transfer",
+        "total-variation transfer",
+        "kinetic-energy spectral convergence",
+        "enstrophy spectral convergence",
+        "helicity spectral convergence",
+    }
+    working_circulation = np.asarray(circulation, dtype=np.float64)
+    sweeps: list[DivergenceRelaxationResult] = []
+    last_error: DivergenceRelaxationError | None = None
+    for sweep_index in range(max_projection_sweeps):
+        full_sweep: DivergenceRelaxationResult | None = None
+        for amplitude_attempt in range(max_line_search_steps):
+            try:
+                candidate = _constrained_divergence_relaxation_sweep(
+                    position,
+                    working_circulation,
+                    radius,
+                    volume,
+                    grid_spacing=grid_spacing,
+                    regularization=regularization,
+                    solver_rtol=solver_rtol,
+                    max_iterations=max_iterations,
+                    max_grid_nodes=max_grid_nodes,
+                    max_correction_norm=max_correction_norm,
+                    max_residual_ratio=(
+                        sweep_residual_limit if amplitude_attempt == 0 else monotone_residual_limit
+                    ),
+                    energy_tolerance=energy_tolerance,
+                    enstrophy_tolerance=enstrophy_tolerance,
+                    helicity_tolerance=helicity_tolerance,
+                    variation_tolerance=variation_tolerance,
+                    spectral_convergence_fraction=spectral_convergence_fraction,
+                    reference_scales=reference_scales,
+                    reference_tolerances=reference_tolerances,
+                    max_line_search_steps=max_line_search_steps,
+                    initial_correction_scale=0.5**amplitude_attempt,
+                    target_moments=target_moments,
+                )
+            except DivergenceRelaxationError as error:
+                last_error = error
+                if error.gate == "residual ratio":
+                    break
+                raise
+            if full_sweep is None:
+                full_sweep = candidate
+            candidate_sweeps = [*sweeps, candidate]
+            if len(candidate_sweeps) == 1:
+                if candidate.final_residual_ratio <= max_residual_ratio:
+                    return candidate
+                break
+            try:
+                return _combine_projection_sweeps(
+                    position,
+                    circulation,
+                    radius,
+                    volume,
+                    candidate_sweeps,
+                    grid_spacing=grid_spacing,
+                    regularization=regularization,
+                    max_grid_nodes=max_grid_nodes,
+                    max_correction_norm=max_correction_norm,
+                    max_residual_ratio=max_residual_ratio,
+                    energy_tolerance=energy_tolerance,
+                    enstrophy_tolerance=enstrophy_tolerance,
+                    helicity_tolerance=helicity_tolerance,
+                    variation_tolerance=variation_tolerance,
+                    spectral_convergence_fraction=spectral_convergence_fraction,
+                    reference_scales=reference_scales,
+                    reference_tolerances=reference_tolerances,
+                    target_moments=target_moments,
+                )
+            except DivergenceRelaxationError as error:
+                last_error = error
+                if error.gate == "residual ratio":
+                    break
+                if error.gate not in amplitude_retryable_gates:
+                    raise
+        assert full_sweep is not None
+        if sweep_index == max_projection_sweeps - 1:
+            assert last_error is not None
+            raise last_error
+        sweeps.append(full_sweep)
+        working_circulation = full_sweep.circulation
+    raise AssertionError("projection sweep loop terminated without a result")

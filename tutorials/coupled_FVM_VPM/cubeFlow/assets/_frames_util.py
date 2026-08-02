@@ -3,6 +3,10 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from source.solvers.VPM.config.backend import initialize_taichi_backend
+
+initialize_taichi_backend("CPU", precision="f32")
+
 try:
     from numba import njit, prange
 
@@ -46,7 +50,6 @@ if _HAVE_NUMBA:
 
 def vpm_velocity(particles, pts):
     from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
-    from source.solvers.VPM.config.backend import initialize_taichi_backend
 
     targets = np.asarray(pts, np.float32)
     position = np.asarray(particles["position"], np.float32)
@@ -54,7 +57,6 @@ def vpm_velocity(particles, pts):
     radius = np.asarray(particles["radius"], np.float32)
     if not len(position):
         return np.tile([U_INF, 0.0, 0.0], (len(targets), 1))
-    initialize_taichi_backend("METAL", precision="f32")
     capacity = max(len(position), len(targets))
     tree = TaichiTreecode(
         max_particles=capacity,

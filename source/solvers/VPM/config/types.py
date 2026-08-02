@@ -1139,7 +1139,7 @@ class FilamentRefinementConfig:
 
 @dataclass(frozen=True)
 class DivergenceRelaxationConfig:
-    """Reference-restoring Winckelmans relaxation with hard physics gates."""
+    """Atomic iterated Winckelmans projection with hard physics gates."""
 
     frequency: int = 0
     start_step: int = 0
@@ -1147,6 +1147,7 @@ class DivergenceRelaxationConfig:
     regularization: float = 0.1
     solver_rtol: float = 1e-5
     max_iterations: int = 30
+    max_projection_sweeps: int = 3
     max_grid_nodes: int = 8_000_000
     max_correction_norm: float = 2e-2
     max_residual_ratio: float = 0.9
@@ -1177,8 +1178,8 @@ class DivergenceRelaxationConfig:
             raise ValueError("enabled divergence relaxation requires a positive grid_spacing")
         if self.regularization <= 0.0 or self.solver_rtol <= 0.0:
             raise ValueError("regularization and solver_rtol must be positive")
-        if self.max_iterations < 1 or self.max_grid_nodes < 1:
-            raise ValueError("iteration and grid-node limits must be positive")
+        if self.max_iterations < 1 or self.max_projection_sweeps < 1 or self.max_grid_nodes < 1:
+            raise ValueError("iteration, projection-sweep, and grid-node limits must be positive")
         if self.max_correction_norm <= 0.0:
             raise ValueError("max_correction_norm must be positive")
         if not 0.0 < self.max_residual_ratio < 1.0:
@@ -1238,6 +1239,7 @@ class DivergenceRelaxationConfig:
         regularization: float = 0.1,
         solver_rtol: float = 1e-5,
         max_iterations: int = 30,
+        max_projection_sweeps: int = 3,
         max_grid_nodes: int = 8_000_000,
         max_correction_norm: float = 2e-2,
         max_residual_ratio: float = 0.9,
@@ -1266,6 +1268,7 @@ class DivergenceRelaxationConfig:
             regularization=regularization,
             solver_rtol=solver_rtol,
             max_iterations=max_iterations,
+            max_projection_sweeps=max_projection_sweeps,
             max_grid_nodes=max_grid_nodes,
             max_correction_norm=max_correction_norm,
             max_residual_ratio=max_residual_ratio,
@@ -1491,7 +1494,7 @@ class VPMSetup:
     divergence_relaxation: DivergenceRelaxationConfig = field(
         default_factory=DivergenceRelaxationConfig.disabled
     )
-    """Constrained divergence relaxation of the Gaussian particle field."""
+    """Atomic iterated constrained projection of the Gaussian particle field."""
 
     vlm: VLMSetup | None = None
     """Complete VLM definition. ``None`` selects a pure VPM simulation."""

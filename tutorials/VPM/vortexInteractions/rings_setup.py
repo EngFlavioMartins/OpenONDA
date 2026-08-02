@@ -6,7 +6,7 @@ Each interaction family exposes two untreated controls and one candidate:
 * ``baseline``: molecular-viscosity DNS with the fractional RK3 core;
 * ``les``: the same numerical core plus Smagorinsky LES;
 * ``les_stabilized``: LES plus conservative filament subdivision and
-  reference-restoring constrained Winckelmans divergence relaxation.
+  an atomic, iterated, reference-restoring constrained projection.
 
 The two controls run until the solution actually falls apart.  The stabilized
 candidate also stops on any declared conservation or field-transfer gate.
@@ -285,6 +285,7 @@ def build_solver_config(args: argparse.Namespace, output_dir: Path, case_label: 
                 start_step=args.relaxation_start_step,
                 grid_spacing=relaxation_spacing,
                 regularization=args.relaxation_regularization,
+                max_projection_sweeps=3,
                 max_grid_nodes=args.relaxation_max_grid_nodes,
                 max_correction_norm=2e-2,
                 max_residual_ratio=0.9,
@@ -462,6 +463,9 @@ def write_manifest(
         "divergence_relaxation_start_step": cfg.divergence_relaxation.start_step,
         "divergence_relaxation_grid_spacing": cfg.divergence_relaxation.grid_spacing,
         "divergence_relaxation_regularization": (cfg.divergence_relaxation.regularization),
+        "divergence_relaxation_max_projection_sweeps": (
+            cfg.divergence_relaxation.max_projection_sweeps
+        ),
         "divergence_relaxation_max_grid_nodes": (cfg.divergence_relaxation.max_grid_nodes),
         "divergence_relaxation_max_correction_norm": (
             cfg.divergence_relaxation.max_correction_norm
@@ -518,7 +522,7 @@ def write_manifest(
         "molecular_viscosity": cfg.viscous.viscosity,
         "characteristic_distance": cfg.viscous.characteristic_distance,
         "field_modification": (
-            "conservative axial split plus reference-restoring constrained relaxation"
+            "conservative axial split plus iterated reference-restoring constrained projection"
             if args.method == "les_stabilized"
             else "none"
         ),
