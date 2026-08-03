@@ -134,6 +134,10 @@ log.*
 *.ply
 *.obj
 
+# Fixed geometry inputs required by the native cubeFlow tutorials
+!tutorials/coupled_FVM_VPM/cubeFlow/assets/cube.stl
+!tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/assets/cube.stl
+
 # Other simulation data
 *.xdmf
 *.out

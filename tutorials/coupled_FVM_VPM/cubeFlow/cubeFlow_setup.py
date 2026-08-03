@@ -1,7 +1,7 @@
 """Hybrid FVM–VPM simulation of flow past a cube at Re = 1000.
 
-The FVM mesh is built beforehand by ``assets/create_mesh.py`` and read from
-``constant/polyMesh/``; this file holds only the case physics and coupling.
+The FVM mesh is generated directly as solver-native data by OpenONDA's
+cfMesh-inspired adaptive Cartesian mesher.  No Gmsh or OpenFOAM case is used.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import numpy as np
 
 from openonda.coupler import CouplerSetup, setup_coupler
 from openonda.fvm import (
+    AdaptiveCartesianMesher,
     BoundaryConfig,
     ForcesConfig,
     FVMSetup,
@@ -36,8 +37,8 @@ from openonda.vpm import (
 )
 
 CASE_DIR = Path(__file__).resolve().parent
-MESH = str(CASE_DIR / "assets" / "mesh.msh")
-BODY_STL = str(CASE_DIR / "assets" / "cube.stl")
+CUBE_STL = CASE_DIR / "assets" / "cube.stl"
+BODY_STL = str(CUBE_STL)
 
 CUBE_SIDE = 1.0
 U_INF = (1.0, 0.0, 0.0)
@@ -45,17 +46,29 @@ RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.0, 0.0)
-FVM_BOX = (-1.8, 1.8, -1.8, 1.8, -1.8, 1.8)
+FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+FVM_MAX_CELL_SIZE = 0.04
+FVM_SURFACE_CELL_SIZE = 0.0125
 DT_FVM = 0.0125
 T_END = 20.0
+FVM_CORES = 4
 
 DT_VPM = 0.05
-VPM_SPACING = 0.05
+VPM_SPACING = 0.04
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 PARTICLE_LIMIT = 300_000
 OVERLAP_RADIUS_RATIO = 1.0
 WRITE_INTERVAL = 0.15
 BACKUP_PERIOD = 3
+
+FVM_MESH = AdaptiveCartesianMesher(
+    FVM_BOX,
+    FVM_MAX_CELL_SIZE,
+    surface_file=CUBE_STL,
+    wall_patch_name="cube",
+    surface_cell_size=FVM_SURFACE_CELL_SIZE,
+    merge_outer_patch="numericalBoundary",
+)
 
 PANEL_SOLVER = PanelSolver(
     max_panels=128,
@@ -70,7 +83,7 @@ PANEL_SOLVER = PanelSolver(
 
 FVM_SETUP = FVMSetup(
     case_name="coupled_hybridFlow",
-    cores=4,
+    cores=FVM_CORES,
     output=OutputSetup(
         format="vtk_xml",
         data_location="cell",
@@ -146,7 +159,7 @@ VPM_SETUP = VPMSetup(
     stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
     particles_kernel="GAUSSIAN",
     precision="f32",
-    processing_unit="METAL",
+    processing_unit="VULKAN",
     max_particles=PARTICLE_LIMIT,
     max_targets=PARTICLE_LIMIT,
     vpm_domain_bounds=list(VPM_DOMAIN),
@@ -174,7 +187,7 @@ COUPLER_SETUP = CouplerSetup(
 
 
 def main() -> None:
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
+    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     vpm_solver = setup_vpm_solver(VPM_SETUP)
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 

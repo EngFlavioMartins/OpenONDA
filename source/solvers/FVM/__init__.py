@@ -29,6 +29,7 @@ from .config.types import (
 from .core.solver import Solver
 from .core.state import FieldState
 from .factory import setup_fvm_solver
+from .mesh.adaptive_cartesian import AdaptiveCartesianMesher, BoxRefinement
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
@@ -40,6 +41,8 @@ __all__ = [
     "__version__",
     "FVMSetup",
     "setup_fvm_solver",
+    "AdaptiveCartesianMesher",
+    "BoxRefinement",
     "ExecutionConfig",
     "MeshConfig",
     "OutputSetup",

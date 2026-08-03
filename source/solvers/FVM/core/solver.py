@@ -728,16 +728,13 @@ class Solver(OFWInterfaceMixin):
 
         ``values`` contains one vector per interior cell. Boundary ghosts are
         reconstructed from the configured boundary conditions, and both BDF
-        history levels and the face flux are reset to the resulting field.
+        history levels and the face flux are reset to the resulting field. In
+        partitioned execution, ``values`` is the rank-local owned-plus-halo
+        field; owned values are exchanged so every halo is made consistent.
         This operation is only valid before the first time step is committed.
         """
         if self._n_committed or self.time_step:
             raise RuntimeError("Initial velocity can only be set before the first time step")
-        if self.parallel.is_partitioned:
-            raise NotImplementedError(
-                "set_initial_velocity is not defined for distributed ownership; provide "
-                "FVMSetup.initial_U before constructing the partitioned solver"
-            )
 
         n_elements = self.mesh_data["n_elements"]
         field = np.asarray(values, dtype=np.float64)
@@ -747,6 +744,8 @@ class Solver(OFWInterfaceMixin):
             )
 
         self.U[:n_elements] = field
+        if self.parallel.is_partitioned:
+            self.parallel.exchange_halo(self.U[:n_elements])
         _enforce_u_boundary_constraints(
             self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
         )

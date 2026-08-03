@@ -378,6 +378,33 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         )
 
 
+def test_partitioned_initial_velocity_rebuilds_histories_halos_and_flux(tmp_path):
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    execution = ExecutionConfig.petsc_partitioned()
+    mesh = structured_box(5, 4, 3)
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = Solver(
+            _pimple_config(execution, "partitioned-initial-velocity"),
+            str(tmp_path / "partitioned-initial-velocity"),
+            mesh_data=mesh if context.is_root else None,
+        )
+
+    partition = solver.parallel.partition
+    n_owned = len(partition.owned_global_ids)
+    values = np.full((solver.mesh_data["n_elements"], 3), -999.0)
+    owned_ids = partition.owned_global_ids.astype(np.float64)
+    values[:n_owned] = np.column_stack((owned_ids, owned_ids**2, -owned_ids))
+    solver.set_initial_velocity(values)
+
+    expected_ids = partition.local_global_ids.astype(np.float64)
+    expected = np.column_stack((expected_ids, expected_ids**2, -expected_ids))
+    np.testing.assert_allclose(solver.U[: solver.mesh_data["n_elements"]], expected)
+    np.testing.assert_allclose(solver.U_old, solver.U)
+    np.testing.assert_allclose(solver.U_old_old, solver.U)
+    assert np.all(np.isfinite(solver.phi))
+    assert np.any(np.abs(solver.phi) > 0.0)
+
+
 def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_path):
     """The coupler sees one root-owned global field, never rank-local fragments."""
     replicated_execution = ExecutionConfig.petsc_replicated()

@@ -1,7 +1,8 @@
 """Fully meshed FVM reference for flow past a cube at Re = 1000.
 
-The mesh is built beforehand by ``assets/create_mesh.py`` and read from
-``constant/polyMesh/``; this file holds only the case physics and run loop.
+The mesh is generated directly as solver-native data by OpenONDA's
+cfMesh-inspired adaptive Cartesian mesher.  It matches the corresponding OFW
+case's requested 0.2 far field, 0.05 wake, and 0.0125 cube sizing.
 """
 
 from __future__ import annotations
@@ -11,7 +12,9 @@ from pathlib import Path
 import numpy as np
 
 from openonda.fvm import (
+    AdaptiveCartesianMesher,
     BoundaryConfig,
+    BoxRefinement,
     ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
@@ -25,7 +28,7 @@ from openonda.fvm import (
 
 
 CASE_DIR = Path(__file__).resolve().parent
-MESH = str(CASE_DIR / "assets" / "mesh.msh")  # built by assets/create_mesh.py
+CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 
 # Physical problem
 CUBE_SIDE = 1.0
@@ -36,13 +39,26 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 INITIAL_U = (1.0, 0.0, 0.0)
 DT_FVM = 0.0125
 T_END = 20.0
+FVM_CORES = 4
 WRITE_INTERVAL = 0.15
 PERTURBATION = 1.0e-3
+PERTURBATION_CENTRE = (1.0, 0.0, 0.0)
+PERTURBATION_RADIUS = 0.75
+
+FVM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -5.0, 5.0)
+FVM_MESH = AdaptiveCartesianMesher(
+    FVM_DOMAIN,
+    0.2,
+    surface_file=CUBE_STL,
+    wall_patch_name="cube",
+    surface_cell_size=0.0125,
+    refinements=(BoxRefinement((-1.0, 5.0, -1.5, 1.5, -1.5, 1.5), 0.05, "wakeBox"),),
+)
 
 
 FVM_SETUP = FVMSetup(
     case_name="referenceFlow",
-    cores=4,
+    cores=FVM_CORES,
     output=OutputSetup(
         format="vtk_xml",
         data_location="cell",
@@ -99,19 +115,42 @@ FVM_SETUP = FVMSetup(
 )
 
 
-def _break_symmetry(solver) -> None:
-    """Seed a small transverse kick in the near wake."""
-    centroids = solver.geo_data["element_centroids"]
-    n_cells = solver.mesh_data["n_elements"]
-    x, y, z = centroids[:n_cells, 0], centroids[:n_cells, 1], centroids[:n_cells, 2]
+def _wake_perturbation(centroids: np.ndarray) -> np.ndarray:
+    """Return a smooth, divergence-free streamwise wake-vortex mode.
 
-    near_wake = (x > 0.5) & (x < 2.5) & (np.abs(y) < 1.0) & (np.abs(z) < 1.0)
-    kick = PERTURBATION * np.linalg.norm(U_INF) * np.sign(z + 1e-12) * np.exp(-((x - 1.0) ** 2))
-    solver.U[:n_cells, 1] += np.where(near_wake, kick, 0.0)
+    The field is the curl of a streamwise Gaussian vector potential. Its peak
+    speed is ``PERTURBATION * |U_inf|`` and it selects one of the otherwise
+    exactly degenerate asymmetric modes of the Cartesian cube wake without
+    imposing net lateral momentum.
+    """
+    x, y, z = centroids.T
+    x0, y0, z0 = PERTURBATION_CENTRE
+    radius = PERTURBATION_RADIUS
+    xi = (x - x0) / radius
+    eta = (y - y0) / radius
+    zeta = (z - z0) / radius
+    envelope = np.exp(-(xi * xi + eta * eta + zeta * zeta))
+
+    # A_x = psi gives delta U = curl(psi, 0, 0).  The normalisation makes
+    # max(|delta U|) = PERTURBATION * |U_inf| in the x=x0 plane.
+    scale = PERTURBATION * np.linalg.norm(U_INF) * np.sqrt(2.0 * np.e)
+    delta = np.zeros_like(centroids, dtype=np.float64)
+    delta[:, 1] = -scale * zeta * envelope
+    delta[:, 2] = scale * eta * envelope
+    return delta
+
+
+def _break_symmetry(solver) -> None:
+    """Seed the wake while keeping BDF histories, halos, and flux consistent."""
+    n_cells = solver.mesh_data["n_elements"]
+    centroids = solver.geo_data["element_centroids"][:n_cells]
+    initial_velocity = solver.U[:n_cells].copy()
+    initial_velocity += _wake_perturbation(centroids)
+    solver.set_initial_velocity(initial_velocity)
 
 
 def main() -> None:
-    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=MESH)
+    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     _break_symmetry(solver)
     solver.write_vtk()
     while solver.flow_time < FVM_SETUP.time.end_time:

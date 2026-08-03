@@ -18,7 +18,10 @@ _REFERENCE = (
     Path(__file__).parents[2]
     / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
-_MESHER = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/assets/create_mesh.py"
+_CUBE_ROOTS = (
+    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow",
+    Path(__file__).parents[2] / "tutorials/coupled_OFW_VPM/cubeFlow",
+)
 
 
 def _load(name: str, path: Path):
@@ -31,6 +34,26 @@ def _load(name: str, path: Path):
     finally:
         del sys.path[: len(search_paths)]
     return module
+
+
+def test_cube_tutorials_have_no_runtime_input_controls():
+    forbidden = (
+        "import argparse",
+        "ArgumentParser",
+        "parse_args(",
+        "sys.argv",
+        "os.environ.get",
+        "os.getenv",
+        '"$#"',
+        "getopts ",
+    )
+    scripts = (
+        path for root in _CUBE_ROOTS for path in root.rglob("*") if path.suffix in {".py", ".sh"}
+    )
+    for script in scripts:
+        text = script.read_text()
+        for token in forbidden:
+            assert token not in text, f"runtime input control {token!r} found in {script}"
 
 
 def _small_coupled_mesh(core_box):
@@ -82,11 +105,6 @@ def bench():
 @pytest.fixture(scope="module")
 def reference():
     return _load("reference_cube_setup", _REFERENCE)
-
-
-@pytest.fixture(scope="module")
-def mesher():
-    return _load("hybrid_cube_mesher", _MESHER)
 
 
 @pytest.fixture(scope="module")
@@ -154,21 +172,66 @@ def test_vpm_setup_compatible(bench):
     domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
     box = np.asarray(bench.FVM_BOX, dtype=float)
     assert np.all(domain[::2] <= box[::2]) and np.all(domain[1::2] >= box[1::2])
-    assert vpm.processing_unit == "METAL"
+    assert vpm.processing_unit == "VULKAN"
     assert vpm.precision == "f32"
     assert vpm.panel_solver.bc_type == "NEUMANN"
     assert vpm.panel_solver.coupling_scope == "donor"
 
 
-def test_mesh_domain_uses_case_setting(bench, mesher):
-    bounds = tuple(
-        value
-        for axis in ("x", "y", "z")
-        for value in (mesher.AXES[axis][0][0], mesher.AXES[axis][0][-1])
+def test_mesh_domain_uses_case_setting(bench):
+    from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
+
+    assert bench.FVM_MESH.domain == bench.FVM_BOX
+    assert bench.FVM_MESH.max_cell_size == bench.FVM_MAX_CELL_SIZE
+    assert bench.FVM_MESH.surface_cell_size == bench.FVM_SURFACE_CELL_SIZE
+    assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
+    surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
+    assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
+    assert bench.VPM_SETUP.panel_solver.max_panels >= len(surface.triangles)
+
+
+def test_reference_wake_seed_is_smooth_solenoidal_and_uses_initialization_api(reference):
+    radius = reference.PERTURBATION_RADIUS
+    x0, y0, z0 = reference.PERTURBATION_CENTRE
+    points = np.array(
+        [
+            [x0, y0 + radius / np.sqrt(2.0), z0],
+            [x0, y0, z0 + radius / np.sqrt(2.0)],
+            [x0 + radius, y0, z0],
+        ]
     )
-    assert bounds == bench.FVM_BOX
-    assert mesher.PANEL_DIVISIONS == 3
-    assert bench.VPM_SETUP.panel_solver.max_panels >= 12 * mesher.PANEL_DIVISIONS**2
+    delta = reference._wake_perturbation(points)
+    assert np.linalg.norm(delta[0]) == pytest.approx(reference.PERTURBATION)
+    assert delta[0, 2] > 0.0
+    assert delta[1, 1] < 0.0
+    np.testing.assert_allclose(delta[2], 0.0)
+
+    probe = np.array([[x0 + 0.1, y0 + 0.2, z0 + 0.3]])
+    spacing = 1.0e-5
+    divergence = 0.0
+    for axis in range(3):
+        offset = np.zeros_like(probe)
+        offset[:, axis] = spacing
+        positive = reference._wake_perturbation(probe + offset)[0, axis]
+        negative = reference._wake_perturbation(probe - offset)[0, axis]
+        divergence += (positive - negative) / (2.0 * spacing)
+    assert divergence == pytest.approx(0.0, abs=1.0e-10)
+
+    class FakeSolver:
+        mesh_data = {"n_elements": len(points)}
+        geo_data = {"element_centroids": points}
+        U = np.tile(reference.U_INF, (len(points), 1)).astype(float)
+        initialized = None
+
+        def set_initial_velocity(self, values):
+            self.initialized = values.copy()
+
+    solver = FakeSolver()
+    reference._break_symmetry(solver)
+    np.testing.assert_allclose(
+        solver.initialized,
+        np.asarray(reference.U_INF) + delta,
+    )
 
 
 def test_output_names_and_cadence_match_allplot_contract(bench, reference):

@@ -1,7 +1,9 @@
 """Native finite-volume solver API."""
 
 from source.solvers.FVM import (
+    AdaptiveCartesianMesher,
     BoundaryConfig,
+    BoxRefinement,
     DynamicMeshConfig,
     ExecutionConfig,
     FieldState,
@@ -32,7 +34,9 @@ from source.solvers.FVM.mesh import geometry
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
 
 __all__ = [
+    "AdaptiveCartesianMesher",
     "BoundaryConfig",
+    "BoxRefinement",
     "DynamicMeshConfig",
     "ExecutionConfig",
     "FieldState",

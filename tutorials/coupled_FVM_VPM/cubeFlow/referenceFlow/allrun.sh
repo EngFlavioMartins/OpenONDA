@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 
-cd "$(dirname "$0")" || exit 1
+case_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$case_dir/../../../.." && pwd)
+cd "$case_dir"
+export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 
 ./allclean.sh
-python ./assets/create_mesh.py > mesh.log
-python referenceFlow_setup.py
+exec python referenceFlow_setup.py

@@ -58,6 +58,29 @@ def test_parallel_launch_uses_environment_mpi_and_caps_threads(monkeypatch, tmp_
         assert captured["environment"][name] == "1"
 
 
+def test_mpi_launcher_matches_mpi4py_vendor(monkeypatch):
+    monkeypatch.delenv("OPENONDA_MPIEXEC", raising=False)
+    monkeypatch.setattr(runtime.sys, "executable", "/env/bin/python")
+    monkeypatch.setattr(runtime, "_mpi_vendor", lambda: "Open MPI")
+    monkeypatch.setattr(
+        runtime.shutil,
+        "which",
+        lambda name: {
+            "mpiexec.openmpi": "/usr/bin/mpiexec.openmpi",
+            "mpiexec": "/paraview/bin/mpiexec",
+        }.get(name),
+    )
+
+    assert runtime._mpi_executable() == "/usr/bin/mpiexec.openmpi"
+
+
+def test_explicit_mpi_launcher_takes_precedence(monkeypatch):
+    monkeypatch.setenv("OPENONDA_MPIEXEC", "custom-mpiexec")
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: f"/tools/{name}")
+
+    assert runtime._mpi_executable() == "/tools/custom-mpiexec"
+
+
 def test_mpi_child_must_match_configured_core_count(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_SIZE", "2")
 

@@ -10,6 +10,7 @@ import sys
 from typing import Literal
 
 _MPI_CHILD = "_OPENONDA_MPI_CHILD"
+_MPIEXEC_VARIABLE = "OPENONDA_MPIEXEC"
 _PMIX_RETAIN_LOOPBACK = "PMIX_MCA_pif_base_retain_loopback"
 _MPI_SIZE_VARIABLES = (
     "OMPI_COMM_WORLD_SIZE",
@@ -37,10 +38,38 @@ def _world_size() -> int:
     return max(sizes, default=1)
 
 
+def _mpi_vendor() -> str:
+    """MPI implementation used by mpi4py, or an empty string if unavailable."""
+    try:
+        from mpi4py import MPI
+
+        return str(MPI.get_vendor()[0])
+    except (ImportError, RuntimeError):
+        return ""
+
+
 def _mpi_executable() -> str:
+    explicit = os.environ.get(_MPIEXEC_VARIABLE, "").strip()
+    if explicit:
+        discovered = shutil.which(explicit)
+        if discovered:
+            return discovered
+        raise RuntimeError(f"{_MPIEXEC_VARIABLE}={explicit!r} is not an executable launcher")
+
     environment_launcher = Path(sys.executable).with_name("mpiexec")
     if environment_launcher.is_file():
         return str(environment_launcher)
+
+    vendor_launchers = {
+        "Open MPI": ("mpiexec.openmpi",),
+        "MPICH": ("mpiexec.mpich", "mpiexec.hydra"),
+        "Intel MPI": ("mpiexec.hydra",),
+    }
+    for launcher in vendor_launchers.get(_mpi_vendor(), ()):
+        discovered = shutil.which(launcher)
+        if discovered:
+            return discovered
+
     discovered = shutil.which("mpiexec")
     if discovered:
         return discovered
