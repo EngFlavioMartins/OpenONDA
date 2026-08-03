@@ -984,6 +984,42 @@ class TurbulenceConfig:
         )
 
     @staticmethod
+    def openfoam_smagorinsky(ck: float = 0.094, ce: float = 1.048) -> "TurbulenceConfig":
+        r"""Match OpenFOAM's default equilibrium Smagorinsky coefficients.
+
+        The VPM solver is incompressible, so OpenFOAM's algebraic SGS-energy
+        model reduces exactly to
+
+        ``nu_t = (C_s Delta)^2 |S|`` with
+        ``C_s = C_k^(3/4) / C_e^(1/4)``.
+
+        This factory accepts the OpenFOAM-facing coefficients and converts
+        them to the existing particle model's ``C_s`` representation. The
+        defaults ``C_k=0.094`` and ``C_e=1.048`` give ``C_s≈0.168``.
+
+        Args:
+            ck: OpenFOAM SGS kinetic-energy coefficient ``C_k``.
+            ce: OpenFOAM SGS dissipation coefficient ``C_e``.
+
+        Returns:
+            An LES configuration using the same equilibrium Smagorinsky model
+            and coefficients as OpenFOAM.
+
+        Example:
+            >>> cfg = TurbulenceConfig.openfoam_smagorinsky()
+            >>> cfg.flow_model
+            'LES'
+            >>> round((cfg.cs**2 * cfg.ce**0.5) ** (2.0 / 3.0), 3)
+            0.094
+        """
+        if not np.isfinite(ck) or ck < 0.0:
+            raise ValueError("OpenFOAM Smagorinsky ck must be finite and non-negative")
+        if not np.isfinite(ce) or ce <= 0.0:
+            raise ValueError("OpenFOAM Smagorinsky ce must be finite and positive")
+        cs = ck**0.75 / ce**0.25
+        return TurbulenceConfig.les_smagorinsky(cs=cs, ce=ce)
+
+    @staticmethod
     def inviscid() -> "TurbulenceConfig":
         """
         Create INVISCID configuration — pure stretching only.

@@ -126,18 +126,25 @@ def test_common_fvm_settings_identical(bench, reference):
     assert hybrid.cores == fully_meshed.cores
     assert hybrid.schemes == fully_meshed.schemes
     assert hybrid.linear == fully_meshed.linear
+    assert fully_meshed.linear.momentum_tol <= 1.0e-6
     assert hybrid.pimple == fully_meshed.pimple
+    assert fully_meshed.pimple.alpha_u == pytest.approx(0.7)
+    assert fully_meshed.pimple.alpha_p == pytest.approx(0.3)
     assert hybrid.transport == fully_meshed.transport
     assert hybrid.forces == fully_meshed.forces
     assert hybrid.execution == fully_meshed.execution
     assert hybrid.output == fully_meshed.output
     assert hybrid.time.delta_t == fully_meshed.time.delta_t
+    assert fully_meshed.time.delta_t == pytest.approx(0.01)
     assert hybrid.time.start_time == fully_meshed.time.start_time
     assert hybrid.time.end_time == fully_meshed.time.end_time
     assert hybrid.time.adjust_timestep is False
     assert fully_meshed.time.adjust_timestep is False
     assert hybrid.initial_U == fully_meshed.initial_U
     assert hybrid.turbulence == fully_meshed.turbulence
+    assert fully_meshed.turbulence.model == "OpenFOAMSmagorinsky"
+    assert fully_meshed.turbulence.Ck == pytest.approx(0.094)
+    assert fully_meshed.turbulence.Ce == pytest.approx(1.048)
 
 
 def test_wall_boundary_identical(bench, reference):
@@ -176,6 +183,9 @@ def test_vpm_setup_compatible(bench):
     assert vpm.precision == "f32"
     assert vpm.panel_solver.bc_type == "NEUMANN"
     assert vpm.panel_solver.coupling_scope == "donor"
+    assert vpm.turbulence.flow_model == "LES"
+    recovered_ck = (vpm.turbulence.cs**2 * vpm.turbulence.ce**0.5) ** (2.0 / 3.0)
+    assert recovered_ck == pytest.approx(0.094)
 
 
 def test_mesh_domain_uses_case_setting(bench):

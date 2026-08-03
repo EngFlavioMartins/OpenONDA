@@ -3,7 +3,15 @@ import runpy
 
 import pytest
 
-from source.solvers.VPM import StabilizationConfig, VPMSetup
+from source.solvers.VPM import StabilizationConfig, TurbulenceConfig, VPMSetup
+
+
+def test_openfoam_smagorinsky_factory_recovers_openfoam_ck():
+    config = TurbulenceConfig.openfoam_smagorinsky()
+
+    recovered_ck = (config.cs**2 * config.ce**0.5) ** (2.0 / 3.0)
+    assert config.flow_model == "LES"
+    assert recovered_ck == pytest.approx(0.094)
 
 
 def test_retention_domain_is_normalized_and_nested():

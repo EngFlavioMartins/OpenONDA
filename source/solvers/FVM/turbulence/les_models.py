@@ -27,7 +27,7 @@ import numpy as np
 
 from ..fields import gradients
 from ..fields.filters import CellBoxFilter
-from .smagorinsky import Smagorinsky, _compute_filter_width
+from .smagorinsky import OpenFOAMSmagorinsky, Smagorinsky, _compute_filter_width
 
 
 def _validated_eddy_viscosity(nut: np.ndarray, model: str) -> np.ndarray:
@@ -335,6 +335,8 @@ def create_model(config, mesh_data, geo_data):
     - ``"none"``, ``"iles"``, ``"dns"`` → ``None`` (no subgrid model).
     - ``"smagorinsky"`` → :class:`Smagorinsky` (or
       :class:`DynamicSmagorinsky` if ``config.dynamic is True``).
+    - ``"openfoamsmagorinsky"`` → :class:`OpenFOAMSmagorinsky`, using the
+      algebraic-equilibrium equations and default coefficients from OpenFOAM.
     - ``"dynamicsmagorinsky"`` / ``"dynamic_smagorinsky"`` →
       :class:`DynamicSmagorinsky`.
     - ``"wale"`` → :class:`WALE`.
@@ -363,6 +365,8 @@ def create_model(config, mesh_data, geo_data):
         return Sigma(mesh_data, geo_data, Csigma=config.Cs)
     if name in ("dynamicsmagorinsky", "dynamic_smagorinsky"):
         return DynamicSmagorinsky(mesh_data, geo_data)
+    if name in ("openfoamsmagorinsky", "openfoam_smagorinsky"):
+        return OpenFOAMSmagorinsky(mesh_data, geo_data, Ck=config.Ck, Ce=config.Ce)
     if name == "smagorinsky":
         if getattr(config, "dynamic", False):
             return DynamicSmagorinsky(mesh_data, geo_data)

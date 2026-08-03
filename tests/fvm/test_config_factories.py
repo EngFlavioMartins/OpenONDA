@@ -82,6 +82,31 @@ class TestConfigFactories:
         assert tc.model == "Smagorinsky"
         assert tc.Cs == 0.17
 
+    def test_turbulence_config_openfoam_smagorinsky(self):
+        tc = TurbulenceConfig.openfoam_smagorinsky()
+        assert tc.model == "OpenFOAMSmagorinsky"
+        assert tc.Ck == pytest.approx(0.094)
+        assert tc.Ce == pytest.approx(1.048)
+        assert tc.Cs == pytest.approx(tc.Ck**0.75 / tc.Ce**0.25)
+
+    def test_openfoam_smagorinsky_dictionary_loads_exact_model(self, tmp_path):
+        constant = tmp_path / "constant"
+        constant.mkdir()
+        (constant / "turbulenceProperties").write_text(
+            "simulationType LES;\n"
+            "LES\n{\n"
+            "    LESModel Smagorinsky;\n"
+            "    Ce 1.048;\n"
+            "}\n"
+            "SmagorinskyCoeffs\n{\n"
+            "    Ck 0.094;\n"
+            "}\n"
+        )
+
+        tc = TurbulenceConfig.from_foam_file(str(tmp_path))
+
+        assert tc == TurbulenceConfig.openfoam_smagorinsky(Ck=0.094, Ce=1.048)
+
     def test_fvm_config_roundtrip_json(self, tmp_path):
         config = FVMSetup(
             case_name="test_case",

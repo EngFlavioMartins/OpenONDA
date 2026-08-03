@@ -1,8 +1,9 @@
-"""Fully meshed FVM reference for flow past a cube at Re = 1000.
+"""Fully meshed LES FVM reference for flow past a cube at Re = 1000.
 
 The mesh is generated directly as solver-native data by OpenONDA's
 cfMesh-inspired adaptive Cartesian mesher.  It matches the corresponding OFW
 case's requested 0.2 far field, 0.05 wake, and 0.0125 cube sizing.
+The SGS model and coefficients match OpenFOAM's equilibrium Smagorinsky LES.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from openonda.fvm import (
     SchemesConfig,
     TimeConfig,
     TransportConfig,
+    TurbulenceConfig,
     setup_fvm_solver,
 )
 
@@ -36,8 +38,13 @@ U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
 NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
+SMAGORINSKY_CK = 0.094
+SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
-DT_FVM = 0.0125
+# Match the stable OpenFOAM reference numerics.  This mesh reaches a local
+# Courant number above two during startup, so its PIMPLE equation relaxation
+# is part of the discretisation rather than an optional run-time control.
+DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
 WRITE_INTERVAL = 0.15
@@ -85,12 +92,18 @@ FVM_SETUP = FVMSetup(
         linear_solver="bicgstab",
         pressure_solver="amg",
         pressure_tol=1e-8,
+        momentum_tol=1e-6,
         momentum_maxiter=2000,
         ilu_drop_tol=1e-4,
         ilu_fill_factor=10.0,
         ilu_reuse_tol=0.05,
     ),
-    pimple=PimpleControl(n_correctors=2, n_outer_correctors=2),
+    pimple=PimpleControl(
+        n_correctors=2,
+        n_outer_correctors=2,
+        alpha_u=0.7,
+        alpha_p=0.3,
+    ),
     forces=ForcesConfig(
         force_patches=["cube"],
         ref_velocity=np.linalg.norm(U_INF),
@@ -100,7 +113,10 @@ FVM_SETUP = FVMSetup(
         force_log_interval=1,
     ),
     transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=None,
+    turbulence=TurbulenceConfig.openfoam_smagorinsky(
+        Ck=SMAGORINSKY_CK,
+        Ce=SMAGORINSKY_CE,
+    ),
     boundaries=[
         BoundaryConfig.inlet("inlet", list(U_INF)),
         BoundaryConfig.outlet("outlet", p=0.0),

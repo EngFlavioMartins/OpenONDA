@@ -188,8 +188,8 @@ def _detect_turbulence_model(data: dict, filepath: str) -> str:
     return str(model or sim_type or "None")
 
 
-def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool]:
-    """Return ``(Cs, dynamic)`` turbulence coefficients.
+def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool, float, float]:
+    """Return ``(Cs, dynamic, Ck, Ce)`` turbulence coefficients.
 
     Checks for ``Cs`` (or variants ``C_s``, ``c_s``) and ``dynamic`` in the
     parsed data.  If missing, falls back to regex on the raw file content.
@@ -199,18 +199,30 @@ def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool]:
         filepath: Original file path (used for regex fallback).
 
     Returns:
-        Tuple ``(Cs, is_dynamic)``; defaults ``(0.17, False)`` if unset.
+        Coefficient tuple. Defaults reproduce the OpenFOAM Smagorinsky
+        constants: ``Cs=0.17``, ``dynamic=False``, ``Ck=0.094``,
+        ``Ce=1.048``.
     """
     cs_candidates = [data.get("Cs"), data.get("C_s"), data.get("c_s")]
     cs_val = next((c for c in cs_candidates if c is not None), None)
+    ck_val = data.get("Ck")
+    ce_val = data.get("Ce")
     dynamic_val = data.get("dynamic")
-    if cs_val is None or dynamic_val is None:
+    if cs_val is None or ck_val is None or ce_val is None or dynamic_val is None:
         with open(filepath) as f:
             txt = f.read()
         if cs_val is None:
             m = re.search(r"Cs\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
             if m:
                 cs_val = float(m.group(1))
+        if ck_val is None:
+            m = re.search(r"Ck\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
+            if m:
+                ck_val = float(m.group(1))
+        if ce_val is None:
+            m = re.search(r"Ce\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
+            if m:
+                ce_val = float(m.group(1))
         if dynamic_val is None:
             dm = re.search(r"dynamic\s+(\w+);", txt)
             if dm:
@@ -220,7 +232,12 @@ def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool]:
         if isinstance(dynamic_val, str)
         else bool(dynamic_val)
     )
-    return float(cs_val) if cs_val is not None else 0.17, dynamic
+    return (
+        float(cs_val) if cs_val is not None else 0.17,
+        dynamic,
+        float(ck_val) if ck_val is not None else 0.094,
+        float(ce_val) if ce_val is not None else 1.048,
+    )
 
 
 @dataclass
@@ -1047,9 +1064,18 @@ class DynamicMeshConfig:
 
 @dataclass
 class TurbulenceConfig:
-    """Configuration for turbulence/LES models (FVM).
+    """Configuration for turbulence/LES models in the FVM solver.
 
-    This mirrors an OpenFOAM-style 'turbulenceProperties' dictionary.
+    Use :meth:`openfoam_smagorinsky` when reproducing an OpenFOAM
+    ``LESModel Smagorinsky`` case. It selects the same algebraic SGS-energy
+    equation, ``cubeRootVol`` filter, and default ``Ck``/``Ce`` coefficients.
+
+    Examples
+    --------
+    >>> les = TurbulenceConfig.openfoam_smagorinsky()
+    >>> les.model, les.Ck, les.Ce
+    ('OpenFOAMSmagorinsky', 0.094, 1.048)
+    >>> setup = FVMSetup(case_name="cube", turbulence=les)
     """
 
     # Model name (case-insensitive): "None"/"ILES", "Smagorinsky", "WALE",
@@ -1059,6 +1085,8 @@ class TurbulenceConfig:
     model: str = "None"
     Cs: float = 0.17  # model coefficient (meaning depends on model)
     dynamic: bool = False  # Smagorinsky only: use the Germano/Lilly dynamic procedure
+    Ck: float = 0.094  # OpenFOAM algebraic-equilibrium SGS energy coefficient
+    Ce: float = 1.048  # OpenFOAM base LES dissipation coefficient
 
     @staticmethod
     def smagorinsky(Cs: float = 0.17, dynamic: bool = False) -> "TurbulenceConfig":
@@ -1072,6 +1100,54 @@ class TurbulenceConfig:
             :class:`TurbulenceConfig` for Smagorinsky LES.
         """
         return TurbulenceConfig(model="Smagorinsky", Cs=Cs, dynamic=dynamic)
+
+    @staticmethod
+    def openfoam_smagorinsky(Ck: float = 0.094, Ce: float = 1.048) -> "TurbulenceConfig":
+        r"""OpenCFD OpenFOAM algebraic-equilibrium Smagorinsky LES.
+
+        This is the native counterpart of::
+
+            simulationType LES;
+            LES
+            {
+                LESModel Smagorinsky;
+                delta    cubeRootVol;
+            }
+
+        OpenFOAM obtains SGS kinetic energy from
+
+        ``a=Ce/Delta``, ``b=(2/3)tr(D)``,
+        ``c=2*Ck*Delta*(dev(D):D)`` and
+        ``k=((-b+sqrt(b^2+4ac))/(2a))^2``, then evaluates
+        ``nu_t=Ck*Delta*sqrt(k)``. For divergence-free flow, the equivalent
+        classical coefficient is ``Cs=Ck^(3/4)/Ce^(1/4)``.
+
+        Parameters
+        ----------
+        Ck:
+            SGS kinetic-energy coefficient; OpenFOAM default ``0.094``.
+        Ce:
+            SGS dissipation coefficient; OpenFOAM default ``1.048``.
+
+        Returns
+        -------
+        TurbulenceConfig
+            Configuration consumed by
+            :class:`source.solvers.FVM.turbulence.OpenFOAMSmagorinsky`.
+
+        Examples
+        --------
+        >>> cfg = TurbulenceConfig.openfoam_smagorinsky()
+        >>> round(cfg.Ck**0.75 / cfg.Ce**0.25, 3)
+        0.168
+        """
+        equivalent_cs = Ck**0.75 / Ce**0.25 if Ck >= 0.0 and Ce > 0.0 else float("nan")
+        return TurbulenceConfig(
+            model="OpenFOAMSmagorinsky",
+            Cs=equivalent_cs,
+            Ck=Ck,
+            Ce=Ce,
+        )
 
     @staticmethod
     def wale(Cw: float = 0.325) -> "TurbulenceConfig":
@@ -1140,8 +1216,10 @@ class TurbulenceConfig:
             raise FileNotFoundError(f"turbulenceProperties not found: {filepath}")
         data = parse_simple_dictionary(filepath)
         model = _detect_turbulence_model(data, filepath)
-        cs, dynamic = _find_turbulence_coeffs(data, filepath)
-        return cls(model=model, Cs=cs, dynamic=dynamic)
+        cs, dynamic, ck, ce = _find_turbulence_coeffs(data, filepath)
+        if model.lower() == "smagorinsky":
+            return cls.openfoam_smagorinsky(Ck=ck, Ce=ce)
+        return cls(model=model, Cs=cs, dynamic=dynamic, Ck=ck, Ce=ce)
 
 
 @dataclass
