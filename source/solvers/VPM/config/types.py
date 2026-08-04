@@ -670,18 +670,14 @@ class StretchingConfig:
     """
     Configuration for vortex stretching schemes.
 
-    Stability comes from common-stage advection/stretching integration and
-    strain/displacement subcycling.  ``CONSERVATIVE`` uses exact direct
-    pair-wise exchange (O(N²)); the other formulations may use either direct
-    evaluation or a controlled treecode approximation.  ``StabilizationConfig``
-    is only a particle-retention policy and never modifies vortex strength.
+    The formulations may use either direct evaluation or a controlled treecode
+    approximation.  ``StabilizationConfig`` is only a particle-retention policy
+    and never modifies vortex strength.
 
     Modes:
         - DIRECT: dΓ/dt = (Γ·∇)u, the standard direct formulation
         - TRANSPOSED: dΓ/dt = (∇u)ᵀΓ, conserves vector circulation
         - MIXED: Strain-based symmetric direct formulation
-        - CONSERVATIVE: antisymmetric pair exchange that conserves vector
-          circulation and, with coupled advection, linear impulse
 
     Examples:
           # Transposed stretching (conserves circulation, recommended)
@@ -697,7 +693,7 @@ class StretchingConfig:
           stretching = StretchingConfig.disabled()
     """
 
-    mode: Literal["DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"] = "TRANSPOSED"
+    mode: Literal["DIRECT", "TRANSPOSED", "MIXED"] = "TRANSPOSED"
     """Stretching formulation mode."""
 
     scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3"
@@ -744,10 +740,9 @@ class StretchingConfig:
     def __post_init__(self) -> None:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
-        if mode not in ("DIRECT", "TRANSPOSED", "MIXED", "CONSERVATIVE"):
+        if mode not in ("DIRECT", "TRANSPOSED", "MIXED"):
             raise ValueError(
-                "stretching mode must be DIRECT, TRANSPOSED, MIXED, or "
-                f"CONSERVATIVE, got {self.mode!r}"
+                f"stretching mode must be DIRECT, TRANSPOSED, or MIXED, got {self.mode!r}"
             )
         if scheme not in ("EULER", "RK2", "RK3", "RK4"):
             raise ValueError(
@@ -795,20 +790,6 @@ class StretchingConfig:
             scheme=scheme,
             use_treecode=use_treecode,
             treecode_theta=treecode_theta,
-        )
-
-    @staticmethod
-    def conservative(scheme: str = "RK2") -> "StretchingConfig":
-        """Pairwise conservative exchange for common-stage time integration.
-
-        This mode is evaluated by direct symmetric pairs; a one-sided
-        Barnes--Hut traversal cannot preserve the exchange identities.
-        """
-        return StretchingConfig(
-            mode="CONSERVATIVE",
-            scheme=scheme,
-            enabled=True,
-            use_treecode=False,
         )
 
     @staticmethod
@@ -1492,10 +1473,10 @@ class VPMSetup:
     """How advection and vortex stretching are time-integrated.
 
     ``FRACTIONAL`` retains the legacy position-then-strength update.
-    ``COUPLED`` advances ``(x, Gamma)`` at common RK stages so the discrete
-    impulse cancellations are not broken by operator splitting.  The coupled
-    path currently supports matching RK2 or RK3 advection/stretching schemes
-    and core-spreading (or no) viscous diffusion.
+    ``COUPLED`` treats ``(x, Gamma)`` as one ODE state and evaluates both
+    right-hand sides at common RK stages.  It currently supports matching RK2
+    or RK3 advection/stretching schemes and core-spreading (or no) viscous
+    diffusion.
     """
 
     coupled_max_strain_increment: float = 0.08

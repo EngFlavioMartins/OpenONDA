@@ -96,7 +96,9 @@ FVM_SETUP = FVMSetup(
         compression="lz4",
         precision="float32",
         asynchronous=True,
-        ghost_layers=1,
+        # Owned-cell output avoids a second visualization-only halo mesh on
+        # every rank. ParaView assembles the .pvtu pieces globally.
+        ghost_layers=0,
     ),
     time=TimeConfig(
         delta_t=DT_FVM,
@@ -107,8 +109,8 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="LUST",
-        gradient_scheme="lsq",
+        convection_scheme="linearUpwind",
+        gradient_scheme="gauss",
         time_scheme="backward",
     ),
     linear=LinearSolverConfig(
@@ -124,6 +126,7 @@ FVM_SETUP = FVMSetup(
     pimple=PimpleControl(
         n_correctors=2,
         n_outer_correctors=2,
+        n_orthogonal_correctors=1,
         alpha_u=0.7,
         alpha_p=0.3,
     ),

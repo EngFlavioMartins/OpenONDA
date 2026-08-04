@@ -95,10 +95,8 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         A fractional ``x``-then-``Gamma`` update evaluates the stretching
         equation on positions from a different time level than the velocity
-        equation.  That destroys cancellations in the discrete impulse
-        identities even when both individual updates use a high-order RK
-        scheme.  This coupled method treats ``(x, Gamma)`` as one ODE state and
-        evaluates both right-hand sides at every RK stage.
+        equation.  This coupled method instead treats ``(x, Gamma)`` as one ODE
+        state and evaluates both right-hand sides at every RK stage.
         """
         self._coupled.update(
             particles,
@@ -156,7 +154,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             dt: Time step size [s]
             scheme: 'EULER', 'RK2', 'RK3', or 'RK4'
-            mode: 'DIRECT', 'TRANSPOSED', 'MIXED', or 'CONSERVATIVE'
+            mode: 'DIRECT', 'TRANSPOSED', or 'MIXED'
             use_treecode: evaluate the rate from the O(N log N) treecode gradient
                 instead of the direct O(N²) pairwise kernel (large N).
             treecode_theta: Barnes–Hut opening angle for the treecode gradient.
@@ -336,11 +334,7 @@ class _CoupledAdvectionStretchingHandler:
             return 1
         if value == "MIXED":
             return 2
-        if value == "CONSERVATIVE":
-            return 3
-        raise ValueError(
-            f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, MIXED, or CONSERVATIVE."
-        )
+        raise ValueError(f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, or MIXED.")
 
     def update(
         self,
@@ -519,12 +513,8 @@ class _StretchingHandler:
             mode_int = 1
         elif mode_str == "MIXED":
             mode_int = 2
-        elif mode_str == "CONSERVATIVE":
-            mode_int = 3
         else:
-            raise ValueError(
-                f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, MIXED, or CONSERVATIVE."
-            )
+            raise ValueError(f"Unknown stretching mode: {mode}. Use DIRECT, TRANSPOSED, or MIXED.")
 
         scheme = scheme.upper()
 
@@ -562,10 +552,7 @@ class _StretchingHandler:
         The two agree up to the Barnes–Hut opening-angle tolerance.
         """
         p = self._parent
-        # CONSERVATIVE is a pair exchange.  A one-sided Barnes--Hut target
-        # traversal cannot retain its antisymmetry, so that mode always uses
-        # the direct pairwise kernel.
-        if self._use_treecode and mode_int != 3:
+        if self._use_treecode:
             tree = p._get_or_create_treecode(N, self._treecode_theta)
             tree.build(pos, strg, rad, N)
             tree.compute_velocity_gradients_gpu()

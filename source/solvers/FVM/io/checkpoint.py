@@ -11,7 +11,7 @@ import tempfile
 
 import numpy as np
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def _update_digest(digest, value) -> None:
@@ -20,7 +20,11 @@ def _update_digest(digest, value) -> None:
         digest.update(b"array")
         digest.update(str(array.dtype).encode())
         digest.update(json.dumps(array.shape).encode())
-        digest.update(array.tobytes())
+        # ``ndarray.tobytes()`` duplicates the complete array.  Mesh hashes are
+        # computed while rank zero still owns the global mesh, so that copy can
+        # be hundreds of megabytes.  hashlib accepts a contiguous buffer
+        # directly and consumes it without changing the digest.
+        digest.update(memoryview(array).cast("B"))
     elif isinstance(value, dict):
         digest.update(b"dict")
         for key in sorted(value, key=str):
@@ -86,6 +90,8 @@ def save_checkpoint(solver, path) -> Path:
         "U": solver.U,
         "p": solver.p,
         "phi": solver.phi,
+        "phi_old": solver.phi_old,
+        "phi_old_old": solver.phi_old_old,
         "U_old": solver.U_old,
         "U_old_old": solver.U_old_old,
         "nut": np.asarray([]) if solver.nut is None else solver.nut,
@@ -122,7 +128,7 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
     """Validate and restore a checkpoint without accepting partial state."""
     source = Path(path)
     with np.load(source, allow_pickle=False) as archive:
-        required = {
+        base_required = {
             "metadata",
             "U",
             "p",
@@ -140,15 +146,20 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
             "force_log_counter",
             "acceptance_counts",
         }
+        if "metadata" not in archive.files:
+            raise ValueError("Incomplete FVM checkpoint; missing: metadata")
+        metadata = json.loads(str(archive["metadata"]))
+        version = metadata.get("format_version")
+        if version not in (1, FORMAT_VERSION):
+            raise ValueError(
+                f"Unsupported FVM checkpoint version {version!r}; expected 1 or {FORMAT_VERSION}"
+            )
+        required = set(base_required)
+        if version >= 2:
+            required.update(("phi_old", "phi_old_old"))
         missing = sorted(required - set(archive.files))
         if missing:
             raise ValueError(f"Incomplete FVM checkpoint; missing: {', '.join(missing)}")
-        metadata = json.loads(str(archive["metadata"]))
-        if metadata.get("format_version") != FORMAT_VERSION:
-            raise ValueError(
-                f"Unsupported FVM checkpoint version {metadata.get('format_version')!r}; "
-                f"expected {FORMAT_VERSION}"
-            )
         expected_mesh = mesh_hash(solver.mesh_data)
         if metadata.get("mesh_hash") != expected_mesh:
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
@@ -157,8 +168,15 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
             raise ValueError("FVM checkpoint configuration hash does not match the active case")
 
         state = {name: np.array(archive[name], copy=True) for name in required - {"metadata"}}
+        if version == 1:
+            # Version 1 predates transient Rhie--Chow flux history.  It cannot
+            # reproduce the first resumed ddtCorr exactly, but using the
+            # committed flux for both old levels is the conservative backward-
+            # compatibility choice.  All version-2 restarts are exact.
+            state["phi_old"] = state["phi"].copy()
+            state["phi_old_old"] = state["phi"].copy()
 
-    for name in ("U", "p", "phi", "U_old", "U_old_old"):
+    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         expected_shape = np.asarray(getattr(solver, name)).shape
         if state[name].shape != expected_shape:
             raise ValueError(
@@ -177,6 +195,8 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
     solver.U[:] = state["U"]
     solver.p[:] = state["p"]
     solver.phi[:] = state["phi"]
+    solver.phi_old[:] = state["phi_old"]
+    solver.phi_old_old[:] = state["phi_old_old"]
     solver.U_old[:] = state["U_old"]
     solver.U_old_old[:] = state["U_old_old"]
     solver.nut = None if not nut.size else nut

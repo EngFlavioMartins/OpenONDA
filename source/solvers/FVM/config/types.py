@@ -687,6 +687,15 @@ class PimpleControl:
 
     Corrector counts are dimensionless. Relaxation factors lie in ``(0, 1]``;
     transient PIMPLE normally uses 1.0.
+
+    ``alpha_u`` / ``alpha_p`` follow OpenFOAM's ``relaxationFactors`` semantics:
+    transient PIMPLE applies them only while the outer loop is still
+    converging, and runs the **final** outer corrector unrelaxed (OpenFOAM
+    looks the factors up as ``UFinal`` / ``pFinal``, which ``fvSolution``
+    leaves undefined).  They therefore accelerate the outer loop without
+    altering the committed time step, and are inert when
+    ``n_outer_correctors == 1``.  Steady SIMPLE relaxes every sweep, since
+    there the relaxation *is* the pseudo-time march.
     """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"

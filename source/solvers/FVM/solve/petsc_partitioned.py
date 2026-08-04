@@ -5,10 +5,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 
+from numba import njit
 import numpy as np
 
 from ..mesh.partition import ownership_ranges
 from .linear_interface import LinearSolveError, LinearSolveResult
+
+
+@njit(cache=True)
+def _petsc_row_preallocation(indptr, indices, row_start, row_end):
+    """Count on-rank and off-rank entries without an nnz-sized temporary."""
+    n_rows = len(indptr) - 1
+    diagonal = np.empty(n_rows, dtype=np.int32)
+    off_diagonal = np.empty(n_rows, dtype=np.int32)
+    for row in range(n_rows):
+        local_count = 0
+        for position in range(indptr[row], indptr[row + 1]):
+            column = indices[position]
+            if row_start <= column < row_end:
+                local_count += 1
+        diagonal[row] = local_count
+        off_diagonal[row] = indptr[row + 1] - indptr[row] - local_count
+    return diagonal, off_diagonal
 
 
 @dataclass(frozen=True)
@@ -75,19 +93,24 @@ class OwnedRowsCSR:
         n_owned = len(partition.owned_global_ids)
         if matrix.shape != (n_local, n_local) or np.asarray(rhs).shape != (n_local,):
             raise ValueError("Local matrix/RHS does not match the partition field layout")
-        local = matrix[:n_owned].tocsr()
         owned = partition.owned_global_ids
         if n_owned and not np.array_equal(owned, np.arange(owned[0], owned[0] + n_owned)):
             raise ValueError("PETSc owned rows must be contiguous global cell IDs")
         start = int(owned[0]) if n_owned else int(partition.global_n_cells)
         end = start + n_owned
+        # Owned cells are the first rows in the local CSR layout.  Slice the
+        # structural arrays by view instead of materialising another sparse
+        # matrix just before PETSc duplicates the coefficients internally.
+        owned_nnz = int(matrix.indptr[n_owned])
+        local_indices = matrix.indices[:owned_nnz]
+        global_indices = np.asarray(partition.local_global_ids[local_indices], dtype=np.int32)
         return cls(
             global_size=partition.global_n_cells,
             row_start=start,
             row_end=end,
-            indptr=np.asarray(local.indptr, dtype=np.int64),
-            indices=np.asarray(partition.local_global_ids[local.indices], dtype=np.int64),
-            data=np.asarray(local.data, dtype=np.float64),
+            indptr=np.asarray(matrix.indptr[: n_owned + 1], dtype=np.int32),
+            indices=global_indices,
+            data=np.asarray(matrix.data[:owned_nnz], dtype=np.float64),
             rhs=np.asarray(rhs[:n_owned], dtype=np.float64),
         )
 
@@ -137,20 +160,30 @@ class PartitionedLinearWorkspace:
         self._destroy_objects()
 
     def _build(self, system, method: str, constant_nullspace: bool, PETSc) -> None:
+        # A workspace belongs to one solver/partition, whose mesh topology is
+        # immutable.  Scalar sizes are sufficient here; retaining a Python
+        # tuple containing every row width cost tens of MiB on large meshes.
         signature = (
             system.global_size,
             system.row_start,
             system.row_end,
-            tuple(np.diff(system.indptr).tolist()),
+            len(system.indptr),
+            len(system.indices),
             method,
             constant_nullspace,
         )
         if self._signature == signature:
             return
         self._destroy_objects()
+        diagonal_nnz, off_diagonal_nnz = _petsc_row_preallocation(
+            np.asarray(system.indptr, dtype=np.int32),
+            np.asarray(system.indices, dtype=np.int32),
+            system.row_start,
+            system.row_end,
+        )
         matrix = PETSc.Mat().createAIJ(
             size=(system.global_size, system.global_size),
-            nnz=max(int(np.max(np.diff(system.indptr), initial=0)), 1),
+            nnz=(diagonal_nnz, off_diagonal_nnz),
             comm=PETSc.COMM_WORLD,
         )
         matrix.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)

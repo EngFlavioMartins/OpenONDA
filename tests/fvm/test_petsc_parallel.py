@@ -332,6 +332,10 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         actual.auto_write = False
         actual_residuals = actual.solve_pimple(0.01)
 
+    # Momentum and pressure execute sequentially and must replace the same
+    # PETSc matrix/KSP allocation instead of retaining one workspace each.
+    assert set(actual.algorithm._partitioned_linear_workspaces) == {"flow"}
+
     n_owned = actual.parallel.n_owned
     velocity_parts = actual.parallel.comm.allgather(actual.U[:n_owned].copy())
     pressure_parts = actual.parallel.comm.allgather(actual.p[:n_owned].copy())
@@ -602,7 +606,7 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         restored.auto_write = False
         restored.load_state(f"{shared_root}/partitioned-checkpoint")
 
-    for name in ("U", "p", "phi", "U_old", "U_old_old"):
+    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         np.testing.assert_array_equal(getattr(restored, name), getattr(solver, name))
     assert restored.flow_time == solver.flow_time
     assert restored.time_step == solver.time_step

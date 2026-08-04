@@ -13,7 +13,7 @@ import numpy as np
 from ..config.types import OutputSetup
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_CHECKPOINT_VERSION = 1
+PARTITIONED_CHECKPOINT_VERSION = 2
 
 
 def _atomic_npz(path: Path, arrays) -> None:
@@ -45,6 +45,8 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
         "U": solver.U,
         "p": solver.p,
         "phi": solver.phi,
+        "phi_old": solver.phi_old,
+        "phi_old_old": solver.phi_old_old,
         "U_old": solver.U_old,
         "U_old_old": solver.U_old_old,
         "nut": np.asarray([]) if solver.nut is None else solver.nut,
@@ -90,7 +92,8 @@ def load_partitioned_solver_checkpoint(
     if solver.parallel.is_root:
         manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
     manifest = solver.parallel.bcast(manifest, root=0)
-    if manifest.get("format_version") != PARTITIONED_CHECKPOINT_VERSION:
+    version = manifest.get("format_version")
+    if version not in (1, PARTITIONED_CHECKPOINT_VERSION):
         raise ValueError("Unsupported partitioned FVM checkpoint version")
     if manifest.get("ranks") != solver.parallel.size:
         raise ValueError("Partitioned checkpoint communicator size does not match")
@@ -105,12 +108,15 @@ def load_partitioned_solver_checkpoint(
     rank = solver.parallel.rank
     with np.load(target / manifest["files"][rank], allow_pickle=False) as archive:
         state = {name: np.array(archive[name], copy=True) for name in archive.files}
+    if version == 1:
+        state["phi_old"] = state["phi"].copy()
+        state["phi_old_old"] = state["phi"].copy()
     partition = solver.parallel.partition
     if not np.array_equal(state.pop("global_cell_ids"), partition.local_global_ids):
         raise ValueError("Partitioned checkpoint cell IDs do not match")
     if not np.array_equal(state.pop("global_face_ids"), solver.mesh_data["global_face_ids"]):
         raise ValueError("Partitioned checkpoint face IDs do not match")
-    for name in ("U", "p", "phi", "U_old", "U_old_old"):
+    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         destination = np.asarray(getattr(solver, name))
         if state[name].shape != destination.shape or not np.all(np.isfinite(state[name])):
             raise ValueError(f"Partitioned checkpoint field {name} is incompatible")

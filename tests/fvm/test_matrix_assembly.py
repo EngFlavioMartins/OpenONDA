@@ -63,6 +63,13 @@ class TestMatrixAssembly:
             "flux_ff": 2.0 * first_flux["flux_ff"],
         }
         workspace = MatrixAssemblyWorkspace.create(mesh)
+        assert not hasattr(workspace, "contributions")
+        assert workspace.pattern.indptr.dtype == np.int32
+        assert np.shares_memory(workspace.pattern.indptr, workspace.matrix.indptr)
+        assert len(workspace.pattern.diagonal_slots) == mesh["n_elements"]
+        assert len(workspace.pattern.offdiagonal_slots) <= (
+            2 * mesh["n_interior_faces"] + mesh["n_faces"] - mesh["n_interior_faces"]
+        )
 
         first = assemble_matrix_from_fluxes_vectorized(first_flux, mesh, workspace=workspace)
         first_values = first.data.copy()

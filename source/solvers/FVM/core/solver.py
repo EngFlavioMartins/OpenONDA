@@ -238,6 +238,10 @@ class Solver(OFWInterfaceMixin):
         """
         self.config = config
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
+        # These dictionaries intentionally contain heterogeneous mesh metadata
+        # (arrays, counts, patch dictionaries, and parallel objects).
+        self.mesh_data: Any
+        self.geo_data: Any
         self.auto_write = True
         self.parallel = ParallelContext.create(self.config.execution)
         self.logger = logging.Logging(
@@ -401,16 +405,29 @@ class Solver(OFWInterfaceMixin):
             # cannot leave a peer in an incompatible collective.
             distribution_error = None
             local_payload = None
+            payload = None
+            received_payload = None
             if self.parallel.is_root:
                 from ..mesh.partition import localize_mesh_and_geometry
 
                 assert (
                     global_mesh is not None and global_geo is not None and global_hash is not None
                 )
-                for rank in range(self.parallel.size):
+                # Send worker partitions first and build rank zero last.  More
+                # importantly, drop each sent payload before constructing the
+                # next one.  Keeping the previous payload alive during the
+                # following localization made rank zero hold the global mesh
+                # plus two complete local partitions at once.
+                rank_order = [*range(1, self.parallel.size), 0]
+                delivered: set[int] = set()
+                for rank in rank_order:
                     try:
                         payload = localize_mesh_and_geometry(
-                            global_mesh, global_geo, rank, self.parallel.size
+                            global_mesh,
+                            global_geo,
+                            rank,
+                            self.parallel.size,
+                            include_visualization_ghosts=self.config.output.ghost_layers == 1,
                         )
                         payload[0]["global_mesh_hash"] = global_hash
                     except Exception as error:
@@ -421,13 +438,16 @@ class Solver(OFWInterfaceMixin):
                         }
                         if rank == 0:
                             local_payload = None
-                        for destination in range(max(rank, 1), self.parallel.size):
-                            comm.send((False, distribution_error), dest=destination, tag=9131)
+                        for destination in range(1, self.parallel.size):
+                            if destination not in delivered:
+                                comm.send((False, distribution_error), dest=destination, tag=9131)
                         break
                     if rank == 0:
                         local_payload = payload
                     else:
                         comm.send((True, payload), dest=rank, tag=9131)
+                        delivered.add(rank)
+                        payload = None
             else:
                 received_ok, received_payload = comm.recv(source=0, tag=9131)
                 if received_ok:
@@ -445,6 +465,20 @@ class Solver(OFWInterfaceMixin):
             self.mesh_quality = self.parallel.bcast(quality, root=0)
             self.parallel = self.parallel.with_partition(partition)
             self.mesh_data["_parallel_context"] = self.parallel
+
+            # Partitioning is the last consumer of the global mesh/geometry.
+            # Release every local alias before LSQ, matrix, and field storage is
+            # allocated for rank zero; otherwise peak RAM includes both the
+            # complete mesh and the fully initialized local solver.
+            mesh_data = None
+            global_mesh = None
+            global_geo = None
+            payload = None
+            local_payload = None
+            received_payload = None
+            import gc
+
+            gc.collect()
         else:
             if mesh_data is not None:
                 logging.Timer.start("Mesh Set (In-Memory)")
@@ -690,6 +724,10 @@ class Solver(OFWInterfaceMixin):
         from ..assemble import convection
 
         self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
+        # Flux history for OpenFOAM's transient Rhie-Chow correction
+        # (``fvc::ddtCorr``), which needs phi and U at the same time levels.
+        self.phi_old = self.phi.copy()
+        self.phi_old_old = self.phi.copy()
         logging.Timer.log("Flux Init", sink=self.logger, detailed=True)
 
     def _initialize_algorithm(self):
@@ -756,6 +794,8 @@ class Solver(OFWInterfaceMixin):
         from ..solve import simple_solver
 
         self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
+        self.phi_old = self.phi.copy()
+        self.phi_old_old = self.phi.copy()
         self.state = FieldState(self.U, self.p, self.phi)
         simple_solver.update_scalar_boundaries(
             self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
@@ -1011,6 +1051,8 @@ class Solver(OFWInterfaceMixin):
             U_old_old=u_old_old_arg,
             source_explicit=src_exp,
             source_implicit=src_imp,
+            phi_old=self.phi_old,
+            phi_old_old=self.phi_old_old if self._n_committed >= 1 else None,
         )
         self._invalidate_derived_fields()
         self.state = FieldState(self.U, self.p, self.phi)
@@ -1207,6 +1249,8 @@ class Solver(OFWInterfaceMixin):
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
         self.U_old_old[:] = self.U_old[:]
         self.U_old[:] = self.U[:]
+        self.phi_old_old[:] = self.phi_old[:]
+        self.phi_old[:] = self.phi[:]
         self._n_committed += 1
         self.time_step += 1
         self.flow_time += self._current_dt

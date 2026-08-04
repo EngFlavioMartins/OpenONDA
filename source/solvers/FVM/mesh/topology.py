@@ -4,12 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from numba import njit
 import numpy as np
 
 
 def _readonly(values, dtype=None):
     result = np.ascontiguousarray(values, dtype=dtype).view()
     result.setflags(write=False)
+    return result
+
+
+@njit(cache=True)
+def _fill_cell_faces(owners, neighbours, offsets, n_interior, n_faces):
+    """Fill cell-face CSR in one pass without an argsort-sized workspace."""
+    result = np.empty(offsets[-1], dtype=np.int32)
+    cursor = offsets[:-1].copy()
+    for face in range(n_faces):
+        owner = owners[face]
+        result[cursor[owner]] = face
+        cursor[owner] += 1
+        if face < n_interior:
+            neighbour = neighbours[face]
+            result[cursor[neighbour]] = face
+            cursor[neighbour] += 1
     return result
 
 
@@ -21,30 +38,17 @@ def build_cell_face_csr(owners, neighbours, n_elements, n_faces):
     CSR keeps the same topology in two numeric arrays and is also directly
     usable by geometry and VTK code.
     """
-    owners = np.asarray(owners)
-    neighbours = np.asarray(neighbours)
+    owners = np.ascontiguousarray(owners, dtype=np.int32)
+    neighbours = np.ascontiguousarray(neighbours, dtype=np.int32)
     n_interior = len(neighbours)
-    face_ids = np.arange(n_faces, dtype=np.int32)
-    cells = np.concatenate(
-        (
-            owners[:n_interior],
-            neighbours,
-            owners[n_interior:],
-        )
-    )
-    faces = np.concatenate(
-        (
-            face_ids[:n_interior],
-            face_ids[:n_interior],
-            face_ids[n_interior:],
-        )
-    )
-    order = np.argsort(cells, kind="stable")
-    counts = np.bincount(cells, minlength=n_elements)
-    offsets = np.empty(n_elements + 1, dtype=np.int64)
+    counts = np.bincount(owners, minlength=n_elements)
+    counts += np.bincount(neighbours, minlength=n_elements)
+    if int(counts.sum()) > np.iinfo(np.int32).max:
+        raise OverflowError("FVM cell-face topology exceeds 32-bit addressing")
+    offsets = np.empty(n_elements + 1, dtype=np.int32)
     offsets[0] = 0
     np.cumsum(counts, out=offsets[1:])
-    return np.ascontiguousarray(faces[order], dtype=np.int32), offsets
+    return _fill_cell_faces(owners, neighbours, offsets, n_interior, n_faces), offsets
 
 
 @dataclass(frozen=True)
@@ -137,11 +141,16 @@ class MeshTopology:
         if face_array is not None and face_array.ndim == 2:
             face_nodes = np.ascontiguousarray(face_array.ravel(), dtype=np.int32)
             nodes_per_face = face_array.shape[1]
-            face_node_offsets = np.arange(len(face_array) + 1, dtype=np.int64) * nodes_per_face
+            if len(face_array) * nodes_per_face > np.iinfo(np.int32).max:
+                raise OverflowError("FVM face-node topology exceeds 32-bit addressing")
+            face_node_offsets = np.arange(len(face_array) + 1, dtype=np.int32) * nodes_per_face
         else:
-            face_node_offsets = np.zeros(len(faces) + 1, dtype=np.int64)
+            face_node_offsets = np.zeros(len(faces) + 1, dtype=np.int32)
             for index, face in enumerate(faces):
-                face_node_offsets[index + 1] = face_node_offsets[index] + len(face)
+                next_offset = int(face_node_offsets[index]) + len(face)
+                if next_offset > np.iinfo(np.int32).max:
+                    raise OverflowError("FVM face-node topology exceeds 32-bit addressing")
+                face_node_offsets[index + 1] = next_offset
             face_nodes = np.concatenate(faces).astype(np.int32, copy=False)
 
         flattened_cell_faces = mesh_data.get("cell_faces")
@@ -167,11 +176,11 @@ class MeshTopology:
         n_faces = int(mesh_data["n_faces"])
         return cls(
             face_nodes=_readonly(face_nodes, np.int32),
-            face_node_offsets=_readonly(face_node_offsets, np.int64),
+            face_node_offsets=_readonly(face_node_offsets, np.int32),
             owners=_readonly(mesh_data["owners"], np.int32),
             neighbours=_readonly(mesh_data["neighbours"], np.int32),
             cell_faces=_readonly(flattened_cell_faces, np.int32),
-            cell_face_offsets=_readonly(cell_face_offsets, np.int64),
+            cell_face_offsets=_readonly(cell_face_offsets, np.int32),
             patches=patches,
             global_cell_ids=_readonly(
                 mesh_data.get("global_cell_ids", np.arange(n_cells)), np.int64

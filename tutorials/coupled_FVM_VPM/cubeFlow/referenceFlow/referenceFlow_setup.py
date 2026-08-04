@@ -1,9 +1,11 @@
 """Fully meshed LES FVM reference for flow past a cube at Re = 1000.
 
-The mesh is generated directly as solver-native data by OpenONDA's
-cfMesh-inspired adaptive Cartesian mesher.  It matches the corresponding OFW
-case's requested 0.2 far field, 0.05 wake, and 0.0125 cube sizing.
-The SGS model and coefficients match OpenFOAM's equilibrium Smagorinsky LES.
+The mesh is generated as solver-native data by OpenONDA's cfMesh-inspired
+adaptive Cartesian mesher, sized to reproduce the mesh the OFW case's
+``cartesianMesh`` run actually delivered — 0.2 far field, 0.025 wake, 0.0125
+cube — rather than the sizes its ``meshDict`` requests (see below).  The SGS
+model and coefficients match OpenFOAM's equilibrium Smagorinsky LES, and the
+PIMPLE controls match its ``fvSolution``.
 """
 
 from __future__ import annotations
@@ -41,11 +43,12 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
-# Match the stable OpenFOAM reference numerics.  This mesh reaches a local
-# Courant number above two during startup, so its PIMPLE equation relaxation
-# is part of the discretisation rather than an optional run-time control.
 DT_FVM = 0.01
 T_END = 20.0
+# Four ranks keep the per-rank partition practical without paying the Python
+# and PETSc fixed-memory cost eight times. The solver now partitions its large
+# arrays, so increasing this is a speed/per-rank-memory choice, not a
+# requirement for fitting the reference mesh.
 FVM_CORES = 4
 WRITE_INTERVAL = 0.15
 PERTURBATION = 1.0e-3
@@ -53,15 +56,26 @@ PERTURBATION_CENTRE = (1.0, 0.0, 0.0)
 PERTURBATION_RADIUS = 0.75
 
 FVM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -5.0, 5.0)
+WAKE_BOX = (-1.0, 5.0, -1.5, 1.5, -1.5, 1.5)
+
+# The wake is meshed at 0.025, not the 0.05 the OFW meshDict asks for: cfMesh
+# rounds an objectRefinements cell size up to an octree level, and its root box
+# (25.6000061 m) puts 25.6000061/0.05 = 512.0001 just past the exact 0.05
+# subdivision, so it refines one level further.  3.38 M of the reference mesh's
+# 3.93 M cells really sit in this box at h = 0.025 (measured from
+# constant/polyMesh).  At 0.05 the separated shear layers, which decide whether
+# the wake destabilises, are resolved twice as coarsely as the reference and
+# carry ~2.3x its Smagorinsky eddy viscosity (nu_sgs ~ Delta^2; near-wake mean
+# 1.01e-4 against OFW's 4.47e-5).
+#
 FVM_MESH = AdaptiveCartesianMesher(
     FVM_DOMAIN,
     0.2,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=0.0125,
-    refinements=(BoxRefinement((-1.0, 5.0, -1.5, 1.5, -1.5, 1.5), 0.05, "wakeBox"),),
+    refinements=(BoxRefinement(WAKE_BOX, 0.025, "wakeBox"),),
 )
-
 
 FVM_SETUP = FVMSetup(
     case_name="referenceFlow",
@@ -73,7 +87,11 @@ FVM_SETUP = FVMSetup(
         compression="lz4",
         precision="float32",
         asynchronous=True,
-        ghost_layers=1,
+        # Owned-cell output avoids retaining a second, visualization-only
+        # halo mesh on every MPI rank. ParaView still reads the .pvtu pieces
+        # as one global data set; use ghost_layers=1 only when smooth parallel
+        # cell-to-point interpolation at rank interfaces is required.
+        ghost_layers=0,
     ),
     time=TimeConfig(
         delta_t=DT_FVM,
@@ -84,8 +102,9 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        convection_scheme="LUST",
-        gradient_scheme="lsq",
+        # Match referenceFlow/system/fvSchemes exactly.
+        convection_scheme="linearUpwind",
+        gradient_scheme="gauss",
         time_scheme="backward",
     ),
     linear=LinearSolverConfig(
@@ -101,6 +120,7 @@ FVM_SETUP = FVMSetup(
     pimple=PimpleControl(
         n_correctors=2,
         n_outer_correctors=2,
+        n_orthogonal_correctors=1,
         alpha_u=0.7,
         alpha_p=0.3,
     ),
@@ -132,12 +152,19 @@ FVM_SETUP = FVMSetup(
 
 
 def _wake_perturbation(centroids: np.ndarray) -> np.ndarray:
-    """Return a smooth, divergence-free streamwise wake-vortex mode.
+    """Return a smooth, divergence-free lateral wake-displacement mode.
 
-    The field is the curl of a streamwise Gaussian vector potential. Its peak
-    speed is ``PERTURBATION * |U_inf|`` and it selects one of the otherwise
-    exactly degenerate asymmetric modes of the Cartesian cube wake without
-    imposing net lateral momentum.
+    ``curl(0, 0, psi)`` with ``psi = -A * xi * exp(-r^2/R^2)``: divergence-free
+    by construction, peak speed ``PERTURBATION * |U_inf|``.
+
+    The mode matters as much as the amplitude.  A cube wake first loses
+    stability to a plane-symmetric mode — the wake tilts to one side and the
+    body picks up lift — whose lateral velocity is *even* in ``y``, which is
+    what this field seeds (on the wake axis it is a clean push
+    ``delta U = (0, A, 0)``).  A streamwise swirl centred on the axis,
+    ``curl(psi, 0, 0)``, changes sign under a reflection about ``y = 0``, so it
+    has no projection onto that mode and cannot select a side however long the
+    case runs.
     """
     x, y, z = centroids.T
     x0, y0, z0 = PERTURBATION_CENTRE
@@ -147,12 +174,10 @@ def _wake_perturbation(centroids: np.ndarray) -> np.ndarray:
     zeta = (z - z0) / radius
     envelope = np.exp(-(xi * xi + eta * eta + zeta * zeta))
 
-    # A_x = psi gives delta U = curl(psi, 0, 0).  The normalisation makes
-    # max(|delta U|) = PERTURBATION * |U_inf| in the x=x0 plane.
-    scale = PERTURBATION * np.linalg.norm(U_INF) * np.sqrt(2.0 * np.e)
+    amplitude = PERTURBATION * np.linalg.norm(U_INF)
     delta = np.zeros_like(centroids, dtype=np.float64)
-    delta[:, 1] = -scale * zeta * envelope
-    delta[:, 2] = scale * eta * envelope
+    delta[:, 0] = 2.0 * amplitude * xi * eta * envelope
+    delta[:, 1] = amplitude * (1.0 - 2.0 * xi * xi) * envelope
     return delta
 
 

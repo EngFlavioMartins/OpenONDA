@@ -19,7 +19,8 @@ class _CSRPattern:
 
     indices: np.ndarray
     indptr: np.ndarray
-    contribution_slots: np.ndarray
+    diagonal_slots: np.ndarray
+    offdiagonal_slots: np.ndarray
 
 
 @dataclass
@@ -34,7 +35,6 @@ class MatrixAssemblyWorkspace:
     matrix: csr_matrix
     pattern: _CSRPattern
     include_boundaries: bool
-    contributions: np.ndarray
     cache_namespace: int = field(default_factory=lambda: next(_WORKSPACE_IDS))
 
     @classmethod
@@ -50,21 +50,18 @@ class MatrixAssemblyWorkspace:
             matrix=matrix,
             pattern=pattern,
             include_boundaries=include_boundaries,
-            contributions=np.empty(len(pattern.contribution_slots), dtype=np.float64),
         )
 
     def update(self, flux_data, mesh_data, *, backend: str = "numpy") -> csr_matrix:
         """Overwrite coefficients and return the stable CSR matrix object."""
-        contributions = _fill_matrix_contributions(
-            self.contributions, flux_data, mesh_data, include_boundaries=self.include_boundaries
+        del backend  # Direct CSR accumulation is backend-independent.
+        _fill_matrix_values(
+            self.matrix.data,
+            self.pattern,
+            flux_data,
+            mesh_data,
+            include_boundaries=self.include_boundaries,
         )
-        values = _reduce_contributions(
-            self.pattern.contribution_slots,
-            contributions,
-            len(self.pattern.indices),
-            backend,
-        )
-        self.matrix.data[:] = values
         return self.matrix
 
 
@@ -104,6 +101,155 @@ def build_sparsity_pattern(mesh_data):
     return rows, cols
 
 
+@njit(cache=True)
+def _find_sorted_column(indices, start, stop, column):
+    """Return a column's position in one sorted CSR row."""
+    lower = start
+    upper = stop
+    while lower < upper:
+        middle = (lower + upper) // 2
+        value = indices[middle]
+        if value < column:
+            lower = middle + 1
+        else:
+            upper = middle
+    if lower >= stop or indices[lower] != column:
+        return -1
+    return lower
+
+
+@njit(cache=True)
+def _build_csr_pattern_numba(
+    owners,
+    neighbours,
+    boundary_neighbours,
+    n_elements,
+    n_interior,
+    n_faces,
+    include_boundaries,
+):
+    """Build unique CSR rows and face-to-entry slots with bounded storage."""
+    # First construct each row as diagonal plus adjacent cell IDs.  This raw
+    # graph is only marginally larger than the final matrix (two entries per
+    # internal face), unlike concatenate+linear-index+unique, whose rows,
+    # columns, 64-bit keys, sort workspace, and inverse coexist at peak.
+    row_counts = np.ones(n_elements, dtype=np.int32)
+    for face in range(n_interior):
+        row_counts[owners[face]] += 1
+        row_counts[neighbours[face]] += 1
+    if include_boundaries:
+        for face in range(n_interior, n_faces):
+            if boundary_neighbours[face] >= 0:
+                row_counts[owners[face]] += 1
+
+    raw_indptr = np.empty(n_elements + 1, dtype=np.int32)
+    raw_indptr[0] = 0
+    for row in range(n_elements):
+        next_offset = int(raw_indptr[row]) + int(row_counts[row])
+        if next_offset > 2_147_483_647:
+            raise OverflowError("FVM CSR topology exceeds 32-bit addressing")
+        raw_indptr[row + 1] = next_offset
+    raw_indices = np.empty(raw_indptr[-1], dtype=np.int32)
+    cursor = raw_indptr[:-1].copy()
+    for row in range(n_elements):
+        raw_indices[cursor[row]] = row
+        cursor[row] += 1
+    for face in range(n_interior):
+        owner = owners[face]
+        neighbour = neighbours[face]
+        raw_indices[cursor[owner]] = neighbour
+        cursor[owner] += 1
+        raw_indices[cursor[neighbour]] = owner
+        cursor[neighbour] += 1
+    if include_boundaries:
+        for face in range(n_interior, n_faces):
+            neighbour = boundary_neighbours[face]
+            if neighbour >= 0:
+                owner = owners[face]
+                raw_indices[cursor[owner]] = neighbour
+                cursor[owner] += 1
+
+    # Cell stencils are short. Insertion-sorting each row in place avoids an
+    # all-nnz argsort while producing canonical SciPy/PETSc column ordering.
+    unique_counts = np.empty(n_elements, dtype=np.int32)
+    for row in range(n_elements):
+        start = raw_indptr[row]
+        stop = raw_indptr[row + 1]
+        for position in range(start + 1, stop):
+            value = raw_indices[position]
+            previous = position - 1
+            while previous >= start and raw_indices[previous] > value:
+                raw_indices[previous + 1] = raw_indices[previous]
+                previous -= 1
+            raw_indices[previous + 1] = value
+        count_unique = 0
+        previous_value = -1
+        for position in range(start, stop):
+            value = raw_indices[position]
+            if value != previous_value:
+                count_unique += 1
+                previous_value = value
+        unique_counts[row] = count_unique
+
+    indptr = np.empty(n_elements + 1, dtype=np.int32)
+    indptr[0] = 0
+    for row in range(n_elements):
+        indptr[row + 1] = indptr[row] + unique_counts[row]
+    indices = np.empty(indptr[-1], dtype=np.int32)
+    for row in range(n_elements):
+        source_start = raw_indptr[row]
+        source_stop = raw_indptr[row + 1]
+        destination = indptr[row]
+        previous_value = -1
+        for position in range(source_start, source_stop):
+            value = raw_indices[position]
+            if value != previous_value:
+                indices[destination] = value
+                destination += 1
+                previous_value = value
+
+    n_coupled = 0
+    if include_boundaries:
+        for face in range(n_interior, n_faces):
+            if boundary_neighbours[face] >= 0:
+                n_coupled += 1
+    # Diagonal destinations repeat for every incident face. Store them once
+    # per cell, plus the two genuinely face-specific off-diagonal entries.
+    # This is the CSR equivalent of OpenFOAM's diag/lower/upper LDU layout.
+    diagonal_slots = np.empty(n_elements, dtype=np.int32)
+    for row in range(n_elements):
+        diagonal_slots[row] = _find_sorted_column(indices, indptr[row], indptr[row + 1], row)
+    offdiagonal_slots = np.empty(2 * n_interior + n_coupled, dtype=np.int32)
+    for face in range(n_interior):
+        owner = owners[face]
+        neighbour = neighbours[face]
+        offdiagonal_slots[face] = _find_sorted_column(
+            indices, indptr[owner], indptr[owner + 1], neighbour
+        )
+        offdiagonal_slots[n_interior + face] = _find_sorted_column(
+            indices, indptr[neighbour], indptr[neighbour + 1], owner
+        )
+
+    slot_cursor = 2 * n_interior
+    if include_boundaries:
+        for face in range(n_interior, n_faces):
+            neighbour = boundary_neighbours[face]
+            if neighbour >= 0:
+                owner = owners[face]
+                offdiagonal_slots[slot_cursor] = _find_sorted_column(
+                    indices, indptr[owner], indptr[owner + 1], neighbour
+                )
+                slot_cursor += 1
+
+    for position in range(len(diagonal_slots)):
+        if diagonal_slots[position] < 0:
+            raise RuntimeError("CSR diagonal is absent from its matrix row")
+    for position in range(len(offdiagonal_slots)):
+        if offdiagonal_slots[position] < 0:
+            raise RuntimeError("CSR face contribution is absent from its matrix row")
+    return indices, indptr, diagonal_slots, offdiagonal_slots
+
+
 def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
     """Return mesh-owned CSR structure and contribution destination slots.
 
@@ -116,30 +262,31 @@ def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
     if cached is not None:
         return cached
 
-    if include_boundaries:
-        rows, cols = build_sparsity_pattern(mesh_data)
+    n_elements = int(mesh_data["n_elements"])
+    n_interior = int(mesh_data["n_interior_faces"])
+    n_faces = int(mesh_data["n_faces"])
+    owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
+    boundary_neighbours = mesh_data.get("boundary_neighbours")
+    if boundary_neighbours is None:
+        boundary_neighbours = np.full(n_faces, -1, dtype=np.int32)
     else:
-        n_interior = mesh_data["n_interior_faces"]
-        owners = mesh_data["owners"][:n_interior]
-        neighbours = mesh_data["neighbours"][:n_interior]
-        rows = np.concatenate([owners, owners, neighbours, neighbours])
-        cols = np.concatenate([owners, neighbours, owners, neighbours])
-
-    n_elements = mesh_data["n_elements"]
-    linear_indices = rows.astype(np.int64) * n_elements + cols
-    unique_indices, contribution_slots = np.unique(linear_indices, return_inverse=True)
-    unique_rows = unique_indices // n_elements
-    indices = np.asarray(unique_indices % n_elements, dtype=np.int32)
-    row_counts = np.bincount(unique_rows, minlength=n_elements)
-    indptr = np.empty(n_elements + 1, dtype=np.int64)
-    indptr[0] = 0
-    np.cumsum(row_counts, out=indptr[1:])
+        boundary_neighbours = np.asarray(boundary_neighbours, dtype=np.int32)
+    indices, indptr, diagonal_slots, offdiagonal_slots = _build_csr_pattern_numba(
+        owners,
+        neighbours,
+        boundary_neighbours,
+        n_elements,
+        n_interior,
+        n_faces,
+        include_boundaries,
+    )
 
     indices.setflags(write=False)
     indptr.setflags(write=False)
-    contribution_slots = np.asarray(contribution_slots, dtype=np.int64)
-    contribution_slots.setflags(write=False)
-    pattern = _CSRPattern(indices, indptr, contribution_slots)
+    diagonal_slots.setflags(write=False)
+    offdiagonal_slots.setflags(write=False)
+    pattern = _CSRPattern(indices, indptr, diagonal_slots, offdiagonal_slots)
     patterns[include_boundaries] = pattern
     return pattern
 
@@ -209,6 +356,71 @@ def _fill_matrix_contributions(target, flux_data, mesh_data, *, include_boundari
 
 
 @njit(cache=True)
+def _fill_matrix_values_numba(
+    target,
+    diagonal_slots,
+    offdiagonal_slots,
+    flux_cf,
+    flux_ff,
+    owners,
+    neighbours,
+    boundary_neighbours,
+    n_interior,
+    include_boundaries,
+):
+    """Accumulate face coefficients directly into existing CSR data."""
+    target[:] = 0.0
+    for face in range(n_interior):
+        owner = owners[face]
+        neighbour = neighbours[face]
+        target[diagonal_slots[owner]] += flux_cf[face]
+        target[offdiagonal_slots[face]] += flux_ff[face]
+        target[offdiagonal_slots[n_interior + face]] -= flux_cf[face]
+        target[diagonal_slots[neighbour]] -= flux_ff[face]
+    cursor = 2 * n_interior
+    if include_boundaries:
+        for face in range(n_interior, len(flux_cf)):
+            target[diagonal_slots[owners[face]]] += flux_cf[face]
+        for face in range(n_interior, len(flux_ff)):
+            if boundary_neighbours[face] >= 0:
+                target[offdiagonal_slots[cursor]] += flux_ff[face]
+                cursor += 1
+    return cursor
+
+
+def _fill_matrix_values(
+    target,
+    pattern,
+    flux_data,
+    mesh_data,
+    *,
+    include_boundaries: bool,
+):
+    """Refill CSR numeric values without a face-sized concatenation buffer."""
+    n_faces = int(mesh_data["n_faces"])
+    boundary_neighbours = mesh_data.get("boundary_neighbours")
+    if boundary_neighbours is None:
+        boundary_neighbours = np.full(n_faces, -1, dtype=np.int32)
+    else:
+        boundary_neighbours = np.asarray(boundary_neighbours, dtype=np.int32)
+    cursor = _fill_matrix_values_numba(
+        target,
+        pattern.diagonal_slots,
+        pattern.offdiagonal_slots,
+        np.asarray(flux_data["flux_cf"], dtype=np.float64),
+        np.asarray(flux_data["flux_ff"], dtype=np.float64),
+        np.asarray(mesh_data["owners"], dtype=np.int32),
+        np.asarray(mesh_data["neighbours"], dtype=np.int32),
+        boundary_neighbours,
+        int(mesh_data["n_interior_faces"]),
+        include_boundaries,
+    )
+    if cursor != len(pattern.offdiagonal_slots):
+        raise RuntimeError("Matrix contribution slots do not match the mesh faces")
+    return target
+
+
+@njit(cache=True)
 def _reduce_contributions_numba(slots, contributions, size):
     values = np.zeros(size, dtype=np.float64)
     for index in range(len(contributions)):
@@ -262,18 +474,21 @@ def assemble_matrix_from_fluxes_vectorized(
             raise ValueError("Matrix workspace boundary layout does not match the flux arrays")
         return workspace.update(flux_data, mesh_data, backend=backend)
 
-    contributions = _matrix_contributions(flux_data, mesh_data, include_boundaries=has_boundaries)
-
     if indices is not None:
+        contributions = _matrix_contributions(
+            flux_data, mesh_data, include_boundaries=has_boundaries
+        )
         rows, cols = indices
         return csr_matrix((contributions, (rows, cols)), shape=(n_elements, n_elements))
 
     pattern = _csr_pattern(mesh_data, has_boundaries)
-    data = _reduce_contributions(
-        pattern.contribution_slots,
-        contributions,
-        len(pattern.indices),
-        backend,
+    data = np.zeros(len(pattern.indices), dtype=np.float64)
+    _fill_matrix_values(
+        data,
+        pattern,
+        flux_data,
+        mesh_data,
+        include_boundaries=has_boundaries,
     )
     return csr_matrix(
         (data, pattern.indices, pattern.indptr),

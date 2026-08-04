@@ -705,7 +705,7 @@ class Solver:
 
             # 3-4. CONVECTION, DIFFUSION & STRETCHING
             #
-            # The conservative path advances (x, Gamma) at common RK stages.
+            # The coupled path advances (x, Gamma) at common RK stages.
             # CS is Strang split around that coupled inviscid update.  The
             # legacy path remains available for backwards compatibility.
             if not coupled_update:
@@ -2374,7 +2374,6 @@ class Solver:
             "DIRECT": "(ω·∇)u",
             "TRANSPOSED": "(ω·∇')u",
             "MIXED": "½((ω·∇)u + (∇u)ᵀ·ω)",
-            "CONSERVATIVE": "pairwise conservative (ω·∇')u",
         }.get(effective_mode, f"({effective_mode})")
         Logging.message(f"Updating strengths via {mode_eq}")
 

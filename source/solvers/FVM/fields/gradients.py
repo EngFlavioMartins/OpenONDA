@@ -18,6 +18,79 @@ def _is_empty_boundary(boundary, *, allow_source_type: bool = False) -> bool:
     return strategy is BoundaryStrategy.EMPTY
 
 
+def _correct_boundary_gradient(grad_phi, phi, mesh_data, geo_data):
+    """Replace the wall-normal part of a boundary gradient with the exact snGrad.
+
+    OpenFOAM's ``fv::gaussGrad::correctBoundaryConditions`` — which *both* the
+    Gauss and least-squares schemes call at the end of ``calcGrad`` — overwrites
+    the normal component of the patch gradient with the boundary condition's own
+    surface-normal derivative::
+
+        gGrad_b += n * (snGrad_b - (n & gGrad_b))
+
+    Extrapolating the owner-cell gradient instead leaves the normal component
+    reconstructed from a one-sided stencil that never saw the boundary value.
+    At a no-slip wall, where ``U`` goes to zero over half a cell, that is the
+    dominant part of the tensor, so anything consuming a boundary-face gradient
+    (the viscous stress, wall traction, Rhie-Chow) starts from the wrong number.
+
+    ``snGrad`` is taken from the ghost value the boundary conditions already
+    wrote, ``(phi_ghost - phi_owner) * deltaCoeffs``, with OpenFOAM's
+    ``deltaCoeffs = 1 / (n . (Cf - CP))``.  Coupled (cyclic) and empty patches
+    are skipped, exactly as the ``!coupled()`` guard does upstream.
+    """
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    n_faces = mesh_data["n_faces"]
+    if n_faces == n_interior:
+        return grad_phi
+
+    owners = mesh_data["owners"]
+    face_sf = geo_data["face_sf"]
+    face_cf_vector = geo_data.get("face_cf_vector")
+    face_centroids = geo_data.get("face_centroids")
+    element_centroids = geo_data.get("element_centroids")
+    boundary_neighbours = np.asarray(
+        mesh_data.get("boundary_neighbours", np.full(n_faces, -1, dtype=np.int32))
+    )
+
+    for boundary in mesh_data["boundary"]:
+        if _is_empty_boundary(boundary, allow_source_type=True):
+            continue
+        start = boundary["startFace"]
+        n_patch_faces = boundary["nFaces"]
+        faces = np.arange(start, start + n_patch_faces)
+        if np.any(boundary_neighbours[faces] >= 0):
+            continue  # coupled patch: OpenFOAM leaves the gradient untouched
+
+        ghosts = n_elements + (faces - n_interior)
+        owner_cells = owners[faces]
+        sf = face_sf[faces]
+        area = np.linalg.norm(sf, axis=1)
+        normals = sf / np.maximum(area, 1e-300)[:, np.newaxis]
+
+        # deltaCoeffs = 1 / (n . (Cf - CP)); guard a degenerate normal distance.
+        if face_cf_vector is not None:
+            owner_to_face = face_cf_vector[faces]
+        elif face_centroids is not None and element_centroids is not None:
+            owner_to_face = face_centroids[faces] - element_centroids[owner_cells]
+        else:
+            raise KeyError(
+                "Boundary-gradient correction requires face_cf_vector or both "
+                "face_centroids and element_centroids"
+            )
+        normal_distance = np.sum(normals * owner_to_face, axis=1)
+        delta_coeffs = 1.0 / np.where(np.abs(normal_distance) < 1e-300, 1e-300, normal_distance)
+
+        # sn_grad[face, component]; grad_phi is (n_total, 3, n_components).
+        sn_grad = (phi[ghosts] - phi[owner_cells]) * delta_coeffs[:, np.newaxis]
+        patch_grad = grad_phi[ghosts]
+        normal_part = np.einsum("fd,fdc->fc", normals, patch_grad)
+        grad_phi[ghosts] += normals[:, :, np.newaxis] * (sn_grad - normal_part)[:, np.newaxis, :]
+
+    return grad_phi
+
+
 def compute_gauss_gradient(phi, mesh_data, geo_data):
     """Compute the gradient using the Gauss linear method (vectorised).
 
@@ -147,6 +220,7 @@ def compute_gauss_gradient(phi, mesh_data, geo_data):
         boundary_neighbours >= 0, boundary_neighbours, owners[n_interior_faces:n_faces]
     )
     grad_phi[i_boundary_elements, :, :] = grad_phi[gradient_owners, :, :]
+    _correct_boundary_gradient(grad_phi, phi, mesh_data, geo_data)
 
     return grad_phi
 
@@ -311,6 +385,7 @@ def compute_lsq_gradient(phi, mesh_data, geo_data):
     )[n_interior:n_faces]
     gradient_owners = np.where(boundary_neighbours >= 0, boundary_neighbours, owners_b)
     grad[i_boundary, :, :] = grad[gradient_owners, :, :]
+    _correct_boundary_gradient(grad, phi, mesh_data, geo_data)
 
     return grad
 

@@ -152,58 +152,92 @@ def validate_geometry(mesh_data, geo_data):
 
     _require(volumes.shape == (n_cells,), "Cell-volume array has the wrong shape")
     _require(areas.shape == (n_faces,), "Face-area array has the wrong shape")
-    for name, values in (
-        ("cell volumes", volumes),
-        ("face areas", areas),
-        ("face area vectors", sf),
-        ("cell/face vectors", cf),
-        ("interpolation weights", weights),
-    ):
-        _require(np.all(np.isfinite(values)), f"Mesh {name} contain non-finite values")
-    _require(np.all(volumes > 0.0), "Mesh contains non-positive cell volumes")
-    _require(np.all(areas > 0.0), "Mesh contains zero-area faces")
-
-    mag_cf = np.linalg.norm(cf, axis=1)
-    _require(np.all(mag_cf > 0.0), "Mesh contains zero cell-to-cell/face distances")
-    orientation = np.sum(sf * cf, axis=1)
-    _require(
-        np.all(orientation > 0.0),
-        "Face orientation is inconsistent with owner-neighbour/boundary direction",
-    )
-
-    cosine = np.clip(orientation / (areas * mag_cf), -1.0, 1.0)
-    non_orthogonality = np.degrees(np.arccos(cosine))
-    internal_weights = weights[:n_internal]
-    out_of_bounds_weights = int(
-        np.count_nonzero((internal_weights < 0.0) | (internal_weights > 1.0))
-    )
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
     centroids = np.asarray(geo_data["element_centroids"])
     face_centroids = np.asarray(geo_data["face_centroids"])
-    interpolation_points = (1.0 - internal_weights[:, np.newaxis]) * centroids[
-        owners[:n_internal]
-    ] + internal_weights[:, np.newaxis] * centroids[neighbours]
-    centre_distance = np.linalg.norm(centroids[neighbours] - centroids[owners[:n_internal]], axis=1)
-    skewness = np.linalg.norm(face_centroids[:n_internal] - interpolation_points, axis=1) / (
-        centre_distance + 1e-30
-    )
 
-    # Reduce owner and neighbour face distances directly into cell extrema.
-    # This avoids one Python list object per cell during large-mesh validation.
+    # Mesh validation used to allocate all quality vectors for all faces at
+    # once, briefly adding several hundred megabytes to rank zero's global
+    # geometry.  Accumulate extrema and sums in blocks instead.
+    _require(np.all(np.isfinite(volumes)), "Mesh cell volumes contain non-finite values")
+    _require(np.all(np.isfinite(centroids)), "Mesh cell centroids contain non-finite values")
+    _require(np.all(volumes > 0.0), "Mesh contains non-positive cell volumes")
     minimum_distance = np.full(n_cells, np.inf, dtype=np.float64)
     maximum_distance = np.zeros(n_cells, dtype=np.float64)
-    owner_distance = np.linalg.norm(face_centroids - centroids[owners], axis=1)
-    np.minimum.at(minimum_distance, owners, owner_distance)
-    np.maximum.at(maximum_distance, owners, owner_distance)
-    if n_internal:
-        neighbour_distance = np.linalg.norm(
-            face_centroids[:n_internal] - centroids[neighbours], axis=1
+    max_non_orthogonality = 0.0
+    sum_non_orthogonality = 0.0
+    max_skewness = 0.0
+    out_of_bounds_weights = 0
+    chunk_size = 250_000
+    for start in range(0, n_faces, chunk_size):
+        stop = min(start + chunk_size, n_faces)
+        face_slice = slice(start, stop)
+        areas_block = areas[face_slice]
+        sf_block = sf[face_slice]
+        cf_block = cf[face_slice]
+        weights_block = weights[face_slice]
+        face_centres_block = face_centroids[face_slice]
+        _require(
+            np.all(np.isfinite(areas_block))
+            and np.all(np.isfinite(sf_block))
+            and np.all(np.isfinite(cf_block))
+            and np.all(np.isfinite(weights_block))
+            and np.all(np.isfinite(face_centres_block)),
+            "Mesh face geometry contains non-finite values",
         )
-        np.minimum.at(minimum_distance, neighbours, neighbour_distance)
-        np.maximum.at(maximum_distance, neighbours, neighbour_distance)
+        _require(np.all(areas_block > 0.0), "Mesh contains zero-area faces")
+        magnitude = np.linalg.norm(cf_block, axis=1)
+        _require(np.all(magnitude > 0.0), "Mesh contains zero cell-to-cell/face distances")
+        orientation = np.einsum("ij,ij->i", sf_block, cf_block)
+        _require(
+            np.all(orientation > 0.0),
+            "Face orientation is inconsistent with owner-neighbour/boundary direction",
+        )
+        cosine = np.clip(orientation / (areas_block * magnitude), -1.0, 1.0)
+        non_orthogonality = np.degrees(np.arccos(cosine))
+        max_non_orthogonality = max(
+            max_non_orthogonality, float(np.max(non_orthogonality, initial=0.0))
+        )
+        sum_non_orthogonality += float(np.sum(non_orthogonality))
+
+        owner_block = owners[face_slice]
+        owner_distance = np.linalg.norm(face_centres_block - centroids[owner_block], axis=1)
+        np.minimum.at(minimum_distance, owner_block, owner_distance)
+        np.maximum.at(maximum_distance, owner_block, owner_distance)
+
+        internal_stop = min(stop, n_internal)
+        if start < internal_stop:
+            count = internal_stop - start
+            local = slice(0, count)
+            neighbour_block = neighbours[start:internal_stop]
+            owner_internal = owner_block[local]
+            weight_internal = weights_block[local]
+            out_of_bounds_weights += int(
+                np.count_nonzero((weight_internal < 0.0) | (weight_internal > 1.0))
+            )
+            interpolation = (1.0 - weight_internal[:, np.newaxis]) * centroids[
+                owner_internal
+            ] + weight_internal[:, np.newaxis] * centroids[neighbour_block]
+            centre_distance = np.linalg.norm(
+                centroids[neighbour_block] - centroids[owner_internal], axis=1
+            )
+            skewness = np.linalg.norm(face_centres_block[local] - interpolation, axis=1) / (
+                centre_distance + 1e-30
+            )
+            max_skewness = max(max_skewness, float(np.max(skewness, initial=0.0)))
+            neighbour_distance = np.linalg.norm(
+                face_centres_block[local] - centroids[neighbour_block], axis=1
+            )
+            np.minimum.at(minimum_distance, neighbour_block, neighbour_distance)
+            np.maximum.at(maximum_distance, neighbour_block, neighbour_distance)
+
     _require(np.all(np.isfinite(minimum_distance)), "Mesh cell has no adjacent face")
-    aspect_ratio = maximum_distance / np.maximum(minimum_distance, 1e-30)
+    max_aspect_ratio = 0.0
+    for start in range(0, n_cells, chunk_size):
+        stop = min(start + chunk_size, n_cells)
+        ratios = maximum_distance[start:stop] / np.maximum(minimum_distance[start:stop], 1e-30)
+        max_aspect_ratio = max(max_aspect_ratio, float(np.max(ratios, initial=0.0)))
 
     lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)
     finite_lsq_condition = lsq_condition[np.isfinite(lsq_condition)]
@@ -212,11 +246,11 @@ def validate_geometry(mesh_data, geo_data):
         "min_volume": float(np.min(volumes)),
         "max_volume": float(np.max(volumes)),
         "min_face_area": float(np.min(areas)),
-        "max_non_orthogonality_deg": float(np.max(non_orthogonality)),
-        "mean_non_orthogonality_deg": float(np.mean(non_orthogonality)),
+        "max_non_orthogonality_deg": max_non_orthogonality,
+        "mean_non_orthogonality_deg": sum_non_orthogonality / max(n_faces, 1),
         "out_of_bounds_interpolation_weights": out_of_bounds_weights,
-        "max_skewness": float(np.max(skewness)) if skewness.size else 0.0,
-        "max_aspect_ratio": float(np.max(aspect_ratio)),
+        "max_skewness": max_skewness,
+        "max_aspect_ratio": max_aspect_ratio,
         "max_lsq_condition": (
             float(np.max(finite_lsq_condition)) if finite_lsq_condition.size else None
         ),

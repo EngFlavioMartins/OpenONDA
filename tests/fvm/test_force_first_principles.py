@@ -45,6 +45,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.FVM.fields import gradients
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
@@ -312,11 +313,12 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     * ``cv``   — outer control-volume momentum balance
         F_body = −d/dt ∫ρu dV − ∮_outer ρ u (u·n̂) dS + ∮_outer (−ρ p n̂ + τ·n̂) dS
       evaluated with the solver's own fields (φ for the mass flux, patch ghost
-      values for u and p, μ·snGrad for the outer traction; implicit-Euler
-      d/dt from the last two committed states, consistent with the solver's
-      time scheme).
+        values for u and p, and the complete OpenFOAM deviatoric stress for the
+        outer traction; implicit-Euler d/dt from the last two committed states,
+        consistent with the solver's time scheme).
     * ``disc`` — wall force from the DISCRETE boundary fluxes the momentum
-      equation actually applies: ρ p_ghost Sf + μ (A/d)(U_owner − U_ghost).
+      equation actually applies: pressure, implicit Laplacian, and explicit
+      transpose/deviatoric stress.
     * ``diag`` — the production diagnostic (deviatoric snGrad-corrected
       traction, ``compute_surface_forces``).
     """
@@ -337,6 +339,17 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     dmdt = (momentum_after - momentum_before) / solver.config.time.delta_t
 
     U, p, phi = np.asarray(solver.U), np.asarray(solver.p), np.asarray(solver.phi)
+    grad_u = gradients._resolve_gradient_fn(geo)(U, mesh, geo)
+
+    def _transpose_stress_flux(faces):
+        """Dynamic ``mu*dev2(T(grad(U))) . Sf`` used by momentum assembly."""
+        ghost = n_elem + (faces - n_int)
+        grad_face = grad_u[ghost]
+        sf = geo["face_sf"][faces]
+        trace = np.einsum("fii->f", grad_face)
+        transposed = np.einsum("fji,fi->fj", grad_face, sf)
+        return mu * (transposed - (2.0 / 3.0) * trace[:, None] * sf)
+
     f_cv = -dmdt
     for b in mesh["boundary"]:
         if b["name"] == "cube":
@@ -352,6 +365,7 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
         f_cv -= (rho * p[ghost][:, None] * sf).sum(axis=0)
         # Viscous traction on the outer boundary from the normal gradient.
         f_cv += (mu * (U[ghost] - U[mesh["owners"][faces]]) / dist * areas).sum(axis=0)
+        f_cv += _transpose_stress_flux(faces).sum(axis=0)
 
     (wall,) = [b for b in mesh["boundary"] if b["name"] == "cube"]
     faces = np.arange(wall["startFace"], wall["startFace"] + wall["nFaces"])
@@ -362,6 +376,7 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     f_disc = (rho * p[ghost][:, None] * sf).sum(axis=0) - (
         mu * (U[ghost] - U[mesh["owners"][faces]]) / dist * areas
     ).sum(axis=0)
+    f_disc -= _transpose_stress_flux(faces).sum(axis=0)
 
     f_diag = np.asarray(solver.last_forces["cube"]["Ftot"])
     return {"cv": float(f_cv[0]), "disc": float(f_disc[0]), "diag": float(f_diag[0])}

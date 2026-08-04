@@ -82,14 +82,14 @@ def setup_fvm_solver(
         from mpi4py import MPI
 
         is_root = MPI.COMM_WORLD.Get_rank() == 0
-    mesh_data = _materialize_mesh(mesh, is_root=is_root)
-
     from .core.solver import Solver
 
     return Solver(
         runtime_setup,
         case_dir=str(Path(case_dir).resolve()) if case_dir is not None else None,
-        mesh_data=mesh_data,
+        # Do not retain a second caller-frame reference to the complete mesh
+        # while Solver partitions it and allocates rank-local state.
+        mesh_data=_materialize_mesh(mesh, is_root=is_root),
     )
 
 

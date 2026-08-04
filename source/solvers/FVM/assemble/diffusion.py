@@ -15,7 +15,9 @@ import numpy as np
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
 
-def assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data):
+def assemble_diffusion_term_interior(
+    phi, grad_phi, gamma, mesh_data, geo_data, *, include_total_flux=True
+):
     """
     Assemble diffusion term for interior faces.
 
@@ -42,70 +44,64 @@ def assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data):
     """
 
     n_interior_faces = mesh_data["n_interior_faces"]
-    owners = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-
-    # Get geometric data
-    sf = geo_data["face_sf"][:n_interior_faces]  # Face area vectors
-    cf_vector = geo_data["face_cf_vector"][:n_interior_faces]  # Owner to neighbor vector
-
-    # Compute geometric quantities
-    # e = CF / |CF| (unit vector from owner to neighbor)
-    mag_cf = np.linalg.norm(cf_vector, axis=1)
-    e = cf_vector / mag_cf[:, np.newaxis]
-
-    # Over-relaxed orthogonal decomposition  Sf = Ef + Tf,  Ef ∥ e,
-    # |Ef| = (Sf·Sf)/(Sf·e).  This keeps the implicit Laplacian aligned with the
-    # owner→neighbour line (best conditioning / accuracy on non-orthogonal
-    # meshes) and pushes the residual into the explicit Tf correction.  On an
-    # orthogonal mesh Sf·e = |Sf| ⇒ Ef = Sf, Tf = 0, recovering the exact result.
-    sf_dot_e = np.sum(sf * e, axis=1)
-    sf_dot_e = np.where(np.abs(sf_dot_e) < 1e-30, 1e-30, sf_dot_e)
-    mag_sf2 = np.sum(sf * sf, axis=1)
-    ef_mag = mag_sf2 / sf_dot_e  # = |Ef|
-
-    # Non-orthogonal component: Tf = Sf - Ef
-    ef = ef_mag[:, np.newaxis] * e
-    tf = sf - ef
-
-    # Geometric diffusion: |Ef| / |CF|
-    geo_diff = ef_mag / mag_cf
-
-    # Interpolate gamma to faces (linear interpolation using geometric weights)
-    weights = geo_data["face_weights"][:n_interior_faces]
-    if np.isscalar(gamma):
-        gamma_f = float(gamma)
-    else:
-        gamma_f = weights * gamma[neighbours] + (1 - weights) * gamma[owners]
-
     # Handle scalar field gradients: squeeze if shape is (n, 3, 1)
     if grad_phi.ndim == 3 and grad_phi.shape[2] == 1:
         grad_phi = grad_phi.squeeze(-1)  # (n, 3, 1) -> (n, 3)
 
-    # Interpolate element gradients to faces
-    # Standard interpolation: grad_f = w * grad_neighbor + (1-w) * grad_owner
-    grad_phi_f = (
-        weights[:, np.newaxis] * grad_phi[neighbours]
-        + (1 - weights[:, np.newaxis]) * grad_phi[owners]
-    )
+    owners_all = mesh_data["owners"]
+    neighbours_all = mesh_data["neighbours"]
+    flux_cf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_ff = np.empty(n_interior_faces, dtype=np.float64)
+    flux_vf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_tf = np.empty(n_interior_faces, dtype=np.float64) if include_total_flux else None
 
-    # Linear flux coefficients
-    # FluxCf: coefficient for owner cell
-    # FluxFf: coefficient for neighbor cell
-    flux_cf = gamma_f * geo_diff
-    flux_ff = -gamma_f * geo_diff
+    # Keep the temporary edge/gradient tensors bounded independently of mesh
+    # size.  On the cube reference partition the all-face implementation held
+    # roughly 200 MiB here for each velocity component.
+    chunk_size = 250_000
+    for start in range(0, n_interior_faces, chunk_size):
+        stop = min(start + chunk_size, n_interior_faces)
+        face_slice = slice(start, stop)
+        owners = owners_all[face_slice]
+        neighbours = neighbours_all[face_slice]
+        sf = geo_data["face_sf"][face_slice]
+        cf_vector = geo_data["face_cf_vector"][face_slice]
+        mag_cf = np.linalg.norm(cf_vector, axis=1)
+        edge = cf_vector / mag_cf[:, np.newaxis]
+        sf_dot_edge = np.sum(sf * edge, axis=1)
+        sf_dot_edge = np.where(np.abs(sf_dot_edge) < 1e-30, 1e-30, sf_dot_edge)
+        ef_mag = np.sum(sf * sf, axis=1) / sf_dot_edge
+        nonorthogonal = sf - ef_mag[:, np.newaxis] * edge
+        geo_diff = ef_mag / mag_cf
 
-    # Non-linear flux (explicit correction for non-orthogonality)
-    # FluxVf = -gamma_f * (grad_phi_f · Tf)
-    flux_vf = -gamma_f * np.sum(grad_phi_f * tf, axis=1)
+        weights = geo_data["face_weights"][face_slice]
+        if np.isscalar(gamma):
+            gamma_f = float(np.asarray(gamma).item())
+        else:
+            gamma_f = weights * gamma[neighbours] + (1.0 - weights) * gamma[owners]
+        grad_face = (
+            weights[:, np.newaxis] * grad_phi[neighbours]
+            + (1.0 - weights[:, np.newaxis]) * grad_phi[owners]
+        )
+        coefficient = gamma_f * geo_diff
+        correction = -gamma_f * np.sum(grad_face * nonorthogonal, axis=1)
+        flux_cf[face_slice] = coefficient
+        flux_ff[face_slice] = -coefficient
+        flux_vf[face_slice] = correction
+        if flux_tf is not None:
+            flux_tf[face_slice] = (
+                coefficient * phi[owners] - coefficient * phi[neighbours] + correction
+            )
 
-    # Total flux: FluxTf = FluxCf * phi_owner + FluxFf * phi_neighbor + FluxVf
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if flux_tf is not None:
+        result["flux_tf"] = flux_tf
+    return result
 
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
-
-def assemble_diffusion_term_boundary_fixed_value(phi, gamma, boundary_patch, mesh_data, geo_data):
+def assemble_diffusion_term_boundary_fixed_value(
+    phi, gamma, boundary_patch, mesh_data, geo_data, *, include_total_flux=True
+):
     """
     Assemble diffusion term for boundary faces with fixed value BC.
 
@@ -147,7 +143,7 @@ def assemble_diffusion_term_boundary_fixed_value(phi, gamma, boundary_patch, mes
     wall_dist = geo_data["wall_dist"][b_face_indices]
 
     # Interpolate gamma to boundary
-    gamma_b = float(gamma) if np.isscalar(gamma) else gamma[owners_b]
+    gamma_b = float(np.asarray(gamma).item()) if np.isscalar(gamma) else gamma[owners_b]
 
     # Geometric diffusion for boundary: |Sf| / wall_distance
     mag_sf_b = np.linalg.norm(sf_b, axis=1)
@@ -170,18 +166,28 @@ def assemble_diffusion_term_boundary_fixed_value(phi, gamma, boundary_patch, mes
     flux_vf = -gamma_b * geo_diff_b * phi_b
 
     # Total flux (for reference)
-    flux_tf = flux_cf * phi_c + flux_vf
-
-    return {
+    result = {
         "flux_cf": flux_cf,
         "flux_ff": flux_ff,
         "flux_vf": flux_vf,
-        "flux_tf": flux_tf,
         "face_indices": b_face_indices,
     }
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi_c + flux_vf
+    return result
 
 
-def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundaries, face_flux=None):
+def assemble_diffusion_term(
+    phi,
+    grad_phi,
+    gamma,
+    mesh_data,
+    geo_data,
+    boundaries,
+    face_flux=None,
+    *,
+    include_total_flux=True,
+):
     """
     Assemble complete diffusion term for all faces.
 
@@ -206,16 +212,24 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
-    flux_tf = np.zeros(n_faces)
+    flux_tf = np.zeros(n_faces) if include_total_flux else None
 
     # Assemble interior faces
-    interior_fluxes = assemble_diffusion_term_interior(phi, grad_phi, gamma, mesh_data, geo_data)
+    interior_fluxes = assemble_diffusion_term_interior(
+        phi,
+        grad_phi,
+        gamma,
+        mesh_data,
+        geo_data,
+        include_total_flux=include_total_flux,
+    )
 
     n_interior = mesh_data["n_interior_faces"]
     flux_cf[:n_interior] = interior_fluxes["flux_cf"]
     flux_ff[:n_interior] = interior_fluxes["flux_ff"]
     flux_vf[:n_interior] = interior_fluxes["flux_vf"]
-    flux_tf[:n_interior] = interior_fluxes["flux_tf"]
+    if flux_tf is not None:
+        flux_tf[:n_interior] = interior_fluxes["flux_tf"]
 
     # Assemble boundary faces
     for boundary in boundaries:
@@ -251,7 +265,7 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             tf = sf - ef_mag[:, None] * e
             weights = geo_data["face_weights"][indices]
             gamma_f = (
-                float(gamma)
+                float(np.asarray(gamma).item())
                 if np.isscalar(gamma)
                 else weights * gamma[neighbours_b] + (1.0 - weights) * gamma[owners_b]
             )
@@ -263,16 +277,22 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             flux_cf[indices] = coefficient
             flux_ff[indices] = -coefficient
             flux_vf[indices] = -gamma_f * np.sum(grad_f * tf, axis=1)
-            flux_tf[indices] = (
-                coefficient * phi[owners_b] - coefficient * phi[neighbours_b] + flux_vf[indices]
-            )
+            if flux_tf is not None:
+                flux_tf[indices] = (
+                    coefficient * phi[owners_b] - coefficient * phi[neighbours_b] + flux_vf[indices]
+                )
 
         elif strategy in (
             BoundaryStrategy.FIXED_VALUE,
             BoundaryStrategy.NO_SLIP,
         ):
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
-                phi, gamma, boundary, mesh_data, geo_data
+                phi,
+                gamma,
+                boundary,
+                mesh_data,
+                geo_data,
+                include_total_flux=include_total_flux,
             )
 
             if strategy is BoundaryStrategy.NO_SLIP:
@@ -280,13 +300,15 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
                 indices = b_fluxes["face_indices"]
                 owners_b = mesh_data["owners"][indices]
                 b_fluxes["flux_vf"][:] = 0.0
-                b_fluxes["flux_tf"][:] = b_fluxes["flux_cf"] * phi[owners_b]
+                if include_total_flux:
+                    b_fluxes["flux_tf"][:] = b_fluxes["flux_cf"] * phi[owners_b]
 
             indices = b_fluxes["face_indices"]
             flux_cf[indices] = b_fluxes["flux_cf"]
             flux_ff[indices] = b_fluxes["flux_ff"]
             flux_vf[indices] = b_fluxes["flux_vf"]
-            flux_tf[indices] = b_fluxes["flux_tf"]
+            if flux_tf is not None:
+                flux_tf[indices] = b_fluxes["flux_tf"]
 
         elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
             # Diffusion is Dirichlet only on reverse-flow/inflow faces; it is
@@ -295,14 +317,20 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
             if face_flux is None:
                 continue
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
-                phi, gamma, boundary, mesh_data, geo_data
+                phi,
+                gamma,
+                boundary,
+                mesh_data,
+                geo_data,
+                include_total_flux=include_total_flux,
             )
             indices = b_fluxes["face_indices"]
             inflow = np.asarray(face_flux)[indices] < 0.0
             flux_cf[indices] = np.where(inflow, b_fluxes["flux_cf"], 0.0)
             flux_ff[indices] = 0.0
             flux_vf[indices] = np.where(inflow, b_fluxes["flux_vf"], 0.0)
-            flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
+            if flux_tf is not None:
+                flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
 
         elif strategy is BoundaryStrategy.ZERO_GRADIENT:
             # Zero gradient: no flux contribution
@@ -311,4 +339,7 @@ def assemble_diffusion_term(phi, grad_phi, gamma, mesh_data, geo_data, boundarie
         else:
             raise RuntimeError(f"Unhandled diffusion boundary strategy {strategy!r}")
 
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if flux_tf is not None:
+        result["flux_tf"] = flux_tf
+    return result

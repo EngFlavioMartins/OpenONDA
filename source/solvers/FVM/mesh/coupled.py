@@ -113,10 +113,9 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
         if np.any(np.linalg.norm(vectors, axis=1) <= 1e-30):
             raise MeshValidationError("Cyclic coupling produced a zero centre-to-centre distance")
         geo_data["face_cf_vector"][coupled] = vectors
-        geo_data["face_cf"][coupled] = face_centres[coupled] - centres[owners[coupled]]
-        geo_data["face_ff"][coupled] = face_centres[coupled] - image_centres
         normal = geo_data["face_sf"][coupled] / geo_data["face_areas"][coupled, None]
-        owner_distance = np.sum(geo_data["face_cf"][coupled] * normal, axis=1)
+        owner_to_face = face_centres[coupled] - centres[owners[coupled]]
+        owner_distance = np.sum(owner_to_face * normal, axis=1)
         total_distance = np.sum(vectors * normal, axis=1)
         weights = owner_distance / total_distance
         if np.any((weights <= 0.0) | (weights >= 1.0)):

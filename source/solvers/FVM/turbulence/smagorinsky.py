@@ -281,6 +281,49 @@ class OpenFOAMSmagorinsky:
         delta = _compute_filter_width(geometry["element_volumes"], mesh, geometry)
         return mesh, geometry, strain, delta
 
+    def _compute_sgs_state(
+        self,
+        U,
+        mesh_data: dict | None,
+        geo_data: dict | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(k_sgs, delta)`` with bounded tensor working storage."""
+        mesh = self.mesh_data if mesh_data is None else mesh_data
+        geometry = self.geo_data if geo_data is None else geo_data
+        n_elements = int(mesh["n_elements"])
+        grad_fn = gradients._resolve_gradient_fn(geometry)
+        grad_u = np.asarray(grad_fn(U, mesh, geometry), dtype=np.float64)
+        if grad_u.shape[1:] != (3, 3) or grad_u.shape[0] < n_elements:
+            raise ValueError(
+                f"Velocity gradient has shape {grad_u.shape}; expected at least "
+                f"({n_elements}, 3, 3)"
+            )
+        if not np.all(np.isfinite(grad_u)):
+            raise FloatingPointError("Smagorinsky velocity gradient contains non-finite values")
+
+        delta = _compute_filter_width(geometry["element_volumes"], mesh, geometry)
+        k_sgs = np.empty(n_elements, dtype=np.float64)
+        chunk_size = 100_000
+        for start in range(0, n_elements, chunk_size):
+            stop = min(start + chunk_size, n_elements)
+            gradient = grad_u[start:stop]
+            strain = 0.5 * (gradient + np.transpose(gradient, (0, 2, 1)))
+            trace = np.einsum("fii->f", strain)
+            # dev(D):D = D:D - tr(D)^2/3.  This avoids a second full tensor
+            # copy and bounds all remaining temporaries to one cell block.
+            contraction = np.sum(strain * strain, axis=(1, 2)) - trace * trace / 3.0
+            delta_block = delta[start:stop]
+            a = self.Ce / delta_block
+            b = (2.0 / 3.0) * trace
+            c = 2.0 * self.Ck * delta_block * contraction
+            discriminant = np.maximum(b * b + 4.0 * a * c, 0.0)
+            sqrt_k = (-b + np.sqrt(discriminant)) / (2.0 * a)
+            k_sgs[start:stop] = sqrt_k * sqrt_k
+
+        if not np.all(np.isfinite(k_sgs)) or np.any(k_sgs < 0.0):
+            raise FloatingPointError("OpenFOAM Smagorinsky produced invalid SGS energy")
+        return k_sgs, delta
+
     def compute_sgs_kinetic_energy(
         self,
         U,
@@ -303,21 +346,7 @@ class OpenFOAMSmagorinsky:
         numpy.ndarray
             Non-negative SGS kinetic energy with one value per interior cell.
         """
-        _, _, strain, delta = self._resolve_inputs(U, mesh_data, geo_data)
-        trace = np.trace(strain, axis1=1, axis2=2)
-        deviatoric = strain.copy()
-        diagonal = np.arange(3)
-        deviatoric[:, diagonal, diagonal] -= trace[:, None] / 3.0
-        contraction = np.sum(deviatoric * strain, axis=(1, 2))
-
-        a = self.Ce / delta
-        b = (2.0 / 3.0) * trace
-        c = 2.0 * self.Ck * delta * contraction
-        discriminant = np.maximum(b * b + 4.0 * a * c, 0.0)
-        sqrt_k = (-b + np.sqrt(discriminant)) / (2.0 * a)
-        k_sgs = np.square(sqrt_k)
-        if not np.all(np.isfinite(k_sgs)) or np.any(k_sgs < 0.0):
-            raise FloatingPointError("OpenFOAM Smagorinsky produced invalid SGS energy")
+        k_sgs, _ = self._compute_sgs_state(U, mesh_data, geo_data)
         return k_sgs
 
     def compute_nut(
@@ -327,10 +356,7 @@ class OpenFOAMSmagorinsky:
         geo_data: dict | None = None,
     ) -> np.ndarray:
         """Compute OpenFOAM-equivalent SGS kinematic viscosity ``nu_t``."""
-        mesh = self.mesh_data if mesh_data is None else mesh_data
-        geometry = self.geo_data if geo_data is None else geo_data
-        delta = _compute_filter_width(geometry["element_volumes"], mesh, geometry)
-        k_sgs = self.compute_sgs_kinetic_energy(U, mesh, geometry)
+        k_sgs, delta = self._compute_sgs_state(U, mesh_data, geo_data)
         nut = self.Ck * delta * np.sqrt(k_sgs)
         if not np.all(np.isfinite(nut)) or np.any(nut < 0.0):
             raise FloatingPointError("OpenFOAM Smagorinsky produced invalid eddy viscosity")

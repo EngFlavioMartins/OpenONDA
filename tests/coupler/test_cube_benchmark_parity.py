@@ -123,7 +123,7 @@ def test_common_fvm_settings_identical(bench, reference):
     hybrid = bench.FVM_SETUP
     fully_meshed = reference.FVM_SETUP
 
-    assert hybrid.cores == fully_meshed.cores
+    assert hybrid.cores == fully_meshed.cores == 4
     assert hybrid.schemes == fully_meshed.schemes
     assert hybrid.linear == fully_meshed.linear
     assert fully_meshed.linear.momentum_tol <= 1.0e-6
@@ -205,16 +205,16 @@ def test_reference_wake_seed_is_smooth_solenoidal_and_uses_initialization_api(re
     x0, y0, z0 = reference.PERTURBATION_CENTRE
     points = np.array(
         [
-            [x0, y0 + radius / np.sqrt(2.0), z0],
+            [x0, y0, z0],
+            [x0 + radius / np.sqrt(2.0), y0, z0],
             [x0, y0, z0 + radius / np.sqrt(2.0)],
-            [x0 + radius, y0, z0],
         ]
     )
     delta = reference._wake_perturbation(points)
     assert np.linalg.norm(delta[0]) == pytest.approx(reference.PERTURBATION)
-    assert delta[0, 2] > 0.0
-    assert delta[1, 1] < 0.0
-    np.testing.assert_allclose(delta[2], 0.0)
+    assert delta[0, 1] > 0.0
+    np.testing.assert_allclose(delta[1], 0.0, atol=1.0e-18)
+    assert delta[2, 1] == pytest.approx(reference.PERTURBATION * np.exp(-0.5))
 
     probe = np.array([[x0 + 0.1, y0 + 0.2, z0 + 0.3]])
     spacing = 1.0e-5

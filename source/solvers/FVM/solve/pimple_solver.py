@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Transient incompressible PIMPLE solver."""
 
+from typing import Any
+
 import numpy as np
 
 from ..assemble import momentum
@@ -95,6 +97,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         U_old_old=None,
         source_explicit=None,
         source_implicit=None,
+        phi_old=None,
+        phi_old_old=None,
     ):
         """Perform one PIMPLE time step.
 
@@ -131,6 +135,22 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         if ddt_scheme == "backward" and U_old_old is None:
             ddt_scheme = "euler"  # self-starting first step
 
+        # Frozen for the whole step, exactly like pimpleFoam: fvc::ddtCorr
+        # reads only old-time fields, so it is the same on every corrector.
+        ddt_flux_correction = None
+        if bool(self.params.get("ddt_corr", True)):
+            ddt_flux_correction = simple_solver.compute_ddt_flux_correction(
+                U_old,
+                U_old_old,
+                phi_old,
+                phi_old_old,
+                dt,
+                self.mesh_data,
+                self.geo_data,
+                self.boundaries,
+                ddt_scheme,
+            )
+
         simple_solver.update_scalar_boundaries(
             p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi
         )
@@ -141,9 +161,26 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         outer_diagnostics = []
         logger = self.params.get("_logger")
 
-        for outer in range(n_outer):
+        # OpenFOAM applies the PIMPLE relaxation factors on every outer
+        # corrector *except the last one*: ``fvMatrix::relax`` and
+        # ``GeometricField::relax`` look the factor up under ``UFinal`` /
+        # ``pFinal``. The relaxationFactors section does not define those
+        # final-field entries, so the final
+        # corrector runs unrelaxed.  That is what keeps the completed time step
+        # time-consistent — relaxation only damps the *outer-iteration*
+        # increment while the loop is still converging.  Relaxing the final
+        # corrector too (as a plain SIMPLE sweep would) leaves a permanent
+        # ``(1-α)/α · diag(A) · ΔU`` damping term in the committed solution,
+        # which suppresses physically growing modes such as shear-layer rollup
+        # and bluff-body vortex shedding.
+        final_iteration = False
 
-            def _solve_predictor(src_explicit, phi=phi):
+        for outer in range(n_outer):
+            final_iteration = final_iteration or outer == n_outer - 1
+            alpha_u_outer = 1.0 if final_iteration else alpha_u
+            alpha_p_outer = 1.0 if final_iteration else alpha_p
+
+            def _solve_predictor(src_explicit, phi=phi, alpha_u=alpha_u_outer) -> Any:
                 return momentum.solve_momentum_predictor(
                     U,
                     p,
@@ -171,7 +208,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
-                    partitioned_workspace=self._partitioned_workspace("momentum"),
+                    # PETSc matrices/preconditioners dominate solve memory.
+                    # Momentum and pressure are sequential, so sharing a
+                    # workspace destroys the previous equation's allocation
+                    # before constructing the next one.
+                    partitioned_workspace=self._partitioned_workspace("flow"),
                     failure_policy=self.params.get("linear_failure_policy", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
@@ -212,7 +253,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     detailed=True,
                 )
 
-            U_iter = U_star.copy()
+            # The predictor is no longer needed as an immutable field: later
+            # pressure correctors advance this same state in place. Reuse its
+            # storage instead of retaining two full three-component velocity
+            # arrays for the entire pressure loop.
+            U_iter = U_star
 
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
@@ -241,11 +286,12 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             self.mesh_data,
                             self.geo_data,
                             self.boundaries,
-                            alpha_u=alpha_u,
+                            alpha_u=alpha_u_outer,
                             pressure_constraint=pressure_constraint,
                             matrix_workspace=self._pressure_matrix_workspace,
                             operator_backend=self.params.get("_operator_backend", "numpy"),
                             boundary_layout=self._pressure_boundary_layout,
+                            ddt_flux_correction=ddt_flux_correction,
                             return_workspace=True,
                         )
                     )
@@ -260,6 +306,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
                     zero_guess = np.zeros_like(b_p)
                     pressure_initial_residual = normalized_residual(A_p, zero_guess, b_p)
+                    del zero_guess
                     logging.Timer.start("Pressure Solve")
                     pressure_tol = float(self.params.get("pressure_tol", 1e-8))
                     pressure_maxiter = int(self.params.get("pressure_maxiter", 500))
@@ -285,7 +332,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             if has_pressure_nullspace and pressure_constraint == "nullspace"
                             else None
                         ),
-                        partitioned_workspace=self._partitioned_workspace("pressure"),
+                        partitioned_workspace=self._partitioned_workspace("flow"),
                         return_info=True,
                     )
                     linear_results.append(pressure_result)
@@ -295,6 +342,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         pressure_final_residual = pressure_result.final_residual
                     else:
                         pressure_final_residual = normalized_residual(A_p, p_prime, b_p)
+                    del A_p, b_p
                     logging.Timer.log(
                         "Pressure Solve",
                         sink=logger,
@@ -311,7 +359,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.geo_data,
                         self.boundaries,
                         rho=rho,
-                        alpha_u=alpha_u,
+                        alpha_u=alpha_u_outer,
+                        alpha_p=alpha_p_outer,
                         workspace=pressure_workspace,
                     )
                     if non_ortho == n_non_ortho:
@@ -323,7 +372,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         detailed=True,
                     )
 
-                    p[:n_elem] += alpha_p * p_prime
+                    p[:n_elem] += alpha_p_outer * p_prime
                     simple_solver.update_scalar_boundaries(
                         p,
                         self.mesh_data,
@@ -333,6 +382,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     )
                     if parallel is not None and parallel.is_partitioned:
                         parallel.exchange_halo(p[:n_elem])
+                    # Do not carry one corrector's face/cell work arrays into
+                    # the next pressure assembly. Python otherwise keeps the
+                    # previous assignment alive until the new call returns,
+                    # nearly doubling the peak for nCorrectors/nonOrth loops.
+                    del p_prime, phi_star, pressure_workspace, corrected_phi
 
             simple_solver._update_velocity_bcs(
                 U_iter,
@@ -379,6 +433,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 )
             )
 
+            # The committed U/phi fields now own the corrected state. Drop
+            # predictor-sized arrays before the next outer momentum assembly.
+            del U_star, A_U, U_iter
+
+            if final_iteration:
+                break
+
             checks = []
             residual_tolerance = self.params.get("outer_residual_tolerance")
             if residual_tolerance is not None:
@@ -390,7 +451,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 checks.append(continuity_outer <= float(continuity_tolerance))
             minimum = int(self.params.get("min_outer_correctors", 1))
             if checks and all(checks) and outer + 1 >= minimum:
-                break
+                # ``pimpleControl::loop`` does not stop on the iteration whose
+                # residuals satisfied the criteria: it flags the next one final
+                # and runs it unrelaxed before leaving the loop.
+                final_iteration = True
 
         momentum_final = {
             comp: values["final_residual"] for comp, values in momentum_diagnostics.items()

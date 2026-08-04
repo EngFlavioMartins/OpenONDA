@@ -1,6 +1,7 @@
-"""Assemble ``∂U/∂t + ∇·(UU) = -∇(p/ρ) + ∇·(ν∇U) + f``."""
+"""Assemble ``∂U/∂t + ∇·(UU) = -∇(p/ρ) + ∇·(ν∇U) + ∇·(ν dev2(∇Uᵀ)) + f``."""
 
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 
@@ -8,6 +9,97 @@ from ..fields import gradients
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..solve.linear_interface import normalized_residual, solve_linear_system
 from . import convection, diffusion, matrix_assembly
+
+
+def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
+    r"""Return the explicit ``div(nuEff * dev2(T(grad(U))))`` acceleration.
+
+    OpenFOAM's viscous term is not a plain Laplacian.  ``divDevReff`` (see
+    ``linearViscousStress::divDevRhoReff``) is::
+
+        -fvc::div(nuEff*dev2(T(fvc::grad(U)))) - fvm::laplacian(nuEff, U)
+
+    so the momentum equation carries an explicit transpose-stress term
+    alongside ``div(nuEff grad(U))``.  It is exactly the part of the deviatoric
+    stress that survives a *variable* viscosity: expanding the divergence gives
+    ``(grad nuEff) . (grad U)^T`` plus a dilatation piece that vanishes for a
+    discretely divergence-free flux.  Dropping it is harmless for constant
+    ``nu``, but under LES ``nuEff`` falls from its peak to zero across the
+    wall-adjacent cell, and there the term is the same order as the Laplacian
+    itself.
+
+    ``dev2(A) = A - (2/3) tr(A) I``, and with the native gradient layout
+    ``grad_U[c, i, j] = d(U_j)/d(x_i)`` — which matches OpenFOAM's
+    ``grad(U)_ij = d(U_j)/d(x_i)`` — the face flux of the transposed tensor is
+
+    .. math::
+
+        (S_f \cdot \nu \,\mathrm{dev2}(G^T))_j
+            = \nu_f \left[ (G_f \cdot S_f)_j
+                          - \tfrac{2}{3} S_{f,j} \,\mathrm{tr}(G_f) \right].
+
+    Returns an acceleration ``(n_elements, 3)`` in m/s², i.e. already divided by
+    the cell volume, ready to add to ``source_explicit``.
+    """
+    n_elements = mesh_data["n_elements"]
+    n_interior = mesh_data["n_interior_faces"]
+    n_faces = mesh_data["n_faces"]
+    owners = mesh_data["owners"]
+    neighbours = mesh_data["neighbours"]
+    face_sf = geo_data["face_sf"]
+    weights = geo_data["face_weights"]
+
+    nu_scalar = float(np.asarray(nu).item()) if np.isscalar(nu) else None
+    nu_cells = None if nu_scalar is not None else np.asarray(nu, dtype=np.float64)
+
+    def _face_flux(grad_face, nu_face, sf):
+        """nu_f * [ G_f . Sf - (2/3) Sf tr(G_f) ] for one block of faces."""
+        trace = np.einsum("fii->f", grad_face)
+        transposed = np.einsum("fji,fi->fj", grad_face, sf)
+        return nu_face[:, np.newaxis] * (transposed - (2.0 / 3.0) * trace[:, np.newaxis] * sf)
+
+    source = np.zeros((n_elements, 3), dtype=np.float64)
+
+    # A full interpolated tensor costs 72 bytes per face before its flux and
+    # interpolation temporaries.  Bound the working set independently of mesh
+    # size; only the cell source persists.
+    chunk_size = 200_000
+    for start in range(0, n_interior, chunk_size):
+        stop = min(start + chunk_size, n_interior)
+        owners_i = owners[start:stop]
+        neighbours_i = neighbours[start:stop]
+        face_weights = weights[start:stop]
+        w = face_weights[:, np.newaxis, np.newaxis]
+        grad_face = w * grad_U[neighbours_i] + (1.0 - w) * grad_U[owners_i]
+        if nu_cells is None:
+            nu_face = np.full(stop - start, nu_scalar, dtype=np.float64)
+        else:
+            nu_face = (
+                face_weights * nu_cells[neighbours_i] + (1.0 - face_weights) * nu_cells[owners_i]
+            )
+        flux = _face_flux(grad_face, nu_face, face_sf[start:stop])
+        np.add.at(source, owners_i, flux)
+        np.add.at(source, neighbours_i, -flux)
+
+    if n_faces > n_interior:
+        # The patch value of the gradient already carries the exact wall-normal
+        # derivative (see gradients._correct_boundary_gradient), which is what
+        # fvc::interpolate reads on a boundary patch.
+        for start in range(n_interior, n_faces, chunk_size):
+            stop = min(start + chunk_size, n_faces)
+            faces_b = np.arange(start, stop)
+            owners_b = owners[faces_b]
+            ghosts_b = n_elements + (faces_b - n_interior)
+            nu_face = (
+                np.full(stop - start, nu_scalar, dtype=np.float64)
+                if nu_cells is None
+                else nu_cells[owners_b]
+            )
+            flux_b = _face_flux(grad_U[ghosts_b], nu_face, face_sf[faces_b])
+            np.add.at(source, owners_b, flux_b)
+
+    source /= geo_data["element_volumes"][:, np.newaxis]
+    return source
 
 
 def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
@@ -232,8 +324,14 @@ def assemble_momentum_equation(
     volumetric_flux = np.asarray(phi, dtype=np.float64)
 
     results = {}
-    spatial_matrix = None
+    common_matrix = None
+    common_diagonal = None
     vol = geo_data["element_volumes"]
+
+    # OpenFOAM's divDevReff splits the viscous stress into an implicit
+    # laplacian(nuEff, U) and this explicit transpose-stress correction.  It is
+    # assembled once for all three components because it couples them.
+    dev2_source = compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data)
 
     # Assemble for each component
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
@@ -256,7 +354,12 @@ def assemble_momentum_equation(
             geo_data,
             momentum_boundaries,
             face_flux=phi,
+            include_total_flux=False,
         )
+        # The total face flux is a diagnostic output of the generic assembly
+        # API.  Momentum matrix/RHS assembly only consumes cf/ff/vf, so do not
+        # retain it while allocating the convection arrays.
+        diff_flux.pop("flux_tf", None)
 
         # 2. Convection term: ∇·(UU). grad_U_comp feeds the gradient-based
         #    TVD limiter for high-resolution schemes (ignored by the others).
@@ -268,27 +371,37 @@ def assemble_momentum_equation(
             boundaries,
             scheme=convection_scheme,
             grad_phi=grad_U_comp,
+            include_total_flux=False,
         )
+        conv_flux.pop("flux_tf", None)
 
-        # 3. Combine fluxes (diffusion + convection)
-        combined_flux = {
-            "flux_cf": diff_flux["flux_cf"] + conv_flux["flux_cf"],
-            "flux_ff": diff_flux["flux_ff"] + conv_flux["flux_ff"],
-            "flux_vf": diff_flux["flux_vf"] + conv_flux["flux_vf"],
-            "flux_tf": diff_flux["flux_tf"] + conv_flux["flux_tf"],
-        }
+        # 3. Combine in the diffusion buffers.  Allocating four additional
+        # face arrays here added about 45 MiB per reference-mesh rank.
+        for key in ("flux_cf", "flux_ff", "flux_vf"):
+            diff_flux[key] += conv_flux[key]
+        combined_flux = diff_flux
+        del conv_flux
 
         # 4. Assemble the common implicit matrix once.  Convection,
         # diffusion, transient, and implicit-source coefficients are identical
         # for x/y/z; only explicit corrections and boundary values differ.
-        if spatial_matrix is None:
-            spatial_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+        if common_matrix is None:
+            common_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
                 combined_flux,
                 mesh_data,
                 workspace=matrix_workspace,
                 backend=operator_backend,
             )
-        A = spatial_matrix.copy()
+            if dt is not None:
+                use_bdf2 = ddt_scheme == "backward" and U_old is not None and U_old_old is not None
+                transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / dt
+                common_matrix.setdiag(common_matrix.diagonal() + transient_diagonal)
+            if source_implicit is not None:
+                common_matrix.setdiag(common_matrix.diagonal() + source_implicit[:n_elements] * vol)
+            common_diagonal = common_matrix.diagonal()
+        assert common_matrix is not None
+        assert common_diagonal is not None
+        A = common_matrix
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
             combined_flux, mesh_data, backend=operator_backend
         )
@@ -297,36 +410,37 @@ def assemble_momentum_equation(
         grad_p_comp = grad_p[:n_elements, i_comp]
         b -= grad_p_comp * vol
 
-        # 6. Transient Term (BDF1/BDF2, selected by ddt_scheme)
+        # 5b. Explicit transpose part of the deviatoric viscous stress.
+        b += dev2_source[:, i_comp] * vol
+
+        # 6. Transient RHS (the component-independent diagonal was added once
+        #    to ``common_matrix`` above).
         if dt is not None:
-            _add_transient_term(
-                A,
-                b,
-                vol,
-                dt,
-                U_old[:n_elements, i_comp] if U_old is not None else None,
-                U[:n_elements, i_comp],
-                U_old_old[:n_elements, i_comp] if U_old_old is not None else None,
-                scheme=ddt_scheme,
+            coefficient = vol / dt
+            old_component = (
+                U_old[:n_elements, i_comp] if U_old is not None else U[:n_elements, i_comp]
             )
+            if ddt_scheme == "backward" and U_old_old is not None:
+                b += coefficient * (2.0 * old_component - 0.5 * U_old_old[:n_elements, i_comp])
+            else:
+                b += coefficient * old_component
 
         # 6b. Generic acceleration source terms: S = Su + Sp·U.
         #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping U implicit.
         #     Used by MMS forcing and the coupling fringe S = λ(Utarget − U).
         if source_explicit is not None:
             b += source_explicit[:n_elements, i_comp] * vol
-        if source_implicit is not None:
-            A.setdiag(A.diagonal() + source_implicit[:n_elements] * vol)
-
-        # 7. Compute H operator (diagonal of A, needed for pressure correction)
-        H = A.diagonal().copy()
-
         results[comp_name] = {
             "A": A,
             "b": b,
-            "H": H,
-            "grad_p_comp": grad_p_comp,
+            # The scalar operator is common to x/y/z, so its physical
+            # diagonal is one shared array as well.
+            "H": common_diagonal,
         }
+        # Without an explicit drop, the previous component's combined face
+        # arrays survive while Python evaluates the next diffusion/convection
+        # call on the right-hand side of its assignment.
+        del combined_flux, diff_flux
 
     return results
 
@@ -351,7 +465,7 @@ def solve_momentum_predictor(
     source_implicit=None,
     return_diagnostics=False,
     **solver_kwargs,
-):
+) -> Any:
     """Assemble and solve the three momentum predictors.
 
     Returns the predicted cell-and-boundary velocity and relaxed cell
@@ -387,7 +501,10 @@ def solve_momentum_predictor(
 
     # Solve for each component
     U_star = np.zeros((n_elements + n_boundary, 3))
-    A_U = np.zeros((n_elements, 3))
+    # All three segregated velocity equations have exactly the same scalar
+    # coefficients.  OpenFOAM stores one fvVectorMatrix diagonal/rAU field;
+    # retaining three copies here only tripled matrix and diagonal storage.
+    A_U = np.empty(n_elements, dtype=np.float64)
     solve_diagnostics = {}
     linear_backend = solver_kwargs.pop("linear_backend", "scipy")
     parallel_context = solver_kwargs.pop("parallel_context", None)
@@ -411,9 +528,9 @@ def solve_momentum_predictor(
         if X.ndim == 1:
             X = X[:, np.newaxis]
 
+        A_U[:] = diag_new
         for i_comp, comp_name in enumerate(["x", "y", "z"]):
             U_star[:n_elements, i_comp] = X[:, i_comp]
-            A_U[:, i_comp] = diag_new
             b_relaxed = B[:, i_comp]
             x_initial = U_old[:n_elements, i_comp] if U_old is not None else np.zeros(n_elements)
             solve_diagnostics[comp_name] = {
@@ -442,13 +559,14 @@ def solve_momentum_predictor(
         # allowing x/y/z to reuse one ILU factorisation.
         shared_ilu_key = ("momentum", matrix_workspace.cache_namespace)
 
-    for i_comp, comp_name in enumerate(["x", "y", "z"]):
-        A = mom_eqs[comp_name]["A"]
-        b = mom_eqs[comp_name]["b"]
+    A = mom_eqs["x"]["A"]
+    diag_new = A.diagonal() / under_relaxation
+    A.setdiag(diag_new)
+    A_relaxed = A
+    A_U[:] = diag_new
 
-        diag_new = A.diagonal() / under_relaxation
-        A.setdiag(diag_new)
-        A_relaxed = A
+    for i_comp, comp_name in enumerate(["x", "y", "z"]):
+        b = mom_eqs[comp_name]["b"]
 
         # Add source term to RHS to ensure consistency at convergence
         # U[:n_elements, i_comp] is the old velocity value
@@ -493,7 +611,6 @@ def solve_momentum_predictor(
 
         # Store results
         U_star[:n_elements, i_comp] = U_comp_star
-        A_U[:, i_comp] = diag_new
 
     if parallel_context is not None and parallel_context.is_partitioned:
         parallel_context.exchange_halo(A_U)

@@ -82,7 +82,7 @@ def test_restart_matches_uninterrupted_bdf_integration(tmp_path, time_scheme):
     with contextlib.redirect_stdout(io.StringIO()):
         resumed.evolve()
 
-    for name in ("U", "p", "phi", "U_old", "U_old_old"):
+    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         np.testing.assert_allclose(getattr(resumed, name), getattr(reference, name), atol=1e-13)
     assert resumed.flow_time == pytest.approx(reference.flow_time)
     assert resumed.time_step == reference.time_step
@@ -194,8 +194,12 @@ def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):
 
     record = solver.last_diagnostics
     assert record.algorithm == "PIMPLE"
-    assert len(record.outer_correctors) == 1
-    assert len(record.linear_solves) == 5
+    # The criteria are met on the first corrector, so the loop stops well short
+    # of the configured four.  It still runs one more: ``pimpleControl::loop``
+    # flags the corrector *after* the satisfied one as final and runs it
+    # unrelaxed, so the committed step is never a relaxed one.
+    assert len(record.outer_correctors) == 2
+    assert len(record.linear_solves) == 10
     assert all(result.converged for result in record.linear_solves)
     assert sum(result.solve_seconds > 0.0 for result in record.linear_solves[:3]) == 1
     assert record.nonfinite_count == 0

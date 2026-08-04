@@ -102,26 +102,39 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
         # bounded) to isolate the *time*-integration order: the deferred
         # scheme's explicit central correction is lagged by one solve and would
         # cap the observed order at ~1 without outer correctors.
-        mom = assemble_momentum_equation(
-            U,
-            p,
-            phi_flux,
-            1.0,
-            nu,
-            mesh,
-            geo,
-            mesh["boundary"],
-            convection_scheme="central",
-            dt=dt,
-            U_old=U_old,
-            U_old_old=U_old_old,
-            ddt_scheme=ddt_scheme,
-            source_explicit=S,
-        )
-        for i, comp in enumerate(["x", "y", "z"]):
-            U[:n_elem, i] = solve_linear_system(
-                mom[comp]["A"], mom[comp]["b"], method="spsolve", equation_type="momentum"
+        # OpenFOAM's deviatoric transpose-stress contribution is explicit in
+        # each momentum assembly and is refreshed by the PIMPLE outer loop.
+        # Converge that fixed point here too; a single lagged evaluation would
+        # inject a first-order splitting error into a test intended to isolate
+        # the BDF time operator.
+        for _picard in range(8):
+            previous_iterate = U[:n_elem].copy()
+            mom = assemble_momentum_equation(
+                U,
+                p,
+                phi_flux,
+                1.0,
+                nu,
+                mesh,
+                geo,
+                mesh["boundary"],
+                convection_scheme="central",
+                dt=dt,
+                U_old=U_old,
+                U_old_old=U_old_old,
+                ddt_scheme=ddt_scheme,
+                source_explicit=S,
             )
+            for i, comp in enumerate(["x", "y", "z"]):
+                U[:n_elem, i] = solve_linear_system(
+                    mom[comp]["A"],
+                    mom[comp]["b"],
+                    method="spsolve",
+                    equation_type="momentum",
+                )
+            change = np.linalg.norm(U[:n_elem] - previous_iterate)
+            if change <= 1e-12 * max(np.linalg.norm(U[:n_elem]), 1.0):
+                break
         U_old_old = U_old
         t = t_new
     return U[:n_elem].copy()

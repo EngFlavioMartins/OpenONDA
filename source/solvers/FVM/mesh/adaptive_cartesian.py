@@ -277,7 +277,24 @@ class AdaptiveCartesianMesher:
         regions: tuple[tuple[_IntegerBox, int], ...],
     ) -> np.ndarray:
         base_width = 2**max_level
-        leaves: list[tuple[int, int, int, int, int]] = []
+        # A Python tuple/list representation costs several times the 20 bytes
+        # of actual octree data per cell.  Grow one packed numeric buffer so a
+        # multi-million-cell wake mesh does not spend gigabytes on objects
+        # before topology construction even begins.
+        capacity = max(1024, math.prod(base_counts))
+        leaves = np.empty((capacity, 5), dtype=np.int32)
+        n_leaves = 0
+
+        def append_leaf(x0: int, y0: int, z0: int, width: int, level: int) -> None:
+            nonlocal capacity, leaves, n_leaves
+            if n_leaves == capacity:
+                new_capacity = int(capacity * 1.5) + 1
+                grown = np.empty((new_capacity, 5), dtype=np.int32)
+                grown[:n_leaves] = leaves[:n_leaves]
+                leaves = grown
+                capacity = new_capacity
+            leaves[n_leaves] = (x0, y0, z0, width, level)
+            n_leaves += 1
 
         def visit(x0: int, y0: int, z0: int, width: int, level: int) -> None:
             x1, y1, z1 = x0 + width, y0 + width, z0 + width
@@ -315,7 +332,7 @@ class AdaptiveCartesianMesher:
                     "STL surface cuts a leaf cell; request a surface_cell_size that "
                     "aligns the surface with the finest Cartesian level"
                 )
-            leaves.append((x0, y0, z0, width, level))
+            append_leaf(x0, y0, z0, width, level)
 
         nx, ny, nz = base_counts
         for k in range(nz):
@@ -323,9 +340,9 @@ class AdaptiveCartesianMesher:
                 for i in range(nx):
                     visit(i * base_width, j * base_width, k * base_width, base_width, 0)
 
-        if not leaves:
+        if not n_leaves:
             raise ValueError("Meshing configuration removed every fluid cell")
-        return np.asarray(leaves, dtype=np.int32)
+        return leaves[:n_leaves].copy()
 
     @staticmethod
     def _face_codes(
@@ -375,6 +392,8 @@ class AdaptiveCartesianMesher:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict], np.ndarray]:
         n_cells = len(leaves)
         nx, ny, nz = limits
+        max_point_code = (nx + 1) * (ny + 1) * (nz + 1) - 1
+        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
         point_strides = (nx + 1, ny + 1)
         cell_stride_x, cell_stride_y = nx, ny
 
@@ -401,7 +420,7 @@ class AdaptiveCartesianMesher:
         # cell.  The allowance covers 2:1 transition subfaces without building
         # millions of Python tuples.
         capacity = max(16, int(math.ceil(3.35 * n_cells)))
-        interior_codes = np.empty((capacity, 4), dtype=np.int64)
+        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
         interior_owners = np.empty(capacity, dtype=np.int32)
         interior_neighbours = np.empty(capacity, dtype=np.int32)
         n_interior = 0
@@ -418,7 +437,7 @@ class AdaptiveCartesianMesher:
         def grow() -> None:
             nonlocal capacity, interior_codes, interior_owners, interior_neighbours
             new_capacity = int(capacity * 1.35) + 1
-            new_codes = np.empty((new_capacity, 4), dtype=np.int64)
+            new_codes = np.empty((new_capacity, 4), dtype=code_dtype)
             new_codes[:capacity] = interior_codes
             interior_codes = new_codes
             new_owners = np.empty(new_capacity, dtype=np.int32)
@@ -565,7 +584,7 @@ class AdaptiveCartesianMesher:
         if self.surface is not None:
             ordered_names.append(self.wall_patch_name)
         for name in ordered_names:
-            codes = np.asarray(patch_codes[name], dtype=np.int64).reshape(-1, 4)
+            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
             owners = np.asarray(patch_owners[name], dtype=np.int32)
             face_blocks.append(codes)
             owner_blocks.append(owners)
@@ -579,7 +598,7 @@ class AdaptiveCartesianMesher:
             )
             start += len(codes)
 
-        encoded_faces = np.ascontiguousarray(np.vstack(face_blocks), dtype=np.int64)
+        encoded_faces = np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype)
         owners = np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32)
         neighbour_array = np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32)
         return encoded_faces, owners, neighbour_array, boundary, levels
@@ -608,9 +627,16 @@ class AdaptiveCartesianMesher:
             leaves, max_level, limits
         )
 
-        point_codes, inverse = np.unique(encoded_faces.ravel(), return_inverse=True)
-        faces = np.ascontiguousarray(inverse.reshape(-1, 4), dtype=np.int32)
-        del inverse, encoded_faces
+        point_codes = np.unique(encoded_faces)
+        if len(point_codes) > np.iinfo(np.int32).max:
+            raise MemoryError("Adaptive mesh has too many points for int32 face connectivity")
+        faces = np.empty(encoded_faces.shape, dtype=np.int32)
+        for start in range(0, len(encoded_faces), 250_000):
+            stop = min(start + 250_000, len(encoded_faces))
+            faces[start:stop] = np.searchsorted(point_codes, encoded_faces[start:stop]).astype(
+                np.int32
+            )
+        del encoded_faces
 
         nx, ny, _nz = limits
         sx, sy = nx + 1, ny + 1
@@ -633,7 +659,7 @@ class AdaptiveCartesianMesher:
             "n_interior_faces": len(neighbours),
             "n_points": len(points),
             "cell_levels": levels,
-            "cell_sizes": self.max_cell_size / np.power(2.0, levels),
+            "cell_sizes": np.asarray(self.max_cell_size / np.power(2.0, levels), dtype=np.float32),
             "mesh_generation": {
                 "method": "adaptive_cartesian",
                 "max_cell_size": self.max_cell_size,

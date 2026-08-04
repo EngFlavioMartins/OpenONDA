@@ -47,6 +47,11 @@ def test_kinematic_momentum_operator_is_density_invariant():
     reference = assemble_momentum_equation(rho=1.0, **kwargs)
     denser = assemble_momentum_equation(rho=7.5, **kwargs)
 
+    # The segregated components differ only in their RHS. Keeping three CSR
+    # matrices/diagonals used to triple the dominant solver storage.
+    assert reference["x"]["A"] is reference["y"]["A"] is reference["z"]["A"]
+    assert reference["x"]["H"] is reference["y"]["H"] is reference["z"]["H"]
+
     for component in "xyz":
         np.testing.assert_allclose(
             reference[component]["A"].toarray(), denser[component]["A"].toarray()

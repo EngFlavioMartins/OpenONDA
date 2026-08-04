@@ -25,7 +25,7 @@ def _convection_boundary_strategy(boundary_patch):
     return BOUNDARIES.strategy(bc_type, "scalar", "convection")
 
 
-def assemble_convection_term_upwind(phi, mdot, mesh_data):
+def assemble_convection_term_upwind(phi, mdot, mesh_data, *, include_total_flux=True):
     """
     Assemble convection term using upwind scheme.
 
@@ -57,12 +57,13 @@ def assemble_convection_term_upwind(phi, mdot, mesh_data):
     flux_vf = np.zeros_like(mdot_i)
 
     # Total flux
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours]
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi[owners] + flux_ff * phi[neighbours]
+    return result
 
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
-
-def assemble_convection_term_central(phi, mdot, mesh_data, geo_data):
+def assemble_convection_term_central(phi, mdot, mesh_data, geo_data, *, include_total_flux=True):
     """
     Assemble convection term using central differencing.
 
@@ -93,12 +94,15 @@ def assemble_convection_term_central(phi, mdot, mesh_data, geo_data):
     flux_vf = np.zeros_like(mdot_i)
 
     # Total flux
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours]
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi[owners] + flux_ff * phi[neighbours]
+    return result
 
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
 
-
-def assemble_convection_term_deferred_correction(phi, mdot, mesh_data, geo_data):
+def assemble_convection_term_deferred_correction(
+    phi, mdot, mesh_data, geo_data, *, include_total_flux=True
+):
     """
     Assemble convection term using deferred correction.
 
@@ -143,9 +147,10 @@ def assemble_convection_term_deferred_correction(phi, mdot, mesh_data, geo_data)
     flux_ff = flux_ff_upwind
 
     # Total flux
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
-
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
+    return result
 
 
 def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter):
@@ -179,7 +184,17 @@ def _tvd_face_psi(phi, mdot_i, grad_phi, owners, neighbours, cf_vector, limiter)
     return apply_limiter(limiter, r)
 
 
-def assemble_convection_term_limited(phi, mdot, mesh_data, geo_data, grad_phi, limiter, psi=None):
+def assemble_convection_term_limited(
+    phi,
+    mdot,
+    mesh_data,
+    geo_data,
+    grad_phi,
+    limiter,
+    psi=None,
+    *,
+    include_total_flux=True,
+):
     """High-resolution TVD convection in deferred-correction form.
 
     Implicit part = upwind (bounded, diagonally dominant); explicit correction =
@@ -208,12 +223,22 @@ def assemble_convection_term_limited(phi, mdot, mesh_data, geo_data, grad_phi, l
     phi_linear = weights * phi[neighbours] + (1.0 - weights) * phi[owners]
     flux_vf = psi * mdot_i * (phi_linear - phi_upwind)
 
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
+    return result
 
 
 def assemble_convection_term_boundary(
-    phi, mdot, boundary_patch, mesh_data, geo_data=None, scheme="upwind", grad_phi=None
+    phi,
+    mdot,
+    boundary_patch,
+    mesh_data,
+    geo_data=None,
+    scheme="upwind",
+    grad_phi=None,
+    *,
+    include_total_flux=True,
 ):
     """
     Assemble convection term for boundary faces (1st-order upwind).
@@ -289,14 +314,15 @@ def assemble_convection_term_boundary(
             flux_cf = flux_cf_upwind
             flux_ff = flux_ff_upwind
             flux_vf = psi * mdot_b * (phi_linear - phi_upwind)
-        flux_tf = flux_cf * phi[owners_b] + flux_ff * phi[neighbours_b] + flux_vf
-        return {
+        result = {
             "flux_cf": flux_cf,
             "flux_ff": flux_ff,
             "flux_vf": flux_vf,
-            "flux_tf": flux_tf,
             "face_indices": b_face_indices,
         }
+        if include_total_flux:
+            result["flux_tf"] = flux_cf * phi[owners_b] + flux_ff * phi[neighbours_b] + flux_vf
+        return result
 
     # Boundary element indices
     b_elem_start = start_face - n_interior_faces
@@ -329,19 +355,26 @@ def assemble_convection_term_boundary(
 
     flux_vf = flux_ff_val * phi_b
 
-    flux_tf = flux_cf * phi_c + flux_vf
-
-    return {
+    result = {
         "flux_cf": flux_cf,
         "flux_ff": flux_ff,
         "flux_vf": flux_vf,
-        "flux_tf": flux_tf,
         "face_indices": b_face_indices,
     }
+    if include_total_flux:
+        result["flux_tf"] = flux_cf * phi_c + flux_vf
+    return result
 
 
 def assemble_convection_term_gradient_upwind(
-    phi, mdot, mesh_data, geo_data, grad_phi, linear_blend
+    phi,
+    mdot,
+    mesh_data,
+    geo_data,
+    grad_phi,
+    linear_blend,
+    *,
+    include_total_flux=True,
 ):
     """OpenFOAM ``linearUpwind``/``LUST`` in deferred-correction form.
 
@@ -363,29 +396,51 @@ def assemble_convection_term_gradient_upwind(
         grad_phi = grad_phi.squeeze(-1)
 
     n_interior_faces = mesh_data["n_interior_faces"]
-    owners = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-    mdot_i = mdot[:n_interior_faces]
-    weights = geo_data["face_weights"][:n_interior_faces]
+    owners_all = mesh_data["owners"]
+    neighbours_all = mesh_data["neighbours"]
+    flux_cf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_ff = np.empty(n_interior_faces, dtype=np.float64)
+    flux_vf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_tf = np.empty(n_interior_faces, dtype=np.float64) if include_total_flux else None
 
-    upwind_is_owner = mdot_i >= 0.0
-    upwind = np.where(upwind_is_owner, owners, neighbours)
-    to_face = geo_data["face_centroids"][:n_interior_faces] - geo_data["element_centroids"][upwind]
-
-    phi_upwind = phi[upwind]
-    phi_linear_upwind = phi_upwind + np.sum(grad_phi[upwind] * to_face, axis=1)
-    phi_linear = weights * phi[neighbours] + (1.0 - weights) * phi[owners]
-    phi_target = linear_blend * phi_linear + (1.0 - linear_blend) * phi_linear_upwind
-
-    flux_cf = np.maximum(mdot_i, 0.0)
-    flux_ff = np.minimum(mdot_i, 0.0)
-    flux_vf = mdot_i * (phi_target - phi_upwind)
-    flux_tf = flux_cf * phi[owners] + flux_ff * phi[neighbours] + flux_vf
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+    chunk_size = 250_000
+    for start in range(0, n_interior_faces, chunk_size):
+        stop = min(start + chunk_size, n_interior_faces)
+        face_slice = slice(start, stop)
+        owners = owners_all[face_slice]
+        neighbours = neighbours_all[face_slice]
+        mdot_i = mdot[face_slice]
+        weights = geo_data["face_weights"][face_slice]
+        upwind = np.where(mdot_i >= 0.0, owners, neighbours)
+        to_face = geo_data["face_centroids"][face_slice] - geo_data["element_centroids"][upwind]
+        phi_upwind = phi[upwind]
+        phi_linear_upwind = phi_upwind + np.sum(grad_phi[upwind] * to_face, axis=1)
+        phi_linear = weights * phi[neighbours] + (1.0 - weights) * phi[owners]
+        phi_target = linear_blend * phi_linear + (1.0 - linear_blend) * phi_linear_upwind
+        cf = np.maximum(mdot_i, 0.0)
+        ff = np.minimum(mdot_i, 0.0)
+        vf = mdot_i * (phi_target - phi_upwind)
+        flux_cf[face_slice] = cf
+        flux_ff[face_slice] = ff
+        flux_vf[face_slice] = vf
+        if flux_tf is not None:
+            flux_tf[face_slice] = cf * phi[owners] + ff * phi[neighbours] + vf
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if flux_tf is not None:
+        result["flux_tf"] = flux_tf
+    return result
 
 
 def assemble_convection_term(
-    phi, mdot, mesh_data, geo_data, boundaries, scheme="deferred", grad_phi=None
+    phi,
+    mdot,
+    mesh_data,
+    geo_data,
+    boundaries,
+    scheme="deferred",
+    grad_phi=None,
+    *,
+    include_total_flux=True,
 ):
     """
     Assemble complete convection term.
@@ -416,32 +471,54 @@ def assemble_convection_term(
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
-    flux_tf = np.zeros(n_faces)
+    flux_tf = np.zeros(n_faces) if include_total_flux else None
 
     # Interior faces
     s = str(scheme)
     if s == "upwind":
-        interior_fluxes = assemble_convection_term_upwind(phi, mdot, mesh_data)
+        interior_fluxes = assemble_convection_term_upwind(
+            phi, mdot, mesh_data, include_total_flux=include_total_flux
+        )
     elif s in ("central", "linear"):
-        interior_fluxes = assemble_convection_term_central(phi, mdot, mesh_data, geo_data)
+        interior_fluxes = assemble_convection_term_central(
+            phi, mdot, mesh_data, geo_data, include_total_flux=include_total_flux
+        )
     elif s == "deferred":
         interior_fluxes = assemble_convection_term_deferred_correction(
-            phi, mdot, mesh_data, geo_data
+            phi, mdot, mesh_data, geo_data, include_total_flux=include_total_flux
         )
     elif s in ("LUST", "lust"):
         # OpenFOAM ``Gauss LUST grad(U)``: 0.75 linear + 0.25 linearUpwind
         # (second-order, gradient-corrected — NOT first-order upwind).
         interior_fluxes = assemble_convection_term_gradient_upwind(
-            phi, mdot, mesh_data, geo_data, grad_phi, linear_blend=0.75
+            phi,
+            mdot,
+            mesh_data,
+            geo_data,
+            grad_phi,
+            linear_blend=0.75,
+            include_total_flux=include_total_flux,
         )
     elif s in ("linearUpwind", "linearupwind"):
         # OpenFOAM ``Gauss linearUpwind grad(U)``: second-order upwind-biased.
         interior_fluxes = assemble_convection_term_gradient_upwind(
-            phi, mdot, mesh_data, geo_data, grad_phi, linear_blend=0.0
+            phi,
+            mdot,
+            mesh_data,
+            geo_data,
+            grad_phi,
+            linear_blend=0.0,
+            include_total_flux=include_total_flux,
         )
     elif is_limited_scheme(s):
         interior_fluxes = assemble_convection_term_limited(
-            phi, mdot, mesh_data, geo_data, grad_phi, limiter=s
+            phi,
+            mdot,
+            mesh_data,
+            geo_data,
+            grad_phi,
+            limiter=s,
+            include_total_flux=include_total_flux,
         )
     else:
         raise ValueError(f"Unknown scheme: {scheme}")
@@ -449,7 +526,8 @@ def assemble_convection_term(
     flux_cf[:n_interior] = interior_fluxes["flux_cf"]
     flux_ff[:n_interior] = interior_fluxes["flux_ff"]
     flux_vf[:n_interior] = interior_fluxes["flux_vf"]
-    flux_tf[:n_interior] = interior_fluxes["flux_tf"]
+    if flux_tf is not None:
+        flux_tf[:n_interior] = interior_fluxes["flux_tf"]
 
     # Boundary faces
     for boundary in boundaries:
@@ -463,16 +541,27 @@ def assemble_convection_term(
             continue
 
         b_fluxes = assemble_convection_term_boundary(
-            phi, mdot, boundary, mesh_data, geo_data, scheme=scheme, grad_phi=grad_phi
+            phi,
+            mdot,
+            boundary,
+            mesh_data,
+            geo_data,
+            scheme=scheme,
+            grad_phi=grad_phi,
+            include_total_flux=include_total_flux,
         )
 
         indices = b_fluxes["face_indices"]
         flux_cf[indices] = b_fluxes["flux_cf"]
         flux_ff[indices] = b_fluxes["flux_ff"]
         flux_vf[indices] = b_fluxes["flux_vf"]
-        flux_tf[indices] = b_fluxes["flux_tf"]
+        if flux_tf is not None:
+            flux_tf[indices] = b_fluxes["flux_tf"]
 
-    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf, "flux_tf": flux_tf}
+    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    if flux_tf is not None:
+        result["flux_tf"] = flux_tf
+    return result
 
 
 def compute_volumetric_face_flux(velocity, mesh_data, geo_data):
@@ -502,16 +591,14 @@ def compute_volumetric_face_flux(velocity, mesh_data, geo_data):
 
     phi = np.zeros(n_faces)
 
-    # Interior faces: interpolate velocity to face
-    # u_face = w * U[nei] + (1-w) * U[own]
-    u_face = (
-        face_weights[:n_interior, np.newaxis] * velocity[neighbours[:n_interior]]
-        + (1.0 - face_weights[:n_interior, np.newaxis]) * velocity[owners[:n_interior]]
-    )
-
-    # phi = U_face · Sf
-    # Dot product along axis 1 (N, 3) * (N, 3) -> (N,)
-    phi[:n_interior] = np.sum(u_face * face_sf[:n_interior], axis=1)
+    # Interpolate/dot in blocks instead of retaining a face-vector field.
+    chunk_size = 250_000
+    for start in range(0, n_interior, chunk_size):
+        stop = min(start + chunk_size, n_interior)
+        face_slice = slice(start, stop)
+        w = face_weights[face_slice, np.newaxis]
+        u_face = w * velocity[neighbours[face_slice]] + (1.0 - w) * velocity[owners[face_slice]]
+        phi[face_slice] = np.sum(u_face * face_sf[face_slice], axis=1)
 
     # Boundary faces: use boundary velocity
     n_elements = mesh_data["n_elements"]

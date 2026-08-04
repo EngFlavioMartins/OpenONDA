@@ -115,9 +115,7 @@ def compute_geometry(
             - element_centroids
             - element_volumes
             - face_weights
-            - face_cf
             - face_cf_vector
-            - face_ff_vector
             - wall_dist
     """
 
@@ -131,10 +129,7 @@ def compute_geometry(
 
     face_weights = np.zeros(n_faces, dtype=np.float64)
     face_cf_vector = np.zeros((n_faces, 3), dtype=np.float64)  # faceCF in uFVM (owner to neighbour)
-    face_cf = np.zeros((n_faces, 3), dtype=np.float64)  # faceCf in uFVM (owner to face)
-    face_ff = np.zeros((n_faces, 3), dtype=np.float64)  # faceFf in uFVM (neighbour to face)
     wall_dist = np.zeros(n_faces, dtype=np.float64)
-    wall_dist_limited = np.zeros(n_faces, dtype=np.float64)
 
     # --- Process Basic Face Geometry ---
     from ..io import logging
@@ -158,69 +153,48 @@ def compute_geometry(
             padded_faces[i, :n_f] = f
             counts[i] = n_f
 
-    # 2. Get coordinates (n_faces, max_nodes, 3)
-    # Mask invalid nodes with 0 or first point (doesn't matter if masked later,
-    # but for safety let's use first point to avoid index errors if -1)
-    safe_faces = padded_faces.copy()
-    safe_faces[padded_faces == -1] = 0
+    # Vectorizing every face at once creates several ``(n_faces, n_nodes, 3)``
+    # temporaries.  At reference-mesh scale their simultaneous peak is larger
+    # than the final geometry itself.  Work in bounded blocks while retaining
+    # the same fan-triangulation arithmetic.
+    points_array = np.asarray(points, dtype=np.float64)
+    face_chunk = 100_000
+    for start in range(0, n_faces, face_chunk):
+        stop = min(start + face_chunk, n_faces)
+        face_block = padded_faces[start:stop]
+        count_block = counts[start:stop]
+        safe_faces = face_block.copy()
+        safe_faces[safe_faces < 0] = 0
+        face_coords = points_array[safe_faces]
+        valid_nodes = face_block >= 0
+        local_centre = np.sum(face_coords * valid_nodes[:, :, np.newaxis], axis=1)
+        local_centre /= count_block[:, np.newaxis]
 
-    face_coords = points[safe_faces]  # (N_faces, max_nodes, 3)
+        centroid_sum = np.zeros((stop - start, 3), dtype=np.float64)
+        sf_sum = np.zeros((stop - start, 3), dtype=np.float64)
+        area_sum = np.zeros(stop - start, dtype=np.float64)
+        for index in range(max_nodes):
+            point1 = face_coords[:, index, :]
+            is_last = index == count_block - 1
+            point2_raw = (
+                face_coords[:, index + 1, :] if index + 1 < max_nodes else face_coords[:, 0, :]
+            )
+            point2 = np.where(is_last[:, np.newaxis], face_coords[:, 0, :], point2_raw)
+            valid_triangle = (index < count_block)[:, np.newaxis]
+            local_sf = 0.5 * np.cross(point1 - local_centre, point2 - local_centre)
+            local_area = np.linalg.norm(local_sf, axis=1)
+            centroid_sum += (
+                ((local_centre + point1 + point2) / 3.0)
+                * local_area[:, np.newaxis]
+                * valid_triangle
+            )
+            sf_sum += local_sf * valid_triangle
+            area_sum += local_area * valid_triangle[:, 0]
 
-    # 3. Compute rough center (mean of valid nodes)
-    # Mask: 1 where valid, 0 where invalid from padded_faces
-    mask = (padded_faces != -1).astype(np.float64)[:, :, np.newaxis]  # (N, M, 1)
-
-    # Sum coordinates and divide by count
-    face_coords_masked = face_coords * mask
-    local_centre = np.sum(face_coords_masked, axis=1) / counts[:, np.newaxis]  # (N, 3)
-
-    # 4. Vectorized Fan Triangulation
-    # We iterate max_nodes times, computing triangles (C, P_i, P_{i+1})
-
-    centroid_sum = np.zeros((n_faces, 3))
-    sf_sum = np.zeros((n_faces, 3))
-    area_sum = np.zeros(n_faces)
-
-    for i in range(max_nodes):
-        # Point 1: P_i
-        # Point 2: P_{i+1}
-        P1 = face_coords[:, i, :]
-        is_last: np.ndarray = np.equal(i, counts - 1)
-        idx_next = i + 1
-        P2_raw = face_coords[:, idx_next, :] if idx_next < max_nodes else np.zeros((n_faces, 3))
-        P2 = np.where(is_last[:, np.newaxis], face_coords[:, 0, :], P2_raw)
-
-        # Triangle validity mask: i < counts
-        valid_tri = np.less(i, counts).astype(np.float64)[:, np.newaxis]
-
-        # Compute Triangle Properties
-        # p1 = C (already broadcasted effectively as C[:,0,:])
-        # p2 = P1
-        # p3 = P2
-        # But wait, the loop was: p1=Center, p2=Node_i, p3=Node_i+1
-
-        local_centroid = (local_centre + P1 + P2) / 3.0
-
-        # Cross product: (P1 - C) x (P2 - C)
-        vec1 = P1 - local_centre
-        vec2 = P2 - local_centre
-
-        local_sf_vec = 0.5 * np.cross(vec1, vec2)
-        local_area_val = np.linalg.norm(local_sf_vec, axis=1)  # (N,)
-
-        # Accumulate
-        centroid_sum += local_centroid * local_area_val[:, np.newaxis] * valid_tri
-        sf_sum += local_sf_vec * valid_tri
-        area_sum += local_area_val * valid_tri[:, 0]
-
-    # Finalize
-    # Avoid div by zero for area
-    safe_area = area_sum.copy()
-    safe_area[safe_area == 0] = 1.0
-
-    face_centroids = centroid_sum / safe_area[:, np.newaxis]
-    face_sf = sf_sum
-    face_areas = area_sum
+        safe_area = np.where(area_sum == 0.0, 1.0, area_sum)
+        face_centroids[start:stop] = centroid_sum / safe_area[:, np.newaxis]
+        face_sf[start:stop] = sf_sum
+        face_areas[start:stop] = area_sum
 
     logging.Timer.log(
         "Basic Face Geometry",
@@ -231,91 +205,64 @@ def compute_geometry(
     # --- Process Element Geometry ---
     logging.Timer.start("Element Geometry")
 
-    # 1. Convert element faces to a padded array.  ``compute_mesh_geometry``
-    # passes CSR connectivity so this avoids a million-element list-of-lists
-    # on large structured meshes while retaining generic legacy support.
+    # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
+    # counts persist globally; padded connectivity and all gathered face
+    # tensors are bounded to one block.
     if isinstance(element_faces, tuple):
         cell_faces, cell_face_offsets = element_faces
         elem_counts = np.diff(cell_face_offsets).astype(np.int32, copy=False)
         max_faces = int(np.max(elem_counts, initial=0))
-        padded_elem_faces = np.full((n_elements, max_faces), -1, dtype=np.int32)
-        if len(cell_faces):
-            rows = np.repeat(np.arange(n_elements), elem_counts)
-            starts = np.repeat(cell_face_offsets[:-1], elem_counts)
-            columns = np.arange(len(cell_faces)) - starts
-            padded_elem_faces[rows, columns] = cell_faces
     else:
         max_faces = max(len(f) for f in element_faces)
-        padded_elem_faces = np.full((n_elements, max_faces), -1, dtype=np.int32)
-        elem_counts = np.zeros(n_elements, dtype=np.int32)
-        for i, f in enumerate(element_faces):
-            n_f = len(f)
-            padded_elem_faces[i, :n_f] = f
-            elem_counts[i] = n_f
+        elem_counts = np.fromiter((len(f) for f in element_faces), dtype=np.int32)
 
-    # 2. Get face centroids (N_elem, max_faces, 3)
-    safe_elem_faces = padded_elem_faces.copy()
-    safe_elem_faces[padded_elem_faces == -1] = 0
+    element_chunk = 50_000
+    for start in range(0, n_elements, element_chunk):
+        stop = min(start + element_chunk, n_elements)
+        count_block = elem_counts[start:stop]
+        padded = np.full((stop - start, max_faces), -1, dtype=np.int32)
+        if isinstance(element_faces, tuple):
+            first_entry = int(cell_face_offsets[start])
+            last_entry = int(cell_face_offsets[stop])
+            if last_entry > first_entry:
+                rows = np.repeat(np.arange(stop - start, dtype=np.int32), count_block)
+                relative_offsets = cell_face_offsets[start:stop] - first_entry
+                columns = np.arange(last_entry - first_entry) - np.repeat(
+                    relative_offsets, count_block
+                )
+                padded[rows, columns] = cell_faces[first_entry:last_entry]
+        else:
+            for local, faces_for_cell in enumerate(element_faces[start:stop]):
+                padded[local, : len(faces_for_cell)] = faces_for_cell
 
-    elem_face_centroids = face_centroids[safe_elem_faces]
-
-    # 3. Compute rough center (mean of face centroids)
-    mask_elem = (padded_elem_faces != -1).astype(np.float64)[:, :, np.newaxis]
-    elem_centre = np.sum(elem_face_centroids * mask_elem, axis=1) / elem_counts[:, np.newaxis]
-
-    # 4. Vectorized Element Volume
-    # localVolume = dot(local_Sf, Cf) / 3
-    # local_Sf = faceSign * faceSf
-    # Cf = faceCentroid - elementCentroid
-
-    local_vol_centroid_sum = np.zeros((n_elements, 3))
-    local_vol_sum = np.zeros(n_elements)
-
-    # Gather Face Sf (N_elem, max_faces, 3)
-    elem_face_sf = face_sf[safe_elem_faces]
-
-    # Gather Owners (N_elem, max_faces) - to determine sign
-    face_owners = owners[safe_elem_faces]
-
-    # Element indices broadcasted (N_elem, max_faces)
-    elem_indices = np.arange(n_elements)[:, np.newaxis]
-
-    # Sign: 1 if elem == owner, -1 otherwise
-    # Note: mask out invalid faces later
-    face_signs = np.where(elem_indices == face_owners, 1.0, -1.0)
-
-    # Cf vectors (Face Center - Element Center)
-    # elem_centre expanded: (N, 1, 3)
-    elem_cf = elem_face_centroids - elem_centre[:, np.newaxis, :]
-
-    # Local Sf vectors (signed)
-    local_sfs = elem_face_sf * face_signs[:, :, np.newaxis]
-
-    # Local Volumes: dot(local_Sf, Cf) / 3
-    # Dot product along axis 2
-    local_volumes = np.sum(local_sfs * elem_cf, axis=2) / 3.0
-
-    # Mask invalid faces
-    valid_face_mask = (padded_elem_faces != -1).astype(np.float64)
-    local_volumes *= valid_face_mask
-
-    # Local Centroids of pyramid: 0.75 * FaceCentroid + 0.25 * ElementCentroid
-    local_centroids = 0.75 * elem_face_centroids + 0.25 * elem_centre[:, np.newaxis, :]
-
-    # Accumulate
-    local_vol_sum = np.sum(local_volumes, axis=1)
-
-    # Weighted centroid sum
-    # (N, M, 3) * (N, M, 1) -> sum along axis 1 -> (N, 3)
-    local_vol_centroid_sum = np.sum(local_centroids * local_volumes[:, :, np.newaxis], axis=1)
-
-    # Finalize
-    # Avoid div by zero
-    safe_vol = local_vol_sum.copy()
-    safe_vol[safe_vol == 0] = 1.0
-
-    element_centroids = local_vol_centroid_sum / safe_vol[:, np.newaxis]
-    element_volumes = local_vol_sum
+        safe_faces = padded.copy()
+        safe_faces[safe_faces < 0] = 0
+        valid = padded >= 0
+        elem_face_centroids = face_centroids[safe_faces]
+        elem_centre = (
+            np.sum(elem_face_centroids * valid[:, :, np.newaxis], axis=1)
+            / count_block[:, np.newaxis]
+        )
+        elem_face_sf = face_sf[safe_faces]
+        face_owners = owners[safe_faces]
+        element_ids = np.arange(start, stop)[:, np.newaxis]
+        signs = np.where(element_ids == face_owners, 1.0, -1.0)
+        local_volumes = (
+            np.sum(
+                elem_face_sf
+                * signs[:, :, np.newaxis]
+                * (elem_face_centroids - elem_centre[:, np.newaxis, :]),
+                axis=2,
+            )
+            / 3.0
+        )
+        local_volumes *= valid
+        local_sum = np.sum(local_volumes, axis=1)
+        local_centroids = 0.75 * elem_face_centroids + 0.25 * elem_centre[:, np.newaxis, :]
+        weighted = np.sum(local_centroids * local_volumes[:, :, np.newaxis], axis=1)
+        safe_volume = np.where(local_sum == 0.0, 1.0, local_sum)
+        element_centroids[start:stop] = weighted / safe_volume[:, np.newaxis]
+        element_volumes[start:stop] = local_sum
     logging.Timer.log(
         "Element Geometry",
         sink=logger,
@@ -328,40 +275,40 @@ def compute_geometry(
     # Interior faces.  These operations used to be two Python face loops and
     # dominate geometry setup for structured meshes; every expression below is
     # the same owner/neighbour formula evaluated in bulk.
-    if n_interior_faces:
-        interior = slice(0, n_interior_faces)
-        own = owners[interior]
-        nei = neighbours[interior]
-        normals = face_sf[interior] / face_areas[interior, np.newaxis]
-        c_own = element_centroids[own]
-        c_nei = element_centroids[nei]
-        c_face = face_centroids[interior]
-        cf = c_face - c_own
-        ff = c_face - c_nei
-        face_cf_vector[interior] = c_nei - c_own
-        face_cf[interior] = cf
-        face_ff[interior] = ff
-        cf_dot_n = np.sum(cf * normals, axis=1)
-        ff_dot_n = np.sum(ff * normals, axis=1)
-        denominator = cf_dot_n - ff_dot_n
-        weights = np.full(n_interior_faces, 0.5, dtype=np.float64)
-        np.divide(cf_dot_n, denominator, out=weights, where=np.abs(denominator) >= 1e-20)
-        face_weights[interior] = weights
+    secondary_chunk = 200_000
+    for start in range(0, n_interior_faces, secondary_chunk):
+        stop = min(start + secondary_chunk, n_interior_faces)
+        face_slice = slice(start, stop)
+        own = owners[face_slice]
+        nei = neighbours[face_slice]
+        normals = face_sf[face_slice] / face_areas[face_slice, np.newaxis]
+        owner_centres = element_centroids[own]
+        neighbour_centres = element_centroids[nei]
+        owner_to_face = face_centroids[face_slice] - owner_centres
+        neighbour_to_face = face_centroids[face_slice] - neighbour_centres
+        face_cf_vector[face_slice] = neighbour_centres - owner_centres
+        owner_normal = np.sum(owner_to_face * normals, axis=1)
+        neighbour_normal = np.sum(neighbour_to_face * normals, axis=1)
+        denominator = owner_normal - neighbour_normal
+        weights = np.full(stop - start, 0.5, dtype=np.float64)
+        np.divide(
+            owner_normal,
+            denominator,
+            out=weights,
+            where=np.abs(denominator) >= 1e-20,
+        )
+        face_weights[face_slice] = weights
 
     # Boundary faces use a virtual neighbour at the face centroid.
-    if n_faces > n_interior_faces:
-        boundary = slice(n_interior_faces, n_faces)
-        own = owners[boundary]
-        vec = face_centroids[boundary] - element_centroids[own]
-        normals = face_sf[boundary] / face_areas[boundary, np.newaxis]
-        face_cf_vector[boundary] = vec
-        face_cf[boundary] = vec
-        face_weights[boundary] = 1.0
-        distance = np.sum(vec * normals, axis=1)
-        wall_dist[boundary] = np.maximum(distance, cfd_small)
-        wall_dist_limited[boundary] = np.maximum(
-            wall_dist[boundary], 0.05 * np.linalg.norm(vec, axis=1)
-        )
+    for start in range(n_interior_faces, n_faces, secondary_chunk):
+        stop = min(start + secondary_chunk, n_faces)
+        face_slice = slice(start, stop)
+        own = owners[face_slice]
+        vector = face_centroids[face_slice] - element_centroids[own]
+        normals = face_sf[face_slice] / face_areas[face_slice, np.newaxis]
+        face_cf_vector[face_slice] = vector
+        face_weights[face_slice] = 1.0
+        wall_dist[face_slice] = np.maximum(np.sum(vector * normals, axis=1), cfd_small)
 
     return {
         "face_centroids": face_centroids,
@@ -371,10 +318,7 @@ def compute_geometry(
         "element_volumes": element_volumes,
         "face_weights": face_weights,
         "face_cf_vector": face_cf_vector,
-        "face_cf": face_cf,
-        "face_ff": face_ff,
         "wall_dist": wall_dist,
-        "wall_dist_limited": wall_dist_limited,
     }
 
 
