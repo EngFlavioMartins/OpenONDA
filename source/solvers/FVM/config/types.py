@@ -654,9 +654,13 @@ class SchemesConfig:
 class LinearSolverConfig:
     """Momentum and pressure linear solvers, analogous to ``fvSolution``.
 
-    Tolerances are dimensionless relative residuals. Iteration limits are
-    per component and pressure correction. ``amg`` uses PyAMG in serial and
-    PETSc GAMG in partitioned runs.
+    ``momentum_tol`` and ``pressure_tol`` are the absolute normalized
+    residual targets.  The corresponding ``*_rel_tol`` values allow an
+    intermediate PIMPLE solve to stop after reducing its initial residual by
+    that factor.  ``*_final_rel_tol`` controls the OpenFOAM-style ``UFinal`` /
+    ``pFinal`` stage; ``0`` therefore requests the absolute target. Iteration
+    limits are per component and pressure correction. ``amg`` uses PyAMG in
+    serial and PETSc GAMG in partitioned runs.
 
     Examples
     --------
@@ -670,8 +674,12 @@ class LinearSolverConfig:
     linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
     reuse_ilu: bool = True
     momentum_tol: float = 1e-4
+    momentum_rel_tol: float = 0.0
+    momentum_final_rel_tol: float | None = 0.0
     momentum_maxiter: int = 1000
     pressure_tol: float = 1e-8
+    pressure_rel_tol: float = 0.0
+    pressure_final_rel_tol: float | None = 0.0
     pressure_maxiter: int = 500
     amg_tol: float | None = None
     amg_maxiter: int | None = None
@@ -822,15 +830,6 @@ def solver_configs_from_case(
         raise ValueError(f"fvSolution {fvsolution!r} has no solvers dictionary") from error
 
     selected = {}
-    for unsupported_name in ("UFinal", "pFinal"):
-        try:
-            _extract_braced_block(solvers_body, unsupported_name)
-        except ValueError:
-            continue
-        raise ValueError(
-            f"fvSolution entry {unsupported_name!r} is unsupported because the Python "
-            "solver has no separate final linear-solve stage"
-        )
     for field_name, attribute in (("U", "momentum_solver"), ("p", "pressure_solver")):
         try:
             field_body = _extract_braced_block(solvers_body, field_name)
@@ -852,10 +851,28 @@ def solver_configs_from_case(
                 float(tolerance_match.group(1)),
             )
         reltol_match = re.search(r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body)
-        if reltol_match and float(reltol_match.group(1)) != 0.0:
-            raise ValueError(
-                f"fvSolution {field_name} relTol is unsupported; set relTol 0 and use tolerance"
+        base_rel_tol = float(reltol_match.group(1)) if reltol_match else 0.0
+        setattr(
+            params,
+            "momentum_rel_tol" if field_name == "U" else "pressure_rel_tol",
+            base_rel_tol,
+        )
+        final_rel_tol = base_rel_tol
+        try:
+            final_body = _extract_braced_block(solvers_body, f"{field_name}Final")
+        except ValueError:
+            pass
+        else:
+            final_match = re.search(
+                r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", final_body
             )
+            if final_match:
+                final_rel_tol = float(final_match.group(1))
+        setattr(
+            params,
+            "momentum_final_rel_tol" if field_name == "U" else "pressure_final_rel_tol",
+            final_rel_tol,
+        )
         maxiter_match = re.search(r"\bmaxIter\s+(\d+)\s*;", field_body)
         if maxiter_match:
             setattr(

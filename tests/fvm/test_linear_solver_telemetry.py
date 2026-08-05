@@ -25,6 +25,7 @@ def test_ilu_rebuild_and_reuse_are_reported():
     }
     _, first = linear_interface.solve_linear_system(matrix, rhs, **options)
     _, second = linear_interface.solve_linear_system(matrix, rhs, **options)
+    assert first.equation == "momentum"
     assert first.preconditioner_rebuilt is True
     assert second.preconditioner_rebuilt is False
 
@@ -41,6 +42,7 @@ def test_amg_rebuild_and_reuse_are_reported():
     }
     _, first = linear_interface.solve_linear_system(matrix, rhs, **options)
     _, second = linear_interface.solve_linear_system(matrix, rhs, **options)
+    assert first.equation == "pressure"
     assert first.preconditioner_rebuilt is True
     assert second.preconditioner_rebuilt is False
 
@@ -78,3 +80,22 @@ def test_warm_guess_convergence_uses_deviation_normalization():
     assert not np.array_equal(solution, guess)
     error = np.linalg.norm(solution - exact) / np.linalg.norm(exact - guess)
     assert error < 0.05, f"small-scale physics still unresolved: {error:.3f}"
+
+
+def test_openfoam_rel_tol_reduces_the_solve_entry_residual():
+    """``relTol=0.1`` means a tenfold reduction, not residual ``0.1``."""
+    matrix, exact_rhs = _system()
+    exact = np.linalg.solve(matrix.toarray(), exact_rhs)
+    guess = exact + 2.0e-3 * np.sin(np.arange(len(exact)))
+
+    initial, target, _ = linear_interface.openfoam_residual_target(
+        matrix,
+        exact_rhs,
+        guess,
+        absolute_tolerance=1.0e-6,
+        relative_tolerance=0.1,
+    )
+
+    assert initial < 0.1
+    assert target == max(1.0e-6, 0.1 * initial)
+    assert target < initial

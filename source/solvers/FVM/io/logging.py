@@ -111,6 +111,9 @@ class Logging:
         self._file: TextIO | None = None
         self._closed = False
         self._step_wall_time = 0.0
+        # Set by Solver after both the logger and MPI context exist. Worker
+        # loggers are disabled for output but still feed local profiler data.
+        self.profiler: Any | None = None
         # Open per-step diagnostics block: {step, flow_time, dt, sections}.
         # Sections are buffered here and rendered as one VPM-style framed block
         # by :meth:`step_timing`, so every colon aligns across the whole step.
@@ -396,16 +399,25 @@ class Logging:
         ]
         self._step_section("Wall Resolution (y+)", items)
 
-    def turbulence_info(self, nut: np.ndarray | None, nu_molecular: float) -> None:
+    def turbulence_info(
+        self,
+        nut: np.ndarray | None,
+        nu_molecular: float,
+        *,
+        statistics: tuple[float, float, float] | None = None,
+    ) -> None:
         """Emit turbulent-viscosity diagnostics."""
-        if nut is None:
-            return
-        values = np.asarray(nut)
-        if values.size == 0:
-            return
-        minimum = float(np.min(values))
-        maximum = float(np.max(values))
-        mean = float(np.mean(values))
+        if statistics is None:
+            if nut is None:
+                return
+            values = np.asarray(nut)
+            if values.size == 0:
+                return
+            minimum = float(np.min(values))
+            maximum = float(np.max(values))
+            mean = float(np.mean(values))
+        else:
+            minimum, maximum, mean = (float(value) for value in statistics)
         ratio_min = minimum / nu_molecular if nu_molecular > 0 else float("inf")
         ratio_max = maximum / nu_molecular if nu_molecular > 0 else float("inf")
         self._step_section(
@@ -441,6 +453,8 @@ class Logging:
 
     def timing(self, name: str, elapsed: float, *, detailed: bool = False) -> None:
         """Emit a timing line, optionally gated by ``FVM_DETAILED_TIMING``."""
+        if self.profiler is not None:
+            self.profiler.record(name, elapsed)
         if detailed and os.environ.get("FVM_DETAILED_TIMING", "0") != "1":
             return
         self.message(f"  {name:<28}: {elapsed:.3e} s")

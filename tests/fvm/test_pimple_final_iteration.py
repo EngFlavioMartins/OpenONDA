@@ -107,3 +107,64 @@ def test_relaxation_converges_to_the_unrelaxed_step():
 
     assert error_converged < 0.05 * error_two
     assert error_converged < 1e-6
+
+
+def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monkeypatch):
+    """Mirror OpenFOAM's U/UFinal and p/pFinal solver selection."""
+    from source.solvers.FVM.assemble import momentum
+    from source.solvers.FVM.solve import pimple_solver
+
+    momentum_tolerances = []
+    pressure_tolerances = []
+    original_momentum_solve = momentum.solve_linear_system
+    original_pressure_solve = pimple_solver.solve_linear_system
+
+    def capture_momentum(*args, **kwargs):
+        momentum_tolerances.append((kwargs["tol"], kwargs["rel_tol"]))
+        return original_momentum_solve(*args, **kwargs)
+
+    def capture_pressure(*args, **kwargs):
+        pressure_tolerances.append((kwargs["tol"], kwargs["rel_tol"]))
+        return original_pressure_solve(*args, **kwargs)
+
+    monkeypatch.setattr(momentum, "solve_linear_system", capture_momentum)
+    monkeypatch.setattr(pimple_solver, "solve_linear_system", capture_pressure)
+
+    mesh = structured_box(4, 3, 3)
+    config = FVMSetup(
+        case_name="pimple_linear_final",
+        time=TimeConfig.transient(dt=DT, duration=DT, write_interval=10**9),
+        schemes=SchemesConfig(convection_scheme="upwind"),
+        linear=LinearSolverConfig(
+            linear_solver="bicgstab",
+            momentum_tol=1e-6,
+            momentum_rel_tol=0.1,
+            pressure_tol=1e-6,
+            pressure_rel_tol=0.01,
+        ),
+        pimple=PimpleControl(
+            n_correctors=2,
+            n_outer_correctors=2,
+            n_orthogonal_correctors=1,
+        ),
+        forces=ForcesConfig(),
+        transport=TransportConfig(density=1.0, nu=0.01),
+        boundaries=[
+            BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            BoundaryConfig.outlet("xmax", 0.0),
+            BoundaryConfig.wall("ymin"),
+            BoundaryConfig.wall("ymax"),
+            BoundaryConfig.slip("zmin"),
+            BoundaryConfig.slip("zmax"),
+        ],
+        initial_U=[1.0, 0.0, 0.0],
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = Solver(config, str(tmp_path), mesh_data=mesh)
+        solver.auto_write = False
+        solver.evolve()
+
+    assert momentum_tolerances == pytest.approx([(1e-6, 0.1)] * 3 + [(1e-6, 0.0)] * 3)
+    assert pressure_tolerances == pytest.approx(
+        [(1e-6, 0.01)] * 3 + [(1e-6, 0.0)] + [(1e-6, 0.01)] * 3 + [(1e-6, 0.0)]
+    )

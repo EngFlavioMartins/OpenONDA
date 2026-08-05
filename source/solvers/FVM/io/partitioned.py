@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from uuid import uuid4
 
 import numpy as np
 
 from ..config.types import OutputSetup
+from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
 PARTITIONED_CHECKPOINT_VERSION = 2
@@ -32,12 +34,45 @@ def _atomic_npz(path: Path, arrays) -> None:
         raise
 
 
+def _archive_upper_bound(arrays) -> int:
+    """Conservative capacity estimate for a compressed NumPy archive."""
+    return sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values()) + (4 << 20)
+
+
+def _error_payload(error: Exception, *, rank: int) -> dict[str, object]:
+    return {
+        "rank": int(rank),
+        "type": type(error).__name__,
+        "errno": getattr(error, "errno", None),
+        "message": str(error),
+    }
+
+
+def _raise_collective_checkpoint_error(payload: dict[str, object]) -> None:
+    code = payload.get("errno")
+    message = (
+        f"partitioned checkpoint failed on rank {payload['rank']} "
+        f"({payload['type']}): {payload['message']}"
+    )
+    if isinstance(code, int):
+        raise OSError(code, message)
+    raise RuntimeError(message)
+
+
 def save_partitioned_solver_checkpoint(solver, directory) -> Path:
-    """Atomically write complete rank-local PIMPLE state and a root manifest."""
+    """Publish a complete checkpoint without invalidating the prior generation."""
     from .checkpoint import config_hash
 
     target = Path(directory)
-    target.mkdir(parents=True, exist_ok=True)
+    preparation_error = None
+    if solver.parallel.is_root:
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            preparation_error = _error_payload(error, rank=solver.parallel.rank)
+    preparation_error = solver.parallel.bcast(preparation_error, root=0)
+    if preparation_error is not None:
+        _raise_collective_checkpoint_error(preparation_error)
     partition = solver.parallel.partition
     arrays = {
         "global_cell_ids": partition.local_global_ids,
@@ -63,21 +98,70 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
             dtype=np.int64,
         ),
     }
-    _atomic_npz(target / f"rank-{partition.rank:05d}.npz", arrays)
-    solver.parallel.barrier()
+
+    # All ranks write their temporary archives concurrently, so reserve space
+    # for the aggregate uncompressed upper bound before any old restart can be
+    # affected.  The old manifest remains valid throughout this operation.
+    local_payload_bytes = _archive_upper_bound(arrays)
+    payload_bytes = int(solver.parallel.global_sum(local_payload_bytes))
+    capacity_error = None
+    if solver.parallel.is_root:
+        try:
+            require_free_space(target, payload_bytes)
+        except InsufficientStorageError as error:
+            capacity_error = {
+                "path": str(error.path),
+                "required_bytes": error.required_bytes,
+                "free_bytes": error.free_bytes,
+            }
+    capacity_error = solver.parallel.bcast(capacity_error, root=0)
+    if capacity_error is not None:
+        raise InsufficientStorageError(
+            capacity_error["path"],
+            int(capacity_error["required_bytes"]),
+            int(capacity_error["free_bytes"]),
+        )
+
+    generation = solver.parallel.bcast(
+        uuid4().hex if solver.parallel.is_root else None,
+        root=0,
+    )
+    files = [f"rank-{rank:05d}-{generation}.npz" for rank in range(partition.size)]
+    local_error = None
+    try:
+        _atomic_npz(target / files[partition.rank], arrays)
+    except Exception as error:
+        local_error = _error_payload(error, rank=partition.rank)
+    errors = solver.parallel.comm.allgather(local_error)
+    failure = next((error for error in errors if error is not None), None)
+    if failure is not None:
+        _raise_collective_checkpoint_error(failure)
+
+    manifest_error = None
     if solver.parallel.is_root:
         manifest = {
             "format_version": PARTITIONED_CHECKPOINT_VERSION,
+            "generation": generation,
             "config_hash": config_hash(solver.config),
             "mesh_hash": solver.mesh_data["global_mesh_hash"],
             "global_n_cells": partition.global_n_cells,
             "ranks": partition.size,
-            "files": [f"rank-{rank:05d}.npz" for rank in range(partition.size)],
+            "files": files,
         }
-        temporary = target / ".manifest.json.tmp"
-        temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, target / "manifest.json")
-    solver.parallel.barrier()
+        temporary = target / f".manifest-{generation}.tmp"
+        try:
+            with temporary.open("w", encoding="utf-8") as stream:
+                stream.write(json.dumps(manifest, indent=2) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, target / "manifest.json")
+        except Exception as error:
+            if temporary.exists():
+                temporary.unlink()
+            manifest_error = _error_payload(error, rank=partition.rank)
+    manifest_error = solver.parallel.bcast(manifest_error, root=0)
+    if manifest_error is not None:
+        _raise_collective_checkpoint_error(manifest_error)
     return target
 
 

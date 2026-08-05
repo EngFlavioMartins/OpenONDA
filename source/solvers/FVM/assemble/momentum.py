@@ -575,21 +575,21 @@ def solve_momentum_predictor(
 
         # Determine initial guess x0 for iterative solver: prefer U_old (previous time step) if available
         momentum_tol = solver_kwargs.get("momentum_tol", 1e-4)
+        momentum_rel_tol = solver_kwargs.get("momentum_rel_tol", 0.0)
         x0_vec = None
         if U_old is not None:
             if np.asarray(U_old).shape[0] < n_elements:
                 raise ValueError("U_old does not contain every interior cell")
             x0_vec = U_old[:n_elements, i_comp]
 
-        # Solve with optional initial guess and tuned tolerance
-        x_initial = x0_vec if x0_vec is not None else np.zeros(n_elements)
-        initial_residual = normalized_residual(A_relaxed, x_initial, b_relaxed)
+        # Solve with optional initial guess and tuned tolerance.
         U_comp_star, linear_result = solve_linear_system(
             A_relaxed,
             b_relaxed,
             method=solver,
             equation_type="momentum",
             tol=momentum_tol,
+            rel_tol=momentum_rel_tol,
             x0=x0_vec,
             ilu_key=shared_ilu_key,
             backend=linear_backend,
@@ -598,14 +598,9 @@ def solve_momentum_predictor(
             return_info=True,
             **solver_kwargs,
         )
-        if parallel_context is not None and parallel_context.is_partitioned:
-            initial_residual = linear_result.initial_residual
-            final_residual = linear_result.final_residual
-        else:
-            final_residual = normalized_residual(A_relaxed, U_comp_star, b_relaxed)
         solve_diagnostics[comp_name] = {
-            "initial_residual": initial_residual,
-            "final_residual": final_residual,
+            "initial_residual": linear_result.initial_residual,
+            "final_residual": linear_result.final_residual,
             "linear_result": linear_result,
         }
 

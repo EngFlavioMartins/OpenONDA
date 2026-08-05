@@ -257,20 +257,27 @@ class CellPartition:
         if not 0 <= rank < size:
             raise ValueError(f"rank {rank} outside communicator size {size}")
         n_cells = int(mesh_data["n_elements"])
+        n_faces = int(mesh_data["n_faces"])
+        int32_limit = np.iinfo(np.int32).max
+        if n_cells > int32_limit or n_faces > int32_limit:
+            raise OverflowError(
+                "Partitioned FVM topology exceeds 32-bit global indexing: "
+                f"cells={n_cells}, faces={n_faces}, limit={int32_limit}"
+            )
         n_interior = int(mesh_data["n_interior_faces"])
         offsets = ownership_ranges(n_cells, size)
-        owned = np.arange(offsets[rank], offsets[rank + 1], dtype=np.int64)
-        owners = np.asarray(mesh_data["owners"], dtype=np.int64)
-        neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+        owned = np.arange(offsets[rank], offsets[rank + 1], dtype=np.int32)
+        owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+        neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
         owner_ranks = _rank_for_cells(owners[:n_interior], offsets)
         neighbour_ranks = _rank_for_cells(neighbours[:n_interior], offsets)
 
         owned_face = (owner_ranks == rank) | (neighbour_ranks == rank)
-        local_interior_faces = np.flatnonzero(owned_face).astype(np.int64)
+        local_interior_faces = np.flatnonzero(owned_face).astype(np.int32)
         processor_mask = owned_face & (owner_ranks != neighbour_ranks)
-        processor_faces = np.flatnonzero(processor_mask).astype(np.int64)
+        processor_faces = np.flatnonzero(processor_mask).astype(np.int32)
 
-        physical_faces = np.arange(n_interior, int(mesh_data["n_faces"]), dtype=np.int64)
+        physical_faces = np.arange(n_interior, n_faces, dtype=np.int32)
         physical_owner_ranks = _rank_for_cells(owners[physical_faces], offsets)
         physical_faces = physical_faces[physical_owner_ranks == rank]
         local_faces = np.concatenate((local_interior_faces, physical_faces))
@@ -292,17 +299,17 @@ class CellPartition:
                 receive_sets[owner_rank].add(owner)
                 ghost_set.add(owner)
 
-        ghosts = np.asarray(sorted(ghost_set), dtype=np.int64)
-        send = tuple(np.asarray(sorted(values), dtype=np.int64) for values in send_sets)
-        receive = tuple(np.asarray(sorted(values), dtype=np.int64) for values in receive_sets)
+        ghosts = np.asarray(sorted(ghost_set), dtype=np.int32)
+        send = tuple(np.asarray(sorted(values), dtype=np.int32) for values in send_sets)
+        receive = tuple(np.asarray(sorted(values), dtype=np.int32) for values in receive_sets)
         local_global_ids = np.concatenate((owned, ghosts))
         # Owned IDs form one contiguous range and ghost IDs are sorted.  Use
         # those two compact arrays directly instead of retaining a Python
         # int->int dictionary with one entry per local cell.
         owned_start = int(offsets[rank])
-        send_local = tuple(np.asarray(ids - owned_start, dtype=np.int64) for ids in send)
+        send_local = tuple(np.asarray(ids - owned_start, dtype=np.int32) for ids in send)
         receive_local = tuple(
-            np.asarray(np.searchsorted(ghosts, ids) + len(owned), dtype=np.int64) for ids in receive
+            np.asarray(np.searchsorted(ghosts, ids) + len(owned), dtype=np.int32) for ids in receive
         )
         return cls(
             rank=rank,
@@ -319,9 +326,9 @@ class CellPartition:
 
     def global_to_local(self, global_ids) -> np.ndarray:
         """Map global cell IDs into the owned-then-ghost local layout."""
-        requested = np.asarray(global_ids, dtype=np.int64)
+        requested = np.asarray(global_ids, dtype=np.int32)
         requested_flat = requested.ravel()
-        positions_flat = np.full(requested_flat.shape, -1, dtype=np.int64)
+        positions_flat = np.full(requested_flat.shape, -1, dtype=np.int32)
         if len(self.owned_global_ids):
             first = int(self.owned_global_ids[0])
             last = int(self.owned_global_ids[-1])
@@ -467,7 +474,10 @@ def localize_mesh_and_geometry(
         "global_cell_ids": np.ascontiguousarray(local_cell_ids),
         "global_face_ids": np.ascontiguousarray(face_ids),
         "source_cell_ids": np.ascontiguousarray(
-            np.asarray(mesh_data.get("source_cell_ids", np.arange(n_global_cells)))[local_cell_ids]
+            np.asarray(
+                mesh_data.get("source_cell_ids", np.arange(n_global_cells, dtype=np.int32)),
+                dtype=np.int32,
+            )[local_cell_ids]
         ),
         "global_boundary_names": tuple(str(patch["name"]) for patch in mesh_data["boundary"]),
         "partition": partition,

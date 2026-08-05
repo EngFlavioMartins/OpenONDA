@@ -42,8 +42,10 @@ def test_from_case_uses_case_fields_and_rejects_unknown_overrides(tmp_path, monk
         """
 solvers
 {
-    U { solver PBiCGStab; tolerance 1e-8; }
-    p { solver GAMG; tolerance 1e-10; }
+    U { solver PBiCGStab; tolerance 1e-8; relTol 0.1; }
+    UFinal { $U; relTol 0; }
+    p { solver GAMG; tolerance 1e-10; relTol 0.01; }
+    pFinal { $p; relTol 0; }
 }
 PIMPLE
 {
@@ -75,6 +77,10 @@ divSchemes { div(phi,U) bounded Gauss limitedLinear 1; }
     assert solver.config.transport.nu == pytest.approx(1e-5)
     assert solver.config.linear.momentum_solver == "bicgstab"
     assert solver.config.linear.pressure_solver == "amg"
+    assert solver.config.linear.momentum_rel_tol == pytest.approx(0.1)
+    assert solver.config.linear.momentum_final_rel_tol == pytest.approx(0.0)
+    assert solver.config.linear.pressure_rel_tol == pytest.approx(0.01)
+    assert solver.config.linear.pressure_final_rel_tol == pytest.approx(0.0)
     assert solver.config.pimple.n_outer_correctors == 3
     assert solver.config.schemes.time_scheme == "backward"
     assert solver.config.schemes.gradient_scheme == "lsq"

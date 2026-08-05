@@ -11,6 +11,8 @@ import tempfile
 
 import numpy as np
 
+from .storage import require_free_space
+
 FORMAT_VERSION = 2
 
 
@@ -108,6 +110,8 @@ def save_checkpoint(solver, path) -> Path:
             dtype=np.int64,
         ),
     }
+    payload_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
+    require_free_space(destination, payload_bytes + (4 << 20))
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
     )

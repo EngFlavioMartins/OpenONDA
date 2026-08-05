@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import io
 import json
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.FVM.io.storage import InsufficientStorageError
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 from source.solvers.FVM.solve.simple_solver import SIMPLESolver
 
@@ -140,6 +142,39 @@ def test_restart_rewinds_append_only_histories(tmp_path):
     assert "0.03" not in (solution / "diagnostics.jsonl").read_text()
 
 
+def test_checkpoint_capacity_preflight_preserves_previous_restart(tmp_path, monkeypatch):
+    solver = _solver(_config(), tmp_path)
+    checkpoint = tmp_path / "state.npz"
+    checkpoint.write_bytes(b"known-good-prior-generation")
+    usage = SimpleNamespace(total=100, used=99, free=1)
+    monkeypatch.setattr("source.solvers.FVM.io.storage.shutil.disk_usage", lambda _path: usage)
+
+    with pytest.raises(InsufficientStorageError):
+        solver.save_state(checkpoint)
+
+    assert checkpoint.read_bytes() == b"known-good-prior-generation"
+
+
+def test_diagnostics_disk_full_preserves_step_and_disables_future_writes(tmp_path, monkeypatch):
+    solver = _solver(_config(), tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.solve_pimple()
+
+    calls = 0
+
+    def disk_full(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise OSError(errno.ENOSPC, "test disk full")
+
+    monkeypatch.setattr("source.solvers.FVM.io.solver_io.append_line_recoverably", disk_full)
+    solver.io.write_step_diagnostics()
+    solver.io.write_step_diagnostics()
+
+    assert calls == 1
+    assert solver.io._diagnostics_write_disabled
+
+
 def test_scipy_linear_result_discloses_solver_health():
     matrix = sparse.diags([-np.ones(3), 4.0 * np.ones(4), -np.ones(3)], [-1, 0, 1])
     solution, result = solve_linear_system(
@@ -206,6 +241,31 @@ def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):
     assert np.isfinite(record.boundary_mass_balance)
     assert np.isfinite(record.kinetic_energy) and record.kinetic_energy >= 0.0
     assert np.isfinite(record.enstrophy) and record.enstrophy >= 0.0
+
+
+def test_pimple_releases_previous_step_derived_fields_before_allocating(monkeypatch, tmp_path):
+    solver = _solver(_config(), tmp_path)
+    solver._derived_fields.update(
+        {
+            "velocity_gradient": np.empty((8, 3, 3)),
+            "vorticity": np.empty((8, 3)),
+            ("courant", 0.01): np.empty(8),
+        }
+    )
+    original = solver.compute_effective_viscosity
+    observed = False
+
+    def compute_effective_viscosity():
+        nonlocal observed
+        observed = True
+        assert not solver._derived_fields
+        return original()
+
+    monkeypatch.setattr(solver, "compute_effective_viscosity", compute_effective_viscosity)
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.solve_pimple()
+
+    assert observed
 
 
 def test_acceptance_policy_uses_sustained_window(tmp_path):

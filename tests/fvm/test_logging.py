@@ -50,7 +50,8 @@ def _logging_config() -> FVMSetup:
     )
 
 
-def test_solver_tees_vpm_style_output_to_solution_log(tmp_path):
+def test_solver_tees_vpm_style_output_to_solution_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("FVM_PROFILE", "0")
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):

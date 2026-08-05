@@ -2,6 +2,7 @@
 
 import csv
 from dataclasses import asdict
+import errno
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from ...FVM.fields import field_io
+from .storage import append_line_recoverably
 
 
 class SolverIO:
@@ -29,6 +31,7 @@ class SolverIO:
         """
         self.solver = solver
         self.case_dir = solver.case_dir
+        self._diagnostics_write_disabled = False
 
     def write_results(self, time_dir: str | None = None):
         """Writes current fields to disk in OpenFOAM format.
@@ -64,12 +67,22 @@ class SolverIO:
         if parallel is not None and not parallel.is_root:
             return
         record = getattr(self.solver, "last_diagnostics", None)
-        if record is None:
+        if record is None or self._diagnostics_write_disabled:
             return
         output_dir = os.path.join(self.case_dir, "solution")
-        os.makedirs(output_dir, exist_ok=True)
-        with open(os.path.join(output_dir, "diagnostics.jsonl"), "a", encoding="utf-8") as stream:
-            stream.write(json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n")
+        path = os.path.join(output_dir, "diagnostics.jsonl")
+        line = json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n"
+        try:
+            append_line_recoverably(path, line)
+        except OSError as error:
+            if error.errno != errno.ENOSPC:
+                raise
+            self._diagnostics_write_disabled = True
+            self.solver.logger.warning(
+                f"Diagnostics output disabled after disk-full error at {path}; "
+                "the accepted simulation will continue and the last complete JSONL record "
+                "was preserved"
+            )
 
     def rewind_histories(self, flow_time: float) -> None:
         parallel = getattr(self.solver, "parallel", None)
@@ -80,6 +93,7 @@ class SolverIO:
         self._rewind_csv(solution / "forces_history.csv", flow_time)
         self._rewind_csv(solution / "ibm_forces_history.csv", flow_time)
         self._rewind_jsonl(solution / "diagnostics.jsonl", flow_time)
+        self._rewind_jsonl(solution / "performance.jsonl", flow_time)
 
     @staticmethod
     def _replace(path: Path, lines: list[str]) -> None:

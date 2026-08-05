@@ -62,8 +62,10 @@ iteration limits; and the time, gradient, and `div(phi,U)` schemes supported by
 the Python backend. Malformed, missing, or unsupported input raises instead of
 being replaced with defaults. Programmatic values in `FVMSetup.initial_U` and
 `initial_p` take precedence when constructing the solver.
-Separate `UFinal`/`pFinal` solver blocks and nonzero OpenFOAM `relTol` values
-are rejected because the Python driver does not implement those stopping stages.
+OpenFOAM-style nonzero `relTol` values are supported. Separate `UFinal` and
+`pFinal` blocks may override `relTol` for the final momentum and pressure
+stages; as in OpenFOAM, `relTol 0` makes those stages converge to the absolute
+`tolerance`.
 
 Low-level operators are imported through their defining packages:
 

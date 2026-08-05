@@ -9,6 +9,7 @@ Implements functions for computing:
 - y+ for wall boundaries
 """
 
+from numba import njit
 import numpy as np
 
 from . import gradients
@@ -114,6 +115,29 @@ def vorticity_from_gradient(grad_U, n_elements: int | None = None):
     vorticity[:, 1] = gradient[:n, 2, 0] - gradient[:n, 0, 2]
     vorticity[:, 2] = gradient[:n, 0, 1] - gradient[:n, 1, 0]
     return vorticity
+
+
+@njit(cache=True)
+def _enstrophy_from_gradient_kernel(gradient, volumes, n_elements):
+    total = 0.0
+    for cell in range(n_elements):
+        omega_x = gradient[cell, 1, 2] - gradient[cell, 2, 1]
+        omega_y = gradient[cell, 2, 0] - gradient[cell, 0, 2]
+        omega_z = gradient[cell, 0, 1] - gradient[cell, 1, 0]
+        total += volumes[cell] * (omega_x * omega_x + omega_y * omega_y + omega_z * omega_z)
+    return 0.5 * total
+
+
+def enstrophy_from_gradient(grad_U, volumes, n_elements: int | None = None) -> float:
+    """Integrate enstrophy without allocating a full vorticity field."""
+    gradient = np.asarray(grad_U, dtype=np.float64)
+    cell_volumes = np.asarray(volumes, dtype=np.float64)
+    if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
+        raise ValueError("Velocity gradient must have shape (n, 3, 3)")
+    n = gradient.shape[0] if n_elements is None else int(n_elements)
+    if not 0 <= n <= gradient.shape[0] or cell_volumes.shape[0] < n:
+        raise ValueError("Enstrophy integration range exceeds gradient or volume storage")
+    return float(_enstrophy_from_gradient_kernel(gradient, cell_volumes, n))
 
 
 def compute_vorticity(U, mesh_data, geo_data, *, gradient=None):

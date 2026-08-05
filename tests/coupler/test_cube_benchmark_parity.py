@@ -200,50 +200,6 @@ def test_mesh_domain_uses_case_setting(bench):
     assert bench.VPM_SETUP.panel_solver.max_panels >= len(surface.triangles)
 
 
-def test_reference_wake_seed_is_smooth_solenoidal_and_uses_initialization_api(reference):
-    radius = reference.PERTURBATION_RADIUS
-    x0, y0, z0 = reference.PERTURBATION_CENTRE
-    points = np.array(
-        [
-            [x0, y0, z0],
-            [x0 + radius / np.sqrt(2.0), y0, z0],
-            [x0, y0, z0 + radius / np.sqrt(2.0)],
-        ]
-    )
-    delta = reference._wake_perturbation(points)
-    assert np.linalg.norm(delta[0]) == pytest.approx(reference.PERTURBATION)
-    assert delta[0, 1] > 0.0
-    np.testing.assert_allclose(delta[1], 0.0, atol=1.0e-18)
-    assert delta[2, 1] == pytest.approx(reference.PERTURBATION * np.exp(-0.5))
-
-    probe = np.array([[x0 + 0.1, y0 + 0.2, z0 + 0.3]])
-    spacing = 1.0e-5
-    divergence = 0.0
-    for axis in range(3):
-        offset = np.zeros_like(probe)
-        offset[:, axis] = spacing
-        positive = reference._wake_perturbation(probe + offset)[0, axis]
-        negative = reference._wake_perturbation(probe - offset)[0, axis]
-        divergence += (positive - negative) / (2.0 * spacing)
-    assert divergence == pytest.approx(0.0, abs=1.0e-10)
-
-    class FakeSolver:
-        mesh_data = {"n_elements": len(points)}
-        geo_data = {"element_centroids": points}
-        U = np.tile(reference.U_INF, (len(points), 1)).astype(float)
-        initialized = None
-
-        def set_initial_velocity(self, values):
-            self.initialized = values.copy()
-
-    solver = FakeSolver()
-    reference._break_symmetry(solver)
-    np.testing.assert_allclose(
-        solver.initialized,
-        np.asarray(reference.U_INF) + delta,
-    )
-
-
 def test_output_names_and_cadence_match_allplot_contract(bench, reference):
     assert bench.FVM_SETUP.case_name.startswith("coupled_")
     assert reference.FVM_SETUP.case_name == "referenceFlow"

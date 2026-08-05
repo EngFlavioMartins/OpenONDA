@@ -46,10 +46,15 @@ class PressureCorrectionWorkspace:
         callers may supply component diagonals as ``(n_cells, 3)``.
     face_conductance : np.ndarray
         Interpolated face flux coefficient, shape ``(n_faces,)``.
+    matrix : Any or None
+        Pressure operator assembled from ``face_conductance``. It is reusable
+        for every pressure/non-orthogonal correction belonging to the same
+        momentum predictor because ``A_U`` is unchanged within that loop.
     """
 
     DU: np.ndarray
     face_conductance: np.ndarray
+    matrix: Any | None = None
 
 
 def _resolve_pressure_constraint(params) -> str:
@@ -676,6 +681,122 @@ def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interi
     return flux_vf
 
 
+@njit(cache=True)
+def _pressure_interior_flux_scalar(
+    owners,
+    neighbours,
+    weights,
+    face_sf,
+    face_cf_vector,
+    DU,
+    U_HbyA,
+    grad_p,
+    p,
+    face_conductance,
+    ddt_flux_correction,
+    flux_vf,
+):
+    """Fuse scalar-diagonal Rhie--Chow face work without large temporaries."""
+    use_ddt = len(ddt_flux_correction) != 0
+    for face in range(len(neighbours)):
+        own = owners[face]
+        nei = neighbours[face]
+        weight = weights[face]
+        owner_weight = 1.0 - weight
+        du_face = weight * DU[nei] + owner_weight * DU[own]
+
+        cf0 = face_cf_vector[face, 0]
+        cf1 = face_cf_vector[face, 1]
+        cf2 = face_cf_vector[face, 2]
+        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2) + 1e-12
+        edge0 = cf0 / mag_cf
+        edge1 = cf1 / mag_cf
+        edge2 = cf2 / mag_cf
+        sf0 = face_sf[face, 0]
+        sf1 = face_sf[face, 1]
+        sf2 = face_sf[face, 2]
+        orthogonal_area = sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+
+        grad0 = weight * grad_p[nei, 0] + owner_weight * grad_p[own, 0]
+        grad1 = weight * grad_p[nei, 1] + owner_weight * grad_p[own, 1]
+        grad2 = weight * grad_p[nei, 2] + owner_weight * grad_p[own, 2]
+        nonorthogonal_flux = du_face * (
+            (sf0 - orthogonal_area * edge0) * grad0
+            + (sf1 - orthogonal_area * edge1) * grad1
+            + (sf2 - orthogonal_area * edge2) * grad2
+        )
+        flux_hbya = (
+            (weight * U_HbyA[nei, 0] + owner_weight * U_HbyA[own, 0]) * sf0
+            + (weight * U_HbyA[nei, 1] + owner_weight * U_HbyA[own, 1]) * sf1
+            + (weight * U_HbyA[nei, 2] + owner_weight * U_HbyA[own, 2]) * sf2
+        )
+        if use_ddt:
+            flux_hbya += du_face * ddt_flux_correction[face]
+        conductance = face_conductance[face]
+        flux_vf[face] = (
+            flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
+        )
+
+
+@njit(cache=True)
+def _pressure_interior_flux_vector(
+    owners,
+    neighbours,
+    weights,
+    face_sf,
+    face_cf_vector,
+    DU,
+    U_HbyA,
+    grad_p,
+    p,
+    face_conductance,
+    ddt_flux_correction,
+    flux_vf,
+):
+    """Fused legacy component-diagonal Rhie--Chow interior-face kernel."""
+    use_ddt = len(ddt_flux_correction) != 0
+    for face in range(len(neighbours)):
+        own = owners[face]
+        nei = neighbours[face]
+        weight = weights[face]
+        owner_weight = 1.0 - weight
+        du0 = weight * DU[nei, 0] + owner_weight * DU[own, 0]
+        du1 = weight * DU[nei, 1] + owner_weight * DU[own, 1]
+        du2 = weight * DU[nei, 2] + owner_weight * DU[own, 2]
+
+        cf0 = face_cf_vector[face, 0]
+        cf1 = face_cf_vector[face, 1]
+        cf2 = face_cf_vector[face, 2]
+        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2) + 1e-12
+        edge0 = cf0 / mag_cf
+        edge1 = cf1 / mag_cf
+        edge2 = cf2 / mag_cf
+        sf0 = face_sf[face, 0]
+        sf1 = face_sf[face, 1]
+        sf2 = face_sf[face, 2]
+        orthogonal_area = sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+
+        grad0 = weight * grad_p[nei, 0] + owner_weight * grad_p[own, 0]
+        grad1 = weight * grad_p[nei, 1] + owner_weight * grad_p[own, 1]
+        grad2 = weight * grad_p[nei, 2] + owner_weight * grad_p[own, 2]
+        nonorthogonal_flux = (
+            (sf0 - orthogonal_area * edge0) * du0 * grad0
+            + (sf1 - orthogonal_area * edge1) * du1 * grad1
+            + (sf2 - orthogonal_area * edge2) * du2 * grad2
+        )
+        flux_hbya = (
+            (weight * U_HbyA[nei, 0] + owner_weight * U_HbyA[own, 0]) * sf0
+            + (weight * U_HbyA[nei, 1] + owner_weight * U_HbyA[own, 1]) * sf1
+            + (weight * U_HbyA[nei, 2] + owner_weight * U_HbyA[own, 2]) * sf2
+        )
+        if use_ddt:
+            flux_hbya += ((du0 + du1 + du2) / 3.0) * ddt_flux_correction[face]
+        conductance = face_conductance[face]
+        flux_vf[face] = (
+            flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
+        )
+
+
 @overload
 def assemble_pressure_correction_equation_rhie_chow(
     *args: Any, return_workspace: Literal[False] = False, **kwargs: Any
@@ -702,6 +823,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     operator_backend="numpy",
     boundary_layout=None,
     ddt_flux_correction=None,
+    correction_workspace=None,
+    reuse_matrix=False,
     return_workspace=False,
 ):
     """
@@ -735,12 +858,23 @@ def assemble_pressure_correction_equation_rhie_chow(
     neighbours = mesh_data["neighbours"]
     _validate_reference_density(rho)
 
-    # 1. Compute DU and grad_p
+    # 1. Compute DU and grad_p. The momentum diagonal is fixed for all
+    # pressure/non-orthogonal corrections in one PIMPLE outer iteration, so
+    # retain its inverse and face conductance instead of rebuilding two
+    # full-mesh arrays on every inner solve.
     volumes = geo_data["element_volumes"]
-    # Restore physical A_U from relaxed A_U for Rhie-Chow D-coefficients
-    A_U_physical = A_U * alpha_u
-    DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
-    face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
+    if correction_workspace is None:
+        # Restore physical A_U from relaxed A_U for Rhie-Chow D-coefficients
+        A_U_physical = A_U * alpha_u
+        DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
+        face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
+    else:
+        DU = correction_workspace.DU
+        face_conductance = correction_workspace.face_conductance
+    if reuse_matrix and (
+        correction_workspace is None or correction_workspace.matrix is None
+    ):
+        raise ValueError("reuse_matrix requires an assembled pressure-correction workspace")
 
     # Use direct gradient computation for full pressure field p
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
@@ -753,8 +887,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     assert grad_p is not None
 
     # Pre-allocate flux arrays
-    flux_cf = np.zeros(n_faces)
-    flux_ff = np.zeros(n_faces)
+    flux_cf = None if reuse_matrix else np.zeros(n_faces)
+    flux_ff = None if reuse_matrix else np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
 
     # --- MODIFIED RHIE-CHOW INTERPOLATION ---
@@ -770,47 +904,37 @@ def assemble_pressure_correction_equation_rhie_chow(
     DU_vector = DU[:, np.newaxis] if scalar_diagonal else DU
     U_HbyA = U_star[:n_elements] + DU_vector * grad_p[:n_elements]
 
-    # Construct face fluxes in bounded blocks.  The old all-face expression
-    # simultaneously retained DU, HbyA, edge, non-orthogonal, and pressure-
-    # gradient tensors, which cost hundreds of MiB per MPI rank.
+    # Fuse the interior-face interpolation and non-orthogonal correction in a
+    # compiled loop. Besides being faster than eight chains of NumPy advanced
+    # indexing per PIMPLE step, this avoids retaining DU, HbyA, edge,
+    # non-orthogonal, and gradient temporaries at the same time.
     grad_p_interior = grad_p[:n_elements]
-    chunk_size = 250_000
-    for start in range(0, n_interior, chunk_size):
-        stop = min(start + chunk_size, n_interior)
-        face_slice = slice(start, stop)
-        own = owners[face_slice]
-        nei = neighbours[face_slice]
-        w = geo_data["face_weights"][face_slice]
-        sf = geo_data["face_sf"][face_slice]
-        cf_vec = geo_data["face_cf_vector"][face_slice]
-        mag_cf = np.linalg.norm(cf_vec, axis=1)
-        edge = cf_vec / (mag_cf[:, np.newaxis] + 1e-12)
-        orthogonal_area = np.sum(sf * edge, axis=1)
-        nonorthogonal = sf - orthogonal_area[:, np.newaxis] * edge
-
-        if scalar_diagonal:
-            du_f = w * DU[nei] + (1.0 - w) * DU[own]
-        else:
-            du_f = w[:, np.newaxis] * DU[nei] + (1.0 - w[:, np.newaxis]) * DU[own]
-        u_hbya_f = w[:, np.newaxis] * U_HbyA[nei] + (1.0 - w[:, np.newaxis]) * U_HbyA[own]
-        grad_f = (
-            w[:, np.newaxis] * grad_p_interior[nei]
-            + (1.0 - w[:, np.newaxis]) * grad_p_interior[own]
-        )
-        if scalar_diagonal:
-            nonorthogonal_flux = du_f * np.sum(nonorthogonal * grad_f, axis=1)
-            rau_f = du_f
-        else:
-            nonorthogonal_flux = np.sum(nonorthogonal * du_f * grad_f, axis=1)
-            rau_f = du_f.mean(axis=1)
-        flux_hbya = np.sum(u_hbya_f * sf, axis=1)
-        if ddt_flux_correction is not None:
-            flux_hbya += rau_f * ddt_flux_correction[face_slice]
-
-        geo_diff = face_conductance[face_slice]
-        flux_cf[face_slice] = geo_diff
-        flux_ff[face_slice] = -geo_diff
-        flux_vf[face_slice] = flux_hbya + geo_diff * (p[own] - p[nei]) + nonorthogonal_flux
+    if not reuse_matrix:
+        assert flux_cf is not None and flux_ff is not None
+        flux_cf[:n_interior] = face_conductance[:n_interior]
+        np.negative(face_conductance[:n_interior], out=flux_ff[:n_interior])
+    ddt_values = (
+        np.empty(0, dtype=np.float64)
+        if ddt_flux_correction is None
+        else np.asarray(ddt_flux_correction, dtype=np.float64)
+    )
+    interior_kernel = (
+        _pressure_interior_flux_scalar if scalar_diagonal else _pressure_interior_flux_vector
+    )
+    interior_kernel(
+        owners[:n_interior],
+        neighbours[:n_interior],
+        geo_data["face_weights"][:n_interior],
+        geo_data["face_sf"][:n_interior],
+        geo_data["face_cf_vector"][:n_interior],
+        DU,
+        U_HbyA,
+        grad_p_interior,
+        p,
+        face_conductance,
+        ddt_values,
+        flux_vf,
+    )
 
     # 3. Boundary Faces (Numba JIT)
     n_boundary_faces = n_faces - n_interior
@@ -855,8 +979,10 @@ def assemble_pressure_correction_equation_rhie_chow(
             bnd_face_idx,
             face_conductance,
         )
-        flux_cf[bnd_face_idx] = cf_b
-        flux_ff[bnd_face_idx] = ff_b
+        if not reuse_matrix:
+            assert flux_cf is not None and flux_ff is not None
+            flux_cf[bnd_face_idx] = cf_b
+            flux_ff[bnd_face_idx] = ff_b
         flux_vf[bnd_face_idx] = vf_b
 
         # A replay experiment may supply the face flux measured by the same
@@ -900,8 +1026,10 @@ def assemble_pressure_correction_equation_rhie_chow(
             orthogonal_area = np.sum(sf_b * edge_b, axis=1)
             nonorthogonal = sf_b - orthogonal_area[:, np.newaxis] * edge_b
             conductance_b = face_conductance[cyclic_faces]
-            flux_cf[cyclic_faces] = conductance_b
-            flux_ff[cyclic_faces] = -conductance_b
+            if not reuse_matrix:
+                assert flux_cf is not None and flux_ff is not None
+                flux_cf[cyclic_faces] = conductance_b
+                flux_ff[cyclic_faces] = -conductance_b
             flux_hbya = np.sum(hbya_b * sf_b, axis=1)
             compact = conductance_b * (p[own_b] - p[nei_b])
             if scalar_diagonal:
@@ -917,11 +1045,17 @@ def assemble_pressure_correction_equation_rhie_chow(
         adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces)
 
     # 4. Assemble Matrix and RHS
-    flux_data = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
-
-    A_p = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
-        flux_data, mesh_data, workspace=matrix_workspace, backend=operator_backend
-    )
+    flux_data = {"flux_vf": flux_vf}
+    if reuse_matrix:
+        assert correction_workspace is not None
+        assert correction_workspace.matrix is not None
+        A_p = correction_workspace.matrix
+    else:
+        assert flux_cf is not None and flux_ff is not None
+        flux_data.update({"flux_cf": flux_cf, "flux_ff": flux_ff})
+        A_p = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+            flux_data, mesh_data, workspace=matrix_workspace, backend=operator_backend
+        )
     b_p = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
         flux_data, mesh_data, backend=operator_backend
     )
@@ -946,7 +1080,9 @@ def assemble_pressure_correction_equation_rhie_chow(
             )
 
     if return_workspace:
-        return A_p, b_p, flux_vf, PressureCorrectionWorkspace(DU, face_conductance)
+        if correction_workspace is None:
+            correction_workspace = PressureCorrectionWorkspace(DU, face_conductance, A_p)
+        return A_p, b_p, flux_vf, correction_workspace
     return A_p, b_p, flux_vf
 
 

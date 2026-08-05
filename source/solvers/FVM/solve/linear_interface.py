@@ -1,6 +1,6 @@
 """Sparse linear solvers and convergence telemetry."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 import time
 from typing import Protocol, runtime_checkable
@@ -86,6 +86,7 @@ class LinearSolveResult:
     solve_seconds: float
     used_fallback: bool = False
     preconditioner_rebuilt: bool | None = None
+    equation: str | None = None
 
 
 # Compatibility for callers that imported the experimental PETSc-only name.
@@ -147,9 +148,34 @@ def deviation_norm_factor(A, b, x0):
     if x0 is None:
         return max(float(np.linalg.norm(b)), 1e-30)
     x0 = np.asarray(x0, dtype=np.float64)
-    reference = A @ np.full(A.shape[0], float(x0.mean()))
+    if x0.ndim == 1:
+        mean_state = np.full(A.shape[0], float(x0.mean()))
+    elif x0.ndim == 2:
+        mean_state = np.broadcast_to(np.mean(x0, axis=0), x0.shape)
+    else:
+        raise ValueError("Linear initial guess must be one- or two-dimensional")
+    reference = A @ mean_state
     factor = float(np.linalg.norm(A @ x0 - reference)) + float(np.linalg.norm(b - reference))
     return max(factor, 1e-30)
+
+
+def openfoam_residual_target(A, b, x0, absolute_tolerance, relative_tolerance=0.0):
+    """Return OpenFOAM-style initial residual, target, and norm factor.
+
+    OpenFOAM stops a linear solve when either its absolute normalized
+    tolerance is met or the residual has fallen by ``relTol`` from the value
+    at entry to that solve.  ``relTol`` is therefore *not* itself an absolute
+    residual target.  Keeping this conversion next to
+    :func:`deviation_norm_factor` gives every serial/replicated backend the
+    same semantics; the partitioned PETSc path performs the equivalent global
+    calculation with distributed vectors.
+    """
+    b_array = np.asarray(b, dtype=np.float64)
+    initial = np.zeros_like(b_array) if x0 is None else np.asarray(x0, dtype=np.float64)
+    norm_factor = deviation_norm_factor(A, b_array, initial)
+    initial_residual = float(np.linalg.norm(b_array - A @ initial) / norm_factor)
+    target = max(float(absolute_tolerance), float(relative_tolerance) * initial_residual)
+    return initial_residual, target, norm_factor
 
 
 def _trivial_solution(A, b, x0, tol):
@@ -238,7 +264,18 @@ def _run_krylov(A, b, method, M, tol, maxiter, x0):
     return x0 + r0_norm * e, info, iterations
 
 
-def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context, nullspace):
+def _solve_petsc(
+    A,
+    b,
+    method,
+    equation_type,
+    tol,
+    rel_tol,
+    maxiter,
+    x0,
+    parallel_context,
+    nullspace,
+):
     """Collectively solve a replicated SciPy system with distributed PETSc.
 
     Every rank supplies the same global CSR matrix, but inserts only the rows
@@ -343,11 +380,15 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
             method_name = f"{requested}+bjacobi"
     else:
         raise ValueError(f"Unknown PETSc iterative solver {method!r}")
-    # PETSc's default test is relative to ||b||; rescale so ``tol`` targets the
+    initial_residual, residual_target, norm_factor = openfoam_residual_target(
+        A_csr, b_array, x0, tol, rel_tol
+    )
+    # PETSc's default test is relative to ||b||; rescale so the OpenFOAM
+    # absolute-or-relative target is measured against the deviation norm.
     # deviation-based normFactor and a warm guess cannot satisfy the tolerance
     # on the strength of the mean flow alone (see deviation_norm_factor).
     b_norm = max(float(np.linalg.norm(b_array)), 1e-30)
-    rtol_eff = float(np.clip(tol * deviation_norm_factor(A_csr, b_array, x0) / b_norm, 1e-14, tol))
+    rtol_eff = float(np.clip(residual_target * norm_factor / b_norm, 1e-14, 0.99))
     ksp.setTolerances(rtol=rtol_eff, max_it=int(maxiter))
     ksp.setInitialGuessNonzero(x0 is not None)
     # Allow command-line PETSc options such as ``-fvm_pressure_pc_type hypre``.
@@ -378,11 +419,12 @@ def _solve_petsc(A, b, method, equation_type, tol, maxiter, x0, parallel_context
     x = solution_all.getArray(readonly=True).copy()
     if nullspace == "constant":
         x -= np.mean(x)
-    initial_residual = normalized_residual(A_csr, initial, b_array)
-    final_residual = normalized_residual(A_csr, x, b_array)
+    final_residual = float(np.linalg.norm(b_array - A_csr @ x) / norm_factor)
     reason = str(ksp.getConvergedReason())
     converged = (
-        reason_code > 0 and np.isfinite(final_residual) and final_residual <= max(10.0 * tol, 1e-12)
+        reason_code > 0
+        and np.isfinite(final_residual)
+        and final_residual <= max(10.0 * residual_target, 1e-12)
     )
     info = LinearSolveResult(
         backend="petsc",
@@ -845,6 +887,7 @@ def solve_linear_system(
     method="spsolve",
     equation_type=None,
     tol=1e-6,
+    rel_tol=0.0,
     maxiter=1000,
     x0=None,
     reuse_ilu=False,
@@ -860,6 +903,7 @@ def solve_linear_system(
     return_info=False,
     failure_policy="raise",
     log_sink=None,
+    matrix_values_unchanged=False,
     **kwargs,
 ):
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
@@ -883,10 +927,12 @@ def solve_linear_system(
                 parallel_context,
                 method=method,
                 tolerance=tol,
+                relative_tolerance=rel_tol,
                 max_iterations=maxiter,
                 constant_nullspace=nullspace == "constant",
                 initial_guess=x0,
                 workspace=partitioned_workspace,
+                matrix_values_unchanged=matrix_values_unchanged,
             )
         else:
             solution, info = _solve_petsc(
@@ -895,22 +941,27 @@ def solve_linear_system(
                 method,
                 equation_type,
                 tol,
+                rel_tol,
                 maxiter,
                 x0,
                 parallel_context,
                 nullspace,
             )
+        if equation_type is not None and info.equation is None:
+            info = replace(info, equation=str(equation_type))
         return (solution, info) if return_info else solution
     if str(backend).lower() != "scipy":
         raise ValueError(f"Unknown linear backend {backend!r}")
     if nullspace is not None:
         raise ValueError("Explicit null-space solves currently require the PETSc backend")
 
-    initial = np.zeros_like(np.asarray(b), dtype=np.float64) if x0 is None else np.asarray(x0)
-    initial_residual = normalized_residual(A, initial, b)
+    initial_residual, residual_target, norm_factor = openfoam_residual_target(
+        A, b, x0, tol, rel_tol
+    )
+    tol = residual_target
 
     def finish(solution, metadata):
-        final_residual = normalized_residual(A, solution, b)
+        final_residual = float(np.linalg.norm(np.asarray(b) - A @ solution) / norm_factor)
         residual_limit = max(10.0 * tol, 1e-12)
         result = LinearSolveResult(
             backend="scipy",
@@ -926,6 +977,7 @@ def solve_linear_system(
             solve_seconds=float(metadata["solve_seconds"]),
             used_fallback=bool(metadata.get("used_fallback", False)),
             preconditioner_rebuilt=metadata.get("preconditioner_rebuilt"),
+            equation=None if equation_type is None else str(equation_type),
         )
         if not result.converged:
             raise LinearSolveError(
@@ -952,7 +1004,8 @@ def solve_linear_system(
     if method == "amg":
         if equation_type != "pressure":
             raise ValueError("AMG is supported only for pressure equations")
-        amg_tol = kwargs.get("amg_tol", 4e-4)
+        configured_amg_tol = kwargs.get("amg_tol", 4e-4)
+        amg_tol = tol if configured_amg_tol is None else float(configured_amg_tol)
         amg_maxiter = kwargs.get("amg_maxiter", maxiter)
         amg_reuse_tol = kwargs.get("amg_reuse_tol", 0.05)
         solution, metadata = _solve_pressure(

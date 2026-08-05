@@ -207,6 +207,16 @@ def compute_gauss_gradient(phi, mesh_data, geo_data):
     for i_component in range(n_components):
         grad_phi[:n_elements, :, i_component] /= element_volumes[:, np.newaxis]
 
+    # A localized rank contains every face needed for its owned cells, but
+    # only a partial stencil for halo cells. Face schemes such as
+    # linearUpwind and corrected laplacians interpolate gradients on both
+    # sides of a processor face. Replace those partial halo gradients with
+    # the complete values computed by their owning ranks, matching
+    # OpenFOAM's processor-patch gradient exchange.
+    parallel = mesh_data.get("_parallel_context")
+    if parallel is not None and parallel.is_partitioned:
+        parallel.exchange_halo(grad_phi[:n_elements])
+
     # --- Boundary Gradients ---
     # Element gradients at boundaries equal to owner cell gradients
     # This provides a zero-gradient condition for the gradient field,

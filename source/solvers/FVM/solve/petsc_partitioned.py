@@ -159,7 +159,7 @@ class PartitionedLinearWorkspace:
         """Collectively destroy PETSc objects owned by this workspace."""
         self._destroy_objects()
 
-    def _build(self, system, method: str, constant_nullspace: bool, PETSc) -> None:
+    def _build(self, system, method: str, constant_nullspace: bool, PETSc) -> bool:
         # A workspace belongs to one solver/partition, whose mesh topology is
         # immutable.  Scalar sizes are sufficient here; retaining a Python
         # tuple containing every row width cost tens of MiB on large meshes.
@@ -173,7 +173,7 @@ class PartitionedLinearWorkspace:
             constant_nullspace,
         )
         if self._signature == signature:
-            return
+            return False
         self._destroy_objects()
         diagonal_nnz, off_diagonal_nnz = _petsc_row_preallocation(
             np.asarray(system.indptr, dtype=np.int32),
@@ -222,10 +222,13 @@ class PartitionedLinearWorkspace:
                 PETSc.PC.Type.JACOBI if constant_nullspace else PETSc.PC.Type.BJACOBI
             )
         ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
-        ksp.setOptionsPrefix("fvm_partitioned_")
+        # Equation-specific prefixes prevent pressure-PC experiments from
+        # silently replacing the momentum preconditioner (and vice versa).
+        ksp.setOptionsPrefix("fvm_pressure_" if method == "amg" else "fvm_momentum_")
         ksp.setFromOptions()
         self.ksp = ksp
         self._signature = signature
+        return True
 
     def solve(
         self,
@@ -233,9 +236,11 @@ class PartitionedLinearWorkspace:
         *,
         method: str,
         tolerance: float,
+        relative_tolerance: float = 0.0,
         max_iterations: int,
         constant_nullspace: bool,
         initial_guess: np.ndarray | None,
+        matrix_values_unchanged: bool = False,
     ):
         """Update numeric values and solve using persistent PETSc objects."""
         try:
@@ -246,21 +251,23 @@ class PartitionedLinearWorkspace:
         if self.context.size != PETSc.COMM_WORLD.getSize():
             raise RuntimeError("mpi4py and PETSc communicator sizes differ")
         setup_start = time.perf_counter()
-        self._build(system, method, constant_nullspace, PETSc)
+        objects_rebuilt = self._build(system, method, constant_nullspace, PETSc)
         assert self.matrix is not None
         assert self.rhs is not None
         assert self.solution is not None
         assert self.residual is not None
         assert self.ksp is not None
 
-        self.matrix.zeroEntries()
-        self.matrix.setValuesCSR(
-            np.asarray(system.indptr, dtype=PETSc.IntType),
-            np.asarray(system.indices, dtype=PETSc.IntType),
-            system.data,
-        )
-        self.matrix.assemblyBegin()
-        self.matrix.assemblyEnd()
+        reuse_preconditioner = bool(matrix_values_unchanged and not objects_rebuilt)
+        if not reuse_preconditioner:
+            self.matrix.zeroEntries()
+            self.matrix.setValuesCSR(
+                np.asarray(system.indptr, dtype=PETSc.IntType),
+                np.asarray(system.indices, dtype=PETSc.IntType),
+                system.data,
+            )
+            self.matrix.assemblyBegin()
+            self.matrix.assemblyEnd()
 
         self.rhs.set(0.0)
         rows = np.arange(system.row_start, system.row_end, dtype=PETSc.IntType)
@@ -281,14 +288,19 @@ class PartitionedLinearWorkspace:
         self.solution.assemblyBegin()
         self.solution.assemblyEnd()
         self.ksp.setOperators(self.matrix)
+        self.ksp.getPC().setReusePreconditioner(reuse_preconditioner)
         # PETSc's convergence test is relative to ||b||, which carries the
         # transport of the solution's mean (for x-momentum in a free stream it
         # dwarfs the near-wall dynamics).  Rescale so ``tolerance`` targets the
-        # deviation-based OpenFOAM-style normFactor instead; otherwise a warm
-        # initial guess terminates at iteration zero and the flow freezes.
+        # deviation-based OpenFOAM-style normFactor.  OpenFOAM's ``relTol`` is
+        # a reduction from the residual at solve entry, not an absolute target.
         rhs_norm_pre = max(float(self.rhs.norm()), 1e-30)
-        rtol_eff = tolerance
+        initial_residual_norm = rhs_norm_pre
+        norm_factor = rhs_norm_pre
         if initial_guess is not None:
+            self.matrix.mult(self.solution, self.residual)
+            self.residual.axpy(-1.0, self.rhs)
+            initial_residual_norm = float(self.residual.norm())
             n_global = float(system.global_size)
             x_mean = float(self.solution.sum()) / max(n_global, 1.0)
             reference = self.rhs.duplicate()
@@ -300,9 +312,17 @@ class PartitionedLinearWorkspace:
             deviation = float(self.residual.norm())
             reference.aypx(-1.0, self.rhs)  # reference := b - A(x_mean)
             norm_factor = max(deviation + float(reference.norm()), 1e-30)
-            rtol_eff = float(np.clip(tolerance * norm_factor / rhs_norm_pre, 1e-14, tolerance))
             reference.destroy()
             uniform.destroy()
+        initial_residual = initial_residual_norm / norm_factor
+        residual_target = max(float(tolerance), float(relative_tolerance) * initial_residual)
+        rtol_eff = float(
+            np.clip(
+                residual_target * norm_factor / rhs_norm_pre,
+                1e-14,
+                0.99,
+            )
+        )
         self.ksp.setTolerances(rtol=rtol_eff, max_it=max_iterations)
         self.ksp.setInitialGuessNonzero(initial_guess is not None)
         setup_seconds = time.perf_counter() - setup_start
@@ -311,11 +331,10 @@ class PartitionedLinearWorkspace:
         self.ksp.solve(self.rhs, self.solution)
         solve_seconds = time.perf_counter() - solve_start
         reason_code = int(self.ksp.getConvergedReason())
-        rhs_norm = float(self.rhs.norm())
         self.matrix.mult(self.solution, self.residual)
         self.residual.axpy(-1.0, self.rhs)
         residual_norm = float(self.residual.norm())
-        relative_residual = residual_norm / max(rhs_norm, 1e-30)
+        relative_residual = residual_norm / norm_factor
         result = LinearSolveResult(
             backend="petsc-partitioned",
             method=method,
@@ -324,15 +343,15 @@ class PartitionedLinearWorkspace:
             converged=(
                 reason_code > 0
                 and np.isfinite(relative_residual)
-                and relative_residual <= max(10.0 * tolerance, 1e-12)
+                and relative_residual <= max(10.0 * residual_target, 1e-12)
             ),
             reason=str(self.ksp.getConvergedReason()),
             iterations=int(self.ksp.getIterationNumber()),
-            initial_residual=1.0 if rhs_norm else 0.0,
+            initial_residual=initial_residual,
             final_residual=relative_residual,
             setup_seconds=setup_seconds,
             solve_seconds=solve_seconds,
-            preconditioner_rebuilt=True,
+            preconditioner_rebuilt=not reuse_preconditioner,
         )
         if not result.converged:
             raise LinearSolveError(
@@ -348,6 +367,7 @@ def solve_owned_rows(
     *,
     method: str = "cg",
     tolerance: float = 1e-10,
+    relative_tolerance: float = 0.0,
     max_iterations: int = 500,
     constant_nullspace: bool = False,
     initial_guess: np.ndarray | None = None,
@@ -359,6 +379,7 @@ def solve_owned_rows(
             system,
             method=method,
             tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
             max_iterations=max_iterations,
             constant_nullspace=constant_nullspace,
             initial_guess=initial_guess,
@@ -374,10 +395,12 @@ def solve_local_partitioned_system(
     *,
     method: str,
     tolerance: float,
+    relative_tolerance: float = 0.0,
     max_iterations: int,
     constant_nullspace: bool,
     initial_guess=None,
     workspace: PartitionedLinearWorkspace | None = None,
+    matrix_values_unchanged: bool = False,
 ):
     """Solve owned rows and return a refreshed owned-plus-halo local vector."""
     if context.partition is None:
@@ -391,6 +414,7 @@ def solve_local_partitioned_system(
             context,
             method=method,
             tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
             max_iterations=max_iterations,
             constant_nullspace=constant_nullspace,
             initial_guess=guess,
@@ -400,9 +424,11 @@ def solve_local_partitioned_system(
             system,
             method=method,
             tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
             max_iterations=max_iterations,
             constant_nullspace=constant_nullspace,
             initial_guess=guess,
+            matrix_values_unchanged=matrix_values_unchanged,
         )
     local = np.empty(len(context.partition.local_global_ids), dtype=np.float64)
     local[:n_owned] = owned

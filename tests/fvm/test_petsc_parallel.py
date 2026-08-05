@@ -87,6 +87,33 @@ def test_owned_row_petsc_solution_matches_scipy():
     assert result.backend == "petsc-partitioned"
 
 
+def test_owned_row_relative_tolerance_reduces_entry_residual():
+    """The distributed PETSc path applies relTol to its warm-guess residual."""
+    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    n = 37
+    matrix = diags(
+        (-np.ones(n - 1), 4.0 * np.ones(n), -np.ones(n - 1)),
+        (-1, 0, 1),
+        format="csr",
+    )
+    rhs = np.linspace(1.0, 2.0, n)
+    exact = spsolve(matrix, rhs)
+    guess = exact + 2.0e-3 * np.sin(np.arange(n))
+    owned = OwnedRowsCSR.from_global(matrix, rhs, context.rank, context.size)
+    local_guess = guess[owned.row_start : owned.row_end]
+
+    _, result = solve_owned_rows(
+        owned,
+        context,
+        tolerance=1.0e-12,
+        relative_tolerance=0.5,
+        initial_guess=local_guess,
+    )
+
+    assert 0.0 < result.initial_residual < 0.1
+    assert result.final_residual <= 0.5 * result.initial_residual
+
+
 def test_partitioned_workspace_reuses_allocations_and_closes_collectively():
     context = ParallelContext.create(ExecutionConfig.petsc_replicated())
     n = 19
@@ -218,14 +245,14 @@ def _pimple_config(execution, case_name):
         case_name=case_name,
         execution=execution,
         time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        schemes=SchemesConfig(convection_scheme="linearUpwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
             momentum_tol=1e-10,
             pressure_tol=1e-10,
         ),
-        pimple=PimpleControl(n_correctors=2),
+        pimple=PimpleControl(n_correctors=2, n_orthogonal_correctors=1),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -335,6 +362,7 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     # Momentum and pressure execute sequentially and must replace the same
     # PETSc matrix/KSP allocation instead of retaining one workspace each.
     assert set(actual.algorithm._partitioned_linear_workspaces) == {"flow"}
+    assert actual.algorithm._partitioned_linear_workspaces["flow"].matrix is None
 
     n_owned = actual.parallel.n_owned
     velocity_parts = actual.parallel.comm.allgather(actual.U[:n_owned].copy())
@@ -547,6 +575,16 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
         )
         actual.auto_write = False
         actual.solve_pimple(0.01)
+
+    pressure_results = [
+        result for result in actual.algorithm.last_linear_results if result.equation == "pressure"
+    ]
+    assert [result.preconditioner_rebuilt for result in pressure_results] == [
+        True,
+        False,
+        False,
+        False,
+    ]
 
     n_owned = actual.parallel.n_owned
     velocity = np.concatenate(actual.parallel.comm.allgather(actual.U[:n_owned].copy()))

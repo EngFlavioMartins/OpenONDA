@@ -102,6 +102,15 @@ def validate_solver_params(solver, time=None) -> None:
         value = float(getattr(solver, name, 1e-6))
         if not value > 0.0:
             errors.append(f"  {name}={value!r} must be > 0")
+    for name in (
+        "momentum_rel_tol",
+        "momentum_final_rel_tol",
+        "pressure_rel_tol",
+        "pressure_final_rel_tol",
+    ):
+        value = getattr(solver, name, 0.0)
+        if value is not None and not 0.0 <= float(value) <= 1.0:
+            errors.append(f"  {name}={value!r} must satisfy 0 <= {name} <= 1")
     for name in ("momentum_maxiter", "pressure_maxiter"):
         value = getattr(solver, name, 1)
         if not isinstance(value, int) or value < 1:

@@ -81,7 +81,13 @@ def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
 
 @pytest.mark.parametrize(
     "field,bad",
-    [("pressure_tol", 0.0), ("momentum_tol", -1.0), ("pressure_maxiter", 0)],
+    [
+        ("pressure_tol", 0.0),
+        ("momentum_tol", -1.0),
+        ("pressure_rel_tol", -0.1),
+        ("momentum_final_rel_tol", 1.1),
+        ("pressure_maxiter", 0),
+    ],
 )
 def test_invalid_linear_solver_controls_rejected(field, bad):
     with pytest.raises(ValueError, match=field):

@@ -248,6 +248,15 @@ class Solver(OFWInterfaceMixin):
             self.case_dir,
             enabled=self.parallel.is_root,
         )
+        from ..io.profiling import PerformanceProfiler
+
+        self.profiler = PerformanceProfiler(
+            self.case_dir,
+            self.parallel,
+            self.logger,
+            solver=self,
+        )
+        self.logger.profiler = self.profiler
         self.operator_backend = self.config.execution.operator_backend
         if self.config.execution.linear_backend == "petsc":
             methods = {
@@ -1035,10 +1044,27 @@ class Solver(OFWInterfaceMixin):
         step_dt = dt if dt is not None else self.dt
         self._current_dt = step_dt
 
+        # Diagnostics from the previously completed step cache full-mesh
+        # Courant, velocity-gradient, and vorticity arrays.  None is valid once
+        # a new solve begins, and retaining them through momentum/pressure
+        # assembly adds roughly thirteen float64 values per local cell to the
+        # transient peak.  Release them before turbulence and PIMPLE allocate
+        # their workspaces; the solved state invalidation below remains the
+        # guard for fields requested during a re-entrant/coupled solve.
+        self._invalidate_derived_fields()
+
+        logging.Timer.start("Turbulence / effective viscosity")
         nu_eff = self.compute_effective_viscosity()
+        logging.Timer.log(
+            "Turbulence / effective viscosity",
+            sink=self.logger,
+            detailed=True,
+        )
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         u_old_old_arg = self.U_old_old if self._n_committed >= 1 else None
+        logging.Timer.start("Source preparation")
         src_exp, src_imp = self._fringe_source()
+        logging.Timer.log("Source preparation", sink=self.logger, detailed=True)
 
         self.U, self.p, self.phi, residuals = self.algorithm.step(
             self.U,
@@ -1062,6 +1088,7 @@ class Solver(OFWInterfaceMixin):
         # Continuity (incompressibility) diagnostic: a divergence-free solution
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
         # conservation visible instead of silent.
+        logging.Timer.start("Continuity diagnostics")
         cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
         vol = self.geo_data["element_volumes"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(vol)
@@ -1070,13 +1097,17 @@ class Solver(OFWInterfaceMixin):
         self.continuity_max = float(self.parallel.global_max(local_max))
         self.continuity_sum = float(self.parallel.global_sum(local_sum))
         self.logger.continuity_info(self.continuity_max, self.continuity_sum)
+        logging.Timer.log("Continuity diagnostics", sink=self.logger, detailed=True)
 
+        logging.Timer.start("Step health diagnostics")
         self.last_diagnostics = self._build_step_diagnostics(step_dt, residuals)
         self._enforce_acceptance_policy(self.last_diagnostics)
+        logging.Timer.log("Step health diagnostics", sink=self.logger, detailed=True)
         return residuals
 
     def _build_step_diagnostics(self, step_dt, residuals):
         """Build the backend-neutral health record for the current solved state."""
+        from ..fields import diagnostics
         from ..solve.contracts import StepDiagnostics
 
         n = self.mesh_data["n_elements"]
@@ -1119,12 +1150,10 @@ class Solver(OFWInterfaceMixin):
                 )
             )
         )
-        vorticity = self._vorticity_field()
-        local_enstrophy = 0.5 * float(
-            np.sum(
-                self.geo_data["element_volumes"][:n_owned]
-                * np.sum(vorticity[:n_owned] * vorticity[:n_owned], axis=1)
-            )
+        local_enstrophy = diagnostics.enstrophy_from_gradient(
+            self._velocity_gradient(),
+            self.geo_data["element_volumes"],
+            n_owned,
         )
         return StepDiagnostics(
             algorithm=self.config.pimple.algorithm.upper(),
@@ -1217,6 +1246,11 @@ class Solver(OFWInterfaceMixin):
             )
 
         step_dt = dt if dt is not None else self.dt
+        self.profiler.begin_step(
+            step=self.time_step + 1,
+            flow_time=self.flow_time + step_dt,
+            dt=step_dt,
+        )
         logging.Timer.start(f"Step {self.time_step + 1}")
         self.logger.step_info(self.flow_time + step_dt, self.time_step + 1, step_dt)
 
@@ -1239,6 +1273,10 @@ class Solver(OFWInterfaceMixin):
 
         elapsed = logging.Timer.stop(f"Step {self.time_step}")
         self.logger.step_timing(elapsed)
+        self.profiler.finish_step(
+            elapsed,
+            getattr(self.algorithm, "last_linear_results", ()),
+        )
 
     def advance_time(self) -> None:
         """Commit the solved field as the new time level and advance the clock
@@ -1247,6 +1285,7 @@ class Solver(OFWInterfaceMixin):
         from ..fields import diagnostics
 
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
+        logging.Timer.start("Time-history commit")
         self.U_old_old[:] = self.U_old[:]
         self.U_old[:] = self.U[:]
         self.phi_old_old[:] = self.phi_old[:]
@@ -1256,9 +1295,14 @@ class Solver(OFWInterfaceMixin):
         self.flow_time += self._current_dt
         step_dt = self._current_dt
         cfg_time = self.config.time
+        logging.Timer.log("Time-history commit", sink=self.logger, detailed=True)
+
+        logging.Timer.start("Diagnostics output")
         self.io.write_step_diagnostics()
+        logging.Timer.log("Diagnostics output", sink=self.logger, detailed=True)
 
         # y+ and Turbulence info
+        logging.Timer.start("Wall y+ diagnostics")
         patch_names = getattr(self.config.forces, "yplus_patches", None)
         yplus_stats = {}
         if self.parallel.is_root or self.parallel.is_partitioned:
@@ -1277,6 +1321,7 @@ class Solver(OFWInterfaceMixin):
         self.logger.yplus_info(yplus_stats)
         # Expose the latest y+ stats for coupled-driver health diagnostics.
         self.last_yplus = yplus_stats
+        logging.Timer.log("Wall y+ diagnostics", sink=self.logger, detailed=True)
 
         # Force computation and logging
         force_interval = getattr(self.config.forces, "force_log_interval", None)
@@ -1284,6 +1329,7 @@ class Solver(OFWInterfaceMixin):
             force_interval = cfg_time.write_interval
 
         self._force_log_counter += 1
+        logging.Timer.start("Surface-force diagnostics")
         forces = {}
         if (self.parallel.is_root or self.parallel.is_partitioned) and (
             self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
@@ -1320,7 +1366,9 @@ class Solver(OFWInterfaceMixin):
             if self.parallel.is_partitioned:
                 forces = diagnostics.merge_partition_forces(self.parallel.comm.allgather(forces))
             self.last_forces = forces
+        logging.Timer.log("Surface-force diagnostics", sink=self.logger, detailed=True)
 
+        logging.Timer.start("Force-history output")
         if self.parallel.is_root and (
             self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
         ):
@@ -1379,14 +1427,33 @@ class Solver(OFWInterfaceMixin):
                         ]
                     )
             self.logger.force_info(forces)
+        logging.Timer.log("Force-history output", sink=self.logger, detailed=True)
 
+        logging.Timer.start("Auxiliary diagnostics")
         if self.parallel.is_root and self.ibm is not None:
             self._log_ibm_forces(step_dt)
 
-        if self.parallel.is_root and self.turbulence and self.nut is not None:
-            self.logger.turbulence_info(self.nut, self.config.transport.nu)
+        if self.turbulence and self.nut is not None:
+            n_owned = (
+                self.parallel.n_owned
+                if self.parallel.is_partitioned
+                else self.mesh_data["n_elements"]
+            )
+            owned_nut = self.nut[:n_owned]
+            nut_minimum = float(self.parallel.global_min(float(np.min(owned_nut))))
+            nut_maximum = float(self.parallel.global_max(float(np.max(owned_nut))))
+            nut_sum = float(self.parallel.global_sum(float(np.sum(owned_nut))))
+            nut_count = int(self.parallel.global_sum(int(n_owned)))
+            if self.parallel.is_root:
+                self.logger.turbulence_info(
+                    self.nut,
+                    self.config.transport.nu,
+                    statistics=(nut_minimum, nut_maximum, nut_sum / nut_count),
+                )
+        logging.Timer.log("Auxiliary diagnostics", sink=self.logger, detailed=True)
 
         # Output control — time-based if write_interval_time is set, else step-based
+        logging.Timer.start("Visualization output")
         if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
             wrt_time = cfg_time.write_interval_time
             if wrt_time is not None:
@@ -1397,6 +1464,12 @@ class Solver(OFWInterfaceMixin):
             else:
                 if self.time_step % cfg_time.write_interval == 0:
                     self.write_vtk()
+        logging.Timer.log("Visualization output", sink=self.logger, detailed=True)
+
+        # Courant/gradient/vorticity caches describe only this accepted state.
+        # Output and force consumers above have finished with them; releasing
+        # the references here gives the next solve the lowest stable footprint.
+        self._invalidate_derived_fields()
 
     def save_state(self, path) -> str:
         """Atomically save a versioned restart containing the complete time state."""
@@ -1544,6 +1617,7 @@ class Solver(OFWInterfaceMixin):
         algorithm_close = getattr(self.algorithm, "close", None)
         if algorithm_close is not None:
             algorithm_close()
+        self.profiler.close()
         self.logger.close()
 
     def __enter__(self):

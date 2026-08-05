@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Transient incompressible PIMPLE solver."""
 
+import os
 from typing import Any
 
 import numpy as np
@@ -10,7 +11,7 @@ from ..fields import diagnostics as field_diagnostics
 from ..io import logging
 from . import simple_solver
 from .contracts import OuterCorrectorDiagnostics
-from .linear_interface import normalized_residual, solve_linear_system
+from .linear_interface import solve_linear_system
 
 
 class PIMPLESolver(simple_solver.SIMPLESolver):
@@ -64,18 +65,27 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
         self._partitioned_linear_workspaces = {}
+        self._partitioned_workspace_policy = os.environ.get(
+            "FVM_PETSC_WORKSPACE_POLICY", "shared"
+        ).lower()
+        if self._partitioned_workspace_policy not in {"shared", "separate"}:
+            raise ValueError(
+                "FVM_PETSC_WORKSPACE_POLICY must be 'shared' or 'separate', got "
+                f"{self._partitioned_workspace_policy!r}"
+            )
 
     def _partitioned_workspace(self, equation: str):
         """Return the solver-owned PETSc workspace for a partitioned equation."""
         parallel = self.params.get("_parallel_context")
         if parallel is None or not parallel.is_partitioned:
             return None
-        workspace = self._partitioned_linear_workspaces.get(equation)
+        key = equation if self._partitioned_workspace_policy == "separate" else "flow"
+        workspace = self._partitioned_linear_workspaces.get(key)
         if workspace is None:
             from .petsc_partitioned import PartitionedLinearWorkspace
 
             workspace = PartitionedLinearWorkspace(parallel)
-            self._partitioned_linear_workspaces[equation] = workspace
+            self._partitioned_linear_workspaces[key] = workspace
         return workspace
 
     def close(self) -> None:
@@ -129,6 +139,20 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
+        pressure_matrix_reusable = all(
+            simple_solver.BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+            is not simple_solver.BoundaryStrategy.FREESTREAM
+            for boundary in self.boundaries
+        )
+
+        def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:
+            absolute = float(self.params.get(f"{equation}_tol", 1e-8))
+            relative = self.params.get(f"{equation}_rel_tol", 0.0)
+            if final:
+                final_relative = self.params.get(f"{equation}_final_rel_tol", 0.0)
+                if final_relative is not None:
+                    relative = final_relative
+            return absolute, float(relative)
 
         ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
         ddt_scheme = "backward" if ts in ("backward", "bdf2") else "euler"
@@ -179,8 +203,17 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             final_iteration = final_iteration or outer == n_outer - 1
             alpha_u_outer = 1.0 if final_iteration else alpha_u
             alpha_p_outer = 1.0 if final_iteration else alpha_p
+            momentum_tolerance, momentum_relative_tolerance = _linear_tolerances(
+                "momentum", final=final_iteration
+            )
 
-            def _solve_predictor(src_explicit, phi=phi, alpha_u=alpha_u_outer) -> Any:
+            def _solve_predictor(
+                src_explicit,
+                phi=phi,
+                alpha_u=alpha_u_outer,
+                momentum_tol=momentum_tolerance,
+                momentum_rel_tol=momentum_relative_tolerance,
+            ) -> Any:
                 return momentum.solve_momentum_predictor(
                     U,
                     p,
@@ -203,16 +236,16 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ilu_key=self.params.get("ilu_key", None),
                     ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
                     ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
-                    momentum_tol=self.params.get("momentum_tol", 1e-4),
+                    momentum_tol=momentum_tol,
+                    momentum_rel_tol=momentum_rel_tol,
                     maxiter=self.params.get("momentum_maxiter", 1000),
                     ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
-                    # PETSc matrices/preconditioners dominate solve memory.
-                    # Momentum and pressure are sequential, so sharing a
-                    # workspace destroys the previous equation's allocation
-                    # before constructing the next one.
-                    partitioned_workspace=self._partitioned_workspace("flow"),
+                    # The default shared policy bounds full-mesh RAM.  The
+                    # explicit separate policy retains equation-specific PETSc
+                    # objects so pressure agglomeration can be cached.
+                    partitioned_workspace=self._partitioned_workspace("momentum"),
                     failure_policy=self.params.get("linear_failure_policy", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
@@ -258,6 +291,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             # storage instead of retaining two full three-component velocity
             # arrays for the entire pressure loop.
             U_iter = U_star
+            pressure_geometry = None
 
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
@@ -276,6 +310,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                                 self.mesh_data["n_faces"],
                             )
                         )
+                        pressure_geometry = None
+                    reuse_pressure_matrix = (
+                        pressure_geometry is not None and pressure_matrix_reusable
+                    )
                     logging.Timer.start("Pressure Assembly")
                     A_p, b_p, phi_star, pressure_workspace = (
                         simple_solver.assemble_pressure_correction_equation_rhie_chow(
@@ -292,9 +330,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             operator_backend=self.params.get("_operator_backend", "numpy"),
                             boundary_layout=self._pressure_boundary_layout,
                             ddt_flux_correction=ddt_flux_correction,
+                            correction_workspace=pressure_geometry,
+                            reuse_matrix=reuse_pressure_matrix,
                             return_workspace=True,
                         )
                     )
+                    if pressure_geometry is None:
+                        pressure_geometry = pressure_workspace
                     logging.Timer.log(
                         "Pressure Assembly",
                         sink=logger,
@@ -304,11 +346,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.boundaries, U_iter, self.mesh_data, self.geo_data
                     )
 
-                    zero_guess = np.zeros_like(b_p)
-                    pressure_initial_residual = normalized_residual(A_p, zero_guess, b_p)
-                    del zero_guess
                     logging.Timer.start("Pressure Solve")
-                    pressure_tol = float(self.params.get("pressure_tol", 1e-8))
+                    final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
+                    pressure_tol, pressure_rel_tol = _linear_tolerances(
+                        "pressure", final=final_pressure_solve
+                    )
                     pressure_maxiter = int(self.params.get("pressure_maxiter", 500))
                     amg_tol = self.params.get("amg_tol")
                     amg_maxiter = self.params.get("amg_maxiter")
@@ -318,8 +360,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         method=pressure_method,
                         equation_type="pressure",
                         tol=pressure_tol,
+                        rel_tol=pressure_rel_tol,
                         maxiter=pressure_maxiter,
-                        amg_tol=pressure_tol if amg_tol is None else float(amg_tol),
+                        amg_tol=None if amg_tol is None else float(amg_tol),
                         amg_maxiter=(pressure_maxiter if amg_maxiter is None else int(amg_maxiter)),
                         amg_reuse_tol=float(self.params.get("amg_reuse_tol", 0.05)),
                         amg_key=("pressure", self._pressure_matrix_workspace.cache_namespace),
@@ -332,16 +375,14 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             if has_pressure_nullspace and pressure_constraint == "nullspace"
                             else None
                         ),
-                        partitioned_workspace=self._partitioned_workspace("flow"),
+                        partitioned_workspace=self._partitioned_workspace("pressure"),
+                        matrix_values_unchanged=reuse_pressure_matrix,
                         return_info=True,
                     )
                     linear_results.append(pressure_result)
+                    pressure_initial_residual = pressure_result.initial_residual
+                    pressure_final_residual = pressure_result.final_residual
                     parallel = self.params.get("_parallel_context")
-                    if parallel is not None and parallel.is_partitioned:
-                        pressure_initial_residual = pressure_result.initial_residual
-                        pressure_final_residual = pressure_result.final_residual
-                    else:
-                        pressure_final_residual = normalized_residual(A_p, p_prime, b_p)
                     del A_p, b_p
                     logging.Timer.log(
                         "Pressure Solve",
@@ -386,7 +427,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     # the next pressure assembly. Python otherwise keeps the
                     # previous assignment alive until the new call returns,
                     # nearly doubling the peak for nCorrectors/nonOrth loops.
-                    del p_prime, phi_star, pressure_workspace, corrected_phi
+                    del p_prime, phi_star, corrected_phi
 
             simple_solver._update_velocity_bcs(
                 U_iter,
@@ -435,7 +476,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
             # The committed U/phi fields now own the corrected state. Drop
             # predictor-sized arrays before the next outer momentum assembly.
-            del U_star, A_U, U_iter
+            del U_star, A_U, U_iter, pressure_geometry
 
             if final_iteration:
                 break
@@ -478,4 +519,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         residuals.update({f"U_{comp}": value for comp, value in momentum_final.items()})
         self.last_linear_results = tuple(linear_results)
         self.last_outer_diagnostics = tuple(outer_diagnostics)
+
+        # Under the low-memory shared policy the workspace now contains the
+        # final pressure GAMG hierarchy.  Destroy it before allocating
+        # full-mesh diagnostics so those large lifetimes never overlap.  The
+        # separate policy deliberately retains both equation workspaces.
+        if self._partitioned_workspace_policy == "shared":
+            flow_workspace = self._partitioned_linear_workspaces.get("flow")
+            if flow_workspace is not None:
+                flow_workspace.close()
         return U, p, phi, residuals
