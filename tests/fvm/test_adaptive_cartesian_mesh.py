@@ -131,10 +131,24 @@ def test_separate_outer_patch_layout():
     assert all(patch["nFaces"] == 4 for patch in mesh["boundary"])
 
 
+def test_fits_requested_background_and_snaps_refinement_bounds():
+    mesher = AdaptiveCartesianMesher(
+        DOMAIN,
+        0.3,
+        refinements=(BoxRefinement((-0.65, 0.65, -0.5, 0.5, -0.5, 0.5), 0.1),),
+    )
+    mesh = mesher.build()
+
+    assert mesher.requested_max_cell_size == pytest.approx(0.3)
+    assert mesher.max_cell_size == pytest.approx(2.0 / 7.0)
+    assert mesher._base_counts() == (7, 7, 7)
+    assert mesh["mesh_generation"]["requested_max_cell_size"] == pytest.approx(0.3)
+    assert mesh["n_elements"] > 7**3
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"max_cell_size": 0.3}, "integer multiple"),
         (
             {
                 "max_cell_size": 0.5,

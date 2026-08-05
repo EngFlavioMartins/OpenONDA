@@ -25,6 +25,8 @@ scope of the adaptation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
+from math import gcd, lcm
 import math
 from pathlib import Path
 from typing import cast
@@ -107,6 +109,25 @@ def _dyadic_level(background: float, requested: float) -> int:
     return max(0, int(math.ceil(math.log2(ratio) - 1.0e-12)))
 
 
+def _fitted_background_size(domain: Bounds, requested: float) -> float:
+    """Return the largest isotropic spacing no larger than ``requested`` that tiles ``domain``."""
+    extents = [
+        Fraction(str(domain[2 * axis + 1] - domain[2 * axis])).limit_denominator(1_000_000)
+        for axis in range(3)
+    ]
+    denominator = 1
+    for extent in extents:
+        denominator = lcm(denominator, extent.denominator)
+    common_numerator = 0
+    for extent in extents:
+        scaled = extent.numerator * (denominator // extent.denominator)
+        common_numerator = gcd(common_numerator, scaled)
+    common_extent = Fraction(common_numerator, denominator)
+    requested_fraction = Fraction(str(requested)).limit_denominator(1_000_000)
+    count = math.ceil(common_extent / requested_fraction)
+    return float(common_extent / max(1, count))
+
+
 class AdaptiveCartesianMesher:
     """Build an adaptive, body-fitted Cartesian mesh directly in memory.
 
@@ -156,6 +177,7 @@ class AdaptiveCartesianMesher:
         _validate_bounds(domain, "domain")
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")
+        fitted_max_cell_size = _fitted_background_size(domain, max_cell_size)
         if (surface_file is None) != (wall_patch_name is None):
             raise ValueError("surface_file and wall_patch_name must be supplied together")
         if surface_file is None and surface_cell_size is not None:
@@ -186,10 +208,11 @@ class AdaptiveCartesianMesher:
                 for axis in range(3)
             ):
                 raise ValueError(f"{refinement.name} must lie inside domain")
-            _dyadic_level(max_cell_size, refinement.cell_size)
+            _dyadic_level(fitted_max_cell_size, refinement.cell_size)
 
         self.domain: Bounds = cast(Bounds, tuple(float(value) for value in domain))
-        self.max_cell_size = float(max_cell_size)
+        self.requested_max_cell_size = float(max_cell_size)
+        self.max_cell_size = fitted_max_cell_size
         self.surface = surface
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
@@ -205,7 +228,7 @@ class AdaptiveCartesianMesher:
 
     def _base_counts(self) -> tuple[int, int, int]:
         counts = []
-        for axis, name in enumerate("xyz"):
+        for axis in range(3):
             extent = self.domain[2 * axis + 1] - self.domain[2 * axis]
             count = int(round(extent / self.max_cell_size))
             if count < 1 or not math.isclose(
@@ -214,10 +237,7 @@ class AdaptiveCartesianMesher:
                 rel_tol=1.0e-10,
                 abs_tol=1.0e-12,
             ):
-                raise ValueError(
-                    f"domain {name}-extent ({extent:g}) is not an integer multiple of "
-                    f"max_cell_size ({self.max_cell_size:g})"
-                )
+                raise RuntimeError("Fitted Cartesian background size does not tile the domain")
             counts.append(count)
         return tuple(counts)  # type: ignore[return-value]
 
@@ -227,12 +247,13 @@ class AdaptiveCartesianMesher:
             origin = self.domain[2 * axis]
             for side in range(2):
                 value = (bounds[2 * axis + side] - origin) / h_min
-                index = int(round(value))
-                if not math.isclose(value, index, rel_tol=1.0e-9, abs_tol=1.0e-8):
-                    raise ValueError(
-                        f"Coordinate {bounds[2 * axis + side]:g} is not aligned with the "
-                        f"finest Cartesian spacing ({h_min:g})"
-                    )
+                rounded = int(round(value))
+                if math.isclose(value, rounded, rel_tol=1.0e-9, abs_tol=1.0e-8):
+                    index = rounded
+                elif side == 0:
+                    index = math.floor(value)
+                else:
+                    index = math.ceil(value)
                 indices.append(index)
         return _IntegerBox(*indices)
 
@@ -663,6 +684,7 @@ class AdaptiveCartesianMesher:
             "mesh_generation": {
                 "method": "adaptive_cartesian",
                 "max_cell_size": self.max_cell_size,
+                "requested_max_cell_size": self.requested_max_cell_size,
                 "finest_cell_size": h_min,
                 "max_level": max_level,
                 "base_counts": base_counts,
