@@ -48,19 +48,19 @@ T_END = 20.0
 FVM_CORES = 4
 WRITE_INTERVAL = 0.15
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
-WAKE_BOX = (-1.25, 2.25, -1.25, 1.25, -1.25, 1.25)
+WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
-MIN_DS = 0.02
+MIN_DS = 0.015
 
 FVM_MESH = AdaptiveCartesianMesher(
-    FVM_DOMAIN,
-    MIN_DS * 2 * 2 * 2,
+    domain=FVM_DOMAIN,
+    max_cell_size=MIN_DS * 32,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=MIN_DS,
     refinements=(
         BoxRefinement(WAKE_BOX, MIN_DS * 2, "wakeBox"),
-        BoxRefinement(DOWNSTREAM_WAKE_BOX, MIN_DS * 2 * 2, "downstreamWakeBox"),
+        BoxRefinement(DOWNSTREAM_WAKE_BOX, MIN_DS * 4, "downstreamWakeBox"),
     ),
 )
 

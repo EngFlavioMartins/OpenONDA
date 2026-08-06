@@ -863,9 +863,7 @@ def solver_configs_from_case(
         except ValueError:
             pass
         else:
-            final_match = re.search(
-                r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", final_body
-            )
+            final_match = re.search(r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", final_body)
             if final_match:
                 final_rel_tol = float(final_match.group(1))
         setattr(
@@ -1338,6 +1336,34 @@ class RunAcceptancePolicy:
 
 
 @dataclass
+class LogConfig:
+    """Console and log-file verbosity.
+
+    ``simple`` prints one table row per reported step (convergence and wall
+    time); ``debug`` prints the full per-step diagnostics block and the
+    performance profile.  The environment variable ``FVM_LOG`` overrides
+    ``mode`` for a single run.
+    """
+
+    mode: Literal["simple", "debug"] = "simple"
+    interval: int = 1
+    console: bool = True
+    filename: str = "fvm.log"
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"simple", "debug"}:
+            raise ValueError("log mode must be 'simple' or 'debug'")
+        if isinstance(self.interval, bool) or not isinstance(self.interval, int):
+            raise TypeError("log interval must be an integer")
+        if self.interval < 1:
+            raise ValueError("log interval must be at least one")
+        if not isinstance(self.console, bool):
+            raise TypeError("console must be a boolean")
+        if not self.filename:
+            raise ValueError("log filename must not be empty")
+
+
+@dataclass
 class FVMSetup:
     """Top-level configuration object for a finite-volume simulation.
 
@@ -1366,6 +1392,7 @@ class FVMSetup:
     execution: "ExecutionConfig" = field(default_factory=ExecutionConfig)
     output: "OutputSetup" = field(default_factory=OutputSetup)
     acceptance: "RunAcceptancePolicy" = field(default_factory=RunAcceptancePolicy)
+    logging: "LogConfig" = field(default_factory=LogConfig)
     time: TimeConfig = field(default_factory=TimeConfig)
     schemes: SchemesConfig = field(default_factory=SchemesConfig)
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
@@ -1427,6 +1454,7 @@ class FVMSetup:
         execution_data = data.get("execution", {})
         output_data = data.get("output", {})
         acceptance_data = data.get("acceptance", {})
+        logging_data = data.get("logging", {})
         time_data = data.get("time", {})
         transport_data = data.get("transport", {})
         dynamic_mesh_data = data.get("dynamic_mesh", {"method": "static"})
@@ -1436,6 +1464,7 @@ class FVMSetup:
         execution = ExecutionConfig(**execution_data)
         output = OutputSetup(**output_data)
         acceptance = RunAcceptancePolicy(**acceptance_data)
+        log = LogConfig(**logging_data)
         time = TimeConfig(**time_data)
         dynamic_mesh = DynamicMeshConfig(**dynamic_mesh_data)
 
@@ -1450,6 +1479,7 @@ class FVMSetup:
             execution=execution,
             output=output,
             acceptance=acceptance,
+            logging=log,
             time=time,
             schemes=SchemesConfig(**data.get("schemes", {})),
             linear=LinearSolverConfig(**data.get("linear", {})),

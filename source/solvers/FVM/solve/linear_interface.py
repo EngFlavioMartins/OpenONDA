@@ -26,6 +26,12 @@ def _emit_warning(log_sink, message, *args) -> None:
         log_sink.warning(text)
 
 
+def _emit_debug(log_sink, message, *args) -> None:
+    """Route a debug-mode note through the active FVM logger."""
+    if log_sink is not None:
+        log_sink.debug_message(message % args if args else message)
+
+
 class LinearSolveError(RuntimeError):
     """Raised when a configured linear backend does not converge.
 
@@ -197,7 +203,7 @@ def _trivial_solution(A, b, x0, tol):
     return None
 
 
-def _breakdown_converged(A, b, x, tol, method, info):
+def _breakdown_converged(A, b, x, tol, method, info, log_sink=None):
     """True when a nonzero ``info`` iterate nevertheless meets the tolerance.
 
     SciPy signals breakdown (``info < 0``) when the recurrence scalars
@@ -207,8 +213,9 @@ def _breakdown_converged(A, b, x, tol, method, info):
     """
     res = normalized_residual(A, x, b)
     if res <= tol:
-        logger.info(
-            "%s reported info=%s at converged residual %.3e <= %.1e; accepted",
+        _emit_debug(
+            log_sink,
+            "%s reported info=%s at residual %.3e <= %.1e; iterate accepted",
             method,
             info,
             res,
@@ -457,12 +464,6 @@ def _solve_petsc(
         )
     if not np.isfinite(final_residual):
         raise LinearSolveError("PETSc returned a non-finite algebraic residual")
-    logger.info(
-        "PETSc %s converged in %d iterations: residual %.3e",
-        method_name,
-        iterations,
-        final_residual,
-    )
     return x, info
 
 
@@ -618,7 +619,7 @@ def _solve_pressure(
             iterations += 1
 
         x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0, callback=count_iteration)
-        if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
+        if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info, log_sink):
             info = 0
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
@@ -637,12 +638,11 @@ def _solve_pressure(
                 x0=x0,
                 callback=count_iteration,
             )
-            if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info):
+            if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info, log_sink):
                 info = 0
         if info != 0:
             raise RuntimeError(f"AMG-preconditioned pressure CG did not converge (info={info})")
         solve_seconds = time.perf_counter() - solve_start
-        logger.info("pyamg pressure solve time=%.3fs", solve_seconds)
         return x, {
             "preconditioner": "pyamg",
             "iterations": iterations,
@@ -695,7 +695,6 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
     """
     if not reuse_ilu:
         ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
-        logger.info("Computed transient ILU preconditioner (not cached)")
         return ilu, True
 
     key = _cache_key_from_matrix(A_csc, ilu_key)
@@ -705,7 +704,6 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
         if len(_ILU_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES:
             _ILU_CACHE.pop(next(iter(_ILU_CACHE)))
         _ILU_CACHE[key] = (ilu, A.diagonal().copy())
-        logger.info("Computed and cached new ILU preconditioner")
         return ilu, True
 
     ilu_cached, diag_snapshot = cached
@@ -715,12 +713,10 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
             np.linalg.norm(diag_snapshot) + 1e-16
         )
         if rel_change > ilu_reuse_tol:
-            logger.info(f"ILU cached but matrix changed (rel_change={rel_change:.3e}), rebuilding")
             ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
             _ILU_CACHE[key] = (ilu, A.diagonal().copy())
             return ilu, True
 
-    logger.info("Reusing ILU preconditioner (pattern key)")
     return ilu_cached, False
 
 
@@ -752,7 +748,7 @@ def _iterative_solve_with_M(
         Solution vector.
     """
     x, info, iterations = _run_krylov(A, b, method, M, tol, maxiter, x0)
-    if info != 0 and _breakdown_converged(A, b, x, tol, method, info):
+    if info != 0 and _breakdown_converged(A, b, x, tol, method, info, log_sink):
         info = 0
     if info != 0:
         global _FALLBACK_WARN_COUNT
@@ -832,7 +828,6 @@ def _solve_with_ilu(
             A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A
         )
         setup_seconds = time.perf_counter() - setup_start
-        logger.info("ILU setup time=%.3fs", setup_seconds)
 
         M = LinearOperator(A.shape, matvec=ilu.solve)  # type: ignore[call-arg]
         solve_start = time.perf_counter()
@@ -848,7 +843,6 @@ def _solve_with_ilu(
             log_sink,
         )
         solve_seconds = time.perf_counter() - solve_start
-        logger.info("Iterative solver (%s) time=%.3fs", method, solve_seconds)
         return x, {
             "preconditioner": "ilu",
             "iterations": iterations,

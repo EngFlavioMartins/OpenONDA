@@ -1,10 +1,8 @@
 """Low-overhead, MPI-aware performance and memory telemetry.
 
-The profiler deliberately avoids collectives in timed regions.  Every rank
-records local phase totals and samples its own resident set; one gather at the
-end of an accepted step produces the critical-path summary written by rank
-zero.  This keeps the measurements useful without perturbing Krylov or halo
-communication timings with profiler barriers.
+Every rank records local phase totals and samples its own resident set; one
+gather at the end of an accepted step produces the summary written by rank
+zero.  Timed regions contain no collectives.
 """
 
 from __future__ import annotations
@@ -22,8 +20,6 @@ import weakref
 import numpy as np
 
 from .storage import append_line_recoverably
-
-_MIB = 1024.0 * 1024.0
 
 
 def resident_set_bytes() -> int:
@@ -238,7 +234,7 @@ class PerformanceProfiler:
             for name, seconds in self._phase_seconds.items()
         }
         attributed = sum(self._phase_seconds.values())
-        phases["Unattributed / profiler gap"] = {
+        phases["Untimed"] = {
             "seconds": max(0.0, float(step_seconds) - attributed),
             "calls": 1,
             "rss_end_bytes": rss_end,
@@ -268,7 +264,7 @@ class PerformanceProfiler:
         phase_names = sorted(
             {name for payload in payloads for name in payload["phases"]},
             key=lambda name: (
-                name == "Unattributed / profiler gap",
+                name == "Untimed",
                 -max(
                     float(payload["phases"].get(name, {}).get("seconds", 0.0))
                     for payload in payloads
@@ -377,58 +373,12 @@ class PerformanceProfiler:
             "allocation_inventory": allocation_inventory,
         }
 
-    def _render(self, record: dict[str, Any]) -> str:
-        lines = [
-            "",
-            "-" * 88,
-            "PERFORMANCE PROFILE (phase max is the MPI critical path)",
-            "-" * 88,
-            f"  {'Phase':<31} {'calls':>5} {'mean s':>10} {'max s':>10} {'step %':>8} {'imb.':>7}",
-        ]
-        for phase in record["phases"]:
-            lines.append(
-                f"  {phase['name']:<31} "
-                f"{phase['calls']['max']:5.0f} "
-                f"{phase['seconds']['mean']:10.3f} "
-                f"{phase['seconds']['max']:10.3f} "
-                f"{100.0 * phase['critical_path_fraction']:7.1f}% "
-                f"{phase['rank_imbalance']:7.3f}"
-            )
-        if record["linear"]:
-            lines.extend(["-" * 88, "  Linear solvers (included in phases above)"])
-            for linear in record["linear"]:
-                lines.append(
-                    f"  {linear['equation']:<31} "
-                    f"calls={linear['calls']['max']:.0f}, "
-                    f"iterations(max)={linear['iterations']['max']:.0f}, "
-                    f"setup(max)={linear['setup_seconds']['max']:.3f} s, "
-                    f"solve(max)={linear['solve_seconds']['max']:.3f} s"
-                )
-        memory = record["memory"]
-        lines.extend(
-            [
-                "-" * 88,
-                f"  Aggregate RSS now           : {memory['aggregate_rss_end_bytes'] / _MIB:.1f} MiB",
-                f"  Aggregate RSS max observed  : {memory['aggregate_rss_max_observed_bytes'] / _MIB:.1f} MiB",
-                f"  Aggregate process peak RSS  : {memory['aggregate_peak_rss_end_bytes'] / _MIB:.1f} MiB",
-                f"  Slowest rank step           : {record['step_seconds']['max']:.3f} s",
-            ]
-        )
-        inventory = record.get("allocation_inventory")
-        if inventory is not None:
-            lines.extend(["-" * 88, "  Stable allocation inventory"])
-            for name, values in inventory.items():
-                aggregate = values["aggregate_bytes"]
-                lines.append(f"  {name:<31}: {aggregate / _MIB:.1f} MiB aggregate")
-        lines.append("-" * 88)
-        return "\n".join(lines)
-
     def finish_step(
         self,
         step_seconds: float,
         linear_results: Iterable[Any] = (),
     ) -> dict[str, Any] | None:
-        """Gather local counters, write JSONL, and emit the rank-zero table."""
+        """Gather local counters, write JSONL, and report through the sink."""
         if not self.enabled or not self._active:
             return None
         local = self._local_payload(step_seconds, linear_results)
@@ -450,10 +400,9 @@ class PerformanceProfiler:
                     raise
                 self._output_disabled = True
                 self.logger.warning(
-                    f"Performance JSON output disabled after disk-full error at "
-                    f"{self.output_path}; log profiling will continue"
+                    f"Performance output disabled: no space left on {self.output_path}"
                 )
-        self.logger.message(self._render(record), flush=True)
+        self.logger.profile_report(record)
         return record
 
     def close(self) -> None:

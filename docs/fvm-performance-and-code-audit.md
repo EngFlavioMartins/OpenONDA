@@ -26,7 +26,7 @@ The immediate repairs are already useful:
 - Checkpoints are generation-atomic, capacity-checked, and restart-safe; JSONL
   diagnostics disable themselves cleanly on `ENOSPC` instead of terminating
   the flow solve.
-- Every step now emits MPI-critical-path timings, Krylov setup/solve telemetry,
+- Every step records per-rank phase timings, Krylov setup/solve telemetry,
   aggregate current/peak RSS, and a deduplicated NumPy allocation inventory.
 
 An identical-mesh OpenFOAM regression measures the force history and the full
@@ -36,17 +36,15 @@ expected to agree at machine precision.
 
 ## Enabling the profiler
 
-The lightweight profiler is enabled by default. The explicit production
-configuration is:
+The lightweight profiler is enabled by default and appends a structured record
+per step to `solution/performance.jsonl` in either log mode. The phase table is
+printed only in debug mode:
 
 ```bash
-export FVM_PROFILE=1
-export FVM_DETAILED_TIMING=1
+export FVM_LOG=debug                              # or LogConfig(mode="debug")
 export FVM_PETSC_LOG=/absolute/path/to/petsc.log
 ```
 
-Per-step structured records are appended to `solution/performance.jsonl`.
-`FVM_DETAILED_TIMING=1` also prints each phase to the normal FVM log, and
 `FVM_PETSC_LOG` writes PETSc's event summary when the solver closes. Set
 `FVM_PROFILE=0` only when profiler collectives are inappropriate for a special
 driver.

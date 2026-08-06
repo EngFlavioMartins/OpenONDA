@@ -199,7 +199,6 @@ def compute_geometry(
     logging.Timer.log(
         "Basic Face Geometry",
         sink=logger,
-        detailed=True,
     )
 
     # --- Process Element Geometry ---
@@ -266,7 +265,6 @@ def compute_geometry(
     logging.Timer.log(
         "Element Geometry",
         sink=logger,
-        detailed=True,
     )
 
     # --- Process Secondary Face Geometry ---

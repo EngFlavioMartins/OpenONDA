@@ -261,7 +261,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             logging.Timer.log(
                 "Momentum Predictor",
                 sink=logger,
-                detailed=True,
             )
 
             ibm = getattr(self, "ibm", None)
@@ -283,7 +282,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 logging.Timer.log(
                     "IBM Forcing",
                     sink=logger,
-                    detailed=True,
                 )
 
             # The predictor is no longer needed as an immutable field: later
@@ -340,7 +338,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     logging.Timer.log(
                         "Pressure Assembly",
                         sink=logger,
-                        detailed=True,
                     )
                     has_pressure_nullspace = simple_solver._pressure_requires_constraint(
                         self.boundaries, U_iter, self.mesh_data, self.geo_data
@@ -387,7 +384,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     logging.Timer.log(
                         "Pressure Solve",
                         sink=logger,
-                        detailed=True,
                     )
 
                     logging.Timer.start("Velocity Correction")
@@ -410,7 +406,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     logging.Timer.log(
                         "Velocity Correction",
                         sink=logger,
-                        detailed=True,
                     )
 
                     p[:n_elem] += alpha_p_outer * p_prime

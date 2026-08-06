@@ -78,11 +78,7 @@ class SolverIO:
             if error.errno != errno.ENOSPC:
                 raise
             self._diagnostics_write_disabled = True
-            self.solver.logger.warning(
-                f"Diagnostics output disabled after disk-full error at {path}; "
-                "the accepted simulation will continue and the last complete JSONL record "
-                "was preserved"
-            )
+            self.solver.logger.warning(f"Diagnostics output disabled: no space left on {path}")
 
     def rewind_histories(self, flow_time: float) -> None:
         parallel = getattr(self.solver, "parallel", None)
@@ -182,7 +178,6 @@ class SolverIO:
             vort = self.solver._vorticity_field()
             fields.append({"name": "Co", "type": "volScalarField", "phi": _extend(Co)})
             fields.append({"name": "vorticity", "type": "volVectorField", "phi": _extend(vort)})
-            self.solver.logger.info(f"Maximum Courant number: {np.max(Co):.3e}")
 
         if hasattr(self.solver, "nut") and self.solver.nut is not None:
             fields.append(

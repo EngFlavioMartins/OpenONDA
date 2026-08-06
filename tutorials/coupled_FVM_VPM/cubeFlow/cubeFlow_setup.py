@@ -51,9 +51,7 @@ SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-FVM_MAX_CELL_SIZE = 0.04
-FVM_SURFACE_CELL_SIZE = 0.0125
-# Use the same stable PIMPLE timestep and relaxation as referenceFlow.
+MIN_DS = 0.02
 DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
@@ -68,10 +66,10 @@ BACKUP_PERIOD = 3
 
 FVM_MESH = AdaptiveCartesianMesher(
     FVM_BOX,
-    FVM_MAX_CELL_SIZE,
+    MIN_DS * 2,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
-    surface_cell_size=FVM_SURFACE_CELL_SIZE,
+    surface_cell_size=MIN_DS,
     merge_outer_patch="numericalBoundary",
 )
 
@@ -96,8 +94,6 @@ FVM_SETUP = FVMSetup(
         compression="lz4",
         precision="float32",
         asynchronous=True,
-        # Owned-cell output avoids a second visualization-only halo mesh on
-        # every rank. ParaView assembles the .pvtu pieces globally.
         ghost_layers=0,
     ),
     time=TimeConfig(
@@ -116,8 +112,12 @@ FVM_SETUP = FVMSetup(
     linear=LinearSolverConfig(
         linear_solver="bicgstab",
         pressure_solver="amg",
-        pressure_tol=1e-8,
+        pressure_tol=1e-6,
+        pressure_rel_tol=0.01,
+        pressure_final_rel_tol=0.0,
         momentum_tol=1e-6,
+        momentum_rel_tol=0.1,
+        momentum_final_rel_tol=0.0,
         momentum_maxiter=2000,
         ilu_drop_tol=1e-4,
         ilu_fill_factor=10.0,
@@ -136,7 +136,7 @@ FVM_SETUP = FVMSetup(
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        force_log_interval=1,
+        force_log_interval=10,
     ),
     transport=TransportConfig(density=RHO, nu=NU),
     turbulence=FVMTurbulenceConfig.openfoam_smagorinsky(
@@ -208,7 +208,10 @@ COUPLER_SETUP = CouplerSetup(
 
 def main() -> None:
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    fvm_solver.write_vtk()
+
     vpm_solver = setup_vpm_solver(VPM_SETUP)
+    
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 
     coupled_solver.run()

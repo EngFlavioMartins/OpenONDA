@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from source.solvers.FVM.config.types import LogConfig
 from source.solvers.FVM.io.logging import Logging, Timer
 from source.solvers.FVM.io.profiling import PerformanceProfiler, numpy_allocation_inventory
 from source.solvers.FVM.solve.linear_interface import LinearSolveResult
@@ -17,8 +18,12 @@ def _serial_context():
     return SimpleNamespace(rank=0, size=1, is_parallel=False, is_root=True, comm=None)
 
 
+def _debug_logger(tmp_path):
+    return Logging(tmp_path, config=LogConfig(mode="debug", console=False))
+
+
 def test_profiler_writes_phase_linear_and_memory_telemetry(tmp_path):
-    logger = Logging(tmp_path, console=False)
+    logger = _debug_logger(tmp_path)
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
     profiler.begin_step(step=7, flow_time=0.07, dt=0.01)
@@ -60,15 +65,14 @@ def test_profiler_writes_phase_linear_and_memory_telemetry(tmp_path):
     assert "Pressure Assembly" in log
 
 
-def test_detailed_timer_still_records_when_raw_timing_lines_are_disabled(tmp_path, monkeypatch):
-    monkeypatch.delenv("FVM_DETAILED_TIMING", raising=False)
-    logger = Logging(tmp_path, console=False)
+def test_timer_records_phases_without_emitting_standalone_lines(tmp_path):
+    logger = _debug_logger(tmp_path)
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
     profiler.begin_step(step=1, flow_time=0.01, dt=0.01)
 
     Timer.start("Momentum Predictor")
-    Timer.log("Momentum Predictor", sink=logger, detailed=True)
+    Timer.log("Momentum Predictor", sink=logger)
     record = profiler.finish_step(0.01)
     logger.close()
 
@@ -80,8 +84,23 @@ def test_detailed_timer_still_records_when_raw_timing_lines_are_disabled(tmp_pat
     assert "PERFORMANCE PROFILE" in log
 
 
+def test_simple_mode_keeps_the_json_record_but_prints_no_table(tmp_path):
+    logger = Logging(tmp_path, config=LogConfig(mode="simple", console=False))
+    profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
+    logger.profiler = profiler
+    profiler.begin_step(step=1, flow_time=0.01, dt=0.01)
+
+    profiler.record("Pressure Solve", 0.5)
+    record = profiler.finish_step(0.6)
+    logger.close()
+
+    assert record is not None
+    assert profiler.output_path.is_file()
+    assert "PERFORMANCE PROFILE" not in (tmp_path / "solution/fvm.log").read_text()
+
+
 def test_profiler_keeps_log_tracing_when_json_disk_is_full(tmp_path, monkeypatch):
-    logger = Logging(tmp_path, console=False)
+    logger = _debug_logger(tmp_path)
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
 
@@ -97,7 +116,7 @@ def test_profiler_keeps_log_tracing_when_json_disk_is_full(tmp_path, monkeypatch
     assert record is not None
     assert profiler._output_disabled
     log = (tmp_path / "solution/fvm.log").read_text()
-    assert "Performance JSON output disabled" in log
+    assert "Performance output disabled" in log
     assert "PERFORMANCE PROFILE" in log
 
 

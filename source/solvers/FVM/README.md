@@ -16,6 +16,7 @@ from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
     LinearSolverConfig,
+    LogConfig,
     OutputSetup,
     PimpleControl,
     SchemesConfig,
@@ -32,6 +33,7 @@ setup = FVMSetup(
         asynchronous=True,
         ghost_layers=1,
     ),
+    logging=LogConfig(mode="simple", interval=1),
     time=TimeConfig.transient(dt=1e-3, duration=1.0),
     schemes=SchemesConfig(
         convection_scheme="limitedLinear",

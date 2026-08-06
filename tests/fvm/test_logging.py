@@ -12,6 +12,7 @@ from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
     LinearSolverConfig,
+    LogConfig,
     PimpleControl,
     SchemesConfig,
     Solver,
@@ -24,10 +25,10 @@ from source.solvers.FVM.solve import linear_interface
 from ._structured_mesh import structured_box
 
 
-def _logging_config() -> FVMSetup:
+def _logging_config(log: LogConfig | None = None, steps: int = 1) -> FVMSetup:
     return FVMSetup(
         case_name="logging-contract",
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(dt=0.01, duration=0.01 * steps, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
@@ -37,6 +38,7 @@ def _logging_config() -> FVMSetup:
         ),
         pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, nu=0.02),
+        logging=log or LogConfig(),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -50,21 +52,23 @@ def _logging_config() -> FVMSetup:
     )
 
 
-def test_solver_tees_vpm_style_output_to_solution_log(tmp_path, monkeypatch):
-    monkeypatch.setenv("FVM_PROFILE", "0")
+def _run(tmp_path, config, steps: int = 1) -> str:
     stdout = io.StringIO()
-
     with contextlib.redirect_stdout(stdout):
-        solver = Solver(
-            _logging_config(),
-            case_dir=str(tmp_path),
-            mesh_data=structured_box(2, 2, 2),
-        )
+        solver = Solver(config, case_dir=str(tmp_path), mesh_data=structured_box(2, 2, 2))
         solver.auto_write = False
-        solver.evolve(0.01)
+        for _ in range(steps):
+            solver.evolve(0.01)
         solver.close()
+    return stdout.getvalue()
 
-    console = stdout.getvalue()
+
+def test_simple_mode_writes_one_row_per_step(tmp_path, monkeypatch):
+    monkeypatch.delenv("FVM_LOG", raising=False)
+    monkeypatch.setenv("FVM_PROFILE", "0")
+
+    console = _run(tmp_path, _logging_config(steps=3), steps=3)
+
     log_path = tmp_path / "solution" / "fvm.log"
     assert log_path.is_file()
     assert log_path.read_text(encoding="utf-8") == console
@@ -72,23 +76,110 @@ def test_solver_tees_vpm_style_output_to_solution_log(tmp_path, monkeypatch):
     for marker in (
         "FVM Solver: Finite Volume Method",
         "FVM SOLVER INFO",
-        "CONFIGURATION",
         "BOUNDARY CONDITIONS",
         "MONITORING & I/O",
-        "TIME STEP  (step 1,",
-        "Solver Convergence",
-        "Conservation",
-        "Time for this step:",
-        "Total simulation time:",
+        "res(U)",
+        "s/step",
+        "Simulation time:",
     ):
         assert marker in console
 
-    for legacy_or_verbose_marker in (
-        ">>> [Time-step:",
-        "Step completed in",
-        "Momentum Predictor",
+    for verbose_marker in (
+        "TIME STEP  (step 1,",
+        "Solver Convergence",
+        "Turbulence Diagnostics",
+        "PERFORMANCE PROFILE",
+        "Time for this step:",
     ):
-        assert legacy_or_verbose_marker not in console
+        assert verbose_marker not in console
+
+    # One header, then one row per step.
+    assert console.count("res(U)") == 1
+    rows = [line for line in console.splitlines() if line.strip().startswith(("1  ", "2  ", "3  "))]
+    assert len(rows) == 3
+
+
+def test_debug_mode_writes_the_block_and_the_profile(tmp_path, monkeypatch):
+    monkeypatch.delenv("FVM_LOG", raising=False)
+    monkeypatch.delenv("FVM_PROFILE", raising=False)
+
+    console = _run(tmp_path, _logging_config(LogConfig(mode="debug")))
+
+    for marker in (
+        "TIME STEP  (step 1,",
+        "Solver Convergence",
+        "Conservation",
+        "Time Control",
+        "Time for this step:",
+        "Total simulation time:",
+        "PERFORMANCE PROFILE",
+        "Momentum Predictor",
+        "Linear solvers",
+        "Resident, all ranks",
+        "Memory by subsystem",
+    ):
+        assert marker in console
+
+    assert "res(U)" not in console
+    for slop in (
+        "critical path",
+        "Unattributed / profiler gap",
+        "Stable allocation inventory",
+        "native_python_petsc_rss_remainder",
+        "Aggregate RSS now",
+    ):
+        assert slop not in console
+
+
+def test_env_variable_overrides_the_configured_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("FVM_LOG", "debug")
+    monkeypatch.setenv("FVM_PROFILE", "0")
+
+    console = _run(tmp_path, _logging_config(LogConfig(mode="simple")))
+
+    assert "TIME STEP  (step 1," in console
+    assert "res(U)" not in console
+
+
+def test_interval_reports_the_first_step_and_every_nth(tmp_path, monkeypatch):
+    monkeypatch.delenv("FVM_LOG", raising=False)
+    monkeypatch.setenv("FVM_PROFILE", "0")
+
+    console = _run(tmp_path, _logging_config(LogConfig(interval=3), steps=4), steps=4)
+
+    rows = [
+        line.split()[0]
+        for line in console.splitlines()
+        if line.startswith("  ") and line.strip()[:1].isdigit()
+    ]
+    assert rows == ["1", "3"]
+
+
+def test_debug_interval_suppresses_the_profile_of_unreported_steps(tmp_path, monkeypatch):
+    monkeypatch.delenv("FVM_LOG", raising=False)
+    monkeypatch.delenv("FVM_PROFILE", raising=False)
+
+    console = _run(tmp_path, _logging_config(LogConfig(mode="debug", interval=3), steps=4), steps=4)
+
+    assert console.count("TIME STEP  (step ") == 2
+    assert console.count("PERFORMANCE PROFILE") == 2
+    assert "TIME STEP  (step 2," not in console
+
+    written = (tmp_path / "solution" / "performance.jsonl").read_text().splitlines()
+    assert len(written) == 4
+
+
+def test_acceptance_warning_forces_a_report_and_is_logged(tmp_path, monkeypatch):
+    monkeypatch.delenv("FVM_LOG", raising=False)
+    monkeypatch.setenv("FVM_PROFILE", "0")
+
+    config = _logging_config(LogConfig(interval=100), steps=1)
+    config.acceptance.cfl_warning = 1e-12
+
+    console = _run(tmp_path, config)
+
+    assert "! cfl=" in console
+    assert "exceeds warning threshold" in console
 
 
 def test_linear_fallback_warning_uses_fvm_sink(tmp_path, monkeypatch):
