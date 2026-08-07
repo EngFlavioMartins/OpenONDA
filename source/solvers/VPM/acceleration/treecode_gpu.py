@@ -35,6 +35,12 @@ import numpy as np
 import taichi as ti
 import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 
+from ..config.constants import (
+    FOUR_OVER_THREE_SQRT_PI,
+    GAUSSIAN_Q_SERIES_CROSSOVER,
+    TREECODE_SUPPORTED_KERNELS,
+)
+
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 
 
@@ -214,15 +220,21 @@ class TaichiTreecode:
         self.set_sort_particle_targets(sort_particle_targets)
 
     def set_kernel_type(self, kernel_type: str) -> None:
+        """Select the regularization kernel evaluated during traversal.
+
+        Only the kernels in ``TREECODE_SUPPORTED_KERNELS`` have a Taichi
+        implementation here; ``VPMSetup`` validation rejects the other
+        combinations up front, so reaching this error means the treecode was
+        constructed outside the normal configuration path.
+        """
         normalized = kernel_type.upper()
-        if normalized == "GAUSSIAN":
-            kernel_id = 0
-        elif normalized == "WINCKELMANS":
-            kernel_id = 1
-        else:
-            raise ValueError(f"Unsupported treecode kernel_type: {kernel_type}")
+        if normalized not in TREECODE_SUPPORTED_KERNELS:
+            raise ValueError(
+                f"Unsupported treecode kernel_type: {kernel_type}. "
+                f"Supported: {list(TREECODE_SUPPORTED_KERNELS)}."
+            )
         self.kernel_type = normalized
-        self.kernel_type_id[None] = kernel_id
+        self.kernel_type_id[None] = TREECODE_SUPPORTED_KERNELS.index(normalized)
 
     def set_multipole_order(self, order: int) -> None:
         if order not in (1, 2, 3):
@@ -777,13 +789,6 @@ class TaichiTreecode:
     @ti.kernel
     def _leaf_multipole_init_kernel(self, N: ti.i32):
         """Seed leaf multipoles/AABB directly from particles.
-
-        Leaves carry a single particle, so their multipole (COM = position,
-        total_circ = circulation, avg_radius = radius) is exact and their
-        geometric extent is zero — node_half_size = 0 makes the MAC always
-        accept a leaf, evaluating it via its exact single-particle multipole.
-        Setting these explicitly also overwrites any stale values left in the
-        node fields from a previous (possibly larger) build.
         """
         for j in range(N):
             p = self.sorted_indices[j]
@@ -937,9 +942,14 @@ class TaichiTreecode:
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
             two_over_sqrt_pi = ti.cast(1.1283791671, ti.f32)
-            if r_sigma < 1e-4:
+            if r_sigma < GAUSSIAN_Q_SERIES_CROSSOVER:
+                d2 = r_sigma * r_sigma
                 result = (
-                    (4.0 / (3.0 * ti.sqrt(ti.acos(-1.0) ** 3))) * (r_sigma**3) * ONE_OVER_FOUR_PI
+                    FOUR_OVER_THREE_SQRT_PI
+                    * r_sigma
+                    * d2
+                    * (1.0 - 0.6 * d2 + (3.0 / 14.0) * d2 * d2)
+                    * ONE_OVER_FOUR_PI
                 )
             else:
                 erf_term = self._erf_approx(r_sigma)
@@ -1534,11 +1544,7 @@ class TaichiTreecode:
         self, background_velocity: np.ndarray | None = None
     ) -> None:
         """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
-
-        Results stay in ``self.velocities`` / ``self.velocity_gradients`` /
-        ``self.strain_rates`` (Taichi fields).  Use this from the solver when both
-        the advection velocity and the stretching gradient are needed at the same
-        configuration in an RK stage — one build, one traversal, no download."""
+        Results stay in ``self.velocities`` / ``self.velocity_gradients`` """
         t_start = time.perf_counter()
         if background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())

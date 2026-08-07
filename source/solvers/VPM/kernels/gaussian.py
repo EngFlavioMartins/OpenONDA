@@ -9,6 +9,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import taichi as ti
 
+from ..config.constants import FOUR_OVER_THREE_SQRT_PI, GAUSSIAN_Q_SERIES_CROSSOVER
+
 
 def create_gaussian_kernels(dtype=ti.f32):
     """Create Gaussian kernel functions with specified precision.
@@ -52,13 +54,31 @@ def create_gaussian_kernels(dtype=ti.f32):
 
     @ti.func
     def q_(density: ti.template()) -> ti.template():  # type: ignore
-        # Integral of Gaussian: erf(density) - (2/sqrt(pi)) * density * exp(-density^2)
-        # Multiplied by 1/4pi for Biot-Savart normalization
+        # Enclosed-circulation fraction of the Gaussian blob, with the 1/4pi of
+        # the Biot-Savart law folded in:
+        #     q(r) = [erf(r) - (2/sqrt(pi)) r exp(-r^2)] / (4 pi)
+        #
+        # The bracket subtracts two quantities that both tend to (2/sqrt(pi)) r
+        # while their difference is only O(r^3), so the closed form loses all
+        # significance for small r (f32 relative error ~1.5 eps / r^2: 5.6e-2 at
+        # r = 1e-2, 7e+4 at r = 1e-4, where it even changes sign).  Below the
+        # crossover use the series
+        #     q(r) = C r^3 [1 - (3/5) r^2 + (3/14) r^4] / (4 pi) + O(r^9),
+        # with C = 4/(3 sqrt(pi)), from
+        #     erf(r) - (2/sqrt(pi)) r exp(-r^2)
+        #         = (2/sqrt(pi)) [ (2/3) r^3 - (2/5) r^5 + (1/7) r^7 - ... ].
+        # Coefficient and crossover are shared with the treecode's copy of this
+        # kernel through config.constants so the two cannot drift apart.
         res = 0.0
-        if density < 1e-4:
-            # Taylor expansion for small density to avoid 0/0 precision loss:
-            # q(density) = density^3/(3*pi^(3/2)) + O(density^5).
-            res = (ONE_OVER_PI_15 / 3.0) * density**3
+        if density < GAUSSIAN_Q_SERIES_CROSSOVER:
+            d2 = density * density
+            res = (
+                FOUR_OVER_THREE_SQRT_PI
+                * density
+                * d2
+                * (1.0 - 0.6 * d2 + (3.0 / 14.0) * d2 * d2)
+                * ONE_OVER_FOUR_PI
+            )
         else:
             erf_term = err_func(density)
             exp_term = TWO_OVER_SQRT_PI * density * ti.exp(-density * density)
@@ -97,11 +117,6 @@ def create_gaussian_kernels(dtype=ti.f32):
 
         Used in: A = (1/3) Σ x × (x × Γ) - (2/9) m2 σ² Γ, which follows from
         ∫ x × (x × ω) dV = d × (d × Γ) - (2/3) m2 σ² Γ for a blob at d.
-
-        For the Gaussian ζ = π^(-3/2) exp(-ρ²) this is exactly 3/2.  It was 3.0
-        here, i.e. twice too large, which doubled the correction and put a
-        spurious σ-dependent drift into the angular-impulse diagnostic as core
-        spreading grew σ.  Verified against 3-D quadrature of ∫x×(x×ω)dV.
         """
         return ti.cast(1.5, dtype)
 

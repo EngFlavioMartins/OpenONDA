@@ -37,22 +37,8 @@ from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
-from ..utils.field_samplers import resolve_samples_dir
 from ..physics.evaluation import ParticleFieldEvaluation
-
-
-class FilteredParticles:
-    """Helper class to pass filtered particles to physics kernels."""
-
-    def __init__(self, positions, strengths, radii, count):
-        self.positions = positions
-        self.strengths = strengths
-        self.radii = radii
-        self.count = count
-
-    def __len__(self):
-        return self.count
-
+from ..utils.field_samplers import resolve_samples_dir
 
 # =========================================================
 # MAIN VPM SOLVER CLASS

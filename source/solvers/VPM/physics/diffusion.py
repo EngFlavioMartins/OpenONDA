@@ -1823,9 +1823,9 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
             return
 
         self._resize_temp_fields(N)
-        self._zero_temp_fields()
 
         # Update radii using the kernel-specific diffusivity constant.
+        # No temp field is touched, so the temp-field zeroing is deliberately skipped.
         self.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
 
     # RANDOM WALK METHOD (RWM)
@@ -1860,8 +1860,8 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
             return
 
         self._resize_temp_fields(N)
-        self._zero_temp_fields()
 
+        # No temp field is touched, so the temp-field zeroing is deliberately skipped.
         # Add random displacement: x_new = x + η*sqrt(2nu*dt)
         self.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
 

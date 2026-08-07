@@ -4,7 +4,7 @@ Smagorinsky Subgrid-Scale Turbulence Model for VPM Solver.
 Kinetic-energy equilibrium Smagorinsky model: nu_t = C_k Δ √k_eq
 where k_eq = C_k Δ² |S|² / C_e  and  Δ = V^(1/3) (particle volume cube root).
 
-Key design choices (see docs/les_vpm_over_diffusion_analysis.md):
+Key design choices:
   - Filter width  Δ = V^(1/3): pins the LES scale to the Lagrangian resolution
     (not to σ, which grows artificially during Core Spreading).
   - Strain-only measure  |S|² = 2 S_ij S_ij: excludes rotation so the model
@@ -100,20 +100,6 @@ class SmagorinskyModel:
         self._compute_smagorinsky_kernel(
             self._delta_field,
             self._Sij_norm_field,
-            N,
-            particles.viscosity,
-            particles.viscosity_turbulent,
-            particles.viscosity_effective,
-            self.ck,
-            self.ce,
-        )
-
-    def compute_eddy_viscosity(self, particles, deltas_field, Sij_norm_field):
-        """Compute k_eq-based eddy viscosity using pre-computed filter/strain fields."""
-        N = len(particles)
-        self._compute_smagorinsky_kernel(
-            deltas_field,
-            Sij_norm_field,
             N,
             particles.viscosity,
             particles.viscosity_turbulent,

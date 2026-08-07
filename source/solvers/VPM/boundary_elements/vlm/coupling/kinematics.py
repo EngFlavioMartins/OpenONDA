@@ -318,8 +318,6 @@ class ManeuverVLM(VLMKinematics):
                 R, self.rotation_center, dX, panel_range[0], panel_range[1]
             )
 
-        # KEY FIX: Advect the rotation center with the translation
-        # This ensures that for the NEXT step, we rotate around the new pivot position.
         self.rotation_center += dX
 
 
@@ -617,8 +615,6 @@ class CompositeVLM(VLMKinematics):
                 R, self.rotation_center, dX, panel_range[0], panel_range[1]
             )
 
-        # KEY FIX: Advect the rotation center with the translation
-        # This ensures that for the NEXT step, we rotate around the new pivot position.
         self.rotation_center += dX
 
 

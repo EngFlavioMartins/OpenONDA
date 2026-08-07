@@ -32,6 +32,7 @@ from .constants import (
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     DEFAULT_TIME_STEP,
     MAX_PARTICLES,
+    TREECODE_SUPPORTED_KERNELS,
 )
 
 
@@ -1733,6 +1734,19 @@ class VPMSetup:
         if _kernel_up not in valid_kernels:
             raise ValueError(
                 f"particles_kernel must be one of {valid_kernels}, got '{self.particles_kernel}'"
+            )
+        # The treecode implements only a subset of the regularization kernels
+        # (it carries its own Taichi q/zeta).
+        if (
+            self.velocity is not None
+            and self.velocity.method == "TREECODE"
+            and _kernel_up not in TREECODE_SUPPORTED_KERNELS
+        ):
+            raise ValueError(
+                f"particles_kernel='{_kernel_up}' cannot be used with "
+                f"velocity method 'TREECODE': the treecode implements only "
+                f"{list(TREECODE_SUPPORTED_KERNELS)}. Either switch to "
+                f"VelocityConfig.direct() or choose a supported kernel."
             )
         if self.filament_refinement.enabled and _kernel_up != "GAUSSIAN":
             raise ValueError(
