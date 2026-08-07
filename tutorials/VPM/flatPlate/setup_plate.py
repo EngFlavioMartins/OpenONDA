@@ -389,7 +389,6 @@ def main():
                 bounds=[-7.0, 3.0, -2.0, 2.0],
                 spacing=args.sample_spacing,
                 file_name=f"{args.name}_midspan",
-                output_dir=backup_dir + "/samples",
             )
         )
 
@@ -405,7 +404,6 @@ def main():
                     bounds=[-6.0, 6.0, -0.5, 5.0],
                     spacing=cf_spacing,
                     file_name=f"{args.name}_crossflow_x{int(x_loc)}",
-                    output_dir=backup_dir + "/samples",
                 )
             )
 

@@ -163,7 +163,6 @@ def main():
                 bounds=[-1.5, 1.5, -1.0, 1.0],  # y, z
                 spacing=0.04,
                 file_name=f"wake_{n_sp}span",
-                output_dir=backup_dir + "/samples",
             )
         )
 

@@ -18,9 +18,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
+
+from ....utils.field_samplers import resolve_samples_dir
 
 
 class PanelLoadingDistribution:
@@ -61,7 +61,7 @@ class PanelLoadingDistribution:
                 else np.zeros((n, 3))
             )
 
-            samples_dir = Path(backup_directory) / "samples"
+            samples_dir = resolve_samples_dir(backup_directory)
             samples_dir.mkdir(parents=True, exist_ok=True)
             csv_path = samples_dir / f"panel_distribution_step{time_step:06d}.csv"
 

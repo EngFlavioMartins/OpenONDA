@@ -183,7 +183,6 @@ def make_surface_sampler(
         bounds=bounds,
         spacing=particle_spacing,
         file_name="xz_slice",
-        output_dir=str(output_dir / "samples"),
     )
 
 

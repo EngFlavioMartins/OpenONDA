@@ -157,7 +157,6 @@ def main():
         bounds=[-0.4, 0.4, -0.4, 0.4],
         spacing=0.0075,
         file_name="sampled_zplane",
-        output_dir=f"{output_dir}/samples",
     )
     samplers = [sampler_z15]
 

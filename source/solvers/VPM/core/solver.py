@@ -37,6 +37,7 @@ from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
+from ..utils.field_samplers import resolve_samples_dir
 from ..physics.evaluation import ParticleFieldEvaluation
 
 
@@ -812,7 +813,7 @@ class Solver:
         """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``."""
         import pandas as pd
 
-        samples_dir = Path(self.backup_directory) / "samples"
+        samples_dir = resolve_samples_dir(self.backup_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "flow_integrals.csv"
 

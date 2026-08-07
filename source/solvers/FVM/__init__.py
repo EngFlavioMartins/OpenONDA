@@ -34,6 +34,7 @@ from .mesh.adaptive_cartesian import AdaptiveCartesianMesher, BoxRefinement
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
+from .utils.field_samplers import ForceSampler, LineSampler, SurfaceSampler
 
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
@@ -54,6 +55,9 @@ __all__ = [
     "LinearSolverConfig",
     "PimpleControl",
     "ForcesConfig",
+    "ForceSampler",
+    "LineSampler",
+    "SurfaceSampler",
     "solver_configs_from_case",
     "TransportConfig",
     "BoundaryConfig",

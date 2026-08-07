@@ -21,9 +21,11 @@ from openonda.fvm import (
     ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
+    LineSampler,
     OutputSetup,
     PimpleControl,
     SchemesConfig,
+    SurfaceSampler,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -51,6 +53,33 @@ FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
 MIN_DS = 0.015
+SAMPLE_INTERVAL = 15
+SAMPLE_SPACING = 0.04
+SLICE_STRIDE = 4
+OFFAXIS_Y = 0.75 * CUBE_SIDE
+
+SAMPLERS = (
+    LineSampler(
+        start=[FVM_DOMAIN[0], 0.0, 0.0],
+        end=[FVM_DOMAIN[1], 0.0, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="centerline",
+    ),
+    LineSampler(
+        start=[FVM_DOMAIN[0], OFFAXIS_Y, 0.0],
+        end=[FVM_DOMAIN[1], OFFAXIS_Y, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="offaxis_y075",
+    ),
+    SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=[FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[3]],
+        spacing=SAMPLE_SPACING,
+        stride=SLICE_STRIDE,
+        file_name="slice_z0",
+    ),
+)
 
 FVM_MESH = AdaptiveCartesianMesher(
     domain=FVM_DOMAIN,
@@ -117,8 +146,9 @@ FVM_SETUP = FVMSetup(
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        force_log_interval=10,
+        force_log_interval=SAMPLE_INTERVAL,
     ),
+    samplers=SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
     turbulence=TurbulenceConfig.openfoam_smagorinsky(
         Ck=SMAGORINSKY_CK,

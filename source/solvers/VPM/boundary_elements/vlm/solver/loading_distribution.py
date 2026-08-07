@@ -21,11 +21,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 import warnings
 
 import numpy as np
+
+from ....utils.field_samplers import resolve_samples_dir
 
 
 class VLMLoadingDistribution:
@@ -412,7 +413,7 @@ class VLMLoadingDistribution:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = Path(backup_directory) / "samples"
+        samples_dir = resolve_samples_dir(backup_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")

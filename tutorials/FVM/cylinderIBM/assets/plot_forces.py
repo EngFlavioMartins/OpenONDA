@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Plot Cd(t), Cl(t), marker no-slip error, and (unsteady) the Strouhal number
-from solution/ibm_forces_history.csv, with reference bands from
+from samples/ibm_forces_history.csv, with reference bands from
 Constant et al. 2017."""
 
 import sys

@@ -10,6 +10,7 @@ import numpy as np
 from ..config.types import FVMSetup
 from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
+from ..io.sampler import FVMSamplerExecutor
 from ..mesh import geometry, mesh_io
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
@@ -559,6 +560,7 @@ class Solver(OFWInterfaceMixin):
         self.ibm = None
         self.forces_history_path = None
         self._force_log_counter = 0
+        self._auto_force_sampler = self._build_auto_force_sampler()
         self.cfl_max = 0.0
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
@@ -878,7 +880,7 @@ class Solver(OFWInterfaceMixin):
         Builds the interpolation/spreading operators (Pinelli et al. 2010,
         Constant et al. — see docs/literature/Constant2016.pdf) on the
         live mesh and hooks them into the PIMPLE momentum predictor.  Body
-        forces are appended to ``solution/ibm_forces_history.csv`` every step.
+        forces are appended to ``samples/ibm_forces_history.csv`` every step.
 
         Args:
             bodies: One :class:`ImmersedBody` or a list of them.
@@ -916,8 +918,23 @@ class Solver(OFWInterfaceMixin):
         )
         return self.ibm
 
+    def _build_auto_force_sampler(self):
+        """Mirror ``ForcesConfig`` as a ForceSampler so cases that configure
+        forces the classic way keep getting samples/forces_history.csv without
+        having to declare a sampler explicitly."""
+        from ..utils.field_samplers import ForceSampler
+
+        forces_cfg = self.config.forces
+        return ForceSampler(
+            patch_names=forces_cfg.force_patches,
+            ref_velocity=forces_cfg.ref_velocity,
+            ref_area=forces_cfg.ref_area,
+            ref_length=forces_cfg.ref_length,
+            moment_centre=forces_cfg.moment_centre,
+        )
+
     def _log_ibm_forces(self, step_dt: float) -> None:
-        """Append per-body IBM forces (and Cd/Cl) to solution/ibm_forces_history.csv."""
+        """Append per-body IBM forces (and Cd/Cl) to samples/ibm_forces_history.csv."""
         if not self.parallel.is_root:
             return
         rho = self.config.transport.density
@@ -926,13 +943,13 @@ class Solver(OFWInterfaceMixin):
         ref_area = getattr(self.config.forces, "ref_area", 1.0)
         q = 0.5 * rho * ref_U**2 * ref_area
 
-        sol_dir = os.path.join(self.case_dir, "solution")
-        os.makedirs(sol_dir, exist_ok=True)
+        samples_dir = os.path.join(self.case_dir, "samples")
+        os.makedirs(samples_dir, exist_ok=True)
         # No-slip quality monitor: marker slip of the *final* velocity field
         # (the predictor slip stored by compute_force overestimates it).
         slip = self.ibm.slip_error(self.U)
 
-        csv_path = os.path.join(sol_dir, "ibm_forces_history.csv")
+        csv_path = os.path.join(samples_dir, "ibm_forces_history.csv")
         write_header = not os.path.exists(csv_path)
         with open(csv_path, "a") as fh:
             writer = csv.writer(fh)
@@ -1328,103 +1345,13 @@ class Solver(OFWInterfaceMixin):
 
         self._force_log_counter += 1
         logging.Timer.start("Surface-force diagnostics")
-        forces = {}
-        if (self.parallel.is_root or self.parallel.is_partitioned) and (
-            self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
-        ):
-            ref_U = getattr(self.config.forces, "ref_velocity", 1.0)
-            ref_area = getattr(self.config.forces, "ref_area", 1.0)
-            ref_length = getattr(self.config.forces, "ref_length", 1.0)
-            rho = self.config.transport.density
-            # Use the same effective viscosity as the momentum equation.
-            # ``self.nut`` is the LES field evaluated for the just-completed
-            # step; omitting it under-reports turbulent wall traction.
-            nu_eff = self.config.transport.nu
-            if self.nut is not None:
-                nu_eff = nu_eff + self.nut[: self.mesh_data["n_elements"]]
-            mu = nu_eff * rho
-
-            patches = getattr(self.config.forces, "force_patches", None)
-
-            forces = diagnostics.compute_surface_forces(
-                self.U,
-                self.p,
-                mu,
-                rho,
-                self.mesh_data,
-                self.geo_data,
-                self.boundaries,
-                patch_names=patches,
-                ref_U=ref_U,
-                ref_area=ref_area,
-                ref_length=ref_length,
-                moment_centre=getattr(self.config.forces, "moment_centre", [0, 0, 0]),
-                gradient=self._velocity_gradient(),
-            )
-            if self.parallel.is_partitioned:
-                forces = diagnostics.merge_partition_forces(self.parallel.comm.allgather(forces))
-            self.last_forces = forces
+        if self._force_log_counter % force_interval == 0 or self._force_log_counter == 1:
+            FVMSamplerExecutor.execute(self)
+            if self.parallel.is_root:
+                self.logger.force_info(self.last_forces or {})
         logging.Timer.log("Surface-force diagnostics", sink=self.logger)
 
         logging.Timer.start("Force history file")
-        if self.parallel.is_root and (
-            self._force_log_counter % force_interval == 0 or self._force_log_counter == 1
-        ):
-            sol_dir = os.path.join(self.case_dir, "solution")
-            os.makedirs(sol_dir, exist_ok=True)
-            csv_path = os.path.join(sol_dir, "forces_history.csv")
-            write_header = not os.path.exists(csv_path)
-            with open(csv_path, "a") as fh:
-                writer = csv.writer(fh)
-                if write_header:
-                    writer.writerow(
-                        [
-                            "time",
-                            "step",
-                            "dt",
-                            "patch",
-                            "Fpx",
-                            "Fpy",
-                            "Fpz",
-                            "Fvx",
-                            "Fvy",
-                            "Fvz",
-                            "Ftx",
-                            "Fty",
-                            "Ftz",
-                            "Cd",
-                            "Cl",
-                            "Cz",
-                            "Cm",
-                        ]
-                    )
-                for pname, fdata in forces.items():
-                    Fp = fdata.get("Fp", [0, 0, 0])
-                    Fv = fdata.get("Fv", [0, 0, 0])
-                    Ft = fdata.get("Ftot", [0, 0, 0])
-                    C = fdata.get("coeffs", {})
-                    writer.writerow(
-                        [
-                            self.flow_time,
-                            self.time_step,
-                            step_dt,
-                            pname,
-                            Fp[0],
-                            Fp[1],
-                            Fp[2],
-                            Fv[0],
-                            Fv[1],
-                            Fv[2],
-                            Ft[0],
-                            Ft[1],
-                            Ft[2],
-                            C.get("Cd"),
-                            C.get("Cl"),
-                            C.get("Cz"),
-                            C.get("Cm"),
-                        ]
-                    )
-            self.logger.force_info(forces)
         if self.parallel.is_root and self.ibm is not None:
             self._log_ibm_forces(step_dt)
         logging.Timer.log("Force history file", sink=self.logger)

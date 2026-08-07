@@ -357,7 +357,6 @@ def main() -> int:
             bounds=[-off_wake, off_wake, -off_wake, off_wake],
             spacing=sample_spacing,
             file_name=f"slice_x{int(round(x_loc))}m",
-            output_dir=backup_dir + "/samples",
         )
         for x_loc in [1.5 * ROTOR_RADIUS, 3.0 * ROTOR_RADIUS, 4.5 * ROTOR_RADIUS]
     ]

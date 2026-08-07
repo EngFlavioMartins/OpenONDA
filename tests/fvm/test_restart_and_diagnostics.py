@@ -129,16 +129,18 @@ def test_restart_rewinds_append_only_histories(tmp_path):
     checkpoint = tmp_path / "state.npz"
     solver.save_state(checkpoint)
 
+    samples = tmp_path / "samples"
+    samples.mkdir(exist_ok=True)
     solution = tmp_path / "solution"
     solution.mkdir(exist_ok=True)
-    (solution / "forces_history.csv").write_text(
+    (samples / "forces_history.csv").write_text(
         "time,patch,Cd\n0.01,cube,1.0\n0.02,cube,1.1\n0.03,cube,9.9\n"
     )
     (solution / "diagnostics.jsonl").write_text('{"time": 0.01}\n{"time": 0.02}\n{"time": 0.03}\n')
 
     solver.load_state(checkpoint)
 
-    assert "0.03" not in (solution / "forces_history.csv").read_text()
+    assert "0.03" not in (samples / "forces_history.csv").read_text()
     assert "0.03" not in (solution / "diagnostics.jsonl").read_text()
 
 

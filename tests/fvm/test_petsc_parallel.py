@@ -325,7 +325,7 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
     context.barrier()
     if context.is_root:
         diagnostics = case_dir / "solution" / "diagnostics.jsonl"
-        forces = case_dir / "solution" / "forces_history.csv"
+        forces = case_dir / "samples" / "forces_history.csv"
         assert len(diagnostics.read_text(encoding="utf-8").splitlines()) == 1
         force_lines = forces.read_text(encoding="utf-8").splitlines()
         assert force_lines[0].startswith("time,step,dt,patch,")

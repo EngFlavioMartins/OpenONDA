@@ -167,5 +167,14 @@ vpm*.json
 !tutorials/**/*.sh
 tests/**/referenceFlow/**
 
+# Sampled (post-processed) results for the FVM and coupled FVM-VPM tutorials —
+# forces_history.csv, ibm_forces_history.csv, and any configured line/force
+# samplers — are small, curated outputs; share them. Raw per-step field dumps
+# and checkpoints stay under solution/ and remain ignored above.
+!tutorials/FVM/**/samples/
+!tutorials/FVM/**/samples/**
+!tutorials/coupled_FVM_VPM/**/samples/
+!tutorials/coupled_FVM_VPM/**/samples/**
+
 # direnv
 .envrc

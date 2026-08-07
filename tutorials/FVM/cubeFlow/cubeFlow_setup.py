@@ -16,7 +16,7 @@ Karman street whose frequency and mean drag are classical validation data:
 
 The case is quasi-2D (one cell thick, ``empty`` front/back) on a rectilinear
 mesh generated in-memory (assets/mesh_square.py).  Cd(t), Cl(t) are logged
-every step to solution/forces_history.csv; allplot.sh extracts the Strouhal
+every step to samples/forces_history.csv; allplot.sh extracts the Strouhal
 number from the lift signal and compares both against the bands above.
 
 Usage:

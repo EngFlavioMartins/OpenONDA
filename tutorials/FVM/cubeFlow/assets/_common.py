@@ -50,8 +50,11 @@ def build_arg_parser():
 
 
 def load_forces_csv(solution_dir):
-    """Load solution/forces_history.csv -> {patch: {column: array}}."""
-    csv_path = os.path.join(solution_dir, "forces_history.csv")
+    """Load samples/forces_history.csv -> {patch: {column: array}}.
+
+    Sampled output lives in samples/ at the case root, alongside solution/.
+    """
+    csv_path = os.path.join(os.path.dirname(solution_dir), "samples", "forces_history.csv")
     if not os.path.exists(csv_path):
         print(f"  WARNING: forces_history.csv not found at {csv_path}")
         return {}

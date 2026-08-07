@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import h5py
 
+from ..utils.field_samplers import resolve_samples_dir
 from .backup import BackupSystem
 from .vtk_export import export_panels_vtk
 
@@ -219,11 +220,9 @@ class SolverIO:
             U_ref=panel_solver.U_inf,
         )
 
-        from pathlib import Path
-
         import pandas as pd
 
-        samples_dir = Path(self.export_dir) / "samples"
+        samples_dir = resolve_samples_dir(self.export_dir)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"
 

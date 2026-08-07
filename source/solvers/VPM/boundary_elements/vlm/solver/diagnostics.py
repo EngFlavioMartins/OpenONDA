@@ -18,9 +18,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
+
+from ....utils.field_samplers import resolve_samples_dir
 
 
 class VLMDiagnostics:
@@ -163,7 +163,7 @@ class VLMDiagnostics:
         """
         import pandas as pd
 
-        samples_dir = Path(backup_directory) / "samples"
+        samples_dir = resolve_samples_dir(backup_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

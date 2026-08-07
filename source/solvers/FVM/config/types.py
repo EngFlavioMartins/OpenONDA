@@ -1401,6 +1401,7 @@ class FVMSetup:
     transport: TransportConfig = field(default_factory=TransportConfig)
     dynamic_mesh: DynamicMeshConfig = field(default_factory=DynamicMeshConfig.static)
     boundaries: list[BoundaryConfig] = field(default_factory=list)
+    samplers: tuple = ()
     turbulence: TurbulenceConfig | None = None
     initial_U: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
     initial_p: float | None = 0.0

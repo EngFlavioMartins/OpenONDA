@@ -85,9 +85,10 @@ class SolverIO:
         if parallel is not None and not parallel.is_root:
             return
 
+        samples = Path(self.case_dir) / "samples"
         solution = Path(self.case_dir) / "solution"
-        self._rewind_csv(solution / "forces_history.csv", flow_time)
-        self._rewind_csv(solution / "ibm_forces_history.csv", flow_time)
+        self._rewind_csv(samples / "forces_history.csv", flow_time)
+        self._rewind_csv(samples / "ibm_forces_history.csv", flow_time)
         self._rewind_jsonl(solution / "diagnostics.jsonl", flow_time)
         self._rewind_jsonl(solution / "performance.jsonl", flow_time)
 

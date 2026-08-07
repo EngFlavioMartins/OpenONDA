@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..utils.field_samplers import SAMPLER_CSV_COLUMNS
+from ..utils.field_samplers import SAMPLER_CSV_COLUMNS, resolve_samples_dir
 
 
 class SamplerExecutor:
@@ -55,7 +55,7 @@ class SamplerExecutor:
         if max_circ_mag < 1e-8:
             return
 
-        samples_dir = Path(solver.backup_directory) / "samples"
+        samples_dir = resolve_samples_dir(solver.backup_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         for sampler_entry in sampler_entries:
@@ -82,7 +82,11 @@ class SamplerExecutor:
 
     @staticmethod
     def _prepare_context(sampler_entry, samples_dir: Path):
-        """Unpack a sampler entry and resolve *name_prefix* and *solution_dir*."""
+        """Unpack a sampler entry and resolve *name_prefix*.
+
+        The destination directory is always ``samples_dir`` — sampler output
+        location is not configurable per-call.
+        """
         if isinstance(sampler_entry, tuple):
             sampler, name_prefix = sampler_entry
         else:
@@ -91,14 +95,7 @@ class SamplerExecutor:
             if name_prefix is None:
                 name_prefix = sampler.__class__.__name__.lower().replace("sampler", "")
 
-        output_dir = getattr(sampler, "output_dir", None)
-        if output_dir is not None:
-            solution_dir = Path(output_dir)
-            solution_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            solution_dir = samples_dir
-
-        return sampler, name_prefix, solution_dir
+        return sampler, name_prefix, samples_dir
 
     @staticmethod
     def _save_output(

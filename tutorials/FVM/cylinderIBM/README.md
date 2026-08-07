@@ -35,7 +35,7 @@ python cylinderIBM_setup.py --Re 100 --end-time 150 --h 0.05
 | 30  | recirculation length L/D| 1.55 – 1.70    | `figures/wake_centreline.png` |
 | 100 | mean C_D                | 1.35 – 1.38    | forces figure |
 | 100 | Strouhal number         | 0.164 – 0.165  | forces figure (lift FFT) |
-| any | marker no-slip error    | → small (≪ U∞), decreasing with h | forces figure, bottom panel; logged per step in `solution/ibm_forces_history.csv` |
+| any | marker no-slip error    | → small (≪ U∞), decreasing with h | forces figure, bottom panel; logged per step in `samples/ibm_forces_history.csv` |
 
 Expected behaviour of the monitors:
 
@@ -69,5 +69,5 @@ Expected behaviour of the monitors:
 - `assets/plot_forces.py` — C_D/C_L/slip histories + Strouhal, reference bands.
 - `assets/plot_wake.py` — wake centreline u_x, recirculation length L/D.
 - `assets/plot_fields.py` — |U| and ω_z snapshots with the marker ring.
-- `solution/ibm_forces_history.csv` — time, per-body forces, C_D/C_L, slip.
+- `samples/ibm_forces_history.csv` — time, per-body forces, C_D/C_L, slip.
 - `solution/ibm_markers.csv` — marker coordinates.

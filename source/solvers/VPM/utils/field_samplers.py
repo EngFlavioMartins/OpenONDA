@@ -74,6 +74,22 @@ def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     return body_stl, case_dir
 
 
+def resolve_samples_dir(output_directory) -> Path:
+    """Mandatory samples/ directory for sampler output — not configurable.
+
+    If ``output_directory`` is literally a folder named "solution" (the
+    convention used by coupled FVM/VPM cases, where VPM's backup directory
+    is pointed at FVM's own solution/ folder), samples/ is placed next to
+    it at the case root instead of nested inside it. Otherwise
+    output_directory is already the case's own directory and samples/ is
+    created directly under it — the existing behavior for standalone VPM
+    tutorials, where each case gets its own backup subdirectory.
+    """
+    path = Path(output_directory)
+    case_root = path.parent if path.name == "solution" else path
+    return case_root / "samples"
+
+
 class SurfaceSampler:
     """
     Compute VPM-induced fields on a 2D planar grid.
@@ -105,7 +121,6 @@ class SurfaceSampler:
         bounds: np.ndarray | list,
         spacing: float,
         file_name: str | None = None,
-        output_dir: str | None = None,
     ):
         """
         Initialize the surface sampler.
@@ -121,8 +136,6 @@ class SurfaceSampler:
             spacing: Grid point spacing.
             file_name: Optional base name for output files. If None, uses
                       default naming based on sampler class name.
-            output_dir: Optional output directory for files. If None, uses
-                       default 'solution' directory.
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
@@ -130,7 +143,6 @@ class SurfaceSampler:
         self.bounds = np.asarray(bounds, dtype=np.float32)
         self.spacing = float(spacing)
         self.file_name = file_name
-        self.output_dir = output_dir
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None
@@ -581,7 +593,6 @@ class LineSampler:
         end: np.ndarray | list,
         spacing: float,
         file_name: str | None = None,
-        output_dir: str | None = None,
     ):
         """
         Initialize the line sampler.
@@ -592,15 +603,11 @@ class LineSampler:
             spacing: Distance between sample points along the line.
             file_name: Optional base name for output CSV files. If None, uses
                       default naming based on sampler class name.
-            output_dir: Optional output directory for CSV files. If None, uses
-                       default 'solution' directory. Use this to separate outputs
-                       when running multiple configurations (e.g., viscous schemes).
         """
         self.start = np.asarray(start, dtype=np.float32)
         self.end = np.asarray(end, dtype=np.float32)
         self.spacing = float(spacing)
         self.file_name = file_name
-        self.output_dir = output_dir
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None

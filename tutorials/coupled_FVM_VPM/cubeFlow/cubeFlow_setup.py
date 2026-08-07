@@ -18,9 +18,11 @@ from openonda.fvm import (
     ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
+    LineSampler as FVMLineSampler,
     OutputSetup,
     PimpleControl,
     SchemesConfig,
+    SurfaceSampler as FVMSurfaceSampler,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig as FVMTurbulenceConfig,
@@ -28,9 +30,11 @@ from openonda.fvm import (
 )
 from openonda.vpm import (
     AdvectionConfig,
+    LineSampler as VPMLineSampler,
     PanelSolver,
     StabilizationConfig,
     StretchingConfig,
+    SurfaceSampler as VPMSurfaceSampler,
     TurbulenceConfig as VPMTurbulenceConfig,
     VelocityConfig,
     ViscousConfig,
@@ -63,6 +67,55 @@ PARTICLE_LIMIT = 300_000
 OVERLAP_RADIUS_RATIO = 1.0
 WRITE_INTERVAL = 0.15
 BACKUP_PERIOD = 3
+
+SAMPLE_INTERVAL = int(round(WRITE_INTERVAL / DT_FVM))
+SAMPLE_SPACING = VPM_SPACING
+OFFAXIS_Y = 0.75 * CUBE_SIDE
+SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
+
+FVM_SAMPLERS = (
+    FVMLineSampler(
+        start=[FVM_BOX[0], 0.0, 0.0],
+        end=[FVM_BOX[1], 0.0, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="fvm_centerline",
+    ),
+    FVMLineSampler(
+        start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
+        end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="fvm_offaxis_y075",
+    ),
+    FVMSurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        file_name="fvm_slice_z0",
+    ),
+)
+
+VPM_SAMPLERS = (
+    VPMLineSampler(
+        start=[VPM_DOMAIN[0], 0.0, 0.0],
+        end=[VPM_DOMAIN[1], 0.0, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_centerline",
+    ),
+    VPMLineSampler(
+        start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
+        end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_offaxis_y075",
+    ),
+    VPMSurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_slice_z0",
+    ),
+)
 
 FVM_MESH = AdaptiveCartesianMesher(
     FVM_BOX,
@@ -136,8 +189,9 @@ FVM_SETUP = FVMSetup(
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        force_log_interval=10,
+        force_log_interval=SAMPLE_INTERVAL,
     ),
+    samplers=FVM_SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
     turbulence=FVMTurbulenceConfig.openfoam_smagorinsky(
         Ck=SMAGORINSKY_CK,
@@ -188,6 +242,7 @@ VPM_SETUP = VPMSetup(
     backup_frequency=BACKUP_PERIOD,
     backup_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
+    samplers=VPM_SAMPLERS,
     panel_solver=PANEL_SOLVER,
     body_stl=BODY_STL,
 )
