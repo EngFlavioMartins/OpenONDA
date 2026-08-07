@@ -170,10 +170,7 @@ def plot_frame(time: float, consts) -> None:
 
 def main() -> None:
     consts = util.run_constants()
-    times = util.slice_times("fvm")
-    if times.size == 0:
-        times = util.slice_times("reference")
-    times = times[times > 1e-9]
+    times = util.comparison_times()
     if times.size == 0:
         raise SystemExit("No sampled slices found; run the case or the resampler first.")
     for time in times:

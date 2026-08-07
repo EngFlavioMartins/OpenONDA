@@ -102,9 +102,6 @@ def main() -> None:
     consts = util.run_constants()
     times = util.comparison_times()
     if times.size == 0:
-        times = util.line_times("reference", "centerline")
-        times = times[times > 1e-9]
-    if times.size == 0:
         raise SystemExit("No sampled line data found; run the case or the resampler first.")
     for time in times:
         plot_frame(float(time), consts)

@@ -237,8 +237,9 @@ def test_sampler_failure_aborts_the_step(tmp_path):
             raise RuntimeError("sampler blew up")
 
     solver = _solver(_config(samplers=(Exploding(),)), tmp_path)
-    with contextlib.redirect_stdout(io.StringIO()), pytest.raises(
-        RuntimeError, match="Sampler 'boom' failed"
+    with (
+        contextlib.redirect_stdout(io.StringIO()),
+        pytest.raises(RuntimeError, match="Sampler 'boom' failed"),
     ):
         solver.evolve()
 

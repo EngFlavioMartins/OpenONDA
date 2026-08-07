@@ -56,8 +56,8 @@ DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
 MIN_DS = 0.015
 SAMPLE_INTERVAL = 15
 SAMPLE_SPACING = 0.04
-SLICE_STRIDE = 4
 OFFAXIS_Y = 0.75 * CUBE_SIDE
+WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
 SAMPLERS = (
     ForceSampler(
@@ -85,8 +85,16 @@ SAMPLERS = (
         normal=[0, 0, 1],
         bounds=[FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[3]],
         spacing=SAMPLE_SPACING,
-        schedule=SamplingSchedule(every_n_steps=SLICE_STRIDE),
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
         file_name="slice_z0",
+    ),
+    SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=WAKE_SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+        file_name="wake_slice_z0",
     ),
 )
 

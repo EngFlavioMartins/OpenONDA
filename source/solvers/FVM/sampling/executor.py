@@ -69,14 +69,10 @@ class FVMSamplerExecutor:
                 sampler.write_csv(solver, samples_dir, data)
                 solver.logger.ibm_force_info(sampler.summary(solver, data), data["slip"])
             else:
-                FVMSamplerExecutor._write_field_sampler(
-                    solver, sampler, samples_dir, strict=strict
-                )
+                FVMSamplerExecutor._write_field_sampler(solver, sampler, samples_dir, strict=strict)
 
     @staticmethod
-    def _write_field_sampler(
-        solver, sampler, samples_dir: str, *, strict: bool = True
-    ) -> None:
+    def _write_field_sampler(solver, sampler, samples_dir: str, *, strict: bool = True) -> None:
         if hasattr(sampler, "save_vts"):
             filename = f"{sampler.name}_{solver.time_step:06d}.vts"
             try:

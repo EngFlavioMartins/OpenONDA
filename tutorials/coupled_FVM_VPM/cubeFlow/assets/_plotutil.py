@@ -54,6 +54,15 @@ SOURCES = {
     "vpm": {"dir": SAMPLES, "prefix": "vpm_", "label": "Coupled VPM"},
 }
 
+# Every sampler in this tutorial (FVM, VPM, reference) is configured to fire on
+# the same physical cadence. PLOT_DT is that cadence: comparison_times() walks
+# it independently of which sampler files happen to exist, and TIME_TOL is the
+# match window a loader uses to decide "this file has that frame" versus
+# "nothing at that time" - tight enough to reject a neighbouring frame, loose
+# enough to absorb float accumulation in flow_time.
+PLOT_DT = 0.15
+TIME_TOL = 1e-3
+
 
 def label(source: str) -> str:
     return SOURCES[source]["label"]
@@ -123,8 +132,15 @@ def line_times(source: str, name: str) -> np.ndarray:
     return np.unique(_read_line_csv(path)["flow_time"])
 
 
-def load_line(source: str, name: str, time: float) -> dict[str, np.ndarray] | None:
-    """Return the frame of one line sampler nearest ``time``, sorted by x."""
+def load_line(
+    source: str, name: str, time: float, tol: float = TIME_TOL
+) -> dict[str, np.ndarray] | None:
+    """Return the frame of one line sampler at ``time``, sorted by x.
+
+    ``None`` if this source has no sample within ``tol`` of ``time`` - callers
+    must treat that as "no data for this panel", never substitute the nearest
+    available frame regardless of how far away it is.
+    """
     path = _path(source, name, ".csv")
     if not path.exists():
         return None
@@ -133,6 +149,8 @@ def load_line(source: str, name: str, time: float) -> dict[str, np.ndarray] | No
     if times.size == 0:
         return None
     picked = times[np.argmin(np.abs(times - time))]
+    if abs(picked - time) > tol:
+        return None
     mask = table["flow_time"] == picked
     frame = {key: values[mask] for key, values in table.items()}
     order = np.argsort(frame["x"])
@@ -157,14 +175,22 @@ def slice_times(source: str, name: str = "slice_z0") -> np.ndarray:
     return np.array([t for t, _ in slice_frames(source, name)])
 
 
-def load_slice(source: str, time: float, name: str = "slice_z0") -> dict | None:
-    """Return the slice snapshot nearest ``time`` as 2-D arrays on its grid."""
+def load_slice(
+    source: str, time: float, name: str = "slice_z0", tol: float = TIME_TOL
+) -> dict | None:
+    """Return the slice snapshot at ``time`` as 2-D arrays on its grid.
+
+    ``None`` if this source has no snapshot within ``tol`` of ``time`` - see
+    :func:`load_line` for why a distant snapshot is never substituted.
+    """
     import pyvista as pv
 
     frames = slice_frames(source, name)
     if not frames:
         return None
     picked_time, path = min(frames, key=lambda item: abs(item[0] - time))
+    if abs(picked_time - time) > tol:
+        return None
     grid = pv.read(path)
     ni, nj, _ = grid.dimensions
     shape = (ni, nj)
@@ -217,7 +243,27 @@ def load_vpm_forces() -> dict[str, np.ndarray] | None:
     return {name: np.asarray(rows[name]) for name in rows.dtype.names} if rows.size else None
 
 
-def comparison_times() -> np.ndarray:
-    """Times sampled by the coupled run, which drive the per-frame figures."""
-    times = line_times("fvm", "centerline")
-    return times[times > 1e-9]
+def comparison_times(dt: float = PLOT_DT) -> np.ndarray:
+    """Canonical ``dt``-spaced grid that drives every per-frame figure.
+
+    Built from the union of every source's native sample times rather than
+    one file, so the grid still reaches its full extent if a single sampler
+    (e.g. an interrupted run) is short. Each requested time is independently
+    resolved against the file that actually claims to have it - see
+    :func:`load_line` / :func:`load_slice` - so a source missing a given frame
+    just leaves that panel empty rather than showing a mistimed one.
+    """
+    sources = [
+        line_times("reference", "centerline"),
+        line_times("fvm", "centerline"),
+        line_times("vpm", "centerline"),
+        slice_times("reference"),
+        slice_times("fvm"),
+        slice_times("vpm"),
+    ]
+    available = [t for t in sources if t.size]
+    if not available:
+        return np.empty(0)
+    t_max = max(t.max() for t in available)
+    n_steps = int(round(t_max / dt))
+    return np.arange(1, n_steps + 1) * dt

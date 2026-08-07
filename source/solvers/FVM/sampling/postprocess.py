@@ -328,9 +328,7 @@ class PostProcess:
                         f"Invalid diagnostics record at {diagnostics}:{line_number}"
                     ) from exc
                 if dt <= 0.0:
-                    raise ValueError(
-                        f"Invalid non-positive dt at {diagnostics}:{line_number}"
-                    )
+                    raise ValueError(f"Invalid non-positive dt at {diagnostics}:{line_number}")
                 values[step] = dt
         return values
 

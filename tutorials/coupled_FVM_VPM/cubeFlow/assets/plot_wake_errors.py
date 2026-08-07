@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Wake error-field diagnostic: VPM vs referenceFlow on z=0, for x>0.
+"""Wake error-field diagnostic: coupled VPM vs referenceFlow, z=0, x>0.
+
+Built entirely from sampler output under ``samples/`` - the coupled run's
+``vpm_wake_slice_z0`` and referenceFlow's ``wake_slice_z0`` - so plotting needs
+no particle backups and no raw VTU access.
 
 3 rows x 2 cols:
-  row 0 = VPM solution,  row 1 = reference FVM,  row 2 = error (VPM - ref)
+  row 0 = VPM solution,  row 1 = reference FVM,  row 2 = error (VPM - reference)
   col 0 = streamwise velocity u_x/Uinf,  col 1 = vorticity omega_z*D/Uinf
 
 A dashed line marks the FVM/VPM coupling interface (the +x box face) so one can
 see WHERE the error is born and how it propagates downstream into the free wake.
-
-Mirrors coupled_OFW_VPM/cubeFlow/assets/plot_wake_error_fields.py — same
-layout, scaling, titles and colorbars, fed from the native backend's VPM
-particle backups and referenceFlow VTU snapshots.
 """
 
 from __future__ import annotations
@@ -21,39 +21,55 @@ import sys
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from scipy.interpolate import griddata  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _plotutil import CASE_DIR, COLORMAPS, COLORS, hybrid_pvd, run_constants, save
-from _reference_util import particles_at, plot_frames, sample_vtu
-from _frames_util import CM, D, EPS, U_INF, body_mask, vpm_velocity, vpm_vorticity
+import _plotutil as util  # noqa: E402
 
-FIG = CASE_DIR / "figures"
-REF_PVD = CASE_DIR / "referenceFlow" / "solution" / "referenceFlow.pvd"
-CMAP_VEL = COLORMAPS["velocity"]
-CMAP_ERR = COLORMAPS["error_diverging"]
+NAME = "wake_slice_z0"
+CMAP_VEL = util.COLORMAPS["velocity"]
+CMAP_VORT = util.COLORMAPS["vorticity"]
+CMAP_ERR = util.COLORMAPS["error_diverging"]
 FIGURE_FORMAT = "png"
 FIGURE_DPI = 400
-VPM_XMAX = 10.0
+BODY_HALF = 0.5
 
 
-def fig_wake_errors(t, ref_vtu, particles, box):
-    x_iface = box["xmax"]
-    xi = np.linspace(0.0, VPM_XMAX, 320)
-    yi = np.linspace(-2.0, 2.0, 160)
-    Xi, Yi = np.meshgrid(xi, yi)
-    pts = np.column_stack([Xi.ravel(), Yi.ravel(), np.full(Xi.size, EPS)])
+def _body_mask(x, y, margin=0.05):
+    return (np.abs(x) <= BODY_HALF + margin) & (np.abs(y) <= BODY_HALF + margin)
 
-    uxv_g = vpm_velocity(particles, pts)[:, 0].reshape(Xi.shape) / U_INF
-    wv_g = vpm_vorticity(particles, pts)[:, 2].reshape(Xi.shape) * D / U_INF
-    ref = sample_vtu(ref_vtu, pts)
-    uxr_g = ref["U"][:, 0].reshape(Xi.shape) / U_INF
-    wr_g = ref["vorticity"][:, 2].reshape(Xi.shape) * D / U_INF
 
-    bm = body_mask(Xi, Yi)
-    for F in (uxv_g, uxr_g, wv_g, wr_g):
-        F[bm] = np.nan
+def _to_grid(source_slice, target):
+    """Interpolate a slice onto the target slice's grid."""
+    points = np.column_stack([source_slice["x"].ravel(), source_slice["y"].ravel()])
+    target_points = (target["x"], target["y"])
+    out = {}
+    for key in ("Ux", "omega_z"):
+        values = source_slice[key]
+        out[key] = (
+            griddata(points, values.ravel(), target_points, method="linear")
+            if values is not None
+            else None
+        )
+    return out
+
+
+def fig_wake_errors(time, vpm, reference, U_inf, D, x_iface):
+    x, y = vpm["x"] / D, vpm["y"] / D
+    ref = _to_grid(reference, vpm)
+    bm = _body_mask(x, y)
+
+    def scaled(values, scale):
+        out = values / scale
+        out[bm] = np.nan
+        return out
+
+    uxv_g = scaled(vpm["Ux"], U_inf)
+    wv_g = scaled(vpm["omega_z"], U_inf / D)
+    uxr_g = scaled(ref["Ux"], U_inf)
+    wr_g = scaled(ref["omega_z"], U_inf / D)
 
     eu = (uxv_g - uxr_g) * 100
     ew = (wv_g - wr_g) * 100
@@ -61,7 +77,7 @@ def fig_wake_errors(t, ref_vtu, particles, box):
     fig, ax = plt.subplots(
         3,
         2,
-        figsize=(12.5 * CM, 11.0 * CM),
+        figsize=(12.5, 11.0),
         dpi=400,
         sharex=True,
         sharey=True,
@@ -75,45 +91,18 @@ def fig_wake_errors(t, ref_vtu, particles, box):
 
     panels = [
         (ax[0, 0], uxv_g, -uvmax, uvmax, CMAP_VEL, r"VPM  $u_x/U_\infty$"),
-        (ax[0, 1], wv_g, -wvmax, wvmax, COLORMAPS["vorticity"], r"VPM  $\omega_z D/U_\infty$"),
+        (ax[0, 1], wv_g, -wvmax, wvmax, CMAP_VORT, r"VPM  $\omega_z D/U_\infty$"),
         (ax[1, 0], uxr_g, -uvmax, uvmax, CMAP_VEL, r"Reference  $u_x/U_\infty$"),
-        (
-            ax[1, 1],
-            wr_g,
-            -wvmax,
-            wvmax,
-            COLORMAPS["vorticity"],
-            r"Reference  $\omega_z D/U_\infty$",
-        ),
-        (
-            ax[2, 0],
-            eu,
-            -eumax,
-            eumax,
-            CMAP_ERR,
-            r"Error  $\Delta u_x/U_\infty$",
-        ),
-        (
-            ax[2, 1],
-            ew,
-            -ewmax,
-            ewmax,
-            CMAP_ERR,
-            r"Error  $\Delta\omega_z D/U_\infty$",
-        ),
+        (ax[1, 1], wr_g, -wvmax, wvmax, CMAP_VORT, r"Reference  $\omega_z D/U_\infty$"),
+        (ax[2, 0], eu, -eumax, eumax, CMAP_ERR, r"Error  $\Delta u_x/U_\infty$"),
+        (ax[2, 1], ew, -ewmax, ewmax, CMAP_ERR, r"Error  $\Delta\omega_z D/U_\infty$"),
     ]
     plots = []
     for axis, field, minimum, maximum, cmap, title in panels:
         plot = axis.pcolormesh(
-            Xi,
-            Yi,
-            field,
-            cmap=cmap,
-            vmin=minimum,
-            vmax=maximum,
-            shading="auto",
+            x, y, field, cmap=cmap, vmin=minimum, vmax=maximum, shading="auto"
         )
-        axis.axvline(x_iface, color=COLORS["DarkText"], ls="--", lw=1.0)
+        axis.axvline(x_iface, color=util.COLORS["DarkText"], ls="--", lw=1.0)
         axis.set_title(title)
         axis.set_xlim([0, 5])
         axis.set_ylim([-1.5, 1.5])
@@ -129,34 +118,43 @@ def fig_wake_errors(t, ref_vtu, particles, box):
     for axis in ax[:, 0]:
         axis.set_ylabel(r"$y/D$")
 
-    fig.suptitle(f"Wake fields VPM vs reference (z=0, t={t:.2f}s)")
+    fig.suptitle(f"Wake fields VPM vs reference (z=0, t={time:.2f}s)")
 
-    save(fig, f"wake_errors_t{t:.2f}", FIGURE_FORMAT, FIGURE_DPI)
+    util.save(fig, f"wake_errors_t{time:.2f}", FIGURE_FORMAT, FIGURE_DPI)
     plt.close(fig)
 
     for label, mask in [
-        (f"x<{x_iface:g}", Xi < x_iface),
-        (f"{x_iface:g}-3", (Xi >= x_iface) & (Xi < 3)),
-        ("x>3", Xi >= 3),
+        (f"x<{x_iface:g}", x < x_iface),
+        (f"{x_iface:g}-3", (x >= x_iface) & (x < 3)),
+        ("x>3", x >= 3),
     ]:
         print(
-            f"  t={t:.1f} {label:>6}: |Δu_x|mean={np.nanmean(np.abs(eu[mask])):.3f}  "
-            f"|Δω|mean={np.nanmean(np.abs(ew[mask])):.3f}  "
-            f"|Δω|max={np.nanmax(np.abs(ew[mask])):.2f}"
+            f"  t={time:.1f} {label:>6}: |Delta u_x|mean={np.nanmean(np.abs(eu[mask])):.3f}  "
+            f"|Delta w|mean={np.nanmean(np.abs(ew[mask])):.3f}  "
+            f"|Delta w|max={np.nanmax(np.abs(ew[mask])):.2f}"
         )
 
 
 def main() -> None:
-    FIG.mkdir(exist_ok=True)
-    box = run_constants()["box"]
+    consts = util.run_constants()
+    U_inf, D, x_iface = consts["U_inf"], consts["D"], consts["box"]["xmax"]
 
-    frames = [frame for frame in plot_frames(hybrid_pvd(), REF_PVD) if frame[2] is not None]
-    if not frames:
-        print("  wake_errors: no same-time reference VTUs available")
-        return
-    for time, _, reference_vtu in frames:
-        fig_wake_errors(time, reference_vtu, particles_at(time), box)
+    times = util.comparison_times()
+    if times.size == 0:
+        raise SystemExit("No sampled wake data found; run the case or the resampler first.")
+
+    plotted = 0
+    for time in times:
+        vpm = util.load_slice("vpm", float(time), name=NAME)
+        reference = util.load_slice("reference", float(time), name=NAME)
+        if vpm is None or reference is None:
+            continue
+        fig_wake_errors(float(time), vpm, reference, U_inf, D, x_iface)
         print(f"  wake_errors t={time:.2f} done")
+        plotted += 1
+
+    if plotted == 0:
+        print("  wake_errors: no matching vpm_wake_slice_z0 / wake_slice_z0 frames available")
 
 
 if __name__ == "__main__":

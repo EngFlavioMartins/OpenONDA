@@ -73,6 +73,7 @@ SAMPLE_INTERVAL = int(round(WRITE_INTERVAL / DT_FVM))
 SAMPLE_SPACING = VPM_SPACING
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
+WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 
 FVM_SAMPLERS = (
     ForceSampler(
@@ -88,12 +89,14 @@ FVM_SAMPLERS = (
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_centerline",
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_offaxis_y075",
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
     FVMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -101,6 +104,7 @@ FVM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
 )
 
@@ -123,6 +127,13 @@ VPM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="vpm_slice_z0",
+    ),
+    VPMSurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=WAKE_SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_wake_slice_z0",
     ),
 )
 
