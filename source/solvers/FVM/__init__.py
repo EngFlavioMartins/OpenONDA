@@ -31,10 +31,11 @@ from .core.solver import Solver
 from .core.state import FieldState
 from .factory import setup_fvm_solver
 from .mesh.adaptive_cartesian import AdaptiveCartesianMesher, BoxRefinement
+from .sampling.fields import LineSampler, SurfaceSampler
+from .sampling.forces import ForceSampler, IBMForceSampler, YPlusSampler
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
-from .utils.field_samplers import ForceSampler, LineSampler, SurfaceSampler
 
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
@@ -58,6 +59,8 @@ __all__ = [
     "ForceSampler",
     "LineSampler",
     "SurfaceSampler",
+    "IBMForceSampler",
+    "YPlusSampler",
     "solver_configs_from_case",
     "TransportConfig",
     "BoundaryConfig",

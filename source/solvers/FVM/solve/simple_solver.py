@@ -1629,6 +1629,8 @@ class SIMPLESolver:
         if params:
             self.params.update(params)
 
+        # Optional immersed-boundary forcing (set via Solver.set_immersed_bodies).
+        self.ibm = None
         self.residuals = []
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()

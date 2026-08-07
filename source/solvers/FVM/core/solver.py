@@ -1,6 +1,5 @@
 """High-level incompressible FVM solver API."""
 
-import csv
 import json
 import os
 from typing import Any
@@ -10,8 +9,8 @@ import numpy as np
 from ..config.types import FVMSetup
 from ..coupling import OFWInterfaceMixin
 from ..io import logging, solver_io
-from ..io.sampler import FVMSamplerExecutor
 from ..mesh import geometry, mesh_io
+from ..sampling.executor import FVMSamplerExecutor
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
 from .state import FieldState
@@ -557,10 +556,9 @@ class Solver(OFWInterfaceMixin):
         self.pvd_manager = None
         self._buffered_vtk_writer = None
         self.last_forces = None
+        self.last_yplus = None
         self.ibm = None
         self.forces_history_path = None
-        self._force_log_counter = 0
-        self._auto_force_sampler = self._build_auto_force_sampler()
         self.cfl_max = 0.0
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
@@ -590,6 +588,30 @@ class Solver(OFWInterfaceMixin):
             self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
         )
 
+        # Wall y+ is a per-step diagnostic decoupled from any force cadence.
+        # Unless the user configured a YPlusSampler explicitly, run a default
+        # that keeps ``last_yplus`` fresh on every accepted step.
+        self._default_yplus_sampler = None
+        from ..sampling.forces import ForceSampler, YPlusSampler
+
+        if not any(isinstance(s, YPlusSampler) for s in (self.config.samplers or ())):
+            self._default_yplus_sampler = YPlusSampler(patch_names=None)
+
+        # The classic path configures forces through ``ForcesConfig``; mirror
+        # it as a default ForceSampler (explicit samplers run alongside it).
+        forces_cfg = self.config.forces
+        if forces_cfg is not None:
+            self.config.samplers = (
+                *self.config.samplers,
+                ForceSampler(
+                    patch_names=forces_cfg.force_patches,
+                    ref_velocity=forces_cfg.ref_velocity,
+                    ref_area=forces_cfg.ref_area,
+                    ref_length=forces_cfg.ref_length,
+                    moment_centre=forces_cfg.moment_centre,
+                ),
+            )
+
     @classmethod
     def from_case(cls, case_dir: str, **overrides):
         """Build a Solver from an OpenFOAM case directory.
@@ -609,6 +631,7 @@ class Solver(OFWInterfaceMixin):
             TurbulenceConfig,
             solver_configs_from_case,
         )
+        from ..sampling.forces import YPlusSampler
 
         case_dir = os.path.abspath(case_dir)
 
@@ -632,14 +655,17 @@ class Solver(OFWInterfaceMixin):
 
         turbulence_path = os.path.join(case_dir, "constant", "turbulenceProperties")
 
-        schemes, linear, pimple, forces = solver_configs_from_case(case_dir)
+        schemes, linear, pimple, yplus_patches = solver_configs_from_case(case_dir)
+        samplers = ()
+        if yplus_patches:
+            samplers = (YPlusSampler(patch_names=yplus_patches),)
         cfg = FVMSetup(
             case_name=os.path.basename(case_dir.rstrip("/")) or "case",
             time=TimeConfig.from_control_dict(case_dir),
             schemes=schemes,
             linear=linear,
             pimple=pimple,
-            forces=forces,
+            samplers=samplers,
             transport=TransportConfig.from_foam_file(case_dir),
             turbulence=(
                 TurbulenceConfig.from_foam_file(turbulence_path)
@@ -908,6 +934,10 @@ class Solver(OFWInterfaceMixin):
             )
         self.ibm = IBMForcing(self.mesh_data, self.geo_data, body_list, h=h)
         self.algorithm.ibm = self.ibm
+        from ..sampling.forces import IBMForceSampler
+
+        if not any(isinstance(s, IBMForceSampler) for s in (self.config.samplers or ())):
+            self.config.samplers = (*self.config.samplers, IBMForceSampler())
         diag = self.ibm.diagnostics()
         self.logger.info(
             f"Immersed boundary: {diag['n_markers']} markers, h={diag['h']:.4g}, "
@@ -917,65 +947,6 @@ class Solver(OFWInterfaceMixin):
             f"quadrature residual {diag['quadrature_residual']:.2e}"
         )
         return self.ibm
-
-    def _build_auto_force_sampler(self):
-        """Mirror ``ForcesConfig`` as a ForceSampler so cases that configure
-        forces the classic way keep getting samples/forces_history.csv without
-        having to declare a sampler explicitly."""
-        from ..utils.field_samplers import ForceSampler
-
-        forces_cfg = self.config.forces
-        return ForceSampler(
-            patch_names=forces_cfg.force_patches,
-            ref_velocity=forces_cfg.ref_velocity,
-            ref_area=forces_cfg.ref_area,
-            ref_length=forces_cfg.ref_length,
-            moment_centre=forces_cfg.moment_centre,
-        )
-
-    def _log_ibm_forces(self, step_dt: float) -> None:
-        """Append per-body IBM forces (and Cd/Cl) to samples/ibm_forces_history.csv."""
-        if not self.parallel.is_root:
-            return
-        rho = self.config.transport.density
-        forces = self.ibm.body_forces(rho=rho)
-        ref_U = getattr(self.config.forces, "ref_velocity", 1.0)
-        ref_area = getattr(self.config.forces, "ref_area", 1.0)
-        q = 0.5 * rho * ref_U**2 * ref_area
-
-        samples_dir = os.path.join(self.case_dir, "samples")
-        os.makedirs(samples_dir, exist_ok=True)
-        # No-slip quality monitor: marker slip of the *final* velocity field
-        # (the predictor slip stored by compute_force overestimates it).
-        slip = self.ibm.slip_error(self.U)
-
-        csv_path = os.path.join(samples_dir, "ibm_forces_history.csv")
-        write_header = not os.path.exists(csv_path)
-        with open(csv_path, "a") as fh:
-            writer = csv.writer(fh)
-            if write_header:
-                writer.writerow(
-                    ["time", "step", "dt", "body", "Fx", "Fy", "Fz", "Cd", "Cl", "slip"]
-                )
-            for name, F in forces.items():
-                writer.writerow(
-                    [
-                        self.flow_time,
-                        self.time_step,
-                        step_dt,
-                        name,
-                        F[0],
-                        F[1],
-                        F[2],
-                        F[0] / q,
-                        F[1] / q,
-                        slip,
-                    ]
-                )
-        self.logger.ibm_force_info(
-            {name: (float(F[0] / q), float(F[1] / q)) for name, F in forces.items()},
-            float(slip),
-        )
 
     def _fringe_source(self):
         """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − Ḡ) from
@@ -1297,8 +1268,6 @@ class Solver(OFWInterfaceMixin):
         """Commit the solved field as the new time level and advance the clock
         (OFW-contract method): roll the BDF history, increment step/time, then
         run per-step force logging and output control."""
-        from ..fields import diagnostics
-
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
         logging.Timer.start("Field history commit")
         self.U_old_old[:] = self.U_old[:]
@@ -1316,45 +1285,12 @@ class Solver(OFWInterfaceMixin):
         self.io.write_step_diagnostics()
         logging.Timer.log("Diagnostics file", sink=self.logger)
 
-        # y+ and Turbulence info
-        logging.Timer.start("Wall y+ diagnostics")
-        patch_names = getattr(self.config.forces, "yplus_patches", None)
-        yplus_stats = {}
-        if self.parallel.is_root or self.parallel.is_partitioned:
-            yplus_stats = diagnostics.compute_y_plus(
-                self.U,
-                self.config.transport.nu,
-                self.mesh_data,
-                self.geo_data,
-                self.boundaries,
-                patch_names=patch_names,
-            )
-            if self.parallel.is_partitioned:
-                yplus_stats = diagnostics.merge_partition_yplus(
-                    self.parallel.comm.allgather(yplus_stats)
-                )
-        self.logger.yplus_info(yplus_stats)
-        # Expose the latest y+ stats for coupled-driver health diagnostics.
-        self.last_yplus = yplus_stats
-        logging.Timer.log("Wall y+ diagnostics", sink=self.logger)
-
-        # Force computation and logging
-        force_interval = getattr(self.config.forces, "force_log_interval", None)
-        if force_interval is None:
-            force_interval = cfg_time.write_interval
-
-        self._force_log_counter += 1
-        logging.Timer.start("Surface-force diagnostics")
-        if self._force_log_counter % force_interval == 0 or self._force_log_counter == 1:
-            FVMSamplerExecutor.execute(self)
-            if self.parallel.is_root:
-                self.logger.force_info(self.last_forces or {})
-        logging.Timer.log("Surface-force diagnostics", sink=self.logger)
-
-        logging.Timer.start("Force history file")
-        if self.parallel.is_root and self.ibm is not None:
-            self._log_ibm_forces(step_dt)
-        logging.Timer.log("Force history file", sink=self.logger)
+        # Samplers decide their own cadence; the executor runs after every
+        # accepted step and every sampler checks whether it is due.  Force,
+        # IBM force and y+ output all flow through this single path.
+        logging.Timer.start("Samplers")
+        FVMSamplerExecutor.execute(self)
+        logging.Timer.log("Samplers", sink=self.logger)
 
         logging.Timer.start("Turbulence statistics")
         if self.turbulence and self.nut is not None:

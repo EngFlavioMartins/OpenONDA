@@ -749,8 +749,8 @@ class ForcesConfig:
 
 def _groups_from_flat(
     flat: dict,
-) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "ForcesConfig"]:
-    """Distribute a flat parameter mapping into the four grouped configs."""
+) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl"]:
+    """Distribute a flat parameter mapping into the three solver configs."""
 
     def take(cls):
         names = {f.name for f in dataclass_fields(cls)}
@@ -760,22 +760,22 @@ def _groups_from_flat(
         take(SchemesConfig),
         take(LinearSolverConfig),
         take(PimpleControl),
-        take(ForcesConfig),
     )
 
 
 def solver_configs_from_case(
     path: str,
-) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "ForcesConfig"]:
-    """Parse ``system/{controlDict,fvSolution,fvSchemes}`` into the four grouped
-    solver configs (used by :meth:`Solver.from_case`)."""
+) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "list[str]"]:
+    """Parse ``system/{controlDict,fvSolution,fvSchemes}`` into the three solver
+    configs plus the y+ wall-patch list (used by :meth:`Solver.from_case`)."""
     from types import SimpleNamespace
 
     from ..fields.field_io import parse_simple_dictionary
 
     defaults: dict = {}
-    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl(), ForcesConfig()):
+    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl()):
         defaults.update(vars(group))
+    defaults["yplus_patches"] = None
     params = SimpleNamespace(**defaults)
 
     system_dir = _resolve_system_dir(path)
@@ -929,7 +929,7 @@ def solver_configs_from_case(
         "convection",
         {"bounded", "gauss"},
     )
-    return _groups_from_flat(vars(params))
+    return (*_groups_from_flat(vars(params)), params.yplus_patches or [])
 
 
 @dataclass
