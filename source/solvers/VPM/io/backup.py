@@ -194,6 +194,10 @@ class BackupSystem:
             solver_group.attrs["flow_time"] = flow_time
             solver_group.attrs["time_step"] = solver.time_step
             solver_group.attrs["time_step_size"] = solver.time_step_size
+            # DVH fires once every _dvh_substeps steps off this counter; without it
+            # a restart resumes at phase 0 and the viscous update lands on different
+            # steps than the uninterrupted run.
+            solver_group.attrs["dvh_fire_counter"] = int(getattr(solver, "_dvh_fire_counter", 0))
             solver_group.attrs["number_of_particles"] = solver.particles.number_of_particles
             solver_group.attrs["filament_refinement_cumulative_energy_transfer"] = float(
                 getattr(solver, "_filament_refinement_cumulative_energy_transfer", 0.0)
@@ -646,6 +650,8 @@ class BackupSystem:
             solver.flow_time = float(solver_group.attrs["flow_time"])
             solver.time_step = int(solver_group.attrs["time_step"])
             solver.time_step_size = float(solver_group.attrs["time_step_size"])
+            if "dvh_fire_counter" in solver_group.attrs:
+                solver._dvh_fire_counter = int(solver_group.attrs["dvh_fire_counter"])
             if hasattr(solver, "_filament_refinement_diagnostics"):
                 for name in solver._filament_refinement_diagnostics:
                     if name in solver_group.attrs:

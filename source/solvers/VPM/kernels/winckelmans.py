@@ -47,9 +47,20 @@ def create_winckelmans_kernels(dtype=ti.f32):
 
     @ti.func
     def diffusivity_constant_():
-        # Winckelmans--Leonard high-order algebraic core-spreading constant.
-        # The reference VPM formulation uses d(sigma²)/dt = (256/45) nu.
-        return ti.cast(256.0 / 45.0, dtype)
+        """Core-spreading rate d(sigma^2)/dt = C nu, with C = 4.
+
+        A self-similar blob w = (Gamma/sigma^3) zeta(r/sigma) has <r^2> = m2 sigma^2,
+        and the heat equation gives d<r^2>/dt = 6 nu, so C = 6/m2.  This kernel has
+        m2 = 3/2 exactly -- the same as the Gaussian, which is the property that makes
+        it a second-order match -- hence C = 4, identical to the Gaussian.
+
+        Was 256/45 = 5.689 (hand-calibrated, no derivation).  Note that core spreading
+        is an exact self-similar solution of the heat equation only for the Gaussian;
+        for an algebraic kernel it is a model, so a calibrated value is legitimate --
+        but it must be labelled as one.  See REFERENCES.md and
+        docs/reviews/2026-08-vpm-audit.md finding N-4.
+        """
+        return ti.cast(4.0, dtype)
 
     @ti.func
     def energy_equivalence_constant_():

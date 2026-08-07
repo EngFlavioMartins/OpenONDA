@@ -276,6 +276,7 @@ class Solver:
             debug_mode,
             self.precision,
             device_memory_fraction=getattr(final_config, "device_memory_fraction", 0.5),
+            random_seed=final_config.random_seed,
         )
         print_openonda_header(self.precision)
         SetFlowModel(self, flow_model=self.flow_model)
@@ -377,6 +378,10 @@ class Solver:
         )
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
+        # Optional collaborators and one-shot flags, declared here so the rest of
+        # the class can read them directly instead of probing with getattr.
+        self._body_induced_fn = None
+        self._stretch_dt_warned: bool = False
 
     def _init_diagnostics_and_solvers(self, final_config: VPMSetup) -> None:
         """Build diagnostics history dict and initialize optional solvers."""
@@ -807,7 +812,7 @@ class Solver:
             "angular_impulse_z": float(ang_impulse[2]),
             "n_particles": self.particles.number_of_particles,
         }
-        row.update(getattr(self, "_discretization_health", {}))
+        row.update(self._discretization_health)
         row.update(self._filament_refinement_diagnostics)
         row.update(self._divergence_relaxation_diagnostics)
 
@@ -1430,7 +1435,7 @@ class Solver:
             velocities = self.physics.extract_target_velocities(n_targets)
 
         # Add boundary-element (panel) body induction
-        body_fn = getattr(self, "_body_induced_fn", None)
+        body_fn = self._body_induced_fn
         if include_body and body_fn is not None:
             velocities = velocities + np.asarray(
                 body_fn(grid_positions), dtype=velocities.dtype
@@ -1587,7 +1592,7 @@ class Solver:
             body_fn = getattr(
                 self,
                 "_pressure_body_induced_fn",
-                getattr(self, "_body_induced_fn", None),
+                self._body_induced_fn,
             )
             if body_fn is not None:
                 velocity_samples += np.asarray(
@@ -2354,7 +2359,7 @@ class Solver:
             # dt_rec = C/σ_max (C = 0.2 stretching-CFL target), the usual source of an
             # explicit-stretching blow-up.  An explicit solver integrates exactly the
             # adopted dt — this never sub-divides or overrides it.
-            if not getattr(self, "_stretch_dt_warned", False):
+            if not self._stretch_dt_warned:
                 gradient = self.particles_velocity_gradients
                 strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
                 sigma_max = (

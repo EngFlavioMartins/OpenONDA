@@ -31,7 +31,6 @@ from .influence import (
     compute_pressure_bernoulli,
     compute_RHS,
     compute_RHS_dirichlet_with_sources,
-    compute_surface_velocities,
     compute_surface_velocities_with_sources,
 )
 from .kernels import panel_update_rotation_kernel, panel_update_translation_kernel
@@ -382,6 +381,39 @@ class PanelSolver:
             self.lattice, body_range, rotation_matrix, angular_velocity, rotation_center
         )
 
+    def _update_surface_velocities(self, V_inf: np.ndarray, V_wake_field: Any = None) -> None:
+        """Fill ``self.V_surface`` from the source-doublet representation.
+
+        Single evaluation point for both force and post-processing paths, so the
+        two cannot disagree.  Under DIRICHLET the source strengths are the known
+        ``-n·V_inf`` that cancels the freestream normal component; under NEUMANN
+        they are the solved unknowns and the doublet field is unused.
+        """
+        n = self.lattice.num_panels
+        if n == 0:
+            return
+        if V_wake_field is None:
+            V_wake_field = self._resolve_wake_field()
+
+        if self.bc_type == "DIRICHLET":
+            normals_np = self.lattice.normals.to_numpy()[:n]
+            ti_dtype = np.float32 if self.float_dtype == "f32" else np.float64
+            source_full = np.zeros(self.lattice.max_panels, dtype=ti_dtype)
+            source_full[:n] = (-np.dot(normals_np, V_inf)).astype(ti_dtype)
+            self.lattice.source_strengths.from_numpy(source_full)
+
+        compute_surface_velocities_with_sources(
+            self.lattice.vertices,
+            self.lattice.centers,
+            self.lattice.normals,
+            self.lattice.strengths,
+            self.lattice.source_strengths,
+            ti.Vector(np.asarray(V_inf, dtype=float).tolist()),
+            V_wake_field,
+            self.V_surface,
+            n,
+        )
+
     def compute_forces(
         self, V_inf: np.ndarray, V_wake_field: Any, dt: float, rho: float
     ) -> dict[int, np.ndarray]:
@@ -393,21 +425,19 @@ class PanelSolver:
             return {}
 
         v_inf_mag = np.linalg.norm(V_inf)
-        ti_v_inf = ti.Vector(V_inf.tolist())
+        if v_inf_mag < 1e-10:
+            v_inf_mag = 1.0
 
         if V_wake_field is None:
             V_wake_field = self._resolve_wake_field()
 
+        # Surface velocity comes from the shared source-doublet evaluation.  The
+        # doublet-only kernel used here previously omitted the source panels
+        # entirely, which under NEUMANN — where the solve fills source_strengths
+        # and leaves strengths at zero — dropped the whole body contribution.
+        self._update_surface_velocities(V_inf, V_wake_field)
+
         if self.force_config.method == "BERNOULLI":
-            compute_surface_velocities(
-                self.lattice.vertices,
-                self.lattice.centers,
-                self.lattice.strengths,
-                ti_v_inf,
-                V_wake_field,
-                self.V_surface,
-                n,
-            )
             compute_pressure_bernoulli(self.V_surface, float(v_inf_mag), self.lattice.Cp, n)
             compute_forces_bernoulli(
                 self.V_surface,
@@ -419,15 +449,6 @@ class PanelSolver:
                 n,
             )
         elif self.force_config.method == "KUTTA_JOUKOWSKI":
-            compute_surface_velocities(
-                self.lattice.vertices,
-                self.lattice.centers,
-                self.lattice.strengths,
-                ti_v_inf,
-                V_wake_field,
-                self.V_surface,
-                n,
-            )
             compute_forces_kutta_joukowski(
                 self.lattice.strengths,
                 self.V_surface,
@@ -817,30 +838,7 @@ class PanelSolver:
         else:
             V_inf = np.mean(V_external_np, axis=0)
 
-        ti_v_inf = ti.Vector(V_inf.tolist())
-        V_wake = self._resolve_wake_field()
-
-        if self.bc_type == "DIRICHLET":
-            normals_np = self.lattice.normals.to_numpy()[:n]
-            source_strengths_np = -np.dot(normals_np, V_inf)
-            ti_dtype = np.float32 if self.float_dtype == "f32" else np.float64
-            source_full = np.zeros(self.lattice.max_panels, dtype=ti_dtype)
-            source_full[:n] = source_strengths_np.astype(ti_dtype)
-            self.lattice.source_strengths.from_numpy(source_full)
-
-        # Compute surface velocities
-        # Use source-doublet formulation for both DIRICHLET and NEUMANN BC
-        compute_surface_velocities_with_sources(
-            self.lattice.vertices,
-            self.lattice.centers,
-            self.lattice.normals,
-            self.lattice.strengths,
-            self.lattice.source_strengths,
-            ti_v_inf,
-            V_wake,
-            self.V_surface,
-            n,
-        )
+        self._update_surface_velocities(V_inf)
 
         # Compute pressure coefficients
         compute_pressure_bernoulli(self.V_surface, float(U_ref_mag), self.lattice.Cp, n)

@@ -948,7 +948,7 @@ class Logging:
         import atexit
         import sys
 
-        log_mode = getattr(getattr(solver, "config", None), "log_mode", "file")
+        log_mode = getattr(getattr(solver, "config", None), "log_mode", "tee")
         if log_mode == "console":
             solver.log_file_path = None  # type: ignore[attr-defined]
             solver._stdout_original = sys.stdout  # type: ignore[attr-defined]

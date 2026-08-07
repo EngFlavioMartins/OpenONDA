@@ -51,11 +51,7 @@ def bound_vortex_velocity(target, pa, pb, gamma: float, epsilon: float):
     # Use conditional assignment instead of early return
     if cross_mag_sq > CUTOFF * CUTOFF:
         # Floor the endpoint distances at epsilon to avoid 0/0 when the target
-        # coincides with a filament endpoint.  Use max() (a guard that only
-        # activates at the true singularity) rather than the previous
-        # `|r| + epsilon`, which biased the whole near field. The physical
-        # core regularization lives solely in the denominator term below
-        # (Krasny/Rosenhead form: |r1×r2|² + ε²).
+        # coincides with a filament endpoint.
         r1_mag = ti.max(r1.norm(), epsilon)
         r2_mag = ti.max(r2.norm(), epsilon)
 

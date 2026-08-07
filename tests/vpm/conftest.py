@@ -1,11 +1,12 @@
 """Shared VPM test fixtures and CLI options."""
 
+import functools
 import platform
 
 import pytest
 
 from source.solvers.VPM import Solver, VPMSetup
-from source.solvers.VPM.config.backend import reset_taichi_backend
+from source.solvers.VPM.config.backend import initialize_taichi_backend, reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -37,7 +38,36 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("backend", BACKENDS, scope="function")
 
 
+@functools.cache
+def _backend_available(name: str) -> bool:
+    """Probe once per session whether Taichi can initialise ``name`` here.
+
+    An explicit GPU request is strict: ``initialize_taichi_backend`` raises
+    rather than falling back, so a missing device has to be detected before the
+    solver is constructed or the test reports a failure instead of a skip.
+    """
+    if name == "CPU":
+        return True
+    try:
+        reset_taichi_backend()
+        initialize_taichi_backend(preferred_backend=name)
+        return True
+    except Exception:
+        return False
+    finally:
+        reset_taichi_backend()
+
+
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _skip_unavailable_backend(request):
+    """Skip a backend-parametrised test when that backend is absent."""
+    callspec = getattr(request.node, "callspec", None)
+    backend = callspec.params.get("backend") if callspec else None
+    if backend is not None and not _backend_available(backend):
+        pytest.skip(f"{backend} backend unavailable on this machine")
 
 
 @pytest.fixture(scope="function")

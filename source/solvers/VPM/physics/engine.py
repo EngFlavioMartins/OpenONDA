@@ -355,7 +355,7 @@ class _CoupledAdvectionStretchingHandler:
 
         p = self._parent
         p._resize_temp_fields(N)
-        p._zero_temp_fields()
+        p._zero_temp_fields(N)
         p._stretching._use_treecode = bool(use_treecode) and p.velocity_method == "TREECODE"
         p._stretching._treecode_theta = float(treecode_theta)
         mode_int = self._mode_int(mode)
@@ -504,7 +504,7 @@ class _StretchingHandler:
         self._use_treecode = bool(use_treecode) and p.velocity_method == "TREECODE"
         self._treecode_theta = float(treecode_theta)
         p._resize_temp_fields(N)
-        p._zero_temp_fields()
+        p._zero_temp_fields(N)
 
         mode_str = mode.upper()
         if mode_str == "DIRECT":

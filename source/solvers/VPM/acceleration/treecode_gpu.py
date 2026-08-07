@@ -102,14 +102,21 @@ class TaichiTreecode:
         self.node_total_circ = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        # Higher-order moments are sized by the requested order: at the default
+        # order 1 they would otherwise cost 36 + 108 bytes/node (144 MB at 1e6
+        # nodes) for fields no kernel ever reads.  Allocating one element keeps
+        # the fields defined so the kernels still compile; every write and read
+        # is guarded by the runtime order check, so the stub is never indexed.
+        self._dipole_nodes = max_nodes if multipole_order >= 2 else 1
+        self._quad_nodes = max_nodes if multipole_order >= 3 else 1
         # First-order source-position moment around node_com:
         #   M[b, a] = sum_j (x_j - node_com)_b * Gamma_{j,a}
         # Used by the opt-in dipole correction when multipole_order == 2.
-        self.node_circ_dipole = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_nodes)
+        self.node_circ_dipole = ti.Matrix.field(3, 3, dtype=ti.f32, shape=self._dipole_nodes)
         # Second-order source-position moment around node_com:
         #   Q[node, k][a, b] = sum_j Gamma_{j,k} * d_a * d_b,   d = x_j - node_com
         # (symmetric in a, b).  Used when multipole_order == 3 (quadrupole).
-        self.node_circ_quad = ti.Matrix.field(3, 3, dtype=ti.f32, shape=(max_nodes, 3))
+        self.node_circ_quad = ti.Matrix.field(3, 3, dtype=ti.f32, shape=(self._quad_nodes, 3))
 
         # Binary tree structure (left/right child, -1 = none)
         self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
@@ -237,8 +244,26 @@ class TaichiTreecode:
         self.kernel_type_id[None] = TREECODE_SUPPORTED_KERNELS.index(normalized)
 
     def set_multipole_order(self, order: int) -> None:
+        """Set the far-field expansion order.
+
+        Cannot exceed the order the instance was constructed with: the dipole and
+        quadrupole moment fields are sized at construction and Taichi fields
+        cannot grow, so raising the order here would index a one-element stub.
+        """
         if order not in (1, 2, 3):
             raise ValueError(f"Unsupported treecode multipole_order: {order}")
+        if order >= 2 and self._dipole_nodes < self.max_nodes:
+            raise ValueError(
+                f"treecode was built for multipole_order={self.multipole_order[None]}; "
+                f"cannot raise it to {order} because the dipole moments were not "
+                "allocated. Construct a new TaichiTreecode with the higher order."
+            )
+        if order >= 3 and self._quad_nodes < self.max_nodes:
+            raise ValueError(
+                f"treecode was built for multipole_order={self.multipole_order[None]}; "
+                f"cannot raise it to {order} because the quadrupole moments were not "
+                "allocated. Construct a new TaichiTreecode with the higher order."
+            )
         self.multipole_order[None] = int(order)
 
     def set_sort_particle_targets(self, enabled: bool) -> None:
@@ -795,9 +820,11 @@ class TaichiTreecode:
             self.node_total_circ[j] = self.circulations[p]
             self.node_avg_radius[j] = self.radii[p]
             self.node_com[j] = self.positions[p]
-            self.node_circ_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
-            for k in ti.static(range(3)):
-                self.node_circ_quad[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
+            if self.multipole_order[None] >= 2:
+                self.node_circ_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
+            if self.multipole_order[None] >= 3:
+                for k in ti.static(range(3)):
+                    self.node_circ_quad[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
             self.node_center[j] = self.positions[p]
             self.node_half_size[j] = 0.0
             self._node_aabb_min[j] = self.positions[p]
@@ -859,20 +886,21 @@ class TaichiTreecode:
                 com = (self.node_com[left] + self.node_com[right]) * 0.5
             self.node_com[idx] = com
 
-            dipole = ti.Matrix.zero(ti.f32, 3, 3)
             d_left = self.node_com[left] - com
             d_right = self.node_com[right] - com
             gamma_left = self.node_total_circ[left]
             gamma_right = self.node_total_circ[right]
-            for b in ti.static(range(3)):
-                for a in ti.static(range(3)):
-                    dipole[b, a] = (
-                        self.node_circ_dipole[left][b, a]
-                        + d_left[b] * gamma_left[a]
-                        + self.node_circ_dipole[right][b, a]
-                        + d_right[b] * gamma_right[a]
-                    )
-            self.node_circ_dipole[idx] = dipole
+            if self.multipole_order[None] >= 2:
+                dipole = ti.Matrix.zero(ti.f32, 3, 3)
+                for b in ti.static(range(3)):
+                    for a in ti.static(range(3)):
+                        dipole[b, a] = (
+                            self.node_circ_dipole[left][b, a]
+                            + d_left[b] * gamma_left[a]
+                            + self.node_circ_dipole[right][b, a]
+                            + d_right[b] * gamma_right[a]
+                        )
+                self.node_circ_dipole[idx] = dipole
 
             if self.multipole_order[None] >= 3:
                 # Quadrupole shift: Q'_k[a,b] = Q_k[a,b] + s_a D[b,k] + s_b D[a,k]
@@ -1506,13 +1534,29 @@ class TaichiTreecode:
                     strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
             self.strain_rates[i] = strain
 
-    def compute_velocities_gpu(self, background_velocity: np.ndarray | None = None) -> None:
+    @ti.kernel
+    def _copy_u_inf_from_field(self, src: ti.template()):
+        """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
+        self.u_inf[None] = src[None]
+
+    def compute_velocities_gpu(
+        self,
+        background_velocity: np.ndarray | None = None,
+        background_field=None,
+    ) -> None:
         """Run the velocity traversal on-device; the result stays in
         ``self.velocities`` (a Taichi field).  No ``to_numpy`` download — callers
         that keep the data on the GPU (e.g. ``base.velocity_self`` via a
-        field-to-field copy) use this to avoid a per-step N×3 round-trip."""
+        field-to-field copy) use this to avoid a per-step N×3 round-trip.
+
+        Pass ``background_field`` (a 0-d vec3 field) rather than
+        ``background_velocity`` to keep the freestream on device too; reading it
+        back as a numpy array forces a sync at every RK stage.
+        """
         t_start = time.perf_counter()
-        if background_velocity is not None:
+        if background_field is not None:
+            self._copy_u_inf_from_field(background_field)
+        elif background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])

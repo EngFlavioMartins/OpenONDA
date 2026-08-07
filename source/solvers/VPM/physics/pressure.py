@@ -60,9 +60,11 @@ def _q_kernel(rho: np.ndarray) -> np.ndarray:
     rho = np.atleast_1d(rho)
     result = np.zeros_like(rho, dtype=np.float64)
 
-    # Small rho: Taylor expansion
+    # Small rho: series, since the closed form below cancels to nothing.
+    # The coefficient is 4/(3 sqrt(pi)); it read 4/(3 sqrt(pi^3)) here — a factor
+    # of pi, the same defect that was in the treecode's copy of this kernel.
     small = rho < 1e-4
-    result[small] = (4.0 / (3.0 * np.sqrt(np.pi**3))) * (rho[small] ** 3) * ONE_OVER_FOUR_PI
+    result[small] = (4.0 / (3.0 * np.sqrt(np.pi))) * (rho[small] ** 3) * ONE_OVER_FOUR_PI
 
     # Normal case: erf-based formula
     large = ~small

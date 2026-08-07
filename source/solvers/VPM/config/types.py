@@ -1539,8 +1539,20 @@ class VPMSetup:
     can.  Cost is one k-d tree plus a neighbour sum per diagnostics event, so it
     scales with ``logging_frequency`` and not with the step count."""
 
-    log_mode: Literal["file", "tee", "console"] = "file"
-    """Solver output destination: log file, console and file, or console only."""
+    log_mode: Literal["file", "tee", "console"] = "tee"
+    """Solver output destination.
+
+      - ``'tee'`` (default) — write to ``<backup_directory>/vpm*.log`` *and* keep
+        the caller's console output working.
+      - ``'file'`` — redirect to the log file only.  **This rebinds process-wide
+        ``sys.stdout``/``sys.stderr`` for the lifetime of the solver**, so every
+        ``print`` in the host program and in unrelated libraries is captured too.
+        Only choose it for a batch run that owns the whole process; it was the
+        default until the 2026-08 audit, where it silently swallowed diagnostics
+        that had nothing to do with the solver.
+      - ``'console'`` — no log file, streams untouched.
+
+      All three restore the original streams via an ``atexit`` hook."""
 
     timing_frequency: int = 0
     """Print the cumulative runtime-profiling report every N time steps
@@ -1566,13 +1578,37 @@ class VPMSetup:
     """Cutoff radius multiplier for particle interactions (performance optimization)"""
 
     precision: Literal["f32", "f64"] = "f32"
-    """Floating-point precision for compute operations.
+    """Floating-point precision of the particle fields.
 
-      - 'f32' (default): Single precision. Fast on GPU (Vulkan/CUDA). Minor precision loss in atomic adds.
-      - 'f64': Double precision. Higher accuracy but REQUIRES CPU backend (Vulkan/CUDA don't support f64 well).
+      - ``'f32'`` (default) — **the supported production precision.**  Fast on
+        GPU (Vulkan/CUDA); the 'Atomic add may lose precision' warnings are
+        expected and acceptable.
+      - ``'f64'`` — **EXPERIMENTAL and not end-to-end.**  It widens the particle
+        container and the direct velocity summation, but three parts of the
+        pipeline stay f32 regardless, so the delivered accuracy is well short of
+        double precision:
 
-      The 'Atomic add may lose precision' warnings with f32 are generally acceptable for most CFD simulations.
-      For high-accuracy requirements, use precision='f64' with processing_unit='CPU'."""
+          * the LBVH treecode is f32 throughout — fields, multipoles and host
+            buffers — so ``velocity=VelocityConfig.treecode(...)`` is rejected
+            with ``precision='f64'`` rather than silently downgraded;
+          * the velocity-gradient and energy/helicity accumulators in
+            ``numerics/kernels_common.py`` are hardcoded ``ti.f32``;
+          * the Gaussian ``q``/``g`` use the Abramowitz & Stegun 7.1.26 erf
+            approximation, whose max absolute error is 1.4e-7 — above f32 eps
+            and nine orders above f64 eps.
+
+        Requires ``processing_unit='CPU'`` (Vulkan/Metal have limited f64
+        support).  Treat results as f32-accurate until the remaining paths are
+        widened; see docs/reviews/2026-08-vpm-audit.md finding N-3."""
+
+    random_seed: int = 42
+    """Seed for Taichi's RNG (default 42).
+
+      Only the Random Walk Method (``ViscousConfig(scheme='RWM')``) consumes it:
+      its Brownian displacements are drawn from this stream.  A fixed seed makes
+      a single run reproducible, but it also makes every run identical, so an
+      RWM ensemble must vary this across members for the stochastic diffusion to
+      average out.  Ignored on the Metal backend."""
 
     device_memory_fraction: float = 0.5
     """Fraction of GPU VRAM reserved for Taichi's internal memory pool (default 0.5).
@@ -1737,16 +1773,22 @@ class VPMSetup:
             )
         # The treecode implements only a subset of the regularization kernels
         # (it carries its own Taichi q/zeta).
-        if (
-            self.velocity is not None
-            and self.velocity.method == "TREECODE"
-            and _kernel_up not in TREECODE_SUPPORTED_KERNELS
-        ):
+        _treecode = self.velocity is not None and self.velocity.method == "TREECODE"
+        if _treecode and _kernel_up not in TREECODE_SUPPORTED_KERNELS:
             raise ValueError(
                 f"particles_kernel='{_kernel_up}' cannot be used with "
                 f"velocity method 'TREECODE': the treecode implements only "
                 f"{list(TREECODE_SUPPORTED_KERNELS)}. Either switch to "
                 f"VelocityConfig.direct() or choose a supported kernel."
+            )
+        # The treecode's fields, multipoles and host buffers are f32 throughout,
+        # so this pairing delivers f32 accuracy under an f64 label.
+        if _treecode and self.precision == "f64":
+            raise ValueError(
+                "precision='f64' cannot be used with velocity method 'TREECODE': "
+                "the treecode is f32 end-to-end, so the velocity field would be "
+                "single precision regardless. Use VelocityConfig.direct() for an "
+                "f64 run, or precision='f32' with the treecode."
             )
         if self.filament_refinement.enabled and _kernel_up != "GAUSSIAN":
             raise ValueError(
@@ -1816,6 +1858,7 @@ class VPMSetup:
             "backup_directory": self.backup_directory,
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
+            "random_seed": self.random_seed,
             "device_memory_fraction": self.device_memory_fraction,
             "processing_unit": self.processing_unit,
             "debug_mode": self.debug_mode,

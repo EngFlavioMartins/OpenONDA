@@ -17,32 +17,6 @@ from ..kernels.source_velocity import compute_source_velocity
 
 
 @ti.kernel
-def build_AIC_matrix(
-    vertices: ti.template(),
-    centers: ti.template(),
-    normals: ti.template(),
-    AIC: ti.template(),
-    n: int,
-):
-    """
-    Build the Aerodynamic Influence Coefficient (AIC) matrix for Neumann BC.
-    AIC[i, j] = Normal velocity at center i induced by unit doublet at panel j.
-
-    For the Neumann BC, the AIC is the normal component of the velocity
-    induced by a unit doublet panel. The self-term is 0.5 (half the solid angle).
-    """
-    for i, j in ti.ndrange(n, n):
-        if i == j:
-            AIC[i, j] = 0.5
-        else:
-            v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]
-            # Compute velocity induced by unit doublet at panel j
-            v_induced = compute_vortex_ring_velocity(centers[i], v0, v1, v2)
-            # Project onto normal at panel i
-            AIC[i, j] = v_induced.dot(normals[i])
-
-
-@ti.kernel
 def build_source_AIC_matrix(
     vertices: ti.template(),
     centers: ti.template(),

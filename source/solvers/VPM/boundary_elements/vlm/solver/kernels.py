@@ -289,6 +289,10 @@ def shed_wake_particles_kernel(
             V_kin_for_sizing = _v_kin_for_sizing(V_conv, use_local_velocity, V_kin_local)
             span_vec = TeR - TeL
             span_mag = span_vec.norm()
+            # A degenerate (zero-span) TE panel has no trailing vortex to shed and
+            # would divide by span_mag below, injecting NaN strengths into the VPM.
+            if span_mag < 1e-12:
+                continue
             l_te = V_kin_for_sizing * dt
             # Trailing-vortex particle core tracks the LOCAL spanwise edge spacing
             # (span_mag), floored at one streamwise step (l_te) to keep the shed sheet

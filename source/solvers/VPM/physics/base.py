@@ -20,6 +20,10 @@ import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
 
+# Smallest treecode capacity worth allocating.  Below this the fixed per-node
+# cost is irrelevant and the doubling would just add rebuilds.
+_TREECODE_MIN_CAPACITY = 8192
+
 # Fixed host-side transfer shape for NumPy <-> Taichi ndarray kernels.
 #
 # Vulkan and Metal both route ndarray arguments through backend staging buffers.
@@ -172,17 +176,29 @@ class PhysicsBase:
         # Mark initial size
         self._temp_field_size = self.max_particles
 
-    def _zero_temp_fields(self):
-        """Zero all temporary fields to prevent contamination between operations."""
-        self.pos_temp.fill(0)
-        self.pos_temp2.fill(0)
-        self.vel_temp.fill(0)
-        self.vel_temp2.fill(0)
-        self.str_temp.fill(0)
-        self.str_temp2.fill(0)
-        self.dstr_dt_temp.fill(0)
-        self.dstr_dt_temp2.fill(0)
-        self.dstr_dt_temp3.fill(0)
+    @ti.kernel
+    def _zero_temp_fields_kernel(self, N: ti.i32):
+        for i in range(N):
+            self.pos_temp[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.pos_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.vel_temp[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.vel_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.str_temp[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.str_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.dstr_dt_temp[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.dstr_dt_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
+            self.dstr_dt_temp3[i] = ti.Vector([0.0, 0.0, 0.0])
+
+    def _zero_temp_fields(self, N: int | None = None):
+        """Zero the temporaries over the active range only.
+
+        ``field.fill(0)`` covers the whole startup allocation (``max_particles``),
+        which is 9 vec3 fields — 54 MB of writes at the 500k default — regardless
+        of how many particles exist.  Only entries below N are ever read back.
+        """
+        count = self._temp_field_size if N is None else min(int(N), self._temp_field_size)
+        if count > 0:
+            self._zero_temp_fields_kernel(count)
 
     def _resize_temp_fields(self, N: int):
         """Validate that a particle operation fits the startup allocation."""
@@ -357,16 +373,20 @@ class PhysicsBase:
 
         # Create new treecode only if we need more capacity
         if self._treecode is None or required_size > self._treecode_max_particles:
-            # Use MAX_PARTICLES as the floor, NOT self.max_particles.
-            # self.max_particles can be inflated to millions of particles by
-            # _resize_temp_fields when a diffusion scheme (DVH/GBD) scatter
-            # first creates a dense particle grid.  Using it here would cause
-            # TaichiTreecode to allocate traversal_stack fields of shape
-            # (N_scatter, 48) — e.g. (3.36M, 48) — consuming ~1.2 GB of
-            # GPU memory for stacks alone instead of the expected ~190 MB,
-            # which exhausts the CUDA memory pool and causes
-            # CUDA_ERROR_ILLEGAL_ADDRESS on the first subsequent GPU sync.
-            alloc_size = max(required_size, MAX_PARTICLES)
+            # Size to the particles actually present, doubling from a small floor.
+            #
+            # Never use self.max_particles: a DVH/GBD scatter inflates it to
+            # millions, and the traversal stacks alone (N, 48) would then cost
+            # ~1.2 GB, exhausting the CUDA pool and yielding
+            # CUDA_ERROR_ILLEGAL_ADDRESS on the next sync.  The previous
+            # MAX_PARTICLES floor avoided that but paid ~565 MB even for a
+            # hundred particles.  Doubling bounds the number of reallocations to
+            # O(log N) — which matters because Taichi never frees a field, so
+            # every regrow leaks the previous allocation; total leaked memory
+            # stays below 2x the final size.
+            alloc_size = max(_TREECODE_MIN_CAPACITY, self._treecode_max_particles or 0)
+            while alloc_size < required_size:
+                alloc_size *= 2
             self._treecode = TaichiTreecode(
                 max_particles=alloc_size,
                 max_nodes=2 * alloc_size,
@@ -507,10 +527,9 @@ class PhysicsBase:
                     tree.build(pos, strg, rad, N)
             else:
                 tree.build(pos, strg, rad, N)
-            # Background velocity: extract single 3-vector (cheap, 3 floats).
-            bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
-            # On-device traversal + field-to-field copy
-            tree.compute_velocities_gpu(bg_arr)
+            # On-device traversal + field-to-field copy.  The freestream is passed
+            # as a field so nothing crosses to the host inside an RK stage.
+            tree.compute_velocities_gpu(background_field=bg)
             self._copy_vec3(tree.velocities, out, N)
         else:
             self.compute_velocities_kernel(pos, strg, rad, out, bg, N)

@@ -121,8 +121,7 @@ def _is_likely_integrated_gpu() -> bool:
 
 # Target pool size (bytes) on integrated GPUs.  768 MiB is enough for
 # 500 000 particles (~80 MB) + GBD/DVH grids with several reallocations
-# (~400 MB) + scratch space.  Keeping the pool small leaves the maximum
-# amount of Vulkan memory for ext-arr staging buffers and the OS.
+# (~400 MB) + scratch space.
 _INTEGRATED_GPU_POOL_BYTES: int = 768 * (1 << 20)  # 768 MiB
 
 
@@ -163,12 +162,6 @@ def _safe_device_memory_for_init(
         return {}
 
     # -- Linux / Vulkan / CUDA path --------------------------------------
-    # CUDA is always a discrete NVIDIA GPU.  Skip all integrated-GPU
-    # heuristics (Vulkan heap ratios, DRM driver names) which are unreliable
-    # on Optimus / hybrid-graphics laptops: the Intel iGPU's i915 driver
-    # appears alongside the NVIDIA device in /sys/class/drm, and NVIDIA
-    # Optimus reports an inflated device-local Vulkan heap_size that
-    # combines VRAM + BAR regions.  Neither heuristic applies to CUDA.
     if backend in {"CUDA"}:
         return {"device_memory_fraction": desired_fraction}
 
@@ -179,10 +172,7 @@ def _safe_device_memory_for_init(
         heap_size, heap_budget = budget_info
         # NVIDIA Optimus / hybrid laptops report an inflated device-local
         # heap_size that combines VRAM + BAR regions (e.g. 11 GiB on a 6 GiB
-        # card).  The ratio test alone therefore misclassifies discrete GPUs
-        # whose VRAM budget (real VRAM) happens to be < 80 % of that inflated
-        # size.  Guard with an absolute cap: any GPU with ≥ 4 GiB of Vulkan
-        # budget is discrete regardless of the ratio.
+        # card).
         if 0 < heap_budget < heap_size * 0.8 and heap_budget < 4 * (1 << 30):
             is_integrated = True
 
@@ -208,11 +198,6 @@ def _safe_device_memory_for_init(
         return {"device_memory_GB": pool_gb}
 
     return {"device_memory_fraction": desired_fraction}
-
-
-# Backend (arch, name) resolution is handled dynamically by
-# _build_backend_chain() / _resolve_gpu_backend() so the best available GPU is
-# chosen at runtime without any hardcoded alias map.
 
 _PRECISION_MAP: dict[str, tuple] = {
     "f32": (ti.f32, ti.i32),
@@ -253,9 +238,6 @@ def _resolve_gpu_backend() -> tuple:
     return (ti.vulkan, "VULKAN")
 
 
-# CPU candidates, tried last.  ``ti.cpu`` is the native host architecture
-# (arm64 on Apple Silicon); trying the exported ``ti.x64`` alias first on an
-# arm64 host produces a misleading fallback warning.
 def _cpu_candidates() -> list[tuple]:
     """Ordered list of CPU ``(arch, name)`` pairs to try as the final fallback."""
     cands: list[tuple] = []
@@ -350,6 +332,7 @@ def initialize_taichi_backend(
     debug_mode: bool = False,
     precision: str = "f32",
     device_memory_fraction: float = 0.5,
+    random_seed: int = 42,
 ) -> str:
     """
     Initialize Taichi with user-specified backend and precision settings.
@@ -367,6 +350,11 @@ def initialize_taichi_backend(
               Taichi's internal memory pool (default 0.5).  Lower this
               value (e.g. 0.3) if you see ``Failed to allocate ext arr
               buffer`` errors.  Clamped to [0.1, 0.7].
+          random_seed: Seed for Taichi's RNG (default 42).  The Random Walk
+              Method draws its Brownian displacements from it, so a fixed seed
+              makes a run reproducible but makes every run of an ensemble
+              identical; vary it across members to average the stochastic
+              diffusion.  Ignored on Metal, which does not accept the kwarg.
 
     Returns:
           str: Name of the successfully initialised backend
@@ -385,19 +373,11 @@ def initialize_taichi_backend(
         preferred_backend = env_unit
 
     # -- Platform-aware backend chain (GPU first, CPU last) --------------
-    # Build the ordered list of (arch, name) candidates to attempt.  Every
-    # viable GPU for this platform is tried before the CPU, so a transient
-    # failure on the first-choice GPU API still lands on another GPU instead
-    # of silently dropping to the (much slower) CPU.  Precision is forwarded
-    # so incompatible combos (e.g. f64 on Metal) are excluded up-front —
-    # their failure mode is an uncatchable process abort at kernel-compile
-    # time, not a Python exception the fallback loop could recover from.
+    # Build the ordered list of (arch, name) candidates to attempt.
     chain = _build_backend_chain(preferred_backend, precision)
     strict_gpu = preferred_backend in {"METAL", "VULKAN", "CUDA"}
 
-    # Clamp to a safe range.  Values above ~0.7 almost always trigger
-    # 'Failed to allocate ext arr buffer' on Vulkan/CUDA.  This is a hardware
-    # guard, so it warns (rather than silently honouring) when it bites.
+    # Clamp to a safe range.
     clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
     if clamped_fraction != device_memory_fraction:
         print(
@@ -432,12 +412,9 @@ def initialize_taichi_backend(
             "offline_cache": False,
         }
         if name != "METAL":
-            init_kwargs["random_seed"] = 42
+            init_kwargs["random_seed"] = random_seed
             init_kwargs["advanced_optimization"] = True
         if name == "CPU":
-            # Allow parallel tutorial launchers to partition host cores instead
-            # of every Taichi process claiming the whole machine and
-            # oversubscribing it.  Absent the override, retain Taichi's default.
             cpu_threads = os.environ.get("OPENONDA_CPU_THREADS", "").strip()
             if cpu_threads:
                 init_kwargs["cpu_max_num_threads"] = max(1, int(cpu_threads))
