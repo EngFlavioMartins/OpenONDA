@@ -29,7 +29,6 @@ from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
     Solver,
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -51,9 +50,6 @@ def build_config(args, depth):
         n_correctors=args.n_correctors,
         n_outer_correctors=args.n_outer,
     )
-    solver_forces = ForcesConfig(
-        ref_velocity=args.u_inf, ref_area=args.diameter * depth, ref_length=args.diameter
-    )
 
     return FVMSetup(
         case_name="cylinderIBM",
@@ -71,7 +67,6 @@ def build_config(args, depth):
         schemes=solver_schemes,
         linear=solver_linear,
         pimple=solver_pimple,
-        forces=solver_forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[

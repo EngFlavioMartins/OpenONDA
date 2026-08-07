@@ -2,7 +2,6 @@ import pytest
 
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     MeshConfig,
@@ -12,6 +11,8 @@ from source.solvers.FVM.config.types import (
     TransportConfig,
     TurbulenceConfig,
 )
+from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.FVM.sampling.forces import ForceSampler, YPlusSampler
 from source.solvers.FVM.factory import _runtime_setup
 
 
@@ -137,15 +138,20 @@ class TestConfigFactories:
                 ghost_layers=0,
             ),
             pimple=PimpleControl(ibm_forcing_loops=9, ibm_second_solve=False),
-            forces=ForcesConfig(
-                yplus_patches=["wall"],
-                force_patches=["body"],
-                ref_velocity=12.0,
-                ref_area=3.0,
-                ref_length=2.0,
-                force_log_interval=7,
-                moment_centre=[1.0, 2.0, 3.0],
-            ),
+            samplers=[
+                YPlusSampler(
+                    patch_names=["wall"],
+                    schedule=SamplingSchedule(every_n_steps=7),
+                ),
+                ForceSampler(
+                    patch_names=["body"],
+                    ref_velocity=12.0,
+                    ref_area=3.0,
+                    ref_length=2.0,
+                    moment_centre=[1.0, 2.0, 3.0],
+                    schedule=SamplingSchedule(every_n_steps=7),
+                ),
+            ],
         )
         path = tmp_path / "complete.json"
         config.save(path)

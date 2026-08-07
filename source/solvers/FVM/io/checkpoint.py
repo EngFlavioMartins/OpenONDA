@@ -51,7 +51,12 @@ def _hash(value) -> str:
 
 def config_hash(config) -> str:
     """Return a deterministic hash of every public FVM configuration field."""
-    return _hash(asdict(config))
+    from source.solvers.FVM.sampling.base import sampler_to_dict
+
+    data = asdict(config)
+    if getattr(config, "samplers", ()):
+        data["samplers"] = [sampler_to_dict(s) for s in config.samplers]
+    return _hash(data)
 
 
 def mesh_hash(mesh_data) -> str:
@@ -104,7 +109,6 @@ def save_checkpoint(solver, path) -> Path:
         "current_dt": np.asarray(solver._current_dt),
         "cfl_max": np.asarray(solver.cfl_max),
         "time_since_last_write": np.asarray(solver._time_since_last_write),
-        "force_log_counter": np.asarray(solver._force_log_counter),
         "acceptance_counts": np.asarray(
             [solver._acceptance_counts[name] for name in sorted(solver._acceptance_counts)],
             dtype=np.int64,
@@ -147,7 +151,6 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
             "current_dt",
             "cfl_max",
             "time_since_last_write",
-            "force_log_counter",
             "acceptance_counts",
         }
         if "metadata" not in archive.files:
@@ -211,7 +214,6 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
     solver._current_dt = float(state["current_dt"])
     solver.cfl_max = float(state["cfl_max"])
     solver._time_since_last_write = float(state["time_since_last_write"])
-    solver._force_log_counter = int(state["force_log_counter"])
     acceptance_names = sorted(solver._acceptance_counts)
     if state["acceptance_counts"].shape != (len(acceptance_names),):
         raise ValueError("Checkpoint acceptance-policy state is incompatible")

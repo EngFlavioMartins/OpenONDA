@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from source.solvers.FVM.config.types import (
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -25,7 +24,7 @@ def _params(**overrides):
     """Merged solver-parameter namespace, as the solver feeds
     ``validate_solver_params`` (union of the grouped configs' fields)."""
     flat: dict = {}
-    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl(), ForcesConfig()):
+    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl()):
         flat.update(vars(group))
     flat.update(overrides)
     return SimpleNamespace(**flat)
@@ -33,7 +32,7 @@ def _params(**overrides):
 
 def _params_from(groups):
     flat: dict = {}
-    for group in (*groups, ForcesConfig()):
+    for group in (*groups,):
         flat.update(vars(group))
     return SimpleNamespace(**flat)
 

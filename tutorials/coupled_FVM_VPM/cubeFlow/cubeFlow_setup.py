@@ -15,7 +15,7 @@ from openonda.coupler import CouplerSetup, setup_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
-    ForcesConfig,
+    ForceSampler,
     FVMSetup,
     LinearSolverConfig,
     LineSampler as FVMLineSampler,
@@ -28,6 +28,7 @@ from openonda.fvm import (
     TurbulenceConfig as FVMTurbulenceConfig,
     setup_fvm_solver,
 )
+from openonda.fvm import SamplingSchedule
 from openonda.vpm import (
     AdvectionConfig,
     LineSampler as VPMLineSampler,
@@ -74,6 +75,14 @@ OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 
 FVM_SAMPLERS = (
+    ForceSampler(
+        patch_names=["cube"],
+        ref_velocity=np.linalg.norm(U_INF),
+        ref_area=CUBE_SIDE**2,
+        ref_length=CUBE_SIDE,
+        moment_centre=[0.0, 0.0, 0.0],
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+    ),
     FVMLineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
@@ -182,14 +191,6 @@ FVM_SETUP = FVMSetup(
         n_orthogonal_correctors=1,
         alpha_u=0.7,
         alpha_p=0.3,
-    ),
-    forces=ForcesConfig(
-        force_patches=["cube"],
-        ref_velocity=np.linalg.norm(U_INF),
-        ref_area=CUBE_SIDE**2,
-        ref_length=CUBE_SIDE,
-        moment_centre=[0.0, 0.0, 0.0],
-        force_log_interval=SAMPLE_INTERVAL,
     ),
     samplers=FVM_SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),

@@ -5,11 +5,15 @@ initialisation).  Each sampler decides, through its own
 :class:`~.base.SamplingSchedule`, whether it is due; the executor never applies
 a global force cadence.
 
-Force and y+ sampling are MPI-collective in partitioned runs and are therefore
-never wrapped in error handling that could let ranks diverge.  Field samplers
-are root-only, and a failing field sampler must not abort an accepted step —
-its error is logged and the step proceeds (legacy samplers without a schedule
-are treated as always due).
+Force, y+ and IBM sampling are MPI-collective in partitioned runs and are never
+wrapped in error handling that could let ranks diverge.  Field samplers (line /
+surface) gather owned data to root and are therefore **root-only** — non-root
+ranks return after the collective sample, they never touch the filesystem, so
+there is no PVD race and no ``samples/`` directory creation on non-root ranks.
+
+Sampler failures are strict by default: a missing scientific sample aborts the
+step rather than being mistaken for successful output.  Callers may explicitly
+choose ``strict=False`` when a best-effort diagnostic is appropriate.
 """
 
 from __future__ import annotations
@@ -24,10 +28,10 @@ class FVMSamplerExecutor:
     """Orchestrates FVM sampler execution for one accepted step."""
 
     @staticmethod
-    def execute(solver) -> None:
+    def execute(solver, *, strict: bool = True) -> None:
         samplers = list(getattr(solver.config, "samplers", ()) or ())
         auto_yplus = getattr(solver, "_default_yplus_sampler", None)
-        if auto_yplus is not None:
+        if auto_yplus is not None and auto_yplus not in samplers:
             samplers.append(auto_yplus)
         if not samplers:
             return
@@ -41,17 +45,18 @@ class FVMSamplerExecutor:
             os.makedirs(samples_dir, exist_ok=True)
 
         for sampler in samplers:
+            is_due = getattr(sampler, "is_due", None)
+            if is_due is not None and not is_due(
+                solver.time_step, solver.flow_time, solver._current_dt
+            ):
+                continue
             if isinstance(sampler, ForceSampler):
-                if not sampler.is_due(solver.time_step, solver.flow_time, solver._current_dt):
-                    continue
                 forces = sampler.sample(solver)
                 solver.last_forces = forces
                 if parallel.is_root:
                     sampler.write_csv(solver, samples_dir, forces)
                     solver.logger.force_info(forces)
             elif isinstance(sampler, YPlusSampler):
-                if not sampler.is_due(solver.time_step, solver.flow_time, solver._current_dt):
-                    continue
                 stats = sampler.sample(solver)
                 if parallel.is_root:
                     solver.last_yplus = stats
@@ -60,30 +65,26 @@ class FVMSamplerExecutor:
             elif isinstance(sampler, IBMForceSampler):
                 if not parallel.is_root:
                     continue
-                if not sampler.is_due(solver.time_step, solver.flow_time, solver._current_dt):
-                    continue
                 data = sampler.sample(solver)
                 sampler.write_csv(solver, samples_dir, data)
                 solver.logger.ibm_force_info(sampler.summary(solver, data), data["slip"])
             else:
-                FVMSamplerExecutor._write_field_sampler(solver, sampler, samples_dir)
+                FVMSamplerExecutor._write_field_sampler(
+                    solver, sampler, samples_dir, strict=strict
+                )
 
     @staticmethod
-    def _write_field_sampler(solver, sampler, samples_dir: str) -> None:
-        is_due = getattr(sampler, "is_due", None)
-        if is_due is not None and not is_due(
-            solver.time_step, solver.flow_time, solver._current_dt
-        ):
-            return
+    def _write_field_sampler(
+        solver, sampler, samples_dir: str, *, strict: bool = True
+    ) -> None:
         if hasattr(sampler, "save_vts"):
-            if not sampler.should_write():
-                return
             filename = f"{sampler.name}_{solver.time_step:06d}.vts"
             try:
-                sampler.save_vts(solver, os.path.join(samples_dir, filename))
+                data = sampler.save_vts(solver, os.path.join(samples_dir, filename))
             except Exception as exc:
-                name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
-                solver.logger.warning(f"Sampler '{name}' failed: {exc}")
+                FVMSamplerExecutor._handle_failure(solver, sampler, exc, strict)
+                return
+            if not solver.parallel.is_root or data is None:
                 return
             entries = getattr(sampler, "_pvd_entries", None)
             if entries is None:
@@ -94,5 +95,11 @@ class FVMSamplerExecutor:
             try:
                 sampler.write_csv(solver, samples_dir)
             except Exception as exc:
-                name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
-                solver.logger.warning(f"Sampler '{name}' failed: {exc}")
+                FVMSamplerExecutor._handle_failure(solver, sampler, exc, strict)
+
+    @staticmethod
+    def _handle_failure(solver, sampler, exc: Exception, strict: bool) -> None:
+        name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
+        if strict:
+            raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc
+        solver.logger.warning(f"Sampler '{name}' failed: {exc}")

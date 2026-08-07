@@ -179,31 +179,8 @@ class Solver:
 
         self._dvh_dt_info: str | None = None
         self._gbd_dt_info: str | None = None
-        self._cs_dt_info: str | None = None
         self._rwm_dt_info: str | None = None
         vc = final_config.viscous
-
-        # CS: warn if dt exceeds the parabolic CFL bound h²/(4nu).
-        # Requires characteristic_distance and viscosity to be set.
-        if (
-            vc.scheme == "CS"
-            and vc.characteristic_distance is not None
-            and vc.characteristic_distance > 0
-            and vc.viscosity is not None
-            and vc.viscosity > 0
-        ):
-            dt_max_cs = vc.cs_max_dt()
-            if self.time_step_size > dt_max_cs * (1.0 + 1e-6):
-                Logging.message(
-                    f"[CS] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> stability limit h²/(4nu) = {dt_max_cs:.4e} s — "
-                    f"Core Spreading diffusion step may over-diffuse vortex cores."
-                )
-            self._cs_dt_info = (
-                f"CS stability limit h²/(4nu) = {dt_max_cs:.4e} s "
-                f"(h = {vc.characteristic_distance:.3e} m, "
-                f"nu = {vc.viscosity:.3e} m²/s)."
-            )
 
         # RWM: warn if dt exceeds the accuracy bound h²/(4nu)
         if (
@@ -770,15 +747,17 @@ class Solver:
         :meth:`update_state`); this method only advances the counter and prints
         the step header.
 
-        Note: Flow time is calculated as (time_step * time_step_size) and then
-        rounded to 12 decimal places to eliminate floating point accumulation errors.
-        This ensures consistent, clean time stamps across all output files.
+        Note: Flow time accumulates the applied step size, ``flow_time +=
+        time_step_size``, and is rounded to 12 decimal places.  Accumulation (not
+        ``time_step * time_step_size``) is required so the clock stays monotonic
+        and physically correct when :meth:`set_time_step_size` (or DVH sub-step
+        pinning) changes the step size mid-run.
         """
 
         # Advance time step counter
         self.time_step += 1
 
-        self.flow_time = round(self.time_step * self.time_step_size, 6)
+        self.flow_time = round(self.flow_time + self.time_step_size, 12)
 
         Logging.message(
             f"\nTime-step: {self.time_step:d}   Flow time: {self.flow_time:0.2E} s",

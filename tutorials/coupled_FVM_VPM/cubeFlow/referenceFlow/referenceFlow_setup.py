@@ -18,12 +18,13 @@ from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
     BoxRefinement,
-    ForcesConfig,
+    ForceSampler,
     FVMSetup,
     LinearSolverConfig,
     LineSampler,
     OutputSetup,
     PimpleControl,
+    SamplingSchedule,
     SchemesConfig,
     SurfaceSampler,
     TimeConfig,
@@ -59,6 +60,14 @@ SLICE_STRIDE = 4
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 
 SAMPLERS = (
+    ForceSampler(
+        patch_names=["cube"],
+        ref_velocity=float(np.linalg.norm(U_INF)),
+        ref_area=CUBE_SIDE**2,
+        ref_length=CUBE_SIDE,
+        moment_centre=[0.0, 0.0, 0.0],
+        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+    ),
     LineSampler(
         start=[FVM_DOMAIN[0], 0.0, 0.0],
         end=[FVM_DOMAIN[1], 0.0, 0.0],
@@ -76,7 +85,7 @@ SAMPLERS = (
         normal=[0, 0, 1],
         bounds=[FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[3]],
         spacing=SAMPLE_SPACING,
-        stride=SLICE_STRIDE,
+        schedule=SamplingSchedule(every_n_steps=SLICE_STRIDE),
         file_name="slice_z0",
     ),
 )
@@ -139,14 +148,6 @@ FVM_SETUP = FVMSetup(
         n_orthogonal_correctors=1,
         alpha_u=0.7,
         alpha_p=0.3,
-    ),
-    forces=ForcesConfig(
-        force_patches=["cube"],
-        ref_velocity=float(np.linalg.norm(U_INF)),
-        ref_area=CUBE_SIDE**2,
-        ref_length=CUBE_SIDE,
-        moment_centre=[0.0, 0.0, 0.0],
-        force_log_interval=SAMPLE_INTERVAL,
     ),
     samplers=SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),

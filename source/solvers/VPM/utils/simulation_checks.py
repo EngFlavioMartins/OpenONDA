@@ -69,7 +69,7 @@ def _compute_particle_statistics(system):
 def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_mean_spacing=False):
     """Compute time step limits for a specific viscous scheme."""
     CFL_advection = 0.5
-    C_diff = 0.125 if scheme_name == "CS" else 1.0  # RWM uses larger coefficient
+    C_diff = 1.0  # RWM accuracy coefficient
     C_stretching = 1.0
 
     h = stats["h_mean"] if use_mean_spacing else stats["h_min"]
@@ -77,8 +77,9 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
     # Advection limit
     dt_adv = CFL_advection * h / stats["u_max"] if stats["u_max"] > EPSILON else 1.0
 
-    # Diffusion limit (None scheme doesn't have this)
-    if scheme_name == "NONE":
+    # Diffusion limit (NONE and CS don't have an explicit diffusion step: CS
+    # spreads cores analytically, so there is no parabolic-CFL stability bound).
+    if scheme_name in ("NONE", "CS"):
         dt_diff = float("inf")
     else:
         dt_diff = C_diff * h**2 / stats["nu_eff_max"] if stats["nu_eff_max"] > EPSILON else 1.0
@@ -106,7 +107,7 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
         "status": "stable" if system_dt <= dt_limit else "WARNING: too large",
     }
 
-    if scheme_name != "NONE":
+    if scheme_name not in ("NONE", "CS"):
         result["dt_diff_component"] = dt_diff
 
     return result

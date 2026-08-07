@@ -131,7 +131,13 @@ def test_common_fvm_settings_identical(bench, reference):
     assert fully_meshed.pimple.alpha_u == pytest.approx(0.7)
     assert fully_meshed.pimple.alpha_p == pytest.approx(0.3)
     assert hybrid.transport == fully_meshed.transport
-    assert hybrid.forces == fully_meshed.forces
+    # Wall-load integration is an explicit sample; both setups carry an
+    # equivalent wall ForceSampler (their other, differently-named field
+    # samplers are intentionally not identical).
+    def force_sampler(setup):
+        return next(s for s in setup.samplers if s.name == "forces_history")
+
+    assert force_sampler(hybrid) == force_sampler(fully_meshed)
     assert hybrid.execution == fully_meshed.execution
     assert hybrid.output == fully_meshed.output
     assert hybrid.time.delta_t == fully_meshed.time.delta_t

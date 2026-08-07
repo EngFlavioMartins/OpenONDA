@@ -23,7 +23,6 @@ import pytest
 from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -34,6 +33,8 @@ from source.solvers.FVM import (
 )
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces, compute_y_plus
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.FVM.sampling.forces import ForceSampler
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -251,20 +252,22 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     )
     params_linear = LinearSolverConfig(momentum_solver="bicgstab", pressure_solver="amg")
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=2)
-    params_forces = ForcesConfig(
-        force_patches=["cube"],
-        ref_velocity=1.0,
-        ref_area=1.0,
-        ref_length=1.0,
-        force_log_interval=1,
-    )
+    params_forces = [
+        ForceSampler(
+            patch_names=["cube"],
+            ref_velocity=1.0,
+            ref_area=1.0,
+            ref_length=1.0,
+            schedule=SamplingSchedule(every_n_steps=1),
+        )
+    ]
     config = FVMSetup(
         case_name="ghost-cert",
         time=TimeConfig.transient(dt=0.05, duration=0.5, write_interval=10**9),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        forces=params_forces,
+        samplers=params_forces,
         transport=TransportConfig(density=1.0, nu=0.05),
         boundaries=[
             BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),

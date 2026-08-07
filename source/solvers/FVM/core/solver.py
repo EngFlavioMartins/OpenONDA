@@ -592,25 +592,10 @@ class Solver(OFWInterfaceMixin):
         # Unless the user configured a YPlusSampler explicitly, run a default
         # that keeps ``last_yplus`` fresh on every accepted step.
         self._default_yplus_sampler = None
-        from ..sampling.forces import ForceSampler, YPlusSampler
+        from ..sampling.forces import YPlusSampler
 
         if not any(isinstance(s, YPlusSampler) for s in (self.config.samplers or ())):
             self._default_yplus_sampler = YPlusSampler(patch_names=None)
-
-        # The classic path configures forces through ``ForcesConfig``; mirror
-        # it as a default ForceSampler (explicit samplers run alongside it).
-        forces_cfg = self.config.forces
-        if forces_cfg is not None:
-            self.config.samplers = (
-                *self.config.samplers,
-                ForceSampler(
-                    patch_names=forces_cfg.force_patches,
-                    ref_velocity=forces_cfg.ref_velocity,
-                    ref_area=forces_cfg.ref_area,
-                    ref_length=forces_cfg.ref_length,
-                    moment_centre=forces_cfg.moment_centre,
-                ),
-            )
 
     @classmethod
     def from_case(cls, case_dir: str, **overrides):

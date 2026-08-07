@@ -390,7 +390,7 @@ class Logging:
         """Return lines showing Δt, stability/accuracy limit, and a warning if exceeded.
 
         Works whether or not particles are loaded — reads limits directly from
-        the ViscousConfig methods (cs_max_dt, rwm_accuracy_dt, gbd_max_dt,
+        the ViscousConfig methods (rwm_accuracy_dt, gbd_max_dt,
         dvh_required_dt) which require only ``characteristic_distance`` and
         ``viscosity`` to be set on the config.  Skips silently when those fields
         are absent.
@@ -413,10 +413,7 @@ class Logging:
             limit: float | None = None
             limit_label: str = ""
 
-            if scheme == "CS" and h and h > 0 and nu and nu > 0:
-                limit = visc_cfg.cs_max_dt()
-                limit_label = "h²/(4nu)"
-            elif scheme == "RWM" and h and h > 0 and nu and nu > 0:
+            if scheme == "RWM" and h and h > 0 and nu and nu > 0:
                 limit = visc_cfg.rwm_accuracy_dt()
                 limit_label = "h²/(4nu)"
             elif scheme == "GBD" and nu and nu > 0:

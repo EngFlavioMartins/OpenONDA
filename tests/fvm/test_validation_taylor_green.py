@@ -25,7 +25,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -66,7 +65,6 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=bnds,
         initial_U=[0, 0, 0],

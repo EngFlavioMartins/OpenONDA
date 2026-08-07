@@ -13,7 +13,6 @@ from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
     Solver,
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -130,7 +129,6 @@ def build_config(args, inlet_values, nu):
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,
         boundaries=[

@@ -178,7 +178,9 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
         )
     assert solver.ibm is None
     assert getattr(solver.algorithm, "ibm", None) is None
-    # Force integration was configured from the body's actual bounds.
-    assert solver.config.forces.force_patches == ["cube"]
-    assert solver.config.forces.ref_area == pytest.approx(1.0)
-    assert solver.config.forces.ref_length == pytest.approx(1.0)
+    # Force integration is configured as an explicit sampler from the body's
+    # actual bounds.
+    force_sampler = next(s for s in solver.config.samplers if s.name == "forces_history")
+    assert force_sampler.patch_names == ["cube"]
+    assert force_sampler.ref_area == pytest.approx(1.0)
+    assert force_sampler.ref_length == pytest.approx(1.0)

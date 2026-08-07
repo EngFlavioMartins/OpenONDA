@@ -26,9 +26,10 @@ True
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
+import math
 import os
-from typing import Any
+from typing import Any, ClassVar
 
 # Canonical CSV column order for FVM field samplers.  The leading columns match
 # the VPM sampler's so one reader serves both solvers; ``p`` is an FVM-only
@@ -58,10 +59,14 @@ class SamplingSchedule:
 
     Provide exactly one of ``every_n_steps`` (sample when
     ``time_step % every_n_steps == 0``) or ``every_time`` (sample on the first
-    accepted step whose ``flow_time`` lies within half a time step of an
-    integer multiple of ``every_time``).  Because the decision depends only on
-    ``time_step``/``flow_time``, a live simulation and an offline
-    ``PostProcess`` over archived snapshots produce identical events.
+    accepted step that steps over an integer multiple of ``every_time``).
+    Because the decision depends only on ``time_step``/``flow_time``/``dt``, a
+    live simulation and an offline ``PostProcess`` over archived snapshots
+    produce identical events.
+
+    The ``every_time`` criterion is a *crossing* test — a multiple of
+    ``every_time`` lies inside ``(flow_time - dt, flow_time]`` — so a slowly
+    stepping solver fires once per interval instead of twice around the target.
 
     Examples
     --------
@@ -82,6 +87,13 @@ class SamplingSchedule:
         if self.every_time is not None and float(self.every_time) <= 0.0:
             raise ValueError("every_time must be positive")
 
+    def to_dict(self) -> dict:
+        return {"every_n_steps": self.every_n_steps, "every_time": self.every_time}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SamplingSchedule":
+        return cls(**data)
+
     def is_due(self, time_step: int, flow_time: float, dt: float | None = None) -> bool:
         """Whether a sampling event at the given state should run."""
         if self.every_n_steps is not None:
@@ -89,8 +101,10 @@ class SamplingSchedule:
         if dt is None or dt <= 0.0 or self.every_time is None:
             return False
         interval = float(self.every_time)
-        target = round(float(flow_time) / interval) * interval
-        return abs(float(flow_time) - target) <= 0.5 * float(dt) + 1e-12
+        # Crossing test: an interval boundary lies in (t - dt, t].  Uses an
+        # epsilon so exact multiples and accumulated float error stay robust.
+        bucket = lambda t: math.floor(t / interval + 1e-9)
+        return bucket(flow_time) != bucket(flow_time - dt)
 
 
 class Sampler:
@@ -101,6 +115,11 @@ class Sampler:
     ``file_name`` defaults to the lower-cased class name without the
     ``Sampler`` suffix.
 
+    Every concrete sampler participates in :data:`SAMPLER_REGISTRY` via
+    :meth:`config_dict` / :meth:`from_config`, giving a stable, JSON-safe
+    representation used for ``FVMSetup.save()/load()`` and configuration
+    hashing.
+
     Examples
     --------
     >>> class MySampler(Sampler):
@@ -109,6 +128,8 @@ class Sampler:
     >>> MySampler(file_name="probe").name
     'probe'
     """
+
+    sampler_kind: ClassVar[str] = "Sampler"
 
     def __init__(
         self,
@@ -127,8 +148,58 @@ class Sampler:
         """Whether this sampler runs at the given time/step."""
         return self.schedule.is_due(time_step, flow_time, dt)
 
+    def __eq__(self, other) -> bool:
+        """Samplers are equal when they reconstruct the same configuration.
+
+        This is what makes ``FVMSetup.save()/load()`` round-trips and
+        ``config_hash`` stable: two equivalent explicit samplers compare equal
+        without relying on object identity.
+        """
+        return type(self) is type(other) and self.config_dict() == other.config_dict()
+
+    def __hash__(self) -> int:
+        items = tuple(sorted(self.config_dict().items()))
+        return hash((type(self).__name__, items))
+
     def sample(self, context) -> dict[str, Any] | None:
         raise NotImplementedError
+
+    def config_dict(self) -> dict:
+        """Constructor keyword arguments for this sampler (JSON-safe)."""
+        return {
+            "file_name": self.file_name,
+            "schedule": self.schedule.to_dict(),
+        }
+
+    @classmethod
+    def from_config(cls, data: dict) -> "Sampler":
+        data = dict(data)
+        schedule = data.pop("schedule", None)
+        return cls(**data, schedule=SamplingSchedule.from_dict(schedule))
+
+
+_SAMPLER_REGISTRY: dict[str, type[Sampler]] = {}
+
+
+def _register_sampler(cls: type[Sampler]) -> type[Sampler]:
+    _SAMPLER_REGISTRY[cls.__name__] = cls
+    return cls
+
+
+def sampler_to_dict(sampler: Sampler) -> dict:
+    """Stable JSON-safe spec used by config hashing and ``FVMSetup.save``."""
+    return {"type": type(sampler).__name__, **sampler.config_dict()}
+
+
+def sampler_from_dict(spec: dict) -> Sampler:
+    """Rebuild a sampler from the :func:`sampler_to_dict` specification."""
+    spec = dict(spec)
+    kind = spec.pop("type")
+    try:
+        cls = _SAMPLER_REGISTRY[kind]
+    except KeyError:
+        raise ValueError(f"Unknown sampler type {kind!r} in configuration") from None
+    return cls.from_config(spec)
 
 
 def append_csv_rows(

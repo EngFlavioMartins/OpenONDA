@@ -92,7 +92,6 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
         "current_dt": np.asarray(solver._current_dt),
         "cfl_max": np.asarray(solver.cfl_max),
         "time_since_last_write": np.asarray(solver._time_since_last_write),
-        "force_log_counter": np.asarray(solver._force_log_counter),
         "acceptance_counts": np.asarray(
             [solver._acceptance_counts[name] for name in sorted(solver._acceptance_counts)],
             dtype=np.int64,
@@ -220,7 +219,6 @@ def load_partitioned_solver_checkpoint(
     solver._time_since_last_write = float(state["time_since_last_write"])
     solver.time_step = int(state["time_step"])
     solver._n_committed = int(state["n_committed"])
-    solver._force_log_counter = int(state["force_log_counter"])
     acceptance_names = sorted(solver._acceptance_counts)
     if state["acceptance_counts"].shape != (len(acceptance_names),):
         raise ValueError("Partitioned checkpoint acceptance state is incompatible")

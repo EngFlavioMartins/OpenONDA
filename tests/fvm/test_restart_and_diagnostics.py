@@ -12,7 +12,6 @@ from scipy import sparse
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -23,13 +22,15 @@ from source.solvers.FVM import (
     TransportConfig,
 )
 from source.solvers.FVM.io.storage import InsufficientStorageError
+from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.FVM.sampling.forces import ForceSampler
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 from source.solvers.FVM.solve.simple_solver import SIMPLESolver
 
 from ._structured_mesh import structured_box
 
 
-def _config(time_scheme="euler_implicit", **solver_overrides):
+def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
     solver_schemes = SchemesConfig(convection_scheme="upwind", time_scheme=time_scheme)
     solver_linear = LinearSolverConfig(linear_solver="spsolve")
     solver_pimple = PimpleControl(n_correctors=2)
@@ -46,7 +47,6 @@ def _config(time_scheme="euler_implicit", **solver_overrides):
         schemes=solver_schemes,
         linear=solver_linear,
         pimple=solver_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
@@ -57,6 +57,7 @@ def _config(time_scheme="euler_implicit", **solver_overrides):
             BoundaryConfig.wall("zmax"),
         ],
         initial_U=[0.2, 0.0, 0.0],
+        samplers=samplers,
     )
 
 
@@ -119,6 +120,37 @@ def test_restart_allows_an_explicit_end_time_extension(tmp_path):
 
     assert restored.flow_time == original.flow_time
     np.testing.assert_array_equal(restored.U, original.U)
+
+
+def _force_sampler():
+    return ForceSampler(
+        patch_names=["___none__"],
+        ref_velocity=1.0,
+        ref_area=1.0,
+        ref_length=1.0,
+        schedule=SamplingSchedule(every_n_steps=1),
+    )
+
+
+def test_checkpoint_round_trips_sampler_config(tmp_path):
+    samplers = [_force_sampler()]
+    original = _solver(_config(samplers=samplers), tmp_path / "original")
+    checkpoint = tmp_path / "state.npz"
+    original.save_state(checkpoint)
+
+    restored = _solver(_config(samplers=samplers), tmp_path / "restored")
+    restored.load_state(checkpoint)
+
+    assert restored.config.samplers == original.config.samplers
+
+
+def test_checkpoint_rejects_missing_sampler_config(tmp_path):
+    original = _solver(_config(samplers=[_force_sampler()]), tmp_path / "original")
+    checkpoint = tmp_path / "state.npz"
+    original.save_state(checkpoint)
+
+    with pytest.raises(ValueError, match="configuration hash"):
+        _solver(_config(), tmp_path / "restored").load_state(checkpoint)
 
 
 def test_restart_rewinds_append_only_histories(tmp_path):

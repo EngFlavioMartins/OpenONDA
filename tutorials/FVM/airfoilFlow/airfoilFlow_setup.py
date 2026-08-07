@@ -17,8 +17,8 @@ from assets import mesh_airfoil as mesher
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
+    ForceSampler,
     Solver,
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -39,14 +39,15 @@ def build_config(args, u_vec):
         n_outer_correctors=args.n_outer,
         n_orthogonal_correctors=1,
     )
-    solver_params_forces = ForcesConfig(
-        force_patches=["airfoil"],
-        ref_velocity=args.u_inf,
-        ref_area=args.chord * mesher.DEPTH,
-        ref_length=args.chord,
-        moment_centre=[0.25 * args.chord, 0.0, 0.0],
-        force_log_interval=1,
-    )
+    solver_params_samplers = [
+        ForceSampler(
+            patch_names=["airfoil"],
+            ref_velocity=args.u_inf,
+            ref_area=args.chord * mesher.DEPTH,
+            ref_length=args.chord,
+            moment_centre=[0.25 * args.chord, 0.0, 0.0],
+        )
+    ]
 
     tc = TimeConfig(
         delta_t=args.dt,
@@ -66,7 +67,7 @@ def build_config(args, u_vec):
         schemes=solver_params_schemes,
         linear=solver_params_linear,
         pimple=solver_params_pimple,
-        forces=solver_params_forces,
+        samplers=solver_params_samplers,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,
         boundaries=[

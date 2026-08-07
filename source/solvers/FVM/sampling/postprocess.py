@@ -29,6 +29,7 @@ Examples
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 
@@ -149,6 +150,7 @@ class PostProcess:
         config,
         samplers=None,
         mesh=None,
+        overwrite: bool = True,
     ):
         from dataclasses import replace
 
@@ -158,6 +160,7 @@ class PostProcess:
         self.mesh_data = _materialize_mesh(mesh)
         self.boundaries = self._setup_boundaries(self.mesh_data)
         self.geo_data = self._build_geometry(self.mesh_data)
+        self.overwrite = bool(overwrite)
 
     def _build_geometry(self, mesh_data: dict) -> dict:
         from ..fields.gradients import compute_lsq_geometry
@@ -308,13 +311,56 @@ class PostProcess:
         simple_solver.update_scalar_boundaries(p, mesh_data, self.boundaries, "p", face_flux=phi)
         return U, p
 
+    def _archived_timesteps(self) -> dict[int, float]:
+        """Return accepted ``dt`` values keyed by archived solver step."""
+        diagnostics = Path(self.case_dir) / "solution" / "diagnostics.jsonl"
+        if not diagnostics.exists():
+            return {}
+        values: dict[int, float] = {}
+        with diagnostics.open(encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                try:
+                    record = json.loads(line)
+                    step = int(record["step"])
+                    dt = float(record["dt"])
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise ValueError(
+                        f"Invalid diagnostics record at {diagnostics}:{line_number}"
+                    ) from exc
+                if dt <= 0.0:
+                    raise ValueError(
+                        f"Invalid non-positive dt at {diagnostics}:{line_number}"
+                    )
+                values[step] = dt
+        return values
+
     def run(self) -> list[tuple[float, int]]:
-        """Replay every archived snapshot through the configured samplers."""
+        """Replay every archived snapshot through the configured samplers.
+
+        Output is *fresh*: the previous run's sampler products under
+        ``samples/`` are cleared first, so re-running ``PostProcess`` never
+        appends duplicate rows into an existing CSV or PVD.  The snapshot
+        ``dt`` passed to the samplers is the *archived* inter-frame advance
+        (not ``config.time.delta_t``), so adaptive-dt cases resample offline
+        with the same cadence they selected online.
+        """
+        if self.overwrite:
+            self._clear_previous_output()
         frames = self._pvd_frames()
+        archived_dt = self._archived_timesteps()
         sampled: list[tuple[float, int]] = []
         n_elements = self.mesh_data["n_elements"]
-        dt = self.config.time.delta_t
-        for flow_time, step, path in frames:
+        default_dt = float(self.config.time.delta_t)
+        for index, (flow_time, step, path) in enumerate(frames):
+            # Recover the real archived advance: the time between this archived
+            # snapshot and the previously archived one (falls back to the
+            # nominal dt for the first frame).
+            if step in archived_dt:
+                dt = archived_dt[step]
+            elif index == 0:
+                dt = default_dt
+            else:
+                dt = float(frames[index][0] - frames[index - 1][0])
             fields = self._read_snapshot(path, n_elements)
             U, p = self._reconstruct_state(fields)
             context = SnapshotContext(
@@ -330,6 +376,16 @@ class PostProcess:
                 time_step=step,
                 dt=dt,
             )
-            FVMSamplerExecutor.execute(context)
+            FVMSamplerExecutor.execute(context, strict=True)
             sampled.append((flow_time, step))
         return sampled
+
+    def _clear_previous_output(self) -> None:
+        """Remove prior sampler output so replay is idempotent."""
+        from .base import samples_dir
+
+        samples = Path(samples_dir(self.case_dir))
+        if samples.exists():
+            for child in samples.iterdir():
+                if child.is_file():
+                    child.unlink()

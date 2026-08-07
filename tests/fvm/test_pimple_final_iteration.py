@@ -21,7 +21,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -51,7 +50,6 @@ def _run(tmp_path, alpha_u, alpha_p, n_outer):
             alpha_u=alpha_u,
             alpha_p=alpha_p,
         ),
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -147,7 +145,6 @@ def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monke
             n_outer_correctors=2,
             n_orthogonal_correctors=1,
         ),
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),

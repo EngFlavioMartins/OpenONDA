@@ -33,8 +33,8 @@ from assets.mesh_plate import flat_plate_mesh
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
+    ForceSampler,
     Solver,
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -56,9 +56,13 @@ def build_config(args, nu):
         n_correctors=args.n_correctors,
         n_outer_correctors=args.n_outer,
     )
-    solver_forces = ForcesConfig(
-        force_patches=["plate"], ref_velocity=args.u_inf, ref_length=args.plate_length
-    )
+    solver_forces = [
+        ForceSampler(
+            patch_names=["plate"],
+            ref_velocity=args.u_inf,
+            ref_length=args.plate_length,
+        )
+    ]
 
     return FVMSetup(
         case_name=args.case_name,
@@ -76,7 +80,7 @@ def build_config(args, nu):
         schemes=solver_schemes,
         linear=solver_linear,
         pimple=solver_pimple,
-        forces=solver_forces,
+        samplers=solver_forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar by construction (Re_x <= 1e4 << 5e5)
         boundaries=[

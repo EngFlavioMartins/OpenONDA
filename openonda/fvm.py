@@ -8,7 +8,6 @@ from source.solvers.FVM import (
     ExecutionConfig,
     FieldState,
     ForceSampler,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     LineSampler,
@@ -35,6 +34,7 @@ from source.solvers.FVM.fields.diagnostics import (
 from source.solvers.FVM.immersed_boundary import ImmersedBody
 from source.solvers.FVM.mesh import geometry
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+from source.solvers.FVM.sampling.base import SamplingSchedule
 
 __all__ = [
     "AdaptiveCartesianMesher",
@@ -44,7 +44,6 @@ __all__ = [
     "ExecutionConfig",
     "FieldState",
     "ForceSampler",
-    "ForcesConfig",
     "FVMSetup",
     "GmshImporter",
     "ImmersedBody",
@@ -56,6 +55,7 @@ __all__ = [
     "OutputSetup",
     "PimpleControl",
     "RunAcceptancePolicy",
+    "SamplingSchedule",
     "SchemesConfig",
     "Solver",
     "StepDiagnostics",

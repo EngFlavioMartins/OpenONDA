@@ -118,8 +118,7 @@ class ViscousConfig:
     ``CS``
         Core Spreading — deterministic, O(N).  Each particle's core radius
         grows as σ(t) = √(σ₀² + 4νt).  Simple and cheap, but the varying
-        core size degrades spatial resolution over time.  Parabolic CFL:
-        Δt ≤ h²/(4ν).
+        core size degrades spatial resolution over time.
 
     ``RWM``
         Random Walk Method — stochastic, O(N).  Particles are displaced by a
@@ -377,33 +376,6 @@ class ViscousConfig:
             raise ValueError("characteristic_distance must be positive")
         return v
 
-    def cs_max_dt(self) -> float:
-        """Stability upper bound for Core Spreading: Δt ≤ h²/(4nu).
-
-        The CS diffusion step integrates the parabolic heat equation with a
-        Gaussian kernel of width √(4nuΔt).  The criterion h²/(4nu) ensures the
-        diffusive step does not advance vortex cores by more than one
-        inter-particle spacing per step (parabolic CFL condition).
-        Larger Δt leads to over-diffusion and loss of spatial resolution.
-
-        Returns
-        -------
-        float  Maximum stable time-step [s].
-
-        Raises
-        ------
-        ValueError  If ``characteristic_distance`` or ``viscosity`` is not set.
-        """
-        h = self.characteristic_distance
-        if h is None or h <= 0:
-            raise ValueError(
-                "characteristic_distance must be set to a positive value for CS stability check."
-            )
-        nu = self.viscosity
-        if nu is None or nu <= 0:
-            raise ValueError("viscosity must be set to a positive value for CS stability check.")
-        return h * h / (4.0 * nu)
-
     def rwm_accuracy_dt(self) -> float:
         """Accuracy upper bound for the Random Walk Method: Δt ≤ h²/(4nu).
 
@@ -484,9 +456,6 @@ class ViscousConfig:
             viscosity: Molecular kinematic viscosity nu [m²/s].  When set,
                 every new particle automatically receives this viscosity.
             characteristic_distance: Average inter-particle spacing h [m].
-                When set together with ``viscosity``, the solver prints the
-                CS stability limit Δt ≤ h²/(4nu) in the initialisation header
-                and warns if the configured time-step exceeds it.
         """
         return ViscousConfig(
             scheme="CS", viscosity=viscosity, characteristic_distance=characteristic_distance

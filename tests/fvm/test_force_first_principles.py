@@ -36,8 +36,8 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
+    ForceSampler,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -45,6 +45,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.FVM.sampling.base import SamplingSchedule
 from source.solvers.FVM.fields import gradients
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
@@ -261,13 +262,15 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.
             pressure_tol=_PRESSURE_TOL,
         ),
         pimple=PimpleControl(n_correctors=2, n_outer_correctors=2),
-        forces=ForcesConfig(
-            force_patches=["cube"],
-            ref_velocity=1.0,
-            ref_area=1.0,
-            ref_length=1.0,
-            force_log_interval=1,
-        ),
+        samplers=[
+            ForceSampler(
+                patch_names=["cube"],
+                ref_velocity=1.0,
+                ref_area=1.0,
+                ref_length=1.0,
+                schedule=SamplingSchedule(every_n_steps=1),
+            )
+        ],
         transport=TransportConfig(density=1.0, nu=0.05),
         boundaries=[
             BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),

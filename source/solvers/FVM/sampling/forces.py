@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 
 from ..fields import diagnostics
-from .base import Sampler, append_csv_rows
+from .base import _register_sampler, Sampler, append_csv_rows
 
 FORCES_HEADER = [
     "time",
@@ -86,6 +86,8 @@ class ForceSampler(Sampler):
     'forces_history'
     """
 
+    sampler_kind = "ForceSampler"
+
     def __init__(
         self,
         patch_names=None,
@@ -114,6 +116,19 @@ class ForceSampler(Sampler):
         self.ref_area = ref_area
         self.ref_length = ref_length
         self.moment_centre = list(moment_centre)
+
+    def config_dict(self) -> dict:
+        spec = super().config_dict()
+        spec.update(
+            {
+                "patch_names": self.patch_names,
+                "ref_velocity": self.ref_velocity,
+                "ref_area": self.ref_area,
+                "ref_length": self.ref_length,
+                "moment_centre": list(self.moment_centre),
+            }
+        )
+        return spec
 
     def sample(self, context) -> dict[str, dict[str, Any]]:
         """Compute per-patch forces/coefficients for the current state.
@@ -191,6 +206,8 @@ class YPlusSampler(Sampler):
     ['cube']
     """
 
+    sampler_kind = "YPlusSampler"
+
     def __init__(
         self,
         patch_names=None,
@@ -208,6 +225,11 @@ class YPlusSampler(Sampler):
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.patch_names = patch_names
+
+    def config_dict(self) -> dict:
+        spec = super().config_dict()
+        spec["patch_names"] = self.patch_names
+        return spec
 
     def sample(self, context) -> dict[str, dict[str, float]]:
         """Compute y+ statistics for the current state (collective)."""
@@ -250,6 +272,8 @@ class IBMForceSampler(Sampler):
     'ibm_forces_history'
     """
 
+    sampler_kind = "IBMForceSampler"
+
     def __init__(
         self,
         ref_velocity: float = 1.0,
@@ -268,6 +292,11 @@ class IBMForceSampler(Sampler):
         super().__init__(file_name=file_name, schedule=schedule)
         self.ref_velocity = ref_velocity
         self.ref_area = ref_area
+
+    def config_dict(self) -> dict:
+        spec = super().config_dict()
+        spec.update({"ref_velocity": self.ref_velocity, "ref_area": self.ref_area})
+        return spec
 
     def sample(self, context) -> dict[str, np.ndarray]:
         """Compute per-body forces and slip for the current state."""
@@ -314,3 +343,8 @@ class IBMForceSampler(Sampler):
             )
         header = ["time", "step", "dt", "body", "Fx", "Fy", "Fz", "Cd", "Cl", "slip"]
         append_csv_rows(f"{samples_dir}/{self.file_name}.csv", header, rows)
+
+
+_register_sampler(ForceSampler)
+_register_sampler(YPlusSampler)
+_register_sampler(IBMForceSampler)

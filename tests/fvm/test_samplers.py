@@ -9,7 +9,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     ForceSampler,
     FVMSetup,
     LinearSolverConfig,
@@ -21,6 +20,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.FVM.sampling.base import SamplingSchedule
 
 from ._structured_mesh import structured_box
 
@@ -60,14 +60,13 @@ FORCES_HEADER = [
 ]
 
 
-def _config(samplers=(), force_patches=None):
+def _config(samplers=()):
     return FVMSetup(
         case_name="samplers",
         time=TimeConfig.transient(dt=0.01, duration=0.1, write_interval=1),
         schemes=SchemesConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
-        forces=ForcesConfig(force_patches=force_patches),
         transport=TransportConfig(density=1.0, nu=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
@@ -95,7 +94,7 @@ def _rows(path):
 
 
 def test_force_history_lands_in_samples_with_unchanged_schema(tmp_path):
-    solver = _solver(_config(), tmp_path)
+    solver = _solver(_config(samplers=(ForceSampler(),)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         solver.evolve()
 
@@ -194,14 +193,18 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
     assert written[0].name in pvd
 
 
-def test_surface_sampler_stride_thins_the_written_frames(tmp_path):
+def test_surface_sampler_cadence_is_owned_by_the_schedule(tmp_path):
+    # Cadence lives in the schedule, not a mutable stride counter, so live and
+    # offline runs select the same physical states.  The executor runs after
+    # accepted steps (there is no t=0 event), so every_n_steps=2 fires at
+    # steps 2 and 4.
     sampler = SurfaceSampler(
         point=[0, 0, 0.5],
         normal=[0, 0, 1],
         bounds=[0.2, 0.8, 0.2, 0.8],
         spacing=0.3,
-        stride=2,
         file_name="slice_z0",
+        schedule=SamplingSchedule(every_n_steps=2),
     )
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -221,11 +224,12 @@ def test_explicit_force_sampler_writes_its_own_named_file(tmp_path):
     rows = _rows(tmp_path / "samples" / "wall_loads.csv")
     assert rows[0] == FORCES_HEADER
     assert {row[3] for row in rows[1:]} == {"ymin"}
-    # The auto ForceSampler (from ForcesConfig) still writes its own file.
-    assert (tmp_path / "samples" / "forces_history.csv").exists()
+    # No legacy auto-ForceSampler runs behind explicit samplers, so there is
+    # exactly one force history file: the explicit sampler's own output.
+    assert not (tmp_path / "samples" / "forces_history.csv").exists()
 
 
-def test_sampler_failure_is_contained_and_does_not_abort_the_step(tmp_path):
+def test_sampler_failure_aborts_the_step(tmp_path):
     class Exploding:
         file_name = "boom"
 
@@ -233,8 +237,10 @@ def test_sampler_failure_is_contained_and_does_not_abort_the_step(tmp_path):
             raise RuntimeError("sampler blew up")
 
     solver = _solver(_config(samplers=(Exploding(),)), tmp_path)
-    with contextlib.redirect_stdout(io.StringIO()):
+    with contextlib.redirect_stdout(io.StringIO()), pytest.raises(
+        RuntimeError, match="Sampler 'boom' failed"
+    ):
         solver.evolve()
 
     assert solver.time_step == 1
-    assert (tmp_path / "samples" / "forces_history.csv").exists()
+    assert not (tmp_path / "samples" / "boom.csv").exists()

@@ -721,32 +721,6 @@ class PimpleControl:
     ibm_second_solve: bool = True
 
 
-@dataclass
-class ForcesConfig:
-    """Wall loads and y+ diagnostics, analogous to OpenFOAM function objects.
-
-    ``ref_velocity`` is in m/s, ``ref_area`` in m², ``ref_length`` and
-    ``moment_centre`` in m. Pressure and viscous traction are both integrated.
-
-    Examples
-    --------
-    >>> ForcesConfig(
-    ...     force_patches=["cube"],
-    ...     ref_velocity=1.0,
-    ...     ref_area=1.0,
-    ...     force_log_interval=10,
-    ... )
-    """
-
-    force_patches: list[str] | None = None
-    ref_velocity: float = 1.0
-    ref_area: float = 1.0
-    ref_length: float = 1.0
-    force_log_interval: int | None = None
-    moment_centre: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-    yplus_patches: list[str] | None = None
-
-
 def _groups_from_flat(
     flat: dict,
 ) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl"]:
@@ -1397,7 +1371,6 @@ class FVMSetup:
     schemes: SchemesConfig = field(default_factory=SchemesConfig)
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
     pimple: PimpleControl = field(default_factory=PimpleControl)
-    forces: ForcesConfig = field(default_factory=ForcesConfig)
     transport: TransportConfig = field(default_factory=TransportConfig)
     dynamic_mesh: DynamicMeshConfig = field(default_factory=DynamicMeshConfig.static)
     boundaries: list[BoundaryConfig] = field(default_factory=list)
@@ -1417,22 +1390,32 @@ class FVMSetup:
             raise TypeError("cores must be an integer")
         if self.cores < 1:
             raise ValueError("cores must be at least one")
+        self.samplers = tuple(self.samplers or ())
 
     def algorithm_params(self) -> dict:
         """Flat parameter dict consumed by the PIMPLE/SIMPLE algorithm layer."""
         merged: dict = {}
-        for group in (self.schemes, self.linear, self.pimple, self.forces):
+        for group in (self.schemes, self.linear, self.pimple):
             merged.update(vars(group))
         return merged
 
     def save(self, filepath: str):
         """Serialise this configuration to a JSON file.
 
+        Samplers are stored through the sampler registry, so an explicit
+        :class:`~source.solvers.FVM.sampling.base.Sampler` is captured as a
+        JSON-safe ``{"type": ..., ...}`` dict and reconstructed on :meth:`load`.
+
         Args:
             filepath: Path for the output JSON file.
         """
+        from source.solvers.FVM.sampling.base import sampler_to_dict
+
+        data = asdict(self)
+        if self.samplers:
+            data["samplers"] = [sampler_to_dict(s) for s in self.samplers]
         with open(filepath, "w") as f:
-            json.dump(asdict(self), f, indent=4)
+            json.dump(data, f, indent=4)
 
     @classmethod
     def load(cls, filepath: str):
@@ -1473,6 +1456,12 @@ class FVMSetup:
         boundaries = [BoundaryConfig(**b) for b in data.get("boundaries", [])]
         turbulence = TurbulenceConfig(**turbulence_data) if turbulence_data else None
 
+        from source.solvers.FVM.sampling.base import sampler_from_dict
+
+        samplers = tuple(
+            sampler_from_dict(d) for d in data.get("samplers", []) if isinstance(d, dict)
+        )
+
         return cls(
             case_name=data["case_name"],
             cores=data.get("cores", 1),
@@ -1485,7 +1474,7 @@ class FVMSetup:
             schemes=SchemesConfig(**data.get("schemes", {})),
             linear=LinearSolverConfig(**data.get("linear", {})),
             pimple=PimpleControl(**data.get("pimple", {})),
-            forces=ForcesConfig(**data.get("forces", {})),
+            samplers=samplers,
             transport=transport,
             dynamic_mesh=dynamic_mesh,
             boundaries=boundaries,

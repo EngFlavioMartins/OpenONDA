@@ -16,7 +16,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -42,7 +41,6 @@ def _slip_channel_solver(tmp_path):
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [U_INF, 0.0, 0.0]),

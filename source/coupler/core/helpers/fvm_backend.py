@@ -102,7 +102,7 @@ def build_fvm_backend(
     schemes=None,
     linear=None,
     pimple=None,
-    forces=None,
+    samplers=None,
     execution=None,
     write_interval_time: float | None = None,
     quiet: bool = False,
@@ -111,7 +111,6 @@ def build_fvm_backend(
     from source.solvers.FVM import (
         BoundaryConfig,
         ExecutionConfig,
-        ForcesConfig,
         FVMSetup,
         LinearSolverConfig,
         PimpleControl,
@@ -119,6 +118,8 @@ def build_fvm_backend(
         TimeConfig,
         TransportConfig,
     )
+    from source.solvers.FVM.sampling.forces import ForceSampler
+    from source.solvers.FVM.sampling.base import SamplingSchedule
     from source.solvers.FVM.core.solver import Solver
 
     u_inf = [float(v) for v in u_inf]
@@ -149,16 +150,18 @@ def build_fvm_backend(
     boundaries = coupling_patch_boundaries(patch_name, u_inf)
     if wall_patch_name is not None:
         boundaries.append(BoundaryConfig.wall(wall_patch_name))
-        if forces is None:
+        if not samplers:
             body = wall_patch_bounds(mesh_data, wall_patch_name)
-            forces = ForcesConfig(
-                force_patches=[wall_patch_name],
-                ref_velocity=float(np.linalg.norm(u_inf)) or 1.0,
-                ref_area=float((body[3] - body[2]) * (body[5] - body[4])),
-                ref_length=float(body[1] - body[0]),
-                force_log_interval=1,
-            )
-    forces = forces or ForcesConfig()
+            samplers = [
+                ForceSampler(
+                    patch_names=[wall_patch_name],
+                    ref_velocity=float(np.linalg.norm(u_inf)) or 1.0,
+                    ref_area=float((body[3] - body[2]) * (body[5] - body[4])),
+                    ref_length=float(body[1] - body[0]),
+                    schedule=SamplingSchedule(every_n_steps=1),
+                )
+            ]
+    samplers = samplers or []
 
     fvm_config = FVMSetup(
         case_name=f"coupled_{patch_name}",
@@ -167,7 +170,7 @@ def build_fvm_backend(
         schemes=schemes,
         linear=linear,
         pimple=pimple,
-        forces=forces,
+        samplers=tuple(samplers),
         transport=TransportConfig(density=float(rho), nu=float(nu)),
         boundaries=boundaries,
         initial_U=u_inf if initial_U is None else [float(v) for v in initial_U],

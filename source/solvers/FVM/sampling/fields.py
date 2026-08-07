@@ -28,7 +28,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree  # type: ignore
 
-from .base import SAMPLER_CSV_COLUMNS, Sampler, append_csv_rows
+from .base import SAMPLER_CSV_COLUMNS, Sampler, _register_sampler, append_csv_rows
 
 MAX_EXACT_DISTANCE = 1e-12
 
@@ -180,6 +180,19 @@ class LineSampler(_PointProbe):
         self.end = end
         self.n_points = n_points
 
+    def config_dict(self) -> dict:
+        spec = super().config_dict()
+        spec.update(
+            {
+                "start": self.start.tolist(),
+                "end": self.end.tolist(),
+                "n_points": self.n_points,
+                "k": self.k,
+                "p": self.p,
+            }
+        )
+        return spec
+
     def write_csv(self, context, samples_dir: str) -> dict[str, np.ndarray] | None:
         """Append the current step's samples to ``<samples_dir>/<name>.csv``."""
         data = self.sample(context)
@@ -200,18 +213,23 @@ class LineSampler(_PointProbe):
 class SurfaceSampler(_PointProbe):
     """Sample fields on an axis-aligned planar grid.
 
-    Writes one ``.vts`` structured grid per event and a ``<name>.pvd`` index,
-    using the same point-array names as the VPM ``SurfaceSampler``.
-    ``stride`` writes only every n-th sampling event.
+    Writes one ``.vts`` structured grid per sampling event and a ``<name>.pvd``
+    index, using the same point-array names as the VPM ``SurfaceSampler``.
+    Cadence is owned entirely by the :class:`~.base.SamplingSchedule` — there
+    is no separate ``stride`` counter, so live and offline runs select the
+    same physical states.
 
     Examples
     --------
     >>> sampler = SurfaceSampler(
     ...     point=[0, 0, 0.5], normal=[0, 0, 1],
     ...     bounds=[0, 1, 0, 1], spacing=0.25,
-    ...     file_name="slice_z0", stride=2,
+    ...     file_name="slice_z0",
+    ...     schedule=SamplingSchedule(every_n_steps=2),
     ... )
     """
+
+    sampler_kind = "SurfaceSampler"
 
     def __init__(
         self,
@@ -219,7 +237,6 @@ class SurfaceSampler(_PointProbe):
         normal,
         bounds,
         spacing: float,
-        stride: int = 1,
         k: int = 5,
         p: float = 2.0,
         file_name: str | None = None,
@@ -234,7 +251,6 @@ class SurfaceSampler(_PointProbe):
                 axes, ordered as for the VPM sampler (z-plane -> x,y;
                 y-plane -> x,z; x-plane -> y,z).
             spacing: Grid point spacing.
-            stride: Write every n-th sampling event.
             k: Number of nearest neighbours used for interpolation.
             p: Power parameter for inverse distance weighting.
             file_name: Base name for the output files.
@@ -264,14 +280,22 @@ class SurfaceSampler(_PointProbe):
         self.normal = normal
         self.bounds = bounds
         self.spacing = float(spacing)
-        self.stride = int(stride)
         self.grid_shape = C1.shape
-        self._event_count = 0
+        self._pvd_entries: list[tuple[float, str]] = []
 
-    def should_write(self) -> bool:
-        """Advance the event counter and report whether this event is written."""
-        self._event_count += 1
-        return (self._event_count - 1) % self.stride == 0
+    def config_dict(self) -> dict:
+        spec = super().config_dict()
+        spec.update(
+            {
+                "point": self.point.tolist(),
+                "normal": self.normal.tolist(),
+                "bounds": self.bounds.tolist(),
+                "spacing": self.spacing,
+                "k": self.k,
+                "p": self.p,
+            }
+        )
+        return spec
 
     def save_vts(self, context, filepath: str) -> dict[str, np.ndarray] | None:
         """Write one structured-grid snapshot of the sampled plane."""
@@ -298,3 +322,7 @@ class SurfaceSampler(_PointProbe):
         grid.point_data["Pressure"] = np.asarray(data["p"], dtype=np.float32)
         grid.save(str(filepath), binary=True)
         return data
+
+
+_register_sampler(LineSampler)
+_register_sampler(SurfaceSampler)

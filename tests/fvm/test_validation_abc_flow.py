@@ -10,7 +10,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -55,7 +54,6 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=boundaries,
         initial_U=[0.0, 0.0, 0.0],

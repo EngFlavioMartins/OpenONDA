@@ -10,7 +10,6 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -52,7 +51,6 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=1.0e-3),
         boundaries=[
             BoundaryConfig.wall("xmin"),

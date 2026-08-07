@@ -31,8 +31,8 @@ from assets.mesh_square import square_cylinder_mesh
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
+    ForceSampler,
     Solver,
-    ForcesConfig,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -54,14 +54,16 @@ def build_config(args, depth):
         n_correctors=args.n_correctors,
         n_outer_correctors=args.n_outer,
     )
-    forces = ForcesConfig(
-        force_patches=["cube"],
-        ref_velocity=args.u_inf,
-        ref_area=args.D * depth,  # frontal area of the extruded square
-        ref_length=args.D,
-        moment_centre=[0.0, 0.0, 0.5 * depth],
-        force_log_interval=1,  # every step: St comes from the Cl signal
-    )
+    forces = [
+        ForceSampler(
+            patch_names=["cube"],
+            ref_velocity=args.u_inf,
+            ref_area=args.D * depth,  # frontal area of the extruded square
+            ref_length=args.D,
+            moment_centre=[0.0, 0.0, 0.5 * depth],
+            # default every_n_steps=1: St comes from the Cl signal
+        )
+    ]
 
     return FVMSetup(
         case_name=args.case_name,
@@ -79,7 +81,7 @@ def build_config(args, depth):
         schemes=schemes,
         linear=linear,
         pimple=pimple,
-        forces=forces,
+        samplers=forces,
         transport=TransportConfig(density=args.rho, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[

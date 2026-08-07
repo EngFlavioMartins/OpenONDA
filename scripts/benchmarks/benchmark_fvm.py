@@ -26,7 +26,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
-    ForcesConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
@@ -126,7 +125,6 @@ def _run(
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        forces=ForcesConfig(),
         transport=TransportConfig(density=1.0, nu=0.1),
         boundaries=[
             BoundaryConfig.cyclic("xmin", "xmax"),

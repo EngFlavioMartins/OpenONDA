@@ -230,7 +230,6 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
     from source.solvers.FVM import (
         BoundaryConfig,
-        ForcesConfig,
         FVMSetup,
         LinearSolverConfig,
         PimpleControl,
@@ -259,19 +258,26 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         schemes = SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss")
         linear = LinearSolverConfig(linear_solver="spsolve")
         pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
-        forces = ForcesConfig(
-            force_patches=["square"] if with_square else [],
-            force_log_interval=1,
-            ref_velocity=1.0,
-            ref_area=h,
-        )
+        samplers = []
+        if with_square:
+            from source.solvers.FVM.sampling.base import SamplingSchedule
+            from source.solvers.FVM.sampling.forces import ForceSampler
+
+            samplers = [
+                ForceSampler(
+                    patch_names=["square"],
+                    ref_velocity=1.0,
+                    ref_area=h,
+                    schedule=SamplingSchedule(every_n_steps=1),
+                )
+            ]
         return FVMSetup(
             case_name="body-fitted" if with_square else "ibm",
             time=TimeConfig.transient(dt=0.02, duration=0.16, write_interval=1000),
             schemes=schemes,
             linear=linear,
             pimple=pimple,
-            forces=forces,
+            samplers=samplers,
             transport=TransportConfig(density=1.0, nu=0.05),
             boundaries=boundaries(with_square),
             initial_U=[1.0, 0.0, 0.0],

@@ -328,10 +328,11 @@ def test_builder_body_fitted_cube(tmp_path):
     assert np.all(np.abs(cc) < 0.5, axis=1).sum() == 0
 
     # Wall patch reachable through the coupler contract; no-slip configured;
-    # wall-force logging on.
+    # wall-force logging on (as an explicit ForceSampler).
     wf = np.asarray(fvm.get_boundary_face_center_coordinates("cube"))
     assert wf.shape[0] == 6 * 8**2
-    assert fvm.config.forces.force_patches == ["cube"]
+    force_sampler = next(s for s in fvm.config.samplers if s.name == "forces_history")
+    assert force_sampler.patch_names == ["cube"]
     wall_cfg = next(b for b in fvm.config.boundaries if b.name == "cube")
     assert wall_cfg.type_U == "fixedValue" and wall_cfg.value_U == [0.0, 0.0, 0.0]
 
