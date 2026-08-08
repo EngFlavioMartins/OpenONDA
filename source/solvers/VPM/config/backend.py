@@ -199,6 +199,17 @@ def _safe_device_memory_for_init(
 
     return {"device_memory_fraction": desired_fraction}
 
+def _pool_bytes_from_kwargs(memory_kwargs: dict, backend: str) -> int | None:
+    """Taichi pool size in bytes implied by the chosen init kwargs, or None."""
+    if "device_memory_GB" in memory_kwargs:
+        return int(float(memory_kwargs["device_memory_GB"]) * (1 << 30))
+    if backend in {"CUDA", "VULKAN"} and "device_memory_fraction" in memory_kwargs:
+        budget = _query_vulkan_budget()
+        if budget is not None:
+            return int(budget[1] * float(memory_kwargs["device_memory_fraction"]))
+    return None
+
+
 _PRECISION_MAP: dict[str, tuple] = {
     "f32": (ti.f32, ti.i32),
     "f64": (ti.f64, ti.i64),
@@ -420,6 +431,7 @@ def initialize_taichi_backend(
                 init_kwargs["cpu_max_num_threads"] = max(1, int(cpu_threads))
         if memory_kwargs:
             init_kwargs.update(memory_kwargs)
+        constants_module.TAICHI_POOL_BYTES = _pool_bytes_from_kwargs(memory_kwargs, name)
 
         try:
             ti.init(**init_kwargs)

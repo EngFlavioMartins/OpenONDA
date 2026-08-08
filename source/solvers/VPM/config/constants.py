@@ -231,6 +231,10 @@ TAICHI_BACKEND = None
 # Hardware device name (set by initialize_taichi_backend)
 TAICHI_DEVICE_NAME = None
 
+# Taichi device memory pool in bytes (set by initialize_taichi_backend).
+# None when the backend manages its own pool (CPU, Metal).
+TAICHI_POOL_BYTES = None
+
 # =========================================================
 # UTILITY FUNCTIONS FOR CONSTANTS
 # =========================================================

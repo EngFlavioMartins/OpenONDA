@@ -1,115 +1,101 @@
-# GBD/DVH on Vulkan: fixed full-domain grid exceeds the dispatch limit
+# GBD/DVH on Vulkan: bounded active workspace
 
-**Status:** root cause proven, **NOT yet fixed**. Pre-existing (reproduced on `7d7f135`,
-before the VPM audit).
+**Status:** fixed 2026-08-08. Pre-existing defect (reproduced on `7d7f135`, before the VPM audit).
 
 ## Symptom
 
 ```
-Performing GBD diffusion(h=4.000e-02, nu=1.000e-03, threshold=3.00e-01, LES nu_eff/nu max=2.02).
+Performing GBD diffusion(h=4.000e-02, ...)
 RuntimeError: [runtime.cpp:launch_kernel@572] Dispatch error : RhiResult(not_supported)
 ```
 
-`tutorials/coupled_FVM_VPM/cubeFlow`, step 2 — the first step with VPM particles.
+`tutorials/coupled_FVM_VPM/cubeFlow`, step 2 — the first step carrying VPM particles.
 
 ## Root cause
 
-`_gbd_diffusion_impl` (and the DVH equivalent) takes this branch when the domain is
-pre-configured, which the Vulkan path always does:
+Two independent whole-allocation operations, both driven by the same design conflation.
 
-```python
-if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-    grid_min_np = self._fixed_grid_min.copy()
-    nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
-```
-
-So the **active** grid is the entire declared `vpm_domain_bounds`, every firing,
-regardless of where the particles actually are. Measured for cubeFlow:
+**1. Active grid = whole domain.** When the domain was pre-configured (the Vulkan path always
+is), GBD/DVH set the active grid to the entire `vpm_domain_bounds` every firing, regardless of
+where particles were:
 
 | | |
 |---|---|
-| `VPM_DOMAIN` | (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5) |
-| `VPM_SPACING` | 0.04 |
+| `VPM_DOMAIN` / `VPM_SPACING` | (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5) / 0.04 |
 | active grid | 395 × 232 × 232 = **21,260,480 nodes** |
-| particle cloud bbox | ~3.0 × 1.8 × 1.8 m → would be ~170k nodes |
+| cloud actually needs | ~180,000 nodes |
 
-Taichi flattens an n-D loop to a 1-D dispatch, so 21.3M elements at `block_dim=128` is
-~166k workgroups against `maxComputeWorkGroupCount[0] = 65,535` on this device
-(Intel Iris Xe ADL GT2). Taichi reports the rejection only as `RhiResult(not_supported)`.
+Taichi flattens n-D loops to a 1-D dispatch, so that is ~166k workgroups against
+`maxComputeWorkGroupCount[0] = 65,535` (Intel Iris Xe ADL GT2). Taichi reports the rejection
+only as `RhiResult(not_supported)`.
 
-Confirmed in isolation:
+**2. Whole-field host transfers.** `_nu_eff_grid.from_numpy`, `_current_grid.from_numpy` and two
+`_current_grid.to_numpy()[:nx,:ny,:nz,:]` each launch a copy kernel over the full field — the
+slice happens *after* the transfer — hitting the same ceiling and moving ~255 MB per firing.
 
-| dispatch | result |
-|---|---|
-| struct-for / `fill()` over the full 19.8M–21.3M field | `RhiResult(not_supported)` |
-| `ti.ndrange(60, 60, 60)` | OK |
+Isolated confirmation: struct-for or `fill()` over a 19.8M-node field reproduces the error
+exactly; `ti.ndrange(60,60,60)` is fine.
 
-The fixed-grid branch exists for two good reasons: a fixed origin avoids the asymmetric
-flat-end artefact, and a fixed allocation avoids Taichi 1.7.x retaining replaced Vulkan
-fields. Neither reason requires *dispatching* over the whole domain.
+## Fix
 
-## Applied (correct, but the case still fails)
+**Lattice-aligned active box.** `_lattice_aligned_bounds` sizes the active box to the particle
+cloud while keeping the origin on the pre-configured lattice — offset from `_fixed_grid_min` by
+a whole number of cells — so every node keeps the coordinate it would have had on the full grid.
+That preserves the fixed grid phase the full-domain path existed to provide, and with it the
+asymmetric flat-end artefact it avoided. Clamped to stay inside the allocation.
 
-**Fix A landed.** Both fixed-grid sites (GBD and DVH) now call `_lattice_aligned_bounds`,
-which keeps the origin on the pre-configured lattice — offset from `_fixed_grid_min` by a
-whole number of cells, so every node keeps the position it would have had on the full
-grid — and shrinks the extent to the occupied region, clamped inside the allocation.
+Verified: lattice phase error ≤ 3e-6 cells, node coordinates match the full-domain lattice to
+≤ 1.0e-7 (f32 eps), box always covers the cloud and fits the allocation.
 
-Measured on the cubeFlow cloud: active grid **21,260,480 -> 179,712 nodes (118x smaller)**.
-39 GBD/DVH/diffusion tests pass.
+**Bounded host transfers.** Three chunked kernels (vec3 down, vec3 up, scalar up) map a flat
+active index to `(i,j,k)` and move `_GRID_TRANSFER_CHUNK = 65536` nodes per launch through a
+fixed-shape staging buffer. Fixed shape matters: varying ndarray shapes accumulate Vulkan
+staging allocations on Taichi 1.7.x, which is why `physics/base.py` already uses this pattern.
+Transfer and dispatch cost is now O(nx·ny·nz), never O(prod(_grid_shape)).
 
-## Still blocking: full-field host transfers
+Grid kernels (`_zero_grid_kernel`, body-mask fill/apply, grid norm) likewise take the active
+extents rather than iterating the allocation and filtering.
 
-The case still raises `RhiResult(not_supported)`, now from the remaining transfers that
-touch the **whole allocation** rather than the active box:
+**Device-pool visibility.** `initialize_taichi_backend` now publishes the pool it actually
+chose as `constants.TAICHI_POOL_BYTES`, and the diffusion module warns when the grid crowds it:
 
-| line | call |
-|---|---|
-| 1083 | `self._nu_eff_grid.from_numpy(nu_eff_grid_np)` |
-| 1125 | `self._current_grid.to_numpy()[:nx, :ny, :nz, :]` |
-| 1373 | `self._current_grid.from_numpy(buf)` |
-| 1456 | `self._current_grid.to_numpy()[:nx, :ny, :nz, :]` |
+```
+Diffusion grid 395x232x232 uses 649 MB, 85% of the 768 MB device pool;
+particles, treecode and staging buffers share what is left.
+```
 
-`to_numpy()`/`from_numpy()` launch a copy kernel over the entire field, so they hit the
-same 65,535-workgroup ceiling — and move ~255 MB per firing where the active box needs
-~2 MB. Note the slicing happens *after* the transfer, so the full grid is moved either way.
+This is deliberately a **warning, not a rejection**. An earlier revision of this fix made it a
+hard `MemoryError` at 45% of the pool; that rejected cubeFlow's 649 MB grid — a configuration
+that demonstrably runs — and on 4 MPI ranks it surfaced as a silent hang, because one rank
+raised while the others spun in a barrier at 100% CPU. The 1 GiB `_MAX_PREALLOC_BYTES` ceiling
+remains the allocation authority. Do not turn the pool share into an enforced limit without
+first measuring the real ceiling on the target device.
 
-**Fix:** copy the active sub-box into a staging field (or ndarray) sized to the box with a
-bounded kernel, and transfer only that. Same pattern as `_zero_grid_kernel`. This is the
-last piece; it was not attempted here.
+## Results
 
-## Earlier work (necessary, not sufficient)
+| | before | after |
+|---|---|---|
+| active grid (cubeFlow) | 21,260,480 nodes | **~180,000 nodes** |
+| whole-allocation transfers per firing | 4 (~255 MB) | **0** |
+| cubeFlow step 2 | `RhiResult(not_supported)` | **passes** |
 
-Grid kernels no longer iterate the whole allocation and filter; they take the active
-extents directly (`ti.ndrange(nx, ny, nz)`), and the three `fill(0.0)` calls became a
-bounded `_zero_grid_kernel`. Correct and faster, but it does not help here because the
-active box *is* the full domain. 37 GBD/DVH tests pass.
+`tests/vpm/test_grid_diffusion_active_box.py` — 9 tests: lattice phase, cloud coverage,
+allocation containment, transfer round-trips (including a multi-chunk case), a guard that no
+whole-allocation transfer returns to the module, GBD active-box vs full-domain numerical
+equivalence, and a Vulkan large-allocation/small-box dispatch regression.
 
-## The two candidate fixes
+**Numerical neutrality is pinned**, not assumed: `test_active_box_gbd_matches_full_domain_gbd`
+runs the same particles through GBD twice — once with the active box, once with the old
+full-domain box forced — and requires identical particle count, and positions, circulations,
+radii, group IDs and total circulation equal to f32 tolerance.
 
-**A — active box tracks the cloud, allocation stays fixed (preferred).**
-Keep the fixed allocation and the fixed lattice, but set `(nx, ny, nz)` from the particle
-bbox snapped to that lattice, as `configure_grid_lattice_anchor` already supports. The
-grid origin stays on the same lattice, so the flat-end artefact is still avoided; no
-reallocation occurs while the box fits the allocation. Dispatches drop from 21.3M to
-~170k nodes here — and the diffusion also stops touching ~21M empty nodes per firing.
+51 diffusion/GBD/DVH tests pass.
 
-**B — chunk the dispatch.** Give each grid kernel a `k0` offset and launch it in k-slabs
-sized so `nx·ny·kc` stays under the device limit. Backend-agnostic and preserves current
-behaviour exactly, but touches ~6 kernel signatures and leaves the wasted work in place.
+## Not addressed
 
-A is better physics-per-watt and is closer to what the non-fixed branch already does.
-
-## Standing memory constraint
-
-Independently of dispatch: 21.3M nodes × 12 B × 2 ping-pong vec3 grids ≈ **510 MB**, plus
-an 85 MB i32 body mask, against the **768 MB** pool `config/backend.py` assigns to
-integrated GPUs. Fix A removes this too (the allocation can then follow the cloud);
-fix B does not.
-
-If it recurs, the config levers are: shrink `VPM_DOMAIN` to the region the wake occupies,
-coarsen `VPM_SPACING`, or run the VPM on CUDA/CPU.
-
-A configuration-time preflight comparing `nx·ny·nz` against the device
-`maxComputeWorkGroupCount` and pool size — failing with an actionable message rather than
-`RhiResult(not_supported)` — is worth adding either way.
+- Treecode capacity still allocates to the declared particle ceiling (`max_particles=300_000`
+  for cubeFlow) to avoid Taichi field replacement on Vulkan. Deliberately left for a separate
+  measurement of the whole device-memory distribution.
+- The device-pool warning does not account for the treecode and particle fields in the same
+  budget, so it under-reports total pressure. Measuring the real allocation ceiling on the
+  target device is the prerequisite for turning it into an enforced limit.

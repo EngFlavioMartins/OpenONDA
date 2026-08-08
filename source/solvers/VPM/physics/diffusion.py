@@ -27,6 +27,8 @@ from .base import PhysicsBase
 
 _logger = logging.getLogger("vpm")
 
+_GRID_TRANSFER_CHUNK = 65536
+
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * h
 _REGEN_RADIUS_RATIO = 2.5
 
@@ -176,9 +178,14 @@ class _GridDiffusionMixin:
     # headroom to avoid repeated re-allocations as the wake extends).
     _REALLOC_HEADROOM = 2.0
 
-    # Maximum GPU memory (bytes) for DVH grid pre-allocation.  If the
-    # full VPM domain grid exceeds this, the grid starts small and grows.
-    _MAX_PREALLOC_BYTES: int = 1 << 30  # 1 GB
+    # Fallback ceiling for grid pre-allocation when the device pool is unknown
+    # (CPU, Metal).  On CUDA/Vulkan the runtime pool published by the backend is
+    # the authority instead; see _grid_prealloc_budget_bytes.
+    _MAX_PREALLOC_BYTES: int = 1 << 30
+
+    # Share of the device pool the diffusion workspace may claim.  The rest is
+    # for particles, the treecode, evaluation fields and ndarray staging.
+    _GRID_POOL_SHARE: float = 0.45
 
     # Conservative prune: redistribute the circulation of pruned (sub-threshold
     # / count-capped) grid nodes onto the survivors so the regeneration step
@@ -330,6 +337,33 @@ class _GridDiffusionMixin:
         ext = np.clip(ext, 5, cap - steps)
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
+    @staticmethod
+    def _device_pool_bytes() -> int | None:
+        """Taichi device memory pool in bytes, or None when self-managed."""
+        from ..config import constants as constants_module
+
+        return getattr(constants_module, "TAICHI_POOL_BYTES", None)
+
+    def _grid_prealloc_budget_bytes(self) -> int:
+        """Bytes the diffusion workspace may claim."""
+        return self._MAX_PREALLOC_BYTES
+
+    def _warn_if_grid_crowds_device_pool(self, total_bytes: int, nx: int, ny: int, nz: int) -> None:
+        pool = self._device_pool_bytes()
+        if not pool or total_bytes <= pool * self._GRID_POOL_SHARE:
+            return
+        _logger.warning(
+            "Diffusion grid %dx%dx%d uses %.0f MB, %.0f%% of the %.0f MB device pool; "
+            "particles, treecode and staging buffers share what is left. "
+            "Reduce vpm_domain_bounds or coarsen the diffusion h if allocation fails.",
+            nx,
+            ny,
+            nz,
+            total_bytes / (1 << 20),
+            100.0 * total_bytes / pool,
+            pool / (1 << 20),
+        )
+
     def _ensure_grid_capacity(self, nx: int, ny: int, nz: int) -> tuple[int, int, int]:
         """Allocate ping-pong Taichi grid fields and return effective (nx, ny, nz).
 
@@ -473,7 +507,9 @@ class _GridDiffusionMixin:
         total_bytes = nx * ny * nz * bytes_per_node
         total_mb = total_bytes / (1 << 20)
 
-        if total_bytes <= self._MAX_PREALLOC_BYTES and self._grid_a is None:
+        budget = self._grid_prealloc_budget_bytes()
+        self._warn_if_grid_crowds_device_pool(total_bytes, nx, ny, nz)
+        if total_bytes <= budget and self._grid_a is None:
             _logger.info(
                 "DVH: pre-allocating grid to VPM domain size (%d×%d×%d, %.0f MB).",
                 nx,
@@ -489,13 +525,20 @@ class _GridDiffusionMixin:
             self._ping = True
         else:
             if self._require_fixed_grid_allocation and self._grid_a is None:
-                limit_mb = self._MAX_PREALLOC_BYTES / (1 << 20)
+                pool = self._device_pool_bytes()
+                pool_txt = (
+                    f"{pool / (1 << 20):.0f} MB device pool"
+                    if pool
+                    else "unknown device pool"
+                )
                 raise MemoryError(
-                    "Vulkan DVH/GBD requires a fixed pre-allocated grid, but "
-                    f"the configured VPM domain grid is {nx}x{ny}x{nz} "
-                    f"({total_mb:.0f} MB estimate), above the {limit_mb:.0f} MB "
-                    "pre-allocation limit. Reduce vpm_domain_bounds/padding, "
-                    "increase h, or use CUDA/CPU."
+                    "Vulkan DVH/GBD requires a fixed pre-allocated grid.\n"
+                    f"  requested grid : {nx}x{ny}x{nz} = {nx * ny * nz:,} nodes\n"
+                    f"  grid memory    : {total_mb:.0f} MB "
+                    f"({bytes_per_node} B/node)\n"
+                    f"  budget         : {budget / (1 << 20):.0f} MB "
+                    f"({self._GRID_POOL_SHARE:.0%} of {pool_txt})\n"
+                    "Reduce vpm_domain_bounds, coarsen the diffusion h, or use CUDA/CPU."
                 )
             _logger.info(
                 "DVH: VPM domain grid (%d×%d×%d) = %.0f MB — %s. "
@@ -1073,14 +1116,7 @@ class _GridDiffusionMixin:
                     float(nu_eff_grid_np.max()) / nu if nu > 0 else 0.0,
                     dt / (h * h),
                 )
-            # The field is allocated with headroom (_grid_shape ≥ (nx,ny,nz)); pad
-            # the scattered array to the full shape before upload, exactly as the
-            # regen scatter does (the Laplacian kernel only reads [:nx,:ny,:nz]).
-            if nu_eff_grid_np.shape != self._grid_shape:
-                _full = np.zeros(self._grid_shape, dtype=nu_eff_grid_np.dtype)
-                _full[:nx, :ny, :nz] = nu_eff_grid_np
-                nu_eff_grid_np = _full
-            self._nu_eff_grid.from_numpy(nu_eff_grid_np)
+            self._upload_active_scalar_grid(self._nu_eff_grid, nu_eff_grid_np, nx, ny, nz)
             self._laplacian_step_variable_gpu_kernel(
                 self._current_grid,
                 self._other_grid,
@@ -1122,7 +1158,7 @@ class _GridDiffusionMixin:
         )
 
         # -- Threshold pruning (CPU — read diffused grid back once) ------------
-        grid_np = self._current_grid.to_numpy()[:nx, :ny, :nz, :]
+        grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
 
         circ_mag = np.linalg.norm(grid_np, axis=-1)
         max_circ = float(circ_mag.max())
@@ -1368,9 +1404,7 @@ class _GridDiffusionMixin:
 
         # Upload result to the Taichi grid field (f32, like the rest of the
         # grid-diffusion pipeline).
-        buf = np.zeros(self._grid_shape + (3,), dtype=np.float32)
-        buf[:nx, :ny, :nz, :] = grid_out.astype(np.float32)
-        self._current_grid.from_numpy(buf)
+        self._upload_active_vec_grid(self._current_grid, grid_out, nx, ny, nz)
 
     def _grid_based_diffusion_impl(
         self,
@@ -1453,7 +1487,7 @@ class _GridDiffusionMixin:
         )
 
         # -- Threshold pruning -------------------------------------------------
-        grid_np = self._current_grid.to_numpy()[:nx, :ny, :nz, :]
+        grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
         circ_mag = np.linalg.norm(grid_np, axis=-1)
         max_circ = float(circ_mag.max())
 
@@ -1755,6 +1789,104 @@ class _GridDiffusionMixin:
         """Zero the active sub-volume of a vec3 grid field."""
         for i, j, k in ti.ndrange(nx, ny, nz):
             field[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+
+    @ti.kernel
+    def _download_vec_chunk_kernel(
+        self,
+        src: ti.template(),
+        dst: ti.types.ndarray(),
+        offset: ti.i32,
+        count: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Copy active-box nodes [offset, offset+count) into a flat host chunk."""
+        for t in range(count):
+            idx = offset + t
+            i = idx // (ny * nz)
+            rem = idx - i * ny * nz
+            j = rem // nz
+            k = rem - j * nz
+            v = src[i, j, k]
+            dst[t, 0] = v[0]
+            dst[t, 1] = v[1]
+            dst[t, 2] = v[2]
+
+    @ti.kernel
+    def _upload_vec_chunk_kernel(
+        self,
+        dst: ti.template(),
+        src: ti.types.ndarray(),
+        offset: ti.i32,
+        count: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Write a flat host chunk into active-box nodes [offset, offset+count)."""
+        for t in range(count):
+            idx = offset + t
+            i = idx // (ny * nz)
+            rem = idx - i * ny * nz
+            j = rem // nz
+            k = rem - j * nz
+            dst[i, j, k] = ti.Vector([src[t, 0], src[t, 1], src[t, 2]])
+
+    @ti.kernel
+    def _upload_scalar_chunk_kernel(
+        self,
+        dst: ti.template(),
+        src: ti.types.ndarray(),
+        offset: ti.i32,
+        count: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Write a flat host chunk into active-box nodes of a scalar grid."""
+        for t in range(count):
+            idx = offset + t
+            i = idx // (ny * nz)
+            rem = idx - i * ny * nz
+            j = rem // nz
+            k = rem - j * nz
+            dst[i, j, k] = src[t]
+
+    def _ensure_grid_transfer_buffers(self) -> None:
+        if getattr(self, "_grid_vec_chunk", None) is None:
+            self._grid_vec_chunk = np.zeros((_GRID_TRANSFER_CHUNK, 3), dtype=np.float32)
+            self._grid_scalar_chunk = np.zeros(_GRID_TRANSFER_CHUNK, dtype=np.float32)
+
+    def _download_active_vec_grid(self, src, nx: int, ny: int, nz: int) -> np.ndarray:
+        """Return the active box of a vec3 grid as an (nx, ny, nz, 3) host array."""
+        self._ensure_grid_transfer_buffers()
+        total = int(nx) * int(ny) * int(nz)
+        out = np.empty((total, 3), dtype=np.float32)
+        for offset in range(0, total, _GRID_TRANSFER_CHUNK):
+            count = min(_GRID_TRANSFER_CHUNK, total - offset)
+            self._download_vec_chunk_kernel(src, self._grid_vec_chunk, offset, count, ny, nz)
+            out[offset : offset + count] = self._grid_vec_chunk[:count]
+        return out.reshape(nx, ny, nz, 3)
+
+    def _upload_active_vec_grid(self, dst, values: np.ndarray, nx: int, ny: int, nz: int) -> None:
+        """Write an (nx, ny, nz, 3) host array into the active box of a vec3 grid."""
+        self._ensure_grid_transfer_buffers()
+        flat = np.ascontiguousarray(values, dtype=np.float32).reshape(-1, 3)
+        total = int(nx) * int(ny) * int(nz)
+        for offset in range(0, total, _GRID_TRANSFER_CHUNK):
+            count = min(_GRID_TRANSFER_CHUNK, total - offset)
+            self._grid_vec_chunk[:count] = flat[offset : offset + count]
+            self._upload_vec_chunk_kernel(dst, self._grid_vec_chunk, offset, count, ny, nz)
+
+    def _upload_active_scalar_grid(
+        self, dst, values: np.ndarray, nx: int, ny: int, nz: int
+    ) -> None:
+        """Write an (nx, ny, nz) host array into the active box of a scalar grid."""
+        self._ensure_grid_transfer_buffers()
+        flat = np.ascontiguousarray(values, dtype=np.float32).reshape(-1)
+        total = int(nx) * int(ny) * int(nz)
+        for offset in range(0, total, _GRID_TRANSFER_CHUNK):
+            count = min(_GRID_TRANSFER_CHUNK, total - offset)
+            self._grid_scalar_chunk[:count] = flat[offset : offset + count]
+            self._upload_scalar_chunk_kernel(dst, self._grid_scalar_chunk, offset, count, ny, nz)
 
     @ti.kernel
     def _grid_norm_kernel(
