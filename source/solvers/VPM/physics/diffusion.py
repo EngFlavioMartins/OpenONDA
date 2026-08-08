@@ -33,19 +33,6 @@ _REGEN_RADIUS_RATIO = 2.5
 # DVH truncation-error parameter β ≈ 0.077 (Durante et al. 2024, Eq. 14-15).
 # Controls the Gaussian width: 4nu·Δt_d = β·R_d².
 _DVH_BETA = 0.077
-
-# Round-off floor for the 'relative_local' regen threshold, as a fraction of the
-# global max|Γ|.  The local test is scale-free, so without a floor the empty
-# padding of the diffusion grid — where the local level IS round-off — would
-# survive and be promoted to particles.  1e-6 sits above float32 noise
-# (~1e-7 relative) and far below any resolved structure.
-#
-# This is the only place 'relative_local' still refers to a global quantity, and
-# it therefore bounds the mode's usable dynamic range at ~6 decades: past that
-# the floor itself rises above the weakest structure and deletes it.  A coupled
-# FVM-VPM field spans ~4 decades, so the floor sits ~2 decades clear.  See
-# Grid-diffusion threshold regression tests::
-# test_relative_local_floor_bounds_the_usable_dynamic_range.
 _LOCAL_THRESHOLD_FLOOR = 1e-6
 
 
@@ -209,18 +196,13 @@ class _GridDiffusionMixin:
         # Maximum grid dimensions from VPM domain (set by configure_max_grid_extent).
         self._max_grid_dims: tuple[int, int, int] | None = None
 
-        # Fixed grid origin when the domain is pre-allocated.  When set, the
-        # scatter grid uses this origin every step instead of re-computing it
-        # from pos.min – padding.  This prevents the grid from drifting in the
-        # direction of the minimum-position particle.
+        # Fixed grid origin when the domain is pre-allocated.
         self._fixed_grid_min: np.ndarray | None = None
 
         # Lazily allocated grid fields (never freed after first allocation).
         self._grid_a: ti.template() | None = None
         self._grid_b: ti.template() | None = None
         self._body_mask_grid: ti.template() | None = None  # 1=inside solid, 0=fluid
-        # Per-node effective viscosity (ν+ν_t) for the variable-coefficient
-        # GBD Laplacian (Bug A).  Lazily allocated alongside _body_mask_grid.
         self._nu_eff_grid: ti.template() | None = None
         self._grid_shape: tuple[int, int, int] | None = None
 
@@ -233,10 +215,6 @@ class _GridDiffusionMixin:
 
         # Maximum number of grid cells per spatial dimension.
         self._MAX_CELLS_PER_DIM: int = 2000
-
-        # Vulkan/Taichi 1.7.x does not release replaced grid fields until
-        # ti.reset().  When enabled, DVH/GBD must use a fixed pre-allocated
-        # domain grid and any later growth is treated as a configuration error.
         self._require_fixed_grid_allocation: bool = False
 
     def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
@@ -322,6 +300,35 @@ class _GridDiffusionMixin:
             lo = lo - 0.5 * h
 
         return lo.astype(np.float32), (nx, ny, nz)
+
+    def _lattice_aligned_bounds(
+        self, pos: np.ndarray, h: float, padding: float
+    ) -> tuple[np.ndarray, tuple[int, int, int]]:
+        """Active sub-box covering the cloud, with the origin on the fixed lattice.
+
+        Returns ``(grid_min, (nx, ny, nz))``.  ``grid_min`` is offset from
+        ``_fixed_grid_min`` by a whole number of cells, so every node keeps the
+        position it would have on the full pre-allocated grid; only the extent
+        shrinks to the occupied region.  Clamped to stay inside the allocation.
+        """
+        anchor = np.asarray(self._fixed_grid_min, dtype=np.float64).reshape(3)
+        cap = np.asarray(self._max_grid_dims, dtype=np.int64)
+        finite = np.isfinite(pos).all(axis=1)
+        pts = pos[finite]
+        if len(pts) == 0:
+            return anchor.astype(np.float32), (5, 5, 5)
+
+        margin = float(padding) * float(h)
+        lo = pts.min(axis=0) - margin
+        hi = pts.max(axis=0) + margin
+
+        steps = np.floor((lo - anchor) / h)
+        steps = np.clip(steps, 0, np.maximum(cap - 5, 0)).astype(np.int64)
+        grid_min = anchor + steps * h
+
+        ext = np.ceil((hi - grid_min) / h).astype(np.int64) + 1
+        ext = np.clip(ext, 5, cap - steps)
+        return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
     def _ensure_grid_capacity(self, nx: int, ny: int, nz: int) -> tuple[int, int, int]:
         """Allocate ping-pong Taichi grid fields and return effective (nx, ny, nz).
@@ -1012,8 +1019,10 @@ class _GridDiffusionMixin:
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np = self._fixed_grid_min.copy()
-            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
+                pos_np, h, domain_padding
+            )
+            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
@@ -1024,7 +1033,7 @@ class _GridDiffusionMixin:
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
 
         # -- M4' scatter (GPU) -------------------------------------------------
-        self._current_grid.fill(0.0)
+        self._zero_grid_kernel(self._current_grid, nx, ny, nz)
         gmin = grid_min_np.astype(float)
         self._m4_scatter_gpu_kernel(
             particles.position,
@@ -1046,7 +1055,7 @@ class _GridDiffusionMixin:
         # Bug A: when ν_eff (ν+ν_t) is supplied, use a per-node coefficient
         # α_node = ν_eff·dt/h² so the SGS eddy viscosity acts in GBD runs.
         # Otherwise fall back to the scalar molecular α = ν·dt/h².
-        self._other_grid.fill(0.0)
+        self._zero_grid_kernel(self._other_grid, nx, ny, nz)
         if nu_eff is not None:
             nu_eff_np = np.ascontiguousarray(nu_eff[:N], dtype=np.float32)
             # Clip negatives (defensive: Smagorinsky guards already, but the
@@ -1316,7 +1325,7 @@ class _GridDiffusionMixin:
 
         # Always leave the grid in a fully-defined state (zeros where no
         # particle deposits), so callers can read it back without a prior fill.
-        self._current_grid.fill(0.0)
+        self._zero_grid_kernel(self._current_grid, nx, ny, nz)
         if N == 0:
             return
 
@@ -1408,11 +1417,11 @@ class _GridDiffusionMixin:
         nu_t_np = particles.viscosity_turbulent_cpu()
 
         # -- Grid setup --------------------------------------------------------
-        # Use a fixed grid origin when the domain was pre-configured, to avoid
-        # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np = self._fixed_grid_min.copy()
-            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
+                pos_np, h, domain_padding
+            )
+            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
@@ -1470,11 +1479,6 @@ class _GridDiffusionMixin:
             return None
 
         # -- Particle-count cap ------------------------------------------------
-        # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
-        # An explicit max_nodes (e.g. ViscousConfig.dvh_max_nodes) additionally
-        # bounds the budget-mode halo growth: keeping only the strongest
-        # max_nodes nodes is a budget-by-count — the dropped tail carries a
-        # negligible circulation fraction while N (and cost) stays bounded.
         cap = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
@@ -1733,15 +1737,24 @@ class _GridDiffusionMixin:
         nz: ti.i32,
     ):
         """Mark open-interior box nodes as solid; surface nodes stay fluid."""
-        for i, j, k in body_mask:
-            if i < nx and j < ny and k < nz:
-                x = gmin_x + ti.cast(i, ti.f32) * h
-                y = gmin_y + ti.cast(j, ti.f32) * h
-                z = gmin_z + ti.cast(k, ti.f32) * h
-                inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
-                body_mask[i, j, k] = 1 if inside else 0
-            else:
-                body_mask[i, j, k] = 0
+        for i, j, k in ti.ndrange(nx, ny, nz):
+            x = gmin_x + ti.cast(i, ti.f32) * h
+            y = gmin_y + ti.cast(j, ti.f32) * h
+            z = gmin_z + ti.cast(k, ti.f32) * h
+            inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
+            body_mask[i, j, k] = 1 if inside else 0
+
+    @ti.kernel
+    def _zero_grid_kernel(
+        self,
+        field: ti.template(),
+        nx: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Zero the active sub-volume of a vec3 grid field."""
+        for i, j, k in ti.ndrange(nx, ny, nz):
+            field[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
     def _grid_norm_kernel(
@@ -1753,10 +1766,9 @@ class _GridDiffusionMixin:
     ) -> ti.f32:
         """GPU-parallel L2 norm² reduction over the active sub-volume."""
         result = 0.0
-        for i, j, k in field:
-            if i < nx and j < ny and k < nz:
-                v = field[i, j, k]
-                result += v[0] ** 2 + v[1] ** 2 + v[2] ** 2
+        for i, j, k in ti.ndrange(nx, ny, nz):
+            v = field[i, j, k]
+            result += v[0] ** 2 + v[1] ** 2 + v[2] ** 2
         return result
 
     @ti.kernel
@@ -1769,8 +1781,8 @@ class _GridDiffusionMixin:
         nz: ti.i32,
     ):
         """Zero vorticity in solid cells for active domain extents."""
-        for i, j, k in grid:
-            if i < nx and j < ny and k < nz and body_mask[i, j, k] != 0:
+        for i, j, k in ti.ndrange(nx, ny, nz):
+            if body_mask[i, j, k] != 0:
                 grid[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
 
 
@@ -1824,8 +1836,6 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
         self._resize_temp_fields(N)
 
-        # Update radii using the kernel-specific diffusivity constant.
-        # No temp field is touched, so the temp-field zeroing is deliberately skipped.
         self.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
 
     # RANDOM WALK METHOD (RWM)

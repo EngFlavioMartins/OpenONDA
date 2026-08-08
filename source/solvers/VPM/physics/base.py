@@ -359,8 +359,9 @@ class PhysicsBase:
 
         Taichi fields cannot be garbage collected, so creating a new TaichiTreecode
         instance on every call leads to memory accumulation and eventual OOM.
-        This method caches and reuses a single instance, only recreating if the
-        required size exceeds the current allocation.
+        This method caches and reuses a single instance, sized once to the run's
+        declared particle ceiling so a growing particle count never forces a
+        rebuild.
 
         Args:
             required_size: Required max_particles capacity
@@ -373,20 +374,8 @@ class PhysicsBase:
 
         # Create new treecode only if we need more capacity
         if self._treecode is None or required_size > self._treecode_max_particles:
-            # Size to the particles actually present, doubling from a small floor.
-            #
-            # Never use self.max_particles: a DVH/GBD scatter inflates it to
-            # millions, and the traversal stacks alone (N, 48) would then cost
-            # ~1.2 GB, exhausting the CUDA pool and yielding
-            # CUDA_ERROR_ILLEGAL_ADDRESS on the next sync.  The previous
-            # MAX_PARTICLES floor avoided that but paid ~565 MB even for a
-            # hundred particles.  Doubling bounds the number of reallocations to
-            # O(log N) — which matters because Taichi never frees a field, so
-            # every regrow leaks the previous allocation; total leaked memory
-            # stays below 2x the final size.
-            alloc_size = max(_TREECODE_MIN_CAPACITY, self._treecode_max_particles or 0)
-            while alloc_size < required_size:
-                alloc_size *= 2
+            ceiling = min(int(self.max_particles), MAX_PARTICLES)
+            alloc_size = max(_TREECODE_MIN_CAPACITY, required_size, ceiling)
             self._treecode = TaichiTreecode(
                 max_particles=alloc_size,
                 max_nodes=2 * alloc_size,
