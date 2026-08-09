@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, setup_coupler
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
@@ -57,14 +57,12 @@ SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-FVM_MAX_CELL_SIZE = 0.1
-FVM_SURFACE_CELL_SIZE = 0.0125
 DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
 
 DT_VPM = 0.05
-VPM_SPACING = 0.04
+SPACING = 0.04
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 PARTICLE_LIMIT = 200_000
 OVERLAP_RADIUS_RATIO = 1.0
@@ -72,7 +70,6 @@ WRITE_INTERVAL = 0.15
 BACKUP_PERIOD = 3
 
 SAMPLE_INTERVAL = int(round(WRITE_INTERVAL / DT_FVM))
-SAMPLE_SPACING = VPM_SPACING
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
@@ -89,14 +86,14 @@ FVM_SAMPLERS = (
     FVMLineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="fvm_centerline",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="fvm_offaxis_y075",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
@@ -104,7 +101,7 @@ FVM_SAMPLERS = (
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="fvm_slice_z0",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
@@ -114,37 +111,37 @@ VPM_SAMPLERS = (
     VPMLineSampler(
         start=[VPM_DOMAIN[0], 0.0, 0.0],
         end=[VPM_DOMAIN[1], 0.0, 0.0],
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="vpm_centerline",
     ),
     VPMLineSampler(
         start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
         end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="vpm_offaxis_y075",
     ),
     VPMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="vpm_slice_z0",
     ),
     VPMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=WAKE_SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
+        spacing=SPACING,
         file_name="vpm_wake_slice_z0",
     ),
 )
 
 FVM_MESH = AdaptiveCartesianMesher(
-    FVM_BOX,
-    FVM_MAX_CELL_SIZE,
+    domain=FVM_BOX,
+    max_cell_size=SPACING,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
-    surface_cell_size=FVM_SURFACE_CELL_SIZE,
+    surface_cell_size=0.015,
     merge_outer_patch="numericalBoundary",
 )
 
@@ -229,7 +226,7 @@ VPM_SETUP = VPMSetup(
     time_step_size=DT_VPM,
     background_velocity=list(U_INF),
     viscous=ViscousConfig.gbd(
-        h=VPM_SPACING,
+        h=SPACING,
         padding=3.0,
         viscosity=NU,
         threshold_mode="relative_local",
@@ -266,8 +263,8 @@ COUPLER_SETUP = CouplerSetup(
     backend="fvm",
     u_inf=list(U_INF),
     wall_patch_name="cube",
-    h=VPM_SPACING,
-    buffer_thickness=6 * VPM_SPACING,
+    h=SPACING,
+    buffer_thickness=6 * SPACING,
     dead_zone_h=0.0,
     prune_vorticity_min=0.005,
     handoff_max_particles=PARTICLE_LIMIT,
@@ -281,7 +278,7 @@ def main() -> None:
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
 
-    vpm_solver = setup_vpm_solver(VPM_SETUP)
+    vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
 
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 

@@ -200,8 +200,8 @@ def test_mesh_domain_uses_case_setting(bench):
     from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
 
     assert bench.FVM_MESH.domain == bench.FVM_BOX
-    assert bench.FVM_MESH.max_cell_size == bench.FVM_MAX_CELL_SIZE
-    assert bench.FVM_MESH.surface_cell_size == bench.FVM_SURFACE_CELL_SIZE
+    assert bench.FVM_MESH.max_cell_size == bench.SPACING
+    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.5 * bench.SPACING)
     assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -210,13 +210,15 @@ def test_mesh_domain_uses_case_setting(bench):
 
 def test_production_case_keeps_the_validated_cost_limits(bench):
     assert bench.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-    assert pytest.approx(0.1) == bench.FVM_MAX_CELL_SIZE
-    assert pytest.approx(0.0125) == bench.FVM_SURFACE_CELL_SIZE
+    assert pytest.approx(0.03) == bench.SPACING
+    assert bench.FVM_MESH.effective_cell_size(0.5 * bench.SPACING) == pytest.approx(0.015)
     assert bench.PARTICLE_LIMIT == 200_000
     assert bench.VPM_SETUP.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
     assert bench.VPM_SETUP.max_particles == bench.PARTICLE_LIMIT
     assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT
-    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.VPM_SPACING)
+    assert bench.VPM_SETUP.viscous.gbd_grid_spacing == pytest.approx(bench.SPACING)
+    assert bench.COUPLER_SETUP.h == pytest.approx(bench.SPACING)
+    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.SPACING)
     assert bench.COUPLER_SETUP.dead_zone_h == 0.0
 
 
@@ -233,6 +235,34 @@ def test_output_names_and_cadence_match_allplot_contract(bench, reference):
     common_time = math.lcm(hybrid_steps, reference_steps) * bench.DT_FVM
     assert common_time <= bench.T_END
     assert pytest.approx(bench.T_END) == reference.T_END
+
+
+def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
+    class FakeFVM:
+        def write_vtk(self):
+            pass
+
+    class FakeCoupler:
+        def run(self):
+            pass
+
+    received = []
+    monkeypatch.setattr(bench, "setup_fvm_solver", lambda *args, **kwargs: FakeFVM())
+    monkeypatch.setattr(bench.FVMVPMCoupler, "is_master_rank", staticmethod(lambda: False))
+    monkeypatch.setattr(
+        bench,
+        "setup_vpm_solver",
+        lambda setup: pytest.fail("worker rank must not initialize the GPU VPM"),
+    )
+    monkeypatch.setattr(
+        bench,
+        "setup_coupler",
+        lambda vpm, fvm, setup: received.append(vpm) or FakeCoupler(),
+    )
+
+    bench.main()
+
+    assert received == [None]
 
 
 def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_path):
