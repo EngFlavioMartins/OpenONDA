@@ -175,6 +175,7 @@ tests/**/referenceFlow/**
 !tutorials/FVM/**/samples/**
 !tutorials/coupled_FVM_VPM/**/samples/
 !tutorials/coupled_FVM_VPM/**/samples/**
+tutorials/coupled_FVM_VPM/cubeFlow/samples/
 
 # direnv
 .envrc

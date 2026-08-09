@@ -26,7 +26,7 @@ True
 from __future__ import annotations
 
 import csv
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 import math
 import os
 from typing import Any, ClassVar
@@ -91,7 +91,7 @@ class SamplingSchedule:
         return {"every_n_steps": self.every_n_steps, "every_time": self.every_time}
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SamplingSchedule":
+    def from_dict(cls, data: dict) -> SamplingSchedule:
         return cls(**data)
 
     def is_due(self, time_step: int, flow_time: float, dt: float | None = None) -> bool:
@@ -101,9 +101,12 @@ class SamplingSchedule:
         if dt is None or dt <= 0.0 or self.every_time is None:
             return False
         interval = float(self.every_time)
+
         # Crossing test: an interval boundary lies in (t - dt, t].  Uses an
         # epsilon so exact multiples and accumulated float error stay robust.
-        bucket = lambda t: math.floor(t / interval + 1e-9)
+        def bucket(t):
+            return math.floor(t / interval + 1e-9)
+
         return bucket(flow_time) != bucket(flow_time - dt)
 
 
@@ -172,7 +175,7 @@ class Sampler:
         }
 
     @classmethod
-    def from_config(cls, data: dict) -> "Sampler":
+    def from_config(cls, data: dict) -> Sampler:
         data = dict(data)
         schedule = data.pop("schedule", None)
         return cls(**data, schedule=SamplingSchedule.from_dict(schedule))

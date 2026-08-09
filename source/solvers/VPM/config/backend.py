@@ -199,6 +199,7 @@ def _safe_device_memory_for_init(
 
     return {"device_memory_fraction": desired_fraction}
 
+
 def _pool_bytes_from_kwargs(memory_kwargs: dict, backend: str) -> int | None:
     """Taichi pool size in bytes implied by the chosen init kwargs, or None."""
     if "device_memory_GB" in memory_kwargs:
@@ -260,13 +261,16 @@ def _cpu_candidates() -> list[tuple]:
 
 
 def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list[tuple]:
-    """Return backend candidates; explicit GPU requests never fall back to CPU."""
+    """Return compatible backends without silently replacing a GPU by the CPU."""
     cpu_chain = _cpu_candidates()
+    system = platform.system()
 
     if preferred_backend == "CPU":
         return cpu_chain
 
     if preferred_backend == "METAL":
+        if system != "Darwin":
+            raise ValueError("processing_unit='METAL' is supported only on macOS")
         if precision == "f64":
             raise ValueError(
                 "precision='f64' is not supported by the Metal backend; use f32 or CPU"
@@ -277,19 +281,24 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
         return [(ti.cuda, "CUDA")]
 
     if preferred_backend == "VULKAN":
+        if system == "Darwin":
+            raise ValueError("processing_unit='VULKAN' is unavailable on macOS; use AUTO or METAL")
         return [(ti.vulkan, "VULKAN")]
 
-    if platform.system() == "Darwin":
+    if system == "Darwin":
         if precision == "f64":
-            return cpu_chain
-        return [(ti.metal, "METAL"), *cpu_chain]
+            raise ValueError(
+                "precision='f64' is not supported by the macOS GPU backend; "
+                "request CPU explicitly or use f32"
+            )
+        return [(ti.metal, "METAL")]
 
     vulkan = (ti.vulkan, "VULKAN")
     cuda = (ti.cuda, "CUDA")
     best = _resolve_gpu_backend()
     gpu_order = [best, cuda if best[1] != "CUDA" else vulkan]
     chain: list[tuple] = []
-    for cand in [*gpu_order, *cpu_chain]:
+    for cand in gpu_order:
         if cand not in chain:
             chain.append(cand)
     return chain
@@ -348,8 +357,9 @@ def initialize_taichi_backend(
     """
     Initialize Taichi with user-specified backend and precision settings.
 
-    ``AUTO`` tries compatible GPU backends before CPU. Explicit GPU requests
-    are strict and raise if initialization fails.
+    ``AUTO`` selects a compatible GPU for f32 runs. CPU execution must be
+    requested explicitly, so a missing GPU cannot turn a production run into
+    an unexpectedly slow CPU run.
 
     Args:
           preferred_backend: ``'AUTO'``, ``'METAL'``, ``'VULKAN'``,
@@ -383,10 +393,9 @@ def initialize_taichi_backend(
     if preferred_backend == "AUTO" and env_unit in _VALID_ENV_KEYS:
         preferred_backend = env_unit
 
-    # -- Platform-aware backend chain (GPU first, CPU last) --------------
-    # Build the ordered list of (arch, name) candidates to attempt.
+    # Build the ordered list of compatible backends.
     chain = _build_backend_chain(preferred_backend, precision)
-    strict_gpu = preferred_backend in {"METAL", "VULKAN", "CUDA"}
+    strict_gpu = preferred_backend in {"AUTO", "METAL", "VULKAN", "CUDA"} and precision == "f32"
 
     # Clamp to a safe range.
     clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
@@ -435,15 +444,15 @@ def initialize_taichi_backend(
 
         try:
             ti.init(**init_kwargs)
+            active_arch = ti.lang.impl.current_cfg().arch
+            if active_arch != arch:
+                raise RuntimeError(
+                    f"Taichi requested {name} but initialized {active_arch}; "
+                    "refusing an implicit backend fallback"
+                )
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
-            if name == "CPU" and preferred_backend == "AUTO":
-                _logger.warning(
-                    "No GPU backend available (tried %s) — falling back to CPU.",
-                    ", ".join(n for _, n in chain if n != "CPU"),
-                )
-            else:
-                _logger.info("Taichi initialized: backend=%s, precision=%s", name, precision)
+            _logger.info("Taichi initialized: backend=%s, precision=%s", name, precision)
             return name
         except Exception as exc:
             last_exc = exc

@@ -15,6 +15,7 @@ from openonda.coupler import CouplerSetup, setup_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
+    ExecutionConfig,
     ForceSampler,
     FVMSetup,
     LinearSolverConfig,
@@ -56,7 +57,8 @@ SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-MIN_DS = 0.02
+FVM_MAX_CELL_SIZE = 0.1
+FVM_SURFACE_CELL_SIZE = 0.0125
 DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
@@ -64,7 +66,7 @@ FVM_CORES = 4
 DT_VPM = 0.05
 VPM_SPACING = 0.04
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-PARTICLE_LIMIT = 300_000
+PARTICLE_LIMIT = 200_000
 OVERLAP_RADIUS_RATIO = 1.0
 WRITE_INTERVAL = 0.15
 BACKUP_PERIOD = 3
@@ -139,10 +141,10 @@ VPM_SAMPLERS = (
 
 FVM_MESH = AdaptiveCartesianMesher(
     FVM_BOX,
-    MIN_DS * 2,
+    FVM_MAX_CELL_SIZE,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
-    surface_cell_size=MIN_DS,
+    surface_cell_size=FVM_SURFACE_CELL_SIZE,
     merge_outer_patch="numericalBoundary",
 )
 
@@ -160,6 +162,7 @@ PANEL_SOLVER = PanelSolver(
 FVM_SETUP = FVMSetup(
     case_name="coupled_hybridFlow",
     cores=FVM_CORES,
+    execution=ExecutionConfig(operator_backend="numba"),
     output=OutputSetup(
         format="vtk_xml",
         data_location="cell",
@@ -245,7 +248,7 @@ VPM_SETUP = VPMSetup(
     stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
     particles_kernel="GAUSSIAN",
     precision="f32",
-    processing_unit="VULKAN",
+    processing_unit="AUTO",
     max_particles=PARTICLE_LIMIT,
     max_targets=PARTICLE_LIMIT,
     vpm_domain_bounds=list(VPM_DOMAIN),
@@ -265,6 +268,7 @@ COUPLER_SETUP = CouplerSetup(
     wall_patch_name="cube",
     h=VPM_SPACING,
     buffer_thickness=6 * VPM_SPACING,
+    dead_zone_h=0.0,
     prune_vorticity_min=0.005,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
@@ -278,7 +282,7 @@ def main() -> None:
     fvm_solver.write_vtk()
 
     vpm_solver = setup_vpm_solver(VPM_SETUP)
-    
+
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 
     coupled_solver.run()

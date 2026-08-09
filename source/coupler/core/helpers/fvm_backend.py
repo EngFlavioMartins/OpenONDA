@@ -118,9 +118,9 @@ def build_fvm_backend(
         TimeConfig,
         TransportConfig,
     )
-    from source.solvers.FVM.sampling.forces import ForceSampler
-    from source.solvers.FVM.sampling.base import SamplingSchedule
     from source.solvers.FVM.core.solver import Solver
+    from source.solvers.FVM.sampling.base import SamplingSchedule
+    from source.solvers.FVM.sampling.forces import ForceSampler
 
     u_inf = [float(v) for v in u_inf]
     execution = execution or ExecutionConfig()

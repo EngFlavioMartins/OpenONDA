@@ -310,16 +310,20 @@ class SurfaceSampler(_PointProbe):
         def _grid(values):
             return np.asarray(values, dtype=np.float32).reshape(shape)
 
+        def _field(values):
+            return np.asarray(values, dtype=np.float32).reshape(self.grid_shape).ravel(order="F")
+
         grid = pv.StructuredGrid(_grid(data["x"]), _grid(data["y"]), _grid(data["z"]))
-        velocity = np.column_stack([data["Ux"], data["Uy"], data["Uz"]]).astype(np.float32)
-        vorticity = np.column_stack([data["omega_x"], data["omega_y"], data["omega_z"]]).astype(
-            np.float32
+        velocity = np.column_stack([_field(data["Ux"]), _field(data["Uy"]), _field(data["Uz"])])
+        vorticity = np.column_stack(
+            [_field(data["omega_x"]), _field(data["omega_y"]), _field(data["omega_z"])]
         )
         grid.point_data["Velocity"] = velocity
         grid.point_data["VelocityMagnitude"] = np.linalg.norm(velocity, axis=1)
         grid.point_data["Vorticity"] = vorticity
         grid.point_data["VorticityMagnitude"] = np.linalg.norm(vorticity, axis=1)
-        grid.point_data["Pressure"] = np.asarray(data["p"], dtype=np.float32)
+        grid.point_data["Pressure"] = _field(data["p"])
+        grid.field_data["OpenONDASurfaceOrdering"] = np.asarray([1], dtype=np.uint8)
         grid.save(str(filepath), binary=True)
         return data
 

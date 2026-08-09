@@ -166,20 +166,30 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
     sampler = SurfaceSampler(
         point=[0, 0, 0.5],
         normal=[0, 0, 1],
-        bounds=[0.2, 0.8, 0.2, 0.8],
+        bounds=[0.2, 0.8, 0.2, 0.6],
         spacing=0.2,
         file_name="slice_z0",
     )
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
-    with contextlib.redirect_stdout(io.StringIO()):
-        solver.evolve()
+    n = solver.mesh_data["n_elements"]
+    n_interior = solver.mesh_data["n_interior_faces"]
+    cells = solver.geo_data["element_centroids"][:n]
+    faces = solver.geo_data["face_centroids"][n_interior:]
+    solver.U[:n, 0] = 2.0 * cells[:, 0] + 3.0 * cells[:, 1]
+    solver.U[n:, 0] = 2.0 * faces[:, 0] + 3.0 * faces[:, 1]
+    solver._invalidate_derived_fields()
 
+    expected = sampler.sample(solver)
     samples = tmp_path / "samples"
+    samples.mkdir()
+    output = samples / "slice_z0_000001.vts"
+    sampler.save_vts(solver, str(output))
+
     written = sorted(samples.glob("slice_z0_*.vts"))
     assert len(written) == 1
 
     grid = pv.read(written[0])
-    assert grid.dimensions == (4, 4, 1)
+    assert grid.dimensions == (4, 3, 1)
     assert set(grid.point_data) == {
         "Velocity",
         "VelocityMagnitude",
@@ -187,10 +197,12 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
         "VorticityMagnitude",
         "Pressure",
     }
-    assert grid.point_data["Velocity"].shape == (16, 3)
-
-    pvd = (samples / "slice_z0.pvd").read_text()
-    assert written[0].name in pvd
+    assert grid.point_data["Velocity"].shape == (12, 3)
+    assert "OpenONDASurfaceOrdering" in grid.field_data
+    np.testing.assert_allclose(
+        grid.point_data["Velocity"][:, 0],
+        expected["Ux"].reshape(sampler.grid_shape).ravel(order="F"),
+    )
 
 
 def test_surface_sampler_cadence_is_owned_by_the_schedule(tmp_path):

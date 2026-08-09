@@ -36,8 +36,8 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    FVMSetup,
     ForceSampler,
+    FVMSetup,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -45,11 +45,11 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.sampling.base import SamplingSchedule
 from source.solvers.FVM.fields import gradients
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
+from source.solvers.FVM.sampling.base import SamplingSchedule
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)

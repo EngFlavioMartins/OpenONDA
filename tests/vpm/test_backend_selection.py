@@ -34,17 +34,29 @@ def test_macos_f32_prefers_metal(monkeypatch):
 
     names = _names(backend._build_backend_chain("AUTO", precision="f32"))
 
-    assert names[0] == "METAL"
-    assert names[-1] == "CPU"
+    assert names == ["METAL"]
 
 
-def test_macos_auto_f64_skips_metal(monkeypatch):
+def test_macos_rejects_vulkan(monkeypatch):
     monkeypatch.setattr(backend.platform, "system", lambda: "Darwin")
 
-    names = _names(backend._build_backend_chain("AUTO", precision="f64"))
+    try:
+        backend._build_backend_chain("VULKAN", precision="f32")
+    except ValueError as exc:
+        assert "unavailable on macOS" in str(exc)
+    else:
+        raise AssertionError("macOS must not silently replace Vulkan with the CPU")
 
-    assert "METAL" not in names
-    assert names and all(name == "CPU" for name in names)
+
+def test_macos_auto_f64_does_not_fall_back_to_cpu(monkeypatch):
+    monkeypatch.setattr(backend.platform, "system", lambda: "Darwin")
+
+    try:
+        backend._build_backend_chain("AUTO", precision="f64")
+    except ValueError as exc:
+        assert "request CPU explicitly" in str(exc)
+    else:
+        raise AssertionError("AUTO f64 must not silently select the CPU")
 
 
 def test_explicit_metal_rejects_f64(monkeypatch):
@@ -73,6 +85,11 @@ def test_explicit_backend_is_not_replaced_by_environment(monkeypatch):
 
     monkeypatch.setattr(backend, "_build_backend_chain", build_chain)
     monkeypatch.setattr(backend.ti, "init", lambda **kwargs: None)
+    monkeypatch.setattr(
+        backend.ti.lang.impl,
+        "current_cfg",
+        lambda: type("Config", (), {"arch": backend.ti.metal})(),
+    )
     monkeypatch.setattr(backend, "_probe_taichi_backend", lambda: None)
     monkeypatch.setattr(backend.constants_module, "TAICHI_BACKEND", "UNKNOWN")
 

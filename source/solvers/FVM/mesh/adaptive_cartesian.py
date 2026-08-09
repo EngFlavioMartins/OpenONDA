@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import gcd, lcm
 import math
+from math import gcd, lcm
 from pathlib import Path
 from typing import cast
 

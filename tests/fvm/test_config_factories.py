@@ -11,9 +11,9 @@ from source.solvers.FVM.config.types import (
     TransportConfig,
     TurbulenceConfig,
 )
+from source.solvers.FVM.factory import _runtime_setup
 from source.solvers.FVM.sampling.base import SamplingSchedule
 from source.solvers.FVM.sampling.forces import ForceSampler, YPlusSampler
-from source.solvers.FVM.factory import _runtime_setup
 
 
 class TestConfigFactories:

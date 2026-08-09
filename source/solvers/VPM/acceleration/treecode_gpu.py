@@ -813,8 +813,7 @@ class TaichiTreecode:
 
     @ti.kernel
     def _leaf_multipole_init_kernel(self, N: ti.i32):
-        """Seed leaf multipoles/AABB directly from particles.
-        """
+        """Seed leaf multipoles/AABB directly from particles."""
         for j in range(N):
             p = self.sorted_indices[j]
             self.node_total_circ[j] = self.circulations[p]
@@ -1588,7 +1587,7 @@ class TaichiTreecode:
         self, background_velocity: np.ndarray | None = None
     ) -> None:
         """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
-        Results stay in ``self.velocities`` / ``self.velocity_gradients`` """
+        Results stay in ``self.velocities`` / ``self.velocity_gradients``"""
         t_start = time.perf_counter()
         if background_velocity is not None:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())

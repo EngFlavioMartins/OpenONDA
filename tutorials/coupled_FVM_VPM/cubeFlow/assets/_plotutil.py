@@ -89,6 +89,19 @@ def run_constants() -> dict:
     phys = meta.get("physics", {})
     u_inf = np.asarray(phys.get("u_inf", [1.0, 0.0, 0.0]), dtype=float)
     box = meta.get("fvm_solver", {}).get("fvm_domain", {})
+    frames = slice_frames("fvm")
+    if frames:
+        import pyvista as pv
+
+        bounds = pv.read(frames[0][1]).bounds
+        box = {
+            "xmin": float(bounds.x_min),
+            "xmax": float(bounds.x_max),
+            "ymin": float(bounds.y_min),
+            "ymax": float(bounds.y_max),
+            "zmin": box.get("zmin", -1.5),
+            "zmax": box.get("zmax", 1.5),
+        }
     return {
         "U_inf": float(np.linalg.norm(u_inf)) or 1.0,
         "u_inf_vec": u_inf,
@@ -193,20 +206,21 @@ def load_slice(
         return None
     grid = pv.read(path)
     ni, nj, _ = grid.dimensions
-    shape = (ni, nj)
+    shape = (nj, ni)
+    legacy_fvm = source != "vpm" and "OpenONDASurfaceOrdering" not in grid.field_data
 
     def field(key, component=None):
         if key not in grid.point_data:
             return None
         values = np.asarray(grid.point_data[key], dtype=float)
         values = values if component is None else values[:, component]
-        return values.reshape(shape, order="F")
+        return values.reshape((ni, nj)).T if legacy_fvm else values.reshape(shape)
 
     points = np.asarray(grid.points, dtype=float)
     return {
         "time": picked_time,
-        "x": points[:, 0].reshape(shape, order="F"),
-        "y": points[:, 1].reshape(shape, order="F"),
+        "x": points[:, 0].reshape(shape),
+        "y": points[:, 1].reshape(shape),
         "Ux": field("Velocity", 0),
         "Uy": field("Velocity", 1),
         "omega_z": field("Vorticity", 2),
@@ -241,6 +255,22 @@ def load_vpm_forces() -> dict[str, np.ndarray] | None:
         np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
     )
     return {name: np.asarray(rows[name]) for name in rows.dtype.names} if rows.size else None
+
+
+def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
+    """Times present in every supplied sampler series."""
+    if not series or any(np.asarray(values).size == 0 for values in series):
+        return np.empty(0)
+    base = np.unique(np.asarray(series[0], dtype=float))
+    matched = [
+        time
+        for time in base
+        if time > tol
+        and all(
+            np.min(np.abs(np.asarray(values, dtype=float) - time)) <= tol for values in series[1:]
+        )
+    ]
+    return np.asarray(matched)
 
 
 def comparison_times(dt: float = PLOT_DT) -> np.ndarray:

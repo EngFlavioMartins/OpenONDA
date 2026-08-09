@@ -1,92 +1,96 @@
-# FVM–VPM coupling reference
+# FVM–VPM coupling
 
-## Run
+## Cube benchmark
 
 ```bash
 cd tutorials/coupled_FVM_VPM/cubeFlow
 ./allrun.sh
+./allplot.sh
 ```
 
-Run `referenceFlow/allrun.sh` before `allplot.sh` when a new matched reference
-is required. Both cases use a 0.0125 s FVM step and write every 0.5 s.
+Force and field samples are written to `samples/`. Comparisons use coincident
+physical times from `referenceFlow/samples/`.
 
 ## Production method
 
-The supported coupler uses one exchange path:
+Each 0.05 s coupling window:
 
-1. Advance the Gaussian-particle VPM solution on Metal in `f32`.
-2. Evaluate the complete particle velocity, including the body harmonic field,
-   on the cropped FVM boundary.
-3. Project the face velocity to zero net volume flux and impose it as a
-   Dirichlet velocity trace. The FVM pressure boundary uses
-   `fixedFluxPressure`.
-4. Relax the FVM fringe toward the same time-interpolated VPM velocity used by
-   the boundary trace.
-5. Reconstruct the FVM velocity on the handoff lattice with a cached,
-   four-neighbour, gradient-corrected weighted trace.
-6. Transfer its curl to Gaussian particles, reuse lattice-aligned particles,
-   apply one strength correction, exclude the solid exactly, and prune by
-   circulation magnitude while preserving circulation and linear impulse.
+1. advances Gaussian particles with RK2, stretching, LES, and GBD on the GPU;
+2. evaluates the particle and panel velocity on the cropped FVM boundary;
+3. removes the integrated donor-flux residual;
+4. advances the FVM with Dirichlet velocity and `fixedFluxPressure`;
+5. relaxes the FVM fringe toward the same VPM field;
+6. transfers the FVM velocity curl to particles with conservative remeshing,
+   solid exclusion, invariant recovery, and weak-particle pruning.
 
-The cube benchmark uses a `[-1.8, 1.8]^3` FVM box, 0.05 m particle spacing,
-0.0125 s FVM steps, 0.05 s VPM steps, a 300,000-particle cap, four CPU ranks
-for FVM, and Metal/f32 for VPM. The explicit Metal request is strict: backend
-initialization fails instead of silently switching the particle solve to CPU.
+The validated cube setup is:
 
-## Validation result
+| Setting | Value |
+|---|---:|
+| FVM box | `[-1.5, 1.5]^3` |
+| FVM cells | 120,248 |
+| Wall / maximum cell size | `0.0125 D` / `0.1 D` |
+| FVM step / ranks | `0.01 s` / 4 |
+| VPM step / spacing | `0.05 s` / `0.04 D` |
+| Handshake width / dead strip | `0.24 D` / 0 |
+| Particle cap | 200,000 |
+| VPM backend | Metal, f32 |
 
-The accepted configuration was selected from matched runs through 3 s. All
-variants used the same 448,000-cell cropped mesh, harmonic donor,
-`fixedFluxPressure`, timestep, and 1,036,000-cell reference solution.
+`AUTO` is GPU-strict for f32 runs. It selects Metal on macOS and never changes
+the production solve to CPU silently.
 
-| Method | Drag error | Mean lift | Velocity relative L2 | Median window |
-|---|---:|---:|---:|---:|
-| Original baseline | +4.25% | -0.00028 | 2.558% | — |
-| Aligned remesh and interface-ranked cap | +5.14% | -0.00010 | 2.419% | 68.2 s |
-| Weighted trace and interface-ranked cap | +4.48% | +0.00423 | 2.175% | 68.2 s |
-| Weighted trace without fringe | -5.98% | -0.04248 | 3.163% | 75.6 s |
-| Production method | **+4.07%** | +0.00383 | **2.158%** | **57.3 s** |
+## Validation
 
-At 3 s, the stitched velocity field has 1.1% mean and 3.4% P95 error relative
-to the fully meshed reference. Aligned remeshing was 13 times faster than
-unconditionally scattering an already aligned cloud and conserved circulation
-to roundoff.
+The accepted setup was run from rest to 3 s against the saved fully meshed
+reference.
 
-## Rejected methods
+| Time | Reference Cd | Hybrid Cd | Error |
+|---:|---:|---:|---:|
+| 0.15 | 1.95280 | 1.96910 | +0.83% |
+| 0.60 | 1.38213 | 1.39923 | +1.24% |
+| 1.20 | 1.20312 | 1.15007 | -4.41% |
+| 1.65 | 1.02008 | 1.01098 | -0.89% |
+| 2.10 | 0.87281 | 0.93170 | +6.75% |
+| 2.70 | 0.87694 | 0.86942 | -0.86% |
+| 3.00 | 0.88333 | 0.84641 | -4.18% |
 
-These methods were tested and are intentionally unsupported:
+Over all 20 coincident samples, mean Cd is 1.13599 versus 1.13404 (+0.17%).
+The pointwise mean absolute error is 3.30%; the maximum is 8.12%. The remaining
+error is primarily a wake-phase/interface-trace error, not a mean-drag or wall
+force-integration error.
 
-- Disabling the fringe caused transverse drift and degraded both velocity and
-  force histories.
-- Ranking the particle cap by an interface-velocity bound reduced that bound
-  but worsened drag.
-- Nearest-cell velocity traces increased cell-switching noise.
-- Full M4 remeshing of aligned particles added cost without improving the
-  solution.
-- Cell-vorticity handoff was less consistent than the velocity-gradient trace.
-- Live FVM-vorticity Biot–Savart reconstruction omitted the harmonic velocity
-  component and introduced a kernel splice at the interface.
-- Mixed, characteristic, and scalar Robin boundary variants did not recover
-  the reference force history.
-- A VPM-derived pressure gradient was incompatible with the prescribed FVM
-  flux and became unstable. `fixedFluxPressure` is required.
-- Overlap velocity overriding and redundant frozen-donor Picard iterations
-  added cost without improving the accepted result.
-- Applying the body panel field throughout the particle domain was expensive;
-  applying a separate Dirichlet panel correction double-counted blockage.
+After JIT warm-up, one window takes 21–22 s: about 12 s VPM, 5.8 s four-rank
+FVM, and 3.8 s handoff. The particle population remains at or below 200,000.
 
-## Remaining limitation
+## VPM overhaul repair
 
-The remaining approximately 4% drag bias is a pressure/traction-consistency
-error. It is larger than `f32` roundoff and is not corrected by more remeshing,
-stronger pruning, disabling the fringe, or changing the particle kernel. A
-future improvement should exchange a conservative momentum flux or traction
-at the interface and demonstrate convergence against a matched monolithic
-split test.
+The post-overhaul failure had three causes:
 
-## Diagnostics
+- Vulkan was requested on macOS and Taichi silently selected the CPU;
+- GPU grid diffusion dispatched over the complete retained-domain allocation;
+- the active diffusion box could move past a domain face and alternated its
+  ping field, causing repeated compilation and invalid extents.
 
-Every coupling window writes VPM, donor, fringe, FVM, handoff, and total wall
-times to `solution/coupler.log` and `solution/coupler_diagnostics.jsonl`. Force
-histories are written by the FVM solver and include pressure and viscous wall
-contributions. Comparison plots must use coincident physical output times.
+The repaired path selects Metal, verifies the initialized Taichi architecture,
+allocates the GPU diffusion workspace once, executes only on a clamped active
+box, ignores already-removed out-of-domain particles, and restores a canonical
+ping state after every GBD step.
+
+## Rejected variants
+
+- A 0.4 D handshake improved startup drag but increased the error after 1 s.
+- A 0.16 D handshake was worse after the wake reached the interface.
+- Applying the panel velocity in every particle RK stage was slower and did not
+  improve drag.
+- Native wall `fixedFluxPressure` is not yet equivalent to OpenFOAM; it reduced
+  Cd to 0.54 at 0.15 s and is not used.
+- Matching the full reference refinement inside the cropped box required
+  1.02 million cells and removed the cost advantage.
+- A global circulation-magnitude particle cap worsened mature-wake drag because
+  weak far-wake particles still carry important impulse and induced velocity.
+- Exterior-halo overwrite generated 387,000 candidates and forced destructive
+  cap pruning.
+
+The supported path remains the single configuration above. Improving the
+pointwise transient further requires a conservative momentum/traction trace or
+a true FVM handshake shell, not another scalar boundary or pruning coefficient.

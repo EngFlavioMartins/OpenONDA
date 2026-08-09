@@ -44,7 +44,7 @@ class _NullLogger:
     def yplus_info(self, yplus_stats):  # noqa: D401
         pass
 
-    def ibm_force_info(self, coefficients, slip):
+    def ibm_force_info(self, _coefficients, slip):
         pass
 
     def force_info(self, forces):

@@ -315,16 +315,15 @@ class Solver:
             except Exception as exc:
                 Logging.warning(f"Failed to configure DVH body mask: {exc}")
 
-        # Vulkan retains replaced grid fields, so its grid must be fixed before
-        # the first diffusion step.  CPU/CUDA can safely grow a grid around the
-        # live particles; pre-allocating their *entire* VPM domain at solver
-        # construction both wastes memory and couples allocation to a domain
-        # that is only an adaptation/removal bound.
+        # GPU field replacement leaks memory and forces Taichi to recompile
+        # template kernels. Allocate the diffusion workspace once.
         vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
         vc = getattr(final_config, "viscous", None)
         scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
         is_grid_diffusion = scheme in {"DVH", "GBD"}
-        fixed_grid_required = self.processing_unit == "VULKAN" and is_grid_diffusion
+        fixed_grid_required = (
+            self.processing_unit in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
+        )
         if fixed_grid_required and hasattr(self.physics, "require_fixed_grid_allocation"):
             self.physics.require_fixed_grid_allocation(True)
         if fixed_grid_required and hasattr(self.physics, "configure_max_grid_extent"):
@@ -337,14 +336,12 @@ class Solver:
 
             if vpm_bounds is None:
                 raise ValueError(
-                    "Vulkan DVH/GBD requires vpm_domain_bounds so the diffusion "
-                    "grid can be pre-allocated once. Use processing_unit='AUTO' "
-                    "to prefer CUDA when available, use CUDA/CPU explicitly, or "
-                    "provide fixed VPM domain bounds."
+                    "GPU DVH/GBD requires vpm_domain_bounds so the diffusion "
+                    "grid can be allocated once."
                 )
             if _grid_h is None or _grid_h <= 0:
                 raise ValueError(
-                    "Vulkan DVH/GBD requires a positive grid spacing so the "
+                    "GPU DVH/GBD requires a positive grid spacing so the "
                     "fixed diffusion grid can be pre-allocated."
                 )
 

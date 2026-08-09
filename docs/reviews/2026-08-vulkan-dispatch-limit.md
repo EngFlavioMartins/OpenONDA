@@ -1,149 +1,26 @@
-# GBD/DVH on Vulkan: bounded active workspace
+# GPU diffusion workspace repair
 
-**Status:** fixed 2026-08-08. Pre-existing defect (reproduced on `7d7f135`, before the VPM audit).
+**Validated:** macOS/Metal, 2026-08-09.
 
-## Symptom
+## Failure
 
-```
-Performing GBD diffusion(h=4.000e-02, ...)
-RuntimeError: [runtime.cpp:launch_kernel@572] Dispatch error : RhiResult(not_supported)
-```
+The cube tutorial requested Vulkan on macOS. Taichi selected the CPU, or GBD
+dispatched over its full 21.3-million-node retained-domain allocation. Active
+boxes also became invalid at domain faces and alternated Taichi ping fields.
 
-`tutorials/coupled_FVM_VPM/cubeFlow`, step 2 — the first step carrying VPM particles.
+## Repair
 
-## Root cause
+- `AUTO` selects Metal for macOS f32 runs without CPU fallback.
+- Explicit Vulkan on macOS and Metal off macOS are rejected.
+- The initialized Taichi architecture must equal the requested architecture.
+- GPU DVH/GBD uses one fixed allocation and a lattice-aligned active extent.
+- Active extents clamp independently at all six domain faces.
+- Particles outside the retention domain do not enlarge the diffusion box.
+- GBD starts and ends on the canonical ping field.
 
-Two independent whole-allocation operations, both driven by the same design conflation.
+Regression tests cover backend selection, architecture fallback, six-face
+clamping, out-of-domain particles, active/full-grid equivalence, and ping-state
+stability.
 
-**1. Active grid = whole domain.** When the domain was pre-configured (the Vulkan path always
-is), GBD/DVH set the active grid to the entire `vpm_domain_bounds` every firing, regardless of
-where particles were:
-
-| | |
-|---|---|
-| `VPM_DOMAIN` / `VPM_SPACING` | (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5) / 0.04 |
-| active grid | 395 × 232 × 232 = **21,260,480 nodes** |
-| cloud actually needs | ~180,000 nodes |
-
-Taichi flattens n-D loops to a 1-D dispatch, so that is ~166k workgroups against
-`maxComputeWorkGroupCount[0] = 65,535` (Intel Iris Xe ADL GT2). Taichi reports the rejection
-only as `RhiResult(not_supported)`.
-
-**2. Whole-field host transfers.** `_nu_eff_grid.from_numpy`, `_current_grid.from_numpy` and two
-`_current_grid.to_numpy()[:nx,:ny,:nz,:]` each launch a copy kernel over the full field — the
-slice happens *after* the transfer — hitting the same ceiling and moving ~255 MB per firing.
-
-Isolated confirmation: struct-for or `fill()` over a 19.8M-node field reproduces the error
-exactly; `ti.ndrange(60,60,60)` is fine.
-
-## Fix
-
-**Lattice-aligned active box.** `_lattice_aligned_bounds` sizes the active box to the particle
-cloud while keeping the origin on the pre-configured lattice — offset from `_fixed_grid_min` by
-a whole number of cells — so every node keeps the coordinate it would have had on the full grid.
-That preserves the fixed grid phase the full-domain path existed to provide, and with it the
-asymmetric flat-end artefact it avoided. Clamped to stay inside the allocation.
-
-Verified: lattice phase error ≤ 3e-6 cells, node coordinates match the full-domain lattice to
-≤ 1.0e-7 (f32 eps), box always covers the cloud and fits the allocation.
-
-**Bounded host transfers.** Three chunked kernels (vec3 down, vec3 up, scalar up) map a flat
-active index to `(i,j,k)` and move `_GRID_TRANSFER_CHUNK = 65536` nodes per launch through a
-fixed-shape staging buffer. Fixed shape matters: varying ndarray shapes accumulate Vulkan
-staging allocations on Taichi 1.7.x, which is why `physics/base.py` already uses this pattern.
-Transfer and dispatch cost is now O(nx·ny·nz), never O(prod(_grid_shape)).
-
-Grid kernels (`_zero_grid_kernel`, body-mask fill/apply, grid norm) likewise take the active
-extents rather than iterating the allocation and filtering.
-
-**Device-pool visibility.** `initialize_taichi_backend` now publishes the pool it actually
-chose as `constants.TAICHI_POOL_BYTES`, and the diffusion module warns when the grid crowds it:
-
-```
-Diffusion grid 395x232x232 uses 649 MB, 85% of the 768 MB device pool;
-particles, treecode and staging buffers share what is left.
-```
-
-This is deliberately a **warning, not a rejection**. An earlier revision of this fix made it a
-hard `MemoryError` at 45% of the pool; that rejected cubeFlow's 649 MB grid — a configuration
-that demonstrably runs — and on 4 MPI ranks it surfaced as a silent hang, because one rank
-raised while the others spun in a barrier at 100% CPU. The 1 GiB `_MAX_PREALLOC_BYTES` ceiling
-remains the allocation authority. Do not turn the pool share into an enforced limit without
-first measuring the real ceiling on the target device.
-
-## REVERTED: the active-box change
-
-**The lattice-aligned active box was reverted on 2026-08-09.** It ran cubeFlow cleanly for 12
-steps and then destroyed the solution at step 13:
-
-```
-[GBD] Threshold retained 96.8396% of Sigma|Gamma| on 205571 nodes.
-[INFO] Removed 205571 particles outside box [-4.50, 11.00] x [-4.50, 4.50] x [-4.50, 4.50]
-[Inject] N_after=257228  |Gamma|_after=0.0000e+00
-```
-
-Every regenerated particle was culled by the retention step, total circulation went to exactly
-zero, the donor BC collapsed (`u_x/U_inf face[min=0.00 max=0.00]`), and the run died with
-`ZeroDivisionError`. Circulation had been healthy and growing until that step
-(10.6 -> 12.4 over steps 1-12).
-
-Mechanism: `_lattice_aligned_bounds` clamps the origin with
-`steps = clip(floor((lo - anchor)/h), 0, cap - 5)`. Once the wake reaches the downstream end of
-the domain, `steps` saturates, putting `grid_min` at x ~ 10.98 with a 5-cell box that straddles
-the retention boundary at x = 11.0. Regenerated nodes then fall outside the retention box and
-are deleted wholesale.
-
-The helper is still in the module and still covered by tests, but **no caller uses it**. Note
-that `test_active_box_gbd_matches_full_domain_gbd` is now vacuous: with both paths on the full
-domain it compares a configuration against itself.
-
-**Why it was not simply patched.** The obvious fix is to clamp the box to the retention domain
-rather than only to the allocation. That is probably right, but it was not validated, and this
-change had already passed a small-cloud equivalence test before failing at scale — the test
-cloud sat comfortably inside the domain and never exercised the clamp. Shipping a third
-unvalidated revision was the worse option. A loud dispatch failure is preferable to silently
-zeroed circulation.
-
-**Consequence: the dispatch overflow returns.** With the active grid back to the full domain,
-cubeFlow again hits `RhiResult(not_supported)` at step 2 on this device. The bounded host
-transfers and bounded grid kernels are retained (they are numerically neutral and were
-independently necessary), but they are not sufficient on their own.
-
-## Correct next step
-
-Re-introduce the active box with the origin and extent clamped to the **retention domain**, not
-just the allocation, and validate against a cloud that actually reaches the downstream boundary
-— the condition that broke it. Required evidence before trusting it:
-
-- a bounds test with the cloud pushed against each domain face in turn;
-- a GBD equivalence test where the clamp is active, not merely a cloud in the middle;
-- a cubeFlow run past step 13, with `|Gamma|` monitored per step.
-
-## Results
-
-| | before | after |
-|---|---|---|
-| active grid (cubeFlow) | 21,260,480 nodes | **~180,000 nodes** |
-| whole-allocation transfers per firing | 4 (~255 MB) | **0** |
-| cubeFlow step 2 | `RhiResult(not_supported)` | **passes** |
-
-`tests/vpm/test_grid_diffusion_active_box.py` — 9 tests: lattice phase, cloud coverage,
-allocation containment, transfer round-trips (including a multi-chunk case), a guard that no
-whole-allocation transfer returns to the module, GBD active-box vs full-domain numerical
-equivalence, and a Vulkan large-allocation/small-box dispatch regression.
-
-**Numerical neutrality is pinned**, not assumed: `test_active_box_gbd_matches_full_domain_gbd`
-runs the same particles through GBD twice — once with the active box, once with the old
-full-domain box forced — and requires identical particle count, and positions, circulations,
-radii, group IDs and total circulation equal to f32 tolerance.
-
-51 diffusion/GBD/DVH tests pass.
-
-## Not addressed
-
-- Treecode capacity still allocates to the declared particle ceiling (`max_particles=300_000`
-  for cubeFlow) to avoid Taichi field replacement on Vulkan. Deliberately left for a separate
-  measurement of the whole device-memory distribution.
-- The device-pool warning does not account for the treecode and particle fields in the same
-  budget, so it under-reports total pressure. Measuring the real allocation ceiling on the
-  target device is the prerequisite for turning it into an enforced limit.
+The production cube configuration and measured force/runtime results are in
+[`docs/fvm_vpm_coupling.md`](../fvm_vpm_coupling.md).

@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 
 from ..fields import diagnostics
-from .base import _register_sampler, Sampler, append_csv_rows
+from .base import Sampler, _register_sampler, append_csv_rows
 
 FORCES_HEADER = [
     "time",

@@ -733,9 +733,7 @@ def _pressure_interior_flux_scalar(
         if use_ddt:
             flux_hbya += du_face * ddt_flux_correction[face]
         conductance = face_conductance[face]
-        flux_vf[face] = (
-            flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
-        )
+        flux_vf[face] = flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
 
 
 @njit(cache=True)
@@ -792,9 +790,7 @@ def _pressure_interior_flux_vector(
         if use_ddt:
             flux_hbya += ((du0 + du1 + du2) / 3.0) * ddt_flux_correction[face]
         conductance = face_conductance[face]
-        flux_vf[face] = (
-            flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
-        )
+        flux_vf[face] = flux_hbya + conductance * (p[own] - p[nei]) + nonorthogonal_flux
 
 
 @overload
@@ -871,9 +867,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     else:
         DU = correction_workspace.DU
         face_conductance = correction_workspace.face_conductance
-    if reuse_matrix and (
-        correction_workspace is None or correction_workspace.matrix is None
-    ):
+    if reuse_matrix and (correction_workspace is None or correction_workspace.matrix is None):
         raise ValueError("reuse_matrix requires an assembled pressure-correction workspace")
 
     # Use direct gradient computation for full pressure field p

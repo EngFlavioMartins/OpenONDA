@@ -1508,7 +1508,8 @@ class VPMSetup:
 
     # ---- COMPUTATIONAL SETTINGS ----
     processing_unit: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] = "AUTO"
-    """Compute backend.  Default ``'AUTO'`` selects the best available GPU automatically:
+    """Compute backend. Default ``'AUTO'`` selects the platform GPU and fails
+    clearly when no GPU is available; CPU execution must be requested explicitly.
 
     * **macOS**             → Metal  (Apple's native GPU API)
     * **Linux / Windows**   → CUDA   (if an NVIDIA GPU + driver is found)
@@ -1517,7 +1518,7 @@ class VPMSetup:
     Override the automatic selection via the ``OPENONDA_PROCESSING_UNIT`` environment
     variable or by passing an explicit value here:
 
-    * ``'AUTO'``       — best GPU for this platform (recommended)
+    * ``'AUTO'``       — best GPU for this platform, without CPU fallback
     * ``'VULKAN'``     — force Vulkan (Linux / Windows)
     * ``'CUDA'``       — force CUDA (requires NVIDIA GPU + driver)
     * ``'METAL'``      — force Metal (macOS only)

@@ -202,6 +202,7 @@ class _GridDiffusionMixin:
 
         # Maximum grid dimensions from VPM domain (set by configure_max_grid_extent).
         self._max_grid_dims: tuple[int, int, int] | None = None
+        self._grid_domain_bounds: np.ndarray | None = None
 
         # Fixed grid origin when the domain is pre-allocated.
         self._fixed_grid_min: np.ndarray | None = None
@@ -227,8 +228,8 @@ class _GridDiffusionMixin:
     def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
         """Require grid-based diffusion to pre-allocate one fixed grid.
 
-        This is used for Vulkan backends, where replacing Taichi fields during a
-        long DVH/GBD run causes device memory to grow monotonically.
+        GPU backends use this because replacing Taichi fields leaks device memory
+        and recompiles template kernels.
         """
         self._require_fixed_grid_allocation = bool(enabled)
 
@@ -321,6 +322,16 @@ class _GridDiffusionMixin:
         anchor = np.asarray(self._fixed_grid_min, dtype=np.float64).reshape(3)
         cap = np.asarray(self._max_grid_dims, dtype=np.int64)
         finite = np.isfinite(pos).all(axis=1)
+        if self._grid_domain_bounds is not None:
+            bounds = self._grid_domain_bounds
+            finite &= (
+                (pos[:, 0] >= bounds[0])
+                & (pos[:, 0] <= bounds[1])
+                & (pos[:, 1] >= bounds[2])
+                & (pos[:, 1] <= bounds[3])
+                & (pos[:, 2] >= bounds[4])
+                & (pos[:, 2] <= bounds[5])
+            )
         pts = pos[finite]
         if len(pts) == 0:
             return anchor.astype(np.float32), (5, 5, 5)
@@ -329,12 +340,12 @@ class _GridDiffusionMixin:
         lo = pts.min(axis=0) - margin
         hi = pts.max(axis=0) + margin
 
-        steps = np.floor((lo - anchor) / h)
-        steps = np.clip(steps, 0, np.maximum(cap - 5, 0)).astype(np.int64)
-        grid_min = anchor + steps * h
-
-        ext = np.ceil((hi - grid_min) / h).astype(np.int64) + 1
-        ext = np.clip(ext, 5, cap - steps)
+        first = np.floor((lo - anchor) / h).astype(np.int64)
+        last = np.ceil((hi - anchor) / h).astype(np.int64)
+        first = np.clip(first, 0, np.maximum(cap - 5, 0))
+        last = np.clip(last, first + 4, cap - 1)
+        grid_min = anchor + first * h
+        ext = last - first + 1
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
     @staticmethod
@@ -385,7 +396,7 @@ class _GridDiffusionMixin:
             nz = min(nz, cap[2])
         elif self._require_fixed_grid_allocation:
             raise RuntimeError(
-                "Vulkan DVH/GBD requires vpm_domain_bounds so the diffusion grid "
+                "GPU DVH/GBD requires vpm_domain_bounds so the diffusion grid "
                 "can be pre-allocated once. Refusing grow-on-demand grid allocation "
                 "because Taichi 1.7.x retains replaced Vulkan fields until ti.reset()."
             )
@@ -397,7 +408,7 @@ class _GridDiffusionMixin:
 
             if self._require_fixed_grid_allocation:
                 raise RuntimeError(
-                    "Vulkan DVH/GBD grid request exceeds the fixed pre-allocated "
+                    "GPU DVH/GBD grid request exceeds the fixed pre-allocated "
                     f"grid {alloc}: requested {(nx, ny, nz)}. Increase "
                     "vpm_domain_bounds/padding or use CUDA/CPU for this run."
                 )
@@ -495,6 +506,7 @@ class _GridDiffusionMixin:
         ny = max(5, math.ceil((domain_bounds[3] - domain_bounds[2] + 2 * margin) / h) + 1)
         nz = max(5, math.ceil((domain_bounds[5] - domain_bounds[4] + 2 * margin) / h) + 1)
         self._max_grid_dims = (nx, ny, nz)
+        self._grid_domain_bounds = np.asarray(domain_bounds, dtype=np.float64)
 
         # Store a fixed grid origin derived from the domain bounds.
         self._fixed_grid_min = np.array(
@@ -527,12 +539,10 @@ class _GridDiffusionMixin:
             if self._require_fixed_grid_allocation and self._grid_a is None:
                 pool = self._device_pool_bytes()
                 pool_txt = (
-                    f"{pool / (1 << 20):.0f} MB device pool"
-                    if pool
-                    else "unknown device pool"
+                    f"{pool / (1 << 20):.0f} MB device pool" if pool else "unknown device pool"
                 )
                 raise MemoryError(
-                    "Vulkan DVH/GBD requires a fixed pre-allocated grid.\n"
+                    "GPU DVH/GBD requires a fixed pre-allocated grid.\n"
                     f"  requested grid : {nx}x{ny}x{nz} = {nx * ny * nz:,} nodes\n"
                     f"  grid memory    : {total_mb:.0f} MB "
                     f"({bytes_per_node} B/node)\n"
@@ -1042,6 +1052,7 @@ class _GridDiffusionMixin:
         N = particles.number_of_particles
         if N == 0 or dt == 0.0:
             return None
+        self._ping = True
 
         try:
             zone_id_np = particles.zone_id_cpu().copy()
@@ -1062,8 +1073,8 @@ class _GridDiffusionMixin:
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np = self._fixed_grid_min.copy()
-            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(pos_np, h, domain_padding)
+            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
@@ -1163,6 +1174,7 @@ class _GridDiffusionMixin:
 
         if max_circ < 1e-30:
             _logger.warning("[GBD] Scattered grid is empty — keeping original particles.")
+            self._ping = True
             return None
 
         gamma_total = float(circ_mag.sum())
@@ -1180,6 +1192,7 @@ class _GridDiffusionMixin:
                 "[GBD] No nodes above threshold %.2e — keeping originals.",
                 _threshold_scalar(threshold),
             )
+            self._ping = True
             return None
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
         Logging.message(
@@ -1237,7 +1250,7 @@ class _GridDiffusionMixin:
                 f"{100.0 * corrected_abs / gamma_total:.4f}% of pre-prune Σ|Γ|."
             )
 
-        return self._build_diffusion_particle_arrays(
+        result = self._build_diffusion_particle_arrays(
             ix,
             iy,
             iz,
@@ -1252,6 +1265,8 @@ class _GridDiffusionMixin:
             group_winner_grid,
             nu_t_grid=nu_t_grid,
         )
+        self._ping = True
+        return result
 
     def gbd_diffusion(
         self,
@@ -1450,8 +1465,8 @@ class _GridDiffusionMixin:
 
         # -- Grid setup --------------------------------------------------------
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np = self._fixed_grid_min.copy()
-            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(pos_np, h, domain_padding)
+            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,

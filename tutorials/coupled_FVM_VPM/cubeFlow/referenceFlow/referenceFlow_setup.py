@@ -18,6 +18,7 @@ from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
     BoxRefinement,
+    ExecutionConfig,
     ForceSampler,
     FVMSetup,
     LinearSolverConfig,
@@ -113,6 +114,7 @@ FVM_MESH = AdaptiveCartesianMesher(
 FVM_SETUP = FVMSetup(
     case_name="referenceFlow",
     cores=FVM_CORES,
+    execution=ExecutionConfig(operator_backend="numba"),
     output=OutputSetup(
         format="vtk_xml",
         data_location="cell",

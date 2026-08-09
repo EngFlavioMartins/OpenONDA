@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Wake error-field diagnostic: coupled VPM vs referenceFlow, z=0, x>0.
-
-Built entirely from sampler output under ``samples/`` - the coupled run's
-``vpm_wake_slice_z0`` and referenceFlow's ``wake_slice_z0`` - so plotting needs
-no particle backups and no raw VTU access.
-
-3 rows x 2 cols:
-  row 0 = VPM solution,  row 1 = reference FVM,  row 2 = error (VPM - reference)
-  col 0 = streamwise velocity u_x/Uinf,  col 1 = vorticity omega_z*D/Uinf
-
-A dashed line marks the FVM/VPM coupling interface (the +x box face) so one can
-see WHERE the error is born and how it propagates downstream into the free wake.
-"""
-
-from __future__ import annotations
+"""Publication-style VPM/reference wake error fields."""
 
 from pathlib import Path
 import sys
@@ -28,133 +14,153 @@ from scipy.interpolate import griddata  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _plotutil as util  # noqa: E402
 
-NAME = "wake_slice_z0"
-CMAP_VEL = util.COLORMAPS["velocity"]
-CMAP_VORT = util.COLORMAPS["vorticity"]
-CMAP_ERR = util.COLORMAPS["error_diverging"]
 FIGURE_FORMAT = "png"
 FIGURE_DPI = 400
+FIGURE_HEIGHT = 11.0 / 2.54
+FIGURE_WIDTH = 12.5 / 2.54
+SLICE_NAME = "wake_slice_z0"
 BODY_HALF = 0.5
+BODY_MARGIN = 0.05
 
 
-def _body_mask(x, y, margin=0.05):
-    return (np.abs(x) <= BODY_HALF + margin) & (np.abs(y) <= BODY_HALF + margin)
-
-
-def _to_grid(source_slice, target):
-    """Interpolate a slice onto the target slice's grid."""
-    points = np.column_stack([source_slice["x"].ravel(), source_slice["y"].ravel()])
-    target_points = (target["x"], target["y"])
-    out = {}
-    for key in ("Ux", "omega_z"):
-        values = source_slice[key]
-        out[key] = (
-            griddata(points, values.ravel(), target_points, method="linear")
-            if values is not None
-            else None
+def _on_grid(source: dict, target: dict, key: str) -> np.ndarray:
+    points = np.column_stack((source["x"].ravel(), source["y"].ravel()))
+    values = source[key].ravel()
+    result = griddata(points, values, (target["x"], target["y"]), method="linear")
+    missing = ~np.isfinite(result)
+    if np.any(missing):
+        result[missing] = griddata(
+            points,
+            values,
+            (target["x"][missing], target["y"][missing]),
+            method="nearest",
         )
-    return out
+    return result
 
 
-def fig_wake_errors(time, vpm, reference, U_inf, D, x_iface):
+def plot_frame(time: float, vpm: dict, reference: dict, consts: dict) -> None:
+    U_inf, D = consts["U_inf"], consts["D"]
     x, y = vpm["x"] / D, vpm["y"] / D
-    ref = _to_grid(reference, vpm)
-    bm = _body_mask(x, y)
+    ux_vpm = vpm["Ux"] / U_inf
+    omega_vpm = vpm["omega_z"] * D / U_inf
+    ux_ref = _on_grid(reference, vpm, "Ux") / U_inf
+    omega_ref = _on_grid(reference, vpm, "omega_z") * D / U_inf
 
-    def scaled(values, scale):
-        out = values / scale
-        out[bm] = np.nan
-        return out
+    body = (np.abs(x) <= BODY_HALF + BODY_MARGIN) & (np.abs(y) <= BODY_HALF + BODY_MARGIN)
+    for field in (ux_vpm, omega_vpm, ux_ref, omega_ref):
+        field[body] = np.nan
 
-    uxv_g = scaled(vpm["Ux"], U_inf)
-    wv_g = scaled(vpm["omega_z"], U_inf / D)
-    uxr_g = scaled(ref["Ux"], U_inf)
-    wr_g = scaled(ref["omega_z"], U_inf / D)
+    velocity_error = (ux_vpm - ux_ref) * 100.0
+    vorticity_error = (omega_vpm - omega_ref) * 100.0
+    velocity_limit = np.nanpercentile(np.abs(ux_ref), 99) or 1.0
+    vorticity_limit = np.nanpercentile(np.abs(omega_ref), 99)
+    if not np.isfinite(vorticity_limit) or vorticity_limit <= 0:
+        vorticity_limit = np.nanpercentile(np.abs(omega_vpm), 95)
+    velocity_error_limit = np.nanpercentile(np.abs(velocity_error), 99) or 1.0
+    vorticity_error_limit = np.nanpercentile(np.abs(vorticity_error), 99) or 1.0
 
-    eu = (uxv_g - uxr_g) * 100
-    ew = (wv_g - wr_g) * 100
-
-    fig, ax = plt.subplots(
+    fig, axes = plt.subplots(
         3,
         2,
-        figsize=(12.5, 11.0),
-        dpi=400,
+        figsize=(FIGURE_WIDTH, FIGURE_HEIGHT),
+        dpi=FIGURE_DPI,
         sharex=True,
         sharey=True,
         constrained_layout=True,
     )
+    panels = (
+        (axes[0, 0], ux_vpm, -velocity_limit, velocity_limit, "velocity", r"VPM  $u_x/U_\infty$"),
+        (
+            axes[0, 1],
+            omega_vpm,
+            -vorticity_limit,
+            vorticity_limit,
+            "vorticity",
+            r"VPM  $\omega_z D/U_\infty$",
+        ),
+        (
+            axes[1, 0],
+            ux_ref,
+            -velocity_limit,
+            velocity_limit,
+            "velocity",
+            r"Reference  $u_x/U_\infty$",
+        ),
+        (
+            axes[1, 1],
+            omega_ref,
+            -vorticity_limit,
+            vorticity_limit,
+            "vorticity",
+            r"Reference  $\omega_z D/U_\infty$",
+        ),
+        (
+            axes[2, 0],
+            velocity_error,
+            -velocity_error_limit,
+            velocity_error_limit,
+            "error_diverging",
+            r"Error  $\Delta u_x/U_\infty$",
+        ),
+        (
+            axes[2, 1],
+            vorticity_error,
+            -vorticity_error_limit,
+            vorticity_error_limit,
+            "error_diverging",
+            r"Error  $\Delta\omega_z D/U_\infty$",
+        ),
+    )
 
-    uvmax = np.nanpercentile(np.abs(uxr_g), 99) or 1.0
-    wvmax = np.nanpercentile(np.abs(wr_g), 99)
-    eumax = np.nanpercentile(np.abs(eu), 99)
-    ewmax = np.nanpercentile(np.abs(ew), 99)
-
-    panels = [
-        (ax[0, 0], uxv_g, -uvmax, uvmax, CMAP_VEL, r"VPM  $u_x/U_\infty$"),
-        (ax[0, 1], wv_g, -wvmax, wvmax, CMAP_VORT, r"VPM  $\omega_z D/U_\infty$"),
-        (ax[1, 0], uxr_g, -uvmax, uvmax, CMAP_VEL, r"Reference  $u_x/U_\infty$"),
-        (ax[1, 1], wr_g, -wvmax, wvmax, CMAP_VORT, r"Reference  $\omega_z D/U_\infty$"),
-        (ax[2, 0], eu, -eumax, eumax, CMAP_ERR, r"Error  $\Delta u_x/U_\infty$"),
-        (ax[2, 1], ew, -ewmax, ewmax, CMAP_ERR, r"Error  $\Delta\omega_z D/U_\infty$"),
-    ]
     plots = []
-    for axis, field, minimum, maximum, cmap, title in panels:
-        plot = axis.pcolormesh(
-            x, y, field, cmap=cmap, vmin=minimum, vmax=maximum, shading="auto"
+    for ax, field, vmin, vmax, cmap, title in panels:
+        plot = ax.pcolormesh(
+            x, y, field, cmap=util.COLORMAPS[cmap], vmin=vmin, vmax=vmax, shading="auto"
         )
-        axis.axvline(x_iface, color=util.COLORS["DarkText"], ls="--", lw=1.0)
-        axis.set_title(title)
-        axis.set_xlim([0, 5])
-        axis.set_ylim([-1.5, 1.5])
-        axis.set_aspect("equal")
+        ax.axvline(consts["box"]["xmax"], color=util.COLORS["DarkText"], ls="--", lw=1.0)
+        ax.set(title=title, xlim=(0, 5), ylim=(-1.5, 1.5))
+        ax.set_aspect("equal")
         plots.append(plot)
 
-    fig.colorbar(plots[0], ax=[ax[0, 0], ax[1, 0]], pad=0.02, aspect=40)
-    fig.colorbar(plots[1], ax=[ax[0, 1], ax[1, 1]], pad=0.02, aspect=40)
-    fig.colorbar(plots[4], ax=[ax[2, 0]], pad=0.02, aspect=20)
-    fig.colorbar(plots[5], ax=[ax[2, 1]], pad=0.02, aspect=20)
-    for axis in ax[2, :]:
-        axis.set_xlabel(r"$x/D$")
-    for axis in ax[:, 0]:
-        axis.set_ylabel(r"$y/D$")
-
-    fig.suptitle(f"Wake fields VPM vs reference (z=0, t={time:.2f}s)")
+    fig.colorbar(plots[0], ax=[axes[0, 0], axes[1, 0]], pad=0.02, aspect=40)
+    fig.colorbar(plots[1], ax=[axes[0, 1], axes[1, 1]], pad=0.02, aspect=40)
+    fig.colorbar(plots[4], ax=axes[2, 0], pad=0.02, aspect=20)
+    fig.colorbar(plots[5], ax=axes[2, 1], pad=0.02, aspect=20)
+    for ax in axes[2, :]:
+        ax.set_xlabel(r"$x/D$")
+    for ax in axes[:, 0]:
+        ax.set_ylabel(r"$y/D$")
+    fig.suptitle(f"Wake fields VPM vs reference ($z=0$, $t={time:.2f}$ s)")
 
     util.save(fig, f"wake_errors_t{time:.2f}", FIGURE_FORMAT, FIGURE_DPI)
     plt.close(fig)
 
-    for label, mask in [
-        (f"x<{x_iface:g}", x < x_iface),
-        (f"{x_iface:g}-3", (x >= x_iface) & (x < 3)),
+    x_interface = consts["box"]["xmax"]
+    for label, mask in (
+        (f"x<{x_interface:g}", x < x_interface),
+        (f"{x_interface:g}-3", (x >= x_interface) & (x < 3)),
         ("x>3", x >= 3),
-    ]:
+    ):
         print(
-            f"  t={time:.1f} {label:>6}: |Delta u_x|mean={np.nanmean(np.abs(eu[mask])):.3f}  "
-            f"|Delta w|mean={np.nanmean(np.abs(ew[mask])):.3f}  "
-            f"|Delta w|max={np.nanmax(np.abs(ew[mask])):.2f}"
+            f"  t={time:.2f} {label:>6}: "
+            f"|Delta u_x|mean={np.nanmean(np.abs(velocity_error[mask])):.3f}, "
+            f"|Delta omega|mean={np.nanmean(np.abs(vorticity_error[mask])):.3f}"
         )
 
 
 def main() -> None:
-    consts = util.run_constants()
-    U_inf, D, x_iface = consts["U_inf"], consts["D"], consts["box"]["xmax"]
-
-    times = util.comparison_times()
+    times = util.common_times(
+        util.slice_times("vpm", SLICE_NAME),
+        util.slice_times("reference", SLICE_NAME),
+    )
     if times.size == 0:
-        raise SystemExit("No sampled wake data found; run the case or the resampler first.")
-
-    plotted = 0
+        raise SystemExit("No coincident wake samples found in samples/.")
+    consts = util.run_constants()
     for time in times:
-        vpm = util.load_slice("vpm", float(time), name=NAME)
-        reference = util.load_slice("reference", float(time), name=NAME)
-        if vpm is None or reference is None:
-            continue
-        fig_wake_errors(float(time), vpm, reference, U_inf, D, x_iface)
-        print(f"  wake_errors t={time:.2f} done")
-        plotted += 1
-
-    if plotted == 0:
-        print("  wake_errors: no matching vpm_wake_slice_z0 / wake_slice_z0 frames available")
+        vpm = util.load_slice("vpm", float(time), SLICE_NAME)
+        reference = util.load_slice("reference", float(time), SLICE_NAME)
+        if vpm is not None and reference is not None:
+            plot_frame(float(time), vpm, reference, consts)
 
 
 if __name__ == "__main__":

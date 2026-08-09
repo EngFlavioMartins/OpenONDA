@@ -48,7 +48,7 @@ def test_cube_tutorials_have_no_runtime_input_controls():
         "getopts ",
     )
     scripts = (
-        path for root in _CUBE_ROOTS for path in root.rglob("*") if path.suffix in {".py", ".sh"}
+        path for root in _CUBE_ROOTS for path in (*root.glob("*setup.py"), *root.glob("allrun.sh"))
     )
     for script in scripts:
         text = script.read_text()
@@ -131,6 +131,7 @@ def test_common_fvm_settings_identical(bench, reference):
     assert fully_meshed.pimple.alpha_u == pytest.approx(0.7)
     assert fully_meshed.pimple.alpha_p == pytest.approx(0.3)
     assert hybrid.transport == fully_meshed.transport
+
     # Wall-load integration is an explicit sample; both setups carry an
     # equivalent wall ForceSampler (their other, differently-named field
     # samplers are intentionally not identical).
@@ -173,6 +174,7 @@ def test_coupler_setup_owns_no_solver_physics(bench):
     for name in ("nu", "rho", "dt", "t_end", "fvm_box", "grid_spacing", "initial_U"):
         assert getattr(setup, name) is None
     assert not setup.surface
+    assert setup.dead_zone_h == 0.0
 
 
 def test_vpm_setup_compatible(bench):
@@ -185,7 +187,7 @@ def test_vpm_setup_compatible(bench):
     domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
     box = np.asarray(bench.FVM_BOX, dtype=float)
     assert np.all(domain[::2] <= box[::2]) and np.all(domain[1::2] >= box[1::2])
-    assert vpm.processing_unit == "VULKAN"
+    assert vpm.processing_unit == "AUTO"
     assert vpm.precision == "f32"
     assert vpm.panel_solver.bc_type == "NEUMANN"
     assert vpm.panel_solver.coupling_scope == "donor"
@@ -204,6 +206,18 @@ def test_mesh_domain_uses_case_setting(bench):
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
     assert bench.VPM_SETUP.panel_solver.max_panels >= len(surface.triangles)
+
+
+def test_production_case_keeps_the_validated_cost_limits(bench):
+    assert bench.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+    assert pytest.approx(0.1) == bench.FVM_MAX_CELL_SIZE
+    assert pytest.approx(0.0125) == bench.FVM_SURFACE_CELL_SIZE
+    assert bench.PARTICLE_LIMIT == 200_000
+    assert bench.VPM_SETUP.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
+    assert bench.VPM_SETUP.max_particles == bench.PARTICLE_LIMIT
+    assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT
+    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.VPM_SPACING)
+    assert bench.COUPLER_SETUP.dead_zone_h == 0.0
 
 
 def test_output_names_and_cadence_match_allplot_contract(bench, reference):

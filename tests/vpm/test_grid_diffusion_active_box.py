@@ -80,6 +80,35 @@ def test_active_box_covers_the_cloud_and_fits_the_allocation(diffusion):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("axis,side", [(axis, side) for axis in range(3) for side in (-1, 1)])
+def test_active_box_clamps_safely_at_every_domain_face(diffusion, axis, side):
+    rng = np.random.default_rng(12 + 2 * axis + (side > 0))
+    pos = rng.uniform(-0.08, 0.08, size=(200, 3)).astype(np.float32)
+    pos[:, axis] += side * 0.415
+
+    grid_min, dims = diffusion._lattice_aligned_bounds(pos, H, 3.0)
+    anchor = np.asarray(diffusion._fixed_grid_min, dtype=np.float64)
+    cap = np.asarray(diffusion._max_grid_dims)
+    offset = np.rint((np.asarray(grid_min, dtype=np.float64) - anchor) / H).astype(int)
+    grid_max = np.asarray(grid_min) + (np.asarray(dims) - 1) * H
+
+    assert (offset >= 0).all()
+    assert (offset + np.asarray(dims) <= cap).all()
+    assert (pos.min(axis=0) >= np.asarray(grid_min) - 1e-6).all()
+    assert (pos.max(axis=0) <= grid_max + 1e-6).all()
+
+
+@pytest.mark.unit
+def test_active_box_ignores_particles_already_outside_retention_domain(diffusion):
+    pos, _ = _cloud()
+    pos = np.vstack((pos, np.array([[100.0, 100.0, 100.0]], dtype=np.float32)))
+
+    _, dims = diffusion._lattice_aligned_bounds(pos, H, 3.0)
+
+    assert int(np.prod(dims)) < int(np.prod(diffusion._max_grid_dims)) // 2
+
+
+@pytest.mark.unit
 def test_active_box_is_much_smaller_than_the_full_domain(diffusion):
     pos, _ = _cloud()
     _, dims = diffusion._lattice_aligned_bounds(pos, H, 3.0)
@@ -186,6 +215,7 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
         if force_full_domain:
             d._lattice_aligned_bounds = original
     n_out = particles.number_of_particles
+    assert d._ping is True
     return {
         "n": n_out,
         "position": particles.position_cpu()[:n_out].copy(),
