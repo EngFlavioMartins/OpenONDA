@@ -71,6 +71,54 @@ raised while the others spun in a barrier at 100% CPU. The 1 GiB `_MAX_PREALLOC_
 remains the allocation authority. Do not turn the pool share into an enforced limit without
 first measuring the real ceiling on the target device.
 
+## REVERTED: the active-box change
+
+**The lattice-aligned active box was reverted on 2026-08-09.** It ran cubeFlow cleanly for 12
+steps and then destroyed the solution at step 13:
+
+```
+[GBD] Threshold retained 96.8396% of Sigma|Gamma| on 205571 nodes.
+[INFO] Removed 205571 particles outside box [-4.50, 11.00] x [-4.50, 4.50] x [-4.50, 4.50]
+[Inject] N_after=257228  |Gamma|_after=0.0000e+00
+```
+
+Every regenerated particle was culled by the retention step, total circulation went to exactly
+zero, the donor BC collapsed (`u_x/U_inf face[min=0.00 max=0.00]`), and the run died with
+`ZeroDivisionError`. Circulation had been healthy and growing until that step
+(10.6 -> 12.4 over steps 1-12).
+
+Mechanism: `_lattice_aligned_bounds` clamps the origin with
+`steps = clip(floor((lo - anchor)/h), 0, cap - 5)`. Once the wake reaches the downstream end of
+the domain, `steps` saturates, putting `grid_min` at x ~ 10.98 with a 5-cell box that straddles
+the retention boundary at x = 11.0. Regenerated nodes then fall outside the retention box and
+are deleted wholesale.
+
+The helper is still in the module and still covered by tests, but **no caller uses it**. Note
+that `test_active_box_gbd_matches_full_domain_gbd` is now vacuous: with both paths on the full
+domain it compares a configuration against itself.
+
+**Why it was not simply patched.** The obvious fix is to clamp the box to the retention domain
+rather than only to the allocation. That is probably right, but it was not validated, and this
+change had already passed a small-cloud equivalence test before failing at scale — the test
+cloud sat comfortably inside the domain and never exercised the clamp. Shipping a third
+unvalidated revision was the worse option. A loud dispatch failure is preferable to silently
+zeroed circulation.
+
+**Consequence: the dispatch overflow returns.** With the active grid back to the full domain,
+cubeFlow again hits `RhiResult(not_supported)` at step 2 on this device. The bounded host
+transfers and bounded grid kernels are retained (they are numerically neutral and were
+independently necessary), but they are not sufficient on their own.
+
+## Correct next step
+
+Re-introduce the active box with the origin and extent clamped to the **retention domain**, not
+just the allocation, and validate against a cloud that actually reaches the downstream boundary
+— the condition that broke it. Required evidence before trusting it:
+
+- a bounds test with the cloud pushed against each domain face in turn;
+- a GBD equivalence test where the clamp is active, not merely a cloud in the middle;
+- a cubeFlow run past step 13, with `|Gamma|` monitored per step.
+
 ## Results
 
 | | before | after |

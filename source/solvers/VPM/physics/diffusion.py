@@ -1062,10 +1062,8 @@ class _GridDiffusionMixin:
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
-                pos_np, h, domain_padding
-            )
-            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+            grid_min_np = self._fixed_grid_min.copy()
+            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
@@ -1452,10 +1450,8 @@ class _GridDiffusionMixin:
 
         # -- Grid setup --------------------------------------------------------
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
-                pos_np, h, domain_padding
-            )
-            nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+            grid_min_np = self._fixed_grid_min.copy()
+            nx, ny, nz = self._ensure_grid_capacity(*self._max_grid_dims)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
