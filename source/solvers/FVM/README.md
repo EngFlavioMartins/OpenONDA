@@ -57,23 +57,16 @@ solver.save_state("solution/restart.npz")
 solver.write_run_manifest()
 ```
 
-`Solver.from_case(path)` requires `system/controlDict`, `system/fvSolution`,
-`system/fvSchemes`, `constant/transportProperties`, `0/U`, and `0/p`.
-It maps PIMPLE/PISO/SIMPLE correctors; U and p solver methods, tolerances, and
-iteration limits; and the time, gradient, and `div(phi,U)` schemes supported by
-the Python backend. Malformed, missing, or unsupported input raises instead of
-being replaced with defaults. Programmatic values in `FVMSetup.initial_U` and
-`initial_p` take precedence when constructing the solver.
-OpenFOAM-style nonzero `relTol` values are supported. Separate `UFinal` and
-`pFinal` blocks may override `relTol` for the final momentum and pressure
-stages; as in OpenFOAM, `relTol 0` makes those stages converge to the absolute
-`tolerance`.
+Configuration is provided entirely through `FVMSetup`. Initial velocity and
+pressure values must be supplied through `FVMSetup.initial_U` and `initial_p`.
+Nonzero `relTol` values are supported, and separate final-stage values may
+override the relative tolerances for the final momentum and pressure solves.
 
 Low-level operators are imported through their defining packages:
 
 ```python
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.mesh_io import load_poly_mesh
+from source.solvers.FVM.mesh.gmsh_importer import load_gmsh_mesh
 from source.solvers.FVM.solve.equation_solver import solve_scalar_equation
 ```
 
@@ -96,9 +89,8 @@ rows, rank-local fields, and VTU/PVTU output when `N > 1`. Visualization is
 written as cell-centred, appended-binary VTK XML with LZ4 compression. Parallel
 pieces include one marked overlap layer by default, so ParaView's
 **Cell Data to Point Data** filter remains smooth across rank boundaries.
-Fields, global
-diagnostics, forces, and checkpoints are invariant in the collective MPI
-tests. Cyclic patches and field-file initialization remain serial-only. The
+Fields, global diagnostics, forces, and checkpoints are invariant in the
+collective MPI tests. Cyclic patches remain serial-only. The
 same setup API is used by standalone FVM and coupled FVM–VPM cases; invoking
 `python <case_name>_setup.py` selects the canonical environment and launches any
 required worker processes internally.
@@ -113,13 +105,13 @@ Dynamic/ALE meshes, compressible flow, and multiphase flow are not supported.
 Configuring dynamic mesh motion raises `NotImplementedError` because conservative
 mesh-flux terms have not been implemented.
 
-The supported mesh-input contract is deliberately narrow. OpenFOAM `polyMesh`
-input must use an ASCII `FoamFile` header with format version `2.0`; binary
-files, preprocessing directives, macros, and headerless files are rejected.
-Gmsh input is read through the installed Gmsh API and accepts only first-order
-3D tetrahedra (type 4), hexahedra (5), prisms (6), and pyramids (7). Other
-dimensions and higher-order cells fail before geometry assembly. Import
-provenance records the exact contract and runtime/API version in run manifests.
+The supported mesh-input contracts are deliberately narrow. Native meshes are
+plain in-memory Python dictionaries, typically produced by the bundled
+rectilinear and adaptive Cartesian meshers. Gmsh input is read through the
+installed Gmsh API and accepts only first-order 3D tetrahedra (type 4),
+hexahedra (5), prisms (6), and pyramids (7). Other dimensions and higher-order
+cells fail before geometry assembly. Import provenance records the exact
+contract and runtime/API version in run manifests.
 
 The test commands and evidence files are listed in `tests/fvm/README.md`; the
 machine-readable support contract is `capabilities.json`.

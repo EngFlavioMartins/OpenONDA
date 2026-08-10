@@ -50,7 +50,7 @@ class RecirculationComparison:
 
 
 def _read_named_csv(path: Path) -> dict[str, np.ndarray]:
-    """Read an OpenFOAM or VPM centerline CSV into named arrays."""
+    """Read an FVM or VPM centerline CSV into named arrays."""
     data = np.genfromtxt(path, delimiter=",", names=True, comments="#", dtype=float)
     if data.size == 0 or data.dtype.names is None:
         return {}
@@ -69,7 +69,7 @@ def _streamwise_column(columns: dict[str, np.ndarray]) -> str | None:
 def read_centerline(path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Return ``x, Ux`` from a centerline CSV.
 
-    Supports the OpenFOAM set format (``x,p,U_0,U_1,U_2``) and the VPM sampler
+    Supports component tables (``x,p,U_0,U_1,U_2``) and the VPM sampler
     format (``x,y,z,Ux,Uy,Uz,...``).
     """
     columns = _read_named_csv(path)

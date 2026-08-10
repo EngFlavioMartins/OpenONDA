@@ -851,7 +851,7 @@ class TurbulenceConfig:
 
       Used by: LES_SMAGORINSKY k-equilibrium model
 
-      Default: 1.048 (OpenFOAM value, derived from Lilly 1966 spectral analysis)
+      Default: 1.048 (derived from Lilly 1966 spectral analysis)
 
       Physics: SGS dissipation rate ε = C_e * k^(3/2) / Δ
       Together with C_k determines C_s² = C_k * √(C_k / C_e).
@@ -922,7 +922,7 @@ class TurbulenceConfig:
         **Notes:**
             - cs=0.17, ce=1.048 → C_k ≈ 0.096
             - cs=0.16, ce=1.048 → C_k ≈ 0.088
-            - OpenFOAM-equivalent: C_k=0.094 → C_s ≈ 0.168
+            - Equilibrium coefficients C_k=0.094 → C_s ≈ 0.168
 
         Returns:
             TurbulenceConfig: LES_SMAGORINSKY configuration instance
@@ -935,38 +935,38 @@ class TurbulenceConfig:
         )
 
     @staticmethod
-    def openfoam_smagorinsky(ck: float = 0.094, ce: float = 1.048) -> "TurbulenceConfig":
-        r"""Match OpenFOAM's default equilibrium Smagorinsky coefficients.
+    def equilibrium_smagorinsky(ck: float = 0.094, ce: float = 1.048) -> "TurbulenceConfig":
+        r"""Configure equilibrium Smagorinsky coefficients.
 
-        The VPM solver is incompressible, so OpenFOAM's algebraic SGS-energy
-        model reduces exactly to
+        The VPM solver is incompressible, so the algebraic SGS-energy model
+        reduces exactly to
 
         ``nu_t = (C_s Delta)^2 |S|`` with
         ``C_s = C_k^(3/4) / C_e^(1/4)``.
 
-        This factory accepts the OpenFOAM-facing coefficients and converts
-        them to the existing particle model's ``C_s`` representation. The
+        This factory accepts equilibrium coefficients and converts them to the
+        existing particle model's ``C_s`` representation. The
         defaults ``C_k=0.094`` and ``C_e=1.048`` give ``C_s≈0.168``.
 
         Args:
-            ck: OpenFOAM SGS kinetic-energy coefficient ``C_k``.
-            ce: OpenFOAM SGS dissipation coefficient ``C_e``.
+            ck: SGS kinetic-energy coefficient ``C_k``.
+            ce: SGS dissipation coefficient ``C_e``.
 
         Returns:
-            An LES configuration using the same equilibrium Smagorinsky model
-            and coefficients as OpenFOAM.
+            An LES configuration using the equilibrium Smagorinsky model and
+            supplied coefficients.
 
         Example:
-            >>> cfg = TurbulenceConfig.openfoam_smagorinsky()
+            >>> cfg = TurbulenceConfig.equilibrium_smagorinsky()
             >>> cfg.flow_model
             'LES'
             >>> round((cfg.cs**2 * cfg.ce**0.5) ** (2.0 / 3.0), 3)
             0.094
         """
         if not np.isfinite(ck) or ck < 0.0:
-            raise ValueError("OpenFOAM Smagorinsky ck must be finite and non-negative")
+            raise ValueError("Equilibrium Smagorinsky ck must be finite and non-negative")
         if not np.isfinite(ce) or ce <= 0.0:
-            raise ValueError("OpenFOAM Smagorinsky ce must be finite and positive")
+            raise ValueError("Equilibrium Smagorinsky ce must be finite and positive")
         cs = ck**0.75 / ce**0.25
         return TurbulenceConfig.les_smagorinsky(cs=cs, ce=ce)
 

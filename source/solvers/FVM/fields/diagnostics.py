@@ -222,7 +222,7 @@ def _compute_face_viscous_forces(
 
     ``snGrad(U) = (U_boundary - U_owner) / wall_dist``.
 
-    The resulting face stress is the incompressible OpenFOAM convention
+    The resulting face stress uses the incompressible convention
     ``mu * dev(twoSymm(grad(U)))``.  Returning the stress traction here keeps
     force diagnostics consistent with the actual fixed-value wall flux rather
     than sampling an uncorrected cell-centred gradient half a cell away.

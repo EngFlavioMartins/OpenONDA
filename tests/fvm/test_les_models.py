@@ -20,7 +20,7 @@ from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.turbulence import (
     WALE,
     DynamicSmagorinsky,
-    OpenFOAMSmagorinsky,
+    EquilibriumSmagorinsky,
     Sigma,
     Smagorinsky,
     create_model,
@@ -69,7 +69,7 @@ class TestLESModels:
         self.geo = compute_mesh_geometry(self.mesh)
         self.models = {
             "smag": Smagorinsky(self.mesh, self.geo, Cs=0.17),
-            "of_smag": OpenFOAMSmagorinsky(self.mesh, self.geo),
+            "equilibrium_smag": EquilibriumSmagorinsky(self.mesh, self.geo),
             "wale": WALE(self.mesh, self.geo),
             "sigma": Sigma(self.mesh, self.geo),
             "dyn": DynamicSmagorinsky(self.mesh, self.geo),
@@ -92,15 +92,15 @@ class TestLESModels:
         assert np.max(wale) < 1e-12, "WALE must vanish in pure shear"
         assert np.max(sigma) < 1e-12, "sigma must vanish in pure shear"
 
-    def test_openfoam_smagorinsky_matches_incompressible_reduction(self):
-        model = self.models["of_smag"]
-        nut = self._nut("of_smag", _pure_shear)
+    def test_equilibrium_smagorinsky_matches_incompressible_reduction(self):
+        model = self.models["equilibrium_smag"]
+        nut = self._nut("equilibrium_smag", _pure_shear)
         delta = self.geo["element_volumes"] ** (1.0 / 3.0)
         expected = model.equivalent_Cs**2 * delta**2
         np.testing.assert_allclose(nut, expected, rtol=1e-12, atol=1e-14)
 
-    def test_openfoam_smagorinsky_uses_full_algebraic_energy_equation(self):
-        model = self.models["of_smag"]
+    def test_equilibrium_smagorinsky_uses_full_algebraic_energy_equation(self):
+        model = self.models["equilibrium_smag"]
         velocity = _field_on_mesh(self.mesh, self.geo, _diagonal_strain)
         k_sgs = model.compute_sgs_kinetic_energy(velocity)
 
@@ -131,7 +131,7 @@ class TestLESModels:
         assert np.all(np.isfinite(nut)) and np.all(nut >= 0.0)
         assert np.max(np.abs(self._nut("dyn", _uniform))) < 1e-12
 
-    @pytest.mark.parametrize("model", ["smag", "of_smag", "wale", "sigma", "dyn"])
+    @pytest.mark.parametrize("model", ["smag", "equilibrium_smag", "wale", "sigma", "dyn"])
     def test_nonfinite_velocity_is_not_silently_deactivated(self, model):
         velocity = _field_on_mesh(self.mesh, self.geo, _uniform)
         velocity[0, 0] = np.nan

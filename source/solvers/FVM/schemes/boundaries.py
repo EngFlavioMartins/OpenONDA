@@ -9,7 +9,7 @@ from enum import Enum, auto
 class BoundaryStrategy(Enum):
     """Enumeration of canonical boundary-condition behaviours.
 
-    Each member corresponds to one of the supported OpenFOAM boundary types
+    Each member corresponds to one of the supported finite-volume boundary types
     and determines how the discrete operators (gradient, convection,
     diffusion, flux) treat the boundary faces.
     """
@@ -39,7 +39,7 @@ class BoundaryOperator:
     Attributes
     ----------
     name : str
-        OpenFOAM boundary-condition name (e.g. ``"fixedValue"``).
+        Boundary-condition name (e.g. ``"fixedValue"``).
     fields : frozenset[str]
         Fields this BC applies to (e.g. ``{"U", "p", "scalar"}``).
     operators : frozenset[str]
@@ -72,7 +72,7 @@ class BoundaryRegistry:
     supported.
 
     The module-level singleton :data:`BOUNDARIES` is pre-populated with all
-    standard OpenFOAM boundary types.
+    standard finite-volume boundary types.
     """
 
     def __init__(self) -> None:

@@ -4,8 +4,8 @@ This module implements the part of the cfMesh ``cartesianMesh`` workflow that
 OpenONDA's axis-aligned verification cases need: triangulated-surface input,
 dyadic local refinement, 2:1 transition bands, removal of an axis-aligned
 solid, and direct construction of the solver's face-based ``mesh_data``
-dictionary. It does not read or write an OpenFOAM case and does not require
-OpenFOAM or Gmsh.
+dictionary. It does not read or write an external solver case and does not
+require an external mesher.
 
 Algorithmic lineage and credit
 ------------------------------
@@ -159,7 +159,7 @@ class AdaptiveCartesianMesher:
     Coarse cells next to finer cells are represented as valid polyhedra with
     multiple coplanar subfaces.  Geometrically all cells remain cuboids.  This
     is the same useful finite-volume topology as the nine-face transition
-    polyhedra produced by cfMesh, without an OpenFOAM intermediary.
+    body-fitted polyhedra, without an external intermediary.
     """
 
     def __init__(

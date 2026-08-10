@@ -30,8 +30,8 @@ TURBULENCE_MODELS = {
     "iles",
     "dns",
     "smagorinsky",
-    "openfoamsmagorinsky",
-    "openfoam_smagorinsky",
+    "equilibriumsmagorinsky",
+    "equilibrium_smagorinsky",
     "wale",
     "sigma",
     "dynamicsmagorinsky",
@@ -166,11 +166,11 @@ def validate_turbulence(config) -> None:
             f"Unknown turbulence model {config.model!r}; valid: {sorted(TURBULENCE_MODELS)}"
         )
     name = str(config.model).lower()
-    if name in {"openfoamsmagorinsky", "openfoam_smagorinsky"}:
+    if name in {"equilibriumsmagorinsky", "equilibrium_smagorinsky"}:
         if not np.isfinite(config.Ck) or float(config.Ck) < 0.0:
-            raise ValueError("OpenFOAM Smagorinsky Ck must be finite and non-negative")
+            raise ValueError("Equilibrium Smagorinsky Ck must be finite and non-negative")
         if not np.isfinite(config.Ce) or float(config.Ce) <= 0.0:
-            raise ValueError("OpenFOAM Smagorinsky Ce must be finite and positive")
+            raise ValueError("Equilibrium Smagorinsky Ce must be finite and positive")
 
 
 def validate_acceptance_policy(policy) -> None:

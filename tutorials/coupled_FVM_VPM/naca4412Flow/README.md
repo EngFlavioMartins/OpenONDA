@@ -2,7 +2,7 @@
 
 This finite-span NACA 4412 case at 10 degrees and Re=1000 uses OpenONDA's
 internal Cartesian mesher and immersed-boundary FVM solver. It does not require
-OpenFOAM, Gmsh, or a repository path on `PYTHONPATH`.
+an external mesher or a repository path on `PYTHONPATH`.
 
 After installing OpenONDA, run:
 

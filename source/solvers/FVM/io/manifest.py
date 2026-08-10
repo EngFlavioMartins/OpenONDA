@@ -10,32 +10,42 @@ from pathlib import Path
 import platform
 import sys
 import tempfile
+from typing import Any
 
 import numpy as np
 
 from .checkpoint import config_hash, mesh_hash
 
 
-def build_manifest(solver) -> dict:
+def _git_identity(repository: Path) -> tuple[str | None, bool | None]:
+    """Return checkout identity when developer Git metadata is available."""
+    try:
+        import pygit2
+    except ImportError:
+        return None, None
+    discovered = pygit2.discover_repository(str(repository))
+    if discovered is None:
+        return None, None
+    try:
+        git_repository = pygit2.Repository(discovered)
+        return str(git_repository.head.target), bool(git_repository.status())
+    except (KeyError, pygit2.GitError):
+        return None, None
+
+
+def build_manifest(solver) -> dict[str, Any]:
     """Collect source, environment, execution, mesh, and configuration identity."""
-    packages = {}
+    packages: dict[str, str | None] = {}
     for name in ("numpy", "scipy", "numba", "pyamg", "mpi4py", "petsc4py", "taichi"):
         try:
             packages[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
             packages[name] = None
     repository = Path(__file__).resolve().parents[4]
-    try:
-        import pygit2
-    except ImportError as error:
-        raise RuntimeError(
-            "FVM run manifests require pygit2; install the canonical FVM environment"
-        ) from error
-    git_repository = pygit2.Repository(repository)
-    revision = str(git_repository.head.target)
-    dirty = bool(git_repository.status())
+    revision, dirty = _git_identity(repository)
     return {
         "schema_version": 1,
+        "distribution_version": metadata.version("OpenONDA"),
         "git_revision": revision,
         "git_dirty": dirty,
         "config_hash": config_hash(solver.config),

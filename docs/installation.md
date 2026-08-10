@@ -20,6 +20,9 @@ When a release is available on PyPI, replace the last command with
 `python -m pip install OpenONDA`. The default distribution contains the native
 FVM, VPM/VLM, FVM–VPM coupler, Gmsh and Cartesian mesh support, Taichi kernels,
 HDF5 output, PyAMG, NumPy-STL geometry support, and VTK/PyVista visualization.
+Git checkout metadata is recorded in run manifests when the optional developer
+dependency `pygit2` is installed; normal installed-package runs do not require
+Git or a repository checkout.
 
 Verify from outside the checkout:
 
@@ -33,6 +36,13 @@ python -m pip check
 The verifier initializes Gmsh and Taichi and advances a small native FVM
 problem. With `--require-site-packages`, it also fails if Python resolves an
 editable checkout instead of the installed distribution.
+
+To exercise representative standalone FVM and VPM tutorials plus all three
+native coupled workflows from isolated copies, run:
+
+```bash
+scripts/validate_native_tutorials.sh
+```
 
 ## Conda/Miniforge
 

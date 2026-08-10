@@ -14,8 +14,7 @@ from . import convection, diffusion, matrix_assembly
 def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
     r"""Return the explicit ``div(nuEff * dev2(T(grad(U))))`` acceleration.
 
-    OpenFOAM's viscous term is not a plain Laplacian.  ``divDevReff`` (see
-    ``linearViscousStress::divDevRhoReff``) is::
+    The viscous term is not a plain Laplacian. It is split as::
 
         -fvc::div(nuEff*dev2(T(fvc::grad(U)))) - fvm::laplacian(nuEff, U)
 
@@ -29,8 +28,8 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
     itself.
 
     ``dev2(A) = A - (2/3) tr(A) I``, and with the native gradient layout
-    ``grad_U[c, i, j] = d(U_j)/d(x_i)`` — which matches OpenFOAM's
-    ``grad(U)_ij = d(U_j)/d(x_i)`` — the face flux of the transposed tensor is
+    ``grad_U[c, i, j] = d(U_j)/d(x_i)``, the face flux of the transposed tensor
+    is
 
     .. math::
 
@@ -328,7 +327,7 @@ def assemble_momentum_equation(
     common_diagonal = None
     vol = geo_data["element_volumes"]
 
-    # OpenFOAM's divDevReff splits the viscous stress into an implicit
+    # Split the viscous stress into an implicit
     # laplacian(nuEff, U) and this explicit transpose-stress correction.  It is
     # assembled once for all three components because it couples them.
     dev2_source = compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data)
@@ -502,7 +501,7 @@ def solve_momentum_predictor(
     # Solve for each component
     U_star = np.zeros((n_elements + n_boundary, 3))
     # All three segregated velocity equations have exactly the same scalar
-    # coefficients.  OpenFOAM stores one fvVectorMatrix diagonal/rAU field;
+    # coefficients. Store one vector-matrix diagonal/rAU field;
     # retaining three copies here only tripled matrix and diagonal storage.
     A_U = np.empty(n_elements, dtype=np.float64)
     solve_diagnostics = {}

@@ -15,7 +15,7 @@ def _patch_faces(patch: dict) -> np.ndarray:
 def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
     """Pair translational cyclic patches and expose their coupled-cell topology.
 
-    OpenFOAM keeps each side of a cyclic interface as a boundary patch.  The
+    Each side of a cyclic interface starts as a boundary patch. The
     solver retains that representation for field I/O, while this function adds
     the paired owner-cell column and periodic centre vector needed by discrete
     operators.  Rotational cyclic transforms are rejected explicitly.

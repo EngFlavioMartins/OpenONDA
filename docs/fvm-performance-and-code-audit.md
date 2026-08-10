@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The native solver should retain its OpenFOAM-style collocated PIMPLE algorithm,
+The native solver should retain its collocated PIMPLE algorithm,
 but its storage and execution layer needs to become an LDU-oriented compiled
 core. Replacing PIMPLE with a different pressure-velocity algorithm would make
 validation harder without addressing the measured bottlenecks: sparse-object
@@ -14,7 +14,7 @@ The immediate repairs are already useful:
 - Partitioned Gauss gradients now exchange complete owner-computed halo
   gradients. Previously, `linearUpwind` and corrected face operators consumed
   incomplete halo gradients at processor faces.
-- `tolerance`, `relTol`, `UFinal`, and `pFinal` now follow OpenFOAM's staged
+- `tolerance`, `relTol`, and final-stage tolerances use staged
   stopping semantics. Final PIMPLE iterations also select unrelaxed
   `UFinal`/`pFinal` behavior when no final relaxation factor is configured.
 - Repeated pressure corrections reuse the unchanged discrete pressure matrix,
@@ -29,10 +29,9 @@ The immediate repairs are already useful:
 - Every step records per-rank phase timings, Krylov setup/solve telemetry,
   aggregate current/peak RSS, and a deduplicated NumPy allocation inventory.
 
-An identical-mesh OpenFOAM regression measures the force history and the full
-cell velocity field. That is the correctness oracle; comparisons between
-different meshes additionally measure discretization error and cannot be
-expected to agree at machine precision.
+Identical-mesh native regressions measure force history and the full cell
+velocity field. Comparisons between different meshes additionally measure
+discretization error and cannot be expected to agree at machine precision.
 
 ## Enabling the profiler
 
@@ -117,11 +116,11 @@ Keep the current implementation as the executable specification. For each
 kernel and complete PIMPLE stage, compare assembled diagonal/off-diagonal/RHS,
 corrected flux, residual trajectory, force decomposition, and final fields on
 an identical mesh. Require serial/2/4-rank invariance and checkpoint continuation
-parity. Use OpenFOAM comparison as an independent reference, with separate
-thresholds for identical-mesh solver error and different-mesh discretization
-error.
+parity. Use analytical and published benchmark comparisons as independent
+references, with separate thresholds for identical-mesh solver error and
+different-mesh discretization error.
 
-### 2. Introduce an OpenFOAM-like LDU mesh/operator store
+### 2. Introduce a compact LDU mesh/operator store
 
 Store owner, neighbour, lower/upper, and diagonal arrays as contiguous
 structure-of-arrays with 32-bit labels. Keep only geometry required every
@@ -146,8 +145,7 @@ values in place. Prefer a diag/off-diag AIJ representation or a tested
 `MatShell` over materializing both SciPy CSR and PETSc matrices. Keep separate
 pressure and momentum lifetimes selectable: cached pressure AMG for speed,
 shared/destructive workspaces for low RAM. Solver residual reporting should
-also implement OpenFOAM's L1-scaled `normFactor` exactly rather than merely
-using an L2 approximation to choose PETSc tolerances.
+also use one consistent residual norm for serial and PETSc tolerances.
 
 ### 5. Replace retained PyVista topology in production output
 
@@ -168,8 +166,8 @@ the identical-mesh oracle, conservation gates, restart parity, and a complete
 ## Decision
 
 Do not replace PIMPLE, Rhie--Chow, or the finite-volume discretization strategy.
-They now have direct OpenFOAM parity evidence and changing them would reset the
+They now have direct benchmark parity evidence and changing them would reset the
 trust baseline. Replace the generic Python/SciPy data path underneath them with
-a compact LDU compiled core, direct PETSc ownership, and streaming output. That
-is the route to OpenFOAM-like memory behavior while keeping the solver auditable
-from Python.
+a compact LDU execution core, direct PETSc ownership, and streaming output.
+That is the route to lower memory use while keeping the solver auditable from
+Python.

@@ -132,7 +132,7 @@ def test_turbulence_models():
     for cfg in (
         TurbulenceConfig.none(),
         TurbulenceConfig.smagorinsky(),
-        TurbulenceConfig.openfoam_smagorinsky(),
+        TurbulenceConfig.equilibrium_smagorinsky(),
         TurbulenceConfig.wale(),
         TurbulenceConfig.sigma(),
         TurbulenceConfig.dynamic_smagorinsky(),
@@ -141,6 +141,6 @@ def test_turbulence_models():
     with pytest.raises(ValueError, match="Unknown turbulence model"):
         validate_turbulence(TurbulenceConfig(model="kEpsilon"))
     with pytest.raises(ValueError, match="Ck"):
-        validate_turbulence(TurbulenceConfig.openfoam_smagorinsky(Ck=-0.1))
+        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(Ck=-0.1))
     with pytest.raises(ValueError, match="Ce"):
-        validate_turbulence(TurbulenceConfig.openfoam_smagorinsky(Ce=0.0))
+        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(Ce=0.0))

@@ -6,8 +6,8 @@ import pytest
 from source.solvers.VPM import StabilizationConfig, TurbulenceConfig, VPMSetup
 
 
-def test_openfoam_smagorinsky_factory_recovers_openfoam_ck():
-    config = TurbulenceConfig.openfoam_smagorinsky()
+def test_equilibrium_smagorinsky_factory_recovers_ck():
+    config = TurbulenceConfig.equilibrium_smagorinsky()
 
     recovered_ck = (config.cs**2 * config.ce**0.5) ** (2.0 / 3.0)
     assert config.flow_model == "LES"

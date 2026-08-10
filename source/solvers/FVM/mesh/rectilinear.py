@@ -143,7 +143,7 @@ def box_mesh_3d(
     wall_patch_name: str = "cube",
     merge_outer_patch: str | None = None,
 ) -> dict:
-    """polyMesh-style ``mesh_data`` dict for a rectilinear grid with a box hole.
+    """Face-based ``mesh_data`` dict for a rectilinear grid with a box hole.
 
     Patch order: inlet (xmin), outlet (xmax), ymin, ymax, zmin, zmax, then the
     ``wall_patch_name`` hole faces (type ``wall``).  With ``merge_outer_patch``
@@ -363,7 +363,7 @@ def coupling_box_mesh(
     ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (e.g. graded,
     wall-refined via :func:`wall_refined_axis`); otherwise a uniform grid at
     ``spacing`` is built.  With ``hole_box``, the cells inside it are removed
-    (body-fitted, like the OpenFOAM/cfMesh case): the exposed faces become a
+    (body-fitted): the exposed faces become a
     second boundary patch ``wall_patch_name`` of type ``wall``.  The hole faces
     must lie exactly on mesh planes.
     """

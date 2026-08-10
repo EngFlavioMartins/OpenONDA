@@ -43,9 +43,8 @@ The R4 work item is closed as a release target, not represented as successful
 device acceleration. CUDA, Metal, and Vulkan remain unsupported until a future
 implementation independently passes parity, memory, and end-to-end timing.
 
-OpenFOAM installation and execution are not FVM release gates. The native mesh
-reader retains its narrow ASCII compatibility contract, but CI and production
-qualification do not require an OpenFOAM installation.
+The FVM release gates are self-contained. CI and production qualification use
+native Python configuration, native meshes, and Gmsh input only.
 
 ## Reproducible evidence
 
@@ -60,7 +59,7 @@ qualification do not require an OpenFOAM installation.
 Local release commands completed successfully:
 
 ```bash
-python -m pytest -q tests/fvm tests/coupler -m "not mpi and not openfoam"
+python -m pytest -q tests/fvm tests/coupler -m "not mpi"
 mpiexec -n 2 python -m pytest -q tests/fvm/test_petsc_parallel.py
 mpiexec -n 4 python -m pytest -q tests/fvm/test_petsc_parallel.py
 ruff format --check source/solvers/FVM source/coupler tests/fvm tests/coupler tutorials/FVM

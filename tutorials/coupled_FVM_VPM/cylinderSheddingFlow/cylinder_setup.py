@@ -1,7 +1,7 @@
 """Cylinder shedding at Re=200 with OpenONDA's native FVM-VPM workflow.
 
 The near field is a solver-native Cartesian FVM mesh with a direct-forcing
-immersed cylinder.  No external mesher, OpenFOAM installation, or path setup
+immersed cylinder. No external solver, mesher, or path setup
 is required; every import comes from the installed ``openonda`` package.
 """
 

@@ -72,7 +72,7 @@ Validation state before implementation:
 
 - 274 fast unit/verification tests pass.
 - All 11 collective MPI/PETSc tests pass with two ranks.
-- 14 of 15 slow non-OpenFOAM physics tests pass.
+- 14 of 15 slow native physics tests pass.
 - The known failure is
   `test_ibm_square_force_and_wake_match_body_fitted_reference[0.125]`:
   11.4959% drag disagreement against a 3% limit. It reproduced exactly twice.
@@ -1288,7 +1288,7 @@ solver Python, run the relevant rows below.
 
 ```bash
 conda run -n OpenONDA python -m pytest -q tests/fvm \
-  -m "(unit or verification) and not slow and not mpi and not openfoam"
+  -m "(unit or verification) and not slow and not mpi"
 ```
 
 Expected starting result: 274 passed.
@@ -1300,7 +1300,7 @@ fields, or replay overrides:
 
 ```bash
 conda run -n OpenONDA python -m pytest -q tests/coupler \
-  -m "not mpi and not openfoam"
+  -m "not mpi"
 ```
 
 ### Collective MPI/PETSc gate
@@ -1323,7 +1323,7 @@ Run four-rank halo/scaling tests for Phases 6 and 7 when host resources permit.
 
 ```bash
 conda run -n OpenONDA python -m pytest -q tests/fvm \
-  -m "slow and not mpi and not openfoam"
+  -m "slow and not mpi"
 ```
 
 Starting result: 14 pass and the fine-grid IBM drag test fails. The
@@ -1335,7 +1335,7 @@ same selection while deselecting only the exact known node:
 
 ```bash
 conda run -n OpenONDA python -m pytest -q tests/fvm \
-  -m "slow and not mpi and not openfoam" \
+  -m "slow and not mpi" \
   --deselect='tests/fvm/test_ibm.py::test_ibm_square_force_and_wake_match_body_fitted_reference[0.125]'
 ```
 

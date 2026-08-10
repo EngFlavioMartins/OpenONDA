@@ -376,12 +376,12 @@ def assemble_convection_term_gradient_upwind(
     *,
     include_total_flux=True,
 ):
-    """OpenFOAM ``linearUpwind``/``LUST`` in deferred-correction form.
+    """Linear-upwind/LUST interpolation in deferred-correction form.
 
     The face target is ``linear_blend * φ_linear + (1 - linear_blend) *
     φ_linearUpwind`` with ``φ_linearUpwind = φ_up + (∇φ)_up · (x_f - x_up)``
-    — OpenFOAM's second-order upwind-biased value (``Gauss linearUpwind
-    grad(U)``); ``linear_blend = 0.75`` reproduces ``Gauss LUST grad(U)``.
+    — a second-order upwind-biased value; ``linear_blend = 0.75`` gives the
+    standard LUST blend.
 
     The implicit part stays first-order upwind (bounded, diagonally
     dominant); the explicit correction carries the difference to the target.
@@ -488,7 +488,7 @@ def assemble_convection_term(
             phi, mdot, mesh_data, geo_data, include_total_flux=include_total_flux
         )
     elif s in ("LUST", "lust"):
-        # OpenFOAM ``Gauss LUST grad(U)``: 0.75 linear + 0.25 linearUpwind
+        # LUST: 0.75 linear + 0.25 linearUpwind.
         # (second-order, gradient-corrected — NOT first-order upwind).
         interior_fluxes = assemble_convection_term_gradient_upwind(
             phi,
@@ -500,7 +500,7 @@ def assemble_convection_term(
             include_total_flux=include_total_flux,
         )
     elif s in ("linearUpwind", "linearupwind"):
-        # OpenFOAM ``Gauss linearUpwind grad(U)``: second-order upwind-biased.
+        # Linear-upwind: second-order upwind-biased interpolation.
         interior_fluxes = assemble_convection_term_gradient_upwind(
             phi,
             mdot,

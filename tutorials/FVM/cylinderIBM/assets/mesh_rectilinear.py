@@ -2,7 +2,7 @@
 """Rectilinear graded 2D mesh generator for the cylinderIBM tutorial.
 
 Builds a single-cell-thick hexahedral mesh (quasi-2D, ``empty`` front/back)
-directly in the polyMesh-style ``mesh_data`` dict the FVM solver consumes —
+directly in the face-based ``mesh_data`` dict the FVM solver consumes —
 no gmsh required.  The grid is uniform (spacing ``h``) in a core box around
 the cylinder (the IBM kernel requires locally uniform spacing) and stretched
 geometrically towards the far-field boundaries, following the layout of

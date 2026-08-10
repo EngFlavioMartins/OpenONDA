@@ -117,6 +117,6 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     np.testing.assert_allclose(restored_fvm.U, expected_u, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(restored_fvm.p, expected_p, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(restored_fvm.phi, expected_phi, rtol=0.0, atol=1e-13)
-    # No OpenFOAM case artifacts were created anywhere.
+    # No external solver case artifacts were created anywhere.
     assert not (tmp_path / "constant").exists()
     assert not (tmp_path / "system").exists()

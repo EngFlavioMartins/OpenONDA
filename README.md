@@ -98,8 +98,8 @@ cd tutorials/coupled_FVM_VPM/cubeFlow
 ```
 
 The cylinder-shedding and NACA 4412 workflows are in the same directory tree.
-All three installed-package smoke cases can be exercised from isolated copies
-with:
+Standalone FVM, standalone VPM, and all three coupled installed-package smoke
+cases can be exercised from isolated copies with:
 
 ```bash
 scripts/validate_native_tutorials.sh

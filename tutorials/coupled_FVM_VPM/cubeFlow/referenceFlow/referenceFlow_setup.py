@@ -4,8 +4,8 @@ The mesh is generated as solver-native data by OpenONDA's cfMesh-inspired
 adaptive Cartesian mesher, sized to reproduce the original reference case's
 ``cartesianMesh`` run actually delivered — 0.2 far field, 0.025 wake, 0.0125
 cube — rather than the sizes its ``meshDict`` requests (see below).  The SGS
-model and coefficients match OpenFOAM's equilibrium Smagorinsky LES, and the
-PIMPLE controls match its ``fvSolution``.
+model and coefficients use the equilibrium Smagorinsky LES formulation, and the
+PIMPLE controls match the coupled case.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ FVM_SETUP = FVMSetup(
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
-        # Match referenceFlow/system/fvSchemes exactly.
+        # Match the coupled reference-flow discretisation exactly.
         convection_scheme="linearUpwind",
         gradient_scheme="gauss",
         time_scheme="backward",
@@ -161,7 +161,7 @@ FVM_SETUP = FVMSetup(
     ),
     samplers=SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=TurbulenceConfig.openfoam_smagorinsky(
+    turbulence=TurbulenceConfig.equilibrium_smagorinsky(
         Ck=SMAGORINSKY_CK,
         Ce=SMAGORINSKY_CE,
     ),

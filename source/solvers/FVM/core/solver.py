@@ -9,7 +9,7 @@ import numpy as np
 from ..config.types import FVMSetup
 from ..coupling import CouplerInterfaceMixin
 from ..io import logging, solver_io
-from ..mesh import geometry, mesh_io
+from ..mesh import geometry
 from ..sampling.executor import FVMSamplerExecutor
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
@@ -17,11 +17,7 @@ from .state import FieldState
 
 
 def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
-    """Load or initialise the velocity field.
-
-    If *config.initial_U* is set, tiles it across all cells.  Otherwise
-    reads the ``0/U`` OpenFOAM file.  Parsing errors are fatal so a case
-    cannot silently start from a different field.
+    """Initialise the velocity field from the Python configuration.
 
     Args:
         config:   FVMSetup (may have ``initial_U``).
@@ -32,25 +28,17 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     Returns:
         Velocity array ``(n_total, 3)``.
     """
-    from ..fields import field_io
-
-    if config.initial_U is not None:
-        initial = np.asarray(config.initial_U, dtype=np.float64)
-        if initial.shape != (3,) or not np.all(np.isfinite(initial)):
-            raise ValueError("initial_U must be a finite three-component vector")
-        return np.tile(initial, (n_total, 1))
-    U_data = field_io.read_field("U", os.path.join(case_dir, "0"), mesh_data)
-    values = np.asarray(U_data["phi"], dtype=np.float64)
-    if values.shape != (n_total, 3):
-        raise ValueError(f"Initial U has shape {values.shape}; expected {(n_total, 3)}")
-    return values
+    del case_dir, mesh_data
+    if config.initial_U is None:
+        raise ValueError("initial_U must be provided in FVMSetup")
+    initial = np.asarray(config.initial_U, dtype=np.float64)
+    if initial.shape != (3,) or not np.all(np.isfinite(initial)):
+        raise ValueError("initial_U must be a finite three-component vector")
+    return np.tile(initial, (n_total, 1))
 
 
 def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
-    """Load or initialise the pressure field.
-
-    If *config.initial_p* is set, fills all cells with that value.
-    Otherwise reads the ``0/p`` OpenFOAM file.  Parsing errors are fatal.
+    """Initialise the pressure field from the Python configuration.
 
     Args:
         config:   FVMSetup (may have ``initial_p``).
@@ -61,18 +49,13 @@ def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     Returns:
         Pressure array ``(n_total,)``.
     """
-    from ..fields import field_io
-
-    if config.initial_p is not None:
-        initial = np.asarray(config.initial_p, dtype=np.float64)
-        if initial.ndim != 0 or not np.isfinite(initial):
-            raise ValueError("initial_p must be a finite scalar")
-        return np.full(n_total, float(initial), dtype=np.float64)
-    p_data = field_io.read_field("p", os.path.join(case_dir, "0"), mesh_data)
-    values = np.asarray(p_data["phi"], dtype=np.float64)
-    if values.shape != (n_total,):
-        raise ValueError(f"Initial p has shape {values.shape}; expected {(n_total,)}")
-    return values
+    del case_dir, mesh_data
+    if config.initial_p is None:
+        raise ValueError("initial_p must be provided in FVMSetup")
+    initial = np.asarray(config.initial_p, dtype=np.float64)
+    if initial.ndim != 0 or not np.isfinite(initial):
+        raise ValueError("initial_p must be a finite scalar")
+    return np.full(n_total, float(initial), dtype=np.float64)
 
 
 def _enforce_u_boundary_constraints(
@@ -234,7 +217,7 @@ class Solver(CouplerInterfaceMixin):
         Args:
             config: FVMSetup object containing all simulation and time parameters.
             case_dir: Root directory for the case. Defaults to current working directory.
-            mesh_data: Optional pre-loaded mesh dictionary. If None, loaded from disk.
+            mesh_data: Solver-native mesh dictionary. Required on the root rank.
         """
         self.config = config
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
@@ -356,10 +339,7 @@ class Solver(CouplerInterfaceMixin):
                     "not yet implemented"
                 )
             if self.config.initial_U is None or self.config.initial_p is None:
-                raise NotImplementedError(
-                    "Partitioned field-file initialization is not implemented; provide explicit "
-                    "initial_U and initial_p values"
-                )
+                raise ValueError("initial_U and initial_p must be provided in FVMSetup")
             quality = None
             preparation_error = None
             global_mesh = None
@@ -367,20 +347,16 @@ class Solver(CouplerInterfaceMixin):
             global_hash = None
             if self.parallel.is_root:
                 try:
-                    if mesh_data is not None:
-                        logging.Timer.start("Mesh Set (In-Memory)")
-                        global_mesh = mesh_data
-                        logging.Timer.log(
-                            "Mesh Set (In-Memory)",
-                            sink=self.logger,
+                    if mesh_data is None:
+                        raise ValueError(
+                            "A solver-native mesh, mesh factory, or Gmsh .msh path is required"
                         )
-                    else:
-                        logging.Timer.start("Mesh Load (Disk)")
-                        global_mesh = mesh_io.load_poly_mesh(self.case_dir)
-                        logging.Timer.log(
-                            "Mesh Load (Disk)",
-                            sink=self.logger,
-                        )
+                    logging.Timer.start("Mesh Set (In-Memory)")
+                    global_mesh = mesh_data
+                    logging.Timer.log(
+                        "Mesh Set (In-Memory)",
+                        sink=self.logger,
+                    )
                     validate_topology(global_mesh)
                     global_geo = geometry.compute_mesh_geometry(
                         global_mesh,
@@ -488,20 +464,16 @@ class Solver(CouplerInterfaceMixin):
 
             gc.collect()
         else:
-            if mesh_data is not None:
-                logging.Timer.start("Mesh Set (In-Memory)")
-                self.mesh_data = mesh_data
-                logging.Timer.log(
-                    "Mesh Set (In-Memory)",
-                    sink=self.logger,
+            if mesh_data is None:
+                raise ValueError(
+                    "A solver-native mesh, mesh factory, or Gmsh .msh path is required"
                 )
-            else:
-                logging.Timer.start("Mesh Load (Disk)")
-                self.mesh_data = mesh_io.load_poly_mesh(self.case_dir)
-                logging.Timer.log(
-                    "Mesh Load (Disk)",
-                    sink=self.logger,
-                )
+            logging.Timer.start("Mesh Set (In-Memory)")
+            self.mesh_data = mesh_data
+            logging.Timer.log(
+                "Mesh Set (In-Memory)",
+                sink=self.logger,
+            )
             validate_topology(self.mesh_data)
             self.geo_data = geometry.compute_mesh_geometry(
                 self.mesh_data,
@@ -597,78 +569,6 @@ class Solver(CouplerInterfaceMixin):
         if not any(isinstance(s, YPlusSampler) for s in (self.config.samplers or ())):
             self._default_yplus_sampler = YPlusSampler(patch_names=None)
 
-    @classmethod
-    def from_case(cls, case_dir: str, **overrides):
-        """Build a Solver from an OpenFOAM case directory.
-
-        Assembles an :class:`FVMSetup` from the case's ``system``/``constant``/``0``
-        dictionaries (reusing the ``from_*`` loaders) so the FVM is constructable
-        directly from a conventional case directory.
-        Required case dictionaries and initial fields must exist and parse
-        successfully. ``overrides`` may replace known top-level
-        :class:`FVMSetup` fields.
-        """
-        from ..config.types import (
-            BoundaryConfig,
-            FVMSetup,
-            TimeConfig,
-            TransportConfig,
-            TurbulenceConfig,
-            solver_configs_from_case,
-        )
-        from ..sampling.forces import YPlusSampler
-
-        case_dir = os.path.abspath(case_dir)
-
-        required = (
-            os.path.join("system", "controlDict"),
-            os.path.join("system", "fvSolution"),
-            os.path.join("system", "fvSchemes"),
-            os.path.join("constant", "transportProperties"),
-            os.path.join("0", "U"),
-            os.path.join("0", "p"),
-        )
-        missing = [
-            relative
-            for relative in required
-            if not os.path.isfile(os.path.join(case_dir, relative))
-        ]
-        if missing:
-            raise FileNotFoundError(
-                f"Incomplete FVM case {case_dir!r}; missing required files: {', '.join(missing)}"
-            )
-
-        turbulence_path = os.path.join(case_dir, "constant", "turbulenceProperties")
-
-        schemes, linear, pimple, yplus_patches = solver_configs_from_case(case_dir)
-        samplers = ()
-        if yplus_patches:
-            samplers = (YPlusSampler(patch_names=yplus_patches),)
-        cfg = FVMSetup(
-            case_name=os.path.basename(case_dir.rstrip("/")) or "case",
-            time=TimeConfig.from_control_dict(case_dir),
-            schemes=schemes,
-            linear=linear,
-            pimple=pimple,
-            samplers=samplers,
-            transport=TransportConfig.from_foam_file(case_dir),
-            turbulence=(
-                TurbulenceConfig.from_foam_file(turbulence_path)
-                if os.path.isfile(turbulence_path)
-                else None
-            ),
-            boundaries=BoundaryConfig.load_from_time_dir(case_dir, "0"),
-            initial_U=None,
-            initial_p=None,
-        )
-        valid_overrides = set(cfg.__dataclass_fields__)
-        unknown = sorted(set(overrides) - valid_overrides)
-        if unknown:
-            raise TypeError(f"Unknown FVMSetup override(s): {', '.join(unknown)}")
-        for key, val in overrides.items():
-            setattr(cfg, key, val)
-        return cls(cfg, case_dir=case_dir)
-
     def _setup_boundary_conditions(self):
         """Map user-defined BoundaryConfig entries to internal mesh boundary data.
 
@@ -742,7 +642,7 @@ class Solver(CouplerInterfaceMixin):
         from ..assemble import convection
 
         self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
-        # Flux history for OpenFOAM's transient Rhie-Chow correction
+        # Flux history for the transient Rhie-Chow correction.
         # (``fvc::ddtCorr``), which needs phi and U at the same time levels.
         self.phi_old = self.phi.copy()
         self.phi_old_old = self.phi.copy()

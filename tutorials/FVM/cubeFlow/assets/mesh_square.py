@@ -2,7 +2,7 @@
 """Rectilinear quasi-2D mesh with a square hole for the cubeFlow tutorial.
 
 Builds a single-cell-thick hexahedral mesh (``empty`` front/back) directly in
-the polyMesh-style ``mesh_data`` dict the FVM solver consumes — no gmsh
+the face-based ``mesh_data`` dict the FVM solver consumes — no Gmsh
 required.  The square-section cylinder (side ``D``, centred at the origin) is
 carved out of the grid and its four sides form the body-fitted ``cube`` wall
 patch.  The grid is uniform (spacing ``h``) in a core box around the body and

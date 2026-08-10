@@ -83,36 +83,18 @@ class TestConfigFactories:
         assert tc.model == "Smagorinsky"
         assert tc.Cs == 0.17
 
-    def test_turbulence_config_openfoam_smagorinsky(self):
-        tc = TurbulenceConfig.openfoam_smagorinsky()
-        assert tc.model == "OpenFOAMSmagorinsky"
+    def test_turbulence_config_equilibrium_smagorinsky(self):
+        tc = TurbulenceConfig.equilibrium_smagorinsky()
+        assert tc.model == "EquilibriumSmagorinsky"
         assert tc.Ck == pytest.approx(0.094)
         assert tc.Ce == pytest.approx(1.048)
         assert tc.Cs == pytest.approx(tc.Ck**0.75 / tc.Ce**0.25)
-
-    def test_openfoam_smagorinsky_dictionary_loads_exact_model(self, tmp_path):
-        constant = tmp_path / "constant"
-        constant.mkdir()
-        (constant / "turbulenceProperties").write_text(
-            "simulationType LES;\n"
-            "LES\n{\n"
-            "    LESModel Smagorinsky;\n"
-            "    Ce 1.048;\n"
-            "}\n"
-            "SmagorinskyCoeffs\n{\n"
-            "    Ck 0.094;\n"
-            "}\n"
-        )
-
-        tc = TurbulenceConfig.from_foam_file(str(tmp_path))
-
-        assert tc == TurbulenceConfig.openfoam_smagorinsky(Ck=0.094, Ce=1.048)
 
     def test_fvm_config_roundtrip_json(self, tmp_path):
         config = FVMSetup(
             case_name="test_case",
             cores=3,
-            mesh=MeshConfig.block_mesh(),
+            mesh=MeshConfig(max_aspect_ratio=100.0),
             time=TimeConfig.transient(dt=0.1, duration=10.0),
             transport=TransportConfig.air(),
             boundaries=[BoundaryConfig.inlet("in", [1, 0, 0])],
@@ -127,7 +109,7 @@ class TestConfigFactories:
         assert loaded.boundaries[0].name == "in"
 
     def test_fvm_config_roundtrip_preserves_every_solver_setting(self, tmp_path):
-        # Grouped configs: linear (fvSolution/solvers), pimple (PIMPLE/IBM),
+        # Grouped configs: linear solvers, PIMPLE/IBM controls,
         # forces (functionObjects/forces) round-trip through JSON intact.
         config = FVMSetup(
             case_name="complete",

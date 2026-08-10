@@ -292,7 +292,7 @@ class PartitionedLinearWorkspace:
         # PETSc's convergence test is relative to ||b||, which carries the
         # transport of the solution's mean (for x-momentum in a free stream it
         # dwarfs the near-wall dynamics).  Rescale so ``tolerance`` targets the
-        # deviation-based OpenFOAM-style normFactor.  OpenFOAM's ``relTol`` is
+        # deviation-based norm factor. The configured ``relTol`` is
         # a reduction from the residual at solve entry, not an absolute target.
         rhs_norm_pre = max(float(self.rhs.norm()), 1e-30)
         initial_residual_norm = rhs_norm_pre

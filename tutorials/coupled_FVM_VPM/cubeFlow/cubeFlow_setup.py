@@ -1,8 +1,8 @@
 """Hybrid LES FVM–VPM simulation of flow past a cube at Re = 1000.
 
 The FVM mesh is generated directly as solver-native data by OpenONDA's
-cfMesh-inspired adaptive Cartesian mesher.  No Gmsh or OpenFOAM case is used.
-Both solvers use OpenFOAM's equilibrium Smagorinsky coefficients.
+adaptive Cartesian mesher. No external solver case is used. Both solvers use
+the same equilibrium Smagorinsky coefficients.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ FVM_SETUP = FVMSetup(
     ),
     samplers=FVM_SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=FVMTurbulenceConfig.openfoam_smagorinsky(
+    turbulence=FVMTurbulenceConfig.equilibrium_smagorinsky(
         Ck=SMAGORINSKY_CK,
         Ce=SMAGORINSKY_CE,
     ),
@@ -242,7 +242,7 @@ VPM_SETUP = VPMSetup(
     ),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
-    turbulence=VPMTurbulenceConfig.openfoam_smagorinsky(
+    turbulence=VPMTurbulenceConfig.equilibrium_smagorinsky(
         ck=SMAGORINSKY_CK,
         ce=SMAGORINSKY_CE,
     ),

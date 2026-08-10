@@ -215,7 +215,7 @@ def _build_csr_pattern_numba(
                 n_coupled += 1
     # Diagonal destinations repeat for every incident face. Store them once
     # per cell, plus the two genuinely face-specific off-diagonal entries.
-    # This is the CSR equivalent of OpenFOAM's diag/lower/upper LDU layout.
+    # This is the CSR equivalent of a diag/lower/upper LDU layout.
     diagonal_slots = np.empty(n_elements, dtype=np.int32)
     for row in range(n_elements):
         diagonal_slots[row] = _find_sorted_column(indices, indptr[row], indptr[row + 1], row)

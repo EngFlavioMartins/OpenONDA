@@ -40,7 +40,8 @@ git push
 
 The helper only discovers `solution/` directories. It deliberately does not
 add complete `referenceFlow/` directories because those contain runnable
-native-FVM source and small reviewed reference samples.
+native-FVM source and compact reviewed CSV histories. Full VTK/VTS reference
+slices are generated data and remain local or belong in DVC, never Git.
 
 The safe order is `dvc add` → `dvc push` → Git commit → Git push. A committed
 `.dvc` pointer is not a backup until `dvc push` succeeds.

@@ -316,7 +316,7 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     * ``cv``   — outer control-volume momentum balance
         F_body = −d/dt ∫ρu dV − ∮_outer ρ u (u·n̂) dS + ∮_outer (−ρ p n̂ + τ·n̂) dS
       evaluated with the solver's own fields (φ for the mass flux, patch ghost
-        values for u and p, and the complete OpenFOAM deviatoric stress for the
+        values for u and p, and the complete deviatoric stress for the
         outer traction; implicit-Euler d/dt from the last two committed states,
         consistent with the solver's time scheme).
     * ``disc`` — wall force from the DISCRETE boundary fluxes the momentum

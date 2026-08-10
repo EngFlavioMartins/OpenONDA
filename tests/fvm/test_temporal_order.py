@@ -102,7 +102,7 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
         # bounded) to isolate the *time*-integration order: the deferred
         # scheme's explicit central correction is lagged by one solve and would
         # cap the observed order at ~1 without outer correctors.
-        # OpenFOAM's deviatoric transpose-stress contribution is explicit in
+        # The deviatoric transpose-stress contribution is explicit in
         # each momentum assembly and is refreshed by the PIMPLE outer loop.
         # Converge that fixed point here too; a single lagged evaluation would
         # inject a first-order splitting error into a test intended to isolate

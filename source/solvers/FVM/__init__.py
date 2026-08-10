@@ -24,7 +24,6 @@ from .config.types import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
-    solver_configs_from_case,
 )
 from .core.solver import Solver
 from .core.state import FieldState
@@ -59,7 +58,6 @@ __all__ = [
     "SurfaceSampler",
     "IBMForceSampler",
     "YPlusSampler",
-    "solver_configs_from_case",
     "TransportConfig",
     "BoundaryConfig",
     "DynamicMeshConfig",

@@ -159,7 +159,7 @@ def test_common_fvm_settings_identical(bench, reference):
     assert fully_meshed.time.adjust_timestep is False
     assert hybrid.initial_U == fully_meshed.initial_U
     assert hybrid.turbulence == fully_meshed.turbulence
-    assert fully_meshed.turbulence.model == "OpenFOAMSmagorinsky"
+    assert fully_meshed.turbulence.model == "EquilibriumSmagorinsky"
     assert fully_meshed.turbulence.Ck == pytest.approx(0.094)
     assert fully_meshed.turbulence.Ce == pytest.approx(1.048)
 

@@ -1,6 +1,6 @@
-"""OpenFOAM ``Final``-corrector semantics for the transient PIMPLE relaxation.
+"""Final-corrector semantics for transient PIMPLE relaxation.
 
-OpenFOAM applies ``relaxationFactors`` on every outer corrector *except* the
+PIMPLE applies relaxation factors on every outer corrector *except* the
 last: ``fvMatrix::relax`` and ``GeometricField::relax`` look the factor up under
 ``UFinal`` / ``pFinal``, and the relaxationFactors section does not define
 those final-field entries.  The
@@ -108,7 +108,7 @@ def test_relaxation_converges_to_the_unrelaxed_step():
 
 
 def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monkeypatch):
-    """Mirror OpenFOAM's U/UFinal and p/pFinal solver selection."""
+    """Exercise intermediate/final momentum and pressure solver selection."""
     from source.solvers.FVM.assemble import momentum
     from source.solvers.FVM.solve import pimple_solver
 

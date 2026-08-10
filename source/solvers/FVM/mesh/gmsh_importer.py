@@ -222,7 +222,7 @@ def _collect_boundary_patches(
 class GmshImporter:
     """
     Imports a Gmsh mesh and converts it to OpenONDA FVM mesh_data format.
-    Strictly follows OpenFOAM topological conventions:
+    Strictly follows the native face-topology conventions:
     - Internal faces come first.
     - Boundary faces follow, grouped by patch.
     - Owner < Neighbour for internal faces.

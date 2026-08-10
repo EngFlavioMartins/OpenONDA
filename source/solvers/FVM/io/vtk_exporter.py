@@ -242,7 +242,7 @@ class VTKExporter:
     def _point_interpolation_operator(self, use_boundary: bool) -> dict[str, np.ndarray]:
         """Build a linearly exact cell/boundary → point interpolation.
 
-        Serves the same role as OpenFOAM's ``volPointInterpolation``: each
+        Each point value is a distance-weighted average: each
         mesh point receives a weighted combination of the surrounding
         finite-volume values, and points lying on a boundary take their
         value from the adjacent boundary faces alone so that the applied

@@ -6,7 +6,7 @@ import numpy as np
 
 
 def structured_box(nx: int, ny: int, nz: int, lx=1.0, ly=1.0, lz=1.0) -> dict:
-    """Return a polyMesh-style ``nx`` by ``ny`` by ``nz`` hexahedral box."""
+    """Return a face-based ``nx`` by ``ny`` by ``nz`` hexahedral box."""
     if min(nx, ny, nz) < 1 or min(lx, ly, lz) <= 0:
         raise ValueError("Cell counts and box lengths must be positive")
     dx, dy, dz = lx / nx, ly / ny, lz / nz

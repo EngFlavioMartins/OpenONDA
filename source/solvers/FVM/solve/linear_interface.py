@@ -132,7 +132,7 @@ def normalized_residual(A, x, b):
 
 
 def deviation_norm_factor(A, b, x0):
-    """OpenFOAM-style residual normalization: the deviation from the mean state.
+    """Normalize residuals by deviation from the mean state.
 
     ``||b||`` carries the transport of whatever mean the solution rides on.
     For x-momentum in a unit free stream that bulk term is orders of magnitude
@@ -141,8 +141,7 @@ def deviation_norm_factor(A, b, x0):
     initial guess the Krylov solve then exits at iteration zero and the flow
     freezes into an unphysical steady state (no separation, no shedding).
 
-    This is the L2 analog of OpenFOAM's ``normFactor``: with
-    ``xRef = mean(x0)``,
+    With ``xRef = mean(x0)``,
 
         normFactor = ||A x0 - A xRef|| + ||b - A xRef||
 
@@ -178,13 +177,13 @@ def deviation_norm_factor(A, b, x0):
     return max(factor, 1e-12 * algebraic_scale)
 
 
-def openfoam_residual_target(A, b, x0, absolute_tolerance, relative_tolerance=0.0):
-    """Return OpenFOAM-style initial residual, target, and norm factor.
+def normalized_residual_target(A, b, x0, absolute_tolerance, relative_tolerance=0.0):
+    """Return the initial normalized residual, target, and norm factor.
 
-    OpenFOAM stops a linear solve when either its absolute normalized
-    tolerance is met or the residual has fallen by ``relTol`` from the value
-    at entry to that solve.  ``relTol`` is therefore *not* itself an absolute
-    residual target.  Keeping this conversion next to
+    A solve stops when either its absolute normalized tolerance is met or the
+    residual has fallen by ``relTol`` from the value at entry to that solve.
+    ``relTol`` is therefore *not* itself an absolute residual target. Keeping
+    this conversion next to
     :func:`deviation_norm_factor` gives every serial/replicated backend the
     same semantics; the partitioned PETSc path performs the equivalent global
     calculation with distributed vectors.
@@ -400,10 +399,10 @@ def _solve_petsc(
             method_name = f"{requested}+bjacobi"
     else:
         raise ValueError(f"Unknown PETSc iterative solver {method!r}")
-    initial_residual, residual_target, norm_factor = openfoam_residual_target(
+    initial_residual, residual_target, norm_factor = normalized_residual_target(
         A_csr, b_array, x0, tol, rel_tol
     )
-    # PETSc's default test is relative to ||b||; rescale so the OpenFOAM
+    # PETSc's default test is relative to ||b||; rescale so the
     # absolute-or-relative target is measured against the deviation norm.
     # deviation-based normFactor and a warm guess cannot satisfy the tolerance
     # on the strength of the mean flow alone (see deviation_norm_factor).
@@ -962,7 +961,7 @@ def solve_linear_system(
     if nullspace is not None:
         raise ValueError("Explicit null-space solves currently require the PETSc backend")
 
-    initial_residual, residual_target, norm_factor = openfoam_residual_target(
+    initial_residual, residual_target, norm_factor = normalized_residual_target(
         A, b, x0, tol, rel_tol
     )
     tol = residual_target

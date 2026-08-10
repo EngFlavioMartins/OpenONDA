@@ -8,7 +8,7 @@ limiter ``ψ ∈ [0, 2]``. The face value used by the convection assembly is
 so ψ = 0 recovers upwind and ψ = 1 recovers central on a midpoint face.
 Values above one are required by standard Van Leer, MUSCL, and Superbee rather
 than being silently clipped to a different scheme. ``r`` is built from the cell gradients in the
-gradient-based (NVD/TVD) form used by OpenFOAM:
+gradient-based NVD/TVD form:
 
     r = 2 (d · ∇φ_upwind) / (φ_N − φ_P) − 1
 
@@ -85,7 +85,7 @@ def _superbee(r: np.ndarray) -> np.ndarray:
 
 
 def _limited_linear(r: np.ndarray, k: float = 1.0) -> np.ndarray:
-    """OpenFOAM ``limitedLinear k``: symmetric, bounded, k ∈ (0, 1].
+    """Limited-linear interpolation: symmetric and bounded for k ∈ (0, 1].
 
     k → 1 is most accurate (closest to linear), k → 0 is most stable (closer to
     upwind)."""

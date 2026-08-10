@@ -2,7 +2,7 @@
 """Rectilinear quasi-2D flat-plate mesh for the boundaryLayer tutorial.
 
 Single-cell-thick hexahedral mesh (``empty`` front/back) built directly in the
-polyMesh-style ``mesh_data`` dict the FVM solver consumes.  The bottom
+face-based ``mesh_data`` dict the FVM solver consumes. The bottom
 boundary is split at the leading edge x = 0 into a frictionless run-in
 (``floor``, slip) and the no-slip ``plate``, so the boundary layer starts
 growing exactly at x = 0 — the configuration the Blasius similarity solution

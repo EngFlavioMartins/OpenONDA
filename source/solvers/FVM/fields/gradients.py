@@ -21,7 +21,7 @@ def _is_empty_boundary(boundary, *, allow_source_type: bool = False) -> bool:
 def _correct_boundary_gradient(grad_phi, phi, mesh_data, geo_data):
     """Replace the wall-normal part of a boundary gradient with the exact snGrad.
 
-    OpenFOAM's ``fv::gaussGrad::correctBoundaryConditions`` — which *both* the
+    The boundary-gradient correction — which *both* the
     Gauss and least-squares schemes call at the end of ``calcGrad`` — overwrites
     the normal component of the patch gradient with the boundary condition's own
     surface-normal derivative::
@@ -35,7 +35,7 @@ def _correct_boundary_gradient(grad_phi, phi, mesh_data, geo_data):
     (the viscous stress, wall traction, Rhie-Chow) starts from the wrong number.
 
     ``snGrad`` is taken from the ghost value the boundary conditions already
-    wrote, ``(phi_ghost - phi_owner) * deltaCoeffs``, with OpenFOAM's
+    wrote, ``(phi_ghost - phi_owner) * deltaCoeffs``, with the
     ``deltaCoeffs = 1 / (n . (Cf - CP))``.  Coupled (cyclic) and empty patches
     are skipped, exactly as the ``!coupled()`` guard does upstream.
     """
@@ -61,7 +61,7 @@ def _correct_boundary_gradient(grad_phi, phi, mesh_data, geo_data):
         n_patch_faces = boundary["nFaces"]
         faces = np.arange(start, start + n_patch_faces)
         if np.any(boundary_neighbours[faces] >= 0):
-            continue  # coupled patch: OpenFOAM leaves the gradient untouched
+            continue  # coupled patch: leave the gradient untouched
 
         ghosts = n_elements + (faces - n_interior)
         owner_cells = owners[faces]
@@ -212,7 +212,7 @@ def compute_gauss_gradient(phi, mesh_data, geo_data):
     # linearUpwind and corrected laplacians interpolate gradients on both
     # sides of a processor face. Replace those partial halo gradients with
     # the complete values computed by their owning ranks, matching
-    # OpenFOAM's processor-patch gradient exchange.
+    # Processor-patch gradient exchange.
     parallel = mesh_data.get("_parallel_context")
     if parallel is not None and parallel.is_partitioned:
         parallel.exchange_halo(grad_phi[:n_elements])

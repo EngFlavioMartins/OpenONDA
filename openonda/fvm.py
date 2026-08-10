@@ -25,7 +25,6 @@ from source.solvers.FVM import (
     TransportConfig,
     TurbulenceConfig,
     setup_fvm_solver,
-    solver_configs_from_case,
 )
 from source.solvers.FVM.fields.diagnostics import (
     compute_continuity_error,
@@ -72,5 +71,4 @@ __all__ = [
     "periodic_square_mesh",
     "geometry",
     "setup_fvm_solver",
-    "solver_configs_from_case",
 ]

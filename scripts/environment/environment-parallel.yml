@@ -19,7 +19,6 @@ dependencies:
   - defusedxml>=0.7
   - gmsh>=4.11
   - pyamg>=5
-  - pygit2>=1.13
   - pyvista>=0.43
   - vtk>=9.3
   # Taichi is installed by the OpenONDA wheel below because its Intel-macOS

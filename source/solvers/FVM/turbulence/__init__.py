@@ -1,11 +1,11 @@
 """FVM turbulence models package"""
 
 from .les_models import WALE, DynamicSmagorinsky, Sigma, create_model
-from .smagorinsky import OpenFOAMSmagorinsky, Smagorinsky
+from .smagorinsky import EquilibriumSmagorinsky, Smagorinsky
 
 __all__ = [
     "Smagorinsky",
-    "OpenFOAMSmagorinsky",
+    "EquilibriumSmagorinsky",
     "WALE",
     "Sigma",
     "DynamicSmagorinsky",

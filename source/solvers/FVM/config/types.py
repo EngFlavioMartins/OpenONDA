@@ -1,243 +1,6 @@
 from dataclasses import asdict, dataclass, field
-from dataclasses import fields as dataclass_fields
 import json
-import os
-import re
 from typing import Literal
-
-
-def _collect_field_patches(filepath: str, type_key: str, value_key: str, patches: dict) -> None:
-    """Read a single OpenFOAM field file and merge its BC entries into *patches*.
-
-    Args:
-        filepath:  Path to an OpenFOAM field file (e.g. ``0/U``).
-        type_key:  Key under which the boundary type is stored (e.g. ``"type_U"``).
-        value_key: Key under which the boundary value is stored (e.g. ``"value_U"``).
-        patches:   Dict of patch-name → attributes, mutated in place.
-    """
-    from ..fields.field_io import parse_field_boundary_patches
-
-    if not os.path.exists(filepath):
-        return
-    for k, v in parse_field_boundary_patches(filepath).items():
-        patches.setdefault(k, {})[type_key] = v.get("type")
-        patches.setdefault(k, {})[value_key] = v.get("value")
-
-
-def _build_boundary_config(name: str, vals: dict) -> "BoundaryConfig":
-    """Construct a :class:`BoundaryConfig` from merged patch data.
-
-    Iterates over the ``(type_attr, value_attr)`` pairs for U, p, and nut,
-    setting only those that appear in *vals*.
-
-    Args:
-        name: Patch name.
-        vals: Merged attributes dict (from :func:`_collect_field_patches`).
-
-    Returns:
-        A new :class:`BoundaryConfig`.
-    """
-    missing = [key for key in ("type_U", "type_p") if vals.get(key) is None]
-    if missing:
-        raise ValueError(
-            f"Boundary patch {name!r} is missing required field definitions: {', '.join(missing)}"
-        )
-    b = BoundaryConfig(name=name)
-    for type_attr, value_attr in (
-        ("type_U", "value_U"),
-        ("type_p", "value_p"),
-        ("type_nut", "value_nut"),
-    ):
-        t = vals.get(type_attr)
-        v = vals.get(value_attr)
-        if t is not None:
-            setattr(b, type_attr, t)
-            if v is not None:
-                setattr(b, value_attr, v)
-    return b
-
-
-def _resolve_system_dir(path: str) -> str:
-    """Resolve a path to the OpenFOAM ``system`` directory.
-
-    If *path* is a case directory (a directory whose basename is not
-    ``system``), appends ``"system"``.  If *path* is a file, returns its
-    parent directory.
-
-    Args:
-        path: Candidate path (directory or file).
-
-    Returns:
-        Absolute path to the ``system`` directory.
-    """
-    if os.path.isdir(path) and os.path.basename(path) != "system":
-        return os.path.join(path, "system")
-    return path if os.path.isdir(path) else os.path.dirname(path)
-
-
-def _parse_yplus_patches(content: str) -> list[str] | None:
-    """Extract the y+ patch list from the ``functions`` block of a ``controlDict``.
-
-    Parses the ``functions`` sub-dictionary for an entry matching ``"yplus"``
-    (case-insensitive) and extracts the ``patches ( ... )`` list.
-
-    Args:
-        content: Raw text of the ``controlDict`` file.
-
-    Returns:
-        List of patch names, or ``None`` if no y+ function is found.
-    """
-    funcs_match = re.search(r"functions\s*\{(.+?)\}\s*", content, re.DOTALL)
-    if not funcs_match:
-        return None
-    funcs_content = funcs_match.group(1)
-    for fm in re.finditer(r"(\w+)\s*\{([^}]*)\}", funcs_content, re.DOTALL):
-        if "yplus" not in fm.group(1).lower():
-            continue
-        pm = re.search(r"patches\s*\(\s*([^\)]+)\)", fm.group(2))
-        if pm:
-            tokens = [t.strip() for t in pm.group(1).split() if t.strip()]
-            if tokens:
-                return tokens
-    return None
-
-
-def _extract_foam_number(v) -> float | None:
-    """Parse a numeric value from an OpenFOAM dictionary entry.
-
-    Handles scalars, single-element lists, and strings containing numbers
-    (takes the last numeric token found).
-
-    Args:
-        v: Raw value from a parsed OpenFOAM dictionary (scalar, list, or string).
-
-    Returns:
-        Float value, or ``None`` if no number could be extracted.
-    """
-    if isinstance(v, int | float):
-        return float(v)
-    if isinstance(v, list) and v:
-        return float(v[-1])
-    if isinstance(v, str):
-        nums = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", v)
-        if nums:
-            return float(nums[-1])
-    return None
-
-
-def _normalise_openfoam_linear_solver(name: str, field_name: str) -> str:
-    """Map supported OpenFOAM solver names to the FVM linear API."""
-    mapping = {
-        "gamg": "amg",
-        "pcg": "cg",
-        "cg": "cg",
-        "pbicgstab": "bicgstab",
-        "bicgstab": "bicgstab",
-        "gmres": "gmres",
-        "spsolve": "spsolve",
-    }
-    key = str(name).strip().lower()
-    if key not in mapping:
-        raise ValueError(
-            f"Unsupported OpenFOAM linear solver {name!r} for {field_name}; "
-            f"supported names: {sorted(mapping)}"
-        )
-    return mapping[key]
-
-
-def _find_supported_scheme(
-    value: str,
-    mapping: dict[str, str],
-    label: str,
-    allowed_modifiers: set[str] | None = None,
-) -> str:
-    """Resolve a supported OpenFOAM scheme token from a complete entry."""
-    tokens = [token.lower() for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*", value)]
-    allowed = set(mapping) | (allowed_modifiers or set())
-    unsupported = [token for token in tokens if token not in allowed]
-    if unsupported:
-        raise ValueError(f"Unsupported {label} modifier(s) {unsupported!r} in entry {value!r}")
-    for token in reversed(tokens):
-        if token in mapping:
-            return mapping[token]
-    raise ValueError(f"Unsupported {label} entry {value!r}; supported schemes: {sorted(mapping)}")
-
-
-def _detect_turbulence_model(data: dict, filepath: str) -> str:
-    """Determine the turbulence model name from parsed data and raw file text.
-
-    Checks ``simulationType``, ``LESModel``, and ``model`` keys.  If the
-    simulation type is ``LES`` but the model name is not present in the
-    parsed data, falls back to regex on the raw file content.
-
-    Args:
-        data:     Parsed dictionary from ``turbulenceProperties``.
-        filepath: Original file path (read again if regex fallback needed).
-
-    Returns:
-        Model name string (e.g. ``"Smagorinsky"``, ``"None"``).
-    """
-    sim_type = data.get("simulationType") or data.get("simulationtype")
-    model = data.get("LESModel") or data.get("model")
-    if model is None and sim_type and str(sim_type).upper() == "LES":
-        with open(filepath) as f:
-            txt = f.read()
-        m = re.search(r"LESModel\s+(\w+);", txt)
-        if m:
-            return m.group(1)
-    return str(model or sim_type or "None")
-
-
-def _find_turbulence_coeffs(data: dict, filepath: str) -> tuple[float, bool, float, float]:
-    """Return ``(Cs, dynamic, Ck, Ce)`` turbulence coefficients.
-
-    Checks for ``Cs`` (or variants ``C_s``, ``c_s``) and ``dynamic`` in the
-    parsed data.  If missing, falls back to regex on the raw file content.
-
-    Args:
-        data:     Parsed dictionary from ``turbulenceProperties``.
-        filepath: Original file path (used for regex fallback).
-
-    Returns:
-        Coefficient tuple. Defaults reproduce the OpenFOAM Smagorinsky
-        constants: ``Cs=0.17``, ``dynamic=False``, ``Ck=0.094``,
-        ``Ce=1.048``.
-    """
-    cs_candidates = [data.get("Cs"), data.get("C_s"), data.get("c_s")]
-    cs_val = next((c for c in cs_candidates if c is not None), None)
-    ck_val = data.get("Ck")
-    ce_val = data.get("Ce")
-    dynamic_val = data.get("dynamic")
-    if cs_val is None or ck_val is None or ce_val is None or dynamic_val is None:
-        with open(filepath) as f:
-            txt = f.read()
-        if cs_val is None:
-            m = re.search(r"Cs\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
-            if m:
-                cs_val = float(m.group(1))
-        if ck_val is None:
-            m = re.search(r"Ck\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
-            if m:
-                ck_val = float(m.group(1))
-        if ce_val is None:
-            m = re.search(r"Ce\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?);", txt)
-            if m:
-                ce_val = float(m.group(1))
-        if dynamic_val is None:
-            dm = re.search(r"dynamic\s+(\w+);", txt)
-            if dm:
-                dynamic_val = dm.group(1)
-    dynamic = (
-        dynamic_val.strip().lower() in ("true", "on", "yes", "1")
-        if isinstance(dynamic_val, str)
-        else bool(dynamic_val)
-    )
-    return (
-        float(cs_val) if cs_val is not None else 0.17,
-        dynamic,
-        float(ck_val) if ck_val is not None else 0.094,
-        float(ce_val) if ce_val is not None else 1.048,
-    )
 
 
 @dataclass
@@ -245,17 +8,11 @@ class BoundaryConfig:
     """Boundary-condition specification for one mesh patch.
 
     Wraps the type and value for every field (velocity, pressure, scalar,
-    turbulent viscosity) applied to a single patch.  The naming follows
-    OpenFOAM conventions so that ``load_from_time_dir`` can round-trip an
-    existing OpenFOAM case without manual re-entry.
+    turbulent viscosity) applied to a single patch.
 
     Use the factory methods (:meth:`inlet`, :meth:`outlet`, :meth:`wall`,
     etc.) for common boundary types; they set sensible defaults for all
     fields at once.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 5.2 ``Boundary conditions``
 
     Examples
     --------
@@ -342,7 +99,7 @@ class BoundaryConfig:
         """Create a no-slip wall boundary condition.
 
         Sets velocity to zero (fixed value) and pressure to zero-gradient.
-        Turbulent viscosity uses the ``calculated`` type (OpenFOAM convention).
+        Turbulent viscosity is computed by the selected native model.
 
         Args:
             name: Patch name (e.g. ``"bottomWall"``).
@@ -388,150 +145,20 @@ class BoundaryConfig:
             mesh_type="empty",
         )
 
-    @staticmethod
-    def load_from_time_dir(case_dir: str, time_dir: str = "0") -> list["BoundaryConfig"]:
-        """Load boundary conditions from an OpenFOAM time directory.
-
-        Reads ``U``, ``p``, and ``nut`` field files (if present) and
-        constructs a :class:`BoundaryConfig` for every patch found.
-
-        Args:
-            case_dir: Case root directory.
-            time_dir: Time subdirectory name (default ``"0"``).
-
-        Returns:
-            List of :class:`BoundaryConfig` objects, one per patch.
-
-        Example:
-            >>> bcs = BoundaryConfig.load_from_time_dir("/path/to/case", "0")
-            >>> bcs[0].name, bcs[0].type_U
-            ('inlet', 'fixedValue')
-        """
-        base = os.path.join(case_dir, time_dir)
-        patches: dict = {}
-        _collect_field_patches(os.path.join(base, "U"), "type_U", "value_U", patches)
-        _collect_field_patches(os.path.join(base, "p"), "type_p", "value_p", patches)
-        _collect_field_patches(os.path.join(base, "nut"), "type_nut", "value_nut", patches)
-        return [_build_boundary_config(name, vals) for name, vals in patches.items()]
-
 
 @dataclass
 class MeshConfig:
-    """Mesh generation parameters.
+    """Quality limits applied to a solver-native or Gmsh mesh.
 
-    Supports two methods: OpenFOAM's ``blockMesh`` (structured multi-block)
-    and cfMesh's ``cartesianMesh`` (automatic Cartesian with local
-    refinement).  The quality-constraint fields (non-orthogonality, skewness,
-    aspect ratio, LSQ condition) are written into the ``meshDict`` when set
-    but are advisory — what the mesh generator can achieve depends on the
-    geometry and the configured cell sizes.
-
-    Use the factory methods :meth:`block_mesh` and :meth:`cartesian` for the
-    most common configurations.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 2.1 ``Mesh generation with blockMesh``
-    - cfMesh User Guide, ``cartesianMesh``
-
-    Examples
-    --------
-    >>> MeshConfig.cartesian(surface_file="wing.stl", max_cell_size=0.05)
+    Meshes are supplied directly to :func:`setup_fvm_solver` as an in-memory
+    mesh, a callable that builds one, or a Gmsh ``.msh`` path.  Set any limit
+    below to reject a mesh that does not satisfy it.
     """
 
-    method: Literal["blockMesh", "cartesianMesh"] = "blockMesh"
-    surface_file: str | None = None
-    max_cell_size: float = 1.0
-    boundary_cell_size: float | None = None
-    min_cell_size: float | None = None
-    local_refinement: dict[str, float] = field(default_factory=dict)
     max_non_orthogonality_deg: float | None = None
     max_skewness: float | None = None
     max_aspect_ratio: float | None = None
     max_lsq_condition: float | None = None
-
-    @staticmethod
-    def block_mesh() -> "MeshConfig":
-        """Create a default ``blockMesh`` configuration.
-
-        Returns:
-            :class:`MeshConfig` configured for OpenFOAM's ``blockMesh``.
-        """
-        return MeshConfig(method="blockMesh")
-
-    @staticmethod
-    def cartesian(surface_file: str, max_cell_size: float) -> "MeshConfig":
-        """Create a cfMesh ``cartesianMesh`` configuration.
-
-        Args:
-            surface_file:  STL/OBJ surface file in ``constant/triSurface/``.
-            max_cell_size: Maximum isotropic cell size.
-
-        Returns:
-            :class:`MeshConfig` configured for cfMesh ``cartesianMesh``.
-        """
-        return MeshConfig(
-            method="cartesianMesh", surface_file=surface_file, max_cell_size=max_cell_size
-        )
-
-    def generate_mesh_dict(self) -> str:
-        """Generate the content of ``system/meshDict`` for cfMesh cartesianMesh.
-
-        Produces an OpenFOAM-format dictionary with ``surfaceFile``,
-        ``maxCellSize``, and optional ``boundaryCellSize``, ``minCellSize``,
-        and ``localRefinement`` entries.
-
-        Returns:
-            Complete ``meshDict`` content as a string, or ``""`` if the
-            configured method is not ``cartesianMesh``.
-        """
-        if self.method != "cartesianMesh":
-            return ""
-
-        content = [
-            "/*--------------------------------*- C++ -*----------------------------------*\\",
-            "| =========                 |                                                 |",
-            "| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |",
-            "|  \\\\    /   O peration     | Version:  v2006                                 |",
-            "|   \\\\  /    A nd           | Website:  www.openfoam.com                      |",
-            "|    \\\\/     M anipulation  |                                                 |",
-            "\\*---------------------------------------------------------------------------*/",
-            "FoamFile",
-            "{",
-            "    version     2.0;",
-            "    format      ascii;",
-            "    class       dictionary;",
-            "    object      meshDict;",
-            "}",
-            "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //",
-            "",
-            f'surfaceFile "{self.surface_file}";',
-            "",
-            f"maxCellSize {self.max_cell_size};",
-            "",
-        ]
-
-        if self.boundary_cell_size is not None:
-            content.append(f"boundaryCellSize {self.boundary_cell_size};")
-
-        if self.min_cell_size is not None:
-            content.append(f"minCellSize {self.min_cell_size};")
-
-        if self.local_refinement:
-            content.append("localRefinement")
-            content.append("{")
-            for patch, size in self.local_refinement.items():
-                content.append(f"    {patch}")
-                content.append("    {")
-                content.append(f"        cellSize {size};")
-                content.append("    }")
-            content.append("}")
-
-        content.append("")
-        content.append(
-            "// ************************************************************************* //"
-        )
-        return "\n".join(content)
 
 
 @dataclass
@@ -591,40 +218,10 @@ class TimeConfig:
             delta_t=dt, start_time=0, end_time=duration, write_interval=write_interval
         )
 
-    @classmethod
-    def from_control_dict(cls, path: str) -> "TimeConfig":
-        """Create a TimeConfig from an OpenFOAM `controlDict` file or case dir.
-
-        This reads `deltaT` (or `deltaT`), `startTime`, and `endTime`.
-        """
-        from ..fields.field_io import parse_simple_dictionary
-
-        filepath = os.path.join(path, "system", "controlDict") if os.path.isdir(path) else path
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"controlDict not found: {filepath}")
-        data = parse_simple_dictionary(filepath)
-        missing = [key for key in ("deltaT", "endTime") if key not in data]
-        if missing:
-            raise ValueError(
-                f"controlDict {filepath!r} is missing required entries: {', '.join(missing)}"
-            )
-
-        def number(name: str, default: float | int) -> float:
-            value = _extract_foam_number(data.get(name, default))
-            if value is None:
-                raise ValueError(f"controlDict {filepath!r} entry {name!r} must be numeric")
-            return value
-
-        dt = number("deltaT", cls().delta_t)
-        start = number("startTime", cls().start_time)
-        end = number("endTime", cls().end_time)
-        w = int(number("writeInterval", cls().write_interval))
-        return cls(delta_t=dt, start_time=start, end_time=end, write_interval=w)
-
 
 @dataclass
 class SchemesConfig:
-    """Spatial and temporal discretisation, analogous to ``fvSchemes``.
+    """Spatial and temporal discretisation settings.
 
     ``LUST`` is the production LES/DNS choice. ``limitedLinear`` or
     ``upwind`` is more dissipative and useful for difficult coarse meshes.
@@ -652,13 +249,13 @@ class SchemesConfig:
 
 @dataclass
 class LinearSolverConfig:
-    """Momentum and pressure linear solvers, analogous to ``fvSolution``.
+    """Momentum and pressure linear-solver settings.
 
     ``momentum_tol`` and ``pressure_tol`` are the absolute normalized
     residual targets.  The corresponding ``*_rel_tol`` values allow an
     intermediate PIMPLE solve to stop after reducing its initial residual by
-    that factor.  ``*_final_rel_tol`` controls the OpenFOAM-style ``UFinal`` /
-    ``pFinal`` stage; ``0`` therefore requests the absolute target. Iteration
+    that factor. ``*_final_rel_tol`` controls the final momentum/pressure
+    stage; ``0`` therefore requests the absolute target. Iteration
     limits are per component and pressure correction. ``amg`` uses PyAMG in
     serial and PETSc GAMG in partitioned runs.
 
@@ -696,11 +293,10 @@ class PimpleControl:
     Corrector counts are dimensionless. Relaxation factors lie in ``(0, 1]``;
     transient PIMPLE normally uses 1.0.
 
-    ``alpha_u`` / ``alpha_p`` follow OpenFOAM's ``relaxationFactors`` semantics:
-    transient PIMPLE applies them only while the outer loop is still
-    converging, and runs the **final** outer corrector unrelaxed (OpenFOAM
-    looks the factors up as ``UFinal`` / ``pFinal``, which ``fvSolution``
-    leaves undefined).  They therefore accelerate the outer loop without
+    ``alpha_u`` / ``alpha_p`` are equation relaxation factors. Transient
+    PIMPLE applies them only while the outer loop is still converging, and
+    runs the **final** outer corrector unrelaxed. They therefore accelerate
+    the outer loop without
     altering the committed time step, and are inert when
     ``n_outer_correctors == 1``.  Steady SIMPLE relaxes every sweep, since
     there the relaxation *is* the pseudo-time march.
@@ -721,198 +317,11 @@ class PimpleControl:
     ibm_second_solve: bool = True
 
 
-def _groups_from_flat(
-    flat: dict,
-) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl"]:
-    """Distribute a flat parameter mapping into the three solver configs."""
-
-    def take(cls):
-        names = {f.name for f in dataclass_fields(cls)}
-        return cls(**{k: v for k, v in flat.items() if k in names})
-
-    return (
-        take(SchemesConfig),
-        take(LinearSolverConfig),
-        take(PimpleControl),
-    )
-
-
-def solver_configs_from_case(
-    path: str,
-) -> tuple["SchemesConfig", "LinearSolverConfig", "PimpleControl", "list[str]"]:
-    """Parse ``system/{controlDict,fvSolution,fvSchemes}`` into the three solver
-    configs plus the y+ wall-patch list (used by :meth:`Solver.from_case`)."""
-    from types import SimpleNamespace
-
-    from ..fields.field_io import parse_simple_dictionary
-
-    defaults: dict = {}
-    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl()):
-        defaults.update(vars(group))
-    defaults["yplus_patches"] = None
-    params = SimpleNamespace(**defaults)
-
-    system_dir = _resolve_system_dir(path)
-    control = os.path.join(system_dir, "controlDict")
-    fvsolution = os.path.join(system_dir, "fvSolution")
-    fvschemes = os.path.join(system_dir, "fvSchemes")
-    if os.path.exists(control):
-        data = parse_simple_dictionary(control)
-        dt = data.get("deltaT")
-        dt_value = _extract_foam_number(dt)
-        if dt_value is not None:
-            params.time_scheme = "euler_implicit" if dt_value > 0 else params.time_scheme
-        with open(control) as f:
-            content = f.read()
-        patches = _parse_yplus_patches(content)
-        if patches:
-            params.yplus_patches = patches
-    if not os.path.exists(fvsolution):
-        raise FileNotFoundError(f"fvSolution not found: {fvsolution}")
-    if not os.path.exists(fvschemes):
-        raise FileNotFoundError(f"fvSchemes not found: {fvschemes}")
-
-    from ..fields.field_io import _extract_braced_block, _strip_comments
-
-    with open(fvsolution) as f:
-        content = _strip_comments(f.read())
-
-    algorithm_blocks = []
-    for algorithm in ("PIMPLE", "PISO", "SIMPLE"):
-        try:
-            body = _extract_braced_block(content, algorithm)
-        except ValueError:
-            continue
-        algorithm_blocks.append((algorithm, body))
-    if len(algorithm_blocks) != 1:
-        names = ", ".join(name for name, _ in algorithm_blocks)
-        detail = f"found {names}" if names else "found none"
-        raise ValueError(f"fvSolution must define exactly one PIMPLE/PISO/SIMPLE block; {detail}")
-    algorithm, body = algorithm_blocks[0]
-    params.algorithm = algorithm
-    entries = {key: value.strip() for key, value in re.findall(r"(\w+)\s+([^;{}]+);", body)}
-    if "nCorrectors" in entries:
-        params.n_correctors = int(entries["nCorrectors"])
-    if "nOuterCorrectors" in entries:
-        params.n_outer_correctors = int(entries["nOuterCorrectors"])
-    if "nNonOrthogonalCorrectors" in entries:
-        params.n_orthogonal_correctors = int(entries["nNonOrthogonalCorrectors"])
-
-    try:
-        solvers_body = _extract_braced_block(content, "solvers")
-    except ValueError as error:
-        raise ValueError(f"fvSolution {fvsolution!r} has no solvers dictionary") from error
-
-    selected = {}
-    for field_name, attribute in (("U", "momentum_solver"), ("p", "pressure_solver")):
-        try:
-            field_body = _extract_braced_block(solvers_body, field_name)
-        except ValueError:
-            continue
-        solver_match = re.search(r"\bsolver\s+(\w+)\s*;", field_body)
-        if solver_match is None:
-            raise ValueError(f"fvSolution solver entry {field_name!r} has no solver method")
-        method = _normalise_openfoam_linear_solver(solver_match.group(1), field_name)
-        setattr(params, attribute, method)
-        selected[field_name] = method
-        tolerance_match = re.search(
-            r"\btolerance\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body
-        )
-        if tolerance_match:
-            setattr(
-                params,
-                "momentum_tol" if field_name == "U" else "pressure_tol",
-                float(tolerance_match.group(1)),
-            )
-        reltol_match = re.search(r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", field_body)
-        base_rel_tol = float(reltol_match.group(1)) if reltol_match else 0.0
-        setattr(
-            params,
-            "momentum_rel_tol" if field_name == "U" else "pressure_rel_tol",
-            base_rel_tol,
-        )
-        final_rel_tol = base_rel_tol
-        try:
-            final_body = _extract_braced_block(solvers_body, f"{field_name}Final")
-        except ValueError:
-            pass
-        else:
-            final_match = re.search(r"\brelTol\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*;", final_body)
-            if final_match:
-                final_rel_tol = float(final_match.group(1))
-        setattr(
-            params,
-            "momentum_final_rel_tol" if field_name == "U" else "pressure_final_rel_tol",
-            final_rel_tol,
-        )
-        maxiter_match = re.search(r"\bmaxIter\s+(\d+)\s*;", field_body)
-        if maxiter_match:
-            setattr(
-                params,
-                "momentum_maxiter" if field_name == "U" else "pressure_maxiter",
-                int(maxiter_match.group(1)),
-            )
-    missing_solvers = sorted({"U", "p"} - set(selected))
-    if missing_solvers:
-        raise ValueError(
-            f"fvSolution must define explicit solver blocks for: {', '.join(missing_solvers)}"
-        )
-    params.linear_solver = selected["U"]
-
-    with open(fvschemes) as f:
-        schemes_content = _strip_comments(f.read())
-    try:
-        ddt_body = _extract_braced_block(schemes_content, "ddtSchemes")
-        grad_body = _extract_braced_block(schemes_content, "gradSchemes")
-        div_body = _extract_braced_block(schemes_content, "divSchemes")
-    except ValueError as error:
-        raise ValueError(f"fvSchemes {fvschemes!r} is missing a required scheme block") from error
-
-    ddt_match = re.search(r"\bdefault\s+([^;]+);", ddt_body)
-    grad_match = re.search(r"\bdefault\s+([^;]+);", grad_body)
-    div_match = re.search(r"div\s*\(\s*phi\s*,\s*U\s*\)\s+([^;]+);", div_body)
-    if ddt_match is None or grad_match is None or div_match is None:
-        raise ValueError(
-            "fvSchemes must define ddtSchemes/default, gradSchemes/default, "
-            "and divSchemes/div(phi,U)"
-        )
-    params.time_scheme = _find_supported_scheme(
-        ddt_match.group(1),
-        {"euler": "euler_implicit", "backward": "backward"},
-        "time",
-    )
-    params.gradient_scheme = _find_supported_scheme(
-        grad_match.group(1),
-        {"linear": "gauss", "leastsquares": "lsq"},
-        "gradient",
-        {"gauss"},
-    )
-    params.convection_scheme = _find_supported_scheme(
-        div_match.group(1),
-        {
-            "upwind": "upwind",
-            "linear": "central",
-            "limitedlinear": "limitedLinear",
-            "lust": "LUST",
-            "linearupwind": "linearUpwind",
-            "vanleer": "vanLeer",
-            "muscl": "MUSCL",
-            "minmod": "minmod",
-            "superbee": "superbee",
-        },
-        "convection",
-        {"bounded", "gauss"},
-    )
-    return (*_groups_from_flat(vars(params)), params.yplus_patches or [])
-
-
 @dataclass
 class TransportConfig:
     """Fluid properties (density and viscosity).
 
-    Provides factory methods for common fluids (:meth:`air`, :meth:`water`)
-    and a class method (:meth:`from_foam_file`) that reads an OpenFOAM
-    ``transportProperties`` dictionary.
+    Provides factory methods for common fluids (:meth:`air`, :meth:`water`).
 
     The kinematic viscosity ``nu`` defines the Reynolds number together with
     the freestream velocity and a reference length:
@@ -923,10 +332,6 @@ class TransportConfig:
     flux, so a spatially constant density cancels from velocity/pressure
     evolution. ``density`` converts kinematic pressure and viscosity to
     dimensional surface forces.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 4.2 ``transportProperties``
 
     Examples
     --------
@@ -957,43 +362,6 @@ class TransportConfig:
         """
         return TransportConfig(density=1000.0, nu=1.0e-6)
 
-    @classmethod
-    def from_foam_file(cls, path: str) -> "TransportConfig":
-        """Load transport properties from an OpenFOAM-style dictionary.
-
-        Args:
-            path: Path to `transportProperties` file or a case directory that
-                  contains `constant/transportProperties`.
-        """
-        from ..fields.field_io import parse_simple_dictionary
-
-        if os.path.isdir(path):
-            filepath = os.path.join(path, "constant", "transportProperties")
-        else:
-            filepath = path
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Transport file not found: {filepath}")
-
-        data = parse_simple_dictionary(filepath)
-        rho_raw = data["rho"] if "rho" in data else data.get("Rho")
-        rho_val = _extract_foam_number(rho_raw) if rho_raw is not None else cls().density
-        if rho_val is None or not float(rho_val) > 0.0:
-            raise ValueError(f"Density must be positive; got {rho_raw!r}")
-        nu_raw = data.get("nu")
-        nu_val = _extract_foam_number(nu_raw) if nu_raw is not None else None
-        if nu_val is None:
-            mu_val = _extract_foam_number(data.get("mu"))
-            if mu_val is not None:
-                nu_val = float(mu_val) / float(rho_val)
-        if nu_val is None:
-            raise ValueError(
-                f"Transport file {filepath!r} must define kinematic viscosity 'nu' "
-                "or dynamic viscosity 'mu'"
-            )
-        if not float(nu_val) > 0.0:
-            raise ValueError(f"Kinematic viscosity must be positive; got {nu_val!r}")
-        return cls(density=float(rho_val), nu=float(nu_val))
-
 
 @dataclass
 class DynamicMeshConfig:
@@ -1002,10 +370,6 @@ class DynamicMeshConfig:
     Controls whether the mesh translates and/or rotates as a rigid body, or
     remains stationary.  Translational velocity and rotational speed about a
     user-defined axis through a specified origin are set independently.
-
-    References
-    ----------
-    - OpenFOAM User Guide, Section 5.4 ``Dynamic mesh``
 
     Examples
     --------
@@ -1064,15 +428,14 @@ class DynamicMeshConfig:
 class TurbulenceConfig:
     """Configuration for turbulence/LES models in the FVM solver.
 
-    Use :meth:`openfoam_smagorinsky` when reproducing an OpenFOAM
-    ``LESModel Smagorinsky`` case. It selects the same algebraic SGS-energy
-    equation, ``cubeRootVol`` filter, and default ``Ck``/``Ce`` coefficients.
+    Use :meth:`equilibrium_smagorinsky` for the algebraic SGS-energy form with
+    a ``cubeRootVol`` filter and explicit ``Ck``/``Ce`` coefficients.
 
     Examples
     --------
-    >>> les = TurbulenceConfig.openfoam_smagorinsky()
+    >>> les = TurbulenceConfig.equilibrium_smagorinsky()
     >>> les.model, les.Ck, les.Ce
-    ('OpenFOAMSmagorinsky', 0.094, 1.048)
+    ('EquilibriumSmagorinsky', 0.094, 1.048)
     >>> setup = FVMSetup(case_name="cube", turbulence=les)
     """
 
@@ -1083,8 +446,8 @@ class TurbulenceConfig:
     model: str = "None"
     Cs: float = 0.17  # model coefficient (meaning depends on model)
     dynamic: bool = False  # Smagorinsky only: use the Germano/Lilly dynamic procedure
-    Ck: float = 0.094  # OpenFOAM algebraic-equilibrium SGS energy coefficient
-    Ce: float = 1.048  # OpenFOAM base LES dissipation coefficient
+    Ck: float = 0.094  # algebraic-equilibrium SGS energy coefficient
+    Ce: float = 1.048  # base LES dissipation coefficient
 
     @staticmethod
     def smagorinsky(Cs: float = 0.17, dynamic: bool = False) -> "TurbulenceConfig":
@@ -1100,19 +463,10 @@ class TurbulenceConfig:
         return TurbulenceConfig(model="Smagorinsky", Cs=Cs, dynamic=dynamic)
 
     @staticmethod
-    def openfoam_smagorinsky(Ck: float = 0.094, Ce: float = 1.048) -> "TurbulenceConfig":
-        r"""OpenCFD OpenFOAM algebraic-equilibrium Smagorinsky LES.
+    def equilibrium_smagorinsky(Ck: float = 0.094, Ce: float = 1.048) -> "TurbulenceConfig":
+        r"""Algebraic-equilibrium Smagorinsky LES.
 
-        This is the native counterpart of::
-
-            simulationType LES;
-            LES
-            {
-                LESModel Smagorinsky;
-                delta    cubeRootVol;
-            }
-
-        OpenFOAM obtains SGS kinetic energy from
+        The model obtains SGS kinetic energy from
 
         ``a=Ce/Delta``, ``b=(2/3)tr(D)``,
         ``c=2*Ck*Delta*(dev(D):D)`` and
@@ -1123,25 +477,25 @@ class TurbulenceConfig:
         Parameters
         ----------
         Ck:
-            SGS kinetic-energy coefficient; OpenFOAM default ``0.094``.
+            SGS kinetic-energy coefficient; default ``0.094``.
         Ce:
-            SGS dissipation coefficient; OpenFOAM default ``1.048``.
+            SGS dissipation coefficient; default ``1.048``.
 
         Returns
         -------
         TurbulenceConfig
             Configuration consumed by
-            :class:`source.solvers.FVM.turbulence.OpenFOAMSmagorinsky`.
+            :class:`source.solvers.FVM.turbulence.EquilibriumSmagorinsky`.
 
         Examples
         --------
-        >>> cfg = TurbulenceConfig.openfoam_smagorinsky()
+        >>> cfg = TurbulenceConfig.equilibrium_smagorinsky()
         >>> round(cfg.Ck**0.75 / cfg.Ce**0.25, 3)
         0.168
         """
         equivalent_cs = Ck**0.75 / Ce**0.25 if Ck >= 0.0 and Ce > 0.0 else float("nan")
         return TurbulenceConfig(
-            model="OpenFOAMSmagorinsky",
+            model="EquilibriumSmagorinsky",
             Cs=equivalent_cs,
             Ck=Ck,
             Ce=Ce,
@@ -1197,28 +551,6 @@ class TurbulenceConfig:
         """
         return TurbulenceConfig(model="None")
 
-    @classmethod
-    def from_foam_file(cls, path: str) -> "TurbulenceConfig":
-        """Load turbulenceProperties from case directory or file path.
-
-        Looks for `constant/turbulenceProperties` and reads `simulationType` or
-        `LESModel`/`model` fields. Supports a simple Smagorinsky dictionary layout.
-        """
-        from ..fields.field_io import parse_simple_dictionary
-
-        if os.path.isdir(path):
-            filepath = os.path.join(path, "constant", "turbulenceProperties")
-        else:
-            filepath = path
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"turbulenceProperties not found: {filepath}")
-        data = parse_simple_dictionary(filepath)
-        model = _detect_turbulence_model(data, filepath)
-        cs, dynamic, ck, ce = _find_turbulence_coeffs(data, filepath)
-        if model.lower() == "smagorinsky":
-            return cls.openfoam_smagorinsky(Ck=ck, Ce=ce)
-        return cls(model=model, Cs=cs, dynamic=dynamic, Ck=ck, Ce=ce)
-
 
 @dataclass
 class ExecutionConfig:
@@ -1255,8 +587,8 @@ class OutputSetup:
 
     That filter averages interior cells only, so it cannot show the applied
     boundary condition at a wall.  Setting ``point_interpolation`` to
-    ``'boundary_weighted'`` additionally writes an OpenFOAM-style
-    ``volPointInterpolation`` of each field as point data: inverse-distance
+    ``'boundary_weighted'`` additionally writes an inverse-distance
+    interpolation of each field as point data: weighted
     weighted from the surrounding cells, and taken from the boundary faces
     at boundary points.  Cell data remains authoritative and untouched.
     """
@@ -1362,7 +694,7 @@ class FVMSetup:
 
     case_name: str
     cores: int = 1
-    mesh: MeshConfig = field(default_factory=MeshConfig.block_mesh)
+    mesh: MeshConfig = field(default_factory=MeshConfig)
     execution: "ExecutionConfig" = field(default_factory=ExecutionConfig)
     output: "OutputSetup" = field(default_factory=OutputSetup)
     acceptance: "RunAcceptancePolicy" = field(default_factory=RunAcceptancePolicy)

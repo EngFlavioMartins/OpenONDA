@@ -59,6 +59,88 @@ run_case() {
     fi
 }
 
+run_fvm_smoke() {
+    local source="$REPO_ROOT/tutorials/FVM/taylorGreen"
+    local target="$WORK_DIR/taylorGreen"
+    rsync -a \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        --exclude='/figures/' \
+        --exclude='/solution/' \
+        "$source/" "$target/"
+    echo "Running standalone FVM smoke: Taylor-Green vortex"
+    (
+        cd "$target"
+        env PYTHONNOUSERSITE=1 python taylorGreen_setup.py \
+            --n 8 --nu 0.1 --dt 0.005 --end-time 0.01
+    )
+    env PYTHONNOUSERSITE=1 python - "$target/solution/history.csv" <<'PY'
+import csv
+import math
+import sys
+
+with open(sys.argv[1], newline="", encoding="utf-8") as stream:
+    rows = list(csv.DictReader(stream))
+if len(rows) != 3:
+    raise SystemExit(f"Expected three Taylor-Green history rows, found {len(rows)}")
+final = {key: float(value) for key, value in rows[-1].items() if key != "step"}
+if not all(math.isfinite(value) for value in final.values()):
+    raise SystemExit("Taylor-Green history contains non-finite values")
+if final["continuity_max"] > 1.0e-10 or final["velocity_l2_error"] > 1.0e-2:
+    raise SystemExit(f"Taylor-Green acceptance limits failed: {final}")
+print(
+    "PASS: standalone FVM Taylor-Green run completed with "
+    f"velocity L2 error={final['velocity_l2_error']:.3e} and "
+    f"continuity={final['continuity_max']:.3e}."
+)
+PY
+}
+
+run_vpm_smoke() {
+    local source="$REPO_ROOT/tutorials/VPM/lambOseenVortex"
+    local target="$WORK_DIR/lambOseenVortex"
+    rsync -a \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        --exclude='/figures/' \
+        --exclude='/solution/' \
+        "$source/" "$target/"
+    echo "Running standalone VPM smoke: Lamb-Oseen vortex"
+    (
+        cd "$target"
+        env PYTHONNOUSERSITE=1 python vortex_setup.py \
+            --gamma1 1.0 --gamma2 0.0 --schemes cs --num-steps 2 \
+            --length 2 --spacing-factor 0.3 --processing-unit CPU \
+            --backup-frequency 1 --solution-dir "$target/solution"
+    )
+    env PYTHONNOUSERSITE=1 python - "$target/solution/vortex_cs" <<'PY'
+import pathlib
+import sys
+
+import h5py
+import numpy as np
+
+snapshots = sorted(pathlib.Path(sys.argv[1]).glob("vpm_vortex_cs_*.h5"))
+if len(snapshots) != 2:
+    raise SystemExit(f"Expected two VPM snapshots, found {len(snapshots)}")
+with h5py.File(snapshots[-1], "r") as handle:
+    invalid = []
+
+    def check(name, item):
+        if isinstance(item, h5py.Dataset) and np.issubdtype(item.dtype, np.number):
+            if not np.all(np.isfinite(item[...])):
+                invalid.append(name)
+
+    handle.visititems(check)
+if invalid:
+    raise SystemExit(f"VPM snapshot contains non-finite datasets: {invalid}")
+print("PASS: standalone VPM Lamb-Oseen run advanced two steps with finite snapshots.")
+PY
+}
+
+run_fvm_smoke
+run_vpm_smoke
+
 if [[ "${1:-}" == "--extended" ]]; then
     run_case cubeFlow 0.25
     run_case cylinderSheddingFlow 0.50
@@ -72,4 +154,4 @@ else
     exit 2
 fi
 
-echo "All native FVM-VPM tutorial smoke cases passed."
+echo "Standalone FVM, standalone VPM, and native FVM-VPM tutorial smokes passed."

@@ -101,11 +101,10 @@ def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bo
 def compute_ddt_flux_correction(
     U_old, U_old_old, phi_old, phi_old_old, dt, mesh_data, geo_data, boundaries, ddt_scheme
 ):
-    r"""Return OpenFOAM's transient Rhie-Chow correction ``fvc::ddtCorr``.
+    r"""Return the transient Rhie-Chow flux correction.
 
-    ``pimpleFoam``'s ``pEqn.H`` adds ``fvc::interpolate(rAU)*fvc::ddtCorr(U,
-    phi)`` to ``phiHbyA`` before the pressure solve.  For ``backward`` the
-    correction is (``ddtScheme::fvcDdtPhiCorr``)
+    The correction is added to the predicted face flux before the pressure
+    solve. For ``backward`` it is
 
     .. math::
 
@@ -125,8 +124,8 @@ def compute_ddt_flux_correction(
     convection/diffusion part.  In a bluff-body wake that surplus dissipation
     is enough to hold a shear layer steady.
 
-    ``C`` is OpenFOAM's ``ddtCouplingCoeff`` in its default ``ddtPhiCoeff < 0``
-    form, ``C = 1 - min(|phiCorr| / (|phi| + SMALL), 1)``, which switches the
+    ``C`` is the time-step coupling coefficient
+    ``C = 1 - min(|phiCorr| / (|phi| + SMALL), 1)``, which switches the
     correction off wherever the flux and the interpolated velocity have already
     fully decoupled, and ``C = 0`` on patches whose velocity condition fixes a
     value (inlets, no-slip walls).
@@ -608,8 +607,8 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces, layout=None):
 def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces):
     """Rescale adjustable outflow boundary fluxes so the net is zero.
 
-    This is OpenFOAM's ``adjustPhi``.  An incompressible domain requires
-    ``∮ phi·dS = 0``; otherwise the pressure Poisson problem is incompatible
+    An incompressible domain requires ``∮ phi·dS = 0``; otherwise the pressure
+    Poisson problem is incompatible
     and the solver leaves a residual divergence (a checkerboard, typically at
     the outflow).  Faces whose velocity is *fixed* (``fixedValue`` inlet,
     ``noSlip`` wall) carry a prescribed flux and cannot absorb the mismatch;
@@ -1382,10 +1381,9 @@ def correct_velocity_and_flux(
     This matches the Rhie-Chow assembly which also uses the un-relaxed A_U.
 
     ``alpha_p`` scales the **cell-velocity** correction only, never the face
-    flux.  That asymmetry is OpenFOAM's: ``pEqn.H`` corrects ``phi`` with the
-    full ``pEqn.flux()`` (so mass conservation never depends on a relaxation
-    factor), then calls ``p.relax()`` and rebuilds the cell velocity from the
-    *relaxed* pressure, ``U = HbyA - rAtU*fvc::grad(p)``.  Passing the full
+    flux. The pressure equation corrects ``phi`` with the full flux correction
+    (so mass conservation never depends on a relaxation factor), then rebuilds
+    the cell velocity from the relaxed pressure. Passing the full
     correction to ``U`` while the caller stores only ``alpha_p * p_prime``
     leaves velocity and pressure describing different states, and the outer
     loop then converges to a fixed point that depends on ``alpha_p`` instead of

@@ -106,13 +106,13 @@ def test_exact_uniform_warm_guess_is_not_rejected_as_roundoff():
     np.testing.assert_allclose(solution, exact, atol=1e-14, rtol=0.0)
 
 
-def test_openfoam_rel_tol_reduces_the_solve_entry_residual():
+def test_rel_tol_reduces_the_solve_entry_residual():
     """``relTol=0.1`` means a tenfold reduction, not residual ``0.1``."""
     matrix, exact_rhs = _system()
     exact = np.linalg.solve(matrix.toarray(), exact_rhs)
     guess = exact + 2.0e-3 * np.sin(np.arange(len(exact)))
 
-    initial, target, _ = linear_interface.openfoam_residual_target(
+    initial, target, _ = linear_interface.normalized_residual_target(
         matrix,
         exact_rhs,
         guess,

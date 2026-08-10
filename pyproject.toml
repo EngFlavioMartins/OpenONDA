@@ -56,7 +56,6 @@ dependencies = [
     "gmsh>=4.11.0; platform_system!='Darwin' or platform_machine!='x86_64'",
     "gmsh>=4.11.0,<4.13; platform_system=='Darwin' and platform_machine=='x86_64'",
     "pyamg>=5.0.0",
-    "pygit2>=1.13.0",
     "pyvista>=0.43.0",
     "vtk>=9.3.0",
 ]
@@ -102,6 +101,7 @@ dev = [
     "pytest-benchmark>=4.0.0",
     "build>=1.2.0",
     "twine>=5.0.0",
+    "pygit2>=1.13.0",
 ]
 
 # Documentation building

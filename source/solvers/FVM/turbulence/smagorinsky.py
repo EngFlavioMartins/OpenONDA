@@ -6,11 +6,11 @@ Two deliberately distinct formulations are provided:
     The familiar incompressible ``C_s`` form,
     ``nu_t = (C_s Delta)^2 |S|``.
 
-``OpenFOAMSmagorinsky``
-    OpenCFD OpenFOAM's algebraic-equilibrium implementation.  It computes the
+``EquilibriumSmagorinsky``
+    The algebraic-equilibrium implementation. It computes the
     SGS kinetic energy from ``C_k``, ``C_e`` and the complete symmetric
     velocity gradient before evaluating ``nu_t = C_k Delta sqrt(k)``.  The
-    OpenFOAM defaults are ``C_k=0.094`` and ``C_e=1.048``.
+    defaults are ``C_k=0.094`` and ``C_e=1.048``.
 
 Both use the ``cubeRootVol`` filter in 3-D: ``Delta = V^(1/3)``.
 
@@ -22,11 +22,11 @@ import numpy as np
 
 from ..fields import gradients
 
-OPENFOAM_CK = 0.094
-"""Default ``Ck`` used by OpenFOAM's ``LESModels::Smagorinsky``."""
+EQUILIBRIUM_CK = 0.094
+"""Default algebraic-equilibrium SGS kinetic-energy coefficient."""
 
-OPENFOAM_CE = 1.048
-"""Default ``Ce`` used by OpenFOAM's base LES model."""
+EQUILIBRIUM_CE = 1.048
+"""Default algebraic-equilibrium SGS dissipation coefficient."""
 
 
 def _detect_2d_mesh(mesh_data: dict) -> bool:
@@ -95,8 +95,7 @@ def _symmetric_velocity_gradient(U, mesh_data: dict, geo_data: dict) -> np.ndarr
 
     The native gradient layout is ``grad[c, j, i] = d(U_i)/d(x_j)``.  A
     transpose only changes the storage convention, not the symmetric tensor,
-    so the expression below is the same ``symm(fvc::grad(U))`` used by
-    OpenFOAM.
+    so the expression below is independent of the gradient storage convention.
     """
     n_elements = mesh_data["n_elements"]
     grad_fn = gradients._resolve_gradient_fn(geo_data)
@@ -194,11 +193,10 @@ class Smagorinsky:
         return nut
 
 
-class OpenFOAMSmagorinsky:
-    r"""OpenFOAM-compatible algebraic-equilibrium Smagorinsky LES model.
+class EquilibriumSmagorinsky:
+    r"""Algebraic-equilibrium Smagorinsky LES model.
 
-    This implements the equations in OpenCFD OpenFOAM's
-    ``LESModels::Smagorinsky`` class:
+    This implements the equilibrium equations:
 
     .. math::
 
@@ -211,8 +209,8 @@ class OpenFOAMSmagorinsky:
     where ``D = symm(grad(U))`` and the ``cubeRootVol`` filter is
     ``Delta = V^(1/3)``.  For exactly incompressible flow this reduces to the
     classical model with ``C_s^2 = C_k sqrt(C_k/C_e)``.  Keeping the full
-    algebraic expression reproduces OpenFOAM when the discrete velocity field
-    has a small non-zero divergence.
+    algebraic expression remains valid when the discrete velocity field has a
+    small non-zero divergence.
 
     Parameters
     ----------
@@ -222,43 +220,37 @@ class OpenFOAMSmagorinsky:
         Geometry dictionary containing at least ``element_volumes`` and the
         selected gradient reconstruction data.
     Ck:
-        SGS kinetic-energy coefficient.  Default ``0.094`` matches OpenFOAM.
+        SGS kinetic-energy coefficient. Default ``0.094``.
     Ce:
-        SGS dissipation coefficient.  Default ``1.048`` matches OpenFOAM.
+        SGS dissipation coefficient. Default ``1.048``.
 
     Examples
     --------
     Configure a solver through the public factory::
 
         setup = FVMSetup(
-            turbulence=TurbulenceConfig.openfoam_smagorinsky()
+            turbulence=TurbulenceConfig.equilibrium_smagorinsky()
         )
 
     Construct the model directly for diagnostics::
 
-        model = OpenFOAMSmagorinsky(mesh_data, geo_data)
+        model = EquilibriumSmagorinsky(mesh_data, geo_data)
         nut = model.compute_nut(U)
         k_sgs = model.compute_sgs_kinetic_energy(U)
 
-    Notes
-    -----
-    OpenFOAM source lineage: ``src/TurbulenceModels/turbulenceModels/LES/``
-    ``Smagorinsky/Smagorinsky.C`` (GPL-3.0-or-later).  This is an independent
-    NumPy expression of the published equations, with the upstream model and
-    default coefficients explicitly credited.
     """
 
     def __init__(
         self,
         mesh_data: dict,
         geo_data: dict,
-        Ck: float = OPENFOAM_CK,
-        Ce: float = OPENFOAM_CE,
+        Ck: float = EQUILIBRIUM_CK,
+        Ce: float = EQUILIBRIUM_CE,
     ) -> None:
         if not np.isfinite(Ck) or Ck < 0.0:
-            raise ValueError("OpenFOAM Smagorinsky Ck must be finite and non-negative")
+            raise ValueError("Equilibrium Smagorinsky Ck must be finite and non-negative")
         if not np.isfinite(Ce) or Ce <= 0.0:
-            raise ValueError("OpenFOAM Smagorinsky Ce must be finite and positive")
+            raise ValueError("Equilibrium Smagorinsky Ce must be finite and positive")
         self.Ck = float(Ck)
         self.Ce = float(Ce)
         self.mesh_data = mesh_data
@@ -321,7 +313,7 @@ class OpenFOAMSmagorinsky:
             k_sgs[start:stop] = sqrt_k * sqrt_k
 
         if not np.all(np.isfinite(k_sgs)) or np.any(k_sgs < 0.0):
-            raise FloatingPointError("OpenFOAM Smagorinsky produced invalid SGS energy")
+            raise FloatingPointError("Equilibrium Smagorinsky produced invalid SGS energy")
         return k_sgs, delta
 
     def compute_sgs_kinetic_energy(
@@ -330,7 +322,7 @@ class OpenFOAMSmagorinsky:
         mesh_data: dict | None = None,
         geo_data: dict | None = None,
     ) -> np.ndarray:
-        """Compute OpenFOAM's algebraic SGS kinetic energy ``k`` per cell.
+        """Compute algebraic SGS kinetic energy ``k`` per cell.
 
         Parameters
         ----------
@@ -355,11 +347,11 @@ class OpenFOAMSmagorinsky:
         mesh_data: dict | None = None,
         geo_data: dict | None = None,
     ) -> np.ndarray:
-        """Compute OpenFOAM-equivalent SGS kinematic viscosity ``nu_t``."""
+        """Compute algebraic-equilibrium SGS kinematic viscosity ``nu_t``."""
         k_sgs, delta = self._compute_sgs_state(U, mesh_data, geo_data)
         nut = self.Ck * delta * np.sqrt(k_sgs)
         if not np.all(np.isfinite(nut)) or np.any(nut < 0.0):
-            raise FloatingPointError("OpenFOAM Smagorinsky produced invalid eddy viscosity")
+            raise FloatingPointError("Equilibrium Smagorinsky produced invalid eddy viscosity")
         return nut
 
     def get_filter_info(self) -> dict[str, float | str]:
@@ -368,7 +360,7 @@ class OpenFOAMSmagorinsky:
             self.geo_data["element_volumes"], self.mesh_data, self.geo_data
         )
         return {
-            "model": "OpenFOAMSmagorinsky",
+            "model": "EquilibriumSmagorinsky",
             "Ck": self.Ck,
             "Ce": self.Ce,
             "Cs": self.equivalent_Cs,

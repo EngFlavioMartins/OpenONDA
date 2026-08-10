@@ -1,7 +1,7 @@
 # Native FVM–VPM cylinder shedding
 
 This Re=200 case uses OpenONDA's internal Cartesian mesher and immersed-
-boundary FVM solver. It does not require OpenFOAM, Gmsh, or a repository path
+boundary FVM solver. It does not require an external mesher or a repository path
 on `PYTHONPATH`.
 
 After installing OpenONDA, run:

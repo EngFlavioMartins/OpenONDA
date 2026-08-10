@@ -31,7 +31,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
     ----------
     - Issa, R. I. "Solution of the implicitly discretised fluid flow
       equations by operator-splitting." *J. Comput. Phys.*, 62(1):40–65, 1986.
-    - OpenFOAM User Guide, Section 6.3 ``PIMPLE algorithm``
+    - Issa (1986), solution of implicitly discretised fluid-flow equations
 
     Examples
     --------
@@ -185,7 +185,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         outer_diagnostics = []
         logger = self.params.get("_logger")
 
-        # OpenFOAM applies the PIMPLE relaxation factors on every outer
+        # Apply the PIMPLE relaxation factors on every outer
         # corrector *except the last one*: ``fvMatrix::relax`` and
         # ``GeometricField::relax`` look the factor up under ``UFinal`` /
         # ``pFinal``. The relaxationFactors section does not define those

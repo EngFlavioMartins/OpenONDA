@@ -2,7 +2,7 @@
 
 The airfoil is generated analytically, represented by the FVM immersed-
 boundary method, and coupled to VPM on a solver-native Cartesian mesh.  The
-case has no OpenFOAM, external mesher, or repository-path dependency.
+case has no external solver, mesher, or repository-path dependency.
 """
 
 from __future__ import annotations

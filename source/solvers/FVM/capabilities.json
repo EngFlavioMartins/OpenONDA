@@ -3,10 +3,9 @@
   "release_level": "R3",
   "reference_backend": "numpy-scipy-serial-cpu-float64",
   "mesh_input_contracts": {
-    "openfoam": {
-      "contract": "openfoam-polymesh-ascii-v1",
-      "foamfile_version": "2.0",
-      "encoding": "ascii",
+    "native": {
+      "contract": "openonda-native-mesh-v1",
+      "representation": "in-memory Python mesh dictionary",
       "cell_representation": "first-order polyhedron"
     },
     "gmsh": {
@@ -22,13 +21,13 @@
     }
   },
   "verified_components": [
-    "strict configuration, boundary, field, OpenFOAM, and Gmsh parsing",
+    "strict native Python configuration, boundary, field, and Gmsh parsing",
     "static-mesh topology, geometry, and quality validation",
     "serial float64 NumPy/SciPy SIMPLE, PISO, and PIMPLE",
     "structured linear, nonlinear, conservation, force, and acceptance diagnostics",
     "BDF1/BDF2 serial and partitioned checkpoint restart equivalence",
     "translational cyclic and incompressible freestream boundaries",
-    "OpenFOAM/Gmsh first-order importer operator equivalence",
+    "native/Gmsh first-order importer operator equivalence",
     "three-level tetrahedral, prism, and mixed Poisson verification",
     "three-level periodic 2D Taylor-Green PIMPLE convergence and energy decay",
     "three-level periodic 3D ABC/Beltrami PIMPLE convergence",
@@ -56,12 +55,11 @@
   "unsupported": [
     "dynamic/ALE meshes",
     "compressible or multiphase flow",
-    "partitioned cyclic patches, least-squares gradients, or field-file initialization",
+    "partitioned cyclic patches or least-squares gradients",
     "partitioned FVM-VPM coupling",
     "moving immersed bodies",
     "Taichi CUDA, Metal, or Vulkan operators",
     "float32 or mixed-precision FVM",
-    "high-order Gmsh elements",
-    "binary, directive-based, macro-expanded, or general OpenFOAM dictionaries"
+    "high-order Gmsh elements"
   ]
 }

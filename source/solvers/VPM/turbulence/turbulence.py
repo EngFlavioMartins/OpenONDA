@@ -45,7 +45,7 @@ class ParticlesLES:
             max_particles: Maximum number of particles for field allocation.
             kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
             cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
-            ce: Model dissipation constant (default 1.048, OpenFOAM standard).
+            ce: Model dissipation constant (default 1.048).
         """
         self.LES_filter_type = LES_filter_type
         self.max_particles = max_particles

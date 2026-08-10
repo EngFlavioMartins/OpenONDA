@@ -16,7 +16,6 @@ from .types import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
-    solver_configs_from_case,
 )
 
 __all__ = [
@@ -33,5 +32,4 @@ __all__ = [
     "TimeConfig",
     "TransportConfig",
     "TurbulenceConfig",
-    "solver_configs_from_case",
 ]

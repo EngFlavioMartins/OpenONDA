@@ -75,11 +75,11 @@ def test_setup_has_no_backend_switch():
     assert "backend" not in setup.to_dict()["fvm_solver"]
 
 
-def test_prepare_case_fvm_needs_no_openfoam_case(tmp_path):
+def test_prepare_case_fvm_needs_no_external_case(tmp_path):
     from source.coupler.core.solver import FVMVPMCoupler
 
     setup = _fvm_setup(tmp_path)
-    FVMVPMCoupler.prepare_case(setup)  # no constant/polyMesh, no 0.orig
+    FVMVPMCoupler.prepare_case(setup)  # no external case tree
     assert (tmp_path / "solution").is_dir()
     # No case-dictionary artifacts were created.
     assert not (tmp_path / "system").exists()
@@ -241,7 +241,7 @@ def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Body-fitted mesh: carved hole + wall patch (OpenFOAM-like topology)
+# Body-fitted mesh: carved hole plus wall patch.
 # ---------------------------------------------------------------------------
 
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)

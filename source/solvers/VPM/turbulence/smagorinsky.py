@@ -40,7 +40,7 @@ class SmagorinskyModel:
     This is equivalent to the classical model nu_t = (C_s Δ)² |S| with:
         C_s² = C_k √(C_k / C_e)
 
-    With OpenFOAM defaults C_k=0.094, C_e=1.048 this recovers C_s ≈ 0.168.
+    With C_k=0.094 and C_e=1.048 this recovers C_s ≈ 0.168.
 
     Filter width:  Δ = V^(1/3)  (cube root of particle volume).
     Strain measure:  |S|² = 2 S_ij S_ij  (symmetric part of ∇u only).
@@ -65,7 +65,7 @@ class SmagorinskyModel:
             max_particles: Maximum number of particles for field allocation.
             kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
             cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
-            ce: Model dissipation constant (default 1.048, OpenFOAM standard).
+            ce: Model dissipation constant (default 1.048).
         """
         self.LES_filter_type = "SMAGORINSKY"
         self.max_particles = max_particles

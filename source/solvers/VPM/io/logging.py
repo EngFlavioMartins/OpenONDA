@@ -92,7 +92,7 @@ class _TeeLogStream(_LineBufferedLogStream):
 
 def print_openonda_header(precision="f32"):
     """
-    Print OpenONDA solver header in OpenFOAM style.
+    Print the OpenONDA solver header.
 
     Args:
         precision: Floating-point precision - 'f32' or 'f64'
