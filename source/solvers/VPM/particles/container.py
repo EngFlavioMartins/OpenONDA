@@ -111,10 +111,19 @@ class Particles:
         self._cached_step = -1  # Track when cache was last updated
         # NumPy dtype matching Taichi float precision (avoids repeated branching)
         self._np_float_dtype = np.float32 if self.float_dtype == "f32" else np.float64
-        self._host_vector_chunk = None
-        self._host_scalar_chunk = None
-        self._host_matrix_chunk = None
-        self._host_int_chunk = None
+        # External ndarray bindings are cached by Taichi's Vulkan/Metal
+        # backends.  Reusing one ndarray for kernels specialised on different
+        # template fields can eventually alias those bindings in long runs
+        # (for example a circulation download returning positions).  Give each
+        # field and transfer direction its own fixed-shape staging array.
+        self._host_vector_chunks = {}
+        self._host_scalar_chunks = {}
+        self._host_matrix_chunks = {}
+        self._host_int_chunks = {}
+        self._native_vector_uploads = {}
+        self._native_scalar_uploads = {}
+        self._native_matrix_uploads = {}
+        self._native_int_uploads = {}
         # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
@@ -188,8 +197,8 @@ class Particles:
 
     # ---- Prefix-extraction helpers (GPU → CPU, only active prefix) ----
 
-    def _ensure_host_transfer_buffers(self) -> None:
-        """Allocate fixed-shape NumPy buffers for Taichi external-array transfers.
+    def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
+        """Return a field-specific fixed-shape external-array staging buffer.
 
         Taichi's Vulkan/Metal external-array staging can cache one device buffer
         per distinct ndarray shape.  Long runs with particle counts changing at
@@ -198,64 +207,123 @@ class Particles:
         Keep all solver-loop transfers at one fixed chunk shape and pass the
         live count as a scalar kernel argument instead.
         """
+        key = (direction, id(field))
         chunk = self._COPY_CHUNK_SIZE
-        if self._host_vector_chunk is None:
-            self._host_vector_chunk = np.empty((chunk, 3), dtype=self._np_float_dtype)
-            self._host_scalar_chunk = np.empty((chunk,), dtype=self._np_float_dtype)
-            self._host_matrix_chunk = np.empty((chunk, 3, 3), dtype=self._np_float_dtype)
-            self._host_int_chunk = np.empty((chunk,), dtype=np.int32)
+        if family == "vector":
+            buffers = self._host_vector_chunks
+            shape = (chunk, 3)
+            dtype = self._np_float_dtype
+        elif family == "scalar":
+            buffers = self._host_scalar_chunks
+            shape = (chunk,)
+            dtype = self._np_float_dtype
+        elif family == "matrix":
+            buffers = self._host_matrix_chunks
+            shape = (chunk, 3, 3)
+            dtype = self._np_float_dtype
+        elif family == "int":
+            buffers = self._host_int_chunks
+            shape = (chunk,)
+            dtype = np.int32
+        else:
+            raise ValueError(f"Unknown host transfer buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.empty(shape, dtype=dtype)
+        return buffers[key]
 
     def _extract_scalar(self, field, n):
-        """Return first n scalar entries as a NumPy array (no full alloc transfer)."""
+        """Return a detached NumPy copy of the first ``n`` scalar entries.
+
+        Use bounded, field-specific transfers instead of ``field.to_numpy()``.
+        Full-allocation Vulkan readbacks have returned corrupted data after a
+        long mixed treecode/grid workload even though the device field itself
+        remained valid.  The fixed staging identity also prevents Taichi from
+        accumulating one external allocation for every changing active count.
+        """
         if n == 0:
             return np.empty((0,), dtype=self._np_float_dtype)
         out = np.empty((n,), dtype=self._np_float_dtype)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_scalar_chunk
+        buf = self._host_transfer_buffer("scalar", field, "download")
         for lo in range(0, n, self._COPY_CHUNK_SIZE):
             count = min(self._COPY_CHUNK_SIZE, n - lo)
             self._extract_scalar_prefix(field, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_vector(self, field, n):
-        """Return first n vector entries as a NumPy array (no full alloc transfer)."""
+        """Return a detached NumPy copy of the first ``n`` vector entries."""
         if n == 0:
             return np.empty((0, 3), dtype=self._np_float_dtype)
         out = np.empty((n, 3), dtype=self._np_float_dtype)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", field, "download")
         for lo in range(0, n, self._COPY_CHUNK_SIZE):
             count = min(self._COPY_CHUNK_SIZE, n - lo)
             self._extract_vector_prefix(field, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_matrix(self, field, n):
-        """Return first n matrix entries as a NumPy array (no full alloc transfer)."""
+        """Return a detached NumPy copy of the first ``n`` matrix entries."""
         if n == 0:
             return np.empty((0, 3, 3), dtype=self._np_float_dtype)
         out = np.empty((n, 3, 3), dtype=self._np_float_dtype)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_matrix_chunk
+        buf = self._host_transfer_buffer("matrix", field, "download")
         for lo in range(0, n, self._COPY_CHUNK_SIZE):
             count = min(self._COPY_CHUNK_SIZE, n - lo)
             self._extract_matrix_prefix(field, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
     def _extract_int(self, field, n):
-        """Return first n integer entries as a NumPy array (no full alloc transfer)."""
+        """Return a detached NumPy copy of the first ``n`` integer entries."""
         if n == 0:
             return np.empty((0,), dtype=np.int32)
         out = np.empty((n,), dtype=np.int32)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_int_chunk
+        buf = self._host_transfer_buffer("int", field, "download")
         for lo in range(0, n, self._COPY_CHUNK_SIZE):
             count = min(self._COPY_CHUNK_SIZE, n - lo)
             self._extract_int_prefix(field, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
+
+    def _replace_field_native(self, family: str, field, values: np.ndarray, count: int) -> None:
+        """Replace a field through Taichi's native fixed-shape ndarray path.
+
+        The custom templated prefix kernels are efficient for incremental
+        uploads, but long Vulkan runs have shown cross-field external-array
+        binding corruption during full cloud replacement.  Native
+        ``from_numpy`` is the backend-supported path; persistent per-field
+        arrays keep its external allocation shape and identity fixed.
+        """
+        key = id(field)
+        if family == "vector":
+            buffers = self._native_vector_uploads
+            shape = (self._max_particles, 3)
+            dtype = self._np_float_dtype
+        elif family == "scalar":
+            buffers = self._native_scalar_uploads
+            shape = (self._max_particles,)
+            dtype = self._np_float_dtype
+        elif family == "matrix":
+            buffers = self._native_matrix_uploads
+            shape = (self._max_particles, 3, 3)
+            dtype = self._np_float_dtype
+        elif family == "int":
+            buffers = self._native_int_uploads
+            shape = (self._max_particles,)
+            dtype = np.int32
+        else:
+            raise ValueError(f"Unknown native replacement buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.empty(shape, dtype=dtype)
+        buffer = buffers[key]
+        buffer[:count] = values[:count]
+        field.from_numpy(buffer)
+        ti.sync()
 
     def _extract_cpu_data(self, num_particles):
         """Extract current data as NumPy arrays (only active prefix)."""
@@ -525,33 +593,33 @@ class Particles:
 
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
 
-        # Tag particles in bounds (GPU - fast parallel check)
-        # tags[i] = 1 if particle is INSIDE bounds, 0 if OUTSIDE
-        self._tag_particles_in_bounds_kernel(
-            self.position,
-            self._removal_tags,
-            float(xmin),
-            float(xmax),
-            float(ymin),
-            float(ymax),
-            float(zmin),
-            float(zmax),
-            n,
+        # Classify on the host from the same position array used for compaction.
+        #
+        # This used to run through ``_tag_particles_in_bounds_kernel`` and then
+        # download an integer tag field.  On long Vulkan runs that tag dispatch
+        # could sporadically return an all-zero field after GBD replacement,
+        # causing every in-domain particle to be deleted.  Removal already has
+        # to download all retained fields for race-free compaction, so the GPU
+        # tag pass saved no material transfer when anything was removed.  The
+        # host mask is deterministic and also lets us reuse the downloaded
+        # positions below.
+        position = self._extract_vector(self.position, n)
+        inside = (
+            (float(xmin) <= position[:, 0])
+            & (position[:, 0] <= float(xmax))
+            & (float(ymin) <= position[:, 1])
+            & (position[:, 1] <= float(ymax))
+            & (float(zmin) <= position[:, 2])
+            & (position[:, 2] <= float(zmax))
         )
-
-        # Get tags to CPU (small transfer, just N integers)
-        tags = self._extract_int(self._removal_tags, n)
-
-        # Determine which particles to keep based on invert_selection flag
-        # tag=1 means inside, tag=0 means outside
-        keep_mask = tags == 1 if invert_selection else tags == 0
+        keep_mask = inside if invert_selection else ~inside
 
         n_remove = n - keep_mask.sum()
 
         if n_remove == 0:
             return 0
 
-        new_position = self._extract_vector(self.position, n)[keep_mask]
+        new_position = position[keep_mask]
         new_velocity = self._extract_vector(self.velocity, n)[keep_mask]
         new_circulation = self._extract_vector(self.circulation, n)[keep_mask]
         new_radius = self._extract_scalar(self.radius, n)[keep_mask]
@@ -636,43 +704,43 @@ class Particles:
 
     def _copy_vectors_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload vector data in bounded external-array chunks."""
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", dest, "upload")
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = src[lo:hi]
             self._copy_to_taichi_vectors(buf, dest, start_idx + lo, n_chunk)
+            ti.sync()
 
     def _copy_scalars_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload scalar data in bounded external-array chunks."""
-        self._ensure_host_transfer_buffers()
-        buf = self._host_scalar_chunk
+        buf = self._host_transfer_buffer("scalar", dest, "upload")
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = src[lo:hi]
             self._copy_to_taichi_scalars(buf, dest, start_idx + lo, n_chunk)
+            ti.sync()
 
     def _copy_matrices_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload matrix data in bounded external-array chunks."""
-        self._ensure_host_transfer_buffers()
-        buf = self._host_matrix_chunk
+        buf = self._host_transfer_buffer("matrix", dest, "upload")
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = src[lo:hi]
             self._copy_to_taichi_matrices(buf, dest, start_idx + lo, n_chunk)
+            ti.sync()
 
     def _copy_ints_chunked(self, src, dest, start_idx: int, count: int) -> None:
         """Upload integer data in bounded external-array chunks."""
-        self._ensure_host_transfer_buffers()
-        buf = self._host_int_chunk
+        buf = self._host_transfer_buffer("int", dest, "upload")
         for lo in range(0, count, self._COPY_CHUNK_SIZE):
             hi = min(lo + self._COPY_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = src[lo:hi]
             self._copy_to_taichi_ints(buf, dest, start_idx + lo, n_chunk)
+            ti.sync()
 
     def _validate_numpy_input(self, arr, expected_shape_suffix, name):
         """Validate NumPy array input for Taichi kernels."""
@@ -731,26 +799,21 @@ class Particles:
         )
         strain_rate = self._validate_numpy_input(strain_rate, (3, 3), "strain_rate")
 
-        # Copy vector data
-        self._copy_vectors_chunked(position, self.position, 0, count)
-        self._copy_vectors_chunked(velocity, self.velocity, 0, count)
-        self._copy_vectors_chunked(circulation, self.circulation, 0, count)
-        self._copy_vectors_chunked(vorticity, self.vorticity, 0, count)
-
-        # Copy scalar data
-        self._copy_scalars_chunked(radius, self.radius, 0, count)
-        self._copy_scalars_chunked(volume, self.volume, 0, count)
-        self._copy_scalars_chunked(viscosity, self.viscosity, 0, count)
-        self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, 0, count)
-        self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, 0, count)
-
-        # Copy integer data
-        self._copy_ints_chunked(group_id, self.group_id, 0, count)
-        self._copy_ints_chunked(zone_id, self.zone_id, 0, count)
-
-        # Copy matrix data
-        self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, 0, count)
-        self._copy_matrices_chunked(strain_rate, self.strain_rate, 0, count)
+        # Full cloud replacement uses native fixed-shape transfers.  This is
+        # intentionally separate from the chunked append path above.
+        self._replace_field_native("vector", self.position, position, count)
+        self._replace_field_native("vector", self.velocity, velocity, count)
+        self._replace_field_native("vector", self.circulation, circulation, count)
+        self._replace_field_native("vector", self.vorticity, vorticity, count)
+        self._replace_field_native("scalar", self.radius, radius, count)
+        self._replace_field_native("scalar", self.volume, volume, count)
+        self._replace_field_native("scalar", self.viscosity, viscosity, count)
+        self._replace_field_native("scalar", self.viscosity_turbulent, viscosity_turbulent, count)
+        self._replace_field_native("scalar", self.viscosity_effective, viscosity_effective, count)
+        self._replace_field_native("int", self.group_id, group_id, count)
+        self._replace_field_native("int", self.zone_id, zone_id, count)
+        self._replace_field_native("matrix", self.velocity_gradient, velocity_gradient, count)
+        self._replace_field_native("matrix", self.strain_rate, strain_rate, count)
 
         self.number_of_particles = count
 

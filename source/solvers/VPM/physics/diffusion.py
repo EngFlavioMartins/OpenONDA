@@ -28,6 +28,13 @@ from .base import PhysicsBase
 _logger = logging.getLogger("vpm")
 
 _GRID_TRANSFER_CHUNK = 65536
+# M4' performs 64 atomic grid deposits per particle.  One all-particle Vulkan
+# dispatch can exceed integrated-GPU watchdog limits at production counts, so
+# accumulate the same grid in bounded particle batches.
+# Each particle performs 64 atomic deposits, making a nominal 32k batch more
+# than two million contended grid updates.  Keep dispatches below the i915
+# Vulkan fence-watchdog limit observed in the production coupled-cube case.
+_M4_SCATTER_BATCH_SIZE = 4096
 
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * h
 _REGEN_RADIUS_RATIO = 2.5
@@ -1087,19 +1094,23 @@ class _GridDiffusionMixin:
         # -- M4' scatter (GPU) -------------------------------------------------
         self._zero_grid_kernel(self._current_grid, nx, ny, nz)
         gmin = grid_min_np.astype(float)
-        self._m4_scatter_gpu_kernel(
-            particles.position,
-            particles.circulation,
-            self._current_grid,
-            gmin[0],
-            gmin[1],
-            gmin[2],
-            float(h),
-            nx,
-            ny,
-            nz,
-            N,
-        )
+        for start in range(0, N, _M4_SCATTER_BATCH_SIZE):
+            count = min(_M4_SCATTER_BATCH_SIZE, N - start)
+            self._m4_scatter_gpu_kernel(
+                particles.position,
+                particles.circulation,
+                self._current_grid,
+                gmin[0],
+                gmin[1],
+                gmin[2],
+                float(h),
+                nx,
+                ny,
+                nz,
+                start,
+                count,
+            )
+            ti.sync()
         self._prepare_body_mask_current_grid(grid_min_np, h, nx, ny, nz)
         self._apply_body_mask_current_grid(nx, ny, nz)
 
@@ -1631,7 +1642,8 @@ class _GridDiffusionMixin:
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
-        N: ti.i32,
+        start_particle: ti.i32,
+        count: ti.i32,
     ):
         """GPU M4' remeshing scatter: each particle deposits to 4³=64 grid nodes.
 
@@ -1641,7 +1653,8 @@ class _GridDiffusionMixin:
 
         Accuracy: same O(h⁴) remeshing error as the CPU M4' scatter.
         """
-        for p in range(N):
+        for local_particle in range(count):
+            p = start_particle + local_particle
             pos = positions[p]
             circ = circulations[p]
 
@@ -1861,43 +1874,59 @@ class _GridDiffusionMixin:
             k = rem - j * nz
             dst[i, j, k] = src[t]
 
-    def _ensure_grid_transfer_buffers(self) -> None:
-        if getattr(self, "_grid_vec_chunk", None) is None:
-            self._grid_vec_chunk = np.zeros((_GRID_TRANSFER_CHUNK, 3), dtype=np.float32)
-            self._grid_scalar_chunk = np.zeros(_GRID_TRANSFER_CHUNK, dtype=np.float32)
+    def _grid_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
+        """Return a fixed staging array unique to a grid field and direction."""
+        if not hasattr(self, "_grid_vec_chunks"):
+            self._grid_vec_chunks = {}
+            self._grid_scalar_chunks = {}
+        key = (direction, id(field))
+        if family == "vector":
+            buffers = self._grid_vec_chunks
+            shape = (_GRID_TRANSFER_CHUNK, 3)
+        elif family == "scalar":
+            buffers = self._grid_scalar_chunks
+            shape = (_GRID_TRANSFER_CHUNK,)
+        else:
+            raise ValueError(f"Unknown grid transfer buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.zeros(shape, dtype=np.float32)
+        return buffers[key]
 
     def _download_active_vec_grid(self, src, nx: int, ny: int, nz: int) -> np.ndarray:
         """Return the active box of a vec3 grid as an (nx, ny, nz, 3) host array."""
-        self._ensure_grid_transfer_buffers()
+        buf = self._grid_transfer_buffer("vector", src, "download")
         total = int(nx) * int(ny) * int(nz)
         out = np.empty((total, 3), dtype=np.float32)
         for offset in range(0, total, _GRID_TRANSFER_CHUNK):
             count = min(_GRID_TRANSFER_CHUNK, total - offset)
-            self._download_vec_chunk_kernel(src, self._grid_vec_chunk, offset, count, ny, nz)
-            out[offset : offset + count] = self._grid_vec_chunk[:count]
+            self._download_vec_chunk_kernel(src, buf, offset, count, ny, nz)
+            ti.sync()
+            out[offset : offset + count] = buf[:count]
         return out.reshape(nx, ny, nz, 3)
 
     def _upload_active_vec_grid(self, dst, values: np.ndarray, nx: int, ny: int, nz: int) -> None:
         """Write an (nx, ny, nz, 3) host array into the active box of a vec3 grid."""
-        self._ensure_grid_transfer_buffers()
+        buf = self._grid_transfer_buffer("vector", dst, "upload")
         flat = np.ascontiguousarray(values, dtype=np.float32).reshape(-1, 3)
         total = int(nx) * int(ny) * int(nz)
         for offset in range(0, total, _GRID_TRANSFER_CHUNK):
             count = min(_GRID_TRANSFER_CHUNK, total - offset)
-            self._grid_vec_chunk[:count] = flat[offset : offset + count]
-            self._upload_vec_chunk_kernel(dst, self._grid_vec_chunk, offset, count, ny, nz)
+            buf[:count] = flat[offset : offset + count]
+            self._upload_vec_chunk_kernel(dst, buf, offset, count, ny, nz)
+            ti.sync()
 
     def _upload_active_scalar_grid(
         self, dst, values: np.ndarray, nx: int, ny: int, nz: int
     ) -> None:
         """Write an (nx, ny, nz) host array into the active box of a scalar grid."""
-        self._ensure_grid_transfer_buffers()
+        buf = self._grid_transfer_buffer("scalar", dst, "upload")
         flat = np.ascontiguousarray(values, dtype=np.float32).reshape(-1)
         total = int(nx) * int(ny) * int(nz)
         for offset in range(0, total, _GRID_TRANSFER_CHUNK):
             count = min(_GRID_TRANSFER_CHUNK, total - offset)
-            self._grid_scalar_chunk[:count] = flat[offset : offset + count]
-            self._upload_scalar_chunk_kernel(dst, self._grid_scalar_chunk, offset, count, ny, nz)
+            buf[:count] = flat[offset : offset + count]
+            self._upload_scalar_chunk_kernel(dst, buf, offset, count, ny, nz)
+            ti.sync()
 
     @ti.kernel
     def _grid_norm_kernel(

@@ -84,6 +84,125 @@ def test_body_potential_is_retained_before_particle_injection():
     )
 
 
+def test_fringe_and_donor_share_one_target_evaluation():
+    class _Particles:
+        number_of_particles = 12
+
+    class _VPM:
+        particles = _Particles()
+
+        def __init__(self):
+            self.calls = []
+
+        def compute_target_velocities(self, points, **kwargs):
+            self.calls.append(np.asarray(points).copy())
+            return np.tile([1.0, 0.0, 0.0], (len(points), 1))
+
+    class _Fringe:
+        active_cell_centres = np.array([[0.0, -0.5, 0.0], [0.0, 0.5, 0.0]])
+
+        def __init__(self):
+            self.active_velocity = None
+
+        def update_target(self, active_velocity=None):
+            self.active_velocity = active_velocity
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    coupler.fringe = _Fringe()
+    coupler._u_bc_prev = None
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler._log_outflow_deficit = lambda *_: None
+
+    centres, normals, areas = _cube_face_quadrature(nside=3)
+    previous, donor, *_timings = coupler._transfer_vpm_to_fvm(centres, normals, areas)
+
+    assert len(coupler.vpm.calls) == 1
+    np.testing.assert_array_equal(
+        coupler.vpm.calls[0],
+        np.concatenate((coupler.fringe.active_cell_centres, centres), axis=0),
+    )
+    np.testing.assert_array_equal(
+        coupler.fringe.active_velocity,
+        np.tile([1.0, 0.0, 0.0], (2, 1)),
+    )
+    np.testing.assert_allclose(previous, donor)
+
+
+def test_zero_target_evaluation_fails_before_fringe_mutation():
+    class _Particles:
+        number_of_particles = 12
+
+    class _VPM:
+        particles = _Particles()
+
+        @staticmethod
+        def compute_target_velocities(points, **kwargs):
+            return np.zeros((len(points), 3))
+
+    class _Fringe:
+        active_cell_centres = np.array([[0.0, 0.0, 0.0]])
+
+        def __init__(self):
+            self.was_updated = False
+
+        def update_target(self, active_velocity=None):
+            self.was_updated = True
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    coupler.fringe = _Fringe()
+    coupler._u_bc_prev = None
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+
+    centres, normals, areas = _cube_face_quadrature(nside=2)
+    with pytest.raises(RuntimeError, match="identically zero field"):
+        coupler._transfer_vpm_to_fvm(centres, normals, areas)
+    assert not coupler.fringe.was_updated
+
+
+def test_particle_fingerprint_detects_read_only_phase_mutation():
+    class _Particles:
+        number_of_particles = 2
+
+    class _VPM:
+        particles = _Particles()
+        particles_positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        particles_circulation = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+        particles_radii = np.ones(2)
+        particles_volumes = np.ones(2)
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    expected = coupler._vpm_particle_fingerprint()
+
+    coupler._assert_vpm_particle_fingerprint(expected, "test phase")
+    coupler.vpm.particles_circulation[1, 2] = -2.0
+    with pytest.raises(RuntimeError, match="changed during read-only test phase"):
+        coupler._assert_vpm_particle_fingerprint(expected, "test phase")
+
+
+def test_particle_validation_rejects_zeroed_backend_fields():
+    class _Particles:
+        number_of_particles = 2
+
+    class _VPM:
+        particles = _Particles()
+        particles_positions = np.zeros((2, 3))
+        particles_circulation = np.zeros((2, 3))
+        particles_radii = np.zeros(2)
+        particles_volumes = np.zeros(2)
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    with pytest.raises(RuntimeError, match="radii and volumes"):
+        coupler._vpm_particle_fingerprint(validate=True)
+
+
 def test_velocity_trace_recovers_linear_field_curl_exactly():
     rng = np.random.default_rng(4)
     positions = rng.uniform(-1.0, 1.0, size=(20, 3))

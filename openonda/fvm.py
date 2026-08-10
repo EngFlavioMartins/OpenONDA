@@ -9,6 +9,7 @@ from source.solvers.FVM import (
     FieldState,
     ForceSampler,
     FVMSetup,
+    IBMForceSampler,
     LinearSolverConfig,
     LinearSolveResult,
     LineSampler,
@@ -34,6 +35,7 @@ from source.solvers.FVM.fields.diagnostics import (
 from source.solvers.FVM.immersed_boundary import ImmersedBody
 from source.solvers.FVM.mesh import geometry
 from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 from source.solvers.FVM.sampling.base import SamplingSchedule
 
 __all__ = [
@@ -46,6 +48,7 @@ __all__ = [
     "ForceSampler",
     "FVMSetup",
     "GmshImporter",
+    "IBMForceSampler",
     "ImmersedBody",
     "LinearSolveResult",
     "LinearSolverConfig",
@@ -65,6 +68,7 @@ __all__ = [
     "compute_continuity_error",
     "compute_enstrophy",
     "compute_kinetic_energy",
+    "coupling_box_mesh",
     "geometry",
     "setup_fvm_solver",
     "solver_configs_from_case",

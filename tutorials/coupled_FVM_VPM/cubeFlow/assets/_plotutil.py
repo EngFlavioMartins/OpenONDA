@@ -83,6 +83,18 @@ def metadata() -> dict:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
+def load_vpm_particles(path: Path) -> dict[str, np.ndarray]:
+    """Load the active particle arrays from one native VPM checkpoint."""
+    import h5py
+
+    with h5py.File(path, "r") as handle:
+        count = int(handle["solver"].attrs["number_of_particles"])
+        return {
+            name: np.asarray(handle[f"particles/{name}"][:count])
+            for name in ("position", "circulation", "radius")
+        }
+
+
 def run_constants() -> dict:
     """Return plot scales, falling back to the tutorial defaults."""
     meta = metadata()

@@ -1,11 +1,15 @@
+from types import SimpleNamespace
+
 import numpy as np
 
 from source.coupler.core.helpers.continuous_overlap import (
+    ContinuousOverlapInjector,
     continuous_handoff,
     cosine_eta,
     max_stable_dt,
     required_buffer_length,
 )
+from source.solvers.FVM.immersed_boundary import ImmersedBody
 
 BOX = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
 H = 0.25
@@ -51,6 +55,37 @@ def test_aligned_handoff_excludes_solid():
     assert result.n_total > 0
     assert not solid(result.pos).any()
     assert np.isfinite(result.circ).all()
+
+
+def test_injector_reuses_native_ibm_solid_geometry():
+    config = SimpleNamespace(
+        h=0.1,
+        nu=0.01,
+        buffer_thickness=0.3,
+        dead_zone_h=1.0,
+        overlap_radius_ratio=1.0,
+        u_inf=[1.0, 0.0, 0.0],
+        prune_vorticity_min=0.01,
+        fvm_box=(-1.0, 1.0, -1.0, 1.0, -0.1, 0.1),
+        wall_patch_name=None,
+    )
+    body = ImmersedBody.cylinder_z([0.0, 0.0, 0.0], diameter=1.0, h=0.1)
+    fvm = SimpleNamespace(
+        ibm=SimpleNamespace(bodies=[body]),
+        get_cell_center_coordinates=lambda: np.array([[-0.95, -0.95, -0.05], [0.95, 0.95, 0.05]]),
+    )
+    coupler = SimpleNamespace(config=config, dt_vpm=0.1, vpm=None)
+    injector = ContinuousOverlapInjector(coupler)
+    injector.setup(fvm)
+
+    assert injector._solid_bodies == (body,)
+    np.testing.assert_array_equal(
+        injector._points_in_solid(
+            [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.6, 0.0, 0.0]],
+            include_boundary=False,
+        ),
+        [True, False, False],
+    )
 
 
 def test_free_wake_is_retained():

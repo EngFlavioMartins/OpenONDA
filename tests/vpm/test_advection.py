@@ -27,6 +27,11 @@ test_velocity_method_is_consistent_across_all_rk_stages
     four stage evaluations through one branch only.
     Failure → the old bug where the treecode was used at k1 but direct (or
     nothing) at the remaining stages, breaking accuracy/consistency.
+
+test_velocity_method_is_consistent_at_arbitrary_targets
+    Target-point queries must honor the configured direct/treecode method too.
+    Failure -> coupled boundary evaluation can silently fall back to one very
+    large direct GPU dispatch and trigger an operating-system watchdog reset.
 """
 
 import numpy as np
@@ -235,3 +240,45 @@ def test_velocity_method_is_consistent_across_all_rk_stages(
         f"RK4 mixed velocity methods: {other_branch} branch fired "
         f"{counts[other_branch]} times when {expected_branch} was configured."
     )
+
+
+@pytest.mark.parametrize(
+    "velocity_config, expected_branch",
+    [
+        (VelocityConfig.direct(), "DIRECT"),
+        (VelocityConfig.treecode(theta=0.5), "TREECODE"),
+    ],
+)
+def test_velocity_method_is_consistent_at_arbitrary_targets(
+    tmp_path, velocity_config, expected_branch
+):
+    """Target queries must use the velocity method selected in ``VPMSetup``."""
+    solver = _self_induced_solver(tmp_path, velocity_config=velocity_config)
+    physics = solver.physics
+    targets = np.array([[0.7, 0.1, -0.2], [-0.4, 0.8, 0.3]], dtype=np.float32)
+    counts = {"DIRECT": 0, "TREECODE": 0}
+
+    direct_fn = physics.compute_target_velocity_kernel
+    treecode_fn = physics.compute_target_velocities_hierarchical
+
+    def counting_direct(*args, **kwargs):
+        counts["DIRECT"] += 1
+        return direct_fn(*args, **kwargs)
+
+    def counting_treecode(*args, **kwargs):
+        counts["TREECODE"] += 1
+        return treecode_fn(*args, **kwargs)
+
+    physics.compute_target_velocity_kernel = counting_direct
+    physics.compute_target_velocities_hierarchical = counting_treecode
+    try:
+        velocity = solver.compute_target_velocities(targets, include_freestream=False)
+    finally:
+        physics.compute_target_velocity_kernel = direct_fn
+        physics.compute_target_velocities_hierarchical = treecode_fn
+
+    other_branch = "TREECODE" if expected_branch == "DIRECT" else "DIRECT"
+    assert counts[expected_branch] == 1
+    assert counts[other_branch] == 0
+    assert velocity.shape == targets.shape
+    assert np.isfinite(velocity).all()

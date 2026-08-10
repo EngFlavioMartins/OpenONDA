@@ -57,7 +57,7 @@ class ParticleFieldEvaluation:
 
         # Initialize GPU fields for storing results
         self._initialize_result_fields()
-        self._host_scalar_chunk = None
+        self._host_scalar_chunks = {}
 
         # Initialize time tracking for energy dissipation rate
         self._flow_time_history = []  # Store (time, energy) pairs
@@ -78,13 +78,16 @@ class ParticleFieldEvaluation:
     def _download_scalar_field(self, src, n: int) -> np.ndarray:
         if n == 0:
             return np.empty((0,), dtype=np.float32)
-        if self._host_scalar_chunk is None:
-            self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
+        key = id(src)
+        if key not in self._host_scalar_chunks:
+            self._host_scalar_chunks[key] = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
+        buf = self._host_scalar_chunks[key]
         out = np.empty((n,), dtype=np.float32)
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
-            self._extract_scalar_field_prefix(src, self._host_scalar_chunk, lo, count)
-            out[lo : lo + count] = self._host_scalar_chunk[:count]
+            self._extract_scalar_field_prefix(src, buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
         return out
 
     def _initialize_result_fields(self):

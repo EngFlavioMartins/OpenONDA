@@ -118,9 +118,9 @@ class PhysicsBase:
         )
         self._filtered_rad = ti.field(dtype=self.accumulator_dtype, shape=(self.max_particles,))
 
-        self._host_vector_chunk = None
-        self._host_scalar_chunk = None
-        self._host_matrix_chunk = None
+        self._host_vector_chunks = {}
+        self._host_scalar_chunks = {}
+        self._host_matrix_chunks = {}
 
         # Initialize Taichi fields
         self._initialize_temp_fields()
@@ -269,13 +269,23 @@ class PhysicsBase:
                 for k in ti.static(range(3)):
                     dst[i, j, k] = src[start_idx + i][j, k]
 
-    def _ensure_host_transfer_buffers(self):
-        """Allocate reusable fixed-shape buffers for ndarray kernel transfers."""
-        if self._host_vector_chunk is not None:
-            return
-        self._host_vector_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=self.np_dtype)
-        self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=self.np_dtype)
-        self._host_matrix_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=self.np_dtype)
+    def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
+        """Return a fixed staging array unique to a field and direction."""
+        key = (direction, id(field))
+        if family == "vector":
+            buffers = self._host_vector_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
+        elif family == "scalar":
+            buffers = self._host_scalar_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+        elif family == "matrix":
+            buffers = self._host_matrix_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
+        else:
+            raise ValueError(f"Unknown host transfer buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.empty(shape, dtype=self.np_dtype)
+        return buffers[key]
 
     def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
         """Upload a vec3 array through fixed-size ndarray chunks."""
@@ -283,13 +293,13 @@ class PhysicsBase:
         if arr.ndim != 2 or arr.shape[1] != 3:
             raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
         count = arr.shape[0] if n is None else n
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", dst, "upload")
         for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
             hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = arr[lo:hi]
             self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
+            ti.sync()
 
     def _upload_scalar_array(self, src: np.ndarray, dst, n: int | None = None):
         """Upload a scalar array through fixed-size ndarray chunks."""
@@ -297,24 +307,24 @@ class PhysicsBase:
         if arr.ndim != 1:
             raise ValueError(f"Expected scalar array with shape (N,), got {arr.shape}")
         count = arr.shape[0] if n is None else n
-        self._ensure_host_transfer_buffers()
-        buf = self._host_scalar_chunk
+        buf = self._host_transfer_buffer("scalar", dst, "upload")
         for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
             hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = arr[lo:hi]
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
+            ti.sync()
 
     def _download_vector_field(self, src, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
         if n == 0:
             return np.empty((0, 3), dtype=self.np_dtype)
         out = np.empty((n, 3), dtype=self.np_dtype)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_vec3_field_prefix(src, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
@@ -323,11 +333,11 @@ class PhysicsBase:
         if n == 0:
             return np.empty((0, 3, 3), dtype=self.np_dtype)
         out = np.empty((n, 3, 3), dtype=self.np_dtype)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_matrix_chunk
+        buf = self._host_transfer_buffer("matrix", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_mat3_field_prefix(src, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
@@ -600,6 +610,19 @@ class PhysicsBase:
                 bg = particles.velocity_background_cpu()
                 result += bg
             return result
+
+        # Target evaluation must honor the same velocity method selected for
+        # particle advection.  Falling through to the direct M-by-N kernel
+        # here made coupled boundary queries launch almost one billion pair
+        # interactions in a single Vulkan dispatch, tripping integrated-GPU
+        # watchdogs even though particle self-evaluation used the treecode.
+        if self.velocity_method == "TREECODE":
+            return self.compute_target_velocities_hierarchical(
+                particles,
+                target_positions,
+                theta=self.velocity_theta,
+                include_freestream=include_freestream,
+            )
 
         # Resize target fields if needed
         self._resize_target_fields(M)

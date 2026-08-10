@@ -57,6 +57,76 @@ def test_rectangle_marker_factory_has_unique_perimeter_points():
     assert np.all((np.isclose(offsets[:, 0], 0.5)) | (np.isclose(offsets[:, 1], 0.25)))
 
 
+def test_immersed_body_exact_solid_geometry():
+    cylinder = ImmersedBody.cylinder_z([0.0, 0.0, 0.05], diameter=1.0, h=0.1)
+    query = np.array(
+        [
+            [0.0, 0.0, 0.05],
+            [0.49, 0.0, 0.05],
+            [0.5, 0.0, 0.05],
+            [0.51, 0.0, 0.05],
+        ]
+    )
+    np.testing.assert_array_equal(cylinder.contains(query), [True, True, False, False])
+    np.testing.assert_array_equal(
+        cylinder.contains(query, include_boundary=True), [True, True, True, False]
+    )
+
+    polygon = ImmersedBody.extruded_polygon_z(
+        [[-0.5, -0.25], [0.5, -0.25], [0.5, 0.25], [-0.5, 0.25]],
+        [-0.5, 0.5],
+        h=0.1,
+        name="foil",
+    )
+    assert polygon.has_solid_geometry
+    assert polygon.n_markers > 0
+    side_levels = int(np.ceil(1.0 / 0.1)) + 1
+    assert np.count_nonzero(np.isclose(polygon.X[:, 2], 0.0)) == 30
+    assert polygon.n_markers >= 30 * side_levels
+    np.testing.assert_array_equal(
+        polygon.contains(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.5],
+                [0.0, 0.3, 0.0],
+            ]
+        ),
+        [True, False, False],
+    )
+    assert polygon.contains([[0.0, 0.0, 0.5]], include_boundary=True)[0]
+
+
+def test_extruded_cylinder_factory_has_exact_solid_geometry():
+    body = ImmersedBody.extruded_cylinder_z(
+        centre=[0.0, 0.0, 0.0],
+        diameter=1.0,
+        z_bounds=[-1.0, 1.0],
+        h=0.2,
+        caps=True,
+    )
+    query = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [0.51, 0.0, 0.0],
+            [0.0, 0.0, 1.01],
+        ]
+    )
+    assert body.X[:, 2].min() == pytest.approx(-1.0)
+    assert body.X[:, 2].max() == pytest.approx(1.0)
+    assert body.contains(query).tolist() == [True, False, False, False]
+    assert body.contains(query, include_boundary=True).tolist() == [True, True, False, False]
+
+    through_domain = ImmersedBody.extruded_cylinder_z(
+        centre=[0.0, 0.0, 0.0],
+        diameter=1.0,
+        z_bounds=[-1.0, 1.0],
+        h=0.2,
+        caps=False,
+    )
+    assert through_domain.contains([[0.0, 0.0, 100.0]])[0]
+
+
 def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
     m, geo, ibm = cylinder_setup
     n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]

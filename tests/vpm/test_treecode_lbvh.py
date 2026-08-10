@@ -30,6 +30,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
+from source.solvers.VPM.acceleration import treecode_gpu
 from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
 
 ONE_OVER_FOUR_PI = 0.07957747154594767
@@ -229,6 +230,35 @@ def test_velocity_converges_to_direct_as_theta_shrinks():
     # Tight-theta accuracy is solidly inside the Barnes-Hut band.
     assert errs[0.1] < 2e-2
     assert errs[0.2] < 5e-2
+
+
+def test_batched_traversal_matches_single_dispatch(monkeypatch):
+    """Watchdog-safe target batches must not change any treecode result."""
+    N = 37
+    pos, circ, rad = _cloud(N, seed=29)
+    targets = pos[:11] + np.float32(0.017)
+    tree = _make_tree(N, theta=0.3)
+    tree.build(pos, circ, rad, force=True)
+
+    monkeypatch.setattr(treecode_gpu, "_TRAVERSAL_BATCH_SIZE", 10_000)
+    velocity_single, gradient_single, strain_single = tree.compute_velocity_and_gradient(
+        np.zeros(3, dtype=np.float32)
+    )
+    target_velocity_single = tree.compute_target_velocities(targets)
+    target_gradient_single = tree.compute_target_velocity_gradients(targets)
+
+    monkeypatch.setattr(treecode_gpu, "_TRAVERSAL_BATCH_SIZE", 4)
+    velocity_batched, gradient_batched, strain_batched = tree.compute_velocity_and_gradient(
+        np.zeros(3, dtype=np.float32)
+    )
+    target_velocity_batched = tree.compute_target_velocities(targets)
+    target_gradient_batched = tree.compute_target_velocity_gradients(targets)
+
+    np.testing.assert_array_equal(velocity_batched, velocity_single)
+    np.testing.assert_array_equal(gradient_batched, gradient_single)
+    np.testing.assert_array_equal(strain_batched, strain_single)
+    np.testing.assert_array_equal(target_velocity_batched, target_velocity_single)
+    np.testing.assert_array_equal(target_gradient_batched, target_gradient_single)
 
 
 def test_order2_improves_far_target_velocity_and_gradient():

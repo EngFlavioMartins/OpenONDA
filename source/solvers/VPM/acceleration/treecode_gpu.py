@@ -42,6 +42,21 @@ from ..config.constants import (
 )
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
+# Bound each traversal dispatch.  Large all-particle kernels can exceed the
+# i915/Metal watchdog even though the complete step is otherwise valid; the
+# driver then resets the device and all Taichi fields read back as zero.  The
+# batches are mathematically independent because every target owns its stack
+# and output slot.
+# A traversal target can visit hundreds of nodes, so the number of loop
+# iterations is much larger than the target count suggests.  32k targets was
+# still enough to trip the i915 Vulkan fence watchdog once the coupled cube
+# wake reached ~220k particles.  A 4k dispatch keeps even the late-wake tree
+# traversals short on integrated GPUs; launch overhead is negligible next to
+# the O(N log N) walk and discrete GPUs remain fully occupied.
+_TRAVERSAL_BATCH_SIZE = 4096
+# Topology passes are cheap relative to traversal, but a malformed parent link
+# must never leave one giant Vulkan kernel spinning until the driver resets.
+_TOPOLOGY_BATCH_SIZE = 4096
 
 
 @ti.data_oriented
@@ -140,9 +155,14 @@ class TaichiTreecode:
         # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
         # run on-device, removing the per-build CPU argsort host round-trip.
         self._sort_keys = ti.field(dtype=ti.u32, shape=max_particles)
-        # On-device sort by default; validated once and falls back to CPU argsort
-        # if a backend's parallel_sort misbehaves (keeps the build correct anywhere).
-        self._gpu_sort = True
+        # Taichi 1.7's Vulkan parallel_sort can fail only for particular active
+        # lengths even after an earlier invocation validated successfully.  A
+        # bad permutation creates malformed Karras parent links; the subsequent
+        # depth walk then triggers an i915 fence reset and zeroes unrelated
+        # fields.  Keep the fast device sort on CUDA, where it is stable, and
+        # use deterministic NumPy argsort on Vulkan/Metal/CPU.  The O(N) key
+        # transfer is small beside the O(N log N) tree traversal.
+        self._gpu_sort = ti.lang.impl.current_cfg().arch == ti.cuda
         self._sort_validated = False
         # LCP array (for Karras tree; length max_particles for simplicity)
         self._lcp = ti.field(dtype=ti.i32, shape=max_particles)
@@ -195,6 +215,8 @@ class TaichiTreecode:
         self.n_nodes = ti.field(dtype=ti.i32, shape=())
         self._root = ti.field(dtype=ti.i32, shape=())
         self._max_depth = ti.field(dtype=ti.i32, shape=())
+        self._topology_error = ti.field(dtype=ti.i32, shape=())
+        self.max_tree_depth_guard = 96
 
         # Background velocity
         self.u_inf = ti.Vector.field(3, dtype=ti.f32, shape=())
@@ -211,11 +233,11 @@ class TaichiTreecode:
         # Constants for gradient kernel
         self.DEFAULT_CUTOFF_RADIUS_FACTOR = 15.0
 
-        self._host_vector_chunk = None
-        self._host_scalar_chunk = None
-        self._host_matrix_chunk = None
-        self._host_u32_chunk = None
-        self._host_i32_chunk = None
+        self._host_vector_chunks = {}
+        self._host_scalar_chunks = {}
+        self._host_matrix_chunks = {}
+        self._host_u32_chunks = {}
+        self._host_i32_chunks = {}
 
         # Topology-reuse state (see refit()): last built particle count and the
         # combine-level bound.  None until the first build().
@@ -344,6 +366,12 @@ class TaichiTreecode:
         for i in range(N):
             self.positions[i] = pos[i]
 
+    @ti.kernel
+    def _copy_circulations_field(self, circulations: ti.template(), N: ti.i32):
+        """Overwrite only circulation for a fixed-position topology refit."""
+        for i in range(N):
+            self.circulations[i] = circulations[i]
+
     def refit(self, positions, N: int) -> None:
         """Reuse the existing LBVH topology, updating only position multipoles.
 
@@ -384,6 +412,30 @@ class TaichiTreecode:
         self._leaf_multipole_init_kernel(N)
         for level in range(self._combine_levels, -1, -1):
             self._combine_level_kernel(N, level)
+        self.build_time = time.perf_counter() - t_start
+
+    def refit_circulation(self, circulations, N: int) -> None:
+        """Refit multipoles after strengths change at fixed positions.
+
+        Standalone RK stretching stages keep particle positions and radii
+        fixed while changing only circulation.  Their Morton ordering and
+        Karras topology are therefore unchanged; rebuilding that topology at
+        every stage adds work and has triggered Vulkan device loss in long,
+        memory-heavy coupled runs.  Refresh the circulation field and all
+        dependent multipoles while retaining the validated topology.
+        """
+        if getattr(self, "_built_n", None) != N or N <= 1:
+            raise RuntimeError(
+                "treecode.refit_circulation requires a prior build() with the same N "
+                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
+            )
+        t_start = time.perf_counter()
+        self.n_particles[None] = N
+        self._copy_circulations_field(circulations, N)
+        self._leaf_multipole_init_kernel(N)
+        for level in range(self._combine_levels, -1, -1):
+            self._combine_level_kernel(N, level)
+        ti.sync()
         self.build_time = time.perf_counter() - t_start
 
     @ti.kernel
@@ -432,63 +484,83 @@ class TaichiTreecode:
         for i in range(n):
             dst[i] = src[start_idx + i]
 
-    def _ensure_host_transfer_buffers(self):
-        if self._host_vector_chunk is not None:
-            return
-        self._host_vector_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3), dtype=np.float32)
-        self._host_scalar_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
-        self._host_matrix_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE, 3, 3), dtype=np.float32)
-        self._host_u32_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.uint32)
-        self._host_i32_chunk = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.int32)
+    def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
+        """Return a fixed staging array unique to a field and direction."""
+        key = (direction, id(field))
+        if family == "vector":
+            buffers = self._host_vector_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
+            dtype = np.float32
+        elif family == "scalar":
+            buffers = self._host_scalar_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.float32
+        elif family == "matrix":
+            buffers = self._host_matrix_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
+            dtype = np.float32
+        elif family == "u32":
+            buffers = self._host_u32_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.uint32
+        elif family == "i32":
+            buffers = self._host_i32_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.int32
+        else:
+            raise ValueError(f"Unknown host transfer buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.empty(shape, dtype=dtype)
+        return buffers[key]
 
     def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
         arr = np.ascontiguousarray(src, dtype=np.float32)
         if arr.ndim != 2 or arr.shape[1] != 3:
             raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
         count = arr.shape[0] if n is None else n
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", dst, "upload")
         for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
             hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = arr[lo:hi]
             self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
+            ti.sync()
 
     def _upload_scalar_array(self, src: np.ndarray, dst, n: int | None = None):
         arr = np.ascontiguousarray(src, dtype=np.float32)
         if arr.ndim != 1:
             raise ValueError(f"Expected scalar array with shape (N,), got {arr.shape}")
         count = arr.shape[0] if n is None else n
-        self._ensure_host_transfer_buffers()
-        buf = self._host_scalar_chunk
+        buf = self._host_transfer_buffer("scalar", dst, "upload")
         for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
             hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = arr[lo:hi]
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
+            ti.sync()
 
     def _upload_i32_array(self, src: np.ndarray, dst, n: int | None = None):
         arr = np.ascontiguousarray(src, dtype=np.int32)
         if arr.ndim != 1:
             raise ValueError(f"Expected int array with shape (N,), got {arr.shape}")
         count = arr.shape[0] if n is None else n
-        self._ensure_host_transfer_buffers()
-        buf = self._host_i32_chunk
+        buf = self._host_transfer_buffer("i32", dst, "upload")
         for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
             hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
             n_chunk = hi - lo
             buf[:n_chunk] = arr[lo:hi]
             self._copy_ndarray_to_i32_field(buf, dst, lo, n_chunk)
+            ti.sync()
 
     def _download_vector_field(self, src, n: int) -> np.ndarray:
         if n == 0:
             return np.empty((0, 3), dtype=np.float32)
         out = np.empty((n, 3), dtype=np.float32)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_vector_chunk
+        buf = self._host_transfer_buffer("vector", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_vec3_field_prefix(src, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
@@ -496,11 +568,11 @@ class TaichiTreecode:
         if n == 0:
             return np.empty((0, 3, 3), dtype=np.float32)
         out = np.empty((n, 3, 3), dtype=np.float32)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_matrix_chunk
+        buf = self._host_transfer_buffer("matrix", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_mat3_field_prefix(src, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
@@ -508,11 +580,11 @@ class TaichiTreecode:
         if n == 0:
             return np.empty((0,), dtype=np.uint32)
         out = np.empty((n,), dtype=np.uint32)
-        self._ensure_host_transfer_buffers()
-        buf = self._host_u32_chunk
+        buf = self._host_transfer_buffer("u32", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_u32_field_prefix(src, buf, lo, count)
+            ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
 
@@ -728,7 +800,18 @@ class TaichiTreecode:
         # Step 5: parents + depths, then the level-synchronous bottom-up.
         self._compute_parents_kernel(N)
         self._leaf_multipole_init_kernel(N)
-        self._compute_depths_kernel(N)
+        self._max_depth[None] = 0
+        self._topology_error[None] = 0
+        n_nodes = 2 * N - 1
+        for start in range(0, n_nodes, _TOPOLOGY_BATCH_SIZE):
+            count = min(_TOPOLOGY_BATCH_SIZE, n_nodes - start)
+            self._compute_depths_kernel(N, start, count)
+            ti.sync()
+        if self._topology_error[None] != 0:
+            raise RuntimeError(
+                "LBVH topology contains a parent cycle or exceeds the guarded "
+                f"depth of {self.max_tree_depth_guard}"
+            )
         # One combine kernel per level, deepest → root.  Each level reads only the
         # already-finalised level below it.
         max_levels = 2 * int(np.ceil(np.log2(max(N, 2)))) + 34
@@ -830,20 +913,27 @@ class TaichiTreecode:
             self._node_aabb_max[j] = self.positions[p]
 
     @ti.kernel
-    def _compute_depths_kernel(self, N: ti.i32):
+    def _compute_depths_kernel(
+        self,
+        N: ti.i32,
+        start_node: ti.i32,
+        count: ti.i32,
+    ):
         """Depth (distance to root) of every node, and the max over the tree.
 
         One thread per node climbs ``node_parent`` to the root counting hops, so
         no ordering is required.  ``_max_depth`` bounds the level-synchronous
         combine loop; it is the only host read in the multipole pass.
         """
-        self._max_depth[None] = 0
-        for idx in range(2 * N - 1):
+        for local_node in range(count):
+            idx = start_node + local_node
             d = 0
             node = self.node_parent[idx]
-            while node >= 0:
+            while node >= 0 and d < self.max_tree_depth_guard:
                 node = self.node_parent[node]
                 d += 1
+            if node >= 0:
+                ti.atomic_max(self._topology_error[None], 1)
             self.node_depth[idx] = d
             ti.atomic_max(self._max_depth[None], d)
 
@@ -1443,12 +1533,12 @@ class TaichiTreecode:
     # COMPUTE KERNELS
 
     @ti.kernel
-    def compute_velocities_kernel(self, theta_sq: ti.f32):
-        N = self.n_particles[None]
+    def compute_velocities_kernel(self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32):
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
-        for slot in range(N):
+        for local_slot in range(count):
+            slot = start_slot + local_slot
             i = slot
             if self.sort_particle_targets[None] != 0:
                 i = self.sorted_indices[slot]
@@ -1457,12 +1547,14 @@ class TaichiTreecode:
             )
 
     @ti.kernel
-    def compute_velocity_gradients_kernel(self, theta_sq: ti.f32):
-        N = self.n_particles[None]
+    def compute_velocity_gradients_kernel(
+        self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
+    ):
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
-        for slot in range(N):
+        for local_slot in range(count):
+            slot = start_slot + local_slot
             i = slot
             if self.sort_particle_targets[None] != 0:
                 i = self.sorted_indices[slot]
@@ -1475,7 +1567,9 @@ class TaichiTreecode:
             self.strain_rates[i] = strain
 
     @ti.kernel
-    def compute_velocity_and_gradient_kernel(self, theta_sq: ti.f32):
+    def compute_velocity_and_gradient_kernel(
+        self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
+    ):
         """Fused single-traversal evaluation of u, ∇u and S.
 
         The solver needs **both** u (advection) and ∇u (stretching) at the same
@@ -1486,14 +1580,14 @@ class TaichiTreecode:
         the near-core gradient both use the regularized kernel directly — so
         the output is bit-identical to the two separate kernels.
         """
-        N = self.n_particles[None]
         n_nodes = self.n_nodes[None]
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         u_inf = self.u_inf[None]
         root = self._root[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
-        for slot in range(N):
+        for local_slot in range(count):
+            slot = start_slot + local_slot
             i = slot
             if self.sort_particle_targets[None] != 0:
                 i = self.sorted_indices[slot]
@@ -1559,8 +1653,11 @@ class TaichiTreecode:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
-        self.compute_velocities_kernel(self.theta * self.theta)
-        ti.sync()
+        N = int(self.n_particles[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocities_kernel(self.theta * self.theta, start, count)
+            ti.sync()
         self.eval_time = time.perf_counter() - t_start
 
     def compute_velocities(self, background_velocity: np.ndarray | None = None) -> np.ndarray:
@@ -1572,8 +1669,11 @@ class TaichiTreecode:
         """Run the velocity-gradient traversal on-device; results stay in
         ``self.velocity_gradients`` / ``self.strain_rates`` (Taichi fields)."""
         t_start = time.perf_counter()
-        self.compute_velocity_gradients_kernel(self.theta * self.theta)
-        ti.sync()
+        N = int(self.n_particles[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocity_gradients_kernel(self.theta * self.theta, start, count)
+            ti.sync()
         self.grad_time = time.perf_counter() - t_start
 
     def compute_velocity_gradients(self) -> tuple:
@@ -1593,8 +1693,11 @@ class TaichiTreecode:
             self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
-        self.compute_velocity_and_gradient_kernel(self.theta * self.theta)
-        ti.sync()
+        N = int(self.n_particles[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocity_and_gradient_kernel(self.theta * self.theta, start, count)
+            ti.sync()
         self.eval_time = time.perf_counter() - t_start
 
     def compute_velocity_and_gradient(self, background_velocity: np.ndarray | None = None) -> tuple:
@@ -1609,23 +1712,35 @@ class TaichiTreecode:
     # TARGET POINT EVALUATIONS
 
     @ti.kernel
-    def compute_target_velocities_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
-        M = self.n_targets[None]
+    def compute_target_velocities_kernel(
+        self,
+        theta_sq: ti.f32,
+        avg_radius: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
-        for i in range(M):
+        for local_target in range(count):
+            i = start_target + local_target
             self.target_velocities[i] = (
                 self._traverse_target_vel(i, theta_sq, n_nodes) + self.u_inf[None]
             )
 
     @ti.kernel
-    def compute_target_velocity_gradients_kernel(self, theta_sq: ti.f32, avg_radius: ti.f32):
-        M = self.n_targets[None]
+    def compute_target_velocity_gradients_kernel(
+        self,
+        theta_sq: ti.f32,
+        avg_radius: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
-        for i in range(M):
+        for local_target in range(count):
+            i = start_target + local_target
             self.target_velocity_gradients[i] = self._traverse_target_grad(i, theta_sq, n_nodes)
 
     def compute_target_velocities(
@@ -1643,8 +1758,10 @@ class TaichiTreecode:
         else:
             self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
         theta_sq = self.theta * self.theta
-        self.compute_target_velocities_kernel(theta_sq, 0.0)
-        ti.sync()
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocities_kernel(theta_sq, 0.0, start, count)
+            ti.sync()
         return self._download_vector_field(self.target_velocities, M)
 
     def compute_target_velocity_gradients(self, target_positions: np.ndarray) -> np.ndarray:
@@ -1656,8 +1773,10 @@ class TaichiTreecode:
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
         theta_sq = self.theta * self.theta
-        self.compute_target_velocity_gradients_kernel(theta_sq, 0.0)
-        ti.sync()
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocity_gradients_kernel(theta_sq, 0.0, start, count)
+            ti.sync()
         return self._download_matrix_field(self.target_velocity_gradients, M)
 
     # INFO

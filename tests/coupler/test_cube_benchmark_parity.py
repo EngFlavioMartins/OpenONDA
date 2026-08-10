@@ -201,7 +201,7 @@ def test_mesh_domain_uses_case_setting(bench):
 
     assert bench.FVM_MESH.domain == bench.FVM_BOX
     assert bench.FVM_MESH.max_cell_size == bench.SPACING
-    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.5 * bench.SPACING)
+    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.015)
     assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -210,8 +210,10 @@ def test_mesh_domain_uses_case_setting(bench):
 
 def test_production_case_keeps_the_validated_cost_limits(bench):
     assert bench.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-    assert pytest.approx(0.03) == bench.SPACING
-    assert bench.FVM_MESH.effective_cell_size(0.5 * bench.SPACING) == pytest.approx(0.015)
+    assert pytest.approx(0.04) == bench.SPACING
+    assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
+        0.01
+    )
     assert bench.PARTICLE_LIMIT == 200_000
     assert bench.VPM_SETUP.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
     assert bench.VPM_SETUP.max_particles == bench.PARTICLE_LIMIT

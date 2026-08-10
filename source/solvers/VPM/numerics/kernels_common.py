@@ -406,6 +406,50 @@ def _make_stretching_rate_kernel(q_, zeta_):
     return compute_stretching_rate_kernel
 
 
+def _make_stretching_rate_batch_kernel(q_, zeta_):
+    """Create the bounded-dispatch form of the direct stretching kernel."""
+
+    @ti.kernel
+    def compute_stretching_rate_batch_kernel(
+        positions: ti.template(),
+        strengths: ti.template(),
+        radii: ti.template(),
+        dstr_dt_out: ti.template(),
+        mode: ti.i32,
+        start_target: ti.i32,
+        target_count: ti.i32,
+        num_particles: ti.i32,
+    ):  # type: ignore
+        """Direct pair-wise stretching for a bounded target interval."""
+        N = num_particles
+        for local_target in range(target_count):
+            i = start_target + local_target
+            str_i = strengths[i]
+            pos_i = positions[i]
+            radii_i = radii[i]
+            dstr_dt = ti.Vector([0.0, 0.0, 0.0])
+
+            for j in range(N):
+                pos_j = positions[j]
+                str_j = strengths[j]
+                r_ij = pos_i - pos_j
+                r_mag = ti.sqrt(r_ij.dot(r_ij))
+
+                if r_mag > EPSILON:
+                    sigma = 0.5 * (radii_i + radii[j])
+                    r_sigma = r_mag / sigma
+
+                    q_val = q_(r_sigma)
+                    zeta_val = zeta_(r_sigma)
+                    dstr_dt += _stretching_contribution(
+                        str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
+                    )
+
+            dstr_dt_out[i] = dstr_dt
+
+    return compute_stretching_rate_batch_kernel
+
+
 def _create_basic_kernels(kernel_functions):
     """Create basic velocity and vorticity computation kernels."""
     q_ = kernel_functions["q_"]
@@ -771,6 +815,7 @@ def _create_stretching_kernels(kernel_functions):
 
     return {
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
+        "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(q_, zeta_),
         "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
     }
 

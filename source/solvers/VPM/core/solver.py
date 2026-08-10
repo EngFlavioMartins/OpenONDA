@@ -626,6 +626,7 @@ class Solver:
 
         # Update particle time step for cache invalidation
         self.particles.time_step = self.time_step
+        self._debug_validate_particle_geometry("step entry")
 
         # The profiler times the whole step (denominator for the report) and each
         # named stage below; ``section`` synchronises the backend around the block.
@@ -688,8 +689,10 @@ class Solver:
                 else:
                     with self.profiler.section("Viscous diffusion"):
                         self._apply_viscous_diffusion(self.time_step_size)
+                    self._debug_validate_particle_geometry("viscous diffusion")
                     with self.profiler.section("Stretching"):
                         self._apply_stretching(self.time_step_size)
+                    self._debug_validate_particle_geometry("stretching")
 
                 with self.profiler.section("Filament refinement"):
                     self._apply_filament_refinement()
@@ -708,6 +711,7 @@ class Solver:
             # 6. PARTICLE RETENTION (optional domain cutoff)
             with self.profiler.section("Particle retention"):
                 self._apply_particle_retention()
+            self._debug_validate_particle_geometry("particle retention")
 
             # 7. DIAGNOSTICS & IO
             with self.profiler.section("Backup / IO"):
@@ -726,6 +730,39 @@ class Solver:
         # Log flow diagnostics at specified frequency
         if self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0:
             self.log_diagnostics()
+
+    def _debug_validate_particle_geometry(self, stage: str) -> None:
+        """Validate active radius/volume fields when stage tracing is enabled.
+
+        This intentionally sits behind an environment flag because each check
+        downloads two active scalar fields.  It is useful for isolating device
+        corruption in long GPU runs without changing their numerical path.
+        """
+        if os.environ.get("VPM_VALIDATE_STAGES", "0") != "1":
+            return
+        n = self.particles.number_of_particles
+        if n == 0:
+            return
+        radii = self.particles.radius_cpu(use_cache=False)
+        volumes = self.particles.volume_cpu(use_cache=False)
+        invalid_radii = ~np.isfinite(radii) | (radii <= 0.0)
+        invalid_volumes = ~np.isfinite(volumes) | (volumes <= 0.0)
+        n_bad_radii = int(np.count_nonzero(invalid_radii))
+        n_bad_volumes = int(np.count_nonzero(invalid_volumes))
+        Logging.message(
+            f"[Integrity:{stage}] N={n} radius=[{np.nanmin(radii):.6e}, "
+            f"{np.nanmax(radii):.6e}] bad={n_bad_radii}; "
+            f"volume=[{np.nanmin(volumes):.6e}, {np.nanmax(volumes):.6e}] "
+            f"bad={n_bad_volumes}"
+        )
+        if n_bad_radii or n_bad_volumes:
+            bad_radius_index = int(np.flatnonzero(invalid_radii)[0]) if n_bad_radii else -1
+            bad_volume_index = int(np.flatnonzero(invalid_volumes)[0]) if n_bad_volumes else -1
+            raise RuntimeError(
+                f"Invalid VPM particle geometry after {stage}: "
+                f"radius_bad={n_bad_radii} first={bad_radius_index}, "
+                f"volume_bad={n_bad_volumes} first={bad_volume_index}"
+            )
 
     def _advance_time_step(self) -> None:
         """
@@ -2487,6 +2524,28 @@ class Solver:
             new_p = self._apply_grid_diffusion(self._viscous_config, dt)
             if new_p is not None:
                 M = len(new_p["position"])
+                retention_bounds = self.stabilization_config.remove_particles_by_bounds
+                if retention_bounds is not None and M > 0:
+                    position = np.asarray(new_p["position"])
+                    xmin, xmax, ymin, ymax, zmin, zmax = retention_bounds
+                    inside = (
+                        (xmin <= position[:, 0])
+                        & (position[:, 0] <= xmax)
+                        & (ymin <= position[:, 1])
+                        & (position[:, 1] <= ymax)
+                        & (zmin <= position[:, 2])
+                        & (position[:, 2] <= zmax)
+                    )
+                    if not np.any(inside):
+                        lo = position.min(axis=0)
+                        hi = position.max(axis=0)
+                        raise RuntimeError(
+                            "Grid diffusion generated no particles inside the configured "
+                            "retention domain; refusing to replace the wake. "
+                            f"Generated extent: x=[{lo[0]:.6g}, {hi[0]:.6g}], "
+                            f"y=[{lo[1]:.6g}, {hi[1]:.6g}], "
+                            f"z=[{lo[2]:.6g}, {hi[2]:.6g}]."
+                        )
                 self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
@@ -2591,7 +2650,12 @@ class Solver:
         cfg = self.stabilization_config
         if cfg.remove_particles_by_bounds is not None:
             self.remove_particles_by_bounds(cfg.remove_particles_by_bounds, invert_selection=True)
-            self.physics.compute_vorticities(self.particles)
+            # Particle replacement initializes vorticity as Gamma / volume and
+            # bounds removal compacts that stored field together with every
+            # other particle property.  Reconstructing omega here is redundant
+            # and, more importantly, launches a direct O(N^2) kernel after every
+            # production step.  Large coupled clouds can exceed GPU watchdog
+            # limits even though retention itself is only O(N).
 
     def _apply_filament_refinement(self) -> None:
         cfg = self.filament_refinement_config

@@ -608,6 +608,7 @@ class ContinuousOverlapInjector:
         self._cell_tree = None
         self._cell_centers: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
+        self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
         self._velocity_trace: CachedVelocityTrace | None = None
         self.step = 0
@@ -666,6 +667,24 @@ class ContinuousOverlapInjector:
                         wall,
                     )
 
+        # Native immersed boundaries carry their exact interior geometry on
+        # the same objects that define the FVM marker forcing.  Reuse that
+        # single source of truth for particle exclusion instead of asking a
+        # tutorial to duplicate masks or exposing filesystem paths.
+        ibm = getattr(fvm, "ibm", None)
+        bodies = tuple(getattr(ibm, "bodies", ()))
+        self._solid_bodies = tuple(
+            body for body in bodies if bool(getattr(body, "has_solid_geometry", False))
+        )
+        if self._solid_bodies:
+            self._body_bounds = None
+            if self._cell_centers is not None and len(self._cell_centers):
+                self._lattice_anchor = self._cell_centers[0].copy()
+            logger.info(
+                "[Handoff] exact immersed-solid exclusion enabled for: %s",
+                ", ".join(str(body.name) for body in self._solid_bodies),
+            )
+
         l_buf = self.buffer_length
         logger.info(
             "[Handoff] ready: box x∈[%.2f,%.2f]  h=%.3f  σ=%.2fh  ramp=%.3f  "
@@ -687,6 +706,24 @@ class ContinuousOverlapInjector:
     @property
     def buffer_length(self) -> float:
         return required_buffer_length(self.u_inf, self.dt, self.h)
+
+    def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:
+        """Union of native IBM solids and the legacy fitted-box solid."""
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        inside = np.zeros(len(query), dtype=bool)
+        for body in self._solid_bodies:
+            inside |= np.asarray(
+                body.contains(query, include_boundary=include_boundary), dtype=bool
+            ).reshape(-1)
+        if self._body_bounds is not None:
+            bounds = self._body_bounds
+            lo_body = bounds[[0, 2, 4]]
+            hi_body = bounds[[1, 3, 5]]
+            if include_boundary:
+                inside |= np.all((query >= lo_body) & (query <= hi_body), axis=1)
+            else:
+                inside |= np.all((query > lo_body) & (query < hi_body), axis=1)
+        return inside
 
     # ── inject ────────────────────────────────────────────────────────────────
     def inject(
@@ -725,28 +762,16 @@ class ContinuousOverlapInjector:
             return d < 1.5 * h
 
         def excluded_at_node(grid_pos):
-            if self._body_bounds is None:
-                return np.zeros(len(grid_pos), dtype=bool)
-            b = self._body_bounds
-            lo_body = b[[0, 2, 4]]
-            hi_body = b[[1, 3, 5]]
             # The open interior is solid.  Nodes exactly on the surface may
             # carry a boundary vortex sheet and are therefore retained.
-            return np.all((grid_pos > lo_body) & (grid_pos < hi_body), axis=1)
+            return self._points_in_solid(grid_pos, include_boundary=False)
 
         def velocity_at(points):
             points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
             assert self._velocity_trace is not None
             sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
-            if self._body_bounds is not None:
-                b = self._body_bounds
-                lo_body = b[[0, 2, 4]]
-                hi_body = b[[1, 3, 5]]
-                on_or_inside = np.all(
-                    (points >= lo_body - 1e-12) & (points <= hi_body + 1e-12),
-                    axis=1,
-                )
-                sampled[on_or_inside] = 0.0
+            on_or_inside = self._points_in_solid(points, include_boundary=True)
+            sampled[on_or_inside] = 0.0
             return sampled
 
         def circulation_at_node(grid_pos):

@@ -162,7 +162,20 @@ def deviation_norm_factor(A, b, x0):
         raise ValueError("Linear initial guess must be one- or two-dimensional")
     reference = A @ mean_state
     factor = float(np.linalg.norm(A @ x0 - reference)) + float(np.linalg.norm(b - reference))
-    return max(factor, 1e-30)
+    # A uniform field can be an exact discrete solution up to assembly
+    # round-off. In that limit both terms above are O(eps), and dividing a
+    # verified O(eps) residual by another O(eps) number spuriously reports an
+    # O(1) failure. Keep the deviation-based normalization for resolved
+    # perturbations, but give its degenerate limit a scale-aware round-off
+    # floor. The 1e-12 factor remains far below the 1e-4--1e-6 physical solve
+    # tolerances and cannot hide the small-scale dynamics this normalization
+    # was introduced to protect.
+    algebraic_scale = max(
+        float(np.linalg.norm(b)),
+        float(np.linalg.norm(reference)),
+        1.0,
+    )
+    return max(factor, 1e-12 * algebraic_scale)
 
 
 def openfoam_residual_target(A, b, x0, absolute_tolerance, relative_tolerance=0.0):

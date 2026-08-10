@@ -82,6 +82,30 @@ def test_warm_guess_convergence_uses_deviation_normalization():
     assert error < 0.05, f"small-scale physics still unresolved: {error:.3f}"
 
 
+def test_exact_uniform_warm_guess_is_not_rejected_as_roundoff():
+    """A constant exact state must pass despite an O(eps) assembly residual."""
+    n = 80
+    matrix = diags((-np.ones(n - 1), 4.0 * np.ones(n), -np.ones(n - 1)), (-1, 0, 1)).tocsr()
+    exact = np.ones(n)
+    rhs = matrix @ exact
+    # Reproduce sparse-assembly round-off without introducing resolved physics.
+    rhs[::7] += np.finfo(np.float64).eps
+
+    solution, info = linear_interface.solve_linear_system(
+        matrix,
+        rhs,
+        method="bicgstab",
+        equation_type="momentum",
+        x0=exact,
+        tol=1.0e-4,
+        return_info=True,
+    )
+
+    assert info.converged
+    assert info.final_residual <= 1.0e-4
+    np.testing.assert_allclose(solution, exact, atol=1e-14, rtol=0.0)
+
+
 def test_openfoam_rel_tol_reduces_the_solve_entry_residual():
     """``relTol=0.1`` means a tenfold reduction, not residual ``0.1``."""
     matrix, exact_rhs = _system()

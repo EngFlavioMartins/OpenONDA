@@ -119,6 +119,40 @@ def test_refit_zero_displacement_matches_build_exactly():
     assert rel < 1e-5, f"refit at zero displacement differs by {rel:.2e}"
 
 
+def test_circulation_refit_matches_full_rebuild_exactly():
+    """Fixed-position RK stretching may reuse topology after strengths change."""
+    rng = np.random.default_rng(17)
+    N = 900
+    pos = rng.uniform(-1, 1, (N, 3)).astype(np.float32)
+    circ0 = rng.normal(0, 0.1, (N, 3)).astype(np.float32)
+    circ1 = (circ0 + rng.normal(0, 0.02, (N, 3))).astype(np.float32)
+    rad = np.full(N, 0.12, dtype=np.float32)
+
+    pos_field = ti.Vector.field(3, ti.f32, shape=N)
+    circ0_field = ti.Vector.field(3, ti.f32, shape=N)
+    circ1_field = ti.Vector.field(3, ti.f32, shape=N)
+    rad_field = ti.field(ti.f32, shape=N)
+    pos_field.from_numpy(pos)
+    circ0_field.from_numpy(circ0)
+    circ1_field.from_numpy(circ1)
+    rad_field.from_numpy(rad)
+
+    refitted = _make_tree(N, theta=0.3)
+    refitted.build(pos_field, circ0_field, rad_field, N)
+    sorted_before = refitted.sorted_indices.to_numpy()[:N].copy()
+    refitted.refit_circulation(circ1_field, N)
+    refitted.compute_velocity_gradients_gpu()
+    gradient_refit = refitted.velocity_gradients.to_numpy()[:N].copy()
+
+    rebuilt = _make_tree(N, theta=0.3)
+    rebuilt.build(pos_field, circ1_field, rad_field, N)
+    rebuilt.compute_velocity_gradients_gpu()
+    gradient_rebuild = rebuilt.velocity_gradients.to_numpy()[:N].copy()
+
+    np.testing.assert_array_equal(refitted.sorted_indices.to_numpy()[:N], sorted_before)
+    np.testing.assert_allclose(gradient_refit, gradient_rebuild, rtol=2e-6, atol=2e-6)
+
+
 def test_refit_preserves_topology_fields():
     rng = np.random.default_rng(2)
     N = 512

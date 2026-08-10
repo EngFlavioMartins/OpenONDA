@@ -601,8 +601,11 @@ class FVMVPMCoupler:
         for step in range(1 + start_step, n_steps + 1):
             time_end = step * self.dt
             vpm_time = self._advance_vpm(step, time_end)
+            particle_guard = self._vpm_particle_fingerprint(validate=True)
             donor_state = self._transfer_vpm_to_fvm(*face_geometry)
+            self._assert_vpm_particle_fingerprint(particle_guard, "target evaluation")
             fvm_time = self._advance_fvm(*face_geometry, *donor_state)
+            self._assert_vpm_particle_fingerprint(particle_guard, "FVM subcycling")
             handoff_result, handoff_time = self._transfer_fvm_to_vpm(*face_geometry)
             self._last_handoff_result = handoff_result
             self._record_step(
@@ -616,6 +619,74 @@ class FVMVPMCoupler:
     def _initialize_run_state(self) -> None:
         self._step_transfer_stats: dict[str, float | int] | None = None
         self.coupling_diagnostics = []
+
+    def _vpm_particle_fingerprint(self, *, validate: bool = False) -> tuple[int, str, float]:
+        """Return an exact fingerprint of particle state owned by the VPM.
+
+        Target evaluation and FVM subcycling are read-only with respect to the
+        particle cloud.  Hashing the two authoritative fields at those phase
+        boundaries catches GPU/host-transfer corruption before a damaged cloud
+        can be fed into the conservative handoff and contaminate later steps.
+        """
+        if not self._is_master:
+            return (0, "", 0.0)
+        assert self.vpm is not None
+        count = int(self.vpm.particles.number_of_particles)
+        if count == 0:
+            return (0, hashlib.sha256(b"").hexdigest(), 0.0)
+        positions = np.ascontiguousarray(self.vpm.particles_positions)
+        circulation = np.ascontiguousarray(self.vpm.particles_circulation)
+        if positions.shape != (count, 3) or circulation.shape != (count, 3):
+            raise RuntimeError(
+                "VPM particle readback shape does not match the active particle count: "
+                f"count={count}, positions={positions.shape}, circulation={circulation.shape}"
+            )
+        if validate:
+            radii = np.asarray(self.vpm.particles_radii)
+            volumes = np.asarray(self.vpm.particles_volumes)
+            if radii.shape != (count,) or volumes.shape != (count,):
+                raise RuntimeError(
+                    "VPM radius/volume readback shape does not match the active particle count: "
+                    f"count={count}, radii={radii.shape}, volumes={volumes.shape}"
+                )
+            if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(circulation)):
+                raise RuntimeError(
+                    "VPM particle positions or circulations contain non-finite values"
+                )
+            if (
+                not np.all(np.isfinite(radii))
+                or not np.all(np.isfinite(volumes))
+                or np.any(radii <= 0.0)
+                or np.any(volumes <= 0.0)
+            ):
+                raise RuntimeError("VPM particle radii and volumes must be finite and positive")
+            if not np.any(circulation != 0.0):
+                raise RuntimeError(
+                    "The active VPM cloud has identically zero circulation; "
+                    "a GPU backend reset may have corrupted its fields"
+                )
+        digest = hashlib.sha256()
+        digest.update(positions.tobytes(order="C"))
+        digest.update(circulation.tobytes(order="C"))
+        circulation_l1 = float(np.sum(np.linalg.norm(circulation, axis=1), dtype=np.float64))
+        return (count, digest.hexdigest(), circulation_l1)
+
+    def _assert_vpm_particle_fingerprint(
+        self,
+        expected: tuple[int, str, float],
+        phase: str,
+    ) -> None:
+        """Fail if a nominally read-only coupling phase changed particles."""
+        if not self._is_master:
+            return
+        actual = self._vpm_particle_fingerprint()
+        if actual[:2] != expected[:2]:
+            raise RuntimeError(
+                "VPM particle state changed during read-only "
+                f"{phase}: count {expected[0]} -> {actual[0]}, "
+                f"sum|Gamma| {expected[2]:.6e} -> {actual[2]:.6e}. "
+                "Aborting before the corrupted state reaches the FVM-to-VPM handoff."
+            )
 
     def _prepare_run(self, start_step: int):
         """Validate a run and collect the immutable interface geometry."""
@@ -668,13 +739,58 @@ class FVMVPMCoupler:
         face_areas: np.ndarray,
     ):
         """Update fringe data and construct the next donor boundary trace."""
+        assert self.fringe is not None
         t_fringe = time.perf_counter()
-        self.fringe.update_target()
+        donor_velocity = None
+        if self._is_master:
+            assert self.vpm is not None
+            fringe_points = self.fringe.active_cell_centres
+            n_fringe = len(fringe_points)
+            target_points = np.concatenate((fringe_points, face_centers), axis=0)
+            target_velocity = np.asarray(
+                self.vpm.compute_target_velocities(
+                    target_points,
+                    include_freestream=True,
+                    zone_mask=None,
+                    include_body=True,
+                ),
+                dtype=np.float64,
+            ).reshape(-1, 3)
+            expected_targets = n_fringe + len(face_centers)
+            if target_velocity.shape != (expected_targets, 3):
+                raise RuntimeError(
+                    "VPM target evaluation returned an invalid shape: "
+                    f"expected {(expected_targets, 3)}, got {target_velocity.shape}"
+                )
+            if not np.all(np.isfinite(target_velocity)):
+                raise RuntimeError("VPM target evaluation returned non-finite velocities")
+            freestream_speed = float(np.linalg.norm(self.u_inf))
+            if (
+                expected_targets > 0
+                and freestream_speed > 0.0
+                and float(np.max(np.linalg.norm(target_velocity, axis=1)))
+                <= 1.0e-6 * freestream_speed
+            ):
+                raise RuntimeError(
+                    "VPM target evaluation returned an identically zero field despite a "
+                    "nonzero freestream; aborting before the corrupted donor data reaches the FVM"
+                )
+            self.fringe.update_target(target_velocity[:n_fringe])
+            donor_velocity = target_velocity[n_fringe:]
+        else:
+            # The non-master rank has empty gathered cell geometry, but still
+            # participates in the collective OpenFOAM field push.
+            self.fringe.update_target()
         t_fringe = time.perf_counter() - t_fringe
 
         t_donor = time.perf_counter()
         if self._is_master:
-            u_bc_next = self._donor_velocity(face_centers, face_normals, face_areas)
+            u_bc_next = self._donor_velocity(
+                face_centers,
+                face_normals,
+                face_areas,
+                evaluated_velocity=donor_velocity,
+            )
             if self._u_bc_prev is None:
                 self._u_bc_prev = u_bc_next.copy()
         else:
@@ -727,20 +843,24 @@ class FVMVPMCoupler:
         gradient_global = self._get_velocity_gradient_field_buffer()
         handoff_result = None
         if self._is_master:
-            n_before = self.vpm.particles.number_of_particles
+            assert self.vpm is not None
+            assert self.injector is not None
+            vpm = self.vpm
+            injector = self.injector
+            n_before = vpm.particles.number_of_particles
             sum_before = (
-                float(np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)))
+                float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
                 if n_before > 0
                 else 0.0
             )
-            handoff_result = self.injector.inject(
-                self.vpm,
+            handoff_result = injector.inject(
+                vpm,
                 velocity=velocity_global,
                 velocity_gradient=gradient_global,
             )
-            n_after = self.vpm.particles.number_of_particles
+            n_after = vpm.particles.number_of_particles
             sum_after = (
-                float(np.sum(np.linalg.norm(np.asarray(self.vpm.particles_circulation), axis=1)))
+                float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
                 if n_after > 0
                 else 0.0
             )
@@ -811,7 +931,11 @@ class FVMVPMCoupler:
 
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
             _mpi4py_comm.Barrier()
-        if self.config.backup_period > 0 and step % self.config.backup_period == 0:
+        if (
+            self.config.backend == "fvm"
+            and self.config.backup_period > 0
+            and step % self.config.backup_period == 0
+        ):
             self.save_state(self.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
     def _finalize_run(self) -> None:
@@ -827,20 +951,22 @@ class FVMVPMCoupler:
         face_centers: np.ndarray,
         face_normals: np.ndarray,
         face_areas: np.ndarray,
+        evaluated_velocity: np.ndarray | None = None,
     ) -> np.ndarray:
         """Evaluate the complete VPM field and enforce zero net boundary flux."""
         assert self.vpm is not None
         normals = np.asarray(face_normals, dtype=np.float64).reshape(-1, 3)
         logger.info("     [Donor] particles=%d", self.vpm.particles.number_of_particles)
-        u_donor = np.asarray(
-            self.vpm.compute_target_velocities(
+        if evaluated_velocity is None:
+            evaluated_velocity = self.vpm.compute_target_velocities(
                 face_centers,
                 include_freestream=True,
                 zone_mask=None,
                 include_body=True,
-            ),
-            dtype=np.float64,
-        ).reshape(-1, 3)
+            )
+        u_donor = np.asarray(evaluated_velocity, dtype=np.float64).reshape(-1, 3)
+        if len(u_donor) != len(face_centers):
+            raise ValueError("evaluated donor velocity count does not match boundary faces")
 
         # A uniform normal correction removes the quadrature flux residual.
         areas = np.asarray(face_areas, dtype=np.float64).ravel()

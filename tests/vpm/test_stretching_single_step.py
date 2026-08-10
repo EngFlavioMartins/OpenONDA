@@ -194,6 +194,67 @@ def test_stretching_rate_matches_velocity_gradient_form(
     )
 
 
+def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend):
+    """Target batching must preserve each particle's source accumulation order."""
+    solver = _solver_with_particles(
+        solver_for_backend,
+        "GAUSSIAN",
+        positions=[
+            [0.0, 0.0, 0.0],
+            [0.7, 0.2, -0.1],
+            [-0.2, 0.6, 0.3],
+            [0.1, -0.4, 0.8],
+        ],
+        circulations=[
+            [0.8, -0.2, 0.4],
+            [-0.3, 0.9, 0.2],
+            [0.1, -0.5, 0.7],
+            [0.4, 0.2, -0.6],
+        ],
+    )
+    p = solver.physics
+    particles = solver.particles
+    n_particles = len(particles)
+    p._resize_temp_fields(n_particles)
+    p._zero_temp_fields(n_particles)
+    p.compute_stretching_rate_kernel(
+        particles.position,
+        particles.circulation,
+        particles.radius,
+        p.dstr_dt_temp,
+        1,
+        n_particles,
+    )
+    p.compute_stretching_rate_batch_kernel(
+        particles.position,
+        particles.circulation,
+        particles.radius,
+        p.dstr_dt_temp2,
+        1,
+        0,
+        2,
+        n_particles,
+    )
+    p.compute_stretching_rate_batch_kernel(
+        particles.position,
+        particles.circulation,
+        particles.radius,
+        p.dstr_dt_temp2,
+        1,
+        2,
+        2,
+        n_particles,
+    )
+
+    reference = p.dstr_dt_temp.to_numpy()[:n_particles]
+    batched = p.dstr_dt_temp2.to_numpy()[:n_particles]
+    np.testing.assert_array_equal(
+        batched,
+        reference,
+        err_msg=f"{backend}: bounded stretching dispatch changed the direct rate",
+    )
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )

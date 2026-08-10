@@ -71,16 +71,32 @@ class FringeFields:
             int(np.count_nonzero(self.relaxation)),
         )
 
-    def update_target(self) -> None:
+    @property
+    def active_cell_centres(self) -> np.ndarray:
+        """Cell centres that require a VPM target evaluation."""
+        return self.cell_centres[self.relaxation > 0.0]
+
+    def update_target(self, active_velocity: np.ndarray | None = None) -> None:
+        """Refresh the fringe target, optionally from a shared target solve.
+
+        The coupler normally evaluates active fringe cells and donor faces in
+        one treecode call, then passes the fringe slice here.  Keeping the
+        fallback preserves the standalone helper contract.
+        """
         active = self.relaxation > 0.0
         target = np.tile(self.cfg.U_inf, (len(self.cell_centres), 1)).astype(float)
         if active.any():
-            target[active] = self.vpm.compute_target_velocities(
-                self.cell_centres[active],
-                include_freestream=True,
-                zone_mask=None,
-                include_body=True,
-            )
+            if active_velocity is None:
+                active_velocity = self.vpm.compute_target_velocities(
+                    self.cell_centres[active],
+                    include_freestream=True,
+                    zone_mask=None,
+                    include_body=True,
+                )
+            values = np.asarray(active_velocity, dtype=float).reshape(-1, 3)
+            if len(values) != int(np.count_nonzero(active)):
+                raise ValueError("active fringe velocity count does not match active cells")
+            target[active] = values
         self._previous = target if self._next is None else self._next
         self._next = target
         self._push(target)

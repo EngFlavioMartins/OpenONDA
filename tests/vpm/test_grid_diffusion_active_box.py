@@ -171,6 +171,62 @@ def test_bounded_scalar_grid_upload(diffusion):
 
 
 @pytest.mark.unit
+def test_batched_m4_scatter_matches_single_dispatch(diffusion):
+    """Splitting particle deposits must leave the accumulated grid unchanged."""
+    from source.solvers.VPM.particles.container import Particles
+
+    position, circulation = _cloud(n=37, seed=44)
+    particles = Particles(max_particles=64)
+    particles.add_vortex_particles(
+        position=position,
+        velocity=np.zeros_like(position),
+        circulation=circulation,
+        radius=np.full(len(position), H, dtype=np.float32),
+        volume=np.full(len(position), H**3, dtype=np.float32),
+        viscosity=np.full(len(position), 1.0e-3, dtype=np.float32),
+    )
+    grid_min, (nx, ny, nz) = diffusion._lattice_aligned_bounds(position, H, 3.0)
+    nx, ny, nz = diffusion._ensure_grid_capacity(nx, ny, nz)
+    gmin = np.asarray(grid_min, dtype=float)
+
+    diffusion._zero_grid_kernel(diffusion._current_grid, nx, ny, nz)
+    diffusion._m4_scatter_gpu_kernel(
+        particles.position,
+        particles.circulation,
+        diffusion._current_grid,
+        *gmin,
+        H,
+        nx,
+        ny,
+        nz,
+        0,
+        len(position),
+    )
+    ti.sync()
+    single = diffusion._download_active_vec_grid(diffusion._current_grid, nx, ny, nz)
+
+    diffusion._zero_grid_kernel(diffusion._current_grid, nx, ny, nz)
+    for start in range(0, len(position), 4):
+        count = min(4, len(position) - start)
+        diffusion._m4_scatter_gpu_kernel(
+            particles.position,
+            particles.circulation,
+            diffusion._current_grid,
+            *gmin,
+            H,
+            nx,
+            ny,
+            nz,
+            start,
+            count,
+        )
+        ti.sync()
+    batched = diffusion._download_active_vec_grid(diffusion._current_grid, nx, ny, nz)
+
+    np.testing.assert_array_equal(batched, single)
+
+
+@pytest.mark.unit
 def test_grid_diffusion_has_no_whole_allocation_transfers():
     """Guard the defect itself: no full-field to_numpy/from_numpy in the module."""
     import inspect

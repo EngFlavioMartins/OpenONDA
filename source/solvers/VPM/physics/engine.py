@@ -20,6 +20,8 @@ from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
 from .diffusion import _GridDiffusionMixin
 
+_DIRECT_STRETCHING_BATCH_SIZE = 4096
+
 
 @ti.data_oriented
 class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
@@ -543,7 +545,7 @@ class _StretchingHandler:
         else:
             raise ValueError(f"Unknown scheme: {scheme}")
 
-    def _rate(self, pos, strg, rad, out, mode_int, N):
+    def _rate(self, pos, strg, rad, out, mode_int, N, *, reuse_tree: bool = False):
         """Stretching rate dΓ/dt at (pos, strg): direct pairwise or treecode.
 
         Direct: the O(N²) pairwise kernel.  Treecode: build the LBVH at
@@ -554,11 +556,24 @@ class _StretchingHandler:
         p = self._parent
         if self._use_treecode:
             tree = p._get_or_create_treecode(N, self._treecode_theta)
-            tree.build(pos, strg, rad, N)
+            if reuse_tree and p.reuse_tree_topology:
+                tree.refit_circulation(strg, N)
+            else:
+                tree.build(pos, strg, rad, N)
             tree.compute_velocity_gradients_gpu()
             p.gradient_contraction_rate_kernel(tree.velocity_gradients, strg, out, mode_int, N)
         else:
-            p.compute_stretching_rate_kernel(pos, strg, rad, out, mode_int, N)
+            # A single N-target direct dispatch becomes a multi-second Vulkan
+            # kernel for coupled clouds.  Bound each submission and drain it so
+            # the driver cannot overlap successive O(N²) RK stages or trip its
+            # watchdog.  Target batches are independent and preserve the exact
+            # per-target source accumulation order.
+            for start in range(0, N, _DIRECT_STRETCHING_BATCH_SIZE):
+                count = min(_DIRECT_STRETCHING_BATCH_SIZE, N - start)
+                p.compute_stretching_rate_batch_kernel(
+                    pos, strg, rad, out, mode_int, start, count, N
+                )
+                ti.sync()
 
     def _stretching_rk2(self, particles, dt, mode_int, N):
         """RK2 stretching."""
@@ -567,7 +582,19 @@ class _StretchingHandler:
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
+        # The next rate reads ``str_temp``.  Keep that RK dependency explicit
+        # across backends; on Vulkan it also separates two expensive direct
+        # stretching dispatch sequences.
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp,
+            particles.radius,
+            p.dstr_dt_temp2,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
 
     def _stretching_rk3(self, particles, dt, mode_int, N):
@@ -577,12 +604,30 @@ class _StretchingHandler:
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
-        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp,
+            particles.radius,
+            p.dstr_dt_temp2,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.linear_combination_kernel(
             p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
-        self._rate(particles.position, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N)
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp2,
+            particles.radius,
+            p.dstr_dt_temp3,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.step_rk3_ssp_combine_kernel(
             particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
         )
@@ -594,11 +639,38 @@ class _StretchingHandler:
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
-        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp,
+            particles.radius,
+            p.dstr_dt_temp2,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
-        self._rate(particles.position, p.str_temp, particles.radius, p.dstr_dt_temp3, mode_int, N)
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp,
+            particles.radius,
+            p.dstr_dt_temp3,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
-        self._rate(particles.position, p.str_temp, particles.radius, p.vel_temp, mode_int, N)
+        ti.sync()
+        self._rate(
+            particles.position,
+            p.str_temp,
+            particles.radius,
+            p.vel_temp,
+            mode_int,
+            N,
+            reuse_tree=True,
+        )
         p.step_rk4_combine_kernel(
             particles.circulation,
             p.dstr_dt_temp,
