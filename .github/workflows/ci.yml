@@ -84,7 +84,7 @@ jobs:
       - run: python -m pip install -e ".[test]"
       - run: >-
           pytest tests/fvm
-          -m "(unit or verification) and not slow and not mpi and not openfoam"
+          -m "(unit or verification) and not slow and not mpi"
           -p no:cacheprovider
           --junitxml=fvm-fast.xml
       - uses: actions/upload-artifact@v4
@@ -105,7 +105,7 @@ jobs:
       - run: python -m pip install -e ".[test]"
       - run: >-
           pytest tests/coupler
-          -m "not mpi and not openfoam"
+          -m "not mpi"
           -p no:cacheprovider
           --junitxml=coupler.xml
       - uses: actions/upload-artifact@v4

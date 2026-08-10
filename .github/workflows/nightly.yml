@@ -38,7 +38,7 @@ jobs:
         continue-on-error: true
         run: >-
           python -m pytest tests/fvm
-          -m "not mpi and not openfoam"
+          -m "not mpi"
           --junitxml=fvm-full.xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -91,7 +91,7 @@ jobs:
       - name: Non-hardware FVM + coupler evidence on the clean install
         run: >-
           conda run -n OpenONDA-clean pytest tests/fvm tests/coupler
-          -m "not mpi and not openfoam"
+          -m "not mpi"
           --junitxml=clean-install.xml
       - name: Native FVM-VPM tutorials from isolated directories
         run: conda run -n OpenONDA-clean scripts/validate_native_tutorials.sh

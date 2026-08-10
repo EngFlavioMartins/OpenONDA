@@ -48,9 +48,9 @@ ruff format source tests         # formatting
 
 ```bash
 # Fast physics-correctness gate (what CI blocks on):
-pytest tests/fvm -m "(unit or verification) and not slow and not mpi and not openfoam"
+pytest tests/fvm -m "(unit or verification) and not slow and not mpi"
 # Coupler:
-pytest tests/coupler -m "not mpi and not openfoam"
+pytest tests/coupler -m "not mpi"
 ```
 
 Slow validation physics and MPI/PETSc runs are exercised nightly, not on every

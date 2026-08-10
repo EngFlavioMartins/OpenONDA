@@ -200,7 +200,6 @@ _INTEGRATION_MODULES = {
     "test_bdf2_integration.py",
     "test_empty_bc.py",
     "test_ibm.py",
-    "test_openfoam_force_reference.py",
     "test_pimple_nonorthogonal.py",
     "test_restart_and_diagnostics.py",
     "test_validation_abc_flow.py",

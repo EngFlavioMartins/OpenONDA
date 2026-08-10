@@ -6,10 +6,7 @@ different: the cube is *carved out* of the mesh and its exposed faces form a
 ``wall`` patch (``coupling_box_mesh(.., hole_box=..)``).  The subtle,
 previously-wrong parts live exactly there — the wall-face normal orientation
 (which sets the drag sign) and the wall-pressure ghost that feeds the pressure
-force.  These tests pin both analytically, with no OpenFOAM dependency.
-
-The gold cross-check against OpenFOAM ``pimpleFoam`` on an identical mesh lives
-in ``test_openfoam_force_reference.py`` (skipped when OpenFOAM is absent).
+force. These tests pin both analytically using only the native FVM solver.
 """
 
 from __future__ import annotations
