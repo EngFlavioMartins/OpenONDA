@@ -188,7 +188,6 @@ VPM_SETUP = VPMSetup(
 )
 
 COUPLER_SETUP = CouplerSetup(
-    backend="fvm",
     u_inf=list(U_INF),
     wall_patch_name=None,
     h=SPACING,

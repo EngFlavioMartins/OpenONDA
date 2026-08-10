@@ -387,8 +387,8 @@ class Solver:
             "flow_time": [],
             "vpm_total_circ_vec": [],
             "vpm_total_circ_mag": [],
-            "ofw_total_circ_vec": [],
-            "ofw_total_circ_mag": [],
+            "fvm_total_circ_vec": [],
+            "fvm_total_circ_mag": [],
             "interp_total_circ_vec": [],
             "interp_total_circ_mag": [],
             "centroid": [],
@@ -1533,13 +1533,13 @@ class Solver:
                          Can be reshaped to (N, 3, 3) for tensor operations
 
         Example:
-              >>> face_centers = ofw.get_boundary_face_center_coordinates("inlet")
+              >>> face_centers = fvm.get_boundary_face_center_coordinates("inlet")
               >>> gradU_flat = vpm_solver.compute_target_velocity_gradients(face_centers)
               >>> gradU = gradU_flat.reshape(-1, 3, 3)  # Shape: (N, 3, 3)
 
         Notes:
               - Direct kernel evaluation (no finite differences)
-              - Useful for passing velocity gradients to OpenFOAM
+              - Useful for passing velocity gradients to an Eulerian solver
               - Implementation: Taichi kernel in physics module
         """
         return self.physics.compute_target_velocity_gradients(self.particles, grid_positions)

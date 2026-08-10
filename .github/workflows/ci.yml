@@ -1,10 +1,5 @@
 name: CI
 
-# Fast, blocking gate for every pull request and every push to the mainline
-# branches. Pure-pip installs with pip caching keep this in the low-minutes
-# range so it is worth reading. The heavy conda / PETSc-MPI / install-script
-# evidence lives in nightly.yml, off the pull-request critical path.
-
 on:
   pull_request:
   push:
@@ -12,7 +7,6 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Cancel superseded runs on the same ref so pushes don't pile up.
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -20,33 +14,75 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint & format (ruff)
+  quality:
+    name: Lint, format, types, and package metadata
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install ruff==0.9.10
-      - name: ruff check
-        run: ruff check .
-      - name: ruff format --check
-        run: ruff format --check .
+      - run: python -m pip install ".[dev]"
+      - run: ruff check source tests openonda
+      - run: ruff format --check source tests openonda
+      - name: Pyrefly report (existing baseline; do not grow it)
+        continue-on-error: true
+        run: pyrefly check
+      - run: python -m build
+      - run: twine check dist/*
+
+  installed-wheel:
+    name: Wheel import (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: macos-14, python: "3.11"}
+          - {os: macos-14, python: "3.13"}
+          - {os: macos-15-intel, python: "3.11"}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install build
+      - run: python -m build --wheel
+      - name: Install wheel in an isolated environment
+        run: |
+          python -m venv "$RUNNER_TEMP/openonda-wheel"
+          "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip install dist/*.whl
+      - name: Import outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$RUNNER_TEMP/openonda-wheel/bin/python" - <<'PY'
+          import pathlib
+          import openonda
+          import openonda.coupler
+          import openonda.fvm
+          import openonda.vpm
+
+          package = pathlib.Path(openonda.__file__).resolve()
+          assert "site-packages" in str(package), package
+          print(openonda.__version__, package)
+          PY
+          "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
 
   fvm-fast:
-    name: FVM correctness (unit + verification)
+    name: FVM correctness
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e ".[fvm-test]"
-      - name: Fast physics-correctness suite
-        run: >-
+      - run: python -m pip install -e ".[test]"
+      - run: >-
           pytest tests/fvm
           -m "(unit or verification) and not slow and not mpi and not openfoam"
           -p no:cacheprovider
@@ -61,14 +97,13 @@ jobs:
     name: FVM↔VPM coupler
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e ".[fvm-test]"
-      - name: Coupler suite
-        run: >-
+      - run: python -m pip install -e ".[test]"
+      - run: >-
           pytest tests/coupler
           -m "not mpi and not openfoam"
           -p no:cacheprovider
@@ -80,18 +115,16 @@ jobs:
           path: coupler.xml
 
   vpm-smoke:
-    name: VPM import + kernel smoke (CPU)
+    name: VPM kernel smoke (CPU)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e "." taichi==1.7.3
-      - name: Taichi CPU init + kernel math
-        run: |
-          python -c "import taichi as ti; ti.init(arch=ti.cpu)"
-          pytest tests/vpm/test_kernels_math.py tests/vpm/test_biot_savart.py \
-            -m "not gpu and not slow" \
-            -p no:cacheprovider
+      - run: python -m pip install -e ".[test]"
+      - run: >-
+          pytest tests/vpm/test_kernels_math.py tests/vpm/test_biot_savart.py
+          -m "not gpu and not slow"
+          -p no:cacheprovider

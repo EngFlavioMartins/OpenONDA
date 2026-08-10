@@ -9,7 +9,6 @@ import logging
 import os
 from pathlib import Path
 import shutil
-import signal
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -27,11 +26,9 @@ from source.coupler.config.types import CouplerSetup
 from source.coupler.core.helpers.continuous_overlap import ContinuousOverlapInjector
 from source.coupler.core.helpers.fvm_fringe import FringeFields
 from source.coupler.core.helpers.output_redirector import OutputRedirector
-from source.coupler.core.helpers.setup import SetupHandler
 
 if TYPE_CHECKING:
-    # OFW is a Linux/OpenFOAM extension and must remain a type-only import.
-    from source.solvers.OFW.fvm_solver import fvm_solver
+    from source.solvers.FVM import Solver as FVM_Solver
     from source.solvers.VPM import Solver as VPM_Solver
 
 logger = logging.getLogger("coupler")
@@ -68,18 +65,6 @@ def _vpm_solver_info(vpm_solver) -> str:
     return Logging.solver_info(vpm_solver)
 
 
-class _DisableSIGFPE:
-    """Context manager that disables OpenFOAM's SIGFPE handler."""
-
-    def __enter__(self):
-        self._old_handler = signal.signal(signal.SIGFPE, signal.SIG_IGN)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        signal.signal(signal.SIGFPE, self._old_handler)
-        return False
-
-
 class FVMVPMCoupler:
     """
     FVM-VPM coupler: the four-step overset loop with fringe relaxation.
@@ -100,7 +85,6 @@ class FVMVPMCoupler:
             )
         self.coupler_setup = coupler_setup
         self.config = coupler_setup
-        self._backend = coupler_setup.backend
         self.case_dir = Path(coupler_setup.case_dir).expanduser().absolute()
 
         # Injected sub-solvers.  The VPM may be None on non-master ranks.
@@ -119,21 +103,12 @@ class FVMVPMCoupler:
             self.vpm_redirector = OutputRedirector(
                 logfile=str(self.solution_dir / "vpm.log"), append=True
             )
-            if self._backend == "fvm":
-                # The native solver owns solution/fvm.log through its rank-aware
-                # logger. Redirecting stdout here would duplicate every line.
-                self.ofw_redirector = OutputRedirector()
-            else:
-                self.ofw_redirector = OutputRedirector(
-                    logfile=str(self.solution_dir / "ofw.log"), append=True
-                )
         else:
             self.vpm_redirector = OutputRedirector()  # no-op
-            self.ofw_redirector = OutputRedirector()  # no-op
 
         # Solvers (built in initialize())
         self.vpm: VPM_Solver | None = None
-        self.ofw: fvm_solver | None = None
+        self.fvm: FVM_Solver | None = None
         self.injector: ContinuousOverlapInjector | None = None
         self.fringe = None
         self._u_bc_prev: np.ndarray | None = None
@@ -147,10 +122,9 @@ class FVMVPMCoupler:
         self.coupling_diagnostics: list[dict] = []
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
-        # The FVM sub-step is OWNED by the injected FVM solver (native backend:
-        # FVMSetup.time.delta_t); ``coupler_setup.dt`` is required only for
-        # the case-writing OFW backend and is cross-checked otherwise.  The
-        # authoritative values are resolved in initialize().
+        # The FVM sub-step is owned by the injected FVM solver
+        # (FVMSetup.time.delta_t); optional CouplerSetup values are
+        # cross-checks. The authoritative values are resolved in initialize().
         self.dt_fvm = None if coupler_setup.dt is None else float(coupler_setup.dt)
         self.t_end = None if coupler_setup.t_end is None else float(coupler_setup.t_end)
         self.period_multiplier = 1
@@ -254,43 +228,22 @@ class FVMVPMCoupler:
         vpm_solver=None,
         restart: bool = False,
     ) -> None:
-        """Write the FVM case dictionaries from ``coupler_setup`` (deltaT,
-        nu, coupling-patch BC type, initial field) BEFORE the FVM solver is
-        built in injection mode.  Idempotent; master-rank only (guards inside).
+        """Prepare the native coupled solution directory and restart guard.
 
-        If ``vpm_solver`` is provided on the master rank, the write cadence is
-        derived from the VPM/FVM time-step ratio before the FVM wrapper reads
-        controlDict.  initialize() recomputes the same sub-cycle count after
-        both solvers are attached.
-
-        With ``coupler_setup.backend == "fvm"`` (native Python FVM) there is
-        no OpenFOAM case to prepare: the backend is configured
-        programmatically (see ``helpers/fvm_backend.build_fvm_backend``), so
-        this only creates the ``solution/`` directory."""
+        The native solver is configured programmatically before it is injected;
+        this helper remains as the common all-ranks pre-construction hook used
+        by tutorials and applications.
+        """
         if _world_rank() != 0:
             return
-        if coupler_setup.backend == "fvm":
-            solution = Path(coupler_setup.case_dir).absolute() / "solution"
-            solution.mkdir(parents=True, exist_ok=True)
-            checkpoint = solution / CHECKPOINT_DIRECTORY
-            if restart and not (checkpoint / "manifest.json").is_file():
-                raise FileNotFoundError(
-                    "Native FVM restart requested, but no coupled checkpoint exists at "
-                    f"{solution / CHECKPOINT_DIRECTORY}"
-                )
-            return
-        coupler_setup.require_case_fields()
-        period_multiplier = 1
-        if vpm_solver is not None:
-            vpm_dt = FVMVPMCoupler._get_vpm_time_step(vpm_solver)
-            period_multiplier = FVMVPMCoupler._derive_period_multiplier(
-                vpm_dt, float(coupler_setup.dt)
+        solution = Path(coupler_setup.case_dir).absolute() / "solution"
+        solution.mkdir(parents=True, exist_ok=True)
+        checkpoint = solution / CHECKPOINT_DIRECTORY
+        if restart and not (checkpoint / "manifest.json").is_file():
+            raise FileNotFoundError(
+                "Native FVM restart requested, but no coupled checkpoint exists at "
+                f"{solution / CHECKPOINT_DIRECTORY}"
             )
-        SetupHandler(coupler_setup).prepare_directories(
-            period_multiplier,
-            float(coupler_setup.dt),
-            restart=restart,
-        )
 
     def _configure_logging(self) -> None:
         """Send diagnostics to this case's log and, by default, the console."""
@@ -379,13 +332,15 @@ class FVMVPMCoupler:
         min/max of the face centroids reproduce the box bounds to round-off.
         Collective (all ranks) — the face-geometry getter gathers globally.
         """
+        assert self.fvm is not None
         fc = np.asarray(
-            self.ofw.get_boundary_face_center_coordinates(self.config.patch_name),
+            self.fvm.get_boundary_face_center_coordinates(self.config.patch_name),
             dtype=np.float64,
         ).reshape(-1, 3)
         box = None
         error = None
-        if self._is_master:
+        collective = _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1
+        if self._is_master or not collective:
             if fc.shape[0] == 0:
                 error = (
                     f"Coupling patch {self.config.patch_name!r} has no faces on the "
@@ -402,7 +357,7 @@ class FVMVPMCoupler:
                         fc[:, 2].max(),
                     ]
                 )
-        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+        if collective:
             error, box = _mpi4py_comm.bcast((error, box) if self._is_master else None, root=0)
         if error is not None:
             raise ValueError(error)
@@ -412,61 +367,53 @@ class FVMVPMCoupler:
         """Resolve dt / t_end / nu / fvm_box between the coupling setup and
         the injected Eulerian solver.
 
-        Native ``fvm`` backend: the injected solver's :class:`FVMSetup` OWNS
-        these values.  CouplerSetup entries are optional cross-checks — a set
+        The injected solver's :class:`FVMSetup` owns these values.
+        CouplerSetup entries are optional cross-checks — a set
         value that contradicts the solver raises (nothing is silently
         overwritten), an unset one is filled from the solver so downstream
         coupling components keep a single consistent view.
-
-        OFW backend: the OpenFOAM case was written from CouplerSetup
-        (``prepare_case``), so the setup remains the source and the runtime
-        setters stamp the wrapper exactly as the case dictionaries say.
         """
         cfg = self.config
-        if self._backend == "fvm":
-            fvm_cfg = self.ofw.config
-            owned = {
-                "dt": float(fvm_cfg.time.delta_t),
-                "t_end": float(fvm_cfg.time.end_time),
-                "nu": float(fvm_cfg.transport.nu),
-                "rho": float(fvm_cfg.transport.density),
-            }
-            for name, mine in (("dt", self.dt_fvm), ("t_end", self.t_end), ("nu", cfg.nu)):
-                theirs = owned[name]
-                if mine is not None and abs(float(mine) - theirs) > 1e-12 * max(abs(theirs), 1.0):
-                    raise ValueError(
-                        f"CouplerSetup.{name}={mine!r} contradicts the injected FVM "
-                        f"solver's {name}={theirs!r}. The FVM solver owns this value; "
-                        "leave the CouplerSetup field unset (None)."
-                    )
-            self.dt_fvm = owned["dt"]
-            self.t_end = owned["t_end"]
-            cfg.dt = owned["dt"]
-            cfg.t_end = owned["t_end"]
-            cfg.nu = owned["nu"]
-            cfg.rho = owned["rho"]
-            box = self._derive_fvm_box()
-            if cfg.fvm_box is not None and not np.allclose(
-                np.asarray(cfg.fvm_box, dtype=np.float64), box, atol=1e-9
-            ):
+        assert self.fvm is not None
+        fvm_cfg = self.fvm.config
+        owned = {
+            "dt": float(fvm_cfg.time.delta_t),
+            "t_end": float(fvm_cfg.time.end_time),
+            "nu": float(fvm_cfg.transport.nu),
+            "rho": float(fvm_cfg.transport.density),
+        }
+        for name, mine in (("dt", self.dt_fvm), ("t_end", self.t_end), ("nu", cfg.nu)):
+            theirs = owned[name]
+            if mine is not None and abs(float(mine) - theirs) > 1e-12 * max(abs(theirs), 1.0):
                 raise ValueError(
-                    f"CouplerSetup.fvm_box={tuple(cfg.fvm_box)} contradicts the "
-                    f"injected solver's coupling-patch bounds {tuple(box)}. Leave "
-                    "fvm_box unset (None); it is derived from the mesh."
+                    f"CouplerSetup.{name}={mine!r} contradicts the injected FVM "
+                    f"solver's {name}={theirs!r}. The FVM solver owns this value; "
+                    "leave the CouplerSetup field unset (None)."
                 )
-            if cfg.fvm_box is None:
-                cfg.fvm_box = tuple(float(v) for v in box)
-        else:
-            cfg.require_case_fields(("nu", "dt", "t_end", "fvm_box"))
-            self.ofw.set_time_step(self.dt_fvm)
-            self.ofw.set_kinematic_viscosity(cfg.nu)
+        self.dt_fvm = owned["dt"]
+        self.t_end = owned["t_end"]
+        cfg.dt = owned["dt"]
+        cfg.t_end = owned["t_end"]
+        cfg.nu = owned["nu"]
+        cfg.rho = owned["rho"]
+        box = self._derive_fvm_box()
+        if cfg.fvm_box is not None and not np.allclose(
+            np.asarray(cfg.fvm_box, dtype=np.float64), box, atol=1e-9
+        ):
+            raise ValueError(
+                f"CouplerSetup.fvm_box={tuple(cfg.fvm_box)} contradicts the "
+                f"injected solver's coupling-patch bounds {tuple(box)}. Leave "
+                "fvm_box unset (None); it is derived from the mesh."
+            )
+        if cfg.fvm_box is None:
+            cfg.fvm_box = tuple(float(v) for v in box)
 
     def initialize(self) -> None:
         """Adopt the injected solvers, derive sub-cycling, and build coupling
         components.
 
-        The injected FVM solver's configuration owns the FVM step (native
-        backend); the injected VPM solver's ``time_step_size`` configures the
+        The injected FVM solver's configuration owns the FVM step; the
+        injected VPM solver's ``time_step_size`` configures the
         coupling/VPM step.  After both are known, the coupler derives
         ``period_multiplier = round(dt_vpm / dt_fvm)`` internally.
 
@@ -479,9 +426,8 @@ class FVMVPMCoupler:
 
         # Adopt the injected FVM (all ranks), built by the caller.  Ownership:
         # the FVM solver owns its physics/time configuration; the coupler
-        # resolves the values it needs from it (native backend) or stamps the
-        # wrapper from the case-writing setup (OFW backend).
-        self.ofw = self._injected_fvm
+        # resolves the values it needs from that authoritative configuration.
+        self.fvm = self._injected_fvm
 
         # Serial-backend guard: a serial Eulerian backend under mpirun would
         # leave every non-master rank solving its own detached copy (or hang
@@ -491,7 +437,7 @@ class FVMVPMCoupler:
             world_size = int(_mpi4py_comm.Get_size())
         else:
             world_size = int(os.environ.get("OMPI_COMM_WORLD_SIZE", "1"))
-        if world_size > 1 and int(self.ofw.n_procs()) == 1:
+        if world_size > 1 and int(self.fvm.n_procs()) == 1:
             raise RuntimeError(
                 f"Launched under MPI (world size {world_size}) but the injected "
                 "Eulerian backend is serial (n_procs() == 1). Configure a parallel "
@@ -531,16 +477,10 @@ class FVMVPMCoupler:
                 self.dt_vpm,
                 self.period_multiplier,
             )
-            if self._backend == "ofw":
-                # The native FVM backend has no controlDict; its write cadence
-                # is configured programmatically (helpers/fvm_backend.py).
-                SetupHandler(cfg).update_controldict(
-                    self.period_multiplier, self.dt_fvm, restart=False
-                )
 
         # Build injector
         self.injector = ContinuousOverlapInjector(self)
-        self.injector.setup(self.ofw)
+        self.injector.setup(self.fvm)
         physics = getattr(self.vpm, "physics", None)
         if (
             self._is_master
@@ -565,7 +505,7 @@ class FVMVPMCoupler:
                 physics.configure_grid_lattice_anchor(anchor, self.config.h)
                 logger.info("[Init] VPM diffusion lattice aligned with the handoff lattice.")
 
-        self.fringe = FringeFields(cfg, self.vpm, self.ofw, coupling_dt=self.dt_vpm)
+        self.fringe = FringeFields(cfg, self.vpm, self.fvm, coupling_dt=self.dt_vpm)
 
         if self._is_master:
             logger.info("[Init] Impulsive start: zero VPM particles.")
@@ -696,7 +636,7 @@ class FVMVPMCoupler:
                 "first, or use coupler.run() which does both."
             )
         assert self._is_master == (self.vpm is not None)
-        assert self.ofw is not None
+        assert self.fvm is not None
 
         n_steps = self._derive_coupling_step_count(self.t_end, self.dt)
         patch = self.config.patch_name
@@ -706,12 +646,12 @@ class FVMVPMCoupler:
             logger.info("=" * 60)
 
         face_centers = np.asarray(
-            self.ofw.get_boundary_face_center_coordinates(patch), dtype=np.float64
+            self.fvm.get_boundary_face_center_coordinates(patch), dtype=np.float64
         ).reshape(-1, 3)
         face_normals = np.asarray(
-            self.ofw.get_boundary_face_normals(patch), dtype=np.float64
+            self.fvm.get_boundary_face_normals(patch), dtype=np.float64
         ).reshape(-1, 3)
-        face_areas = np.asarray(self.ofw.get_boundary_face_areas(patch), dtype=np.float64).ravel()
+        face_areas = np.asarray(self.fvm.get_boundary_face_areas(patch), dtype=np.float64).ravel()
         self._face_centers = face_centers
         self._n_steps = n_steps
         return (face_centers, face_normals, face_areas), n_steps
@@ -725,7 +665,7 @@ class FVMVPMCoupler:
             print("─" * 60)
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
 
-            with _DisableSIGFPE(), self.vpm_redirector:
+            with self.vpm_redirector:
                 self.vpm.update_state()
             import taichi as ti
 
@@ -837,7 +777,7 @@ class FVMVPMCoupler:
     ):
         """Fetch the FVM velocity trace and transfer it to the particle lattice."""
         t_handoff = time.perf_counter()
-        if not callable(getattr(self.ofw, "get_velocity_gradient_field", None)):
+        if not callable(getattr(self.fvm, "get_velocity_gradient_field", None)):
             raise RuntimeError("FVM handoff requires the velocity-gradient API")
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()
@@ -931,11 +871,7 @@ class FVMVPMCoupler:
 
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
             _mpi4py_comm.Barrier()
-        if (
-            self.config.backend == "fvm"
-            and self.config.backup_period > 0
-            and step % self.config.backup_period == 0
-        ):
+        if self.config.backup_period > 0 and step % self.config.backup_period == 0:
             self.save_state(self.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
     def _finalize_run(self) -> None:
@@ -1107,23 +1043,23 @@ class FVMVPMCoupler:
         }
 
     def _get_velocity_field_buffer(self) -> np.ndarray:
-        assert self.ofw is not None
+        assert self.fvm is not None
         if self._velocity_global_buffer is None:
             self._velocity_global_buffer = np.ascontiguousarray(
-                self.ofw.get_velocity_field(), dtype=np.float64
+                self.fvm.get_velocity_field(), dtype=np.float64
             ).reshape(-1, 3)
         else:
-            self.ofw.get_velocity_field_into(self._velocity_global_buffer)
+            self.fvm.get_velocity_field_into(self._velocity_global_buffer)
         return self._velocity_global_buffer
 
     def _get_velocity_gradient_field_buffer(self) -> np.ndarray:
-        assert self.ofw is not None
+        assert self.fvm is not None
         if self._velocity_gradient_global_buffer is None:
             self._velocity_gradient_global_buffer = np.ascontiguousarray(
-                self.ofw.get_velocity_gradient_field(), dtype=np.float64
+                self.fvm.get_velocity_gradient_field(), dtype=np.float64
             ).reshape(-1, 3, 3)
         else:
-            self.ofw.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
+            self.fvm.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
         return self._velocity_gradient_global_buffer
 
     def _fvm_step(
@@ -1132,15 +1068,14 @@ class FVMVPMCoupler:
         u_target: np.ndarray,
     ) -> None:
         """Apply the Dirichlet velocity trace and fixed-flux pressure solve."""
-        assert self.ofw is not None
+        assert self.fvm is not None
         u_inf_mag = float(np.linalg.norm(self.config.u_inf)) + 1e-30
-        self.ofw.set_dirichlet_velocity_boundary_condition_vec(
+        self.fvm.set_dirichlet_velocity_boundary_condition_vec(
             np.ascontiguousarray(u_target, dtype=np.float64), patch
         )
 
-        with self.ofw_redirector:
-            self.ofw.solve_pimple()
-            self.ofw.advance_time()
+        self.fvm.solve_pimple()
+        self.fvm.advance_time()
 
         if u_target.shape[0] > 0:
             logger.info(
@@ -1149,7 +1084,7 @@ class FVMVPMCoupler:
                 u_target[:, 0].min() / u_inf_mag,
                 u_target[:, 0].max() / u_inf_mag,
             )
-        yplus = getattr(self.ofw, "last_yplus", None)
+        yplus = getattr(self.fvm, "last_yplus", None)
         if yplus:
             parts = [
                 f"{name}: y+ min={s['min']:.2f} max={s['max']:.2f} avg={s['avg']:.2f}"
@@ -1199,9 +1134,7 @@ class FVMVPMCoupler:
 
     def save_state(self, directory, *, coupling_step: int | None = None) -> Path:
         """Write a complete native FVM--VPM checkpoint, committing its manifest last."""
-        if self._backend != "fvm":
-            raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
-        if self.ofw is None:
+        if self.fvm is None:
             raise RuntimeError("Initialize the coupler before saving a checkpoint")
 
         target = Path(directory)
@@ -1209,10 +1142,10 @@ class FVMVPMCoupler:
         step = (
             int(coupling_step)
             if coupling_step is not None
-            else int(self.ofw.time_step // self.period_multiplier)
+            else int(self.fvm.time_step // self.period_multiplier)
         )
         suffix = f"{step:06d}"
-        partitioned = bool(getattr(getattr(self.ofw, "parallel", None), "is_partitioned", False))
+        partitioned = bool(getattr(getattr(self.fvm, "parallel", None), "is_partitioned", False))
         fvm_artifact = f"fvm_{suffix}" if partitioned else f"fvm_{suffix}.npz"
 
         # The FVM checkpoint is COLLECTIVE under a partitioned backend: every
@@ -1220,7 +1153,7 @@ class FVMVPMCoupler:
         # must run on all ranks, so it precedes the master-only remainder --
         # returning early on the workers here deadlocks rank 0 in that barrier
         # while the workers advance to the next step's barrier.
-        self.ofw.save_state(target / fvm_artifact)
+        self.fvm.save_state(target / fvm_artifact)
 
         if not self._is_master:
             return target
@@ -1256,7 +1189,7 @@ class FVMVPMCoupler:
             "config": self.config.to_dict(),
             "coupling_step": step,
             "flow_time": float(self.vpm.flow_time),
-            "fvm_time_step": int(self.ofw.time_step),
+            "fvm_time_step": int(self.fvm.time_step),
             "vpm_time_step": int(self.vpm.time_step),
             "period_multiplier": int(self.period_multiplier),
             "artifacts": {
@@ -1301,9 +1234,7 @@ class FVMVPMCoupler:
 
     def load_state(self, directory) -> int:
         """Restore both solvers and donor history from a checkpoint."""
-        if self._backend != "fvm":
-            raise NotImplementedError("Coupled checkpoints currently require backend='fvm'")
-        if self.ofw is None:
+        if self.fvm is None:
             raise RuntimeError("Initialize the coupler before loading a checkpoint")
         if self._is_master and self.vpm is None:
             raise RuntimeError("Initialize the coupler before loading a checkpoint")
@@ -1348,12 +1279,12 @@ class FVMVPMCoupler:
         artifacts = manifest["artifacts"]
 
         # ── Collective: each rank restores its own FVM partition ─────────────
-        self.ofw.load_state(target / artifacts["fvm"])
+        self.fvm.load_state(target / artifacts["fvm"])
 
         expected_fvm_step = int(manifest["vpm_time_step"]) * self.period_multiplier
-        if self.ofw.time_step != expected_fvm_step:
+        if self.fvm.time_step != expected_fvm_step:
             raise ValueError(
-                f"Coupled checkpoint time-step mismatch: FVM={self.ofw.time_step}, "
+                f"Coupled checkpoint time-step mismatch: FVM={self.fvm.time_step}, "
                 f"expected {expected_fvm_step} from VPM={manifest['vpm_time_step']}"
             )
 
@@ -1364,9 +1295,9 @@ class FVMVPMCoupler:
             self.vpm.flow_time = float(manifest["flow_time"])
             with np.load(target / artifacts["donor"], allow_pickle=False) as donor:
                 self._u_bc_prev = donor["u"].copy() if bool(donor["u_present"]) else None
-            if not np.isclose(self.ofw.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
+            if not np.isclose(self.fvm.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
                 error = (
-                    f"Coupled checkpoint time mismatch: FVM={self.ofw.flow_time}, "
+                    f"Coupled checkpoint time mismatch: FVM={self.fvm.flow_time}, "
                     f"VPM={self.vpm.flow_time}"
                 )
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:

@@ -1,19 +1,19 @@
 # OpenONDA/__init__.py
 """
-OpenONDA: Python Interface for OpenFOAM
-========================================
+OpenONDA: Native FVM and vortex-method CFD
+===========================================
 
-OpenONDA provides a Cython-based Python wrapper for stepwise control of
-OpenFOAM's PIMPLE solver, enabling in-line coupling with external solvers
-and scientific computing libraries (NumPy, SciPy).
+OpenONDA provides native finite-volume, vortex-particle, and vortex-lattice
+solvers with a conservative FVM-VPM coupling layer.
 
 Available modules:
-- solvers.OFW: Cython-based OpenFOAM wrapper (requires a local OpenFOAM build)
-- solvers.FVM: Pure-Python finite volume solver (NumPy/SciPy, no OpenFOAM needed)
+- solvers.FVM: Pure-Python finite-volume solver
+- solvers.VPM: Taichi-accelerated vortex-particle and vortex-lattice solvers
+- coupler: Conservative native FVM-VPM coupling
 
 Usage:
-    from source.solvers.OFW import Solver   # OpenFOAM wrapper
-    from source.solvers.FVM import Solver   # Pure-Python FVM
+    from source.solvers.FVM import Solver
+    from source.solvers.VPM import Solver as VPMSolver
 """
 
 from . import solvers
@@ -32,19 +32,11 @@ __all__ = [
     "solvers",
 ]
 
-try:
-    import importlib.util as _ilu
-
-    _has_ofw = _ilu.find_spec("source.solvers.OFW") is not None
-    del _ilu
-except Exception:
-    _has_ofw = False
-
 
 def get_config():
     """Return basic OpenONDA configuration."""
     return {
         "version": __version__,
-        "has_ofw": _has_ofw,
-        "installation_type": "full" if _has_ofw else "fvm-only",
+        "solvers": ("FVM", "VPM"),
+        "coupling": "FVM-VPM",
     }

@@ -16,7 +16,6 @@ import h5py
 
 from ..utils.field_samplers import resolve_samples_dir
 from .backup import BackupSystem
-from .vtk_export import export_panels_vtk
 
 if TYPE_CHECKING:
     from ..core.solver import Solver
@@ -139,7 +138,7 @@ class SolverIO:
                 [
                     "flow_time",
                     "vpm_total_circ_mag",
-                    "ofw_total_circ_mag",
+                    "fvm_total_circ_mag",
                     "interp_total_circ_mag",
                     "n_injected",
                     "n_candidates",
@@ -155,7 +154,7 @@ class SolverIO:
                     [
                         fld["flow_time"][i],
                         fld["vpm_total_circ_mag"][i] if i < len(fld["vpm_total_circ_mag"]) else 0.0,
-                        fld["ofw_total_circ_mag"][i] if i < len(fld["ofw_total_circ_mag"]) else 0.0,
+                        fld["fvm_total_circ_mag"][i] if i < len(fld["fvm_total_circ_mag"]) else 0.0,
                         fld["interp_total_circ_mag"][i]
                         if i < len(fld["interp_total_circ_mag"])
                         else 0.0,
@@ -197,6 +196,8 @@ class SolverIO:
             and self.solver.panel_solver is not None
             and getattr(self.solver.panel_solver, "lattice", None) is not None
         ):
+            from .vtk_export import export_panels_vtk
+
             panel_file = f"{filename}_panels.{format}"
             export_panels_vtk(self.solver, panel_file, compression)
 

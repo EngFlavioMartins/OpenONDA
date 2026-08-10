@@ -1,244 +1,95 @@
 # Contributing to OpenONDA
 
-Thank you for helping make OpenONDA a clean, efficient, and accessible CFD solver!
-This guide explains how to set up your development environment, run code-quality
-checks, and follow the project's conventions.
-
----
-
-## 1. Getting Started
-
-### 1.1 Install in development mode
+## Development installation
 
 ```bash
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
-This installs OpenONDA **editable** (changes to `source/` are reflected
-immediately) plus all linting, type-checking, and test tools.
+The editable install is for contributors only. User documentation uses a normal
+wheel installation so imports behave independently of the checkout location.
 
-### 1.2 Optional: pre-commit hooks
+Optional Git hooks:
 
 ```bash
-pre-commit install        # runs checks automatically on every commit
-pre-commit run --all-files  # run once manually over the whole repo
+pre-commit install
+pre-commit run --all-files
 ```
 
-Pre-commit is **optional** — CI will run the same checks on every Pull Request.
+## Architecture
 
----
-
-## 2. Running Code-Quality Checks Locally
-
-Use the helper script before pushing:
-
-```bash
-./scripts/code_quality.sh        # check only
-./scripts/code_quality.sh --fix  # auto-fix where possible (ruff import sorting, etc.)
-```
-
-Or run tools individually:
-
-| Tool | Purpose | Command | Blocking in CI? |
-|------|---------|---------|-----------------|
-| **ruff** | Lint + format | `ruff check source/` | Yes |
-| **mypy** | Type checking | `mypy source/coupler/` | Yes (coupler only) |
-| **pytest** | Tests | `TI_BACKEND=cpu pytest -m "not slow and not gpu"` | Yes |
-| **vulture** | Dead code | `vulture source/` | No (informational) |
-| **complexipy** | Complexity | `complexipy source/` | No (informational) |
-| **tach** | Architecture boundaries | `tach check` | No (informational) |
-| **interrogate** | Docstring coverage | `interrogate source/ --fail-under 85` | No (informational) |
-
-### What to do when a tool complains
-
-- **ruff** — most issues are auto-fixable: `ruff check --fix source/`
-- **mypy** — if you see `Item "None" of ... has no attribute`, add a guard:
-  ```python
-  if x is None:
-      return default
-  # now mypy knows x is not None
-  ```
-- **vulture** — if it flags a symbol you actually need, add it to `ignore_names`
-  in `pyproject.toml` under `[tool.vulture]`.
-
----
-
-## 3. Architecture Overview
-
-```
+```text
 source/
 ├── solvers/
-│   ├── VPM/          # Vortex Particle Method (Taichi, GPU/CPU)
-│   ├── FVM/          # Finite Volume Method (pure Python)
-│   └── OFW/          # OpenFOAM C++ wrapper (Cython bridge)
-├── coupler/          # Hybrid FVM-VPM coupling
-│   ├── config/       # Coupler configuration types
-│   ├── core/         # Main solver orchestration
-│   ├── diagnostics/  # Injection & conservation checks
-│   └── to_review/    # Experimental coupling algorithms
+│   ├── FVM/          native incompressible finite-volume solver
+│   └── VPM/          Taichi VPM and VLM solvers
+├── coupler/          hybrid FVM↔VPM orchestration
+├── utilities/        shared helpers
 └── version.py
+openonda/              stable public import facade
 ```
 
-### Import rules (enforced by `tach`)
+The solvers do not import each other's internals. Cross-solver orchestration
+belongs in `source/coupler`; generally reusable code belongs in
+`source/utilities`.
 
-- `VPM` may **not** import `FVM` internals directly.
-- `FVM` may **not** import `VPM` internals directly.
-- `coupler` is the **only** package allowed to import both solvers.
-- `OFW` depends on `FVM` (it is the OpenFOAM bridge).
+## Required checks
 
----
-
-## 4. Taichi Best Practices
-
-OpenONDA's VPM solver uses [Taichi](https://docs.taichi-lang.org/) for
-high-performance kernels on GPU and CPU.
-
-### 4.1 `ti.sync()` — when do you need it?
-
-Taichi kernels are **asynchronous** on GPU. If you launch a kernel and
-immediately read the result back in Python, use `ti.sync()` to be safe:
-
-```python
-# Good
-my_kernel(field)
-ti.sync()
-result = field.to_numpy()
-
-# Also acceptable (modern Taichi)
-my_kernel(field)
-result = field.to_numpy()   # implicit sync for this field
-```
-
-The main solver loops already contain `ti.sync()` at the correct boundaries.
-If you add a new physics stage, mirror the existing pattern in
-`source/solvers/VPM/core/solver.py`.
-
-### 4.2 Avoid memory leaks
-
-Taichi fields are **not garbage-collected**. Never create fields inside a loop:
-
-```python
-# BAD — leaks GPU memory
-for step in range(1000):
-    temp = ti.field(ti.f32, shape=n)   # leaks!
-    my_kernel(temp)
-
-# GOOD — reuse a cached field
-self._temp_field = ti.field(ti.f32, shape=max_n)
-for step in range(1000):
-    my_kernel(self._temp_field)
-```
-
-See `source/solvers/VPM/physics/evaluation.py` for examples of cached result
-fields.
-
-At-point evaluations and samplers use one startup allocation sized by
-`SolverConfig.max_targets`. Set it to at least the largest query or sampler
-grid; exceeding it fails with a configuration error instead of reallocating and
-leaking device memory.
-
-When running several VPM cases sequentially in one Python process, call
-`Solver.reset_gpu()` before constructing the next solver. This invalidates every
-existing Taichi field and releases the process-global runtime allocation, so no
-objects from the previous solver may be reused afterwards.
-
-### 4.3 Output control
-
-`SolverConfig.log_mode` selects `"file"`, `"tee"`, or `"console"`. Sampler
-output defaults to one appendable CSV per sampler; use
-`sampler_output_format="vtk"` when ParaView time-series snapshots are required.
-Existing scripts that require numbered CSV snapshots can select `"legacy"`.
-Set `export_flow_integrals=False` to suppress `samples/flow_integrals.csv` while
-retaining console diagnostics.
-
-### 4.4 Race conditions
-
-Inside a `ti.kernel`, parallel `for` loops run on all threads simultaneously.
-
-- **Safe**: each thread writes to a different index:
-  ```python
-  for i in range(n):
-      result[i] = compute(i)   # OK
-  ```
-
-- **Unsafe without atomic**: multiple threads write to the same scalar:
-  ```python
-  total = 0.0
-  for i in range(n):
-      total += value[i]        # RACE CONDITION!
-  ```
-
-  Fix with `ti.atomic_add`:
-  ```python
-  total = 0.0
-  for i in range(n):
-      ti.atomic_add(total, value[i])   # OK
-  ```
-
-> **Note**: Taichi automatically promotes simple scalar `+=` reductions
-> (e.g., `res += a[i] * b[i]`) to safe reductions, so you rarely need
-> explicit `ti.atomic_add` for dot-products or sums.
-
----
-
-## 5. Common Issues for New Contributors
-
-### "mypy says my variable can be None"
-
-Add an explicit guard or `assert`:
-
-```python
-# Before (mypy error)
-vs = self.viscous_scheme
-return vs.scheme
-
-# After (clean)
-vs = self.viscous_scheme
-if vs is None:
-    return {}
-return {"scheme": vs.scheme}
-```
-
-### "ruff says imports are unsorted"
+For Python changes under `source/solvers/FVM`, `source/coupler`, or
+`source/utilities`, run Pyrefly and do not increase the existing error baseline:
 
 ```bash
-ruff check --fix source/
+pyrefly check
 ```
 
-### "tach says I can't import from FVM in VPM"
+The VPM tree is excluded because Taichi kernel annotations are a runtime DSL.
 
-Move shared code to `source/solvers/VPM/` (if VPM-specific) or create a
-general utility. If you truly need cross-solver access, do it inside
-the `coupler/` package.
-
-### Tests fail with "no GPU"
-
-All CI tests run on CPU. Locally:
+Format and lint explicitly; pre-commit reports problems but does not rewrite
+files:
 
 ```bash
-TI_BACKEND=cpu pytest tests/vpm/ -m "not slow and not gpu"
+ruff check --fix source tests
+ruff format source tests
+ruff check source tests
 ```
 
----
-
-## 6. C/C++ Code (OpenFOAM Wrapper)
-
-The `source/solvers/OFW/` directory contains Cython and C++ code.
-If you modify `foamSolverWrapper.cpp`, please format it with:
+Run the blocking physics gates:
 
 ```bash
-# Requires clang-format (install via your package manager)
-clang-format -i source/solvers/OFW/foamSolverWrapper.cpp
+pytest tests/fvm -m "(unit or verification) and not slow and not mpi"
+pytest tests/coupler -m "not mpi"
 ```
 
-Style is configured in `.clang-format` (LLVM-based, 4-space indent, 100-col limit).
+MPI/PETSc and slow physics-validation jobs run separately in CI.
 
----
+## Taichi guidelines
 
-## 7. Need Help?
+- Reuse Taichi fields. Creating fields inside a time loop leaks device memory.
+- Synchronize before Python reads results from asynchronous GPU kernels.
+- Ensure concurrent writes use reductions or atomic operations.
+- Call `Solver.reset_gpu()` before constructing an unrelated VPM solver in the
+  same process; existing Taichi objects become invalid after reset.
+- Keep CPU execution working because it is the portable CI and debugging path.
 
-- Open a [GitHub Discussion](https://github.com/EngFlavioMartins/OpenONDA/discussions)
-- File an [Issue](https://github.com/EngFlavioMartins/OpenONDA/issues)
-- Check the User Manual in `docs/User_Manual.md`
+## Packaging changes
+
+Runtime imports used by the normal FVM, VPM, or coupler paths belong in
+`project.dependencies` in `pyproject.toml` and in the serial Conda environment.
+Distributed MPI/PETSc dependencies also belong in
+`scripts/environment/environment-parallel.yml`. After changing dependencies,
+build and test the wheel outside the repository:
+
+```bash
+python -m build
+python -m venv /tmp/openonda-wheel-test
+/tmp/openonda-wheel-test/bin/python -m pip install dist/OpenONDA-*.whl
+cd /tmp
+/tmp/openonda-wheel-test/bin/python -c "import openonda.fvm, openonda.vpm, openonda.coupler"
+```
+
+## Getting help
+
+- Open a [GitHub Discussion](https://github.com/EngFlavioMartins/OpenONDA/discussions).
+- File an [issue](https://github.com/EngFlavioMartins/OpenONDA/issues).

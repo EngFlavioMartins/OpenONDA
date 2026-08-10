@@ -24,9 +24,8 @@ SAMPLES = CASE_DIR / "samples"
 REFERENCE_SAMPLES = CASE_DIR / "referenceFlow" / "samples"
 FIGURES = CASE_DIR / "figures"
 
-# Use the same publication theme as coupled_OFW_VPM/cubeFlow.  Keeping one
-# source of truth matters here: the figures are intended to be visually
-# interchangeable across the native and OpenFOAM backends.
+# Keep one publication theme: reference and coupled figures are intended to be
+# visually interchangeable.
 _THEME_PATH = Path(__file__).resolve().parents[4] / "docs" / "themes" / "matplotlib_setup.py"
 _THEME_SPEC = importlib.util.spec_from_file_location("openonda_matplotlib_setup", _THEME_PATH)
 if _THEME_SPEC is None or _THEME_SPEC.loader is None:  # pragma: no cover

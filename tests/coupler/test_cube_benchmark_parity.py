@@ -18,10 +18,7 @@ _REFERENCE = (
     Path(__file__).parents[2]
     / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
-_CUBE_ROOTS = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow",
-    Path(__file__).parents[2] / "tutorials/coupled_OFW_VPM/cubeFlow",
-)
+_CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow"
 
 
 def _load(name: str, path: Path):
@@ -47,9 +44,7 @@ def test_cube_tutorials_have_no_runtime_input_controls():
         '"$#"',
         "getopts ",
     )
-    scripts = (
-        path for root in _CUBE_ROOTS for path in (*root.glob("*setup.py"), *root.glob("allrun.sh"))
-    )
+    scripts = (*_CUBE_ROOT.glob("*setup.py"), *_CUBE_ROOT.glob("allrun.sh"))
     for script in scripts:
         text = script.read_text()
         for token in forbidden:
@@ -270,9 +265,9 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
 def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_path):
     from source.coupler import FVMVPMCoupler
 
-    setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
+    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     coupler = FVMVPMCoupler(object(), hybrid_solver, setup)
-    coupler.ofw = hybrid_solver
+    coupler.fvm = hybrid_solver
     coupler._resolve_eulerian_ownership()
     assert coupler.dt_fvm == pytest.approx(bench.DT_FVM)
     assert coupler.t_end == pytest.approx(bench.T_END)
@@ -281,12 +276,11 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
 
     bad = replace(
         bench.COUPLER_SETUP,
-        backend="fvm",
         case_dir=str(tmp_path),
         nu=2 * bench.NU,
     )
     coupler_bad = FVMVPMCoupler(object(), hybrid_solver, bad)
-    coupler_bad.ofw = hybrid_solver
+    coupler_bad.fvm = hybrid_solver
     with pytest.raises(ValueError, match="owns this value"):
         coupler_bad._resolve_eulerian_ownership()
 
@@ -305,7 +299,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
         config = _FakeVPMConfig()
         time_step_size = bench.DT_VPM
 
-    setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
+    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="viscosity"):
         FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
 
@@ -317,7 +311,7 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
         background_velocity = [0.5, 0.0, 0.0]
         time_step_size = bench.DT_VPM
 
-    setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
+    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="freestream"):
         FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
 
@@ -351,7 +345,7 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
     _FakeViscous.scheme = scheme
     setattr(_FakeViscous, attr, mode)
 
-    setup = replace(bench.COUPLER_SETUP, backend="fvm", case_dir=str(tmp_path))
+    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     if rejected:
         with pytest.raises(ValueError, match="relative_local"):
             FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)

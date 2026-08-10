@@ -14,15 +14,12 @@ def setup_coupler(vpm_solver, fvm_solver, setup: CouplerSetup):
     internal so case files contain only solver physics and this single
     coupling operation.
     """
-    from source.solvers.FVM.config.types import FVMSetup
-
     from .core.solver import FVMVPMCoupler
 
     runtime_setup = setup
-    if isinstance(getattr(fvm_solver, "config", None), FVMSetup):
+    if getattr(fvm_solver, "case_dir", None) is not None:
         runtime_setup = replace(
             setup,
-            backend="fvm",
             case_dir=fvm_solver.case_dir,
         )
 

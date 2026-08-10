@@ -35,7 +35,6 @@ BOX = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 def _fvm_setup(tmp_path, **overrides):
     """Coupling-only setup: physics/time/mesh live on the injected solvers."""
     kwargs = {
-        "backend": "fvm",
         "u_inf": [1.0, 0.0, 0.0],
         "h": 0.25,
         "buffer_thickness": 0.25,
@@ -64,22 +63,16 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
     )
 
 
-def test_coupler_imports_without_ofw():
+def test_coupler_imports():
     from source.coupler import FVMVPMCoupler  # noqa: F401
 
     assert FVMVPMCoupler is not None
 
 
-def test_backend_field_validation():
-    assert CouplerSetup().backend == "fvm"
-    assert CouplerSetup(backend="fvm").backend == "fvm"
-    with pytest.raises(ValueError, match="backend"):
-        CouplerSetup(backend="openfoam")
-
-
-def test_backend_reaches_to_dict():
-    d = CouplerSetup(backend="fvm").to_dict()
-    assert d["fvm_solver"]["backend"] == "fvm"
+def test_setup_has_no_backend_switch():
+    setup = CouplerSetup()
+    assert not hasattr(setup, "backend")
+    assert "backend" not in setup.to_dict()["fvm_solver"]
 
 
 def test_prepare_case_fvm_needs_no_openfoam_case(tmp_path):
@@ -88,7 +81,7 @@ def test_prepare_case_fvm_needs_no_openfoam_case(tmp_path):
     setup = _fvm_setup(tmp_path)
     FVMVPMCoupler.prepare_case(setup)  # no constant/polyMesh, no 0.orig
     assert (tmp_path / "solution").is_dir()
-    # No OpenFOAM artifacts were created.
+    # No case-dictionary artifacts were created.
     assert not (tmp_path / "system").exists()
     assert not (tmp_path / "0").exists()
 
@@ -131,16 +124,6 @@ def built_backend(tmp_path_factory):
     return setup, _build_backend(tmp)
 
 
-def test_ofw_setup_requires_case_fields(tmp_path):
-    """The OFW backend writes the case from CouplerSetup, so the Eulerian-case
-    values are required there — and only there (the native backend leaves them
-    to the injected solvers)."""
-    from source.coupler.core.solver import FVMVPMCoupler
-
-    with pytest.raises(ValueError, match="requires"):
-        FVMVPMCoupler.prepare_case(CouplerSetup(backend="ofw", case_dir=str(tmp_path)))
-
-
 def test_fvm_setup_rejects_contradicting_physics(tmp_path):
     """A CouplerSetup value that contradicts the injected FVM solver's own
     configuration raises instead of being silently reconciled."""
@@ -149,7 +132,7 @@ def test_fvm_setup_rejects_contradicting_physics(tmp_path):
     fvm = _build_backend(tmp_path)  # dt=0.05, nu=0.01
     setup = _fvm_setup(tmp_path, dt=0.99)
     coupler = FVMVPMCoupler(object(), fvm, setup)
-    coupler.ofw = fvm
+    coupler.fvm = fvm
     with pytest.raises(ValueError, match="owns this value"):
         coupler._resolve_eulerian_ownership()
 
@@ -163,7 +146,7 @@ def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
     setup = _fvm_setup(tmp_path)
     assert setup.dt is None and setup.nu is None and setup.fvm_box is None
     coupler = FVMVPMCoupler(object(), fvm, setup)
-    coupler.ofw = fvm
+    coupler.fvm = fvm
     coupler._resolve_eulerian_ownership()
     assert coupler.dt_fvm == 0.05
     assert coupler.t_end == 0.3
@@ -174,7 +157,7 @@ def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
 def test_contract_methods_present(built_backend):
     _, fvm = built_backend
     missing = [m for m in CONTRACT_METHODS if not callable(getattr(fvm, m, None))]
-    assert not missing, f"missing OFW-contract methods: {missing}"
+    assert not missing, f"missing coupler-contract methods: {missing}"
 
 
 def test_boundary_geometry_matches_coupler_expectations(built_backend):

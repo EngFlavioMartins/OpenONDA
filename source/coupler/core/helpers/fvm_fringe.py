@@ -46,11 +46,11 @@ def lambda_max_from_scales(
 
 
 class FringeFields:
-    def __init__(self, cfg, vpm, ofw, *, coupling_dt: float):
+    def __init__(self, cfg, vpm, fvm, *, coupling_dt: float):
         self.cfg = cfg
         self.vpm = vpm
-        self.ofw = ofw
-        self.cell_centres = np.asarray(ofw.get_cell_center_coordinates()).reshape(-1, 3)
+        self.fvm = fvm
+        self.cell_centres = np.asarray(fvm.get_cell_center_coordinates()).reshape(-1, 3)
         u_char = float(np.linalg.norm(cfg.U_inf))
         lambda_max = lambda_max_from_scales(u_char, cfg.buffer_thickness, coupling_dt)
         dead_zone = float(cfg.dead_zone_h) * float(cfg.h)
@@ -61,7 +61,7 @@ class FringeFields:
             lambda_max,
             dead_zone,
         )
-        self.ofw.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.relaxation))
+        self.fvm.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.relaxation))
         self._previous: np.ndarray | None = None
         self._next: np.ndarray | None = None
         _logger.info(
@@ -109,7 +109,7 @@ class FringeFields:
         self._push(self._previous + fraction * (self._next - self._previous))
 
     def _push(self, target: np.ndarray) -> None:
-        self.ofw.set_cell_vector_field(
+        self.fvm.set_cell_vector_field(
             "Utarget",
             np.ascontiguousarray(target[:, 0]),
             np.ascontiguousarray(target[:, 1]),

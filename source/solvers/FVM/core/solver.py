@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 
 from ..config.types import FVMSetup
-from ..coupling import OFWInterfaceMixin
+from ..coupling import CouplerInterfaceMixin
 from ..io import logging, solver_io
 from ..mesh import geometry, mesh_io
 from ..sampling.executor import FVMSamplerExecutor
@@ -146,7 +146,7 @@ def _enforce_u_boundary_constraints(
             U[start:end] = projected
 
 
-class Solver(OFWInterfaceMixin):
+class Solver(CouplerInterfaceMixin):
     """Finite Volume Method (FVM) simulator for incompressible flow.
 
     Provides a high-level Python API for managing unstructured mesh CFD simulations.
@@ -603,7 +603,7 @@ class Solver(OFWInterfaceMixin):
 
         Assembles an :class:`FVMSetup` from the case's ``system``/``constant``/``0``
         dictionaries (reusing the ``from_*`` loaders) so the FVM is constructable
-        the same way the coupler builds the OFW backend (``backend(case_dir)``).
+        directly from a conventional case directory.
         Required case dictionaries and initial fields must exist and parse
         successfully. ``overrides`` may replace known top-level
         :class:`FVMSetup` fields.
@@ -1000,7 +1000,7 @@ class Solver(OFWInterfaceMixin):
 
     def solve_pimple(self, dt: float | None = None):
         """Solve the pressure–velocity system at the current time level WITHOUT
-        advancing the clock (OFW-contract method).
+        advancing the clock (coupler-facing method).
 
         Re-callable within a step: the coupler's donor-BC↔pressure Picard loop
         calls this repeatedly with the boundary condition re-imposed between
@@ -1251,7 +1251,7 @@ class Solver(OFWInterfaceMixin):
 
     def advance_time(self) -> None:
         """Commit the solved field as the new time level and advance the clock
-        (OFW-contract method): roll the BDF history, increment step/time, then
+        (coupler-facing method): roll the BDF history, increment step/time, then
         run per-step force logging and output control."""
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
         logging.Timer.start("Field history commit")

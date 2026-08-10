@@ -1,169 +1,142 @@
 <p align="center">
-  <img src="./docs/logos/Logo_V7_Color.png" width="900px"/>
+  <img src="./docs/logos/Logo_V7_Color.png" width="900" alt="OpenONDA" />
 </p>
 
-# OpenONDA — Hybrid VPM-FVM Solver with Python Interface
+# OpenONDA
 
 [![DOI](https://zenodo.org/badge/947793258.svg)](https://doi.org/10.5281/zenodo.15111460)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-OpenONDA is a Computational Fluid Dynamics (CFD) framework that integrates a GPU-accelerated Vortex Particle Method (VPM), a pure-Python Finite Volume Method (FVM), and an OpenFOAM-Python interface (OFW) under a unified Python API.
+OpenONDA is a native Python computational-fluid-dynamics library containing an
+incompressible finite-volume method (FVM), a Taichi-accelerated vortex-particle
+and vortex-lattice method (VPM/VLM), and an FVM↔VPM hybrid coupler. ONDA stands
+for **Operator for Numerical Design and Aerodynamics**.
 
-ONDA stands for **"Operator for Numerical Design and Aerodynamics"**.
+## Install
 
----
+OpenONDA supports Python 3.11–3.13 on Linux x86-64 and macOS. Apple Silicon uses
+current Taichi wheels; Intel macOS uses Python 3.11 with the last compatible
+Taichi wheel.
 
-## Requirements
+Install the current development version in one command:
 
-| Requirement | Version tested |
-|---|---|
-| OpenFOAM | optional; OFW backend only |
-| Python | 3.11 |
-| Cython | >= 0.29 |
-| NumPy | >= 1.24 |
-| SciPy | >= 1.10 |
-| Taichi | 1.7.3 (required for VPM) |
-| GCC / Clang | compatible with your OpenFOAM installation |
+```bash
+python -m pip install "OpenONDA @ git+https://github.com/EngFlavioMartins/OpenONDA.git@development"
+```
 
-> The native Python FVM and VPM solvers do not require OpenFOAM. The separate
-> OFW backend requires a supported Ubuntu/OpenFOAM installation.
+Once a release is published on PyPI, the equivalent command is:
 
-Helper install scripts for a fresh machine live in [`scripts/install/`](scripts/install/):
-`install_anaconda.sh`, `install_openfoam.sh` (optional OFW dependency),
-`install_vulkan_sdk.sh` (GPU backend for VPM) and `install_paraview.sh`.
+```bash
+python -m pip install OpenONDA
+```
 
----
+No `PYTHONPATH`, repository-location export, or shell-startup modification is
+needed. After installation this works from any directory:
 
-## Installation
+```bash
+cd /tmp
+python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA ready')"
+```
 
-### 1. Clone the repository
+The default installation includes the serial FVM, VPM/VLM, coupler, internal
+Gmsh meshing, PyAMG pressure solver, HDF5 output, and VTK visualization stack.
+
+### Conda
+
+For an isolated, reproducible environment on Linux or macOS:
+
+```bash
+git clone --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+cd OpenONDA
+scripts/install/install_conda.sh
+# Then run the two activation commands printed by the installer.
+```
+
+The installer reuses an existing Conda installation or offers to install
+Miniforge. It does not edit `.bashrc`/`.zshrc`, auto-activate environments, or
+require administrator privileges.
+
+For distributed FVM solves, install MPI, PETSc, mpi4py, and petsc4py from the
+same Conda channel:
+
+```bash
+scripts/install/install_conda.sh --parallel
+# Then run the two activation commands printed by the installer.
+```
+
+The serial installation is recommended unless the case explicitly selects MPI.
+OpenVSP is optional and is only needed to regenerate geometry directly from
+`.vsp3` files; cached DegenGeom input works without it.
+
+## Use
+
+The stable public modules are:
+
+```python
+from openonda import __version__
+from openonda.fvm import FVMSetup, Solver as FVMSolver, setup_fvm_solver
+from openonda.vpm import VPMSetup, Solver as VPMSolver, setup_vpm_solver
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+```
+
+Runnable cases live under `tutorials/FVM`, `tutorials/VPM`, and
+`tutorials/coupled_FVM_VPM`. The coupled cases use the native FVM's internal
+mesher:
+
+```bash
+cd tutorials/coupled_FVM_VPM/cubeFlow
+./allrun.sh
+```
+
+The cylinder-shedding and NACA 4412 workflows are in the same directory tree.
+
+### CPU and GPU execution
+
+VPM selects a compatible Taichi backend automatically. To choose one explicitly:
+
+```bash
+OPENONDA_PROCESSING_UNIT=CPU ./allrun.sh
+OPENONDA_PROCESSING_UNIT=GPU_VULKAN ./allrun.sh   # Linux with a Vulkan driver
+```
+
+Taichi includes its runtime; a separate Vulkan SDK is not required. The helper
+`scripts/install/install_vulkan_sdk.sh` only diagnoses whether a working Vulkan
+driver is visible.
+
+## Develop and test
 
 ```bash
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
+python -m pip install -e ".[dev]"
+pytest tests/fvm -m "(unit or verification) and not slow and not mpi"
+pytest tests/coupler -m "not mpi"
+pyrefly check
 ```
 
-### 2. Install the canonical Python environment
-
-```bash
-scripts/install/install_anaconda.sh
-```
-
-This creates the `OpenONDA` environment and installs the repository in editable
-mode. Activate it once per shell:
-
-```bash
-conda activate OpenONDA
-```
-
-After that, `import openonda` works from any directory. Python source changes
-are visible immediately; no reinstall or `PYTHONPATH` is needed.
-
-For example, the fully meshed cube reference is run with:
-
-```bash
-python tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py
-```
-
-The public APIs are `openonda.fvm`, `openonda.vpm`, `openonda.ofw`, and
-`openonda.coupler`. The `cores` value in `FVMSetup` controls threaded or MPI
-execution.
-
-### 3. Optional: source OpenFOAM for OFW
-
-```bash
-source /usr/lib/openfoam/openfoam2512/etc/bashrc
-```
-
-### 4. Optional: build the OFW extension
-
-```bash
-scripts/install/build_solvers.sh
-```
-
-This (re)compiles the **OFW** solver — the Cython/C++ extension
-(`source/solvers/OFW/fvm_solver*.so`) that links against OpenFOAM. It is the
-only compiled component. The native **FVM** solver and **FVM-VPM coupler** are
-pure Python; **VPM** uses Python and Taichi JIT kernels.
-
-Re-run this script whenever you change anything under `source/solvers/OFW/`,
-switch OpenFOAM versions, or pull changes that touch the OFW sources — a stale
-`fvm_solver*.so` silently runs outdated logic. Use `--clean` to force a full
-rebuild from scratch:
-
-```bash
-scripts/install/build_solvers.sh --clean
-```
-
----
-
-## Data Management
-
-This repository keeps **code in git** and **large simulation data in DVC**, with
-**Nextcloud** as the DVC remote so results sync across machines.
-
-### What's tracked where?
-
-- **Git** — files needed to _run_ a case: setup scripts, `system/`,
-  `constant/{transportProperties,turbulenceProperties}`, `constant/polyMesh.orig/`,
-  `0.orig/`, `assets/`, and visualizations (`figures/*.png`, `*.pdf`).
-- **DVC** — files _produced_ by a run: `solution/`, `referenceFlow/`, and
-  OpenFOAM reconstructed time directories.
-- **Ignored** — regenerable scratch: `processor*/`, runtime `constant/polyMesh/`
-  and `0/`, `*.foam`, `log.*`, `VTK/`, `postProcessing/`.
-
-### Quick start
-
-```bash
-# Start a session
-git pull && dvc pull
-
-# After running a simulation: track all new results, then back them up
-scripts/dvc_add_solutions.sh        # dvc add's solution/, referenceFlow/, time dirs
-dvc push                            # upload to Nextcloud
-git commit -am "Add myCase results" && git push
-```
-
-See **[docs/data_management.md](docs/data_management.md)** for the full folder
-policy, multi-computer workflow, and troubleshooting.
-
----
+See [docs/contributing.md](docs/contributing.md) for the architecture and code
+quality requirements, and [docs/data_management.md](docs/data_management.md)
+for the Git/DVC result-data policy.
 
 ## Citation
 
-If you use this code in your research, please cite:
-
 ```bibtex
-@article{OpenONDA_OFJ2026,
-  title   = {{OpenONDA}: A Python Interface for In-Line Control of {OpenFOAM} Solvers},
-  author  = {Martins, Flavio A. C. and van Zuijlen, Alexander and Ferreira, Carlos Sim\~{a}o},
-  journal = {OpenFOAM Journal},
-  year    = {2026},
-  doi     = {TBD}
-}
-
 @software{openonda_zenodo,
-  title   = {{OpenONDA}: Operator for Numerical Design and Fluidynamics},
-  author  = {Martins, Flavio A. C.},
-  year    = {2025},
-  doi     = {10.5281/zenodo.15111460},
-  url     = {https://github.com/EngFlavioMartins/OpenONDA}
+  title  = {{OpenONDA}: Operator for Numerical Design and Fluidynamics},
+  author = {Martins, Flavio A. C.},
+  year   = {2025},
+  doi    = {10.5281/zenodo.15111460},
+  url    = {https://github.com/EngFlavioMartins/OpenONDA}
 }
 ```
 
----
-
 ## License
 
-OpenONDA is licensed under the **GNU General Public License v3.0**.
-See [license](license) for details.
-
-The custom boundary conditions in `source/solvers/OFW/cpp/` are derived from OpenFOAM source code and are subject to the **GNU General Public License v3.0** as required by OpenFOAM's license terms.
-
----
+OpenONDA is licensed under the GNU General Public License v3.0 or later. See
+[license](license).
 
 ## Authors
 
-- **Flavio A. C. Martins** — TU Delft, Faculty of Aerospace Engineering — [ORCID 0000-0002-1374-5760](https://orcid.org/0000-0002-1374-5760)
-- **Rention Pasolari** — original 2D OpenFOAM Python wrapper (pHyFlow)
+- Flavio A. C. Martins — TU Delft, Faculty of Aerospace Engineering — [ORCID 0000-0002-1374-5760](https://orcid.org/0000-0002-1374-5760)
+- Rention Pasolari — original 2D Python-wrapper contribution (pHyFlow)

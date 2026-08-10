@@ -1,7 +1,7 @@
 """Fully meshed LES FVM reference for flow past a cube at Re = 1000.
 
 The mesh is generated as solver-native data by OpenONDA's cfMesh-inspired
-adaptive Cartesian mesher, sized to reproduce the mesh the OFW case's
+adaptive Cartesian mesher, sized to reproduce the original reference case's
 ``cartesianMesh`` run actually delivered — 0.2 far field, 0.025 wake, 0.0125
 cube — rather than the sizes its ``meshDict`` requests (see below).  The SGS
 model and coefficients match OpenFOAM's equilibrium Smagorinsky LES, and the

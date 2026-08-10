@@ -23,14 +23,14 @@ jobs:
     name: Full FVM suite (informational)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: conda-incubator/setup-miniconda@v3
         with:
           activate-environment: OpenONDA
           environment-file: scripts/environment/environment.yml
           miniforge-version: latest
           use-mamba: true
-      - run: python -m pip install --no-deps -e .
+      - run: python -m pip install -e ".[test]"
       - name: Whole FVM suite incl. slow + integration/validation
         # Informational: known-imperfect validation physics must not turn the
         # nightly permanently red. Triage the JUnit artifact; convert genuine
@@ -54,14 +54,14 @@ jobs:
       matrix:
         ranks: [2, 4]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          activate-environment: OpenONDA
-          environment-file: scripts/environment/environment.yml
+          activate-environment: OpenONDA-parallel
+          environment-file: scripts/environment/environment-parallel.yml
           miniforge-version: latest
           use-mamba: true
-      - run: python -m pip install --no-deps -e .
+      - run: python -m pip install -e ".[test]"
       - name: mpiexec -n ${{ matrix.ranks }}
         # MPI oversubscription on shared runners is timing-sensitive; keep it
         # informational rather than a hard gate.
@@ -79,17 +79,15 @@ jobs:
     name: Canonical install entry point
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: conda-incubator/setup-miniconda@v3
         with:
           activate-environment: base
           miniforge-version: latest
-      - name: Install through scripts/install/install_anaconda.sh
+      - name: Install through scripts/install/install_conda.sh
         env:
           OPENONDA_CONDA_ENV: OpenONDA-clean
-          OPENONDA_INSTALL_OPENVSP: "0"
-          PRE_COMMIT_ALLOW_NO_CONFIG: "1"
-        run: scripts/install/install_anaconda.sh -y
+        run: scripts/install/install_conda.sh -y --dev
       - name: Non-hardware FVM + coupler evidence on the clean install
         run: >-
           conda run -n OpenONDA-clean pytest tests/fvm tests/coupler

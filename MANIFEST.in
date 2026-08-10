@@ -1,0 +1,11 @@
+include README.md
+include license
+include citation.cff
+include pyproject.toml
+include AGENTS.md
+recursive-include openonda *.py
+recursive-include source *.py py.typed
+global-exclude *.py[cod]
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so

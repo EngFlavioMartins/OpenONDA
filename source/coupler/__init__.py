@@ -1,16 +1,15 @@
 """
 FVM-VPM Coupler module for OpenONDA.
 ====================================
-Hybrid near-field (FVM) / far-field (VPM) simulations: the FVM — either the
-native Python solver (``backend="fvm"``, any OS) or the wrapped-OpenFOAM OFW
-(``backend="ofw"``, Linux) — resolves the body and near wake inside a box
-whose boundary is driven by the particle field; the near-field vorticity is
-conservatively handed back to the particles every step.
+Hybrid near-field (FVM) / far-field (VPM) simulations: the native FVM
+resolves the body and near wake inside a box whose boundary is driven by the
+particle field; the near-field vorticity is conservatively handed back to the
+particles every step.
 
 Organization:
 - config/types.py: CouplerSetup (one flat coupling-setup dataclass)
 - core/solver.py:  FVMVPMCoupler (the four-step coupling loop)
-- core/helpers/:   hand-off, fringe relaxation, case setup, I/O redirection
+- core/helpers/:   hand-off, fringe relaxation, and I/O redirection
 - diagnostics/:    conservation recovery and validation signals
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team

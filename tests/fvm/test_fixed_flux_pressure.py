@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from source.solvers.FVM.coupling.ofw_interface import OFWInterfaceMixin
+from source.solvers.FVM.coupling.coupler_interface import CouplerInterfaceMixin
 from source.solvers.FVM.fields import gradients
 from source.solvers.FVM.solve.simple_solver import _update_fixed_flux_pressure_boundaries
 
@@ -79,7 +79,7 @@ def test_fixed_flux_pressure_accepts_explicit_pressure_free_face_flux():
 
 
 def test_vector_neumann_pressure_gradient_sets_face_increment():
-    interface = OFWInterfaceMixin()
+    interface = CouplerInterfaceMixin()
     interface.parallel = None
     interface.mesh_data = {
         "n_elements": 1,

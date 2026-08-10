@@ -4,7 +4,6 @@ OpenONDA is a CFD library. The Python sources are:
 
 - `source/solvers/FVM` — native incompressible finite-volume solver
 - `source/solvers/VPM` — vortex-particle solver (Taichi/GPU DSL)
-- `source/solvers/OFW` — OpenFOAM wrapper (Cython/C++)
 - `source/coupler` — FVM↔VPM coupler
 - `source/utilities` — shared helpers
 

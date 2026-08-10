@@ -1,4 +1,4 @@
-name: OpenONDA
+name: OpenONDA-parallel
 channels:
   - conda-forge
   - nodefaults
@@ -21,3 +21,9 @@ dependencies:
   - pygit2>=1.13
   - pyvista>=0.43
   - vtk>=9.3
+  # Keep the complete distributed stack under one package manager so PETSc,
+  # petsc4py, mpi4py, and the launcher share the same MPI implementation.
+  - openmpi>=5
+  - mpi4py>=4
+  - petsc>=3.21
+  - petsc4py>=3.21

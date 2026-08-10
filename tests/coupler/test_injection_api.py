@@ -2,11 +2,13 @@
 
 Exercises the wiring — solver adoption, dt/sub-cycle reconciliation from the
 injected VPM step, master/non-master rank gating, and injected-solver
-validation — with lightweight fakes so no GPU/Taichi or OpenFOAM is needed.
+validation — with lightweight fakes so no GPU/Taichi runtime is needed.
 The full end-to-end coupling loop is covered by the cubeFlow acceptance run.
 """
 
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -42,21 +44,16 @@ class _FakeVPM:
 
 
 class _FakeFVM:
-    """Minimal OFW-contract fake: geometry getters return empty (serial, no
-    cells) so injector/fringe setup runs without a mesh."""
+    """Minimal native coupler-contract fake with no volume cells."""
 
     def __init__(self):
-        self._dt = None
-        self._nu = None
+        self.config = SimpleNamespace(
+            time=SimpleNamespace(delta_t=0.02, end_time=1.0),
+            transport=SimpleNamespace(nu=1e-3, density=1.0),
+        )
 
     def n_procs(self):
         return 1
-
-    def set_time_step(self, dt):
-        self._dt = dt
-
-    def set_kinematic_viscosity(self, nu):
-        self._nu = nu
 
     def get_cell_center_coordinates(self):
         return np.zeros((0, 3))
@@ -73,6 +70,33 @@ class _FakeFVM:
     def set_cell_vector_field(self, name, vx, vy, vz):
         pass
 
+    def get_boundary_face_center_coordinates(self, patch):
+        return np.array(
+            [
+                [-1.5, 0.0, 0.0],
+                [1.5, 0.0, 0.0],
+                [0.0, -1.5, 0.0],
+                [0.0, 1.5, 0.0],
+                [0.0, 0.0, -1.5],
+                [0.0, 0.0, 1.5],
+            ]
+        )
+
+    def get_boundary_face_normals(self, patch):
+        return np.array(
+            [
+                [-1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+
+    def get_boundary_face_areas(self, patch):
+        return np.ones(6)
+
 
 @pytest.fixture(autouse=True)
 def _stub_solver_info(monkeypatch):
@@ -83,7 +107,6 @@ def _stub_solver_info(monkeypatch):
 
 def _make_config(**over):
     base = {
-        "backend": "ofw",
         "u_inf": [1.0, 0.0, 0.0],
         "nu": 1e-3,
         "dt": 0.02,
@@ -111,14 +134,12 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
 
     c.initialize()
     # Solvers adopted, not rebuilt.
-    assert c.ofw is fvm
+    assert c.fvm is fvm
     assert c.vpm is vpm
-    # Runtime setters stamped the reconciled FVM SUB-step + viscosity.
-    # (cfg.dt is mutated to the coupling step dt_vpm during initialize; the
-    # FVM marches on dt_fvm = 0.02.)
-    assert fvm._dt == pytest.approx(0.02)  # dt_fvm
+    # The native FVM configuration owns its sub-step and fluid properties.
+    assert c.dt_fvm == pytest.approx(0.02)
     assert c.dt_vpm == pytest.approx(0.1)
-    assert fvm._nu == pytest.approx(1e-3)
+    assert c.config.nu == pytest.approx(1e-3)
 
 
 def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):
@@ -150,7 +171,7 @@ def test_non_master_tolerates_none_vpm(monkeypatch, tmp_path):
     assert c._is_master is False
     c.initialize()
     assert c.vpm is None
-    assert c.ofw is not None
+    assert c.fvm is not None
 
 
 def test_is_master_rank(monkeypatch):
@@ -182,7 +203,7 @@ def test_physics_first_coupler_factory(monkeypatch):
     assert prepared == [(setup, vpm)]
 
 
-def test_coupler_factory_infers_native_backend(monkeypatch, tmp_path):
+def test_coupler_factory_uses_native_case_directory(monkeypatch, tmp_path):
     from source.solvers.FVM import FVMSetup
 
     class _NativeFVM:
@@ -203,7 +224,6 @@ def test_coupler_factory_infers_native_backend(monkeypatch, tmp_path):
 
     setup_coupler(object(), _NativeFVM(), CouplerSetup())
 
-    assert captured[0].backend == "fvm"
     assert captured[0].case_dir == str(tmp_path)
 
 

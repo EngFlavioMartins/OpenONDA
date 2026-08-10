@@ -26,7 +26,6 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
-        backend="fvm",
         u_inf=[1.0, 0.0, 0.0],
         h=H,
         buffer_thickness=2 * H,
@@ -76,10 +75,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     # Impulsive start with zero interior vorticity: hand-off ran, no particles.
     assert vpm.particles.number_of_particles == 0
 
-    # Backend-named logs: fvm.log (not ofw.log) + the coupler diagnostics.
+    # Native FVM and coupler diagnostics are written independently.
     sol = tmp_path / "solution"
     assert (sol / "fvm.log").exists()
-    assert not (sol / "ofw.log").exists()
     coupler_log = (sol / "coupler.log").read_text()
     assert "FVM-VPM COUPLED SOLVER" in coupler_log
     assert coupler_log.count("[Inject]") == 2

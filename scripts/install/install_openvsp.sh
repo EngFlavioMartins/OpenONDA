@@ -151,7 +151,7 @@ openonda_prefix() {
     fi
     if [ -z "$prefix" ] || [ ! -x "$prefix/bin/python" ]; then
         echo "ERROR: could not locate the '$CONDA_ENV' environment's interpreter." >&2
-        echo "       Create it first: scripts/install/install_anaconda.sh" >&2
+        echo "       Create it first: scripts/install/install_conda.sh" >&2
         exit 1
     fi
     printf '%s\n' "$prefix"

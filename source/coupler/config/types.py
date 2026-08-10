@@ -7,7 +7,7 @@ import numpy as np
 
 @dataclass
 class CouplerSetup:
-    """Shared interface and OpenFOAM case settings."""
+    """Configuration shared by the native FVM and VPM solvers."""
 
     u_inf: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     nu: float | None = None
@@ -17,7 +17,6 @@ class CouplerSetup:
     backup_period: int = 1
     log_period: int = 1
 
-    backend: str = "fvm"
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     patch_name: str = "numericalBoundary"
     wall_patch_name: str | None = "cube"
@@ -34,9 +33,6 @@ class CouplerSetup:
     overlap_radius_ratio: float = 1.0
 
     def __post_init__(self) -> None:
-        if self.backend not in ("ofw", "fvm"):
-            raise ValueError("backend must be 'ofw' or 'fvm'")
-
         u_inf = np.asarray(self.u_inf, dtype=np.float64)
         if u_inf.shape != (3,) or not np.all(np.isfinite(u_inf)):
             raise ValueError("u_inf must be a finite three-component vector")
@@ -81,13 +77,6 @@ class CouplerSetup:
         if self.handoff_max_particles is not None and self.handoff_max_particles < 1:
             raise ValueError("handoff_max_particles must be positive")
 
-    def require_case_fields(
-        self, names: tuple[str, ...] = ("nu", "dt", "t_end", "fvm_box", "grid_spacing")
-    ) -> None:
-        missing = [name for name in names if getattr(self, name) is None]
-        if missing:
-            raise ValueError(f"backend='ofw' requires: {', '.join(missing)}")
-
     @property
     def U_inf(self) -> np.ndarray:
         return np.asarray(self.u_inf, dtype=np.float64)
@@ -113,7 +102,6 @@ class CouplerSetup:
                 "log_period": self.log_period,
             },
             "fvm_solver": {
-                "backend": self.backend,
                 "patch_name": self.patch_name,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
