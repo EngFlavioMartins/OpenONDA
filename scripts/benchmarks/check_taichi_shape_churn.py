@@ -31,7 +31,6 @@ import argparse
 import gc
 import os
 import subprocess
-import sys
 import time
 
 import numpy as np
@@ -157,7 +156,6 @@ def main() -> int:
     ap.add_argument("--download", action="store_true", help="Also copy device field back to NumPy.")
     args = ap.parse_args()
 
-    sys.path.insert(0, ".")
     from source.solvers.VPM.config.backend import initialize_taichi_backend
 
     backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[args.arch]

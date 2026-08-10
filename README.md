@@ -57,6 +57,9 @@ The installer reuses an existing Conda installation or offers to install
 Miniforge. It does not edit `.bashrc`/`.zshrc`, auto-activate environments, or
 require administrator privileges.
 
+See [the installation guide](docs/installation.md) for supported platforms,
+Intel/Apple-Silicon details, offline wheel installation, and troubleshooting.
+
 For distributed FVM solves, install MPI, PETSc, mpi4py, and petsc4py from the
 same Conda channel:
 
@@ -90,6 +93,12 @@ cd tutorials/coupled_FVM_VPM/cubeFlow
 ```
 
 The cylinder-shedding and NACA 4412 workflows are in the same directory tree.
+All three installed-package smoke cases can be exercised from isolated copies
+with:
+
+```bash
+scripts/validate_native_tutorials.sh
+```
 
 ### CPU and GPU execution
 

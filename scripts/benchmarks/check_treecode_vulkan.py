@@ -41,7 +41,6 @@ def main():
     # A raw ``ti.init(arch=ti.vulkan)`` triggers Taichi's adaptive arch probe,
     # which can hang on some Vulkan setups; the project initializer avoids it and
     # applies the correct device-memory kwargs.
-    sys.path.insert(0, ".")
     from source.solvers.VPM.config.backend import initialize_taichi_backend
 
     backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[args.arch]

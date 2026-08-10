@@ -146,7 +146,10 @@ def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
 def test_pinelli_quadrature_consistency(cylinder_setup):
     _, _, ibm = cylinder_setup
     # A eps = 1 solved exactly.
-    assert ibm.diagnostics()["quadrature_residual"] < 1e-10
+    diagnostics = ibm.diagnostics()
+    assert diagnostics["quadrature_residual"] < 1e-10
+    assert diagnostics["eps_min"] >= 0.0
+    assert diagnostics["eps_max"] > 0.0
     # Round trip: interpolate(spread(F)) ~ F for constant F.
     F = np.tile([1.0, -2.0, 0.5], (ibm.X.shape[0], 1))
     round_trip = ibm.interpolate(ibm.spread(F))

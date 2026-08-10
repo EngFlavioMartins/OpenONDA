@@ -9,6 +9,7 @@ dependencies:
   - setuptools>=68
   - wheel
   - numpy>=1.26
+  - numpy-stl>=3.2
   - scipy>=1.11
   - matplotlib>=3.8
   - pydantic>=2.5
@@ -21,3 +22,5 @@ dependencies:
   - pygit2>=1.13
   - pyvista>=0.43
   - vtk>=9.3
+  # Taichi is installed by the OpenONDA wheel below because its Intel-macOS
+  # compatibility pin is expressed with Python platform markers in pyproject.toml.

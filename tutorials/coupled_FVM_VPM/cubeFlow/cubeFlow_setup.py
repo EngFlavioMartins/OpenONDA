@@ -7,6 +7,7 @@ Both solvers use OpenFOAM's equilibrium Smagorinsky coefficients.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,7 @@ from openonda.vpm import (
 )
 
 CASE_DIR = Path(__file__).resolve().parent
+SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 BODY_STL = str(CUBE_STL)
 
@@ -58,18 +60,21 @@ SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 DT_FVM = 0.01
-T_END = 20.0
-FVM_CORES = 4
+T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
+FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
 
 DT_VPM = 0.05
-SPACING = 0.04
+SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
+SURFACE_CELL_SIZE = float(
+    os.environ.get("OPENONDA_SURFACE_CELL_SIZE", "0.10" if SMOKE else "0.015")
+)
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-PARTICLE_LIMIT = 200_000
+PARTICLE_LIMIT = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 OVERLAP_RADIUS_RATIO = 1.0
-WRITE_INTERVAL = 0.15
-BACKUP_PERIOD = 3
+WRITE_INTERVAL = DT_VPM if SMOKE else 0.15
+BACKUP_PERIOD = max(1, int(round(WRITE_INTERVAL / DT_VPM)))
 
-SAMPLE_INTERVAL = int(round(WRITE_INTERVAL / DT_FVM))
+SAMPLE_INTERVAL = max(1, int(round(WRITE_INTERVAL / DT_FVM)))
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
@@ -141,7 +146,7 @@ FVM_MESH = AdaptiveCartesianMesher(
     max_cell_size=SPACING,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
-    surface_cell_size=0.015,
+    surface_cell_size=SURFACE_CELL_SIZE,
     merge_outer_patch="numericalBoundary",
 )
 

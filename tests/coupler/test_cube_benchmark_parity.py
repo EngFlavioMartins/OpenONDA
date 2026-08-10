@@ -8,6 +8,7 @@ import importlib.util
 import io
 import math
 from pathlib import Path
+import re
 import sys
 
 import numpy as np
@@ -19,6 +20,14 @@ _REFERENCE = (
     / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
 _CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow"
+_ALLOWED_RUNTIME_OVERRIDES = {
+    "OPENONDA_FVM_CORES",
+    "OPENONDA_MAX_PARTICLES",
+    "OPENONDA_SMOKE",
+    "OPENONDA_SPACING",
+    "OPENONDA_SURFACE_CELL_SIZE",
+    "OPENONDA_T_END",
+}
 
 
 def _load(name: str, path: Path):
@@ -33,22 +42,25 @@ def _load(name: str, path: Path):
     return module
 
 
-def test_cube_tutorials_have_no_runtime_input_controls():
+def test_cube_tutorial_runtime_controls_are_explicit_and_narrow():
     forbidden = (
         "import argparse",
         "ArgumentParser",
         "parse_args(",
         "sys.argv",
-        "os.environ.get",
         "os.getenv",
+        "os.environ[",
         '"$#"',
         "getopts ",
     )
     scripts = (*_CUBE_ROOT.glob("*setup.py"), *_CUBE_ROOT.glob("allrun.sh"))
+    overrides = set()
     for script in scripts:
         text = script.read_text()
         for token in forbidden:
             assert token not in text, f"runtime input control {token!r} found in {script}"
+        overrides.update(re.findall(r'os\.environ\.get\("(OPENONDA_[A-Z_]+)"', text))
+    assert overrides == _ALLOWED_RUNTIME_OVERRIDES
 
 
 def _small_coupled_mesh(core_box):
@@ -94,7 +106,10 @@ def _small_coupled_mesh(core_box):
 
 @pytest.fixture(scope="module")
 def bench():
-    return _load("hybrid_cube_setup", _CASE)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        for name in _ALLOWED_RUNTIME_OVERRIDES:
+            monkeypatch.delenv(name, raising=False)
+        return _load("hybrid_cube_setup", _CASE)
 
 
 @pytest.fixture(scope="module")
@@ -209,7 +224,7 @@ def test_production_case_keeps_the_validated_cost_limits(bench):
     assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
         0.01
     )
-    assert bench.PARTICLE_LIMIT == 200_000
+    assert bench.PARTICLE_LIMIT == 1_500_000
     assert bench.VPM_SETUP.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
     assert bench.VPM_SETUP.max_particles == bench.PARTICLE_LIMIT
     assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT

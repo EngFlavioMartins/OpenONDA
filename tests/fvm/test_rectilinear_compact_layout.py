@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.rectilinear import box_mesh_3d
+from source.solvers.FVM.mesh.rectilinear import box_mesh_3d, periodic_square_mesh
 from source.solvers.FVM.mesh.topology import MeshTopology
 
 
@@ -31,6 +31,22 @@ def test_rectilinear_mesh_uses_compact_quads_and_explicit_hexes():
     assert topology.face_nodes.dtype == np.int32
     assert topology.cell_faces.dtype == np.int32
     assert topology.cell_face_offsets[-1] == len(topology.cell_faces)
+
+
+def test_periodic_square_mesh_is_compact_and_cyclic_ready():
+    mesh = periodic_square_mesh(4, length=2.0)
+
+    assert mesh["n_elements"] == 16
+    assert mesh["cell_vertices"].shape == (16, 8)
+    assert [patch["name"] for patch in mesh["boundary"]] == [
+        "xmin",
+        "xmax",
+        "ymin",
+        "ymax",
+        "zmin",
+        "zmax",
+    ]
+    assert [patch["type"] for patch in mesh["boundary"][-2:]] == ["empty", "empty"]
 
 
 def test_rectilinear_vtu_defaults_to_raw_cell_data(tmp_path):

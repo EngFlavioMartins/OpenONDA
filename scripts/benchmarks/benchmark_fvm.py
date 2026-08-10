@@ -21,9 +21,8 @@ import numpy as np
 import scipy
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from source.solvers.FVM import (  # noqa: E402
+from openonda.fvm import (
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
@@ -33,8 +32,8 @@ from source.solvers.FVM import (  # noqa: E402
     Solver,
     TimeConfig,
     TransportConfig,
+    periodic_square_mesh,
 )
-from tutorials.FVM.taylorGreen.assets.mesh_periodic import periodic_square_mesh  # noqa: E402
 
 
 def _velocity(centres: np.ndarray) -> np.ndarray:

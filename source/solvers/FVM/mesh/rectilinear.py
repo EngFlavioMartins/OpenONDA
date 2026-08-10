@@ -395,3 +395,29 @@ def coupling_box_mesh(
         wall_patch_name=wall_patch_name,
         merge_outer_patch=patch_name,
     )
+
+
+def periodic_square_mesh(n: int, length: float = 2.0 * np.pi) -> dict:
+    """Return an ``n`` by ``n`` single-cell-thick periodic square mesh.
+
+    The four in-plane patches are paired later by cyclic boundary conditions;
+    the two spanwise patches are marked ``empty``.  Keeping this generator in
+    the installed FVM package lets tutorials and benchmarks run without adding
+    the repository or its tutorial tree to :mod:`sys.path`.
+    """
+    if n < 2:
+        raise ValueError("n must be at least 2")
+    if length <= 0.0:
+        raise ValueError("length must be positive")
+
+    spacing = float(length) / int(n)
+    axis = np.linspace(0.0, float(length), int(n) + 1)
+    mesh = box_mesh_3d(axis, axis, np.asarray([0.0, spacing], dtype=np.float64))
+    for patch in mesh["boundary"]:
+        if patch["name"] == "inlet":
+            patch["name"] = "xmin"
+        elif patch["name"] == "outlet":
+            patch["name"] = "xmax"
+        if str(patch["name"]).startswith("z"):
+            patch["type"] = "empty"
+    return mesh

@@ -2,13 +2,10 @@
 # dvc_add_solutions.sh — track OpenONDA simulation RESULTS with DVC.
 #
 # Policy (see docs/data_management.md):
-#   * Files needed to RUN a case live in git   (scripts, system/, constant/
-#     {transportProperties,turbulenceProperties}, constant/polyMesh.orig/,
-#     0.orig/, assets/, figures/ PNG·PDF).
-#   * Files PRODUCED by a run live in DVC       (solution/, referenceFlow/, and
-#     OpenFOAM reconstructed time directories such as 0.08, 0.16, …, 15).
-#   * Regenerable scratch is ignored entirely   (processor*/, constant/polyMesh/,
-#     the runtime 0/ copy, *.foam, log.*, VTK/, postProcessing/).
+#   * Files needed to RUN a case live in git (setup scripts, small geometry,
+#     assets, curated reference samples, and figures).
+#   * Large files PRODUCED by a run live in DVC (solution/ directories).
+#   * Regenerable scratch is ignored entirely (caches, logs, and staging data).
 #
 # This script walks tutorials/ and `dvc add`s every result directory that is not
 # yet tracked, then stages the resulting .dvc / .gitignore files for git.  It
@@ -70,21 +67,11 @@ add_to_dvc() {
     added=$((added + 1))
 }
 
-# 1) VPM / coupler diagnostics and backups, plus reference data.
+# VPM, FVM, and coupler fields/checkpoints. Curated sampler/reference data are
+# reviewed and added to Git explicitly; never DVC-add an entire referenceFlow
+# directory because it also contains runnable source files.
 while IFS= read -r d; do add_to_dvc "$d"; done \
-    < <(find "$ROOT" -type d \( -name solution -o -name referenceFlow \) 2>/dev/null | sort)
-
-# 2) OpenFOAM reconstructed time directories: numeric names > 0 at the case root.
-#    Prunes processor*/, postProcessing/ and VTK/ (their nested numeric subdirs
-#    are scratch, not top-level time results).  Excludes 0 and 0.orig.  Matches
-#    integer (15, 100) and decimal (0.08, 1.36) time names.
-while IFS= read -r d; do add_to_dvc "$d"; done \
-    < <(find "$ROOT" \
-            \( -name 'processor*' -o -name postProcessing -o -name VTK \) -prune -o \
-            -type d -regextype posix-extended \
-            -regex '.*/[0-9]+(\.[0-9]+)?' \
-            ! -regex '.*/0' \
-            -print 2>/dev/null | sort)
+    < <(find "$ROOT" -type d -name solution 2>/dev/null | sort)
 
 echo "---------------------------------------"
 echo -e " added: ${GREEN}${added}${NC}   skipped: ${YELLOW}${skipped}${NC}"

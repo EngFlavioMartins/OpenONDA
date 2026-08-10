@@ -56,9 +56,10 @@ SPAN = 5.0
 RHO = 1.0
 REYNOLDS = 1000.0
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
-DT = 0.04
+DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
+DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
 T_END = float(
-    os.environ.get("OPENONDA_T_END", os.environ.get("HYBRID_T_END", "0.08" if SMOKE else "12.0"))
+    os.environ.get("OPENONDA_T_END", os.environ.get("HYBRID_T_END", "0.12" if SMOKE else "12.0"))
 )
 ANGLE = math.radians(ALPHA_DEG)
 U_INF = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
@@ -67,8 +68,11 @@ FVM_BOX = (-1.2, 1.4, -0.8, 0.8, -3.3, 3.3)
 VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 OVERLAP_RADIUS_RATIO = 1.5
-WRITE_INTERVAL = DT if SMOKE else 0.8
-LOG_PERIOD = max(1, int(round(WRITE_INTERVAL / DT)))
+IBM_MARKER_RATIO = float(os.environ.get("OPENONDA_IBM_MARKER_RATIO", "2.5"))
+WRITE_INTERVAL = DT_VPM if SMOKE else 0.8
+SAMPLE_INTERVAL = min(WRITE_INTERVAL, T_END)
+FVM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / DT_FVM)))
+VPM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / DT_VPM)))
 
 
 def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
@@ -110,6 +114,7 @@ AIRFOIL = ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],
     h=SPACING,
+    alpha=IBM_MARKER_RATIO,
     name="airfoil",
     caps=True,
 )
@@ -118,14 +123,14 @@ FVM_SAMPLERS = (
     IBMForceSampler(
         ref_velocity=float(np.linalg.norm(U_INF)),
         ref_area=CHORD * SPAN,
-        schedule=SamplingSchedule(every_n_steps=LOG_PERIOD),
+        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SPACING,
         file_name="fvm_centerline",
-        schedule=SamplingSchedule(every_n_steps=LOG_PERIOD),
+        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
     FVMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -133,7 +138,7 @@ FVM_SAMPLERS = (
         bounds=[FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]],
         spacing=SPACING,
         file_name="fvm_slice_z0",
-        schedule=SamplingSchedule(every_n_steps=LOG_PERIOD),
+        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
 )
 
@@ -164,7 +169,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT,
+        delta_t=DT_FVM,
         end_time=T_END,
         write_interval=10**9,
         write_interval_time=WRITE_INTERVAL,
@@ -205,7 +210,7 @@ FVM_SETUP = FVMSetup(
 )
 
 VPM_SETUP = VPMSetup(
-    time_step_size=DT,
+    time_step_size=DT_VPM,
     background_velocity=list(U_INF),
     viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
@@ -220,8 +225,8 @@ VPM_SETUP = VPMSetup(
     max_targets=MAX_PARTICLES,
     vpm_domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_frequency=LOG_PERIOD,
-    backup_frequency=LOG_PERIOD,
+    logging_frequency=VPM_LOG_PERIOD,
+    backup_frequency=VPM_LOG_PERIOD,
     backup_directory=str(CASE_DIR / "solution"),
     samplers=VPM_SAMPLERS,
 )
@@ -235,8 +240,8 @@ COUPLER_SETUP = CouplerSetup(
     prune_vorticity_min=0.01,
     handoff_max_particles=MAX_PARTICLES,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
-    log_period=LOG_PERIOD,
-    backup_period=LOG_PERIOD,
+    log_period=VPM_LOG_PERIOD,
+    backup_period=VPM_LOG_PERIOD,
 )
 
 

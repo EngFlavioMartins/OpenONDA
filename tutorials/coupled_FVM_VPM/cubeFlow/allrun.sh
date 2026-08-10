@@ -4,4 +4,5 @@ set -eu
 cd "$(dirname "$0")"
 
 ./allclean.sh
-exec python cubeFlow_setup.py
+python -u cubeFlow_setup.py
+python assets/check_run.py

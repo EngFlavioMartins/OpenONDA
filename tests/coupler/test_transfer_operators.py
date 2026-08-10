@@ -330,12 +330,15 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     diagnostics = coupler.compute_diagnostics()
 
     assert diagnostics["period_multiplier"] == 3
-    for section in ("conservation", "donor_flux"):
+    for section in ("conservation", "donor_flux", "handoff"):
         assert section in diagnostics
     for values in diagnostics["conservation"].values():
         assert set(values) == {"circulation", "linear_impulse", "angular_impulse"}
         assert np.isfinite(list(values.values())).all()
     assert np.isfinite(list(diagnostics["donor_flux"].values())).all()
+    assert np.isfinite(list(diagnostics["handoff"].values())).all()
+    assert diagnostics["handoff"]["n_pruned"] == result.n_pruned
+    assert diagnostics["handoff"]["cfl"] == result.cfl
 
 
 def test_restart_api_remains_available_for_transfer_round_trips():

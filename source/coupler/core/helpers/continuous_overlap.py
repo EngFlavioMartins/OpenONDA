@@ -581,7 +581,7 @@ def continuous_handoff(
 
 
 # =========================================================
-# Solver-facing wrapper (reads OpenFOAM, writes the VPM field)
+# Solver-facing wrapper (reads native FVM fields, writes the VPM field)
 # =========================================================
 class ContinuousOverlapInjector:
     """Thin FVM/VPM wrapper around :func:`continuous_handoff`."""

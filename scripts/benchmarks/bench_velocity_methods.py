@@ -98,9 +98,6 @@ def run(arch_str, sizes, theta, repeats):
     # Initialise via the project backend (config/backend.py), exactly as the
     # solver does — a raw ``ti.init(arch=ti.vulkan)`` triggers Taichi's adaptive
     # arch probe, which can hang on some Vulkan setups.
-    import sys
-
-    sys.path.insert(0, ".")
     from source.solvers.VPM.config.backend import initialize_taichi_backend
 
     backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[arch_str]

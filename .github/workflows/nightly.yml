@@ -93,6 +93,8 @@ jobs:
           conda run -n OpenONDA-clean pytest tests/fvm tests/coupler
           -m "not mpi and not openfoam"
           --junitxml=clean-install.xml
+      - name: Native FVM-VPM tutorials from isolated directories
+        run: conda run -n OpenONDA-clean scripts/validate_native_tutorials.sh
       - name: Archive exact environment
         if: always()
         run: conda list -n OpenONDA-clean --explicit > clean-install-conda-explicit.txt
@@ -103,3 +105,21 @@ jobs:
           path: |
             clean-install.xml
             clean-install-conda-explicit.txt
+
+  conda-macos:
+    name: Conda install (Apple Silicon macOS)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: OpenONDA
+          environment-file: scripts/environment/environment.yml
+          miniforge-version: latest
+          use-mamba: true
+      - run: python -m pip install .
+      - name: Import outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA ready')"
+          python -m pip check

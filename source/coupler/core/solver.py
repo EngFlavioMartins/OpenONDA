@@ -309,8 +309,8 @@ class FVMVPMCoupler:
         """Return the number of VPM/coupling intervals for a given end time.
 
         The end time need not be an exact multiple of the VPM step size; the
-        count is rounded to the nearest integer, matching OpenFOAM's practice
-        of landing on the closest step boundary.
+        count is rounded to the nearest integer, landing on the closest
+        coupling-step boundary.
 
         Args:
             t_end:  Requested simulation end time.
@@ -719,7 +719,7 @@ class FVMVPMCoupler:
             donor_velocity = target_velocity[n_fringe:]
         else:
             # The non-master rank has empty gathered cell geometry, but still
-            # participates in the collective OpenFOAM field push.
+            # participates in the collective native-FVM boundary update.
             self.fringe.update_target()
         t_fringe = time.perf_counter() - t_fringe
 
@@ -1035,9 +1035,37 @@ class FVMVPMCoupler:
         }
         if not all(np.isfinite(value) for value in donor.values()):
             raise FloatingPointError("non-finite donor-flux diagnostic")
+        handoff = {
+            "cfl": float(getattr(result, "cfl", 0.0)),
+            "n_remesh_in": int(getattr(result, "n_remesh_in", 0)),
+            "n_remesh_out": int(getattr(result, "n_remesh_out", 0)),
+            "n_free": int(getattr(result, "n_free", 0)),
+            "n_excluded": int(getattr(result, "n_excluded", 0)),
+            "n_pruned": int(getattr(result, "n_pruned", 0)),
+            "pruned_circulation_fraction": float(
+                getattr(result, "pruned_circulation_fraction", 0.0)
+            ),
+            "n_population_pruned": int(getattr(result, "n_population_pruned", 0)),
+            "population_pruned_circulation_fraction": float(
+                getattr(result, "population_pruned_circulation_fraction", 0.0)
+            ),
+            "population_pruned_velocity_bound": float(
+                getattr(result, "population_pruned_velocity_bound", 0.0)
+            ),
+            "flux_ratio": float(getattr(result, "flux_ratio", 0.0)),
+            "strength_correction_residual_pre": float(
+                getattr(result, "strength_corr_residual_pre", 0.0)
+            ),
+            "strength_correction_residual_post": float(
+                getattr(result, "strength_corr_residual_post", 0.0)
+            ),
+        }
+        if not all(np.isfinite(value) for value in handoff.values()):
+            raise FloatingPointError("non-finite handoff diagnostic")
         return {
             "conservation": conservation,
             "donor_flux": donor,
+            "handoff": handoff,
             "period_multiplier": int(self.period_multiplier),
             "handoff_particle_count": int(getattr(result, "n_total", 0)),
         }

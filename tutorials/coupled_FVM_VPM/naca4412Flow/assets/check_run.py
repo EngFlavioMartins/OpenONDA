@@ -4,11 +4,45 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
+
+
+def _json_lines(path: Path) -> list[dict]:
+    if not path.is_file():
+        raise SystemExit(f"FAIL: expected diagnostics file was not written: {path}")
+    records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    if not records:
+        raise SystemExit(f"FAIL: diagnostics file is empty: {path}")
+    return records
+
+
+def _check_physics(values: np.ndarray) -> str:
+    alpha = math.radians(10.0)
+    drag = values[:, 3] * math.cos(alpha) + values[:, 4] * math.sin(alpha)
+    lift = -values[:, 3] * math.sin(alpha) + values[:, 4] * math.cos(alpha)
+    settled = values[:, 0] >= 0.5 * values[-1, 0]
+    if np.count_nonzero(settled) < 6:
+        raise SystemExit("FAIL: production NACA run has too few settled force samples")
+    mean_drag = float(np.mean(drag[settled]))
+    mean_lift = float(np.mean(lift[settled]))
+    if not 0.0 < mean_drag < 5.0:
+        raise SystemExit(f"FAIL: settled NACA wind-axis drag is not physical ({mean_drag:.3g})")
+    if not 0.05 < mean_lift < 5.0:
+        raise SystemExit(f"FAIL: settled NACA lift is not physical ({mean_lift:.3g})")
+    tail = np.flatnonzero(settled)
+    midpoint = tail[0] + len(tail) // 2
+    lift_drift = abs(float(np.mean(lift[midpoint:]) - np.mean(lift[tail[0] : midpoint])))
+    lift_scale = max(abs(mean_lift), 0.1)
+    if lift_drift / lift_scale > 0.50:
+        raise SystemExit(
+            f"FAIL: settled NACA mean lift is still drifting ({lift_drift / lift_scale:.1%})"
+        )
+    return f" wind-axis mean Cd={mean_drag:.3f}, Cl={mean_lift:.3f};"
 
 
 def main() -> None:
@@ -33,30 +67,41 @@ def main() -> None:
             f"FAIL: force history ends at t={values[-1, 0]:g}, expected {expected_end:g}"
         )
 
-    diagnostics_path = CASE_DIR / "solution" / "diagnostics.jsonl"
-    diagnostics = [json.loads(line) for line in diagnostics_path.read_text().splitlines()]
-    if not diagnostics:
-        raise SystemExit("FAIL: no FVM diagnostics were written")
-    final = diagnostics[-1]
-    if final["nonfinite_count"] != 0:
+    diagnostics = _json_lines(CASE_DIR / "solution" / "diagnostics.jsonl")
+    if any(int(record["nonfinite_count"]) != 0 for record in diagnostics):
         raise SystemExit("FAIL: non-finite FVM fields were detected")
-    if float(final["cfl_max"]) > 5.0:
-        raise SystemExit(f"FAIL: final FVM CFL is excessive ({final['cfl_max']:.3g})")
-    if float(final["continuity_max"]) > 1e-3:
-        raise SystemExit(
-            f"FAIL: final continuity residual is excessive ({final['continuity_max']:.3g})"
-        )
+    failed = [
+        (record["step"], solve.get("equation", "unknown"))
+        for record in diagnostics
+        for solve in record.get("linear_solves", ())
+        if not solve.get("converged", False)
+    ]
+    if failed:
+        raise SystemExit(f"FAIL: unconverged FVM linear solves were recorded: {failed[:5]}")
+    max_cfl = max(float(record["cfl_max"]) for record in diagnostics)
+    max_continuity = max(float(record["continuity_max"]) for record in diagnostics)
+    if max_cfl > 5.0:
+        raise SystemExit(f"FAIL: peak FVM CFL is excessive ({max_cfl:.3g})")
+    if max_continuity > 1e-3:
+        raise SystemExit(f"FAIL: peak continuity residual is excessive ({max_continuity:.3g})")
     if values[-1, 5] > 5.0:
         raise SystemExit(f"FAIL: final IBM no-slip error is excessive ({values[-1, 5]:.3g})")
 
-    coupling_path = CASE_DIR / "solution" / "coupler_diagnostics.jsonl"
-    coupling = [json.loads(line) for line in coupling_path.read_text().splitlines()]
-    circulation_error = float(coupling[-1]["conservation"]["corrected_mismatch"]["circulation"])
+    coupling = _json_lines(CASE_DIR / "solution" / "coupler_diagnostics.jsonl")
+    circulation_error = max(
+        abs(float(record["conservation"]["corrected_mismatch"]["circulation"]))
+        for record in coupling
+    )
     if circulation_error > 1e-8:
         raise SystemExit(f"FAIL: corrected handoff circulation mismatch is {circulation_error:.3g}")
+    donor_error = max(abs(float(record["donor_flux"]["corrected_mismatch"])) for record in coupling)
+    if donor_error > 1e-8:
+        raise SystemExit(f"FAIL: corrected donor-flux mismatch is {donor_error:.3g}")
+    physics_summary = _check_physics(values) if expected_end >= 8.0 else ""
     print(
-        "PASS: native NACA 4412 run completed with bounded CFL, continuity, "
-        f"no-slip, and conservative handoff through t={values[-1, 0]:g}."
+        "PASS: native NACA 4412 run completed with converged FVM solves,"
+        f"{physics_summary} peak CFL={max_cfl:.3g}, peak continuity={max_continuity:.3g}, "
+        f"bounded no-slip error, and conservative handoff through t={values[-1, 0]:g}."
     )
 
 

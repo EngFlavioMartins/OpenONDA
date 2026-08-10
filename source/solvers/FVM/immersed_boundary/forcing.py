@@ -183,6 +183,12 @@ class IBMForcing:
             self.eps = spsolve(A.tocsc(), np.ones(ns))
         if not np.all(np.isfinite(self.eps)):
             raise ValueError("IBM marker quadrature system is singular or ill-conditioned")
+        eps_scale = max(float(np.max(np.abs(self.eps))), np.finfo(np.float64).tiny)
+        if float(np.min(self.eps)) < -1.0e-10 * eps_scale:
+            raise ValueError(
+                "IBM marker quadrature produced negative weights; the marker cloud is "
+                "ill-conditioned. Increase the marker spacing or separate nearby surfaces."
+            )
         self._quadrature_residual = float(np.abs(A @ self.eps - 1.0).max())
         if self._quadrature_residual > 1.0e-8:
             raise ValueError(
@@ -293,4 +299,6 @@ class IBMForcing:
             "kernel_row_sum_max": float(self._row_sums.max()),
             "quadrature_residual": self._quadrature_residual,
             "eps_over_h": float(np.median(self.eps) / self.h ** len(self.axes)),
+            "eps_min": float(np.min(self.eps)),
+            "eps_max": float(np.max(self.eps)),
         }

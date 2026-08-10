@@ -33,11 +33,11 @@ The validated cube setup is:
 | FVM step / ranks | `0.01 s` / 4 |
 | VPM step / spacing | `0.05 s` / `0.04 D` |
 | Handshake width / dead strip | `0.24 D` / 0 |
-| Particle cap | 200,000 |
+| Particle cap | 1,500,000 |
 | VPM backend | Metal, f32 |
 
-`AUTO` is GPU-strict for f32 runs. It selects Metal on macOS and never changes
-the production solve to CPU silently.
+`AUTO` selects an available Taichi backend. Set `OPENONDA_PROCESSING_UNIT=CPU`
+for a portable diagnostic run or select a supported GPU backend explicitly.
 
 ## Validation
 
@@ -82,8 +82,7 @@ ping state after every GBD step.
 - A 0.16 D handshake was worse after the wake reached the interface.
 - Applying the panel velocity in every particle RK stage was slower and did not
   improve drag.
-- Native wall `fixedFluxPressure` is not yet equivalent to OpenFOAM; it reduced
-  Cd to 0.54 at 0.15 s and is not used.
+- A wall-pressure variant reduced Cd to 0.54 at 0.15 s and is not used.
 - Matching the full reference refinement inside the cropped box required
   1.02 million cells and removed the cost advantage.
 - A global circulation-magnitude particle cap worsened mature-wake drag because
@@ -94,3 +93,13 @@ ping state after every GBD step.
 The supported path remains the single configuration above. Improving the
 pointwise transient further requires a conservative momentum/traction trace or
 a true FVM handshake shell, not another scalar boundary or pruning coefficient.
+
+## Native cylinder and NACA workflows
+
+`cylinderSheddingFlow` and `naca4412Flow` use solver-native Cartesian meshes
+with direct-forcing immersed bodies. Their VPM coupling windows are subcycled
+by the FVM so the immersed-boundary solve respects its CFL constraint. Each
+case runs `assets/check_run.py` automatically: short runs gate finite fields,
+linear convergence, CFL, continuity, no-slip error, donor-flux closure, and
+handoff conservation; completed production horizons additionally gate wake or
+load statistics.

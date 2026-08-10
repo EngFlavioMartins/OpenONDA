@@ -9,7 +9,8 @@ results are tracked by DVC and stored in the configured remote.
 |---|---|---|
 | Run inputs | setup scripts, meshes/STL, configuration JSON, plotting tools | Git |
 | Small reference figures | PNG, PDF, SVG | Git |
-| Results | `solution/`, `samples/`, checkpoints, reference datasets | DVC |
+| Large results | `solution/`, checkpoints, full reference datasets | DVC |
+| Curated diagnostics | small sampler CSVs and selected reference profiles | Git after review |
 | Scratch | caches, logs, VTK staging, temporary partitions | ignored |
 
 Native FVM cases can generate their meshes at startup, so generated mesh data
@@ -36,6 +37,10 @@ git status
 git commit -m "Update <case> results"
 git push
 ```
+
+The helper only discovers `solution/` directories. It deliberately does not
+add complete `referenceFlow/` directories because those contain runnable
+native-FVM source and small reviewed reference samples.
 
 The safe order is `dvc add` → `dvc push` → Git commit → Git push. A committed
 `.dvc` pointer is not a backup until `dvc push` succeeds.

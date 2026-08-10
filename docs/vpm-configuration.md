@@ -4,7 +4,7 @@ VPM and VLM cases use one immutable setup graph. Runtime solvers do not accept
 configuration keyword overrides and do not expose configuration update methods.
 
 ```python
-from source.solvers.VPM import (
+from openonda.vpm import (
     Solver,
     StabilizationConfig,
     VLMSetup,

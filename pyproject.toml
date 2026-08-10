@@ -43,6 +43,7 @@ keywords = [
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "numpy>=1.26.0",
+    "numpy-stl>=3.2",
     "scipy>=1.11.0",
     "matplotlib>=3.8.0",
     "pydantic>=2.5.0",
@@ -117,9 +118,8 @@ ignore_names = ["b_vec"]
 [project.urls]
 Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
 Repository = "https://github.com/EngFlavioMartins/OpenONDA"
-Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/main/docs"
+Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/development/docs"
 "Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
-Changelog = "https://github.com/EngFlavioMartins/OpenONDA/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = {attr = "source.version.__version__"}
