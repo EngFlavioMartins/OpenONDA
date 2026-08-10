@@ -39,6 +39,7 @@ jobs:
       matrix:
         include:
           - {os: ubuntu-latest, python: "3.11"}
+          - {os: ubuntu-latest, python: "3.12"}
           - {os: ubuntu-latest, python: "3.13"}
           - {os: macos-14, python: "3.11"}
           - {os: macos-14, python: "3.13"}
@@ -56,20 +57,10 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/openonda-wheel"
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip install dist/*.whl
-      - name: Import outside the checkout
+      - name: Initialize dependencies and solve outside the checkout
         working-directory: ${{ runner.temp }}
         run: |
-          "$RUNNER_TEMP/openonda-wheel/bin/python" - <<'PY'
-          import pathlib
-          import openonda
-          import openonda.coupler
-          import openonda.fvm
-          import openonda.vpm
-
-          package = pathlib.Path(openonda.__file__).resolve()
-          assert "site-packages" in str(package), package
-          print(openonda.__version__, package)
-          PY
+          "$RUNNER_TEMP/openonda-wheel/bin/python" -m openonda.verify_install --require-site-packages
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
 
   fvm-fast:

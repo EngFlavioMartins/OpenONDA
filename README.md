@@ -22,7 +22,7 @@ Taichi wheel.
 Install the current development version in one command:
 
 ```bash
-python -m pip install "OpenONDA @ git+https://github.com/EngFlavioMartins/OpenONDA.git@development"
+python -m pip install "OpenONDA @ https://github.com/EngFlavioMartins/OpenONDA/archive/refs/heads/development.zip"
 ```
 
 Once a release is published on PyPI, the equivalent command is:
@@ -37,7 +37,12 @@ needed. After installation this works from any directory:
 ```bash
 cd /tmp
 python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA ready')"
+openonda-verify-install --require-site-packages
 ```
+
+The verifier initializes Gmsh and Taichi and advances a small native FVM case;
+it also rejects editable/source-tree imports when `--require-site-packages` is
+used.
 
 The default installation includes the serial FVM, VPM/VLM, coupler, internal
 Gmsh meshing, PyAMG pressure solver, HDF5 output, and VTK visualization stack.
@@ -47,7 +52,7 @@ Gmsh meshing, PyAMG pressure solver, HDF5 output, and VTK visualization stack.
 For an isolated, reproducible environment on Linux or macOS:
 
 ```bash
-git clone --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 scripts/install/install_conda.sh
 # Then run the two activation commands printed by the installer.

@@ -87,10 +87,12 @@ jobs:
       - name: Install through scripts/install/install_conda.sh
         env:
           OPENONDA_CONDA_ENV: OpenONDA-clean
-        run: scripts/install/install_conda.sh -y --dev
+        run: scripts/install/install_conda.sh -y
+      - name: Install test dependencies without an editable checkout
+        run: conda run -n OpenONDA-clean python -m pip install ".[test]"
       - name: Non-hardware FVM + coupler evidence on the clean install
         run: >-
-          conda run -n OpenONDA-clean pytest tests/fvm tests/coupler
+          conda run -n OpenONDA-clean python -m pytest tests/fvm tests/coupler
           -m "not mpi"
           --junitxml=clean-install.xml
       - name: Native FVM-VPM tutorials from isolated directories
@@ -118,8 +120,8 @@ jobs:
           miniforge-version: latest
           use-mamba: true
       - run: python -m pip install .
-      - name: Import outside the checkout
+      - name: Initialize dependencies and solve outside the checkout
         working-directory: ${{ runner.temp }}
         run: |
-          python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA ready')"
+          python -m openonda.verify_install --require-site-packages
           python -m pip check

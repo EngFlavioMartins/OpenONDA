@@ -114,20 +114,12 @@ else
     "$ENV_PYTHON" -m pip install "$REPO_ROOT"
 fi
 
-echo "Verifying package imports outside the source tree..."
+echo "Verifying meshing, Taichi, and a native FVM step outside the source tree..."
+VERIFY_ARGS=()
+if [[ $DEVELOPMENT -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
 (
     cd "${TMPDIR:-/tmp}"
-    PYTHONNOUSERSITE=1 "$ENV_PYTHON" - <<'PY'
-import openonda
-import openonda.coupler
-import openonda.fvm
-import openonda.vpm
-import gmsh
-import taichi
-
-print(f"OpenONDA {openonda.__version__}")
-print(f"Taichi {taichi.__version__}; Gmsh {gmsh.__version__}")
-PY
+    PYTHONNOUSERSITE=1 "$ENV_PYTHON" -m openonda.verify_install "${VERIFY_ARGS[@]}"
 )
 "$ENV_PYTHON" -m pip check
 

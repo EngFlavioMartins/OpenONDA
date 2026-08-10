@@ -13,7 +13,7 @@ environment:
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "OpenONDA @ git+https://github.com/EngFlavioMartins/OpenONDA.git@development"
+python -m pip install "OpenONDA @ https://github.com/EngFlavioMartins/OpenONDA/archive/refs/heads/development.zip"
 ```
 
 When a release is available on PyPI, replace the last command with
@@ -26,8 +26,13 @@ Verify from outside the checkout:
 ```bash
 cd /tmp
 python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA ready')"
+openonda-verify-install --require-site-packages
 python -m pip check
 ```
+
+The verifier initializes Gmsh and Taichi and advances a small native FVM
+problem. With `--require-site-packages`, it also fails if Python resolves an
+editable checkout instead of the installed distribution.
 
 ## Conda/Miniforge
 
@@ -35,14 +40,14 @@ The repository installer is the reproducible option for a complete scientific
 environment:
 
 ```bash
-git clone --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 scripts/install/install_conda.sh
 ```
 
 It creates or updates `OpenONDA` from `scripts/environment/environment.yml`,
-installs the OpenONDA wheel into that environment, verifies imports from
-`/tmp`, and runs `pip check`. Use `--name NAME` to choose another environment,
+installs the OpenONDA wheel into that environment, initializes Gmsh and Taichi,
+advances a native FVM step from `/tmp`, and runs `pip check`. Use `--name NAME` to choose another environment,
 `--dev` for an editable contributor installation, or `--parallel` for a
 single-channel OpenMPI/PETSc/mpi4py/petsc4py stack.
 

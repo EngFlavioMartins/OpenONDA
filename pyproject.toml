@@ -61,6 +61,9 @@ dependencies = [
     "vtk>=9.3.0",
 ]
 
+[project.scripts]
+openonda-verify-install = "openonda.verify_install:main"
+
 [project.optional-dependencies]
 # Test and verification tools.
 test = [
@@ -130,6 +133,7 @@ include = ["openonda*", "source*"]
 exclude = ["tests*", "docs*", "examples*"]
 
 [tool.setuptools.package-data]
+"openonda" = ["py.typed"]
 "source" = ["py.typed"]
 
 # Development tools configuration
