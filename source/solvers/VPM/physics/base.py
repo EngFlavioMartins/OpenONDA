@@ -18,7 +18,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
-from ..config.constants import MAX_PARTICLES
+from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR, EPSILON, MAX_PARTICLES
 
 # Smallest treecode capacity worth allocating.  Below this the fixed per-node
 # cost is irrelevant and the doubling would just add rebuilds.
@@ -122,6 +122,40 @@ class PhysicsBase:
         self._host_scalar_chunks = {}
         self._host_matrix_chunks = {}
 
+        # The first nine rows constrain vector circulation, linear impulse, and
+        # kernel-corrected angular impulse.  Row ten optionally constrains the
+        # exact inviscid rate of the discrete blob energy.
+        self._rate_constraint_defect = ti.field(dtype=compute_dtype, shape=(10,))
+        self._rate_constraint_gram = ti.field(dtype=compute_dtype, shape=(10, 10))
+        self._rate_constraint_multiplier = ti.field(dtype=compute_dtype, shape=(10,))
+        self._rate_projection_original_norm_sq = ti.field(dtype=compute_dtype, shape=())
+        self._rate_energy_gradient = ti.Vector.field(
+            3, dtype=compute_dtype, shape=(self.max_particles,)
+        )
+        self.rate_projection_correction_ratio = 0.0
+        self.rate_projection_max_correction_ratio = 0.0
+        self.stabilization_viscosity = ti.field(dtype=compute_dtype, shape=(self.max_particles,))
+        self._stabilization_viscosity_sum = ti.field(dtype=compute_dtype, shape=())
+        self._stabilization_viscosity_max = ti.field(dtype=compute_dtype, shape=())
+        self._stabilization_viscosity_active = ti.field(dtype=ti.i32, shape=())
+        self._axisymmetric_vector_sum_a = ti.Vector.field(
+            3, dtype=compute_dtype, shape=(self.max_particles,)
+        )
+        self._axisymmetric_vector_sum_b = ti.Vector.field(
+            3, dtype=compute_dtype, shape=(self.max_particles,)
+        )
+        self._axisymmetric_scalar_sum = ti.field(dtype=compute_dtype, shape=(self.max_particles,))
+        self._axisymmetric_orbit_count = ti.field(dtype=ti.i32, shape=(self.max_particles,))
+        self._angular_core_coefficient = (
+            0.0
+            if self.particles_kernel
+            in {
+                "HIGH_ORDER_GAUSSIAN",
+                "SUPER_GAUSSIAN",
+            }
+            else 1.0 / 3.0
+        )
+
         # Initialize Taichi fields
         self._initialize_temp_fields()
         self._initialize_target_fields(self.max_targets)
@@ -209,6 +243,400 @@ class PhysicsBase:
             f"{self._temp_field_size}. Increase VPMSetup.max_particles before "
             "constructing the solver."
         )
+
+    @ti.kernel
+    def _reset_rate_moments(self):
+        self._rate_projection_original_norm_sq[None] = 0.0
+        for row in range(10):
+            self._rate_constraint_defect[row] = 0.0
+            self._rate_constraint_multiplier[row] = 0.0
+            for column in range(10):
+                self._rate_constraint_gram[row, column] = 0.0
+
+    @ti.kernel
+    def _reduce_rate_moments(
+        self,
+        position: ti.template(),
+        strength: ti.template(),
+        particle_radius: ti.template(),
+        velocity: ti.template(),
+        strength_rate: ti.template(),
+        count: ti.i32,
+    ):
+        for i in range(count):
+            x = position[i]
+            gamma = strength[i]
+            u = velocity[i]
+            rate = strength_rate[i]
+            ti.atomic_add(self._rate_projection_original_norm_sq[None], rate.dot(rate))
+            rows = ti.Matrix.zero(self.accumulator_dtype, 10, 3)
+            for component in ti.static(range(3)):
+                rows[component, component] = 1.0
+
+            rows[3, 1], rows[3, 2] = -0.5 * x[2], 0.5 * x[1]
+            rows[4, 0], rows[4, 2] = 0.5 * x[2], -0.5 * x[0]
+            rows[5, 0], rows[5, 1] = -0.5 * x[1], 0.5 * x[0]
+
+            radius = particle_radius[i]
+            core_term = ti.cast(self._angular_core_coefficient, self.accumulator_dtype) * radius**2
+            x_sq = x.dot(x)
+            for row, column in ti.static(ti.ndrange(3, 3)):
+                rows[6 + row, column] = x[row] * x[column] / 3.0
+                if ti.static(row == column):
+                    rows[6 + row, column] -= x_sq / 3.0 + core_term
+
+            impulse_rate = 0.5 * (u.cross(gamma) + x.cross(rate))
+            angular_rate = (
+                u.cross(x.cross(gamma)) + x.cross(u.cross(gamma)) + x.cross(x.cross(rate))
+            ) / 3.0 - core_term * rate
+            for component in ti.static(range(3)):
+                ti.atomic_add(self._rate_constraint_defect[component], rate[component])
+                ti.atomic_add(self._rate_constraint_defect[3 + component], impulse_rate[component])
+                ti.atomic_add(self._rate_constraint_defect[6 + component], angular_rate[component])
+            for row in ti.static(range(9)):
+                for column in ti.static(range(9)):
+                    value = ti.cast(0.0, self.accumulator_dtype)
+                    for component in ti.static(range(3)):
+                        value += rows[row, component] * rows[column, component]
+                    ti.atomic_add(self._rate_constraint_gram[row, column], value)
+
+    def _define_rate_energy_kernel(self, q_, g_) -> None:
+        """Bind the exact discrete-energy row of the rate projection."""
+
+        @ti.kernel
+        def reduce_rate_energy(
+            position: ti.template(),
+            strength: ti.template(),
+            particle_radius: ti.template(),
+            velocity: ti.template(),
+            strength_rate: ti.template(),
+            count: ti.i32,
+        ):
+            for i in range(count):
+                x_i = position[i]
+                gamma_i = strength[i]
+                vector_potential = ti.Vector.zero(self.accumulator_dtype, 3)
+                energy_position_gradient = ti.Vector.zero(self.accumulator_dtype, 3)
+                for j in range(count):
+                    displacement = x_i - position[j]
+                    distance = displacement.norm()
+                    pair_radius = 0.5 * (particle_radius[i] + particle_radius[j])
+                    if distance / pair_radius < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                        convolved_radius = ti.sqrt(
+                            particle_radius[i] ** 2 + particle_radius[j] ** 2
+                        )
+                        rho = distance / convolved_radius
+                        vector_potential += g_(rho) / convolved_radius * strength[j]
+                        if distance > EPSILON:
+                            energy_position_gradient -= (
+                                q_(rho)
+                                * gamma_i.dot(strength[j])
+                                / distance**3
+                                * displacement
+                            )
+
+                self._rate_energy_gradient[i] = vector_potential
+                energy_rate = vector_potential.dot(
+                    strength_rate[i]
+                ) + energy_position_gradient.dot(velocity[i])
+                ti.atomic_add(self._rate_constraint_defect[9], energy_rate)
+
+                rows = ti.Matrix.zero(self.accumulator_dtype, 9, 3)
+                for component in ti.static(range(3)):
+                    rows[component, component] = 1.0
+                rows[3, 1], rows[3, 2] = -0.5 * x_i[2], 0.5 * x_i[1]
+                rows[4, 0], rows[4, 2] = 0.5 * x_i[2], -0.5 * x_i[0]
+                rows[5, 0], rows[5, 1] = -0.5 * x_i[1], 0.5 * x_i[0]
+                core_term = ti.cast(
+                    self._angular_core_coefficient, self.accumulator_dtype
+                ) * particle_radius[i] ** 2
+                x_sq = x_i.dot(x_i)
+                for row, column in ti.static(ti.ndrange(3, 3)):
+                    rows[6 + row, column] = x_i[row] * x_i[column] / 3.0
+                    if ti.static(row == column):
+                        rows[6 + row, column] -= x_sq / 3.0 + core_term
+
+                for row in ti.static(range(9)):
+                    cross_gram = ti.cast(0.0, self.accumulator_dtype)
+                    for component in ti.static(range(3)):
+                        cross_gram += rows[row, component] * vector_potential[component]
+                    ti.atomic_add(self._rate_constraint_gram[row, 9], cross_gram)
+                    ti.atomic_add(self._rate_constraint_gram[9, row], cross_gram)
+                ti.atomic_add(
+                    self._rate_constraint_gram[9, 9], vector_potential.dot(vector_potential)
+                )
+
+        self._reduce_rate_energy = reduce_rate_energy
+
+    @ti.kernel
+    def _apply_rate_moment_correction(
+        self,
+        position: ti.template(),
+        particle_radius: ti.template(),
+        strength_rate: ti.template(),
+        count: ti.i32,
+    ):
+        for i in range(count):
+            x = position[i]
+            rows = ti.Matrix.zero(self.accumulator_dtype, 10, 3)
+            for component in ti.static(range(3)):
+                rows[component, component] = 1.0
+            rows[3, 1], rows[3, 2] = -0.5 * x[2], 0.5 * x[1]
+            rows[4, 0], rows[4, 2] = 0.5 * x[2], -0.5 * x[0]
+            rows[5, 0], rows[5, 1] = -0.5 * x[1], 0.5 * x[0]
+            radius = particle_radius[i]
+            core_term = ti.cast(self._angular_core_coefficient, self.accumulator_dtype) * radius**2
+            x_sq = x.dot(x)
+            for row, column in ti.static(ti.ndrange(3, 3)):
+                rows[6 + row, column] = x[row] * x[column] / 3.0
+                if ti.static(row == column):
+                    rows[6 + row, column] -= x_sq / 3.0 + core_term
+            rows[9, 0] = self._rate_energy_gradient[i][0]
+            rows[9, 1] = self._rate_energy_gradient[i][1]
+            rows[9, 2] = self._rate_energy_gradient[i][2]
+
+            correction = ti.Vector.zero(self.accumulator_dtype, 3)
+            for row, component in ti.static(ti.ndrange(10, 3)):
+                correction[component] += (
+                    self._rate_constraint_multiplier[row] * rows[row, component]
+                )
+            strength_rate[i] += correction
+
+    def conserve_rate_moments(
+        self,
+        position,
+        strength,
+        radius,
+        velocity,
+        strength_rate,
+        count: int,
+        *,
+        conserve_energy: bool = False,
+    ) -> None:
+        """Make the inviscid rates of circulation and both impulses vanish.
+
+        For ``G = sum(Gamma_i)`` and
+        ``I = 0.5 sum(x_i cross Gamma_i)``, the uncorrected defect is
+
+        ``dI/dt = 0.5 sum(u_i cross Gamma_i + x_i cross dGamma_i/dt)``.
+
+        Angular impulse uses the same finite-core correction as the flow
+        diagnostics.  The nine moment constraints, and optionally the exact
+        discrete-energy-rate constraint, are solved simultaneously for the
+        minimum Euclidean-norm strength-rate correction.  No particle ordering,
+        remeshing, clipping, or dissipative filtering is involved.  Viscous core
+        spreading remains outside this projection, so its modeled energy and
+        angular rates are retained.
+        """
+        if count <= 0:
+            return
+        self._reset_rate_moments()
+        self._reduce_rate_moments(position, strength, radius, velocity, strength_rate, count)
+        if conserve_energy:
+            self._reduce_rate_energy(position, strength, radius, velocity, strength_rate, count)
+        ti.sync()
+
+        defect = self._rate_constraint_defect.to_numpy().astype(np.float64)
+        gram = self._rate_constraint_gram.to_numpy().astype(np.float64)
+        multipliers = np.linalg.pinv(gram, rcond=1.0e-12) @ (-defect)
+        if not np.isfinite(multipliers).all():
+            raise RuntimeError("VPM moment projection produced a non-finite correction")
+
+        correction_norm_sq = max(float(multipliers @ gram @ multipliers), 0.0)
+        original_norm_sq = max(float(self._rate_projection_original_norm_sq[None]), 0.0)
+        ratio = np.sqrt(correction_norm_sq / max(original_norm_sq, np.finfo(float).tiny))
+        self.rate_projection_correction_ratio = float(ratio)
+        self.rate_projection_max_correction_ratio = max(
+            self.rate_projection_max_correction_ratio,
+            self.rate_projection_correction_ratio,
+        )
+
+        self._rate_constraint_multiplier.from_numpy(multipliers.astype(self.np_dtype))
+        self._apply_rate_moment_correction(position, radius, strength_rate, count)
+
+    @ti.kernel
+    def _apply_stretching_viscosity_kernel(
+        self,
+        strength: ti.template(),
+        strain_rate: ti.template(),
+        volume: ti.template(),
+        viscosity: ti.template(),
+        viscosity_turbulent: ti.template(),
+        viscosity_effective: ti.template(),
+        coefficient: ti.f32,
+        count: ti.i32,
+    ):
+        for i in range(count):
+            gamma = strength[i]
+            gamma_sq = gamma.dot(gamma)
+            production = ti.cast(0.0, self.accumulator_dtype)
+            if gamma_sq > ti.cast(1.0e-30, self.accumulator_dtype):
+                production = ti.max(gamma.dot(strain_rate[i] @ gamma) / gamma_sq, 0.0)
+            delta_sq = ti.pow(ti.max(volume[i], 0.0), 2.0 / 3.0)
+            nu_stabilization = coefficient * delta_sq * production
+            self.stabilization_viscosity[i] = nu_stabilization
+            viscosity_effective[i] = viscosity[i] + viscosity_turbulent[i] + nu_stabilization
+            ti.atomic_add(self._stabilization_viscosity_sum[None], nu_stabilization)
+            ti.atomic_max(self._stabilization_viscosity_max[None], nu_stabilization)
+            if nu_stabilization > 0.0:
+                ti.atomic_add(self._stabilization_viscosity_active[None], 1)
+
+    def apply_stretching_viscosity(self, particles, coefficient: float) -> dict[str, float]:
+        """Add positive-production residual viscosity to ``nu_eff``.
+
+        ``particles.strain_rate`` must describe the same state as the current
+        particle strengths.  The returned statistics are used only for audit
+        output and do not take part in the numerical update.
+        """
+        count = len(particles)
+        self._stabilization_viscosity_sum.fill(0.0)
+        self._stabilization_viscosity_max.fill(0.0)
+        self._stabilization_viscosity_active.fill(0)
+        if count <= 0 or coefficient <= 0.0:
+            return {
+                "stabilization_viscosity_mean": 0.0,
+                "stabilization_viscosity_max": 0.0,
+                "stabilization_viscosity_active_fraction": 0.0,
+            }
+        self._apply_stretching_viscosity_kernel(
+            particles.circulation,
+            particles.strain_rate,
+            particles.volume,
+            particles.viscosity,
+            particles.viscosity_turbulent,
+            particles.viscosity_effective,
+            float(coefficient),
+            count,
+        )
+        ti.sync()
+        return {
+            "stabilization_viscosity_mean": float(self._stabilization_viscosity_sum[None]) / count,
+            "stabilization_viscosity_max": float(self._stabilization_viscosity_max[None]),
+            "stabilization_viscosity_active_fraction": float(
+                self._stabilization_viscosity_active[None]
+            )
+            / count,
+        }
+
+    @ti.kernel
+    def _reset_axisymmetric_accumulators(self, count: ti.i32):
+        for i in range(count):
+            self._axisymmetric_vector_sum_a[i] = ti.Vector([0.0, 0.0, 0.0])
+            self._axisymmetric_vector_sum_b[i] = ti.Vector([0.0, 0.0, 0.0])
+            self._axisymmetric_scalar_sum[i] = 0.0
+            self._axisymmetric_orbit_count[i] = ti.cast(0, ti.i32)
+
+    @ti.func
+    def _cylindrical_components(self, position, value, axis: ti.i32):
+        b = ti.cast((axis + 1) % 3, ti.i32)
+        c = ti.cast((axis + 2) % 3, ti.i32)
+        radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
+        inverse_radius = 1.0 / ti.max(radius, ti.cast(1.0e-20, self.accumulator_dtype))
+        return ti.Vector(
+            [
+                value[axis],
+                (position[b] * value[b] + position[c] * value[c]) * inverse_radius,
+                (-position[c] * value[b] + position[b] * value[c]) * inverse_radius,
+            ]
+        )
+
+    @ti.func
+    def _cartesian_from_cylindrical(self, position, value, axis: ti.i32):
+        b = ti.cast((axis + 1) % 3, ti.i32)
+        c = ti.cast((axis + 2) % 3, ti.i32)
+        radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
+        inverse_radius = 1.0 / ti.max(radius, ti.cast(1.0e-20, self.accumulator_dtype))
+        result = ti.Vector.zero(self.accumulator_dtype, 3)
+        result[axis] = value[0]
+        result[b] = (value[1] * position[b] - value[2] * position[c]) * inverse_radius
+        result[c] = (value[1] * position[c] + value[2] * position[b]) * inverse_radius
+        return result
+
+    @ti.kernel
+    def _reduce_axisymmetric_vectors(
+        self,
+        position: ti.template(),
+        vector_a: ti.template(),
+        vector_b: ti.template(),
+        orbit_id: ti.template(),
+        axis: ti.i32,
+        count: ti.i32,
+    ):
+        for i in range(count):
+            orbit = ti.cast(orbit_id[i], ti.i32)
+            a = self._cylindrical_components(position[i], vector_a[i], axis)
+            b = self._cylindrical_components(position[i], vector_b[i], axis)
+            for component in ti.static(range(3)):
+                ti.atomic_add(self._axisymmetric_vector_sum_a[orbit][component], a[component])
+                ti.atomic_add(self._axisymmetric_vector_sum_b[orbit][component], b[component])
+            ti.atomic_add(self._axisymmetric_orbit_count[orbit], ti.cast(1, ti.i32))
+
+    @ti.kernel
+    def _apply_axisymmetric_vectors(
+        self,
+        position: ti.template(),
+        vector_a: ti.template(),
+        vector_b: ti.template(),
+        orbit_id: ti.template(),
+        axis: ti.i32,
+        count: ti.i32,
+    ):
+        for i in range(count):
+            orbit = ti.cast(orbit_id[i], ti.i32)
+            denominator = ti.cast(self._axisymmetric_orbit_count[orbit], self.accumulator_dtype)
+            mean_a = self._axisymmetric_vector_sum_a[orbit] / denominator
+            mean_b = self._axisymmetric_vector_sum_b[orbit] / denominator
+            # vector_a is polar velocity: no swirl means u_theta = 0.
+            # vector_b is an axial circulation rate: reflection symmetry leaves
+            # only its azimuthal component.
+            mean_a[2] = 0.0
+            mean_b[0] = 0.0
+            mean_b[1] = 0.0
+            vector_a[i] = self._cartesian_from_cylindrical(position[i], mean_a, axis)
+            vector_b[i] = self._cartesian_from_cylindrical(position[i], mean_b, axis)
+
+    def average_axisymmetric_no_swirl_rhs(
+        self, position, vector_a, vector_b, orbit_id, axis: int, count: int
+    ) -> None:
+        """Average velocity/rate over the axisymmetric no-swirl manifold."""
+        if count <= 0:
+            return
+        self._reset_axisymmetric_accumulators(count)
+        self._reduce_axisymmetric_vectors(position, vector_a, vector_b, orbit_id, axis, count)
+        self._apply_axisymmetric_vectors(position, vector_a, vector_b, orbit_id, axis, count)
+
+    @ti.kernel
+    def _reduce_axisymmetric_scalar(
+        self,
+        scalar: ti.template(),
+        orbit_id: ti.template(),
+        count: ti.i32,
+    ):
+        for i in range(count):
+            orbit = ti.cast(orbit_id[i], ti.i32)
+            ti.atomic_add(self._axisymmetric_scalar_sum[orbit], scalar[i])
+            ti.atomic_add(self._axisymmetric_orbit_count[orbit], ti.cast(1, ti.i32))
+
+    @ti.kernel
+    def _apply_axisymmetric_scalar(
+        self,
+        scalar: ti.template(),
+        orbit_id: ti.template(),
+        count: ti.i32,
+    ):
+        for i in range(count):
+            orbit = ti.cast(orbit_id[i], ti.i32)
+            scalar[i] = self._axisymmetric_scalar_sum[orbit] / ti.cast(
+                self._axisymmetric_orbit_count[orbit], self.accumulator_dtype
+            )
+
+    def average_axisymmetric_scalar(self, scalar, orbit_id, count: int) -> None:
+        """Average one scalar field over declared particle orbits."""
+        if count <= 0:
+            return
+        self._reset_axisymmetric_accumulators(count)
+        self._reduce_axisymmetric_scalar(scalar, orbit_id, count)
+        self._apply_axisymmetric_scalar(scalar, orbit_id, count)
 
     # TARGET FIELD MANAGEMENT (for at-point evaluations)
 
@@ -441,6 +869,7 @@ class PhysicsBase:
 
         # Create all kernels from factory
         self.kernels = create_kernels(kernel_functions)
+        self._define_rate_energy_kernel(kernel_functions["q_"], kernel_functions["g_"])
 
         # Bind kernels as instance methods for easy access
         for name, fn in self.kernels.items():

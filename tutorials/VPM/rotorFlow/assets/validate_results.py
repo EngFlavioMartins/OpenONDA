@@ -15,7 +15,6 @@ Checks, in order of what they catch:
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from pathlib import Path
@@ -31,6 +30,9 @@ from _common import (  # noqa: E402
     FREESTREAM_VELOCITY,
     NUM_BLADES,
     ROTOR_RADIUS,
+    FIGURES_DIR,
+    SAMPLES_DIR,
+    SOLUTION_DIR,
     TIP_SPEED_RATIO,
     read_time_step,
 )
@@ -68,15 +70,13 @@ def _bem_reference(R: float, U_inf: float, omega: float, B: int) -> tuple[float,
     return float(bem.attrs["Ct"]), float(bem.attrs["Cp"])
 
 
-def _impulse_ratio(root: Path, rho: float, tail_rotations: float, omega: float) -> float | None:
+def _impulse_ratio(samples: Path, rho: float, tail_rotations: float, omega: float) -> float | None:
     """Mean rho*|dI_x/dt| / T over the last ``tail_rotations`` revolutions.
 
-    1.0 means the wake absorbs exactly the momentum the blades extract.  Below
-    Below 1.0 the wake is losing strength; above 1.0 under-resolved stretching
-    is manufacturing it.
+    A value of one closes the blade-force/wake-momentum budget.
     """
-    integrals_path = root / "samples" / "flow_integrals.csv"
-    forces_path = root / "samples" / "vlm_forces.csv"
+    integrals_path = samples / "flow_integrals.csv"
+    forces_path = samples / "vlm_forces.csv"
     if not integrals_path.exists() or not forces_path.exists():
         return None
 
@@ -101,7 +101,13 @@ def _impulse_ratio(root: Path, rho: float, tail_rotations: float, omega: float) 
     return float(np.mean(ratio)) if ratio.size else None
 
 
-def _plane_drifts(root: Path, R: float, U_inf: float, dt: float, omega: float) -> dict[str, float]:
+def _plane_drifts(
+    samples: Path,
+    R: float,
+    U_inf: float,
+    dt: float,
+    omega: float,
+) -> dict[str, float]:
     """Per-plane relative drift of the disc-averaged deficit over the averaging window."""
     try:
         import pyvista as pv
@@ -116,7 +122,6 @@ def _plane_drifts(root: Path, R: float, U_inf: float, dt: float, omega: float) -
     except Exception:
         return {}
 
-    samples = root / "samples"
     radial_edges = np.linspace(0.0, 1.25, 33)
     drifts: dict[str, float] = {}
     for tag, _label in _discover_planes(samples, R):
@@ -140,39 +145,22 @@ def _plane_drifts(root: Path, R: float, U_inf: float, dt: float, omega: float) -
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--solution-dir", default="solution/rotor")
-    ap.add_argument("--figures-dir", default="figures")
-    ap.add_argument("--expected-step", type=int, default=2400)
-    # Physical parameters default to the shared case definition in _common.py.
-    ap.add_argument("--rotor-radius", type=float, default=ROTOR_RADIUS)
-    ap.add_argument("--freestream-velocity", type=float, default=FREESTREAM_VELOCITY)
-    ap.add_argument("--tip-speed-ratio", type=float, default=TIP_SPEED_RATIO)
-    ap.add_argument("--rho", type=float, default=DENSITY)
-    ap.add_argument("--blades", type=int, default=NUM_BLADES)
-    # BEM tolerance: VLM Ct/Cp are expected within this fraction of BEM values.
-    # VLM (lifting-line) will over-predict vs. viscous BEM; 25% is generous but
-    # physically reasonable for a high-TSR rotor with finite wake effects.
-    ap.add_argument("--bem-tol", type=float, default=0.25)
-    # Impulse-budget tolerance: how far rho*|dI/dt| / T may sit from 1.0.
-    ap.add_argument("--impulse-tol", type=float, default=0.10)
-    # Wake-plane stationarity tolerance, matching plot_rotor_wake_planes.py.
-    ap.add_argument("--drift-tol", type=float, default=0.01)
-    args = ap.parse_args()
-
-    root, figs = Path(args.solution_dir), Path(args.figures_dir)
-    R = args.rotor_radius
-    U_inf = args.freestream_velocity
-    omega = args.tip_speed_ratio * U_inf / R
-    qA = 0.5 * args.rho * U_inf**2 * np.pi * R**2
+    expected_step = 2400
+    bem_tolerance = 0.25
+    impulse_tolerance = 0.10
+    drift_tolerance = 0.01
+    R = ROTOR_RADIUS
+    U_inf = FREESTREAM_VELOCITY
+    omega = TIP_SPEED_RATIO * U_inf / R
+    qA = 0.5 * DENSITY * U_inf**2 * np.pi * R**2
     failures: list[str] = []
 
     # -- 1. VPM particle sanity ------------------------------------------------
-    files = sorted(root.glob("vpm_rotor_*.h5"), key=_step)
-    if not files or _step(files[-1]) != args.expected_step:
+    files = sorted(SOLUTION_DIR.glob("vpm_rotor_*.h5"), key=_step)
+    if not files or _step(files[-1]) != expected_step:
         failures.append(
             f"last rotor backup is {_step(files[-1]) if files else 'missing'}, "
-            f"expected {args.expected_step}"
+            f"expected {expected_step}"
         )
     if files:
         with h5py.File(files[-1], "r") as h5:
@@ -187,36 +175,36 @@ def main() -> int:
             failures.append(f"unbounded final wake strength: {max_strength:.4g}")
 
     # -- 2. Wake impulse budget ------------------------------------------------
-    ratio = _impulse_ratio(root, args.rho, tail_rotations=2.0, omega=omega)
+    ratio = _impulse_ratio(SAMPLES_DIR, DENSITY, tail_rotations=2.0, omega=omega)
     if ratio is None:
         failures.append("could not evaluate the wake impulse budget (missing sampler CSVs)")
     else:
         print(f"Wake impulse budget: rho*|dIx/dt| / T = {ratio:.3f} (target 1.000)")
-        if not np.isfinite(ratio) or abs(ratio - 1.0) > args.impulse_tol:
+        if not np.isfinite(ratio) or abs(ratio - 1.0) > impulse_tolerance:
             failures.append(
                 f"wake impulse budget {ratio:.3f} deviates from 1.0 by more than "
-                f"{args.impulse_tol:.0%} — the wake is not carrying the momentum the "
+                f"{impulse_tolerance:.0%} — the wake is not carrying the momentum the "
                 "blades extract, so the velocity deficit cannot be trusted"
             )
 
     # -- 3. Wake-plane stationarity -------------------------------------------
-    dt = read_time_step(root)
+    dt = read_time_step(SAMPLES_DIR)
     if dt is None:
         failures.append("could not determine the run's time step")
     else:
-        drifts = _plane_drifts(root, R, U_inf, dt, omega)
+        drifts = _plane_drifts(SAMPLES_DIR, R, U_inf, dt, omega)
         if not drifts:
             failures.append("no wake-plane samples found to check for stationarity")
         for tag, drift in sorted(drifts.items()):
             print(f"Plane {tag}: disc-mean drift {drift:.2%}")
-            if not np.isfinite(drift) or drift > args.drift_tol:
+            if not np.isfinite(drift) or drift > drift_tolerance:
                 failures.append(
                     f"wake plane {tag} is still in transit ({drift:.1%} drift over the "
-                    f"averaging window, limit {args.drift_tol:.0%}) — run longer"
+                    f"averaging window, limit {drift_tolerance:.0%}) — run longer"
                 )
 
     # -- 4. VLM force CSV ------------------------------------------------------
-    csv = root / "samples" / "vlm_forces.csv"
+    csv = SAMPLES_DIR / "vlm_forces.csv"
     ct_mean = cp_mean = float("nan")
     if not csv.exists():
         failures.append("missing vlm_forces.csv")
@@ -237,7 +225,7 @@ def main() -> int:
             )
 
     # -- 5. BEM reference comparison ------------------------------------------
-    bem_ct, bem_cp = _bem_reference(R, U_inf, omega, args.blades)
+    bem_ct, bem_cp = _bem_reference(R, U_inf, omega, NUM_BLADES)
     if np.isfinite(bem_ct) and np.isfinite(ct_mean):
         ct_err = abs(ct_mean - bem_ct) / max(bem_ct, 1e-10)
         cp_err = abs(cp_mean - bem_cp) / max(bem_cp, 1e-10)
@@ -245,15 +233,15 @@ def main() -> int:
             f"BEM reference: Ct={bem_ct:.4f}, Cp={bem_cp:.4f}  "
             f"(VLM error: Ct={ct_err:.1%}, Cp={cp_err:.1%})"
         )
-        if ct_err > args.bem_tol:
+        if ct_err > bem_tolerance:
             failures.append(
                 f"VLM Ct={ct_mean:.3f} deviates from BEM Ct={bem_ct:.3f} "
-                f"by {ct_err:.1%} (limit {args.bem_tol:.0%})"
+                f"by {ct_err:.1%} (limit {bem_tolerance:.0%})"
             )
-        if cp_err > args.bem_tol:
+        if cp_err > bem_tolerance:
             failures.append(
                 f"VLM Cp={cp_mean:.3f} deviates from BEM Cp={bem_cp:.3f} "
-                f"by {cp_err:.1%} (limit {args.bem_tol:.0%})"
+                f"by {cp_err:.1%} (limit {bem_tolerance:.0%})"
             )
     elif not np.isfinite(bem_ct):
         print("  (BEM reference unavailable — skipping BEM comparison)")
@@ -264,7 +252,7 @@ def main() -> int:
         "rotor_wake_planes.png",
         "rotor_loading_validation.png",
     ):
-        if not (figs / name).exists():
+        if not (FIGURES_DIR / name).exists():
             failures.append(f"missing figure {name}")
 
     if failures:

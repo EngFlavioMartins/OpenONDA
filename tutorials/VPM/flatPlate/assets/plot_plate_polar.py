@@ -5,10 +5,6 @@ Flat Plate VLM-VPM — AoA Polar Plotter
 Generates Figure 1: CL, CD, CM vs α for the flat-plate VLM-VPM
 experiment suite over α = −10° … 15°.
 
-Usage:
-    python assets/plot_polar.py
-    python assets/plot_polar.py --solution-dir ./solution --dpi 300
-
 Output:
     figures/exp_polar.png
 
@@ -29,16 +25,12 @@ import matplotlib.pyplot as plt
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-SOL_DIR = CASE_DIR / "solution"
+SAMPLES_DIR = CASE_DIR / "samples"
 FIG_DIR = CASE_DIR / "figures"
 parser = argparse.ArgumentParser()
-parser.add_argument("--solution-dir", default=str(SOL_DIR))
-parser.add_argument("--figures-dir", default=str(FIG_DIR))
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
-args, _ = parser.parse_known_args()
-SOL_DIR = Path(args.solution_dir).resolve()
-FIG_DIR = Path(args.figures_dir).resolve()
+args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 # -- Theme ---------------------------------------------------------------------
 m = None
@@ -93,7 +85,7 @@ def lifting_line_polar(alpha_deg, AR, b=10.0, chord=1.0, n_terms=40):
 
 
 def load_csv(name: str) -> pd.DataFrame | None:
-    csv = SOL_DIR / name / "samples" / f"{name}.csv"
+    csv = SAMPLES_DIR / name / f"{name}.csv"
     if not csv.exists():
         print(f"  [MISSING] {csv}")
         return None

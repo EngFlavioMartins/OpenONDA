@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Spanwise loading validation — VLM bound circulation vs BEM prediction.
 
-Reads ``solution/rotor/samples/vlm_spanwise_blade_0.csv`` produced by the
+Reads ``samples/rotor/vlm_spanwise_blade_0.csv`` produced by the
 loading-distribution sampler and compares the time-averaged bound circulation
 Γ(r/R) against the BEM prediction for the same Betz-optimal blade geometry
 (TSR = 7, three blades, Selig–Betz twist from hub to tip).
@@ -26,7 +26,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, build_rotor_style_map, load_theme
+from _common import (
+    build_arg_parser,
+    build_rotor_style_map,
+    FIGURES_DIR,
+    load_theme,
+    SAMPLES_DIR,
+)
 
 # ==============================================================================
 # Data loader
@@ -84,8 +90,8 @@ def _read_vlm_spanwise(
 
 
 def plot_loading_validation(args) -> int:
-    samples = Path(args.solution_dir) / "samples"
-    figs = Path(args.figures_dir)
+    samples = SAMPLES_DIR
+    figs = FIGURES_DIR
     fmt = getattr(args, "format", "png")
     out = figs / f"rotor_loading_validation.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +119,7 @@ def plot_loading_validation(args) -> int:
     result = _read_vlm_spanwise(
         samples,
         surface="blade_0",
-        tail_fraction=args.tail_fraction,
+        tail_fraction=0.30,
     )
     if result is None:
         print(f"  [WARNING] vlm_spanwise_blade_0.csv not found in {samples} — run rotorFlow first.")
@@ -194,14 +200,9 @@ def plot_loading_validation(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Spanwise loading validation: VLM vs BEM")
-    p.add_argument(
-        "--tail-fraction",
-        type=float,
-        default=0.30,
-        help="Fraction of simulation tail used for time-averaging (default 0.30 = last 30%%).",
+    return plot_loading_validation(
+        build_arg_parser("Spanwise loading validation: VLM vs BEM").parse_args()
     )
-    return plot_loading_validation(p.parse_args())
 
 
 if __name__ == "__main__":

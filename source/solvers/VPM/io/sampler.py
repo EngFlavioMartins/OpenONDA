@@ -55,7 +55,10 @@ class SamplerExecutor:
         if max_circ_mag < 1e-8:
             return
 
-        samples_dir = resolve_samples_dir(solver.backup_directory)
+        samples_dir = resolve_samples_dir(
+            solver.backup_directory,
+            getattr(solver.config, "sample_subdirectory", None),
+        )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         for sampler_entry in sampler_entries:

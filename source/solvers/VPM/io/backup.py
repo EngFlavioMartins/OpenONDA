@@ -230,6 +230,18 @@ class BackupSystem:
                 {},
             ).items():
                 solver_group.attrs[name] = value
+            for name, value in getattr(
+                solver,
+                "_grid_diffusion_diagnostics",
+                {},
+            ).items():
+                solver_group.attrs[name] = value
+            for name, value in getattr(
+                solver,
+                "_regularization_diagnostics",
+                {},
+            ).items():
+                solver_group.attrs[name] = value
             reference_moments = getattr(
                 solver,
                 "_divergence_relaxation_reference_moments",
@@ -676,6 +688,14 @@ class BackupSystem:
                         solver._divergence_relaxation_diagnostics[name] = solver_group.attrs[
                             name
                         ].item()
+            if hasattr(solver, "_grid_diffusion_diagnostics"):
+                for name in solver._grid_diffusion_diagnostics:
+                    if name in solver_group.attrs:
+                        solver._grid_diffusion_diagnostics[name] = solver_group.attrs[name].item()
+            if hasattr(solver, "_regularization_diagnostics"):
+                for name in solver._regularization_diagnostics:
+                    if name in solver_group.attrs:
+                        solver._regularization_diagnostics[name] = solver_group.attrs[name].item()
             if "divergence_relaxation_reference_moments" in solver_group:
                 reference_array = np.asarray(
                     solver_group["divergence_relaxation_reference_moments"][:],

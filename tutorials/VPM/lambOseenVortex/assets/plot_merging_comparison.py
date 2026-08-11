@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Co-rotating vortex merger — rotation angle, core radius, and separation.
 
-Reads VTS z=0 sample files (or HDF5 snapshots as fallback) and plots
+Reads VTS z=0 sample files and plots
 three diagnostics against nu t / a₀²:
   - rotation angle θ  [deg]
   - normalised core area  a_c² / b0²
@@ -30,59 +30,22 @@ from _common import (
     BETA_RMAX,
     REF_DIR,
     SCHEMES,
-    add_physics_args,
     build_arg_parser,
     build_style_map,
     load_theme,
     pvd_time_map,
+    publication_size,
     resolve_runtime_physics,
+    save_publication_figure,
 )
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
 A2_REF = REF_DIR / "a2_over_b02.csv"
 B_REF = REF_DIR / "b_over_b0_tau.csv"
 
-# =============================================================
-# File helpers
-# =============================================================
 
-
-def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
-    folder = solution_dir / f"{prefix}_{scheme}"
-    return sorted(
-        folder.glob(f"vpm_{prefix}_{scheme}_*.h5"),
-        key=lambda p: int(re.search(r"_(\d+)\.h5$", p.name).group(1)),
-    )
-
-
-def h5_time(path: Path) -> float:
-    import h5py
-
-    with h5py.File(path, "r") as f:
-        return float(f["solver"].attrs["flow_time"])
-
-
-def read_h5(path: Path):
-    import h5py
-
-    with h5py.File(path, "r") as f:
-        t = float(f["solver"].attrs["flow_time"])
-        n = int(f["solver"].attrs["number_of_particles"])
-        if n == 0:
-            return t, None, None
-        pos = f["particles"]["position"][:n].astype(np.float64)
-        circ = f["particles"]["circulation"][:n].astype(np.float64)
-        z = pos[:, 2]
-        z_lo, z_hi = z.min(), z.max()
-        z_rng = z_hi - z_lo
-        mask = (z >= z_lo + z_rng / 3.0) & (z <= z_hi - z_rng / 3.0)
-        pos = pos[mask]
-        circ = circ[mask]
-    return t, pos, circ[:, 2]
-
-
-def vts_files(solution_dir: Path, prefix: str, scheme: str) -> list:
-    folder = solution_dir / f"{prefix}_{scheme}" / "samples"
+def vts_files(samples_dir: Path, prefix: str, scheme: str) -> list:
+    folder = samples_dir / f"{prefix}_{scheme}"
     if not folder.exists():
         return []
     result = []
@@ -325,71 +288,51 @@ def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
 
 
 def extract_merging_timeseries(
-    solution_dir: Path, scheme: str, nu: float, b0: float, a0: float
+    samples_dir: Path,
+    scheme: str,
+    nu: float,
+    b0: float,
+    a0: float,
+    target_time: float,
+    tolerance: float,
 ) -> dict | None:
     rows = []
     prev_c = None
     prev_c1 = None
 
-    vts_list = vts_files(solution_dir, "merging", scheme)
-    if vts_list:
-        h5_map = {
-            int(p.stem.rsplit("_", 1)[-1]): p for p in h5_files(solution_dir, "merging", scheme)
-        }
-        time_map = pvd_time_map(solution_dir, "merging", scheme)
-        initial_circ = None
-        for step, vts_path in vts_list:
-            h5_path = h5_map.get(step)
-            if h5_path is not None:
-                t = h5_time(h5_path)
-            elif step in time_map:
-                t = time_map[step]
-            else:
-                continue
-            xy, omega_z = read_vts(vts_path)
+    time_map = pvd_time_map(samples_dir, "merging", scheme)
+    if not time_map or max(time_map.values()) < target_time - tolerance:
+        return None
+    for step, vts_path in vts_files(samples_dir, "merging", scheme):
+        if step not in time_map:
+            continue
+        t = time_map[step]
+        xy, omega_z = read_vts(vts_path)
 
-            x_uniq = np.unique(np.round(xy[:, 0], 6))
-            dA = (x_uniq[1] - x_uniq[0]) ** 2 if len(x_uniq) > 1 else 0.0025
-            circ = omega_z.sum() * dA
-            if initial_circ is None:
-                initial_circ = max(circ, 1e-10)
-            elif abs(circ - initial_circ) / initial_circ > 0.50:
-                print(
-                    f"  [{scheme}] circulation changed by "
-                    f"{(circ - initial_circ) / initial_circ:+.0%} "
-                    f"at step {step} — truncating."
-                )
-                break
+        x_uniq = np.unique(np.round(xy[:, 0], 6))
+        dA = (x_uniq[1] - x_uniq[0]) ** 2 if len(x_uniq) > 1 else 0.0025
+        circ = omega_z.sum() * dA
+        if not rows:
+            initial_circ = max(circ, 1e-10)
+        elif abs(circ - initial_circ) / initial_circ > 0.50:
+            print(
+                f"  [{scheme}] circulation changed by "
+                f"{(circ - initial_circ) / initial_circ:+.0%} "
+                f"at step {step} — truncating."
+            )
+            break
 
-            sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
-                xy, omega_z, b0, a0, prev_c, prev_c1, use_filtered_extrema=True
+        sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
+            xy, omega_z, b0, a0, prev_c, prev_c1, use_filtered_extrema=True
+        )
+        if merged:
+            tau = nu * t / a0**2
+            print(
+                f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
+                f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
             )
-            if merged:
-                tau = nu * t / a0**2
-                print(
-                    f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
-                    f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
-                )
-                break
-            rows.append((t, sep, a_c2, ang, gam))
-    else:
-        files = h5_files(solution_dir, "merging", scheme)
-        if not files:
-            return None
-        for p in files:
-            t, pos, gz = read_h5(p)
-            xy = pos[:, :2] if pos is not None else None
-            sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
-                xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False
-            )
-            if merged:
-                tau = nu * t / a0**2
-                print(
-                    f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
-                    f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
-                )
-                break
-            rows.append((t, sep, a_c2, ang, gam))
+            break
+        rows.append((t, sep, a_c2, ang, gam))
 
     if not rows:
         return None
@@ -419,23 +362,33 @@ def extract_merging_timeseries(
 
 
 def plot_merging_case(args) -> int:
-    solution_dir = Path(args.solution_dir)
+    samples_dir = Path(args.samples_dir)
     fmt = getattr(args, "format", "png")
     out = Path(args.figures_dir) / f"merging_comparison.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     colors, theme = load_theme()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
     tau_max = 0.07
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
-    fig.subplots_adjust(hspace=0.15, top=0.93, bottom=0.23, left=0.09, right=0.91)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
+    fig.subplots_adjust(hspace=0.14, top=0.94, bottom=0.25, left=0.15, right=0.97)
 
+    plotted_schemes = []
+    tolerance = max(0.5, 20.0 * args.dt)
     for scheme in SCHEMES:
-        ts = extract_merging_timeseries(solution_dir, scheme, run_nu, args.b0, a0)
+        ts = extract_merging_timeseries(
+            samples_dir,
+            scheme,
+            run_nu,
+            args.b0,
+            a0,
+            args.total_time,
+            tolerance,
+        )
         if ts is None:
             print(f"  [merging] skipping {scheme!r} — no data")
             continue
@@ -447,11 +400,20 @@ def plot_merging_case(args) -> int:
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
-            "markevery": 2,
         }
         axes[0].plot(ts["tau"], ts["theta_deg"], **plot_kw)
         axes[1].plot(ts["tau"], ts["a_c2_over_b02"], **plot_kw)
         axes[2].plot(ts["tau"], ts["b_over_b0"], **plot_kw)
+        plotted_schemes.append(scheme)
+
+    if len(plotted_schemes) != len(SCHEMES):
+        plt.close(fig)
+        out.unlink(missing_ok=True)
+        print(
+            f"  [merging] complete diagnostics available for {len(plotted_schemes)}/"
+            f"{len(SCHEMES)} methods; figure not generated"
+        )
+        return 1
 
     # -- Reference curves -------------------------------
 
@@ -501,18 +463,12 @@ def plot_merging_case(args) -> int:
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    save_publication_figure(fig, out, args.dpi)
     return 0
 
 
 def main() -> int:
     p = build_arg_parser("Co-rotating vortex merger diagnostics comparison.")
-    add_physics_args(p)
     return plot_merging_case(p.parse_args())
 
 

@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Fail before plotting an incomplete or empty vortexInteractions matrix."""
+"""Fail before plotting an incomplete or empty vortexInteractions run."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from itertools import product
 from pathlib import Path
 
 from _common import discover_cases, read_integrals
 
 
-FAMILIES = ("leapfrog", "collide")
-METHODS = ("baseline", "les", "les_stabilized")
-EXPECTED_CASES = tuple(f"{family}_{method}" for family, method in product(FAMILIES, METHODS))
-TERMINAL_STATUSES = {"completed", "terminated_nonphysical", "rejected"}
+EXPECTED_CASES = (
+    "leapfrog_dns",
+    "leapfrog_les",
+    "leapfrog_les_stabilized",
+    "collide_dns",
+    "collide_les",
+    "collide_les_stabilized",
+)
 
 
 def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
@@ -27,6 +30,7 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
         missing = [name for name in EXPECTED_CASES if name not in discovered]
         if missing:
             failures.append("missing cases: " + ", ".join(missing))
+        discovered = {name: discovered[name] for name in EXPECTED_CASES if name in discovered}
 
     for name, case_dir in sorted(discovered.items()):
         manifest_path = case_dir / "run_manifest.json"
@@ -39,20 +43,23 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
                 failures.append(f"{name}: unreadable manifest ({error})")
             else:
                 status = manifest.get("status")
-                if status not in TERMINAL_STATUSES:
-                    failures.append(f"{name}: non-terminal run status {status!r}")
-                if not allow_partial and name.endswith("_les_stabilized"):
-                    completed_steps = manifest.get("completed_steps")
-                    requested_steps = manifest.get("requested_steps")
-                    if status != "completed":
-                        failures.append(
-                            f"{name}: stabilized candidate ended with status {status!r}"
-                        )
-                    elif completed_steps != requested_steps:
-                        failures.append(
-                            f"{name}: completed {completed_steps!r} of "
-                            f"{requested_steps!r} requested steps"
-                        )
+                completed_steps = manifest.get("completed_steps")
+                requested_steps = manifest.get("requested_steps")
+                stabilized = name.endswith("_les_stabilized")
+                valid_status = status == "completed" or (
+                    not stabilized and status == "resolution_lost"
+                )
+                if not valid_status:
+                    failures.append(f"{name}: invalid run status {status!r}")
+                elif status == "completed" and completed_steps != requested_steps:
+                    failures.append(
+                        f"{name}: completed {completed_steps!r} of "
+                        f"{requested_steps!r} requested steps"
+                    )
+                elif status == "resolution_lost" and not manifest.get(
+                    "termination_reason"
+                ):
+                    failures.append(f"{name}: resolution loss has no recorded reason")
 
         diagnostics = read_integrals(case_dir)
         if diagnostics is None or len(diagnostics) < 2:
@@ -78,8 +85,8 @@ def main() -> int:
         return 1
 
     count = len(discover_cases(solution_dir))
-    matrix = "partial matrix" if args.allow_partial else "complete six-case matrix"
-    print(f"Plot inputs validated: {count} cases ({matrix}).")
+    scope = "partial result set" if args.allow_partial else "complete tutorial run"
+    print(f"Plot inputs validated: {count} cases ({scope}).")
     return 0
 
 

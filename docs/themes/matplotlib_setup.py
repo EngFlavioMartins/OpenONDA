@@ -574,7 +574,7 @@ COLORS = {
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
     # Vortex-interaction baseline/LES/stabilized-LES comparison.
-    "case_baseline": PALETTE["strong_gray"],
+    "case_dns": PALETTE["strong_gray"],
     "case_les": PALETTE["dark"],
     "case_les_stabilized": PALETTE["black"],
     "background": BACKGROUND_LIGHT,
@@ -610,13 +610,13 @@ COLORMAPS = {
 FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
 FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
 VARIANT_LABEL = {
-    "baseline": "Baseline (DNS)",
+    "dns": "DNS",
     "les": "LES",
     "les_stabilized": "LES + stabilized",
 }
 VARIANT_ORDER = tuple(VARIANT_LABEL)
 VARIANT_STYLE = {
-    "baseline": {"color": COLORS["case_baseline"], "marker": "8"},
+    "dns": {"color": COLORS["case_dns"], "marker": "8"},
     "les": {"color": COLORS["case_les"], "marker": "s"},
     "les_stabilized": {"color": COLORS["case_les_stabilized"], "marker": "o"},
 }

@@ -223,7 +223,10 @@ class SolverIO:
 
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(self.export_dir)
+        samples_dir = resolve_samples_dir(
+            self.export_dir,
+            getattr(self.solver.config, "sample_subdirectory", None),
+        )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"
 

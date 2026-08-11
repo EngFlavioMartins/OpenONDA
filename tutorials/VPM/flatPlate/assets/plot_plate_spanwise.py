@@ -8,13 +8,6 @@ cl(y) against Prandtl lifting-line theory and an elliptic reference.
 
 Overlays the moving and static cases at the same AoA on one figure.
 
-Usage (standalone):
-    python assets/plot_plate_spanwise.py
-    python assets/plot_plate_spanwise.py --aoa 5
-
-Called from allplot.sh with:
-    --solution-dir, --figures-dir, --dpi
-
 Output:
     figures/plate_spanwise.png
 
@@ -45,19 +38,12 @@ from theoretical_model import spanwise_reference
 
 # -- Argument parsing -----------------------------------------------------------
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
-parser.add_argument("--case-moving", default="exp_moving_aoa05", help="Moving case folder")
-parser.add_argument("--case-static", default="exp_static_aoa05", help="Static case folder")
-parser.add_argument(
-    "--aoa", type=float, default=5.0, help="Angle of attack for theory curves [deg]"
-)
-parser.add_argument("--solution-dir", default=str(CASE_DIR / "solution"))
-parser.add_argument("--figures-dir", default=str(CASE_DIR / "figures"))
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
-args, _ = parser.parse_known_args()
+args = parser.parse_args()
 
-SOL_DIR = Path(args.solution_dir).resolve()
-FIG_DIR = Path(args.figures_dir).resolve()
+SAMPLES_DIR = CASE_DIR / "samples"
+FIG_DIR = CASE_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # -- Theme ----------------------------------------------------------------------
@@ -86,7 +72,8 @@ AR = 10.0
 CHORD = 1.0
 SPAN = AR * CHORD
 U_INF = 10.0
-alpha_rad = np.radians(args.aoa)
+ANGLE_OF_ATTACK = 5.0
+alpha_rad = np.radians(ANGLE_OF_ATTACK)
 
 # -- Theory curves --------------------------------------------------------------
 y_theory = np.linspace(-SPAN / 2, SPAN / 2, 400)
@@ -105,7 +92,7 @@ cl_ell = df_ell["cl"].to_numpy()
 
 # -- Load simulation data -------------------------------------------------------
 def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    csv = SOL_DIR / name / "samples" / f"{name}_spanwise.csv"
+    csv = SAMPLES_DIR / name / f"{name}_spanwise.csv"
     if not csv.exists():
         return None
     df = pd.read_csv(csv).sort_values("y").reset_index(drop=True)
@@ -132,8 +119,8 @@ def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | 
     return y, cl, y_over_b
 
 
-moving_data = load_spanwise_csv(args.case_moving)
-static_data = load_spanwise_csv(args.case_static)
+moving_data = load_spanwise_csv("exp_moving_aoa05")
+static_data = load_spanwise_csv("exp_static_aoa05")
 
 # -- Figure ---------------------------------------------------------------------
 fig, ax = plt.subplots(1, 1, figsize=(12 * cm_inch, 5.5 * cm_inch))
@@ -148,7 +135,7 @@ if moving_data is not None:
         lw=1.5,
         marker="o",
         ms=3,
-        label=f"Moving (body frame), $\\alpha={args.aoa:.0f}°$",
+        label=f"Moving (body frame), $\\alpha={ANGLE_OF_ATTACK:.0f}°$",
     )
 
 if static_data is not None:
@@ -160,7 +147,7 @@ if static_data is not None:
         lw=1.5,
         marker="s",
         ms=3,
-        label=f"Static (wind frame), $\\alpha={args.aoa:.0f}°$",
+        label=f"Static (wind frame), $\\alpha={ANGLE_OF_ATTACK:.0f}°$",
     )
 
 # Theory curves
@@ -169,7 +156,7 @@ ax.plot(y_ll_over_b, cl_ell, "--", color=C_ELL, lw=1.0, label="Elliptic")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift coefficient, $c_\ell$")
-ax.set_title(rf"Spanwise $c_\ell$, $\alpha={args.aoa:.0f}°$, AR={AR:.0f}")
+ax.set_title(rf"Spanwise $c_\ell$, $\alpha={ANGLE_OF_ATTACK:.0f}°$, AR={AR:.0f}")
 ax.set_xlim(-1, 1)
 ax.legend()
 

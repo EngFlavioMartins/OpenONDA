@@ -1,33 +1,21 @@
 #!/usr/bin/env bash
-# Vortex ring — stretching-formulation benchmark (direct, transposed, mixed)
-# and an LES comparison using the unmodified transposed equation.
+# Run every vortex-ring physics case and make the comparison figures.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
-
-# Clean previous solution
+cd "$(dirname "$0")"
 ./allclean.sh
 
-COMMON_FLAGS=(--solution-dir ./solution --processing-unit CUDA)
+SAMPLE_PERIOD=0.1
+BACKUP_PERIOD=0.5
 
-echo "Starting DNS simulation (direct stretching)..."
-python ring_setup.py --mode dns --stretching direct --name DNS_direct "${COMMON_FLAGS[@]}"
+run() {
+    python ring_setup.py "$1" "$2" "$3" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
+}
 
-echo "Starting DNS simulation (transposed stretching)..."
-python ring_setup.py --mode dns --stretching transposed --name DNS_transposed "${COMMON_FLAGS[@]}"
+run DNS_direct dns direct
+run DNS_transposed dns transposed
+run DNS_mixed dns mixed
+run LES_transposed les transposed
 
-echo "Starting DNS simulation (mixed stretching)..."
-python ring_setup.py --mode dns --stretching mixed --name DNS_mixed "${COMMON_FLAGS[@]}"
-
-echo "Starting LES simulation (transposed stretching)..."
-python ring_setup.py --mode les --stretching transposed --name LES_transposed "${COMMON_FLAGS[@]}"
-
-
-echo "Generating comparison plots..."
 ./allplot.sh
-
-echo
-echo "All runs and plots complete."

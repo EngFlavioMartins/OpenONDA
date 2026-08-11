@@ -8,15 +8,8 @@ actuator-disk momentum theory:
     rotor disk:   u/U∞ = 1 − a
     far wake:     u/U∞ = 1 − 2a
 
-``a`` is taken from the run's **own** thrust coefficient via momentum theory,
-not from the Betz design value: a rotor that settles at Ct = 0.73 has a = 0.24,
-and drawing the a = 1/3 lines against it invites the reader to match curves to
-a reference the simulation was never going to hit.
-
-Each plane is only averaged over a window in which its wake signal is
-statistically stationary.  A plane whose wake front is still arriving is
-plotted dashed and labelled "not converged" rather than being averaged into a
-profile that looks like physics but is a transient.
+The induction factor is inferred from the sampled thrust coefficient. Planes
+that have not reached a statistically stationary state are shown dashed.
 
 Saves: figures/rotor_wake_planes.png
 """
@@ -40,12 +33,18 @@ except Exception:  # pragma: no cover
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
-    add_case_arguments,
     build_arg_parser,
     build_rotor_style_map,
+    DENSITY,
+    FIGURES_DIR,
+    FREESTREAM_VELOCITY,
+    HUB_RADIUS,
     load_theme,
     read_operating_point,
     read_time_step,
+    ROTOR_RADIUS,
+    SAMPLES_DIR,
+    TIP_SPEED_RATIO,
 )
 from rotor_theory import induction_from_ct  # noqa: E402
 
@@ -151,16 +150,20 @@ def plot_wake_planes(args) -> int:
         print("  [WARNING] pyvista unavailable — skipping rotor wake-plane plot.")
         return 1
 
-    solution_dir = Path(args.solution_dir)
-    samples = solution_dir / "samples"
+    samples = SAMPLES_DIR
     fmt = getattr(args, "format", "png")
-    out = Path(args.figures_dir) / f"rotor_wake_planes.{fmt}"
+    out = FIGURES_DIR / f"rotor_wake_planes.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
-    R, U = args.rotor_radius, args.u_inf
-    omega = args.tip_speed_ratio * U / R
+    R, U = ROTOR_RADIUS, FREESTREAM_VELOCITY
+    omega = TIP_SPEED_RATIO * U / R
+    averaging_rotations = 3.0
+    tail_fraction = 0.25
+    radial_bins = 32
+    radial_limit = 1.25
+    drift_tolerance = 0.01
 
     # -- Time step: from the run, never a hardcoded guess -----------------
-    dt = args.dt if args.dt is not None else read_time_step(solution_dir)
+    dt = read_time_step(samples)
     if dt is None:
         print(
             "  [WARNING] could not determine the run's time step — falling back to tail fraction."
@@ -169,15 +172,13 @@ def plot_wake_planes(args) -> int:
 
     # -- Reference induction: the run's own operating point ---------------
     operating_point = read_operating_point(
-        solution_dir,
-        rho=args.rho,
+        samples,
+        rho=DENSITY,
         u_inf=U,
         rotor_radius=R,
-        tip_speed_ratio=args.tip_speed_ratio,
+        tip_speed_ratio=TIP_SPEED_RATIO,
     )
-    if args.a is not None:
-        a_ref, a_source = args.a, "user override"
-    elif operating_point is not None:
+    if operating_point is not None:
         a_ref = induction_from_ct(operating_point[0])
         a_source = rf"from run $C_T={operating_point[0]:.3f}$"
     else:
@@ -195,7 +196,7 @@ def plot_wake_planes(args) -> int:
     markers = ["s", "o", "^"]
     n_planes = len(planes)
     alphas = np.linspace(0.5, 1.0, n_planes) if n_planes > 1 else [0.8]
-    radial_edges = np.linspace(0.0, args.r_max, args.radial_bins + 1)
+    radial_edges = np.linspace(0.0, radial_limit, radial_bins + 1)
     radial_centers = 0.5 * (radial_edges[:-1] + radial_edges[1:])
 
     found = False
@@ -206,8 +207,8 @@ def plot_wake_planes(args) -> int:
             _plane_files(samples, tag),
             dt=dt,
             omega=omega,
-            averaging_rotations=args.averaging_rotations,
-            tail_fraction=args.tail_fraction,
+            averaging_rotations=averaging_rotations,
+            tail_fraction=tail_fraction,
         )
         if not files:
             continue
@@ -222,7 +223,7 @@ def plot_wake_planes(args) -> int:
         ux = np.nanmean(profiles, axis=0)
 
         drift = _drift(disc_means)
-        converged = drift <= args.drift_tolerance
+        converged = drift <= drift_tolerance
         if converged:
             plot_label = rf"{label}, $\langle u_x\rangle_{{t,\theta}}$"
         else:
@@ -280,7 +281,7 @@ def plot_wake_planes(args) -> int:
     )
 
     ax.axvspan(
-        args.hub_radius / R,
+        HUB_RADIUS / R,
         1.0,
         color=colors["background_light"],
         alpha=0.5,
@@ -288,7 +289,7 @@ def plot_wake_planes(args) -> int:
     )
     ax.set_xlabel(r"$r/R$")
     ax.set_ylabel(r"$\langle u_x/U_\infty\rangle_{t,\theta}$")
-    ax.set_xlim([0.0, args.r_max])
+    ax.set_xlim([0.0, radial_limit])
     # Keep the far-wake reference line in frame without leaving half the axis empty.
     ax.set_ylim([min(1.0 - 2.0 * a_ref - 0.08, ux_min - 0.05), max(1.1, ux_max + 0.05)])
     ax.set_title(rf"Azimuthally averaged wake deficit ($a={a_ref:.3f}$, {a_source})")
@@ -304,31 +305,9 @@ def plot_wake_planes(args) -> int:
 
 
 def main() -> int:
-    p = add_case_arguments(build_arg_parser("Rotor wake-plane validation vs momentum theory."))
-    p.add_argument(
-        "--dt",
-        type=float,
-        default=None,
-        help="Time-step size [s]. Read from the run's own output when omitted.",
+    return plot_wake_planes(
+        build_arg_parser("Rotor wake-plane validation vs momentum theory.").parse_args()
     )
-    p.add_argument("--averaging-rotations", type=float, default=3.0)
-    p.add_argument("--tail-fraction", type=float, default=0.25)
-    p.add_argument("--radial-bins", type=int, default=32)
-    p.add_argument("--r-max", type=float, default=1.25)
-    p.add_argument(
-        "--drift-tolerance",
-        type=float,
-        default=0.01,
-        help="Max relative drift of the disc-averaged deficit across the averaging "
-        "window before a plane is reported as not converged (default 1%%).",
-    )
-    p.add_argument(
-        "--a",
-        type=float,
-        default=None,
-        help="Axial induction override. Derived from the run's own Ct when omitted.",
-    )
-    return plot_wake_planes(p.parse_args())
 
 
 if __name__ == "__main__":

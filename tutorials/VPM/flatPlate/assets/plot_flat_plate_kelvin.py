@@ -44,8 +44,8 @@ def _c(key: str) -> str:
     return _M.COLORS[key]
 
 
-def load_budget(case_dir: Path, name: str):
-    csv = case_dir / "samples" / f"{name}.csv"
+def load_budget(samples_dir: Path, name: str):
+    csv = samples_dir / name / f"{name}.csv"
     if not csv.exists():
         raise FileNotFoundError(csv)
     df = pd.read_csv(csv)
@@ -62,15 +62,13 @@ def load_budget(case_dir: Path, name: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Bound/wake vortex-strength closure.")
-    ap.add_argument("--name", default="exp_static_aoa08")
-    ap.add_argument("--aoa", type=float, default=8.0, help="Angle of attack [deg] (title only).")
-    ap.add_argument("--solution-dir", default=str(CASE_DIR / "solution"))
-    ap.add_argument("--figures-dir", default=str(CASE_DIR / "figures"))
     ap.add_argument("--format", choices=_M.EXPORT_FORMATS, default="png")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args()
 
-    t, bound, wake = load_budget(Path(args.solution_dir) / args.name, args.name)
+    name = "exp_static_aoa08"
+    angle_of_attack = 8.0
+    t, bound, wake = load_budget(CASE_DIR / "samples", name)
     if t.size == 0:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
@@ -93,7 +91,7 @@ def main() -> None:
     ax.plot(t, bound, color=c_bound, lw=1.5, label=r"Bound, $\alpha_{b,y}$")
     ax.plot(t, -wake, "--", color=c_wake, lw=1.5, label=r"Wake, $-\alpha_{w,y}$")
     ax.set_ylabel(r"Vortex strength [m$^3$/s]")
-    ax.set_title(rf"Bound–wake vortex-strength closure, $\alpha={args.aoa:.0f}^\circ$")
+    ax.set_title(rf"Bound–wake vortex-strength closure, $\alpha={angle_of_attack:.0f}^\circ$")
     ax.legend(loc="lower right")
 
     axr.axhline(0.0, color=_c("reference"), ls="--", lw=1.0)
@@ -110,7 +108,7 @@ def main() -> None:
         va="top",
     )
 
-    out_dir = Path(args.figures_dir)
+    out_dir = CASE_DIR / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "flat_plate_kelvin.png"
     _M.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

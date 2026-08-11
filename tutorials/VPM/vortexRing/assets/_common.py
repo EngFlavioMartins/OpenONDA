@@ -10,7 +10,6 @@ Each plot script lives in assets/ and imports from here via::
 from __future__ import annotations
 
 import importlib.util
-import re
 from pathlib import Path
 
 import h5py
@@ -22,6 +21,7 @@ ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/vortexRings/
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
+SAMPLES_DIR = SCRIPT_DIR / "samples"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 # -- Physical constants  (match ring_setup.py) -------------------------------------
@@ -88,8 +88,6 @@ def build_arg_parser(description: str):
     import argparse
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
-    p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output directory for figures.")
     p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
@@ -311,40 +309,6 @@ def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
         hi = min(len(t), i + 3)
         U_num[i] = np.polyfit(t[lo:hi], x[lo:hi], 1)[0]
     return t / T_REF, U_num / U_REF
-
-
-# -- Log-file parser -----------------------------------------------------------
-
-
-def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Extract (flow_times, -nuΩ, dE/dt) arrays from a VPM solver log."""
-    path = Path(path)
-    if not path.exists():
-        print(f"(Warning) Log not found: {path}")
-        return np.array([]), np.array([]), np.array([])
-
-    t_pat = re.compile(r"Time-step:\s*\d+\s+Flow time:\s*([\d.E+\-]+)\s*s")
-    nuEns_pat = re.compile(r"Viscous dissipation.{1,15}:\s*([-\d.e+]+)")
-    de_pat = re.compile(r"Energy decay rate.{1,15}:\s*([-\d.e+]+)")
-
-    times, nu_ens_values, dts = [], [], []
-    cur_t = cur_nu_ens = None
-    for line in path.open(encoding="utf-8", errors="replace"):
-        if mt := t_pat.search(line):
-            cur_t, cur_nu_ens = float(mt.group(1)), None
-        elif mn := nuEns_pat.search(line):
-            cur_nu_ens = float(mn.group(1))
-        elif (md := de_pat.search(line)) and cur_t is not None and cur_nu_ens is not None:
-            times.append(cur_t)
-            nu_ens_values.append(cur_nu_ens)
-            dts.append(float(md.group(1)))
-            cur_nu_ens = None
-
-    t = np.array(times)
-    nuEns = np.array(nu_ens_values)
-    de = np.array(dts)
-    valid = (np.abs(nuEns) < 1000) & (np.abs(de) < 1000)
-    return t[valid], nuEns[valid], de[valid]
 
 
 # -- Figure helpers ------------------------------------------------------------

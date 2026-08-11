@@ -79,6 +79,11 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         source._filament_refinement_diagnostics["refinement_events"] = 7
         source._divergence_relaxation_diagnostics["relaxation_events"] = 3
         source._divergence_relaxation_diagnostics["relaxation_last_residual_ratio"] = 0.42
+        source._regularization_diagnostics["regularization_events"] = 2
+        source._regularization_diagnostics[
+            "regularization_cumulative_energy_transfer"
+        ] = -0.125
+        source._regularization_diagnostics["regularization_last_step"] = 75
         source._filament_refinement_cumulative_energy_transfer = -2.5e-6
         source._filament_refinement_energy_reference = 1.75
         expected_moments = tuple(
@@ -110,6 +115,11 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         assert restored._divergence_relaxation_diagnostics[
             "relaxation_last_residual_ratio"
         ] == pytest.approx(0.42)
+        assert restored._regularization_diagnostics["regularization_events"] == 2
+        assert restored._regularization_diagnostics[
+            "regularization_cumulative_energy_transfer"
+        ] == pytest.approx(-0.125)
+        assert restored._regularization_diagnostics["regularization_last_step"] == 75
         assert restored._filament_refinement_cumulative_energy_transfer == pytest.approx(-2.5e-6)
         assert restored._filament_refinement_energy_reference == pytest.approx(1.75)
         assert restored._filament_refinement_enstrophy_reference == pytest.approx(

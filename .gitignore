@@ -88,7 +88,6 @@ Data/
 Raw/
 data/
 raw/
-samples/
 postProcessing/
 /artifacts/
 
@@ -152,14 +151,19 @@ vpm*.json
 !tutorials/**/*.sh
 tests/**/referenceFlow/**
 
-# Sampled (post-processed) results for the FVM and coupled FVM-VPM tutorials —
-# forces_history.csv, ibm_forces_history.csv, and any configured line/force
-# samplers — are small, curated outputs; share them. Raw per-step field dumps
-# and checkpoints stay under solution/ and remain ignored above.
-!tutorials/FVM/**/samples/
-!tutorials/FVM/**/samples/**
-!tutorials/coupled_FVM_VPM/**/samples/
-!tutorials/coupled_FVM_VPM/**/samples/**
+# Processed sampler output is part of each reproducible tutorial. Any samples/
+# directory outside an ignored solution/ tree is therefore versioned by default.
+!**/samples/
+!**/samples/**
+
+# Restart/checkpoint formats never belong in Git, even if accidentally written
+# below samples/. The pre-commit size gate provides an additional safeguard.
+**/samples/**/*.h5
+**/samples/**/*.hdf5
+**/samples/**/*.xdmf
+**/samples/**/*.npz
+
+# This coupled run is a local working directory, not the reference dataset.
 tutorials/coupled_FVM_VPM/cubeFlow/samples/
 # Full reference-flow volume slices are generated data. Keep the compact CSV
 # histories in Git and leave local slices untouched when they are untracked.

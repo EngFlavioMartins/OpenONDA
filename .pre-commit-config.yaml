@@ -65,4 +65,5 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements       # catches stray breakpoint() / pdb.set_trace()
       - id: check-added-large-files
-        args: [--maxkb=500]
+        # Processed profiles can be a few MiB; raw states remain excluded.
+        args: [--maxkb=10240]

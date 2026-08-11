@@ -26,6 +26,8 @@ from _common import (
     U_REF,
     VARIANT_LABEL,
     VARIANT_STYLE,
+    FIGURES_DIR,
+    SOLUTION_DIR,
     figure_size,
     mark_every,
     reference_style,
@@ -34,8 +36,8 @@ from _common import (
 
 def main() -> None:
     args = build_arg_parser("Self-induced velocity U/U₀ vs t*.").parse_args()
-    sol = Path(args.solution_dir)
-    figs = Path(args.figures_dir)
+    sol = SOLUTION_DIR
+    figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
@@ -44,7 +46,7 @@ def main() -> None:
 
     # -- Ring speed — all available variants ---------------------------------
     for variant, st in VARIANT_STYLE.items():
-        h5_files = sorted(glob.glob(str(sol / variant / f"vpm_{variant}_*.h5")))
+        h5_files = sorted(glob.glob(str(sol / f"vpm_{variant}_*.h5")))
         if not h5_files:
             continue
         t_star, U_norm = load_ring_speed(h5_files)

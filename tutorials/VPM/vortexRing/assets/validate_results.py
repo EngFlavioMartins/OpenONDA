@@ -3,29 +3,31 @@
 
 from __future__ import annotations
 
-import argparse
 import glob
 import sys
 from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import T_REF, load_ring_data, load_ring_speed, saffman_speed, U_REF
+from _common import (
+    FIGURES_DIR,
+    SOLUTION_DIR,
+    T_REF,
+    load_ring_data,
+    load_ring_speed,
+    saffman_speed,
+    U_REF,
+)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--solution-dir", default="solution")
-    ap.add_argument("--figures-dir", default="figures")
-    ap.add_argument("--expected-files", type=int, default=100)
-    args = ap.parse_args()
-    root, figs = Path(args.solution_dir), Path(args.figures_dir)
+    expected_files = 24
     failures: list[str] = []
 
     for name, speed_tol in (("DNS_transposed", 0.10), ("LES_transposed", 0.12)):
-        files = sorted(glob.glob(str(root / name / f"vpm_{name}_*.h5")))
-        if len(files) != args.expected_files:
-            failures.append(f"{name}: {len(files)} backups, expected {args.expected_files}")
+        files = sorted(glob.glob(str(SOLUTION_DIR / f"vpm_{name}_*.h5")))
+        if len(files) != expected_files:
+            failures.append(f"{name}: {len(files)} backups, expected {expected_files}")
             continue
         raw = load_ring_data(files)
         entries = raw.get(0, [])
@@ -48,7 +50,7 @@ def main() -> int:
             failures.append(f"{name}: conservation/speed tolerance exceeded")
 
     for name in ("vortex_ring_motion.png", "vortex_ring_energy.png", "vortex_ring_circulation.png"):
-        if not (figs / name).exists():
+        if not (FIGURES_DIR / name).exists():
             failures.append(f"missing figure {name}")
     if failures:
         print("\n".join(f"[FAIL] {x}" for x in failures))

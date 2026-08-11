@@ -38,10 +38,13 @@ from matplotlib.cm import ScalarMappable
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
-    add_physics_args,
+    SCHEMES,
     build_arg_parser,
     load_theme,
+    publication_size,
+    pvd_time_map,
     resolve_runtime_physics,
+    save_publication_figure,
 )
 
 _LAYOUT = [
@@ -100,35 +103,35 @@ def _read_vts(path: Path):
 # =============================================================
 
 
-def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float | None]:
-    import re as _re
-
-    folder = solution_dir / f"vortex_{scheme}" / "samples"
-    files = sorted(folder.glob(f"vortex_{scheme}_z0_*.vts"))
-    if not files:
+def _find_surface_vts(
+    samples_dir: Path,
+    scheme: str,
+    step: int | None,
+    target_time: float,
+    tolerance: float,
+) -> tuple[Path | None, float | None]:
+    folder = samples_dir / f"vortex_{scheme}"
+    time_by_step = pvd_time_map(samples_dir, "vortex", scheme)
+    if not time_by_step:
         return None, None
 
-    last = files[-1]
-    for candidate in reversed(files):
-        try:
-            _, _, vm, _, _ = _read_vts(candidate)
-            if vm.max() > 1e-10:
-                last = candidate
-                break
-        except Exception:
-            continue
-    m = _re.search(r"_(\d+)\.vts$", last.name)
-    if m is None:
-        return last, None
-    step = int(m.group(1))
-    h5_path = solution_dir / f"vortex_{scheme}" / f"vpm_vortex_{scheme}_{step:06d}.h5"
-    flow_time = None
-    if h5_path.exists():
-        import h5py
+    if step is not None:
+        selected_step = step
+        selected_time = time_by_step.get(step)
+        if selected_time is None:
+            return None, None
+    else:
+        selected_step = min(time_by_step, key=lambda item: abs(time_by_step[item] - target_time))
+        selected_time = time_by_step[selected_step]
+        if abs(selected_time - target_time) > tolerance:
+            print(
+                f"  [skip] {scheme.upper()} final surface is t={selected_time:.3g}s, "
+                f"not near requested t={target_time:.3g}s."
+            )
+            return None, None
 
-        with h5py.File(h5_path, "r") as f:
-            flow_time = float(f["solver"].attrs["flow_time"])
-    return last, flow_time
+    path = folder / f"vortex_{scheme}_z0_{selected_step:06d}.vts"
+    return (path, selected_time) if path.is_file() else (None, None)
 
 
 # =============================================================
@@ -137,11 +140,12 @@ def _find_last_vts(solution_dir: Path, scheme: str) -> tuple[Path | None, float 
 
 
 def plot_surface_fields(args) -> int:
-    solution_dir = Path(args.solution_dir)
+    samples_dir = Path(args.samples_dir)
     fmt = getattr(args, "format", "png")
+    out = Path(args.figures_dir) / f"vortex_surface_fields.{fmt}"
 
     colors, theme = load_theme()
-    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     ac0 = runtime["ac0"]
     t0 = runtime["t0"]
@@ -150,10 +154,17 @@ def plot_surface_fields(args) -> int:
 
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
+    tolerance = max(0.5, 20.0 * args.dt)
     for scheme, qid, *_ in _LAYOUT:
-        vts, flow_time = _find_last_vts(solution_dir, scheme)
+        vts, sample_time = _find_surface_vts(
+            samples_dir,
+            scheme,
+            args.step,
+            args.total_time,
+            tolerance,
+        )
         if vts is None:
-            print(f"  [surface] no VTS for {scheme!r} — skipping quadrant")
+            print(f"  [surface] no requested VTS for {scheme!r} — skipping quadrant")
             continue
         try:
             X, Y, vm, wz, mid = _read_vts(vts)
@@ -162,11 +173,21 @@ def plot_surface_fields(args) -> int:
             continue
         step = int(vts.stem.split("_")[-1])
         datasets[scheme] = dict(
-            X=X, Y=Y, vel_mag=vm, vort_z=wz, step=step, flow_time=flow_time, mid=mid
+            X=X,
+            Y=Y,
+            vel_mag=vm,
+            vort_z=wz,
+            step=step,
+            time=sample_time,
+            mid=mid,
         )
 
-    if not datasets:
-        print("  [surface] no data found — nothing to plot.")
+    if len(datasets) != len(SCHEMES):
+        out.unlink(missing_ok=True)
+        print(
+            f"  [surface] complete fields available for {len(datasets)}/{len(SCHEMES)} "
+            "methods; figure not generated"
+        )
         return 1
 
     # -- Shared normalisation limits ------------------------------------
@@ -184,7 +205,10 @@ def plot_surface_fields(args) -> int:
 
     # -- Figure --------------------------------------------------------
     fig, (ax_v, ax_w) = plt.subplots(
-        1, 2, figsize=(12.8 / 2.54, 5.97 / 2.54), constrained_layout=True
+        1,
+        2,
+        figsize=publication_size(6.2),
+        constrained_layout=True,
     )
 
     for scheme, qid, label, (_tx_frac, _ty_frac), ha, va in _LAYOUT:
@@ -237,19 +261,12 @@ def plot_surface_fields(args) -> int:
 
     figures_dir = Path(args.figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
-    out = figures_dir / f"vortex_surface_fields.{fmt}"
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    save_publication_figure(fig, out, args.dpi)
     return 0
 
 
 def parse_args() -> argparse.Namespace:
     p = build_arg_parser("z=0 surface field tiled comparison.")
-    add_physics_args(p)
     return p.parse_args()
 
 

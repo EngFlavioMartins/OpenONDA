@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import pytest
 
+from source.solvers.VPM.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from source.solvers.VPM.config.types import VPMSetup
 from source.solvers.VPM.core.solver import Solver
 from source.solvers.VPM.io.backup import BackupSystem
@@ -27,6 +28,7 @@ def test_output_and_target_configuration_round_trip():
         max_targets=1234,
         export_flow_integrals=False,
         log_mode="tee",
+        sample_subdirectory="test_case",
     )
 
     restored = VPMSetup.from_dict(config.to_dict())
@@ -34,6 +36,7 @@ def test_output_and_target_configuration_round_trip():
     assert restored.max_targets == 1234
     assert restored.export_flow_integrals is False
     assert restored.log_mode == "tee"
+    assert restored.sample_subdirectory == "test_case"
 
 
 def test_solver_setup_is_immutable_after_construction():
@@ -155,6 +158,42 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
         ["0.2", "2"],
     ]
     assert list((tmp_path / "samples").iterdir()) == [output]
+
+
+def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
+    sampler = _Sampler()
+    solver = SimpleNamespace(
+        config=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
+        particles=SimpleNamespace(number_of_particles=2),
+        particles_circulation=np.ones((2, 3)),
+        backup_directory=str(tmp_path / "solution"),
+        flow_time=0.1,
+        time_step=1,
+    )
+
+    SamplerExecutor.execute(solver)
+
+    assert (tmp_path / "samples" / "dipole_cs" / "probe.csv").is_file()
+    assert not (tmp_path / "solution" / "samples").exists()
+
+
+def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
+    VLMDiagnostics.export_forces_csv(
+        vlm_solver=None,
+        forces={"CL": 0.5},
+        gamma_bound=1.0,
+        gamma_wake=-1.0,
+        lesp_max=0.0,
+        n_p=10,
+        flow_time=0.2,
+        time_step=2,
+        backup_directory=str(tmp_path / "solution"),
+        sample_subdirectory="flat_plate",
+    )
+
+    output = tmp_path / "samples" / "flat_plate" / "vlm_forces.csv"
+    assert output.is_file()
+    assert not (tmp_path / "solution" / "samples").exists()
 
 
 def test_flow_integral_export_is_configurable(monkeypatch):

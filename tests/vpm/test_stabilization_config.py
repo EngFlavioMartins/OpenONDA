@@ -1,6 +1,7 @@
 from pathlib import Path
 import runpy
 
+import numpy as np
 import pytest
 
 from source.solvers.VPM import StabilizationConfig, TurbulenceConfig, VPMSetup
@@ -27,6 +28,47 @@ def test_retention_domain_requires_six_coordinates():
         StabilizationConfig.bounded_domain([-1, 1])
 
 
+def test_stretching_viscosity_factory_and_validation():
+    stabilization = StabilizationConfig.stretching_viscosity(coefficient=0.6)
+
+    assert stabilization.stretching_viscosity_coefficient == pytest.approx(0.6)
+    assert stabilization.remove_particles_by_bounds is None
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        StabilizationConfig.stretching_viscosity(coefficient=-0.1)
+
+
+def test_conservative_filter_factory_round_trip_and_validation():
+    stabilization = StabilizationConfig.conservative_filter(
+        coefficient=0.4,
+        frequency=25,
+        start_step=100,
+        grid_spacing=0.08,
+        max_particles=4000,
+        tail_budget=0.002,
+        divergence_trigger=0.03,
+        misalignment_trigger=15.0,
+    )
+    restored = VPMSetup.from_dict(VPMSetup(stabilization=stabilization).to_dict())
+
+    assert restored.stabilization == stabilization
+    with pytest.raises(ValueError, match="tail budget"):
+        StabilizationConfig.conservative_filter(
+            frequency=1,
+            start_step=0,
+            grid_spacing=0.08,
+            max_particles=100,
+            tail_budget=0.0,
+        )
+    with pytest.raises(ValueError, match="misalignment trigger"):
+        StabilizationConfig.conservative_filter(
+            frequency=1,
+            start_step=0,
+            grid_spacing=0.08,
+            max_particles=100,
+            misalignment_trigger=181.0,
+        )
+
+
 def test_retention_round_trip_is_nested():
     original = VPMSetup(stabilization=StabilizationConfig.bounded_domain((-1, 1, -2, 2, -3, 3)))
 
@@ -50,100 +92,98 @@ def _rotor_flow_namespace():
     return runpy.run_path(tutorial)
 
 
-def test_vortex_interactions_cli_defaults_to_les_control():
-    args = _vortex_interactions_namespace()["build_arg_parser"]().parse_args([])
-
-    assert args.processing_unit == "AUTO"
-    assert args.method == "les"
-    assert args.dt == pytest.approx(20.0 * 0.02**2 / 3.141592653589793)
-    assert args.particle_spacing == pytest.approx(0.02)
-    assert args.epsilon_w == pytest.approx(0.025)
-    assert args.guard_frequency == 1
-
-
-def test_vortex_interactions_les_control_has_no_field_filter(tmp_path):
+def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
     namespace = _vortex_interactions_namespace()
-    args = namespace["build_arg_parser"]().parse_args([])
-    config = namespace["build_solver_config"](args, tmp_path, "leapfrog")
+    cases = namespace["CASES"]
+    configs = {name: namespace["solver_setup"](name, tmp_path / name) for name in cases}
 
-    assert config.time_integration == "FRACTIONAL"
-    assert config.velocity.method == "TREECODE"
-    assert config.particles_kernel == "GAUSSIAN"
-    assert config.advection.scheme == config.stretching.scheme == "RK3"
-    assert config.stretching.mode == "TRANSPOSED"
-    assert config.turbulence.flow_model == "LES"
-    assert config.turbulence.cs == pytest.approx(namespace["CONTROL_LES_CS"])
-    assert config.stabilization == StabilizationConfig.disabled()
-    assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
-    assert config.viscous.characteristic_distance == pytest.approx(args.particle_spacing)
-
-
-def test_vortex_interactions_two_controls_are_distinct(tmp_path):
-    namespace = _vortex_interactions_namespace()
-    parser = namespace["build_arg_parser"]()
-
-    baseline = namespace["build_solver_config"](
-        parser.parse_args(["--method", "baseline"]), tmp_path, "leapfrog"
+    assert tuple(cases) == (
+        "leapfrog_dns",
+        "leapfrog_les",
+        "leapfrog_les_stabilized",
+        "collide_dns",
+        "collide_les",
+        "collide_les_stabilized",
     )
-    les = namespace["build_solver_config"](
-        parser.parse_args(["--method", "les"]), tmp_path, "leapfrog"
+    assert namespace["PARTICLE_SPACING"] == pytest.approx(0.045)
+    assert namespace["TIME_STEP"] == pytest.approx(20.0 * 0.045**2 / np.pi)
+    assert namespace["END_TIME"] == pytest.approx(11.55)
+    for config in configs.values():
+        assert config.processing_unit == "CPU"
+        assert config.time_integration == "COUPLED"
+        assert config.axisymmetric_no_swirl_axis is None
+        assert config.velocity.method == "TREECODE"
+        assert config.particles_kernel == "GAUSSIAN"
+        assert config.advection.scheme == config.stretching.scheme == "RK2"
+        assert config.stretching.mode == "MIXED"
+        assert config.stretching.use_treecode
+        assert config.stretching.conserve_moments
+        assert config.stretching.conserve_energy
+        assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
+
+    for name in ("leapfrog_dns", "leapfrog_les", "collide_dns", "collide_les"):
+        assert configs[name].viscous.scheme == "CS"
+        assert configs[name].viscous.characteristic_distance == pytest.approx(
+            namespace["PARTICLE_SPACING"]
+        )
+
+    assert configs["leapfrog_dns"].turbulence.flow_model == "DNS"
+    assert configs["leapfrog_les"].turbulence.cs == pytest.approx(namespace["LES_COEFFICIENT"])
+    assert configs["leapfrog_les"].stabilization == StabilizationConfig.disabled()
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.stretching_viscosity_coefficient == pytest.approx(
+        namespace["STABILIZATION_COEFFICIENT"]
     )
-    assert baseline.turbulence.flow_model == "DNS"
-    assert les.turbulence.flow_model == "LES"
-    assert baseline.time_integration == les.time_integration == "FRACTIONAL"
-    assert baseline.velocity.method == les.velocity.method == "TREECODE"
-
-
-def test_vortex_interactions_stabilized_method_is_the_combined_candidate(
-    tmp_path,
-):
-    namespace = _vortex_interactions_namespace()
-    args = namespace["build_arg_parser"]().parse_args(
-        [
-            "--method",
-            "les_stabilized",
-            "--particle-spacing",
-            "0.03",
-            "--allow-underresolved",
-        ]
+    assert not configs["leapfrog_dns"].filament_refinement.enabled
+    assert not configs["leapfrog_les"].filament_refinement.enabled
+    assert not configs["leapfrog_les_stabilized"].filament_refinement.enabled
+    assert not configs["leapfrog_dns"].divergence_relaxation.enabled
+    assert not configs["leapfrog_les"].divergence_relaxation.enabled
+    assert not configs["leapfrog_les_stabilized"].divergence_relaxation.enabled
+    assert configs["leapfrog_les_stabilized"].viscous.scheme == "CS"
+    assert (
+        configs["leapfrog_les_stabilized"].stabilization.regularization_max_particles
+        == namespace["STABILIZED_MAX_PARTICLES"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_frequency == namespace["REGULARIZATION_FREQUENCY"]
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_tail_budget == pytest.approx(
+        namespace["REGULARIZATION_TAIL_BUDGET"]
     )
 
-    config = namespace["build_solver_config"](
-        args,
-        tmp_path,
-        "collide",
-    )
 
-    assert config.turbulence.flow_model == "LES"
-    assert config.filament_refinement.enabled
-    assert config.filament_refinement.frequency == 1
-    assert config.divergence_relaxation.enabled
-    assert config.divergence_relaxation.frequency == 10
-    assert config.divergence_relaxation.start_step == 50
-    assert config.divergence_relaxation.grid_spacing == pytest.approx(0.045)
-    assert config.divergence_relaxation.max_correction_norm == pytest.approx(0.02)
-    assert config.divergence_relaxation.max_residual_ratio == pytest.approx(0.9)
-    assert config.divergence_relaxation.spectral_convergence_fraction == pytest.approx(0.1)
-
-
-def test_vortex_interactions_scripts_require_the_six_case_matrix():
+def test_vortex_interactions_scripts_run_and_gate_all_six_cases():
     tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions"
     allrun = (tutorial / "allrun.sh").read_text(encoding="utf-8")
     validator = (tutorial / "assets/validate_plot_inputs.py").read_text(encoding="utf-8")
 
-    assert 'DEFAULT_METHODS="baseline les les_stabilized"' in allrun
-    assert 'METHODS = ("baseline", "les", "les_stabilized")' in validator
-    assert "complete six-case matrix" in validator
-    assert 'name.endswith("_les_stabilized")' in validator
-    assert 'status != "completed"' in validator
+    assert 'python -u rings_setup.py "$case_name"' in allrun
+    assert "python assets/check_run.py" in allrun
+    assert '"leapfrog_dns"' in validator
+    assert '"collide_les_stabilized"' in validator
+    assert "leapfrog_les_stabilized" in allrun
 
 
-def test_vortex_interactions_reference_contract_rejects_coarse_spacing():
+def test_vortex_interactions_initial_state_matches_ring_invariants():
     namespace = _vortex_interactions_namespace()
-    args = namespace["build_arg_parser"]().parse_args(["--particle-spacing", "0.03"])
+    position, _, radius, _, circulation = namespace["ring_particles"](
+        0.0, namespace["RING_CIRCULATION"], namespace["RING_SEEDS"][0]
+    )
+    config = namespace["solver_setup"]("leapfrog_dns", Path("solution/test"))
 
-    with pytest.raises(ValueError, match="h/a0=.* > 0.2"):
-        namespace["validate_resolution"](args)
+    total = circulation.sum(axis=0)
+    impulse_x = 0.5 * np.cross(position, circulation).sum(axis=0)[0]
+    expected_impulse = np.pi * namespace["RING_CIRCULATION"] * namespace["RING_RADIUS"] ** 2
+
+    assert 2 * len(position) <= config.max_particles
+    assert np.linalg.norm(total) < 1.0e-12
+    assert impulse_x == pytest.approx(expected_impulse, rel=5.0e-3)
+    np.testing.assert_allclose(radius, namespace["PARTICLE_RADIUS"])
+    assert config.axisymmetric_no_swirl_axis is None
 
 
 def test_rotor_flow_cli_defaults_to_physics_preserving_policy():

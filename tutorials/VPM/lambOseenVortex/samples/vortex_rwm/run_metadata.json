@@ -1,0 +1,14 @@
+{
+  "case": "vortex",
+  "scheme": "rwm",
+  "circulations": [
+    1.0
+  ],
+  "viscosity": 0.0018867924528301887,
+  "core_radius": 0.125,
+  "separation": 1.0,
+  "column_half_length": 1.0,
+  "time_step": 0.04,
+  "sample_interval": 1.0,
+  "raw_backup_interval": 5.0
+}

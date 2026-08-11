@@ -61,9 +61,9 @@ class ParticleFieldEvaluation:
 
         # Initialize time tracking for energy dissipation rate
         self._flow_time_history = []  # Store (time, energy) pairs
-        self._max_history_length = (
-            7  # Keep 7 points: poly-degree-3 regression gives implicit smoothing
-        )
+        # Retain a short audit trail.  dE/dt uses only the latest interval so
+        # its sign is consistent with the two energy samples being reported.
+        self._max_history_length = 7
 
         # Define Taichi kernels
         self._define_taichi_kernels()
@@ -723,7 +723,10 @@ class ParticleFieldEvaluation:
             circulation,
             radius,
             volume,
+            viscosity=viscosity,
         )
+        if spectral.viscous_energy_dissipation is None:
+            raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
         energy = spectral.energy
         if record_history:
@@ -738,7 +741,7 @@ class ParticleFieldEvaluation:
             "helicity": spectral.helicity,
             "enstrophy": spectral.enstrophy,
             "enstrophy_test": spectral.enstrophy_test,
-            "vorticity_dissipation_rate": -float(np.mean(viscosity)) * spectral.enstrophy,
+            "vorticity_dissipation_rate": spectral.viscous_energy_dissipation,
             "kinetic_energy_dissipation_rate": self._compute_energy_dissipation_rate(),
             "strength_magnitude": float(np.linalg.norm(circulation, axis=1).sum()),
             "strength": total,
@@ -907,45 +910,23 @@ class ParticleFieldEvaluation:
             self._flow_time_history.pop(0)
 
     def _compute_energy_dissipation_rate(self) -> float:
+        """Return the energy change over the latest diagnostic interval.
+
+        An endpoint derivative extrapolated from a higher-order polynomial can
+        have the wrong sign even when every sampled energy decreases.  The
+        backward secant is conservative, handles non-uniform output intervals,
+        and makes the reported rate exactly consistent with the latest pair of
+        diagnostic states.
         """
-        Compute dE/dt by fitting a degree-3 polynomial through the energy history
-        and evaluating its analytic derivative at the most recent time.
-
-        This approach is correct for non-uniform time steps (uses the actual times,
-        not just the last interval) and provides implicit least-squares smoothing
-        when the history window is larger than the polynomial degree (n > 4).
-        With the default history of 7 points the fit has 3 spare degrees of freedom
-        that attenuate high-frequency noise in E(t) without biasing the trend.
-
-        Falls back gracefully:
-          n >= 4  →  degree-3 polynomial fit  (smoothed for n > 4)
-          n == 3  →  degree-2 polynomial fit
-          n == 2  →  degree-1 (linear) fit  =  simple forward difference
-
-        Returns:
-            float: Energy dissipation rate [J/s], or 0.0 if insufficient data
-        """
-        n = len(self._flow_time_history)
-
-        if n < 2:
+        if len(self._flow_time_history) < 2:
             return 0.0
 
-        times = np.array([t for t, _ in self._flow_time_history])
-        energies = np.array([E for _, E in self._flow_time_history])
-
-        # Guard against degenerate (zero-range) time windows
-        t_span = times[-1] - times[0]
-        if t_span <= 0.0:
+        previous_time, previous_energy = self._flow_time_history[-2]
+        current_time, current_energy = self._flow_time_history[-1]
+        interval = current_time - previous_time
+        if interval <= 0.0:
             return 0.0
-
-        # Degree capped so the fit is never under-determined
-        deg = min(3, n - 1)
-
-        # np.polyfit uses the actual time values, so non-uniform spacing is handled
-        # exactly.  When n > deg+1 the extra points act as regularisation.
-        coeffs = np.polyfit(times, energies, deg)
-        dcoeffs = np.polyder(coeffs)  # analytic derivative of the fitted poly
-        return float(np.polyval(dcoeffs, times[-1]))
+        return float((current_energy - previous_energy) / interval)
 
     def _get_zero_results(self) -> dict:
         """Return dictionary of zero values for empty particle system."""

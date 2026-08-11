@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
+  <Collection>
+    <DataSet timestep="1.0" file="vortex_cs_z0_000025.vts"/>
+    <DataSet timestep="2.0" file="vortex_cs_z0_000050.vts"/>
+    <DataSet timestep="3.0" file="vortex_cs_z0_000075.vts"/>
+    <DataSet timestep="4.0" file="vortex_cs_z0_000100.vts"/>
+    <DataSet timestep="5.0" file="vortex_cs_z0_000125.vts"/>
+    <DataSet timestep="6.0" file="vortex_cs_z0_000150.vts"/>
+    <DataSet timestep="7.0" file="vortex_cs_z0_000175.vts"/>
+    <DataSet timestep="8.0" file="vortex_cs_z0_000200.vts"/>
+    <DataSet timestep="9.0" file="vortex_cs_z0_000225.vts"/>
+    <DataSet timestep="10.0" file="vortex_cs_z0_000250.vts"/>
+    <DataSet timestep="11.0" file="vortex_cs_z0_000275.vts"/>
+    <DataSet timestep="12.0" file="vortex_cs_z0_000300.vts"/>
+    <DataSet timestep="13.0" file="vortex_cs_z0_000325.vts"/>
+    <DataSet timestep="14.0" file="vortex_cs_z0_000350.vts"/>
+    <DataSet timestep="15.0" file="vortex_cs_z0_000375.vts"/>
+    <DataSet timestep="16.0" file="vortex_cs_z0_000400.vts"/>
+    <DataSet timestep="17.0" file="vortex_cs_z0_000425.vts"/>
+    <DataSet timestep="18.0" file="vortex_cs_z0_000450.vts"/>
+    <DataSet timestep="19.0" file="vortex_cs_z0_000475.vts"/>
+    <DataSet timestep="20.0" file="vortex_cs_z0_000500.vts"/>
+  </Collection>
+</VTKFile>

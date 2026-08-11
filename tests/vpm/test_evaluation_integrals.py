@@ -47,6 +47,33 @@ def _two_particle_solver(make_solver, kernel_name, gamma1, gamma2):
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 
+def test_energy_rate_matches_latest_nonuniform_diagnostic_interval(
+    solver_for_backend,
+):
+    """dE/dt must retain the sign and slope of the latest sampled energies."""
+    solver = solver_for_backend(
+        time_step_size=0.01,
+        stretching=StretchingConfig.disabled(),
+        viscous=ViscousConfig(scheme="NONE"),
+        advection=AdvectionConfig(scheme="NONE"),
+        velocity=VelocityConfig.direct(),
+    )
+    diagnostics = solver.field_diagnostics
+    diagnostics._flow_time_history = [
+        (0.0, 27.0),
+        (0.3, 19.0),
+        (1.1, 18.0),
+        (2.7, 17.8),
+        (3.0, 17.79),
+        (4.2, 17.78),
+        (5.0, 17.77),
+    ]
+
+    expected = (17.77 - 17.78) / (5.0 - 4.2)
+    assert diagnostics._compute_energy_dissipation_rate() == pytest.approx(expected)
+    assert diagnostics._compute_energy_dissipation_rate() < 0.0
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )

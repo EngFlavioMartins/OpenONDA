@@ -1,64 +1,34 @@
-"""Regression tests for the vortexInteractions study launcher."""
+"""Regression test for the six-case vortexInteractions launcher."""
 
-from __future__ import annotations
-
-import json
-import os
 from pathlib import Path
-import subprocess
 
 
-def test_completed_staged_case_replaces_stale_rejected_result(tmp_path: Path) -> None:
+def test_launcher_runs_six_cases_then_their_physics_gate():
     tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions"
-    run_root = tmp_path / "solution"
-    stale_case = run_root / "leapfrog_baseline"
-    stale_case.mkdir(parents=True)
-    (stale_case / "rejected_state.h5").touch()
+    launcher = (tutorial / "allrun.sh").read_text(encoding="utf-8")
 
-    fake_python = tmp_path / "fake-python"
-    fake_python.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-shift
-output_root=""
-case_name=""
-while (($#)); do
-    case "$1" in
-        --output-root) output_root="$2"; shift 2 ;;
-        --name) case_name="$2"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-mkdir -p "$output_root/$case_name"
-printf '%s\\n' \\
-    '{"status": "completed", "completed_steps": 1, "requested_steps": 1}' \\
-    > "$output_root/$case_name/run_manifest.json"
-"""
-    )
-    fake_python.chmod(0o755)
+    assert 'python -u rings_setup.py "$case_name"' in launcher
+    assert "python assets/check_run.py" in launcher
+    assert "rm " not in launcher
+    assert "METHODS" not in launcher
+    assert "RUN_FAMILIES" not in launcher
+    for name in (
+        "leapfrog_dns",
+        "leapfrog_les",
+        "leapfrog_les_stabilized",
+        "collide_dns",
+        "collide_les",
+        "collide_les_stabilized",
+    ):
+        assert name in launcher
 
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "OPENONDA_PYTHON": str(fake_python),
-            "RUN_ROOT": str(run_root),
-            "FIGURES_ROOT": str(tmp_path / "figures"),
-            "METHODS": "baseline",
-            "RUN_FAMILIES": "leapfrog",
-            "LF_STEPS": "1",
-            "RUN_PLOTS": "0",
-        }
-    )
-    subprocess.run(
-        ["bash", str(tutorial / "allrun.sh")],
-        cwd=tutorial,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
 
-    manifest = json.loads((stale_case / "run_manifest.json").read_text())
-    assert manifest["status"] == "completed"
-    assert not (stale_case / "rejected_state.h5").exists()
-    assert not (run_root / ".failed").exists()
+def test_stabilized_cases_cannot_use_the_baseline_resolution_stop():
+    tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions"
+    setup = (tutorial / "rings_setup.py").read_text(encoding="utf-8")
+    gate = (tutorial / "assets/check_run.py").read_text(encoding="utf-8")
+
+    assert 'if variant == "les_stabilized" or solver.time_step % OUTPUT_FREQUENCY:' in setup
+    assert 'status="resolution_lost" if resolution_lost else "completed"' in setup
+    assert 'if variant == "les_stabilized":' in gate
+    assert "stabilized simulation did not reach its requested end time" in gate

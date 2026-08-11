@@ -13,6 +13,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 # =========================================================
 from dataclasses import dataclass, field
 import json
+from pathlib import Path
 import re
 
 # Set traceback limit to 0 to avoid excessive output
@@ -707,6 +708,31 @@ class StretchingConfig:
     """Barnes–Hut opening angle for the treecode stretching gradient
     (only used when ``use_treecode=True``).  Smaller = more accurate/slower."""
 
+    conserve_moments: bool = False
+    """Project each coupled stretching rate onto the closed-flow moment manifold.
+
+    The standard ``DIRECT`` particle contraction is consistent with
+    ``(omega . grad) u`` but, at finite particle resolution, its quadrature
+    does not make ``sum(Gamma)`` or linear impulse algebraic invariants.  A
+    treecode adds a second, controlled source of moment error.  When enabled,
+    the minimum-L2 global correction is applied at every Runge--Kutta stage so
+    vector circulation, linear impulse, and kernel-corrected angular impulse
+    have zero inviscid rate.  Viscous core spreading is left untouched.  This
+    option requires ``COUPLED`` time integration because both impulse rates
+    depend on position and strength rates from the same stage.
+    """
+
+    conserve_energy: bool = False
+    """Make the inviscid rate of the discrete blob energy vanish.
+
+    The correction is included in the same minimum-norm stage projection as
+    the closed-flow moments.  It uses the exact gradient of the quadratic
+    regularized-particle energy, including the position-rate contribution.
+    Viscous core spreading remains outside the projection, so the only energy
+    change retained by the split update is the modeled viscous/SGS sink.  This
+    option requires ``COUPLED`` time integration.
+    """
+
     def __post_init__(self) -> None:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
@@ -720,13 +746,21 @@ class StretchingConfig:
             )
         if not 0.0 < self.treecode_theta < 2.0:
             raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
+        if self.conserve_energy and not self.conserve_moments:
+            raise ValueError("conserve_energy requires conserve_moments")
         if mode != self.mode:
             object.__setattr__(self, "mode", mode)
         if scheme != self.scheme:
             object.__setattr__(self, "scheme", scheme)
 
     @staticmethod
-    def direct(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
+    def direct(
+        scheme: str = "RK3",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
+        conserve_moments: bool = False,
+        conserve_energy: bool = False,
+    ):
         """Direct scheme: dΓ/dt = (Γ·∇)u
 
         Options for `scheme`:
@@ -739,11 +773,22 @@ class StretchingConfig:
         treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
         return StretchingConfig(
-            mode="DIRECT", scheme=scheme, use_treecode=use_treecode, treecode_theta=treecode_theta
+            mode="DIRECT",
+            scheme=scheme,
+            use_treecode=use_treecode,
+            treecode_theta=treecode_theta,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
         )
 
     @staticmethod
-    def transposed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
+    def transposed(
+        scheme: str = "RK3",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
+        conserve_moments: bool = False,
+        conserve_energy: bool = False,
+    ):
         """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ
 
         Options for `scheme`:
@@ -760,10 +805,18 @@ class StretchingConfig:
             scheme=scheme,
             use_treecode=use_treecode,
             treecode_theta=treecode_theta,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
         )
 
     @staticmethod
-    def mixed(scheme: str = "RK3", use_treecode: bool = False, treecode_theta: float = 0.3):
+    def mixed(
+        scheme: str = "RK3",
+        use_treecode: bool = False,
+        treecode_theta: float = 0.3,
+        conserve_moments: bool = False,
+        conserve_energy: bool = False,
+    ):
         """Mixed/strain scheme: symmetric formulation
 
         Options for `scheme`:
@@ -776,7 +829,12 @@ class StretchingConfig:
         treecode gradient instead of the O(N²) pairwise kernel (large N).
         """
         return StretchingConfig(
-            mode="MIXED", scheme=scheme, use_treecode=use_treecode, treecode_theta=treecode_theta
+            mode="MIXED",
+            scheme=scheme,
+            use_treecode=use_treecode,
+            treecode_theta=treecode_theta,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
         )
 
     @staticmethod
@@ -995,20 +1053,64 @@ class TurbulenceConfig:
 
 @dataclass(frozen=True)
 class StabilizationConfig:
-    """Particle-retention policy for a VPM domain.
+    """Optional numerical stabilization and particle-retention policy.
 
-    This class intentionally contains no strength filters, limiters,
-    projections, splitting, or remeshing controls.  Stability is obtained by
-    resolving the coupled equations and rejecting inadmissible time steps,
-    while this policy only removes particles that have left a declared
-    computational domain.
+    ``stretching_viscosity_coefficient`` enables a stretching-aware residual
+    viscosity,
+
+    ``nu_stab = C_stab Delta^2 max(Gamma.S.Gamma / |Gamma|^2, 0)``.
+
+    It acts only on locally amplifying vortex-line elements and enters the
+    configured viscous diffusion operator through ``nu_eff``.  It therefore
+    removes energy through the same auditable mechanism as molecular and SGS
+    viscosity; it does not clip or directly modify particle circulation.
+
+    Conservative regularization is a separate, health-triggered LES filter.
+    It rebuilds an under-resolved Gaussian cloud while restoring circulation,
+    linear impulse, angular impulse, and enstrophy.  Its accepted kinetic-energy
+    loss is reported explicitly as a filter transfer.
     """
+
+    stretching_viscosity_coefficient: float = 0.0
+    """Dimensionless coefficient ``C_stab``; zero disables residual viscosity."""
 
     remove_particles_by_bounds: tuple[float, ...] | None = None
     """[xmin, xmax, ymin, ymax, zmin, zmax] — remove particles outside box.  None = disabled."""
 
+    regularization_frequency: int = 0
+    """Steps between conservative particle-field regularizations; zero disables it."""
+
+    regularization_start_step: int = 0
+    """First time step on which conservative regularization may act."""
+
+    regularization_grid_spacing: float | None = None
+    """Spacing of the temporary Gaussian redistribution grid."""
+
+    regularization_tail_budget: float = 3.0e-3
+    """Maximum fraction of absolute circulation discarded before moment restoration."""
+
+    regularization_max_particles: int | None = None
+    """Maximum number of particles retained by a regularization event."""
+
+    regularization_energy_dissipation_limit: float = 0.15
+    """Maximum admissible fractional energy removal in one event."""
+
+    regularization_enstrophy_dissipation_limit: float = 0.15
+    """Maximum admissible fractional enstrophy removal in one event."""
+
+    regularization_divergence_trigger: float = 0.04
+    """Apply a scheduled regularization above this divergence-health error."""
+
+    regularization_misalignment_trigger: float = 20.0
+    """Apply a scheduled regularization above this mean misalignment angle [deg]."""
+
     def __post_init__(self) -> None:
-        """Normalize and validate the optional retention domain."""
+        """Normalize and validate stabilization inputs."""
+        if (
+            not np.isfinite(self.stretching_viscosity_coefficient)
+            or self.stretching_viscosity_coefficient < 0.0
+        ):
+            raise ValueError("stretching_viscosity_coefficient must be finite and non-negative")
         if self.remove_particles_by_bounds is not None:
             object.__setattr__(
                 self,
@@ -1020,6 +1122,25 @@ class StabilizationConfig:
             and len(self.remove_particles_by_bounds) != 6
         ):
             raise ValueError("remove_particles_by_bounds must have 6 elements")
+        if self.regularization_frequency < 0 or self.regularization_start_step < 0:
+            raise ValueError("regularization frequency and start step must be non-negative")
+        if self.regularization_frequency > 0 and (
+            self.regularization_grid_spacing is None
+            or self.regularization_grid_spacing <= 0.0
+        ):
+            raise ValueError("enabled regularization requires a positive grid spacing")
+        if self.regularization_max_particles is not None and self.regularization_max_particles <= 0:
+            raise ValueError("regularization_max_particles must be positive or None")
+        if not 0.0 < self.regularization_tail_budget < 1.0:
+            raise ValueError("regularization tail budget must lie in (0, 1)")
+        if not 0.0 < self.regularization_energy_dissipation_limit < 1.0:
+            raise ValueError("regularization energy-dissipation limit must lie in (0, 1)")
+        if not 0.0 < self.regularization_enstrophy_dissipation_limit < 1.0:
+            raise ValueError("regularization enstrophy-dissipation limit must lie in (0, 1)")
+        if self.regularization_divergence_trigger < 0.0:
+            raise ValueError("regularization divergence trigger must be non-negative")
+        if not 0.0 <= self.regularization_misalignment_trigger <= 180.0:
+            raise ValueError("regularization misalignment trigger must lie in [0, 180]")
 
     # -- Factory methods -------------------------------------------------------
     @staticmethod
@@ -1031,6 +1152,44 @@ class StabilizationConfig:
     def bounded_domain(bounds: list[float] | tuple[float, ...]) -> "StabilizationConfig":
         """Remove particles outside one declared six-coordinate domain."""
         return StabilizationConfig(remove_particles_by_bounds=tuple(bounds))
+
+    @staticmethod
+    def stretching_viscosity(coefficient: float = 0.5) -> "StabilizationConfig":
+        """Add selective core spreading where strain amplifies ``Gamma``.
+
+        The default gives the residual diffusion rate half the local positive
+        stretching rate.  Smooth rotation and compressive strain are untouched.
+        """
+        return StabilizationConfig(stretching_viscosity_coefficient=coefficient)
+
+    @staticmethod
+    def conservative_filter(
+        *,
+        coefficient: float = 0.5,
+        frequency: int,
+        start_step: int,
+        grid_spacing: float,
+        max_particles: int,
+        tail_budget: float = 3.0e-3,
+        energy_dissipation_limit: float = 0.15,
+        enstrophy_dissipation_limit: float = 0.15,
+        divergence_trigger: float = 0.04,
+        misalignment_trigger: float = 20.0,
+    ) -> "StabilizationConfig":
+        """Residual viscosity plus moment/enstrophy-constrained redistribution."""
+
+        return StabilizationConfig(
+            stretching_viscosity_coefficient=coefficient,
+            regularization_frequency=frequency,
+            regularization_start_step=start_step,
+            regularization_grid_spacing=grid_spacing,
+            regularization_max_particles=max_particles,
+            regularization_tail_budget=tail_budget,
+            regularization_energy_dissipation_limit=energy_dissipation_limit,
+            regularization_enstrophy_dissipation_limit=enstrophy_dissipation_limit,
+            regularization_divergence_trigger=divergence_trigger,
+            regularization_misalignment_trigger=misalignment_trigger,
+        )
 
 
 @dataclass(frozen=True)
@@ -1458,6 +1617,20 @@ class VPMSetup:
     coupled_max_substeps: int = 128
     """Fail instead of silently filtering physics when a macro step needs more substeps."""
 
+    axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
+    """Preserve an axisymmetric no-swirl manifold during coupled integration.
+
+    When set, particles with the same non-negative ``zone_id`` form one
+    complete azimuthal orbit about the selected coordinate axis. Velocity and
+    strength rates are rotationally averaged over each orbit at every common
+    Runge--Kutta stage. Azimuthal velocity and meridional circulation rates are
+    zero on this reflection-symmetric manifold. This is a symmetry-reduced
+    discretization, not a post-step filter: the state is advanced only by the
+    physically admissible part of the VPM right-hand side. Orbit geometry is
+    checked before the first step so a missing or malformed ``zone_id`` cannot
+    silently average unrelated particles.
+    """
+
     advection: AdvectionConfig = field(default_factory=AdvectionConfig)
     """Configuration for advection term (scheme, etc.)."""
 
@@ -1569,7 +1742,15 @@ class VPMSetup:
     """Optional infix in backup names, producing prefixes like 'vpm_<name>_*'."""
 
     backup_directory: str = "solution"
-    """Output directory for backups and sampled files."""
+    """Output directory for restart backups; sampled files use the solver-managed root."""
+
+    sample_subdirectory: str | None = None
+    """Optional case-relative directory below the solver-managed ``samples/`` root.
+
+    The root location is fixed by :func:`resolve_samples_dir`; this field only
+    separates several runs that share one flow root, for example
+    ``samples/merging_dvh/``.
+    """
 
     clean: bool = False
     """If True, delete the backup_directory before starting the simulation."""
@@ -1684,6 +1865,18 @@ class VPMSetup:
             )
         object.__setattr__(self, "backup_file_name", output_name)
 
+        if self.sample_subdirectory is not None:
+            sample_path = Path(self.sample_subdirectory)
+            if (
+                not self.sample_subdirectory
+                or sample_path.is_absolute()
+                or any(part in {".", ".."} for part in sample_path.parts)
+            ):
+                raise ValueError(
+                    "sample_subdirectory must be a non-empty relative path below samples/"
+                )
+            object.__setattr__(self, "sample_subdirectory", str(sample_path))
+
         if self.velocity is None:
             # The GPU LBVH currently implements Gaussian and Winckelmans
             # regularisation. Corrected/super-Gaussian solvers remain fully
@@ -1721,9 +1914,30 @@ class VPMSetup:
                     "COUPLED time integration requires matching RK2 or RK3 "
                     "advection and stretching schemes"
                 )
-            if self.viscous.scheme.upper() not in {"NONE", "CS"}:
+            if self.viscous.scheme.upper() not in {"NONE", "CS", "DVH", "GBD"}:
                 raise ValueError(
-                    "COUPLED time integration currently supports only NONE or CS diffusion"
+                    "COUPLED time integration supports NONE, CS, DVH, or GBD diffusion"
+                )
+        elif self.stretching.conserve_moments or self.stretching.conserve_energy:
+            raise ValueError(
+                "conserve_moments requires COUPLED time integration; conserve_energy does too, "
+                "because position and strength rates share one Runge--Kutta stage"
+            )
+        if self.axisymmetric_no_swirl_axis is not None:
+            axis = self.axisymmetric_no_swirl_axis.lower()
+            if axis not in {"x", "y", "z"}:
+                raise ValueError("axisymmetric_no_swirl_axis must be 'x', 'y', 'z', or None")
+            object.__setattr__(self, "axisymmetric_no_swirl_axis", axis)
+            if self.time_integration.upper() != "COUPLED":
+                raise ValueError("axisymmetric_no_swirl_axis requires COUPLED time integration")
+            if self.stabilization.remove_particles_by_bounds is not None:
+                raise ValueError(
+                    "axisymmetric_no_swirl_axis is incompatible with particle retention"
+                )
+            if self.filament_refinement.enabled or self.divergence_relaxation.enabled:
+                raise ValueError(
+                    "axisymmetric_no_swirl_axis is incompatible with refinement or "
+                    "divergence relaxation"
                 )
         if self.coupled_max_strain_increment <= 0.0:
             raise ValueError("coupled_max_strain_increment must be positive")
@@ -1804,6 +2018,22 @@ class VPMSetup:
                 "divergence relaxation requires filament refinement so the "
                 "interpolation solve cannot hide inadequate vortex-line resolution"
             )
+        if self.stabilization.regularization_frequency > 0 and _kernel_up != "GAUSSIAN":
+            raise ValueError("conservative regularization currently requires GAUSSIAN particles")
+        if (
+            self.stabilization.regularization_frequency > 0
+            and (self.filament_refinement.enabled or self.divergence_relaxation.enabled)
+        ):
+            raise ValueError(
+                "conservative regularization replaces refinement and divergence relaxation"
+            )
+        if (
+            self.stabilization.regularization_max_particles is not None
+            and self.stabilization.regularization_max_particles > self.max_particles
+        ):
+            raise ValueError(
+                "regularization_max_particles cannot exceed VPMSetup.max_particles"
+            )
         if (
             self.filament_refinement.max_particles is not None
             and self.filament_refinement.max_particles > self.max_particles
@@ -1837,6 +2067,7 @@ class VPMSetup:
             "coupled_max_strain_increment": self.coupled_max_strain_increment,
             "coupled_max_advection_fraction": self.coupled_max_advection_fraction,
             "coupled_max_substeps": self.coupled_max_substeps,
+            "axisymmetric_no_swirl_axis": self.axisymmetric_no_swirl_axis,
             "advection": _as_dict(self.advection),
             "stretching": _as_dict(self.stretching),
             "viscous": _as_dict(self.viscous),
@@ -1857,6 +2088,7 @@ class VPMSetup:
             "backup_frequency": self.backup_frequency,
             "backup_file_name": self.backup_file_name,
             "backup_directory": self.backup_directory,
+            "sample_subdirectory": self.sample_subdirectory,
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
             "random_seed": self.random_seed,

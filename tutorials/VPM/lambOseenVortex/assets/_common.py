@@ -19,14 +19,20 @@ import pandas as pd
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/lambOseenVortex/
 FIGURES_DIR = SCRIPT_DIR / "figures"
-SOLUTION_DIR = SCRIPT_DIR / "solution"
+SAMPLES_DIR = SCRIPT_DIR / "samples"
 REF_DIR = ASSETS_DIR / "references"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
 
-# Cerretelli & Williamson (2003) define the vortex core radius a as the radius of
-BETA_RMAX = 1.1209064227785341
+BETA_RMAX = 1.12
+GAMMA = 1.0
+REYNOLDS_NUMBER = 530.0
+CORE_RADIUS = 0.125
+SEPARATION = 1.0
+TIME_STEP = 0.04
+TOTAL_TIME = 20.0
+PUBLICATION_WIDTH_CM = 12.5
 
 _THEME_MODULE = None
 
@@ -55,13 +61,28 @@ def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
     return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
 
 
+def publication_size(height_cm: float) -> tuple[float, float]:
+    """Return a 12.5 cm-wide publication canvas in inches."""
+
+    return PUBLICATION_WIDTH_CM / 2.54, height_cm / 2.54
+
+
+def save_publication_figure(fig, path: Path, dpi: int) -> None:
+    """Save without tight bounding-box cropping so physical size stays exact."""
+
+    save_kwargs = {"dpi": dpi} if path.suffix == ".png" else {}
+    fig.savefig(path, **save_kwargs)
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
 def build_arg_parser(description: str):
     """Base argument parser shared by all plot scripts."""
     import argparse
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Root solution directory.")
-    p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output figure directory.")
     p.add_argument("--dpi", type=int, default=300, help="Figure DPI (PNG only).")
     p.add_argument(
         "--format",
@@ -75,26 +96,21 @@ def build_arg_parser(description: str):
         default=None,
         help="Specific time-step to plot (default: last available).",
     )
+    viscosity = GAMMA / REYNOLDS_NUMBER
+    p.set_defaults(
+        samples_dir=SAMPLES_DIR,
+        figures_dir=FIGURES_DIR,
+        gamma=GAMMA,
+        nu=viscosity,
+        t0=(CORE_RADIUS / BETA_RMAX) ** 2 / (4.0 * viscosity),
+        dt=TIME_STEP,
+        re=REYNOLDS_NUMBER,
+        circulation=GAMMA,
+        b0=SEPARATION,
+        a0_over_b0=CORE_RADIUS / SEPARATION,
+        total_time=TOTAL_TIME,
+    )
     return p
-
-
-def add_physics_args(parser) -> None:
-    """Add physical-parameter arguments with defaults matching vortex_setup.py."""
-    _RE = 530.0  # Re_Γ = Γ/nu — matches allrun.sh and the C&W 2003 reference
-    _NU = 1.0 / _RE
-    _AC0 = 0.125  # C&W peak-velocity core radius a_{c,0} [m] (a_{c,0}/b_0 = 0.125)
-    parser.add_argument("--gamma", type=float, default=1.0)
-    parser.add_argument("--nu", type=float, default=_NU)
-    # a0 is the peak-velocity radius; the diffused Gaussian width is a0/BETA_RMAX,
-    # so the vortex age is (a0/BETA_RMAX)^2 / (4 nu). Every plot script overrides
-    # this via resolve_runtime_physics, so this default is documentation only.
-    parser.add_argument("--t0", type=float, default=(_AC0 / BETA_RMAX) ** 2 / (4.0 * _NU))
-    parser.add_argument("--dt", type=float, default=0.02)
-    parser.add_argument("--re", type=float, default=_RE)
-    parser.add_argument("--circulation", type=float, default=1.0)
-    parser.add_argument("--b0", type=float, default=1.0)
-    parser.add_argument("--a0-over-b0", type=float, default=0.125)
-    parser.add_argument("--total-time", type=float, default=20.0)
 
 
 def read_flow_time(csv_path: Path) -> float | None:
@@ -106,66 +122,33 @@ def read_flow_time(csv_path: Path) -> float | None:
     return None
 
 
-def read_run_viscosity(solution_dir: Path) -> float | None:
-    """Read the TRUE run viscosity ν directly from the solver backups.
+def read_run_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
+    """Load the physical constants stored with the sampled results.
 
-    Every VPM backup stores the per-particle molecular viscosity, so the ν the
-    simulation actually ran with can be read straight from disk — no inference.
-
-    This is essential for a *verification* benchmark: the analytic reference
-    must use the real ν, independent of what the schemes produced.  The old
-    ``infer_run_nu`` fitted ν to the schemes' own median ω_peak, which silently
-    bent the "Theory" curve down onto the under-diffused schemes (RE_eff≈690
-    instead of 530) and mislabelled the *accurate* scheme (CS) as the outlier.
-    Never derive the reference from the results it is meant to judge.
-
-    Returns the median positive particle viscosity from the first readable
-    backup, or ``None`` if no backup is available.
+    Plotting must not depend on a dense particle backup: those files are sparse
+    restart checkpoints, while ``samples/<case>/run_metadata.json`` is written
+    alongside the data used by each figure.
     """
-    import h5py
+    import json
 
-    for h5 in sorted(solution_dir.glob("*/vpm_*.h5")):
+    for scheme in SCHEMES:
+        path = samples_dir / f"{prefix}_{scheme}" / "run_metadata.json"
         try:
-            with h5py.File(h5, "r") as f:
-                if "particles" not in f or "viscosity" not in f["particles"]:
-                    continue
-                n = int(f["solver"].attrs.get("number_of_particles", 0))
-                v = f["particles"]["viscosity"][:n] if n else f["particles"]["viscosity"][:]
-        except (OSError, KeyError):
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
-        v = np.asarray(v, dtype=np.float64)
-        v = v[v > 0.0]
-        if v.size:
-            return float(np.median(v))
-    return None
+    return {}
 
 
-def read_column_half_length(solution_dir: Path, prefix: str = "vortex") -> float | None:
-    """Read the vortex-column half-span (max |z|) from a backup.
+def read_column_half_length(samples_dir: Path, prefix: str = "vortex") -> float | None:
+    """Read the finite column half-length from sampled-result metadata."""
 
-    The finite straight column spans z ∈ [-Lh, Lh]; the centre-plane velocity is
-    weaker than the infinite 2D vortex by Lh/√(Lh²+r²).  Reading Lh from the data
-    keeps the analytic reference correct for ANY --length, instead of hard-coding
-    the column span (which silently breaks the theory curve when --length changes).
-    """
-    import h5py
-
-    for h5 in sorted(solution_dir.glob(f"{prefix}_*/vpm_*.h5")):
-        try:
-            with h5py.File(h5, "r") as f:
-                n = int(f["solver"].attrs.get("number_of_particles", 0))
-                if n == 0:
-                    continue
-                z = f["particles"]["position"][:n, 2]
-        except (OSError, KeyError):
-            continue
-        if z.size:
-            return float(np.abs(z).max())
-    return None
+    value = read_run_metadata(samples_dir, prefix).get("column_half_length")
+    return float(value) if value is not None else None
 
 
 def resolve_runtime_physics(
-    solution_dir: Path,
+    samples_dir: Path,
     gamma: float,
     fallback_nu: float,
     b0: float,
@@ -173,28 +156,28 @@ def resolve_runtime_physics(
 ) -> dict[str, float]:
     """Return the physical constants for the analytic reference.
 
-    ``nu`` is the TRUE run viscosity read from the backups
-    (:func:`read_run_viscosity`); if no backup is found it falls back to
-    ``fallback_nu`` (= 1/RE from the CLI).  It is *never* inferred from the
-    schemes' own output, so the analytic curve stays an independent reference.
+    ``nu`` and the core radius come from ``samples/<case>/run_metadata.json``.
+    If a run has no metadata, the tutorial constants provide the reference.
+    The analytic reference is never inferred from the schemes' own output.
     """
-    ac0 = a0_over_b0 * b0
-    nu = read_run_viscosity(solution_dir)
-    if nu is None or nu <= 0.0:
+    metadata = read_run_metadata(samples_dir)
+    ac0 = float(metadata.get("core_radius", a0_over_b0 * b0))
+    nu = float(metadata.get("viscosity", fallback_nu))
+    if nu <= 0.0:
         nu = fallback_nu
     sigma0 = ac0 / BETA_RMAX
     return {"nu": nu, "t0": sigma0**2 / (4.0 * nu), "ac0": ac0}
 
 
-def pvd_time_map(solution_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
+def pvd_time_map(samples_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
     """Read the surface-sample PVD to get a step → physical-time mapping.
 
-    Useful as a fallback when HDF5 backup files are not present.
+    This keeps sampled fields tied to physical time without reading checkpoints.
     """
     import re as _re
     import xml.etree.ElementTree as ET
 
-    pvd = solution_dir / f"{prefix}_{scheme}" / "samples" / f"{prefix}_{scheme}_z0.pvd"
+    pvd = samples_dir / f"{prefix}_{scheme}" / f"{prefix}_{scheme}_z0.pvd"
     if not pvd.exists():
         return {}
     tree = ET.parse(pvd)  # nosec B314

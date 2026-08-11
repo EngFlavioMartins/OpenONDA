@@ -20,6 +20,8 @@ from _common import (
     save_fig,
     VARIANT_LABEL,
     VARIANT_STYLE,
+    FIGURES_DIR,
+    SOLUTION_DIR,
     figure_size,
     mark_every,
     reference_style,
@@ -30,8 +32,8 @@ def main() -> None:
     args = build_arg_parser(
         "Tube circulation and vector-sum conservation — DNS & LES, all stretching variants."
     ).parse_args()
-    sol = Path(args.solution_dir)
-    figs = Path(args.figures_dir)
+    sol = SOLUTION_DIR
+    figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
@@ -41,7 +43,7 @@ def main() -> None:
     legend_labels = []
 
     for variant, st in VARIANT_STYLE.items():
-        h5 = sorted(glob.glob(str(sol / variant / f"vpm_{variant}_*.h5")))
+        h5 = sorted(glob.glob(str(sol / f"vpm_{variant}_*.h5")))
         t, c = load_ring_circulation(h5)
         if t.size == 0:
             continue

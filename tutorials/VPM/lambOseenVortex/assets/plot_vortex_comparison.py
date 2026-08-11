@@ -24,12 +24,13 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     SCHEMES,
-    add_physics_args,
     build_arg_parser,
     build_style_map,
     load_theme,
+    publication_size,
     read_column_half_length,
     resolve_runtime_physics,
+    save_publication_figure,
 )
 
 
@@ -77,13 +78,13 @@ def finite_column_velocity(
 
 
 def last_csv(
-    solution_dir: Path,
+    samples_dir: Path,
     scheme: str,
     step: int | None,
     dt: float,
     target_time: float | None = None,
 ):
-    folder = solution_dir / f"vortex_{scheme}" / "samples"
+    folder = samples_dir / f"vortex_{scheme}"
     path = folder / f"vortex_{scheme}_x.csv"
     if not path.exists():
         return None, None
@@ -118,14 +119,14 @@ def last_csv(
 
 
 def plot_vortex_case(args) -> int:
-    solution_dir = Path(args.solution_dir)
+    samples_dir = Path(args.samples_dir)
     fmt = getattr(args, "format", "png")
     out = Path(args.figures_dir) / f"vortex_comparison.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     colors, _ = load_theme()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     run_t0 = runtime["t0"]
     ac0 = runtime["ac0"]
@@ -133,16 +134,16 @@ def plot_vortex_case(args) -> int:
     uc_ref = args.gamma / (2.0 * np.pi * ac0)
     wc_ref = args.gamma / (np.pi * ac0**2)
     gc_ref = uc_ref / ac0
-    half_length = read_column_half_length(solution_dir) or 25.0 * ac0
+    half_length = read_column_half_length(samples_dir) or 25.0 * ac0
 
     target_time = None if args.step is not None else args.total_time
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.8 / 2.54, 12.8 / 2.54))
-    fig.subplots_adjust(hspace=0.1, top=0.95, bottom=0.19, left=0.15, right=0.85)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
+    fig.subplots_adjust(hspace=0.12, top=0.94, bottom=0.18, left=0.17, right=0.97)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        path, t = last_csv(solution_dir, scheme, args.step, args.dt, target_time)
+        path, t = last_csv(samples_dir, scheme, args.step, args.dt, target_time)
         if path is None:
             continue
         df = pd.read_csv(path)
@@ -164,6 +165,15 @@ def plot_vortex_case(args) -> int:
         axes[1].plot(x / ac0, oz / wc_ref, **plot_kw)
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
+
+    if len(scheme_data) != len(SCHEMES):
+        plt.close(fig)
+        out.unlink(missing_ok=True)
+        print(
+            f"  [vortex] complete profiles available for {len(scheme_data)}/{len(SCHEMES)} "
+            "methods; figure not generated"
+        )
+        return 1
 
     elapsed_time = (
         args.total_time
@@ -195,18 +205,12 @@ def plot_vortex_case(args) -> int:
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01))
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    save_publication_figure(fig, out, args.dpi)
     return 0
 
 
 def main() -> int:
     p = build_arg_parser("Lamb-Oseen single-vortex radial profile comparison.")
-    add_physics_args(p)
     return plot_vortex_case(p.parse_args())
 
 

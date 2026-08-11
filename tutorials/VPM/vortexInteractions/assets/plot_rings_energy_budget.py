@@ -7,9 +7,12 @@ The target identity for an unbounded viscous incompressible flow is
 
 for the energy and enstrophy conventions used by the VPM diagnostics.  Some
 texts define enstrophy as 0.5*integral(|omega|^2), which is the same statement
-written as dE/dt = -2*nu*Enstrophy.  This script reports both the code-native
-``neg_nu_enstrophy`` balance and the literal ``-2*enstrophy`` balance so a
-normalization mismatch is impossible to miss.
+written as dE/dt = -2*nu*Enstrophy. For LES, ``nu_eff`` varies in space and the
+solver exports the exact weighted quadratic sink as ``neg_nu_enstrophy``;
+replacing it by a mean viscosity times enstrophy is not generally valid.
+The stabilized cases additionally export the exact cumulative energy transfer
+of conservative regularization. Its interval derivative is added to the
+continuous viscous sink before comparing with the measured energy decay.
 
 It reads the exported flow-integral CSV, with solver-log fallback when a CSV
 is unavailable.
@@ -55,37 +58,12 @@ def read_budget(case_dir: Path) -> tuple[pd.DataFrame | None, str]:
     return df.reset_index(drop=True), "log"
 
 
-def local_poly_derivative(t: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
-    """Derivative from a moving polynomial fit using the actual timestamps."""
-    n = len(t)
-    if n < 2:
-        return np.full_like(y, np.nan, dtype=float)
-    if window < 3:
-        window = 3
-    if window % 2 == 0:
-        window += 1
-    window = min(window, n if n % 2 == 1 else n - 1)
-    if window < 3:
-        return np.gradient(y, t, edge_order=1)
-
-    half = window // 2
-    dydt = np.empty(n, dtype=float)
-    for i in range(n):
-        lo = max(0, i - half)
-        hi = min(n, i + half + 1)
-        if hi - lo < 3:
-            if lo == 0:
-                hi = min(n, 3)
-            else:
-                lo = max(0, n - 3)
-        tt = t[lo:hi]
-        yy = y[lo:hi]
-        deg = min(3, len(tt) - 1)
-        tau = tt - t[i]
-        coeff = np.polyfit(tau, yy, deg)
-        dcoeff = np.polyder(coeff)
-        dydt[i] = np.polyval(dcoeff, 0.0)
-    return dydt
+def interval_derivative(t: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Return backward slopes that are consistent with every sampled interval."""
+    derivative = np.full_like(y, np.nan, dtype=float)
+    if len(t) >= 2:
+        derivative[1:] = np.diff(y) / np.diff(t)
+    return derivative
 
 
 def trapz(y: np.ndarray, x: np.ndarray) -> float:
@@ -153,33 +131,36 @@ def balance_metrics(
     }
 
 
-def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, dict | None]:
+def summarize_case(case_dir: Path) -> tuple[pd.DataFrame | None, dict | None]:
     df, source = read_budget(case_dir)
     if df is None:
         return None, None
 
     t = df["time"].to_numpy(float)
     energy = df["kinetic_energy"].to_numpy(float)
-    dE_poly = local_poly_derivative(t, energy, window)
-    dE_grad = np.gradient(energy, t, edge_order=2 if len(t) > 2 else 1)
+    dE_interval = interval_derivative(t, energy)
 
     sink_nu = (
         df["neg_nu_enstrophy"].to_numpy(float)
         if "neg_nu_enstrophy" in df.columns
         else np.full_like(t, np.nan)
     )
-    sink_minus2 = (
-        -2.0 * df["enstrophy"].to_numpy(float)
-        if "enstrophy" in df.columns
-        else np.full_like(t, np.nan)
+    filter_transfer = (
+        df["regularization_cumulative_energy_transfer"].to_numpy(float)
+        if "regularization_cumulative_energy_transfer" in df.columns
+        else np.zeros_like(t)
     )
+    filter_rate = interval_derivative(t, filter_transfer)
+    filter_rate[0] = 0.0
+    modeled_rate = sink_nu + filter_rate
     enstrophy = (
         df["enstrophy"].to_numpy(float) if "enstrophy" in df.columns else np.full_like(t, np.nan)
     )
 
     e0 = float(energy[0]) if abs(float(energy[0])) > 1e-30 else 1.0
 
-    spurious_rate = np.clip(dE_poly, 0.0, None)
+    spurious_rate = np.clip(dE_interval, 0.0, None)
+    spurious_rate[~np.isfinite(spurious_rate)] = 0.0
     cum_spurious = np.zeros_like(t)
     if len(t) > 1:
         inc = 0.5 * (spurious_rate[1:] + spurious_rate[:-1]) * np.diff(t)
@@ -189,21 +170,19 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
     out.insert(0, "case", case_dir.name)
     out["source"] = source
     out["t_star"] = t / T_REF
-    out["dE_dt_poly"] = dE_poly
-    out["dE_dt_gradient"] = dE_grad
-    out["sink_minus2_enstrophy"] = sink_minus2
-    out["residual_vs_neg_nu_enstrophy"] = dE_poly - sink_nu
-    out["residual_vs_minus2_enstrophy"] = dE_poly - sink_minus2
+    out["dE_dt_interval"] = dE_interval
+    out["regularization_energy_rate"] = filter_rate
+    out["modeled_energy_rate"] = modeled_rate
+    out["residual_vs_modeled_energy_rate"] = dE_interval - modeled_rate
     out["cum_spurious_E0"] = cum_spurious / e0
 
-    m_nu = balance_metrics(t, energy, dE_poly, sink_nu)
-    m_m2 = balance_metrics(t, energy, dE_poly, sink_minus2)
+    m_nu = balance_metrics(t, energy, dE_interval, modeled_rate)
 
-    valid = np.isfinite(dE_poly) & np.isfinite(enstrophy) & (enstrophy > 0.0)
+    valid = np.isfinite(dE_interval) & np.isfinite(enstrophy) & (enstrophy > 0.0)
     fitted_c = np.nan
     if valid.sum() >= 2:
         # Best positive factor c in dE/dt ~= -c * enstrophy.
-        fitted_c = -float(np.dot(dE_poly[valid], enstrophy[valid])) / float(
+        fitted_c = -float(np.dot(dE_interval[valid], enstrophy[valid])) / float(
             np.dot(enstrophy[valid], enstrophy[valid])
         )
 
@@ -240,7 +219,7 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
         angular_impulse_drift = np.nan
 
     npart = df["n_particles"].to_numpy(float) if "n_particles" in df.columns else np.array([np.nan])
-    dE_valid = dE_poly[np.isfinite(dE_poly)]
+    dE_valid = dE_interval[np.isfinite(dE_interval)]
     summary = {
         "case": case_dir.name,
         "source": source,
@@ -259,9 +238,8 @@ def summarize_case(case_dir: Path, window: int) -> tuple[pd.DataFrame | None, di
         "angular_impulse_drift": angular_impulse_drift,
         "N_ratio": float(npart[-1] / npart[0]) if npart.size and npart[0] > 0 else np.nan,
     }
-    for prefix, metrics in (("nu", m_nu), ("minus2", m_m2)):
-        for key, value in metrics.items():
-            summary[f"{prefix}_{key}"] = value
+    for key, value in m_nu.items():
+        summary[f"nu_{key}"] = value
     if "strength_magnitude" in df.columns and df["strength_magnitude"].iloc[0] != 0.0:
         summary["strength_ratio"] = float(
             df["strength_magnitude"].iloc[-1] / df["strength_magnitude"].iloc[0]
@@ -303,13 +281,13 @@ def make_figure(
             mew=st["markeredgewidth"],
         )
 
-        rate = df["dE_dt_poly"].to_numpy(float) / scale
+        rate = df["dE_dt_interval"].to_numpy(float) / scale
         rate_values.append(rate)
         ax_rate.plot(t, rate, label=st["label"], **common)
-        if "neg_nu_enstrophy" in df:
+        if "modeled_energy_rate" in df:
             ax_rate.plot(
                 t,
-                df["neg_nu_enstrophy"] / scale,
+                df["modeled_energy_rate"] / scale,
                 color=st["color"],
                 **secondary_line_style(),
             )
@@ -355,13 +333,7 @@ def make_figure(
 
 
 def main() -> None:
-    parser = build_arg_parser("Audit dE/dt against viscous enstrophy dissipation.")
-    parser.add_argument(
-        "--window",
-        type=int,
-        default=5,
-        help="Odd moving polynomial window for dE/dt. Use 3 for minimal smoothing.",
-    )
+    parser = build_arg_parser("Audit dE/dt against viscous and filter dissipation.")
     args = parser.parse_args()
 
     solution_dir = Path(args.solution_dir)
@@ -371,7 +343,7 @@ def main() -> None:
     all_series: list[pd.DataFrame] = []
     rows: list[dict] = []
     for case_dir in discover_cases(solution_dir):
-        ts, summary = summarize_case(case_dir, args.window)
+        ts, summary = summarize_case(case_dir)
         if ts is None or summary is None:
             continue
         all_series.append(ts)
@@ -416,10 +388,10 @@ def main() -> None:
         "frac_dEdt_pos = fraction of samples with dE/dt>0 (spurious energy gain);\n"
         "spurious_E_in_E0 = total injected energy ∫max(dE/dt,0)dt / E0."
     )
-    failed_stabilized = verdict[verdict["case"].str.endswith("_les_stabilized") & ~verdict["PASS"]]
-    if not failed_stabilized.empty:
-        names = ", ".join(failed_stabilized["case"].astype(str))
-        raise SystemExit(f"Stabilized energy/conservation verdict failed: {names}")
+    failed = verdict[~verdict["PASS"]]
+    if not failed.empty:
+        names = ", ".join(failed["case"].astype(str))
+        raise SystemExit(f"Energy/conservation verdict failed: {names}")
 
 
 if __name__ == "__main__":

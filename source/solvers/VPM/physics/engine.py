@@ -91,6 +91,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         mode: str = "TRANSPOSED",
         use_treecode: bool = False,
         treecode_theta: float = 0.3,
+        conserve_moments: bool = False,
+        conserve_energy: bool = False,
+        axisymmetric_axis: int = -1,
         precomputed_velocity_k1: bool = False,
     ):
         """Advance particle positions and vortex strengths at common RK stages.
@@ -107,6 +110,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             mode,
             use_treecode,
             treecode_theta,
+            conserve_moments,
+            conserve_energy,
+            axisymmetric_axis,
             precomputed_velocity_k1,
         )
 
@@ -346,6 +352,9 @@ class _CoupledAdvectionStretchingHandler:
         mode: str,
         use_treecode: bool,
         treecode_theta: float,
+        conserve_moments: bool,
+        conserve_energy: bool,
+        axisymmetric_axis: int,
         precomputed_velocity_k1: bool,
     ) -> None:
         N = len(particles)
@@ -363,21 +372,18 @@ class _CoupledAdvectionStretchingHandler:
         mode_int = self._mode_int(mode)
 
         # k1 = f(x_n, Gamma_n)
-        if not precomputed_velocity_k1:
-            p._advection._vel(
-                particles,
-                particles.position,
-                particles.velocity,
-                N,
-                strength_field=particles.circulation,
-            )
-        p._stretching._rate(
+        self._stage_rhs(
+            particles,
             particles.position,
             particles.circulation,
-            particles.radius,
+            particles.velocity,
             p.dstr_dt_temp,
             mode_int,
             N,
+            precomputed=precomputed_velocity_k1,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
+            axisymmetric_axis=axisymmetric_axis,
         )
 
         # y1 = y_n + dt*k1
@@ -386,15 +392,19 @@ class _CoupledAdvectionStretchingHandler:
 
         # k2 = f(y1).  A tree topology cannot merely be refitted here because
         # coupled stages change both positions and circulations.
-        p._advection._vel(
+        self._stage_rhs(
             particles,
             p.pos_temp,
+            p.str_temp,
             p.vel_temp,
+            p.dstr_dt_temp2,
+            mode_int,
             N,
-            reuse_tree=False,
-            strength_field=p.str_temp,
+            precomputed=False,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
+            axisymmetric_axis=axisymmetric_axis,
         )
-        p._stretching._rate(p.pos_temp, p.str_temp, particles.radius, p.dstr_dt_temp2, mode_int, N)
 
         if scheme == "RK2":
             p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
@@ -412,16 +422,18 @@ class _CoupledAdvectionStretchingHandler:
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
 
         # k3 = f(y2)
-        p._advection._vel(
+        self._stage_rhs(
             particles,
             p.pos_temp2,
+            p.str_temp2,
             p.vel_temp2,
+            p.dstr_dt_temp3,
+            mode_int,
             N,
-            reuse_tree=False,
-            strength_field=p.str_temp2,
-        )
-        p._stretching._rate(
-            p.pos_temp2, p.str_temp2, particles.radius, p.dstr_dt_temp3, mode_int, N
+            precomputed=False,
+            conserve_moments=conserve_moments,
+            conserve_energy=conserve_energy,
+            axisymmetric_axis=axisymmetric_axis,
         )
 
         p.step_rk3_ssp_combine_kernel(
@@ -440,6 +452,118 @@ class _CoupledAdvectionStretchingHandler:
             dt,
             N,
         )
+
+    def _stage_rhs(
+        self,
+        particles,
+        position,
+        strength,
+        velocity_out,
+        rate_out,
+        mode_int: int,
+        N: int,
+        *,
+        precomputed: bool,
+        conserve_moments: bool,
+        conserve_energy: bool,
+        axisymmetric_axis: int,
+    ) -> None:
+        """Evaluate velocity and stretching from one common particle state."""
+        p = self._parent
+        tree_stretching = p._stretching._use_treecode
+        matching_evaluator = tree_stretching == (p.velocity_method == "TREECODE")
+        no_velocity_hook = p.velocity_override is None and p.body_velocity is None
+        # The direct pairwise TRANSPOSED kernel is antisymmetric to roundoff;
+        # contracting the separately accumulated (currently f32) gradient is
+        # mathematically equivalent but loses that algebraic cancellation.
+        # Keep the exact pair kernel unless the moment projection will restore
+        # the invariants anyway.  Treecode stretching has no pairwise
+        # antisymmetry to preserve and always benefits from the fused traversal.
+        can_share_gradient = (
+            matching_evaluator
+            and no_velocity_hook
+            and (p.velocity_method == "TREECODE" or conserve_moments or conserve_energy)
+        )
+
+        gradient = None
+        if precomputed and can_share_gradient:
+            gradient = particles.velocity_gradient
+        elif can_share_gradient:
+            if p.velocity_method == "TREECODE":
+                theta = min(p.velocity_theta, p._stretching._treecode_theta)
+                tree = p._get_or_create_treecode(N, theta)
+                tree.build(position, strength, particles.radius, N)
+                background = particles.velocity_background
+                background_np = np.array(
+                    [background[None][0], background[None][1], background[None][2]],
+                    dtype=np.float32,
+                )
+                tree.compute_velocity_and_gradient_gpu(background_np)
+                p._copy_vec3(tree.velocities, velocity_out, N)
+                gradient = tree.velocity_gradients
+            else:
+                p.compute_velocity_and_gradient_kernel(
+                    position,
+                    strength,
+                    particles.radius,
+                    velocity_out,
+                    particles.velocity_gradient,
+                    particles.strain_rate,
+                    particles.velocity_background,
+                    N,
+                )
+                gradient = particles.velocity_gradient
+        else:
+            if not precomputed:
+                p._advection._vel(
+                    particles,
+                    position,
+                    velocity_out,
+                    N,
+                    strength_field=strength,
+                )
+            p._stretching._rate(
+                position,
+                strength,
+                particles.radius,
+                rate_out,
+                mode_int,
+                N,
+            )
+
+        if gradient is not None:
+            p.gradient_contraction_rate_kernel(gradient, strength, rate_out, mode_int, N)
+        if axisymmetric_axis >= 0:
+            p.average_axisymmetric_no_swirl_rhs(
+                position,
+                velocity_out,
+                rate_out,
+                particles.zone_id,
+                axisymmetric_axis,
+                N,
+            )
+        if conserve_moments or conserve_energy:
+            p.conserve_rate_moments(
+                position,
+                strength,
+                particles.radius,
+                velocity_out,
+                rate_out,
+                N,
+                conserve_energy=conserve_energy,
+            )
+        if axisymmetric_axis >= 0 and (conserve_moments or conserve_energy):
+            # The invariant projection is rotationally equivariant in exact
+            # arithmetic. Re-average its f32 reduction noise so later stages
+            # cannot leave the declared symmetry manifold.
+            p.average_axisymmetric_no_swirl_rhs(
+                position,
+                velocity_out,
+                rate_out,
+                particles.zone_id,
+                axisymmetric_axis,
+                N,
+            )
 
 
 class _DiffusionHandler:

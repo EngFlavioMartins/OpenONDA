@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Vortex-ring interactions — baseline, LES, and stabilized-LES comparison.
-#
-# Each script auto-discovers the three methods for both interaction families.
-# Color identifies the numerical method and linestyle identifies the family.
+# Diagnostics for the six vortex-ring interaction cases.
 set -euo pipefail
 
 PLOT_CACHE_ROOT="${XDG_CACHE_HOME:-${TMPDIR:-/tmp}/openonda-plot-cache}"
@@ -55,10 +52,10 @@ run_plot assets/plot_rings_energy.py \
 run_plot assets/plot_rings_conservation.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
-run_plot assets/plot_rings_stability.py \
+run_plot assets/plot_rings_resolution.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
-run_plot assets/plot_rings_resolution.py \
+run_plot assets/plot_rings_stability.py \
     --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI"
 
 run_plot assets/plot_rings_trajectory.py \

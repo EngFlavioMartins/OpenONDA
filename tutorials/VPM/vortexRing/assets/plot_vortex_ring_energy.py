@@ -8,16 +8,16 @@ from the solver log files for a single vortex ring.
 Saves: figures/vortex_ring_energy.png
 """
 
-import sys
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     build_arg_parser,
     load_theme,
-    parse_log,
     save_fig,
     T_REF,
     P_REF,
@@ -26,13 +26,14 @@ from _common import (
     figure_size,
     mark_every,
     reference_style,
+    FIGURES_DIR,
+    SAMPLES_DIR,
 )
 
 
 def main() -> None:
     args = build_arg_parser("Energy dissipation dE/dt & -nuΩ vs t*.").parse_args()
-    sol = Path(args.solution_dir)
-    figs = Path(args.figures_dir)
+    figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
@@ -43,15 +44,18 @@ def main() -> None:
 
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
-        log = sol / variant / f"{variant}.log"
-        if not log.exists():
+        csv_path = SAMPLES_DIR / variant / "flow_integrals.csv"
+        if not csv_path.exists():
             continue
-        times, nuEns, dedt = parse_log(log)
+        data = pd.read_csv(csv_path)
+        times = data["time"].to_numpy()
+        nuEns = data["neg_nu_enstrophy"].to_numpy()
+        dedt = data["dEdt"].to_numpy()
         if times.size == 0:
             print(f"  (no energy data for {variant})")
             continue
         label = VARIANT_LABEL[variant]
-        print(f"  {variant}: {log}")
+        print(f"  {variant}: {csv_path}")
         t = times / T_REF
         (line,) = ax_de.plot(
             t,

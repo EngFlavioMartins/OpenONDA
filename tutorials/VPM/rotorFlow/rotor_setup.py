@@ -1,28 +1,7 @@
 #!/usr/bin/env python3
-"""Physics-preserving rotor VLM-VPM setup.
+"""Run the rotor VLM--VPM tutorial.
 
-The wake is advanced with common RK stages for position and vortex strength,
-physical core spreading, and automatic strain/displacement subcycling.  This
-is the scalable open-wake counterpart of the exact direct-pair methodology in
-``vortexInteractions/rings_setup.py``:
-
-* transposed stretching preserves vector circulation;
-* the treecode tolerance controls (rather than hides) the approximation error;
-* a finite wake box is only a declared outflow/retention policy;
-* runtime guards stop an inadmissible field instead of clipping its strength.
-
-The rotor is a forced, open system, so its global impulses are not constants.
-``assets/validate_results.py`` therefore checks the physically relevant
-blade-force/wake-impulse budget after the run.
-
-Usage::
-
-    python rotor_setup.py --num-steps 2400 --dt 0.006
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+Usage: ``python rotor_setup.py SAMPLE_PERIOD BACKUP_PERIOD``
 """
 
 import argparse
@@ -42,6 +21,11 @@ from openonda.vpm import (
 from openonda.vpm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
 from openonda.vpm import ManeuverVLM
 from openonda.vpm import SurfaceSampler
+from source.solvers.VPM.utils.field_samplers import resolve_samples_dir
+
+TUTORIAL_DIR = Path(__file__).resolve().parent
+SOLUTION_DIR = TUTORIAL_DIR / "solution"
+CASE_NAME = "rotor"
 
 FREESTREAM_VELOCITY = 7.0
 TIP_SPEED_RATIO = 7.0
@@ -56,84 +40,29 @@ COUPLED_MAX_STRAIN_INCREMENT = 0.08
 COUPLED_MAX_ADVECTION_FRACTION = 0.25
 COUPLED_MAX_SUBSTEPS = 128
 TREECODE_THETA = 0.20
+TIME_STEP = 0.006
+NUMBER_OF_STEPS = 2400
+RAMP_ROTATIONS = 1.0
+GUARD_FREQUENCY = 20
+MAX_PARTICLE_STRENGTH = 10.0
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="RotorFlow VLM-VPM simulation")
-    parser.add_argument("--num-steps", type=int, default=2400, help="Number of time steps")
-    parser.add_argument("--dt", type=float, default=0.006, help="Time-step size [s].")
-    parser.add_argument(
-        "--ramp-rotations",
-        type=float,
-        default=1.0,
-        help="Smooth sin-squared spin-up duration [rotor rotations].",
-    )
-    parser.add_argument("--solution-dir", default="solution/rotor", help="Output directory.")
-    parser.add_argument(
-        "--processing-unit",
-        default="AUTO",
-        choices=["AUTO", "CPU", "VULKAN", "CUDA", "METAL"],
-        help="Compute backend. GPU selects Metal on macOS and CUDA/Vulkan elsewhere.",
-    )
-    parser.add_argument(
-        "--treecode-theta",
-        type=float,
-        default=TREECODE_THETA,
-        help="Barnes-Hut opening angle; smaller is more accurate.",
-    )
-    parser.add_argument(
-        "--coupled-max-strain-increment",
-        type=float,
-        default=COUPLED_MAX_STRAIN_INCREMENT,
-        help="Maximum dt_sub*||S||_2 accepted by coupled subcycling.",
-    )
-    parser.add_argument(
-        "--coupled-max-advection-fraction",
-        type=float,
-        default=COUPLED_MAX_ADVECTION_FRACTION,
-        help="Maximum displacement per substep as a fraction of wake spacing.",
-    )
-    parser.add_argument(
-        "--coupled-max-substeps",
-        type=int,
-        default=COUPLED_MAX_SUBSTEPS,
-        help="Stop instead of filtering if a macro step needs more substeps.",
-    )
-    parser.add_argument(
-        "--guard-frequency",
-        type=int,
-        default=20,
-        help="Check particle-field admissibility every N accepted steps.",
-    )
-    parser.add_argument(
-        "--max-particle-strength",
-        type=float,
-        default=10.0,
-        help="Fail-fast upper bound for a single wake-particle |Gamma| [m^3/s].",
+    parser.add_argument("sample_period", type=float, nargs="?", default=0.12)
+    parser.add_argument("backup_period", type=float, nargs="?", default=0.03)
+    parser.set_defaults(
+        num_steps=NUMBER_OF_STEPS,
+        dt=TIME_STEP,
+        ramp_rotations=RAMP_ROTATIONS,
+        treecode_theta=TREECODE_THETA,
+        coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
+        coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
+        coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
+        guard_frequency=GUARD_FREQUENCY,
+        max_particle_strength=MAX_PARTICLE_STRENGTH,
     )
     return parser
-
-
-def validate_arguments(args: argparse.Namespace) -> None:
-    """Reject invalid controls before allocating the VPM/VLM solvers."""
-    if args.dt <= 0.0:
-        raise ValueError("--dt must be positive.")
-    if args.num_steps < 0:
-        raise ValueError("--num-steps must be non-negative.")
-    if args.ramp_rotations < 0.0:
-        raise ValueError("--ramp-rotations must be non-negative.")
-    if not 0.0 < args.treecode_theta < 2.0:
-        raise ValueError("--treecode-theta must be in (0, 2).")
-    if args.coupled_max_strain_increment <= 0.0:
-        raise ValueError("--coupled-max-strain-increment must be positive.")
-    if args.coupled_max_advection_fraction <= 0.0:
-        raise ValueError("--coupled-max-advection-fraction must be positive.")
-    if args.coupled_max_substeps < 1:
-        raise ValueError("--coupled-max-substeps must be at least one.")
-    if args.guard_frequency < 1:
-        raise ValueError("--guard-frequency must be at least one.")
-    if args.max_particle_strength <= 0.0:
-        raise ValueError("--max-particle-strength must be positive.")
 
 
 def nominal_wake_spacing(time_step: float) -> float:
@@ -148,14 +77,18 @@ def nominal_wake_spacing(time_step: float) -> float:
     return min(radial_spacing, tip_streamwise_spacing)
 
 
+def cadence_steps(period: float, time_step: float) -> int:
+    """Convert a physical output period to solver steps."""
+    return max(1, round(period / time_step))
+
+
 def build_solver_config(
     args: argparse.Namespace,
     *,
     vlm_setup: VLMSetup | None = None,
     samplers: tuple[SurfaceSampler, ...] | list[SurfaceSampler] = (),
 ) -> VPMSetup:
-    """Build the rotor's scalable physics-preserving VPM policy."""
-    validate_arguments(args)
+    """Build the rotor VPM configuration."""
     wake_spacing = nominal_wake_spacing(args.dt)
     return VPMSetup(
         time_step_size=args.dt,
@@ -193,12 +126,11 @@ def build_solver_config(
         ),
         particles_kernel="WINCKELMANS",
         samplers=list(samplers),
-        backup_file_name="rotor",
-        backup_directory=args.solution_dir,
-        backup_frequency=20,
-        logging_frequency=20,
-        timing_frequency=40,
-        processing_unit=args.processing_unit,
+        backup_file_name=CASE_NAME,
+        backup_directory=str(SOLUTION_DIR),
+        sample_subdirectory=CASE_NAME,
+        backup_frequency=cadence_steps(args.backup_period, args.dt),
+        logging_frequency=cadence_steps(args.sample_period, args.dt),
         export_flow_integrals=True,
     )
 
@@ -234,36 +166,24 @@ def enforce_wake_admissibility(solver: Solver, max_particle_strength: float) -> 
 
 
 def write_manifest(args: argparse.Namespace, solver: Solver) -> None:
-    """Record the numerical contract needed to reproduce the run."""
+    """Store the numerical settings beside the sampled results."""
     cfg = solver.config
-    output_dir = Path(args.solution_dir)
+    output_dir = resolve_samples_dir(SOLUTION_DIR, CASE_NAME)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "case": "rotorFlow",
-        "system": "forced_open_wake",
-        "time_integration": cfg.time_integration,
-        "advection_scheme": cfg.advection.scheme,
-        "stretching_mode": cfg.stretching.mode,
-        "stretching_scheme": cfg.stretching.scheme,
-        "stretching_treecode": cfg.stretching.use_treecode,
-        "velocity_method": cfg.velocity.method,
+        "dt": args.dt,
+        "num_steps": args.num_steps,
+        "sample_interval": cfg.logging_frequency * args.dt,
+        "raw_backup_interval": cfg.backup_frequency * args.dt,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particles_kernel,
-        "viscous_scheme": cfg.viscous.scheme,
         "molecular_viscosity": cfg.viscous.viscosity,
         "wake_characteristic_distance": cfg.viscous.characteristic_distance,
         "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
         "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
         "coupled_max_substeps": cfg.coupled_max_substeps,
-        "field_modification": "none",
         "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
-        "physical_acceptance": "blade-force/wake-impulse budget",
-        "processing_unit": solver.processing_unit,
-        "processing_unit_requested": args.processing_unit,
-        "dt": args.dt,
-        "num_steps": args.num_steps,
-        "guard_frequency": args.guard_frequency,
-        "max_particle_strength": args.max_particle_strength,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -273,17 +193,10 @@ def main() -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
     args = build_arg_parser().parse_args()
-    validate_arguments(args)
 
-    # ================================================
-    # 1. Runtime Controls
-    # ================================================
     num_steps = args.num_steps
 
-    # ================================================
-    # 2. Create VLM Blade Geometry From OpenVSP
-    # ================================================
-    blade_file = _SCRIPT_DIR / "assets/blade.json"
+    blade_file = TUTORIAL_DIR / "assets/blade.json"
 
     blade_design = RotorBladeDesign(
         radius=ROTOR_RADIUS,
@@ -302,14 +215,11 @@ def main() -> int:
         print(f"Using cached VLM blade surface: {blade_file} (skipping OpenVSP regeneration)")
     else:
         generate_rotorflow_openvsp_blade(
-            output_dir=str(_SCRIPT_DIR / "assets/openvsp"),
+            output_dir=str(TUTORIAL_DIR / "assets/openvsp"),
             json_path=str(blade_file),
             design=blade_design,
         )
 
-    # ================================================
-    # 3. Configure VLM Solver
-    # ================================================
     rotation_period = 2.0 * np.pi / ANGULAR_VELOCITY
     ramp_time = max(0.0, args.ramp_rotations * rotation_period)
 
@@ -339,15 +249,10 @@ def main() -> int:
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_frequency=10,
+        logging_frequency=cadence_steps(args.sample_period, args.dt),
     )
 
-    # ================================================
-    # 4. Configure VPM Solver
-    # ================================================
-    backup_dir = args.solution_dir
-
-    # Downstream YZ cross-plane samplers for wake / induction validation.
+    # Downstream planes at 1.5R, 3R, and 4.5R.
     off_wake = ROTOR_RADIUS * 1.2
     sample_spacing = ROTOR_RADIUS / 36
     plane_samplers = [
@@ -366,16 +271,13 @@ def main() -> int:
     write_manifest(args, vpm)
     vpm.info()
 
-    # ================================================
-    # 5. Run Simulation
-    # ================================================
     try:
         for step in range(num_steps):
             vpm.update_state()
             if (step + 1) % args.guard_frequency == 0:
                 enforce_wake_admissibility(vpm, args.max_particle_strength)
     except RuntimeError:
-        vpm.save_state(str(Path(backup_dir) / "rejected_state"))
+        vpm.save_state(str(SOLUTION_DIR / "rejected_state"))
         raise
     return 0
 

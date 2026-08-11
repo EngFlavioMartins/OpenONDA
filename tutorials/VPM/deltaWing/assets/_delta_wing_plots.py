@@ -17,19 +17,13 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-import re
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-
-try:
-    import pandas as pd
-except Exception:  # pragma: no cover
-    pd = None
+import pandas as pd
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-SOLUTION_DIR = CASE_DIR / "solution" / "delta_wing"
+SAMPLES_DIR = CASE_DIR / "samples" / "delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
 THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
@@ -47,18 +41,11 @@ def _load_theme() -> tuple[dict[str, str], object | None]:
 _COLORS, _theme = _load_theme()
 
 
-def _step(path: Path) -> int:
-    m = re.search(r"_(\d{6})\.h5$", path.name)
-    return int(m.group(1)) if m else -1
-
-
 # ----------------------------------------------------------------------------
 # Figure 1: per-wing forces + plunge trajectories
 # ----------------------------------------------------------------------------
 def _wing_lift_history(samples_dir: Path, surface: str):
     """(time, lift) for one wing from its spanwise loading CSV."""
-    if pd is None:
-        return np.array([]), np.array([])
     csv = samples_dir / f"vlm_spanwise_{surface}.csv"
     if not csv.exists():
         return np.array([]), np.array([])
@@ -82,9 +69,8 @@ def _wing_lift_history(samples_dir: Path, surface: str):
     return (a[:, 0], a[:, 1]) if a.size else (np.array([]), np.array([]))
 
 
-def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
-    samples = solution_dir / "samples"
-    meta_path = solution_dir / "motion_params.json"
+def plot_forces(samples_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
+    meta_path = samples_dir / "motion_params.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
 
     fig, (ax_f, ax_z) = plt.subplots(2, 1, figsize=_theme.figure_size("stacked"), sharex=True)
@@ -97,7 +83,7 @@ def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png
         ("front_wing", c_front, "Front wing"),
         ("rear_wing", c_rear, "Rear wing"),
     ]:
-        t, lift = _wing_lift_history(samples, surf)
+        t, lift = _wing_lift_history(samples_dir, surf)
         if t.size:
             ax_f.plot(t, lift, "-", color=color, lw=1.3, label=lbl)
             plotted = True
@@ -133,30 +119,26 @@ def plot_forces(solution_dir: Path, figures_dir: Path, figure_format: str = "png
 # Figure 2: total wake circulation history
 # ----------------------------------------------------------------------------
 def plot_circulation(
-    solution_dir: Path,
+    samples_dir: Path,
     figures_dir: Path,
-    pattern: str,
     figure_format: str = "png",
 ) -> None:
-    files = sorted(solution_dir.glob(pattern), key=_step)
-    if not files:
-        files = sorted(solution_dir.glob("vpm_*.h5"), key=_step)
-    if not files:
-        print("  [WARNING] no backups for circulation history.")
+    csv = samples_dir / "flow_integrals.csv"
+    if not csv.exists():
+        print("  [WARNING] no sampled circulation history.")
         return
-    times, circ_l1 = [], []
-    for f in files:
-        with h5py.File(f, "r") as h:
-            times.append(float(h["solver"].attrs.get("flow_time", 0.0)))
-            if "particles" in h and "circulation" in h["particles"]:
-                c = h["particles"]["circulation"][:]
-                circ_l1.append(float(np.linalg.norm(c, axis=1).sum()))
-            else:
-                circ_l1.append(0.0)
+    data = pd.read_csv(csv)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
-    ax.plot(times, circ_l1, "-o", color=_COLORS["VPMpurple"], ms=3, lw=1.2)
+    ax.plot(
+        data["time"],
+        data["strength_magnitude"],
+        "-o",
+        color=_COLORS["VPMpurple"],
+        ms=3,
+        lw=1.2,
+    )
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")  # fixed: single-backslash mathtext
+    ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")
     ax.set_title("Delta wing: wake circulation magnitude history")
     out = figures_dir / "delta_wing_circulation_history.png"
     figures_dir.mkdir(parents=True, exist_ok=True)

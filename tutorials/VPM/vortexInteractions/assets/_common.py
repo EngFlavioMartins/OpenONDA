@@ -87,7 +87,7 @@ def legend_handle_style(style: dict) -> dict:
 
 
 def compact_case_legend_handles(include_families: bool = True) -> list:
-    """Build a non-redundant method/family legend for comparison sweeps."""
+    """Build one compact method key and, optionally, one family key."""
     from matplotlib.lines import Line2D
 
     theme = _theme()
@@ -140,7 +140,7 @@ def build_arg_parser(description: str):
     return p
 
 
-_BLOWUP_FACTOR = 50.0  # max|Γ| > 50× initial ⇒ blow-up (matches rings_setup.py)
+_BLOWUP_FACTOR = 50.0  # plotting guard only; solver termination uses field-health metrics
 
 _FLOAT_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?"
 _STEP_TIME_RE = re.compile(rf"Time-step:\s*(?P<step>\d+)\s+Flow time:\s*(?P<time>{_FLOAT_RE})\s*s")
@@ -178,24 +178,21 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
     if not sol.is_dir():
         return []
     cases = []
-    intended_order = _theme().INTENDED_CASE_ORDER
-    family_linestyle = _theme().FAMILY_LINESTYLE
-    variant_order = _theme().VARIANT_ORDER
-    for d in sorted(sol.iterdir(), key=lambda path: intended_order.get(path.name, 999)):
-        if not d.is_dir():
+    intended = _theme().INTENDED_CASE_ORDER
+    for d in sol.iterdir():
+        if not d.is_dir() or d.name not in intended:
             continue
-        case_family, variant = _case_parts(d.name)
+        case_family, _ = _case_parts(d.name)
         if family and case_family != family:
-            continue
-        if case_family not in family_linestyle or variant not in variant_order:
             continue
         if (
             any(d.glob("*.log"))
             or (d / "stability_metrics.csv").exists()
+            or (d / "samples" / "flow_integrals.csv").exists()
             or any(d.glob("vpm_*.h5"))
         ):
             cases.append(d)
-    return cases
+    return sorted(cases, key=lambda path: intended[path.name])
 
 
 def _latest_log(case_dir) -> Path | None:
@@ -305,7 +302,7 @@ def read_log_diagnostics(case_dir) -> pd.DataFrame:
             active["helicity"] = _first_float_after_colon(line)
         elif "Total Energy, E" in line:
             active["kinetic_energy"] = _first_float_after_colon(line)
-        elif "Viscous dissipation" in line:
+        elif "Modeled dissipation" in line or "Viscous dissipation" in line:
             active["neg_nu_enstrophy"] = _first_float_after_colon(line)
         elif "Energy decay rate" in line:
             value = _first_float_after_colon(line)
@@ -401,6 +398,15 @@ def read_integrals(case_dir):
         "vorticity_divergence_error",
         "strength_misalignment_deg",
         "enstrophy_test",
+        "max_gamma",
+        "turbulent_viscosity_mean",
+        "turbulent_viscosity_max",
+        "effective_viscosity_mean",
+        "effective_viscosity_max",
+        "stabilization_viscosity_mean",
+        "stabilization_viscosity_max",
+        "stabilization_viscosity_active_fraction",
+        "invariant_projection_correction_ratio",
     ]
     keep = [col for col in keep if col in df.columns]
     if "time" not in keep or "kinetic_energy" not in keep:
@@ -516,7 +522,7 @@ def parse_log(path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return np.array([]), np.array([]), np.array([])
 
     t_pat = re.compile(r"Time-step:\s*\d+\s+Flow time:\s*([\d.E+\-]+)\s*s")
-    nuEns_pat = re.compile(r"Viscous dissipation.{1,15}:\s*([-\d.e+]+)")
+    nuEns_pat = re.compile(r"(?:Modeled|Viscous) dissipation.{1,30}:\s*([-\d.e+]+)")
     de_pat = re.compile(r"Energy decay rate.{1,15}:\s*([-\d.e+]+)")
 
     times, nu_ens_values, dts = [], [], []

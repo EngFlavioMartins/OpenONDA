@@ -269,7 +269,7 @@ class Logging:
 
         energy_items = [
             ("Total Energy, E", f"{E_current:.3e} J"),
-            ("Viscous dissipation, -\u03bd\u03a9", f"{nu_enstrophy:.3e} J/s"),
+            ("Modeled dissipation, -\u222b\u03bd_eff \u03c9\u00b2", f"{nu_enstrophy:.3e} J/s"),
             ("Energy decay rate, dE/dt", f"{dE_dt:.3e} J/s"),
         ]
         for label, _ in energy_items:
@@ -347,11 +347,19 @@ class Logging:
         lines.append("  Time Integration:")
         lines.append(f"    Advection              : {system.advection_scheme}")
         lines.append(f"    Stretching             : {system.stretching_scheme}")
+        if getattr(system, "stretching_conserve_moments", False):
+            projection = "circulation + impulses"
+            if getattr(system, "stretching_conserve_energy", False):
+                projection += " + energy"
+            lines.append(f"    Invariant projection   : {projection}")
         vel_cfg = getattr(getattr(system, "config", None), "velocity", None)
         if vel_cfg is not None and vel_cfg.method == "TREECODE":
             lines.append(f"    Velocity               : Treecode (Barnes-Hut, θ={vel_cfg.theta})")
         else:
             lines.append("    Velocity               : Direct (O(N²))")
+        axis = getattr(getattr(system, "config", None), "axisymmetric_no_swirl_axis", None)
+        if axis is not None:
+            lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
         lines.append(f"  Processing Unit          : {system.processing_unit}")
         lines.append(f"  Time Step Size           : {system.time_step_size:.3e} s")
         lines.append(f"  Current Time Step        : {system.time_step}")
@@ -596,13 +604,35 @@ class Logging:
 
     @staticmethod
     def _format_stabilization_config(system) -> list:
-        """Format the particle-retention policy."""
+        """Format residual-viscosity and particle-retention settings."""
         lines = []
         lines.append("\n" + "-" * 60)
-        lines.append("PARTICLE RETENTION")
+        lines.append("STABILIZATION / PARTICLE RETENTION")
         lines.append("-" * 60)
 
         cfg = getattr(system.config, "stabilization", None)
+        coefficient = getattr(cfg, "stretching_viscosity_coefficient", 0.0)
+        if coefficient > 0.0:
+            lines.append("  Stretching viscosity     : Enabled")
+            lines.append(f"    C_stab                 : {coefficient:.3f}")
+        else:
+            lines.append("  Stretching viscosity     : Disabled")
+        regularization_frequency = getattr(cfg, "regularization_frequency", 0)
+        if regularization_frequency > 0:
+            lines.append("  Conservative filter     : Enabled")
+            lines.append(f"    Check every           : {regularization_frequency:d} steps")
+            lines.append(
+                "    Grid spacing          : "
+                f"{getattr(cfg, 'regularization_grid_spacing', 0.0):.3e} m"
+            )
+            lines.append(
+                "    Health triggers       : "
+                f"div={getattr(cfg, 'regularization_divergence_trigger', 0.0):.3f}, "
+                "angle="
+                f"{getattr(cfg, 'regularization_misalignment_trigger', 0.0):.1f} deg"
+            )
+        else:
+            lines.append("  Conservative filter     : Disabled")
         bounds = getattr(cfg, "remove_particles_by_bounds", None)
         if bounds is not None:
             xmin, xmax, ymin, ymax, zmin, zmax = bounds
@@ -673,6 +703,14 @@ class Logging:
         lines.append("  Time Integration:")
         lines.append(f"    Advection              : {system.advection_scheme}")
         lines.append(f"    Stretching             : {system.stretching_scheme}")
+        if getattr(system, "stretching_conserve_moments", False):
+            projection = "circulation + impulses"
+            if getattr(system, "stretching_conserve_energy", False):
+                projection += " + energy"
+            lines.append(f"    Invariant projection   : {projection}")
+        axis = getattr(getattr(system, "config", None), "axisymmetric_no_swirl_axis", None)
+        if axis is not None:
+            lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
         lines.append(f"  Processing Unit          : {system.processing_unit}")
         lines.append(f"  Particle Kernel          : {system.particles_kernel}")
         lines.append(f"  Viscous Scheme           : {system.viscous_scheme}")

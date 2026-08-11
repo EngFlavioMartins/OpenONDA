@@ -11,7 +11,7 @@ conservative-but-wrong one.  This one shows the resolution instead:
   discrete one is not, and stretching amplifies precisely its divergent part;
 * the angle between ``Gamma_p`` and ``w(x_p)`` — parallel in the continuum.
 
-Shaded bands mark the acceptance limits the stabilized method enforces.
+Shaded bands mark the acceptance limits enforced by ``assets/check_run.py``.
 
 Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).

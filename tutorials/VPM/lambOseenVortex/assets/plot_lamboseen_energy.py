@@ -32,11 +32,12 @@ from matplotlib.lines import Line2D
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     SCHEMES,
-    add_physics_args,
     build_arg_parser,
     build_style_map,
     load_theme,
+    publication_size,
     resolve_runtime_physics,
+    save_publication_figure,
 )
 
 
@@ -82,7 +83,7 @@ def prepend_initial_point(data: dict, gamma: float, t0: float, n_vortices: int) 
 
 def plot_case_panel(
     ax,
-    solution_dir: Path,
+    samples_dir: Path,
     case_prefix: str,
     title: str,
     n_vortices: int,
@@ -91,10 +92,11 @@ def plot_case_panel(
     p_ref: float,
     gamma: float,
     t0: float,
-) -> None:
+) -> bool:
     ax.set_title(title)
+    plotted = False
     for scheme in SCHEMES:
-        csv_path = solution_dir / f"{case_prefix}_{scheme}" / "samples" / "flow_integrals.csv"
+        csv_path = samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
         data = read_flow_integrals(csv_path)
         if data is None:
             continue
@@ -108,14 +110,15 @@ def plot_case_panel(
             "linestyle": "None",
             "linewidth": 1.0,
             "alpha": 0.85,
-            "markevery": 4,
         }
         ax.plot(tau, data["dedt"] / p_ref, **plot_kw)
         ax.plot(tau, data["nu_omega"] / p_ref, mfc="none", **plot_kw)
+        plotted = True
+    return plotted
 
 
 def plot_energy_enstrophy(args) -> int:
-    solution_dir = Path(args.solution_dir)
+    samples_dir = Path(args.samples_dir)
     fmt = getattr(args, "format", "png")
     out = Path(args.figures_dir) / f"lamboseen_energy.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -124,7 +127,7 @@ def plot_energy_enstrophy(args) -> int:
     if theme is not None and hasattr(theme, "set_style"):
         theme.set_style()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
     run_t0 = runtime["t0"]
@@ -133,13 +136,28 @@ def plot_energy_enstrophy(args) -> int:
     p_ref = run_nu * (args.gamma**2) / (a0**2)
     tau_lim = 0.04 / (args.a0_over_b0**2)
 
-    fig, axes = plt.subplots(1, 3, figsize=(12.8 / 2.54, 7.5 / 2.54), sharey="row")
-    fig.subplots_adjust(wspace=0.10, top=0.96, bottom=0.35, left=0.11, right=0.89)
+    tolerance = max(0.5, 20.0 * args.dt)
+    missing = []
+    for case_prefix, _, _ in CASES:
+        for scheme in SCHEMES:
+            data = read_flow_integrals(
+                samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
+            )
+            if data is None or len(data["t"]) == 0 or data["t"][-1] < args.total_time - tolerance:
+                missing.append(f"{case_prefix}_{scheme}")
+    if missing:
+        out.unlink(missing_ok=True)
+        print(f"  [energy] incomplete cases: {', '.join(missing)}; figure not generated")
+        return 1
 
+    fig, axes = plt.subplots(1, 3, figsize=publication_size(7.5), sharey="row")
+    fig.subplots_adjust(wspace=0.20, top=0.90, bottom=0.39, left=0.14, right=0.97)
+
+    plotted = False
     for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
-        plot_case_panel(
+        plotted |= plot_case_panel(
             ax,
-            solution_dir,
+            samples_dir,
             case_prefix,
             title,
             n_vortices,
@@ -153,6 +171,12 @@ def plot_energy_enstrophy(args) -> int:
         ax.set_ylim([-0.5, 0])
         ax.set_xlim([0, tau_lim])
         ax.set_xlabel(r"$\nu t / a_{c,0}^2$")
+
+    if not plotted:
+        plt.close(fig)
+        out.unlink(missing_ok=True)
+        print("  [energy] no sampled flow integrals; figure not generated")
+        return 0
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_{c,0}^2)$")
 
@@ -203,18 +227,12 @@ def plot_energy_enstrophy(args) -> int:
         bbox_to_anchor=(0.5, 0.02),
     )
 
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    save_publication_figure(fig, out, args.dpi)
     return 0
 
 
 def main() -> int:
     p = build_arg_parser("Energy balance: dE/dt")
-    add_physics_args(p)
     return plot_energy_enstrophy(p.parse_args())
 
 

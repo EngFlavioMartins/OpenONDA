@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rotor performance — Ct / Cp time history and actuator-disk theory comparison.
 
-Reads ``solution/samples/vlm_forces.csv`` and produces two subplots:
+Reads ``samples/rotor/vlm_forces.csv`` and produces two subplots:
 
 1. Thrust coefficient (Ct) and power coefficient (Cp) versus time,
    with Betz-limit reference lines.
@@ -26,7 +26,17 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import add_case_arguments, build_arg_parser, build_rotor_style_map, load_theme
+from _common import (
+    build_arg_parser,
+    build_rotor_style_map,
+    DENSITY,
+    FIGURES_DIR,
+    FREESTREAM_VELOCITY,
+    load_theme,
+    ROTOR_RADIUS,
+    SAMPLES_DIR,
+    TIP_SPEED_RATIO,
+)
 
 # ==============================================================================
 # Physics helpers
@@ -48,12 +58,11 @@ def actuator_disk_cp(ct: np.ndarray) -> np.ndarray:
 
 
 def plot_rotor_performance(args) -> int:
-    solution_dir = Path(args.solution_dir)
     fmt = getattr(args, "format", "png")
-    out = Path(args.figures_dir) / f"rotor_performance.{fmt}"
+    out = FIGURES_DIR / f"rotor_performance.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    csv_path = solution_dir / "samples" / "vlm_forces.csv"
+    csv_path = SAMPLES_DIR / "vlm_forces.csv"
     if not csv_path.exists():
         print(f"[rotor] CSV not found: {csv_path}")
         return 1
@@ -64,10 +73,10 @@ def plot_rotor_performance(args) -> int:
         return 1
 
     # Physical constants
-    rho = args.rho
-    U = args.u_inf
-    R = args.rotor_radius
-    omega = args.tip_speed_ratio * U / R
+    rho = DENSITY
+    U = FREESTREAM_VELOCITY
+    R = ROTOR_RADIUS
+    omega = TIP_SPEED_RATIO * U / R
     A = np.pi * R**2
     q = 0.5 * rho * U**2
     qA = q * A
@@ -219,8 +228,9 @@ def plot_rotor_performance(args) -> int:
 
 
 def main() -> int:
-    p = add_case_arguments(build_arg_parser("Rotor performance Ct/Cp plotting."))
-    return plot_rotor_performance(p.parse_args())
+    return plot_rotor_performance(
+        build_arg_parser("Rotor performance Ct/Cp plotting.").parse_args()
+    )
 
 
 if __name__ == "__main__":

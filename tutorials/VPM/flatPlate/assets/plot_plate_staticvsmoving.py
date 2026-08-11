@@ -6,10 +6,6 @@ Generates Figure 2: CL and CD histories (vs chord-lengths travelled)
 comparing the static wind-frame and moving body-frame solutions at
 α = 5°, alongside Wagner impulsive-start theory for AR = 10.
 
-Usage:
-    python assets/plot_comparison.py
-    python assets/plot_comparison.py --solution-dir ./solution --dpi 300
-
 Output:
     figures/exp_static_vs_moving.png
 
@@ -30,16 +26,12 @@ import matplotlib.pyplot as plt
 CASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = CASE_DIR.parents[2]
 THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-SOL_DIR = CASE_DIR / "solution"
+SAMPLES_DIR = CASE_DIR / "samples"
 FIG_DIR = CASE_DIR / "figures"
 parser = argparse.ArgumentParser()
-parser.add_argument("--solution-dir", default=str(SOL_DIR))
-parser.add_argument("--figures-dir", default=str(FIG_DIR))
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
-args, _ = parser.parse_known_args()
-SOL_DIR = Path(args.solution_dir).resolve()
-FIG_DIR = Path(args.figures_dir).resolve()
+args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 # -- Theme ---------------------------------------------------------------------
 m = None
@@ -75,7 +67,7 @@ cm = m.CM
 
 
 def load_csv(name: str) -> pd.DataFrame | None:
-    csv = SOL_DIR / name / "samples" / f"{name}.csv"
+    csv = SAMPLES_DIR / name / f"{name}.csv"
     if not csv.exists():
         print(f"  [MISSING] {csv}")
         return None

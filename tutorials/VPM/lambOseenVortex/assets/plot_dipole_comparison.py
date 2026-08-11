@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Counter-rotating vortex dipole — core trajectory and radius comparison.
 
-Reads HDF5 backup snapshots (or VTS z=0 samples) from each viscous scheme
-and plots:
+Reads VTS z=0 samples from each viscous scheme and plots:
   - core x-position  xc / b0  vs  ν t / b0²
   - core radius       a_c / a_{c,0}  vs  ν t / b0²
 
@@ -24,50 +23,15 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     SCHEMES,
-    add_physics_args,
     build_arg_parser,
     build_style_map,
     centroid,
     load_theme,
     pvd_time_map,
+    publication_size,
     resolve_runtime_physics,
+    save_publication_figure,
 )
-
-
-# =============================================================
-# Particle helpers
-# =============================================================
-
-
-def h5_files(solution_dir: Path, prefix: str, scheme: str) -> list[Path]:
-    folder = solution_dir / f"{prefix}_{scheme}"
-    return sorted(
-        folder.glob(f"vpm_{prefix}_{scheme}_*.h5"),
-        key=lambda p: int(re.search(r"_(\d+)\.h5$", p.name).group(1)),
-    )
-
-
-def read_h5(path: Path):
-    import h5py
-
-    if not path.is_file() or path.stat().st_size < 4096:
-        print(
-            f"  [warn] skipping truncated backup {path.name} "
-            f"({path.stat().st_size if path.is_file() else 0} bytes)"
-        )
-        return None, None, None, None
-    try:
-        with h5py.File(path, "r") as f:
-            t = float(f["solver"].attrs["flow_time"])
-            n = int(f["solver"].attrs["number_of_particles"])
-            if n == 0:
-                return t, None, None, None
-            pos = f["particles"]["position"][:n].astype(np.float64)
-            circ = f["particles"]["circulation"][:n].astype(np.float64)
-        return t, pos, circ[:, 2]
-    except (OSError, KeyError) as exc:
-        print(f"  [warn] skipping unreadable backup {path.name}: {exc}")
-        return None, None, None, None
 
 
 def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.ndarray) -> float:
@@ -84,70 +48,54 @@ def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.nd
 # =============================================================
 
 
-def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dict | None:
+def extract_dipole_timeseries(
+    samples_dir: Path,
+    scheme: str,
+    b0: float,
+    target_time: float,
+    tolerance: float,
+) -> dict | None:
     import pyvista as pv
 
-    # -- Primary: VTS grid data (z=0 plane) --
-    samples_dir = solution_dir / f"dipole_{scheme}" / "samples"
+    case_samples_dir = samples_dir / f"dipole_{scheme}"
     vts_list = (
         sorted(
             [
                 (int(m.group(1)), p)
-                for p in samples_dir.glob(f"dipole_{scheme}_z0_*.vts")
+                for p in case_samples_dir.glob(f"dipole_{scheme}_z0_*.vts")
                 if (m := re.search(r"_(\d+)\.vts$", p.name))
             ],
             key=lambda x: x[0],
         )
-        if samples_dir.exists()
+        if case_samples_dir.exists()
         else []
     )
 
-    time_map = pvd_time_map(solution_dir, "dipole", scheme)
+    time_map = pvd_time_map(samples_dir, "dipole", scheme)
+    if not time_map or max(time_map.values()) < target_time - tolerance:
+        return None
     rows = []
-    if vts_list and time_map:
-        for step, vts_path in vts_list:
-            if step not in time_map:
-                continue
-            t = time_map[step]
-            try:
-                grid = pv.read(str(vts_path))
-                xy = grid.points[:, :2].astype(np.float64)
-                omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
-            except Exception:
-                continue
-            mask = omega_z > 0.0
-            if np.count_nonzero(mask) < 2:
-                continue
-            w = np.abs(omega_z[mask])
-            if w.sum() < 1e-30:
-                continue
-            c = centroid(xy[mask], omega_z[mask])
-            if np.any(np.isnan(c)):
-                continue
-            a_c = _weighted_core_radius(xy[mask], w, c)
-            rows.append((t, float(c[0]), float(c[1]), a_c, float(w.sum())))
-    else:
-        # -- Fallback: HDF5 particle data --
-        files = h5_files(solution_dir, "dipole", scheme)
-        for p in files:
-            t, pos, gz = read_h5(p)
-            if pos is None:
-                continue
-            z = pos[:, 2]
-            z_lo, z_hi = z.min(), z.max()
-            z_rng = z_hi - z_lo
-            z_mask = (z >= z_lo + z_rng / 3.0) & (z <= z_hi - z_rng / 3.0)
-            pos2d = pos[z_mask, :2]
-            gz2d = gz[z_mask]
-
-            mask_pos = gz2d > 0.0
-            if mask_pos.sum() < 2:
-                continue
-            c = centroid(pos2d[mask_pos], gz2d[mask_pos])
-            if np.any(np.isnan(c)):
-                continue
-            a_c = _weighted_core_radius(pos2d[mask_pos], gz2d[mask_pos], c)
-            rows.append((t, float(c[0]), float(c[1]), a_c, float(np.abs(gz2d[mask_pos]).sum())))
+    for step, vts_path in vts_list:
+        if step not in time_map:
+            continue
+        t = time_map[step]
+        try:
+            grid = pv.read(str(vts_path))
+            xy = grid.points[:, :2].astype(np.float64)
+            omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
+        except Exception:
+            continue
+        mask = omega_z > 0.0
+        if np.count_nonzero(mask) < 2:
+            continue
+        w = np.abs(omega_z[mask])
+        if w.sum() < 1e-30:
+            continue
+        c = centroid(xy[mask], omega_z[mask])
+        if np.any(np.isnan(c)):
+            continue
+        a_c = _weighted_core_radius(xy[mask], w, c)
+        rows.append((t, float(c[0]), float(c[1]), a_c, float(w.sum())))
 
     if not rows:
         return None
@@ -161,22 +109,30 @@ def extract_dipole_timeseries(solution_dir: Path, scheme: str, b0: float) -> dic
 
 
 def plot_dipole_case(args) -> int:
-    solution_dir = Path(args.solution_dir)
+    samples_dir = Path(args.samples_dir)
     fmt = getattr(args, "format", "png")
     out = Path(args.figures_dir) / f"dipole_comparison.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    runtime = resolve_runtime_physics(solution_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.5 / 2.54))
-    fig.subplots_adjust(wspace=0.25, bottom=0.30, top=0.92, left=0.08, right=0.92)
+    fig, axes = plt.subplots(1, 2, figsize=publication_size(7.5))
+    fig.subplots_adjust(wspace=0.43, bottom=0.34, top=0.88, left=0.13, right=0.97)
 
+    plotted_schemes = []
+    tolerance = max(0.5, 20.0 * args.dt)
     for scheme in SCHEMES:
-        ts = extract_dipole_timeseries(solution_dir, scheme, args.b0)
+        ts = extract_dipole_timeseries(
+            samples_dir,
+            scheme,
+            args.b0,
+            args.total_time,
+            tolerance,
+        )
         if ts is None:
             print(f"  [dipole] skipping {scheme!r} — no data")
             continue
@@ -196,11 +152,20 @@ def plot_dipole_case(args) -> int:
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
-            "markevery": 4,
         }
         a_c_norm = a_c / a_c[0] if a_c[0] > 0 else a_c
         axes[0].plot(tau, xc / args.b0, **plot_kw)
         axes[1].plot(tau, a_c_norm, **plot_kw)
+        plotted_schemes.append(scheme)
+
+    if len(plotted_schemes) != len(SCHEMES):
+        plt.close(fig)
+        out.unlink(missing_ok=True)
+        print(
+            f"  [dipole] complete trajectories available for {len(plotted_schemes)}/"
+            f"{len(SCHEMES)} methods; figure not generated"
+        )
+        return 1
 
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[0].set_ylabel(r"$x_c / b_0$")
@@ -220,18 +185,12 @@ def plot_dipole_case(args) -> int:
             ncol=len(handles),
             bbox_to_anchor=(0.5, 0.05),
         )
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+    save_publication_figure(fig, out, args.dpi)
     return 0
 
 
 def main() -> int:
     p = build_arg_parser("Counter-rotating dipole trajectory and core-radius comparison.")
-    add_physics_args(p)
     return plot_dipole_case(p.parse_args())
 
 

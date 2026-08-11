@@ -97,6 +97,31 @@ def LambOseenVPM(
 # =========================================================
 
 
+def vortex_ring_centerline(
+    theta: np.ndarray,
+    ring_radius: float,
+    epsilon_w: float = 0.0,
+    seed: int = 42,
+    max_modes: int = 24,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a reproducible perturbed ring radius and its azimuthal slope."""
+    if max_modes < 1:
+        raise ValueError("max_modes must be at least 1")
+
+    rng = np.random.RandomState(seed)
+    phases = 2.0 * np.pi * rng.rand(max_modes)
+    g_theta = np.zeros_like(theta, dtype=float)
+    dg_dtheta = np.zeros_like(theta, dtype=float)
+    for mode in range(1, max_modes + 1):
+        phase = mode * theta + phases[mode - 1]
+        g_theta += np.cos(phase)
+        dg_dtheta -= mode * np.sin(phase)
+    scale = np.sqrt(max_modes)
+    centerline_radius = ring_radius * (1.0 + epsilon_w * g_theta / scale)
+    centerline_slope = ring_radius * epsilon_w * dg_dtheta / scale
+    return centerline_radius, centerline_slope
+
+
 def VortexRingVPM(
     viscosity: float,
     ring_center: np.ndarray,
@@ -111,6 +136,7 @@ def VortexRingVPM(
     max_modes: int = 24,
     anti_diffuse_flag: bool = False,
     diffusivity_constant: float = 4.0,
+    normalize_circulation: bool = False,
 ):
     """
     Initialize a vortex ring with an optional Widnall-type perturbation.
@@ -133,8 +159,12 @@ def VortexRingVPM(
 
     ``diffusivity_constant`` must match the selected particle kernel's
     core-spreading law because the anti-diffusion shift is
-    ``sigma_0² / (C_nu * nu)``.  It is 4 for Gaussian and 256/45 for the
-    Winckelmans--Leonard algebraic kernel.
+    ``sigma_0² / (C_nu * nu)``.  It is 4 for the Gaussian and
+    Winckelmans--Leonard kernels.
+
+    With ``normalize_circulation=True``, the discrete cross-sectional flux is
+    rescaled to ``ring_strength``.  This compensates only for finite quadrature
+    and a deliberately truncated Gaussian tail; it does not alter the profile.
     """
     num_particles = len(positions)
     if max_modes < 1:
@@ -156,19 +186,14 @@ def VortexRingVPM(
     Z = positions[:, 2] - ring_center[2]
     theta = np.arctan2(Z, Y)
 
-    rng = np.random.RandomState(seed)
-    phases = 2 * np.pi * rng.rand(max_modes)
-    g_theta = np.zeros_like(theta)
-    dg_dtheta = np.zeros_like(theta)
-    for n in range(1, max_modes + 1):
-        g_theta += np.cos(n * theta + phases[n - 1])
-        dg_dtheta -= n * np.sin(n * theta + phases[n - 1])
-    g_theta /= np.sqrt(max_modes)
-    dg_dtheta /= np.sqrt(max_modes)
-
     radial_dist = np.sqrt(Y**2 + Z**2)
-    centerline_radius = ring_radius * (1.0 + epsilon_W * g_theta)
-    centerline_slope = ring_radius * epsilon_W * dg_dtheta
+    centerline_radius, centerline_slope = vortex_ring_centerline(
+        theta,
+        ring_radius,
+        epsilon_w=epsilon_W,
+        seed=seed,
+        max_modes=max_modes,
+    )
     core_dist = np.sqrt((radial_dist - centerline_radius) ** 2 + X**2)
 
     omega_mag = (ring_strength / (np.pi * actual_ring_thickness_sq)) * np.exp(
@@ -188,6 +213,17 @@ def VortexRingVPM(
     if volumes is None:
         volumes = np.full(num_particles, 1.0)
     strengths = vorticities * volumes[:, None]
+    if normalize_circulation:
+        tangent = np.zeros_like(positions)
+        tangent[away_from_axis, 1] = -Z[away_from_axis] / radial_dist[away_from_axis]
+        tangent[away_from_axis, 2] = Y[away_from_axis] / radial_dist[away_from_axis]
+        represented_circulation = np.sum(
+            np.einsum("ij,ij->i", strengths[away_from_axis], tangent[away_from_axis])
+            / radial_dist[away_from_axis]
+        ) / (2.0 * np.pi)
+        if abs(represented_circulation) <= np.finfo(float).tiny:
+            raise ValueError("cannot normalize a ring with zero represented circulation")
+        strengths *= ring_strength / represented_circulation
 
     return velocities, viscosities, strengths
 

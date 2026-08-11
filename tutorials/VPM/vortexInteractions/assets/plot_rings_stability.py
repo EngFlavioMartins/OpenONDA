@@ -2,10 +2,9 @@
 """Stability ladder — ``rings_stability.png``.
 
 Tracks the peak circulation max|Γᵢ|/max|Γᵢ|₀ versus normalised time for every
-case discovered under ``solution/`` (read from ``BLOWUP CHECK`` lines in the
-solver log).  A runaway curve marks the onset of numerical blow-up, and where
-each curve ends marks that variant's survival time.  The shaded band is the
-50× blow-up threshold used by the solver to stop a diverging run.
+case discovered under ``solution/``. A runaway curve marks loss of numerical
+stability. DNS/plain LES terminate at the separately measured vortex-line
+alignment/divergence limit; stabilized LES must run to the requested end time.
 
 Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
@@ -28,7 +27,7 @@ from _common import (
     save_fig,
 )
 
-BLOWUP_FACTOR = 50.0  # mirrors rings_setup.py's max|Γ| > 50× initial stop
+BLOWUP_FACTOR = 50.0
 
 
 def main() -> None:

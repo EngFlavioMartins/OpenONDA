@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
+  <Collection>
+    <DataSet timestep="1.032" file="vortex_dvh_z0_000008.vts"/>
+    <DataSet timestep="2.064" file="vortex_dvh_z0_000016.vts"/>
+    <DataSet timestep="3.096" file="vortex_dvh_z0_000024.vts"/>
+    <DataSet timestep="4.128" file="vortex_dvh_z0_000032.vts"/>
+  </Collection>
+</VTKFile>

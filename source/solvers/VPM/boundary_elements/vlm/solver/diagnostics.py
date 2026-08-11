@@ -57,6 +57,7 @@ class VLMDiagnostics:
         time_step: int,
         flow_time: float,
         backup_directory: str,
+        sample_subdirectory: str | None = None,
     ) -> None:
         """Record VLM force and circulation scalars and (if due) flush to CSV.
 
@@ -122,6 +123,7 @@ class VLMDiagnostics:
                     flow_time,
                     time_step,
                     backup_directory,
+                    sample_subdirectory,
                 )
         except Exception as exc:
             print(f"(Warning) Failed to record VLM diagnostics: {exc}")
@@ -139,6 +141,7 @@ class VLMDiagnostics:
         flow_time: float,
         time_step: int,
         backup_directory: str,
+        sample_subdirectory: str | None = None,
     ) -> None:
         """Append one row to ``<backup_directory>/samples/vlm_forces.csv``.
 
@@ -163,7 +166,7 @@ class VLMDiagnostics:
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(backup_directory)
+        samples_dir = resolve_samples_dir(backup_directory, sample_subdirectory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

@@ -16,6 +16,7 @@ class FourierIntegrals:
     previous_order_enstrophy: float
     previous_order_helicity: float
     radius_expansion_order: int
+    viscous_energy_dissipation: float | None
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,7 @@ def gaussian_fourier_integrals(
     circulation: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
+    viscosity: np.ndarray | None = None,
     *,
     spacing: float | None = None,
     grid: CartesianGrid | None = None,
@@ -146,12 +148,18 @@ def gaussian_fourier_integrals(
     circulation = np.asarray(circulation, dtype=np.float64)
     radius = np.asarray(radius, dtype=np.float64)
     volume = np.asarray(volume, dtype=np.float64)
+    if viscosity is not None:
+        viscosity = np.asarray(viscosity, dtype=np.float64)
     if position.shape != circulation.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and circulation must both have shape (N, 3)")
     if radius.shape != (len(position),) or volume.shape != (len(position),):
         raise ValueError("radius and volume must have shape (N,)")
+    if viscosity is not None and viscosity.shape != (len(position),):
+        raise ValueError("viscosity must have shape (N,)")
     if np.any(radius <= 0.0) or np.any(volume <= 0.0):
         raise ValueError("all particle radii and volumes must be positive")
+    if viscosity is not None and (not np.isfinite(viscosity).all() or np.any(viscosity < 0.0)):
+        raise ValueError("all viscosities must be finite and non-negative")
     if grid is not None:
         if spacing is not None and not np.isclose(spacing, grid.spacing):
             raise ValueError("spacing must match the supplied Cartesian grid")
@@ -171,6 +179,11 @@ def gaussian_fourier_integrals(
     variance_offset = radius_sq - reference_variance
     reference_gaussian = np.exp(-0.25 * reference_variance * norm_sq)
     transformed = [np.zeros(norm_sq.shape, dtype=np.complex128) for _ in range(3)]
+    viscosity_transformed = (
+        [np.zeros(norm_sq.shape, dtype=np.complex128) for _ in range(3)]
+        if viscosity is not None
+        else None
+    )
     transformed_previous: list[np.ndarray] | None = None
     factorial = 1
     for order in range(radius_expansion_order + 1):
@@ -183,9 +196,21 @@ def gaussian_fourier_integrals(
         )
         padding = tuple((size // 2, size - size // 2) for size in compact.shape[:3])
         field = np.pad(compact, (*padding, (0, 0)))
+        viscosity_field = None
+        if viscosity is not None:
+            viscosity_compact = _scatter_circulation_m4(
+                position,
+                circulation * viscosity[:, None] * variance_offset[:, None] ** order,
+                grid,
+            )
+            viscosity_field = np.pad(viscosity_compact, (*padding, (0, 0)))
         multiplier = reference_gaussian * (-0.25 * norm_sq) ** order / factorial
         for axis in range(3):
             transformed[axis] += fft.rfftn(field[..., axis], workers=-1) * multiplier
+            if viscosity_transformed is not None and viscosity_field is not None:
+                viscosity_transformed[axis] += (
+                    fft.rfftn(viscosity_field[..., axis], workers=-1) * multiplier
+                )
         if order == radius_expansion_order - 1:
             transformed_previous = [component.copy() for component in transformed]
     assert transformed_previous is not None
@@ -257,6 +282,19 @@ def gaussian_fourier_integrals(
         )
 
     energy, enstrophy, enstrophy_test, helicity = quadratic_integrals(transformed)
+    viscous_energy_dissipation = None
+    if viscosity_transformed is not None:
+        viscous_energy_dissipation = -float(
+            sum(
+                np.sum(
+                    multiplicity
+                    * np.real(transformed[axis] * np.conjugate(viscosity_transformed[axis])),
+                    dtype=np.float64,
+                )
+                for axis in range(3)
+            )
+            / domain_volume
+        )
     previous_energy, previous_enstrophy, _, previous_helicity = quadratic_integrals(
         transformed_previous
     )
@@ -269,4 +307,5 @@ def gaussian_fourier_integrals(
         previous_order_enstrophy=previous_enstrophy,
         previous_order_helicity=previous_helicity,
         radius_expansion_order=radius_expansion_order,
+        viscous_energy_dissipation=viscous_energy_dissipation,
     )

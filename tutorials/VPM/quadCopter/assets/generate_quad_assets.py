@@ -76,36 +76,14 @@ def create_body(length=0.4, width=0.1) -> Aircraft:
     aircraft = Aircraft(uid="body")
     wing = Wing(uid="fuselage", symmetry=0)
 
-    # Simple rectangle centered at origin
     half_l = length / 2
     half_w = width / 2
 
-    # Vertices
-    # a: rear left
-    # b: front left
-    # c: front right
-    # d: rear right
-    # NOTE: VLM convention: a=rootLE, b=tipLE, c=tipTE, d=rootTE
-    # Let's verify 'root' and 'tip'.
-    # If root is left side (-Y), tip is right side (+Y).
-    # LE is Front (+X), TE is Rear (-X).
-    # Vertices structure:
-    # a: root_LE: -Y, +X
-    # b: tip_LE: +Y, +X
-    # c: tip_TE: +Y, -X
-    # d: root_TE: -Y, -X
-
-    a = np.array([half_l, -half_w, 0.0])  # Front Left
-    b = np.array([half_l, half_w, 0.0])  # Front Right
-    c = np.array([-half_l, half_w, 0.0])  # Rear Right
-    d = np.array([-half_l, -half_w, 0.0])  # Rear Left
-
-    # Wait, my comments above:
-    # Convention usually: X is flow direction?
-    # If quad moves forward (+X), flow is (-X).
-    # LE is front (+X), TE is rear (-X).
-    # Span is Y.
-    # Root is -Y/2, Tip is +Y/2?
+    # VLM vertex order: root LE, tip LE, tip TE, root TE.
+    a = np.array([half_l, -half_w, 0.0])
+    b = np.array([half_l, half_w, 0.0])
+    c = np.array([-half_l, half_w, 0.0])
+    d = np.array([-half_l, -half_w, 0.0])
 
     segment = WingSegment(
         uid="body_segment",

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Delta wing — VLM-VPM certification at high angle of attack.
-# Captures leading-edge vortex convection and spanwise circulation.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+# Run the delta-wing wake-crossing case and make its figures.
+
+set -euo pipefail
+
+cd "$(dirname "$0")"
 ./allclean.sh
 
-python delta_wing_setup.py --num-steps "${N_STEPS:-2200}" --dt "${DT:-0.004}" --processing-unit CUDA
+SAMPLE_PERIOD=0.08
+BACKUP_PERIOD=0.04  # 25 animation frames per heave cycle.
 
+python delta_wing_setup.py "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
 ./allplot.sh
-echo "All runs and plots complete."

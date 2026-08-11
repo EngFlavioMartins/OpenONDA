@@ -320,6 +320,124 @@ class ParticleDistributor:
         return positions, volumes, radii
 
     @staticmethod
+    def toroidal_distribution(
+        ring_radius: float,
+        tube_radius: float,
+        spacing: float,
+        center: np.ndarray | None = None,
+        axis: str = "x",
+        epsilon_w: float = 0.0,
+        seed: int = 42,
+        max_modes: int = 24,
+        return_orbit_ids: bool = False,
+    ) -> (
+        tuple[np.ndarray, np.ndarray, np.ndarray]
+        | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    ):
+        """Seed a periodic, volume-weighted tube around a circular ring.
+
+        A two-dimensional triangular lattice discretises the tube cross-section.
+        Every cross-section point is swept through the same uniformly spaced
+        azimuthal angles.  Complete azimuthal loops avoid the symmetry loss and
+        non-zero vector circulation produced by pruning a Cartesian box around a
+        ring.  Particle volumes include the toroidal Jacobian ``rho dtheta``.
+
+        Args:
+            ring_radius: Radius from the ring axis to its centreline.
+            tube_radius: Radius of the seeded cross-section.
+            spacing: Target particle spacing.
+            center: Ring centre; defaults to the origin.
+            axis: Ring axis (``"x"``, ``"y"``, or ``"z"``).
+            epsilon_w: Relative amplitude of the radial centreline perturbation.
+            seed: Random seed for the perturbation phases.
+            max_modes: Number of centreline Fourier modes.
+            return_orbit_ids: Also return one integer ID per cross-section
+                orbit. Particles with the same ID form one complete periodic
+                azimuthal loop and are contiguous in the returned arrays.
+
+        Returns:
+            Particle positions, quadrature volumes, and Gaussian core radii;
+            optionally followed by the azimuthal-orbit IDs.
+        """
+        if ring_radius <= 0.0:
+            raise ValueError("ring_radius must be positive")
+        if tube_radius <= 0.0:
+            raise ValueError("tube_radius must be positive")
+        if spacing <= 0.0:
+            raise ValueError("spacing must be positive")
+        if tube_radius >= ring_radius:
+            raise ValueError("tube_radius must be smaller than ring_radius")
+        if axis not in ("x", "y", "z"):
+            raise ValueError("axis must be 'x', 'y', or 'z'")
+        if epsilon_w < 0.0:
+            raise ValueError("epsilon_w must be non-negative")
+        if max_modes < 1:
+            raise ValueError("max_modes must be at least 1")
+
+        center_array = np.zeros(3) if center is None else np.asarray(center, dtype=float)
+        if center_array.shape != (3,):
+            raise ValueError("center must contain exactly three coordinates")
+
+        row_spacing = np.sqrt(3.0) * spacing / 2.0
+        max_row = int(np.ceil(tube_radius / row_spacing))
+        max_column = int(np.ceil(tube_radius / spacing)) + max_row
+        cross_section: list[tuple[float, float]] = []
+        cutoff_sq = (tube_radius + 16.0 * np.finfo(float).eps) ** 2
+        for row in range(-max_row, max_row + 1):
+            radial_offset = row * row_spacing
+            for column in range(-max_column, max_column + 1):
+                axial_offset = spacing * (column + 0.5 * row)
+                if axial_offset**2 + radial_offset**2 <= cutoff_sq:
+                    cross_section.append((axial_offset, radial_offset))
+
+        offsets = np.asarray(cross_section, dtype=float)
+        outer_circumference = 2.0 * np.pi * (ring_radius + tube_radius)
+        azimuth_count = max(8, int(np.ceil(outer_circumference / spacing)))
+        # A multiple of four represents every coordinate reflection exactly.
+        azimuth_count += (-azimuth_count) % 4
+        theta = 2.0 * np.pi * np.arange(azimuth_count) / azimuth_count
+        from ..utils.flow_models import vortex_ring_centerline
+
+        centerline_radius, _ = vortex_ring_centerline(
+            theta,
+            ring_radius,
+            epsilon_w=epsilon_w,
+            seed=seed,
+            max_modes=max_modes,
+        )
+        cosine_theta = np.cos(theta)
+        sine_theta = np.sin(theta)
+
+        axial = np.repeat(offsets[:, 0], azimuth_count)
+        rho = (centerline_radius[None, :] + offsets[:, 1, None]).reshape(-1)
+        cosine = np.tile(cosine_theta, len(offsets))
+        sine = np.tile(sine_theta, len(offsets))
+
+        local = np.empty((len(axial), 3), dtype=float)
+        if axis == "x":
+            local[:, 0] = axial
+            local[:, 1] = rho * cosine
+            local[:, 2] = rho * sine
+        elif axis == "y":
+            local[:, 0] = rho * sine
+            local[:, 1] = axial
+            local[:, 2] = rho * cosine
+        else:
+            local[:, 0] = rho * cosine
+            local[:, 1] = rho * sine
+            local[:, 2] = axial
+
+        cell_area = np.sqrt(3.0) * spacing**2 / 2.0
+        dtheta = 2.0 * np.pi / azimuth_count
+        volumes = cell_area * rho * dtheta
+        radii = np.full(len(local), 2.0 * spacing)
+        result = (local + center_array, volumes, radii)
+        if return_orbit_ids:
+            orbit_ids = np.repeat(np.arange(len(offsets), dtype=np.int32), azimuth_count)
+            return (*result, orbit_ids)
+        return result
+
+    @staticmethod
     def cylindrical_distribution(
         cyl_radius: float = 1.0,
         height: float = 2.0,

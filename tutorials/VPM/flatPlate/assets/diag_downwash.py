@@ -1,224 +1,188 @@
 #!/usr/bin/env python3
-"""
-D4 Diagnostic: VPM → VLM Induced Downwash per Span Station
-===========================================================
-Loads the final VPM particle snapshot and evaluates VPM-induced velocity at
-the VLM collocation points (at their correct final-step lab-frame position)
-in a single forward pass — no time-marching. Groups by span station and
-compares w_j = V_VPM · n_hat to the Glauert-required induced AoA.
+"""Evaluate wake-induced downwash at the final flat-plate span stations.
 
-This quantifies whether the VPM wake delivers a flat or tip-peaked downwash
-profile, localising the source of the flat-loading Bug 2e deficiency.
-
-Usage:
-    cd tutorials/VPM/flatPlate
-    python assets/diag_downwash.py
-    python assets/diag_downwash.py --h5 solution/exp_moving_aoa05/vpm_exp_moving_aoa05_000306.h5
-
-Output:
-    solution/exp_moving_aoa05/samples/exp_moving_aoa05_downwash.csv
-
-Author:  Flavio A. C. Martins, OpenONDA Team
-Date: June 2026
+The diagnostic uses the latest ``exp_moving_aoa05`` restart checkpoint and
+writes ``samples/exp_moving_aoa05/exp_moving_aoa05_downwash.csv``.
 """
 
 from __future__ import annotations
 
-import os, sys, argparse, math
-import numpy as np
-import pandas as pd
+import math
 from pathlib import Path
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-_CASE_DIR = _SCRIPT_DIR.parent
-from openonda.vpm import BackupSystem, Solver, VPMSetup
+import numpy as np
+import pandas as pd
+
+from generate_surface import create_flat_plate, save_surface
 from openonda.vpm import (
+    BackupSystem,
     ForceConfig,
+    SmoothRampVLM,
+    Solver,
+    VLMLoadingDistribution,
     VLMMeshSetup,
     VLMSurfaceSetup,
     VLMSetup,
+    VPMSetup,
 )
-from openonda.vpm import VLMLoadingDistribution
-from openonda.vpm import SmoothRampVLM
-
-from generate_surface import create_flat_plate, save_surface
 from theoretical_model import liftingline_circulation
 
 
-def main():
-    os.chdir(_CASE_DIR)
+TUTORIAL_DIR = Path(__file__).resolve().parent.parent
+SOLUTION_DIR = TUTORIAL_DIR / "solution"
+CASE_NAME = "exp_moving_aoa05"
 
-    p = argparse.ArgumentParser(
-        description="D4: VPM→VLM downwash diagnostic (no time-marching)",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+CHORD = 1.0
+SPAN = 10.0
+ANGLE_OF_ATTACK = 5.0
+FREESTREAM_SPEED = 10.0
+TIME_STEP = 0.0125
+RAMP_LENGTH = 0.6
+CHORDWISE_PANELS = 8
+SPANWISE_PANELS = 14
+
+
+def latest_checkpoint() -> Path:
+    """Return the newest restart checkpoint for the diagnostic case."""
+    files = sorted(
+        SOLUTION_DIR.glob(f"vpm_{CASE_NAME}_*.h5"),
+        key=lambda path: int(path.stem.rsplit("_", 1)[-1]),
     )
-    p.add_argument(
-        "--h5",
-        default="solution/exp_moving_aoa05/vpm_exp_moving_aoa05_000306.h5",
-        help="VPM particle snapshot to load",
+    if not files:
+        raise FileNotFoundError(f"No restart checkpoint found for {CASE_NAME}")
+    return files[-1]
+
+
+def travelled_distance(time: float, ramp_time: float) -> float:
+    """Return the distance travelled by the smooth-ramp plate."""
+    if time >= ramp_time:
+        return 0.5 * FREESTREAM_SPEED * ramp_time + FREESTREAM_SPEED * (time - ramp_time)
+    return (
+        0.5 * FREESTREAM_SPEED * (time - ramp_time / math.pi * math.sin(math.pi * time / ramp_time))
     )
-    p.add_argument("--steps", type=int, default=306, help="Simulation step count for displacement")
-    p.add_argument("--dt", type=float, default=0.01)
-    p.add_argument("--aoa", type=float, default=5.0)
-    p.add_argument("--span", type=float, default=10.0)
-    p.add_argument("--chord", type=float, default=1.0)
-    p.add_argument("--U-inf", type=float, default=10.0)
-    p.add_argument("--tau-ramp", type=float, default=0.6, help="Ramp length [chord-lengths]")
-    p.add_argument("--panels-chord", type=int, default=4)
-    p.add_argument("--panels-span", type=int, default=16)
-    p.add_argument("--name", default="exp_moving_aoa05")
-    p.add_argument("--output-dir", default=None)
-    args = p.parse_args()
 
-    U = args.U_inf
-    c = args.chord
-    dt = args.dt
-    h5_path = str(Path(args.h5).resolve())
-    out_dir = Path(args.output_dir) if args.output_dir else Path(f"solution/{args.name}/samples")
-    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # -- Surface geometry (body frame: plate tilted at AoA) --------------------
-    surface_file = str(_CASE_DIR / "assets" / "flat_plate_surface.json")
-    surface = create_flat_plate(
-        chord=c, span=args.span, alpha=args.aoa, n_chord=args.panels_chord, n_span=args.panels_span
+def build_solver() -> Solver:
+    """Build the VLM geometry needed to query the saved wake."""
+    surface_file = TUTORIAL_DIR / "assets" / "surfaces" / "diag_downwash.json"
+    surface_file.parent.mkdir(parents=True, exist_ok=True)
+    save_surface(
+        create_flat_plate(
+            chord=CHORD,
+            span=SPAN,
+            alpha=ANGLE_OF_ATTACK,
+            n_chord=CHORDWISE_PANELS,
+            n_span=SPANWISE_PANELS,
+        ),
+        str(surface_file),
     )
-    save_surface(surface, surface_file)
 
-    # -- VLM solver ------------------------------------------------------------
-    U_ref = np.array([U, 0.0, 0.0])
-    t_ramp = 2.0 * args.tau_ramp * c / U
-    kin = SmoothRampVLM(U_final=[-U, 0.0, 0.0], acceleration_time=t_ramp)
-
-    vlm_setup = VLMSetup(
-        surfaces=(VLMSurfaceSetup(surface_file, kinematics=kin),),
+    ramp_time = 2.0 * RAMP_LENGTH * CHORD / FREESTREAM_SPEED
+    vlm = VLMSetup(
+        surfaces=(
+            VLMSurfaceSetup(
+                str(surface_file),
+                kinematics=SmoothRampVLM(
+                    U_final=[-FREESTREAM_SPEED, 0.0, 0.0],
+                    acceleration_time=ramp_time,
+                ),
+            ),
+        ),
         mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
         density=1.0,
-        viscosity=1e-2,
-        freestream_velocity=tuple(U_ref),
+        viscosity=1.0e-2,
+        freestream_velocity=(FREESTREAM_SPEED, 0.0, 0.0),
         force=ForceConfig.kutta_joukowski(),
         sigma_factor=2.5,
         sample_surface_forces=True,
     )
-
-    # -- Minimal Solver (initialises ti.init + VPM physics) -------------------
-    _tmp_dir = "/tmp/diag_downwash"
-    Path(_tmp_dir).mkdir(parents=True, exist_ok=True)
-    solver = Solver(
+    return Solver(
         setup=VPMSetup.les_simulation(
             cs=0.30,
-            time_step_size=dt,
-            vlm=vlm_setup,
+            time_step_size=TIME_STEP,
+            vlm=vlm,
             background_velocity=[0.0, 0.0, 0.0],
-            logging_frequency=999999,
-            backup_frequency=999999,
-            backup_file_name="diag_downwash",
-            backup_directory=_tmp_dir,
+            backup_directory=str(SOLUTION_DIR),
         )
     )
+
+
+def spanwise_downwash(solver: Solver, checkpoint: Path) -> pd.DataFrame:
+    """Evaluate VPM velocity at each VLM collocation point."""
+    BackupSystem._load_numerical_data(solver, str(checkpoint))
+
     vlm = solver.vlm_solver
     if vlm is None:
-        raise RuntimeError("Downwash diagnostic requires its declared VLM solver")
+        raise RuntimeError("The downwash diagnostic requires a VLM solver")
 
-    # -- Plate displacement at final step (pure translation, sin²-ramp) --------
-    # v(t) = 0.5*U*(1 - cos(π*t/t_ramp)) for t ≤ t_ramp, then U constant.
-    # integral → dist_ramp = 0.5*U*t_ramp; dist_cruise = U*(t_total - t_ramp).
-    t_total = args.steps * dt
-    if t_total >= t_ramp:
-        dist = 0.5 * U * t_ramp + U * (t_total - t_ramp)
-    else:
-        dist = 0.5 * U * (t_total - (t_ramp / math.pi) * math.sin(math.pi * t_total / t_ramp))
-    displacement = np.array([-dist, 0.0, 0.0])
-    print(f"\n  Plate displacement at step {args.steps}: dx={displacement[0]:.3f} m")
+    ramp_time = 2.0 * RAMP_LENGTH * CHORD / FREESTREAM_SPEED
+    displacement = np.array([-travelled_distance(solver.flow_time, ramp_time), 0.0, 0.0])
+    number_of_panels = vlm.lattice.num_panels
+    collocation = vlm.lattice.collocation.to_numpy()[:number_of_panels] + displacement
+    normals = vlm.lattice.normals.to_numpy()[:number_of_panels]
+    bound_midpoints = vlm.lattice.bound_midpoints.to_numpy()[:number_of_panels]
+    velocity = solver.compute_target_velocities(collocation, include_freestream=False)
 
-    # -- Collocation points and normals at final plate position ----------------
-    n_p = vlm.lattice.num_panels
-    coll_init = vlm.lattice.collocation.to_numpy()[:n_p]  # (N, 3) — initial geometry
-    coll_final = coll_init + displacement  # translated to step-306 position
-    normals_np = vlm.lattice.normals.to_numpy()[:n_p]  # (N, 3) — pure translation, same normals
-    bm_all = vlm.lattice.bound_midpoints.to_numpy()[:n_p]  # for y_station
+    rows = []
+    for block in VLMLoadingDistribution.build_surface_grid_index(vlm, "flat_plate"):
+        indices = block["orig_idx"]
+        if indices is None:
+            continue
+        for span_index in range(block["ns"]):
+            panel_indices = indices[span_index]
+            panel_downwash = np.einsum(
+                "ij,ij->i",
+                velocity[panel_indices],
+                normals[panel_indices],
+            )
+            rows.append(
+                {
+                    "span_index": span_index,
+                    "y": float(np.mean(bound_midpoints[panel_indices, 1])),
+                    "w_VPM": float(np.mean(panel_downwash)),
+                    "w_VPM_std": float(np.std(panel_downwash)),
+                }
+            )
+    return pd.DataFrame(rows).sort_values("span_index").reset_index(drop=True)
 
-    print(
-        f"  Collocation x range at final step: [{coll_final[:, 0].min():.2f}, {coll_final[:, 0].max():.2f}]"
+
+def add_lifting_line_reference(data: pd.DataFrame) -> pd.DataFrame:
+    """Add the downwash required by Prandtl lifting-line theory."""
+    y = data["y"].to_numpy()
+    downwash = data["w_VPM"].to_numpy()
+    reference = liftingline_circulation(
+        y,
+        b=SPAN,
+        c=CHORD,
+        alpha_rad=math.radians(ANGLE_OF_ATTACK),
+        U_inf=FREESTREAM_SPEED,
     )
+    effective_angle = reference["cl"].to_numpy() / (2.0 * math.pi)
+    required_angle = np.degrees(math.radians(ANGLE_OF_ATTACK) - effective_angle)
+    measured_angle = np.degrees(np.arctan2(-downwash, FREESTREAM_SPEED))
 
-    # -- Load final particles --------------------------------------------------
-    BackupSystem._load_numerical_data(solver, h5_path)
-    n_part = len(solver.particles)
-    print(f"  Particles loaded: {n_part}")
-
-    # -- VPM-induced velocity at collocation points (no freestream) -----------
-    v_vpm = solver.compute_target_velocities(coll_final, include_freestream=False)
-    v_mag = np.linalg.norm(v_vpm, axis=1)
-    print(f"  v_VPM: min={v_mag.min():.4f}  max={v_mag.max():.4f}  mean={v_mag.mean():.4f}")
-
-    # -- Per-station downwash w_j = V_VPM · n_hat -----------------------------
-    blocks = VLMLoadingDistribution.build_surface_grid_index(vlm, "flat_plate")
-    rows: list[dict] = []
-    for blk in blocks:
-        ns, nc = blk["ns"], blk["nc"]
-        for half, idx2d in [("orig", blk["orig_idx"]), ("mirror", blk["mirror_idx"])]:
-            if idx2d is None:
-                continue
-            for j in range(ns):
-                cidx = idx2d[j]
-                w_panels = np.einsum("ki,ki->k", v_vpm[cidx], normals_np[cidx])
-                rows.append(
-                    {
-                        "half": half,
-                        "span_index": j,
-                        "y": float(np.mean(bm_all[cidx, 1])),
-                        "w_VPM": float(np.mean(w_panels)),
-                        "w_VPM_std": float(np.std(w_panels)),
-                    }
-                )
-
-    df_dw = pd.DataFrame(rows)
-    orig = df_dw[df_dw.half == "orig"].sort_values("span_index").reset_index(drop=True)
-    y_sta = orig["y"].to_numpy()
-    w_VPM = orig["w_VPM"].to_numpy()
-
-    # -- Glauert reference -----------------------------------------------------
-    df_ll = liftingline_circulation(
-        y_sta, b=args.span, c=c, alpha_rad=math.radians(args.aoa), U_inf=U
+    result = data.copy()
+    result["y_over_b"] = 2.0 * y / SPAN
+    result["alpha_i_VPM_deg"] = measured_angle
+    result["alpha_i_required_deg"] = required_angle
+    result["delivery_ratio"] = np.divide(
+        measured_angle,
+        required_angle,
+        out=np.full_like(measured_angle, np.nan),
+        where=np.abs(required_angle) > 0.01,
     )
-    cl_gl = df_ll["cl"].to_numpy()
-    # Induced AoA: α_i = α − α_eff  where α_eff = arcsin(cl/(2π)) ≈ cl/(2π)
-    alpha_rad_val = math.radians(args.aoa)
-    alpha_i_req = np.degrees(alpha_rad_val - cl_gl / (2.0 * math.pi))
-    # VPM-delivered induced AoA: positive downwash (w<0) reduces effective AoA
-    alpha_i_VPM = np.degrees(np.arctan2(-w_VPM, U))
-    ratio = np.where(np.abs(alpha_i_req) > 0.01, alpha_i_VPM / alpha_i_req, float("nan"))
+    return result
 
-    # -- Print table -----------------------------------------------------------
-    print(
-        f"\n  --- D4: VPM→VLM induced downwash per station (step {args.steps}, τ={(args.steps * dt * U / c):.1f}c) ---"
-    )
-    print(
-        f"  {'j':>3}  {'y/b':>6}  {'w_VPM[m/s]':>11}  {'α_VPM[°]':>9}  {'α_req[°]':>9}  {'ratio':>6}"
-    )
-    for k in range(len(y_sta)):
-        yob = 2.0 * y_sta[k] / args.span
-        print(
-            f"  {k:>3}  {yob:>6.3f}  {w_VPM[k]:>11.4f}  "
-            f"{alpha_i_VPM[k]:>9.3f}  {alpha_i_req[k]:>9.3f}  {ratio[k]:>6.3f}"
-        )
 
-    # -- Save CSV --------------------------------------------------------------
-    df_out = orig.copy()
-    df_out["y_over_b"] = 2.0 * df_out["y"] / args.span
-    df_out["alpha_i_VPM_deg"] = alpha_i_VPM
-    df_out["alpha_i_required_deg"] = alpha_i_req
-    df_out["delivery_ratio"] = ratio
-    dw_csv = out_dir / f"{args.name}_downwash.csv"
-    df_out.to_csv(dw_csv, index=False)
-    print(f"\n  Saved: {dw_csv}\n")
-
-    # -- Summary ---------------------------------------------------------------
-    root_ratio = ratio[0]
-    tip_ratio = ratio[-1]
-    print(f"  delivery_ratio: root={root_ratio:.3f}  tip={tip_ratio:.3f}")
-    print(f"  (1.0 = VPM delivers exactly the required Glauert downwash)")
-    print(f"  (< 1.0 = under-delivered; deficit explains flat loading)\n")
+def main() -> None:
+    checkpoint = latest_checkpoint()
+    solver = build_solver()
+    result = add_lifting_line_reference(spanwise_downwash(solver, checkpoint))
+    output = TUTORIAL_DIR / "samples" / CASE_NAME / f"{CASE_NAME}_downwash.csv"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(output, index=False)
+    solver.reset_gpu()
+    print(f"Saved: {output}")
 
 
 if __name__ == "__main__":

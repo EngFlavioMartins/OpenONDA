@@ -5,14 +5,14 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import math
-import re
 from pathlib import Path
 
 # -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
-SOLUTION_DIR = CASE_DIR / "solution" / "rotor"
+SOLUTION_DIR = CASE_DIR / "solution"
+SAMPLES_DIR = CASE_DIR / "samples" / "rotor"
 THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 # -- Case definition ---------------------------------------------------------
@@ -53,20 +53,8 @@ def load_theme() -> tuple[dict[str, str], object | None]:
 def build_arg_parser(description: str) -> argparse.ArgumentParser:
     """Base argument parser shared by rotorFlow plot scripts."""
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--solution-dir", default=str(SOLUTION_DIR), help="Rotor solution directory.")
-    p.add_argument("--figures-dir", default=str(FIGURES_DIR), help="Output figure directory.")
     p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
     p.add_argument("--dpi", type=int, default=300, help="Figure DPI (PNG only).")
-    return p
-
-
-def add_case_arguments(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    """Add the rotor geometry/operating-point overrides shared by the plot scripts."""
-    p.add_argument("--rotor-radius", type=float, default=ROTOR_RADIUS, help="Tip radius [m].")
-    p.add_argument("--hub-radius", type=float, default=HUB_RADIUS, help="Hub radius [m].")
-    p.add_argument("--u-inf", type=float, default=FREESTREAM_VELOCITY, help="Freestream [m/s].")
-    p.add_argument("--tip-speed-ratio", type=float, default=TIP_SPEED_RATIO, help="TSR = wR/U.")
-    p.add_argument("--rho", type=float, default=DENSITY, help="Fluid density [kg/m³].")
     return p
 
 
@@ -76,21 +64,13 @@ def build_rotor_style_map(colors: dict[str, str]) -> dict[str, dict[str, object]
 
 
 # ==============================================================================
-# Run introspection — read what the solver actually did, never assume
+# Sampled run data
 # ==============================================================================
 
 
-def read_time_step(solution_dir: Path | str) -> float | None:
-    """Return the time-step size the run actually used, or None if undeterminable.
-
-    Hardcoding a default here is how the wake-plane averaging window silently
-    ended up 17 % out of step with the case, so both sources are derived from
-    the run itself: the force CSV first (exact, ``time / step``), then the
-    solver log banner as a fallback.
-    """
-    solution_dir = Path(solution_dir)
-
-    csv_path = solution_dir / "samples" / "vlm_forces.csv"
+def read_time_step(samples_dir: Path | str) -> float | None:
+    """Read the time step represented by a sampled force history."""
+    csv_path = Path(samples_dir) / "vlm_forces.csv"
     if csv_path.exists():
         import pandas as pd
 
@@ -100,20 +80,11 @@ def read_time_step(solution_dir: Path | str) -> float | None:
             if step > 0:
                 return float(df["time"].iloc[-1]) / step
 
-    log_path = solution_dir / "rotor.log"
-    if log_path.exists():
-        match = re.search(
-            r"Time Step Size\s*:\s*([0-9.eE+-]+)",
-            log_path.read_text(errors="replace"),
-        )
-        if match:
-            return float(match.group(1))
-
     return None
 
 
 def read_operating_point(
-    solution_dir: Path | str,
+    samples_dir: Path | str,
     *,
     rho: float = DENSITY,
     u_inf: float = FREESTREAM_VELOCITY,
@@ -126,7 +97,7 @@ def read_operating_point(
     The wake references must be drawn at the operating point the simulation
     actually reached, not at the Betz design point it was aiming for.
     """
-    csv_path = Path(solution_dir) / "samples" / "vlm_forces.csv"
+    csv_path = Path(samples_dir) / "vlm_forces.csv"
     if not csv_path.exists():
         return None
 
