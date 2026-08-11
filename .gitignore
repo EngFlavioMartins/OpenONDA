@@ -163,8 +163,6 @@ tests/**/referenceFlow/**
 **/samples/**/*.xdmf
 **/samples/**/*.npz
 
-# This coupled run is a local working directory, not the reference dataset.
-tutorials/coupled_FVM_VPM/cubeFlow/samples/
 # Full reference-flow volume slices are generated data. Keep the compact CSV
 # histories in Git and leave local slices untouched when they are untracked.
 tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/samples/*.vts

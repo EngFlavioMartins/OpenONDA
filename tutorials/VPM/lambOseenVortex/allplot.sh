@@ -4,16 +4,29 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+case "${1:--png}" in
+    -png) figure_format=png ;;
+    -pdf) figure_format=pdf ;;
+    *)
+        echo "Usage: $0 [-png|-pdf]" >&2
+        exit 2
+        ;;
+esac
+
+if (($# > 1)); then
+    echo "Usage: $0 [-png|-pdf]" >&2
+    exit 2
+fi
+
 mkdir -p figures
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${TMPDIR:-/tmp}/openonda-matplotlib}"
 mkdir -p "$MPLCONFIGDIR"
 
 plot() {
-    for format in png pdf; do
-        if ! python "$@" --format "$format"; then
-            plot_status=1
-        fi
-    done
+    if ! python "$@" --format "$figure_format"; then
+        plot_status=1
+    fi
 }
 
 plot_status=0
@@ -24,8 +37,8 @@ plot assets/plot_vortex_surface_fields.py
 plot assets/plot_lamboseen_energy.py
 
 if ((plot_status)); then
-    echo "Figures are incomplete; finish the missing solver cases and run allplot.sh again." >&2
+    echo "One or more figures failed to render." >&2
     exit 1
 fi
 
-echo "All publication figures written to figures/."
+echo "Available $figure_format publication figures refreshed in figures/."

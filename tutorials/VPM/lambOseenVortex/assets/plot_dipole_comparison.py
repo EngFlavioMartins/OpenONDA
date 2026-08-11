@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Counter-rotating vortex dipole — core trajectory and radius comparison.
 
-Reads VTS z=0 samples from each viscous scheme and plots:
+Reads compact mid-plane diagnostics from each viscous scheme and plots:
   - core x-position  xc / b0  vs  ν t / b0²
   - core radius       a_c / a_{c,0}  vs  ν t / b0²
 
@@ -10,97 +10,54 @@ Saves: figures/dipole_comparison.png
 
 from __future__ import annotations
 
-import re
-import sys
 from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    SCHEMES,
-    build_arg_parser,
-    build_style_map,
-    centroid,
-    load_theme,
-    pvd_time_map,
-    publication_size,
-    resolve_runtime_physics,
-    save_publication_figure,
-)
-
-
-def _weighted_core_radius(points: np.ndarray, weights: np.ndarray, center: np.ndarray) -> float:
-    w = np.asarray(weights, dtype=np.float64)
-    wt = float(w.sum())
-    if wt <= 1e-30:
-        return np.nan
-    r2 = ((points - center) ** 2).sum(axis=1)
-    return float(np.sqrt((w * r2).sum() / wt))
-
-
-# =============================================================
-# Data extraction
-# =============================================================
+if __package__:
+    from ._common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+else:
+    from _common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
 
 
 def extract_dipole_timeseries(
     samples_dir: Path,
     scheme: str,
-    b0: float,
-    target_time: float,
-    tolerance: float,
 ) -> dict | None:
-    import pyvista as pv
-
-    case_samples_dir = samples_dir / f"dipole_{scheme}"
-    vts_list = (
-        sorted(
-            [
-                (int(m.group(1)), p)
-                for p in case_samples_dir.glob(f"dipole_{scheme}_z0_*.vts")
-                if (m := re.search(r"_(\d+)\.vts$", p.name))
-            ],
-            key=lambda x: x[0],
-        )
-        if case_samples_dir.exists()
-        else []
-    )
-
-    time_map = pvd_time_map(samples_dir, "dipole", scheme)
-    if not time_map or max(time_map.values()) < target_time - tolerance:
+    path = samples_dir / f"dipole_{scheme}" / "pair_diagnostics.csv"
+    if not path.is_file():
         return None
-    rows = []
-    for step, vts_path in vts_list:
-        if step not in time_map:
-            continue
-        t = time_map[step]
-        try:
-            grid = pv.read(str(vts_path))
-            xy = grid.points[:, :2].astype(np.float64)
-            omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
-        except Exception:
-            continue
-        mask = omega_z > 0.0
-        if np.count_nonzero(mask) < 2:
-            continue
-        w = np.abs(omega_z[mask])
-        if w.sum() < 1e-30:
-            continue
-        c = centroid(xy[mask], omega_z[mask])
-        if np.any(np.isnan(c)):
-            continue
-        a_c = _weighted_core_radius(xy[mask], w, c)
-        rows.append((t, float(c[0]), float(c[1]), a_c, float(w.sum())))
-
-    if not rows:
+    data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
+    data = data.sort_values("time_step").drop_duplicates("time_step", keep="last")
+    if data.empty:
         return None
-    d = np.array(rows, dtype=float)
-    return {"t": d[:, 0], "x_core": d[:, 1], "a_c": d[:, 3], "total_gamma": d[:, 4]}
+    return {
+        "t": data["flow_time"].to_numpy(float),
+        "x_core": data["x_core"].to_numpy(float),
+        "a_c": data["core_radius"].to_numpy(float),
+        "total_gamma": data["surface_circulation"].to_numpy(float),
+    }
 
 
 # =============================================================
@@ -124,15 +81,8 @@ def plot_dipole_case(args) -> int:
     fig.subplots_adjust(wspace=0.43, bottom=0.34, top=0.88, left=0.13, right=0.97)
 
     plotted_schemes = []
-    tolerance = max(0.5, 20.0 * args.dt)
     for scheme in SCHEMES:
-        ts = extract_dipole_timeseries(
-            samples_dir,
-            scheme,
-            args.b0,
-            args.total_time,
-            tolerance,
-        )
+        ts = extract_dipole_timeseries(samples_dir, scheme)
         if ts is None:
             print(f"  [dipole] skipping {scheme!r} — no data")
             continue
@@ -158,14 +108,13 @@ def plot_dipole_case(args) -> int:
         axes[1].plot(tau, a_c_norm, **plot_kw)
         plotted_schemes.append(scheme)
 
-    if len(plotted_schemes) != len(SCHEMES):
+    if not plotted_schemes:
         plt.close(fig)
         out.unlink(missing_ok=True)
-        print(
-            f"  [dipole] complete trajectories available for {len(plotted_schemes)}/"
-            f"{len(SCHEMES)} methods; figure not generated"
-        )
-        return 1
+        print("  [dipole] no sampled trajectories; figure not generated")
+        return 0
+
+    print(f"  [dipole] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
 
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[0].set_ylabel(r"$x_c / b_0$")

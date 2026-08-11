@@ -478,13 +478,17 @@ class ParticleFieldEvaluation:
             for i in range(num_particles):
                 acc = ti.Vector([0.0, 0.0, 0.0])
                 pos_i = positions[i]
-                radii_i = radii[i]
-                cutoff_radius = DEFAULT_CUTOFF_RADIUS_FACTOR * radii_i
                 for j in range(num_particles):
                     r_ij = pos_i - positions[j]
                     r_mag = r_ij.norm()
-                    if r_mag <= cutoff_radius:
-                        sigma = 0.5 * (radii_i + radii[j])
+                    # This is a pointwise field reconstruction, not a
+                    # quadratic two-blob integral: source j contributes its
+                    # own blob zeta_{sigma_j}(x_i-x_j).  A target/source mean
+                    # radius gives the wrong field as soon as core spreading
+                    # makes radii nonuniform and makes Gamma--omega alignment
+                    # depend on the arbitrary target core.
+                    sigma = radii[j]
+                    if r_mag <= DEFAULT_CUTOFF_RADIUS_FACTOR * sigma:
                         r_sigma = r_mag / sigma
                         zeta_val = zeta_(r_sigma) / sigma**3
                         acc += zeta_val * strengths[j]

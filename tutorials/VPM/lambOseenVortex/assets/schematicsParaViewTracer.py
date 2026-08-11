@@ -3,11 +3,15 @@
 # paraview.compatibility.major = 6
 # paraview.compatibility.minor = 0
 
+from pathlib import Path
+
 #### import the simple module from the paraview
 from paraview.simple import *
 
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
+
+TUTORIAL_DIR = Path(__file__).resolve().parents[1]
 
 # create a new 'XDMF Reader'
 vpm_vortex_cs_000010xdmf = XDMFReader(
@@ -2634,7 +2638,7 @@ vorticityLUT.ApplyPreset("Viridis", True)
 # create a new 'PVD Reader'
 vortex_cs_z0pvd = PVDReader(
     registrationName="vortex_cs_z0.pvd",
-    FileName="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/lambOseenVortex/solution/vortex_cs/samples/vortex_cs_z0.pvd",
+    FileName=str(TUTORIAL_DIR / "samples/vortex_cs/vortex_cs_z0.pvd"),
 )
 
 # show data in view
@@ -2671,7 +2675,7 @@ del vortex_cs_z0pvd
 # create a new 'PVD Reader'
 dipole_cs_z0pvd = PVDReader(
     registrationName="dipole_cs_z0.pvd",
-    FileName="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/lambOseenVortex/solution/dipole_cs/samples/dipole_cs_z0.pvd",
+    FileName=str(TUTORIAL_DIR / "samples/dipole_cs/dipole_cs_z0.pvd"),
 )
 
 # show data in view

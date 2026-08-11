@@ -1,4 +1,6 @@
 # state file generated using paraview version 6.0.1
+from pathlib import Path
+
 import paraview
 
 paraview.compatibility.major = 6
@@ -9,6 +11,8 @@ from paraview.simple import *
 
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
+
+TUTORIAL_DIR = Path(__file__).resolve().parents[1]
 
 # ----------------------------------------------------------------
 # setup views used in the visualization
@@ -81,7 +85,10 @@ eq 0$"""
 # create a new 'PVD Reader'
 velocitypvd = PVDReader(
     registrationName="velocity.pvd",
-    FileName="/home/flavio/Projects/OpenONDA/tutorials/VPM/flatPlateVLM/solution/samples/sampled_plane_x15S.pvd",
+    FileName=str(
+        TUTORIAL_DIR
+        / "samples/exp_static_aoa08/exp_static_aoa08_crossflow_x15.pvd"
+    ),
 )
 velocitypvd.PointArrays = ["Velocity", "VelocityMagnitude", "Vorticity", "VorticityMagnitude"]
 

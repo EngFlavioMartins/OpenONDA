@@ -135,6 +135,7 @@ def run(sample_period: float, backup_period: float) -> None:
     solver = Solver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
+            processing_unit="VULKAN",
             turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
             vlm=vlm_setup,
             velocity=VelocityConfig.treecode(

@@ -5,9 +5,8 @@ Vortex-ring tube circulation and vector-sum conservation vs t*.
 Saves: figures/vortex_ring_circulation.png
 """
 
-import sys
-import glob
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 
@@ -15,13 +14,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     build_arg_parser,
     load_theme,
-    load_ring_circulation,
-    load_vector_circulation_error,
+    load_sampled_ring_circulation,
+    load_sampled_vector_circulation_error,
     save_fig,
     VARIANT_LABEL,
     VARIANT_STYLE,
     FIGURES_DIR,
-    SOLUTION_DIR,
+    SAMPLES_DIR,
     figure_size,
     mark_every,
     reference_style,
@@ -32,7 +31,6 @@ def main() -> None:
     args = build_arg_parser(
         "Tube circulation and vector-sum conservation — DNS & LES, all stretching variants."
     ).parse_args()
-    sol = SOLUTION_DIR
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
@@ -43,11 +41,11 @@ def main() -> None:
     legend_labels = []
 
     for variant, st in VARIANT_STYLE.items():
-        h5 = sorted(glob.glob(str(sol / f"vpm_{variant}_*.h5")))
-        t, c = load_ring_circulation(h5)
+        csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
+        t, c = load_sampled_ring_circulation(csv_path)
         if t.size == 0:
             continue
-        t_sum, sum_err = load_vector_circulation_error(h5)
+        t_sum, sum_err = load_sampled_vector_circulation_error(csv_path)
         label = VARIANT_LABEL[variant]
         (line,) = ax_tube.plot(
             t,

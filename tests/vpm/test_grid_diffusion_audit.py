@@ -211,6 +211,45 @@ def test_particle_cap_falls_back_to_strongest_when_budget_is_infeasible(physics)
     assert np.isclose(grid[kept_x, 0, 0].sum() / grid.sum(), 0.7)
 
 
+def test_particle_cap_preserves_equal_vortex_groups(physics):
+    grid = np.ones((20, 1, 1))
+    grid[10:] *= 0.999
+    ix = np.arange(20)
+    zeros = np.zeros(20, dtype=int)
+    labels = np.repeat([0, 1], 10).reshape(20, 1, 1)
+
+    kept_x, _, _, _, _ = physics._cap_surviving_nodes(
+        grid,
+        ix,
+        zeros,
+        zeros,
+        cap=10,
+        labels=labels,
+    )
+
+    assert np.count_nonzero(kept_x < 10) == 5
+    assert np.count_nonzero(kept_x >= 10) == 5
+
+
+def test_regenerated_group_ids_fill_empty_diffusion_nodes(physics):
+    positions = np.array([[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
+    circulations = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+
+    labels = physics._scatter_id_field(
+        positions,
+        circulations,
+        np.array([0, 1]),
+        np.zeros(3),
+        1.0,
+        5,
+        1,
+        1,
+        propagate_to=(np.arange(5), np.zeros(5, dtype=int), np.zeros(5, dtype=int)),
+    )
+
+    assert labels[:, 0, 0].tolist() == [0, 0, 0, 1, 1]
+
+
 def test_viscous_config_carries_particle_cap():
     vc = ViscousConfig.gbd(
         h=0.05,

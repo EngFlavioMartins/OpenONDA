@@ -311,6 +311,62 @@ def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     return t / T_REF, U_num / U_REF
 
 
+def load_sampled_ring_data(csv_path: Path) -> pd.DataFrame | None:
+    """Load the compact ring sampler history."""
+    if not csv_path.is_file():
+        return None
+    data = pd.read_csv(csv_path)
+    if data.empty:
+        return None
+    return data.sort_values("flow_time").drop_duplicates("time_step", keep="last")
+
+
+def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Return sampled normalized time and centroid speed."""
+    data = load_sampled_ring_data(csv_path)
+    if data is None or len(data) < 2:
+        return np.array([]), np.array([])
+
+    time = data["flow_time"].to_numpy(float)
+    position = data["x_centroid"].to_numpy(float)
+    speed = np.empty_like(position)
+    for index in range(len(time)):
+        lower = max(0, index - 2)
+        upper = min(len(time), index + 3)
+        speed[index] = np.polyfit(time[lower:upper], position[lower:upper], 1)[0]
+    return time / T_REF, speed / U_REF
+
+
+def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Return sampled normalized tube circulation."""
+    data = load_sampled_ring_data(csv_path)
+    if data is None:
+        return np.array([]), np.array([])
+    circulation = data["tube_circulation"].to_numpy(float)
+    valid = np.isfinite(circulation) & (circulation > 0.0)
+    if not valid.any():
+        return np.array([]), np.array([])
+    time = data["flow_time"].to_numpy(float)[valid] / T_REF
+    circulation = circulation[valid]
+    return time, circulation / circulation[0]
+
+
+def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Return sampled drift of the conserved vector circulation."""
+    data = load_sampled_ring_data(csv_path)
+    if data is None:
+        return np.array([]), np.array([])
+    vector = data[
+        ["vector_circulation_x", "vector_circulation_y", "vector_circulation_z"]
+    ].to_numpy(float)
+    strength0 = float(data["length_strength"].iloc[0])
+    if strength0 <= 0.0:
+        return np.array([]), np.array([])
+    time = data["flow_time"].to_numpy(float) / T_REF
+    error = np.linalg.norm(vector - vector[0], axis=1) / strength0
+    return time, error
+
+
 # -- Figure helpers ------------------------------------------------------------
 
 

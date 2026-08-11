@@ -10,12 +10,12 @@ SAMPLE_PERIOD=0.1
 BACKUP_PERIOD=0.5
 
 run() {
-    python ring_setup.py "$1" "$2" "$3" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
+    python ring_setup.py "$1" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
 }
 
-run DNS_direct dns direct
-run DNS_transposed dns transposed
-run DNS_mixed dns mixed
-run LES_transposed les transposed
+run DNS_direct
+run DNS_transposed
+run DNS_mixed
+run LES_transposed
 
 ./allplot.sh

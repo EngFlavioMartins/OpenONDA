@@ -93,3 +93,16 @@ def test_cs_does_not_warn_about_stability_limit(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "[CS] WARNING" not in captured.out
     assert "stability" not in captured.out.lower()
+
+
+def test_disabled_stretching_skips_velocity_gradient_evaluation(tmp_path, monkeypatch):
+    solver = _cpu_solver(tmp_path, dt=0.02, viscous=ViscousConfig.cs(viscosity=1e-3))
+
+    def unexpected_gradient_evaluation(*args, **kwargs):
+        raise AssertionError("disabled stretching must not evaluate velocity gradients")
+
+    monkeypatch.setattr(solver, "_update_velocity_and_gradients", unexpected_gradient_evaluation)
+    monkeypatch.setattr(solver, "_update_velocity_gradients", unexpected_gradient_evaluation)
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.update_state()

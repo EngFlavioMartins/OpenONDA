@@ -430,7 +430,7 @@ class SurfaceSampler:
             if time is not None:
                 f.write(f"# flow_time={time}\n")
 
-            writer = csv.writer(f)
+            writer = csv.writer(f, lineterminator="\n")
 
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
             writer.writerow(SAMPLER_CSV_COLUMNS)
@@ -860,7 +860,7 @@ class LineSampler:
             if time is not None:
                 f.write(f"# flow_time={time}\n")
 
-            writer = csv.writer(f)
+            writer = csv.writer(f, lineterminator="\n")
 
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
             writer.writerow(SAMPLER_CSV_COLUMNS)

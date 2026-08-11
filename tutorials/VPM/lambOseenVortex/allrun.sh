@@ -6,27 +6,17 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ./allclean.sh
 
-# Output periods [s].  vortex_setup.py converts these to each method's steps.
-SAMPLE_PERIOD=1.0
+# Output periods [s].
+SAMPLE_PERIOD=0.25
 BACKUP_PERIOD=5.0
 
 run() {
     python vortex_setup.py "$1" "$2" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
+    ./allplot.sh -png
 }
 
-run vortex cs
-run vortex rwm
-run vortex dvh
-run vortex gbd
-
-run dipole cs
-run dipole rwm
-run dipole dvh
-run dipole gbd
-
-run merging cs
-run merging rwm
-run merging dvh
-run merging gbd
-
-./allplot.sh
+for physics in vortex dipole merging; do
+    for scheme in cs rwm dvh gbd; do
+        run "$physics" "$scheme"
+    done
+done

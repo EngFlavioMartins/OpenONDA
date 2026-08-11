@@ -438,6 +438,11 @@ class Logging:
                     pass
 
             if limit is not None and limit > 0:
+                if scheme == "DVH":
+                    lines.append(
+                        f"  Required diffusion interval ({limit_label}) : {limit:.3e} s  [PINNED]"
+                    )
+                    return lines
                 exceeded = dt > limit * (1.0 + 1e-6)
                 status = "*** EXCEEDS LIMIT ***" if exceeded else "OK"
                 lines.append(f"  Stability limit ({limit_label})    : {limit:.3e} s  [{status}]")

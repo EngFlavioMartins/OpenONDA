@@ -8,9 +8,8 @@ against the analytical Saffman model with Gaussian core diffusion.
 Saves: figures/vortex_ring_motion.png
 """
 
-import sys
-import glob
 from pathlib import Path
+import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     build_arg_parser,
     load_theme,
-    load_ring_speed,
+    load_sampled_ring_speed,
     saffman_speed,
     save_fig,
     T_REF,
@@ -27,7 +26,7 @@ from _common import (
     VARIANT_LABEL,
     VARIANT_STYLE,
     FIGURES_DIR,
-    SOLUTION_DIR,
+    SAMPLES_DIR,
     figure_size,
     mark_every,
     reference_style,
@@ -36,7 +35,6 @@ from _common import (
 
 def main() -> None:
     args = build_arg_parser("Self-induced velocity U/U₀ vs t*.").parse_args()
-    sol = SOLUTION_DIR
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
@@ -46,15 +44,13 @@ def main() -> None:
 
     # -- Ring speed — all available variants ---------------------------------
     for variant, st in VARIANT_STYLE.items():
-        h5_files = sorted(glob.glob(str(sol / f"vpm_{variant}_*.h5")))
-        if not h5_files:
-            continue
-        t_star, U_norm = load_ring_speed(h5_files)
+        csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
+        t_star, U_norm = load_sampled_ring_speed(csv_path)
         if t_star.size == 0:
             print(f"  (no ring speed data for {variant})")
             continue
         label = VARIANT_LABEL[variant]
-        print(f"  {variant}: {len(h5_files)} files")
+        print(f"  {variant}: {len(t_star)} samples")
         ax.plot(
             t_star,
             U_norm,

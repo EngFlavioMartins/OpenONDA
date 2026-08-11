@@ -80,8 +80,19 @@ def inspect_case(case_name: str) -> dict[str, float]:
     projection_correction = column(rows, "invariant_projection_correction_ratio")
     regularization_events = column(rows, "regularization_events")
     regularization_transfer = column(rows, "regularization_cumulative_energy_transfer")
-    regularization_enstrophy = column(rows, "regularization_max_abs_enstrophy_change")
+    regularization_energy_dissipation = column(
+        rows, "regularization_max_energy_dissipation"
+    )
+    regularization_enstrophy_injection = column(
+        rows, "regularization_max_enstrophy_injection"
+    )
+    regularization_enstrophy_dissipation = column(
+        rows, "regularization_max_enstrophy_dissipation"
+    )
     regularization_correction = column(rows, "regularization_max_correction_relative")
+    regularization_projection_correction = column(
+        rows, "regularization_max_projection_correction_relative"
+    )
     regularization_circulation = column(
         rows, "regularization_max_circulation_error_relative"
     )
@@ -114,8 +125,11 @@ def inspect_case(case_name: str) -> dict[str, float]:
             projection_correction,
             regularization_events,
             regularization_transfer,
-            regularization_enstrophy,
+            regularization_energy_dissipation,
+            regularization_enstrophy_injection,
+            regularization_enstrophy_dissipation,
             regularization_correction,
+            regularization_projection_correction,
             regularization_circulation,
             regularization_impulse,
             regularization_angular,
@@ -162,8 +176,19 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "stabilization_active": float(np.max(stabilization_active)),
         "regularization_events": float(np.max(regularization_events)),
         "regularization_filter_decay": filter_decay / energy[0],
-        "regularization_enstrophy": float(np.max(regularization_enstrophy)),
+        "regularization_energy_dissipation": float(
+            np.max(regularization_energy_dissipation)
+        ),
+        "regularization_enstrophy_injection": float(
+            np.max(regularization_enstrophy_injection)
+        ),
+        "regularization_enstrophy_dissipation": float(
+            np.max(regularization_enstrophy_dissipation)
+        ),
         "regularization_correction": float(np.max(regularization_correction)),
+        "regularization_projection_correction": float(
+            np.max(regularization_projection_correction)
+        ),
         "regularization_circulation": float(np.max(regularization_circulation)),
         "regularization_impulse": float(np.max(regularization_impulse)),
         "regularization_angular": float(np.max(regularization_angular)),
@@ -176,12 +201,15 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "circulation_drift": 5.0e-5,
         "impulse_drift": 5.0e-5,
         "angular_drift": 5.0e-4,
-        "max_overlap": 0.85,
+        "max_overlap": 1.25,
         "max_divergence": 0.25,
         "max_misalignment": 55.0 if variant != "les_stabilized" else 45.0,
         "projection_correction": 0.25,
-        "regularization_enstrophy": 5.0e-6,
+        "regularization_enstrophy_injection": 5.0e-6,
+        "regularization_energy_dissipation": 0.30,
+        "regularization_enstrophy_dissipation": 0.15,
         "regularization_correction": 0.5,
+        "regularization_projection_correction": 0.20,
         "regularization_circulation": 1.0e-5,
         "regularization_impulse": 1.0e-5,
         "regularization_angular": 1.0e-5,

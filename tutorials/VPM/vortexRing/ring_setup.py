@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one vortex-ring case selected by ``allrun.sh``.
 
-Usage: ``python ring_setup.py NAME MODE STRETCHING SAMPLE_PERIOD BACKUP_PERIOD``
+Usage: ``python ring_setup.py VARIANT SAMPLE_PERIOD BACKUP_PERIOD``
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import sys
 
 import numpy as np
 
+from assets.ring_diagnostics import RingDiagnosticsSampler
 from openonda.vpm import (
     AdvectionConfig,
     ParticleDistributor,
@@ -57,11 +58,10 @@ def stretching_setup(name: str) -> StretchingConfig:
 
 def run_case(
     name: str,
-    mode: str,
-    stretching: str,
     sample_period: float,
     backup_period: float,
 ) -> None:
+    mode, stretching = name.lower().split("_", maxsplit=1)
     viscosity = RING_STRENGTH / REYNOLDS_NUMBER
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(
         DOMAIN_BOUNDS,
@@ -71,6 +71,7 @@ def run_case(
     solver = Solver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
+            processing_unit="VULKAN",
             advection=AdvectionConfig(scheme="RK3"),
             turbulence=(
                 TurbulenceConfig.dns() if mode == "dns" else TurbulenceConfig.les_smagorinsky()
@@ -88,6 +89,7 @@ def run_case(
             backup_file_name=name,
             backup_directory=str(SOLUTION_DIR),
             sample_subdirectory=name,
+            samplers=(RingDiagnosticsSampler(),),
             max_particles=30_000,
         )
     )
@@ -124,8 +126,8 @@ def run_case(
 
 def main(arguments: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if arguments is None else arguments
-    name, mode, stretching, sample_period, backup_period = arguments
-    run_case(name, mode, stretching, float(sample_period), float(backup_period))
+    name, sample_period, backup_period = arguments
+    run_case(name, float(sample_period), float(backup_period))
     return 0
 
 

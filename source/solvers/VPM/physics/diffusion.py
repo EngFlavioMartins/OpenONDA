@@ -659,12 +659,14 @@ class _GridDiffusionMixin:
         ny: int,
         nz: int,
         default_id: int = 0,
+        propagate_to: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     ) -> np.ndarray:
         """Scatter an integer ID field to grid nodes (|Γ|-weighted nearest-node).
 
         Each grid node receives the ID of the dominant (by |Γ|-weight) particle
-        whose nearest node it is.  Nodes with no contributing particle get
-        ``default_id``.
+        whose nearest node it is.  Nodes listed in ``propagate_to`` that received
+        no particle inherit the ID of their nearest populated node; all other
+        empty nodes retain ``default_id``.
 
         Used for both ``zone_id`` (default 3) and ``group_id`` (default 0).
         """
@@ -698,6 +700,19 @@ class _GridDiffusionMixin:
             better = temp > weight_flat
             winner_flat[better] = id_val
             weight_flat[better] = temp[better]
+
+        if propagate_to is not None and np.any(weight_flat > 0.0):
+            from scipy.spatial import cKDTree
+
+            query = np.column_stack(propagate_to)
+            query_linear = query[:, 0] * (ny * nz) + query[:, 1] * nz + query[:, 2]
+            empty_query = weight_flat[query_linear] == 0.0
+            if np.any(empty_query):
+                populated_linear = np.flatnonzero(weight_flat > 0.0)
+                populated = np.column_stack(np.unravel_index(populated_linear, (nx, ny, nz)))
+                _, nearest = cKDTree(populated).query(query[empty_query])
+                empty_nodes = query[empty_query]
+                winner_grid[tuple(empty_nodes.T)] = winner_flat[populated_linear[nearest]]
         return winner_grid
 
     def _scatter_zone_ids(
@@ -874,6 +889,7 @@ class _GridDiffusionMixin:
         cap: int,
         importance: np.ndarray | None = None,
         min_abs_fraction: float = 0.99,
+        labels: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, int]:
         n_survivors = len(ix)
         if cap <= 0:
@@ -886,22 +902,59 @@ class _GridDiffusionMixin:
 
         values = circ_mag[ix, iy, iz].astype(np.float64)
         scores = values if importance is None else importance[ix, iy, iz].astype(np.float64)
-        strongest = np.argsort(-values, kind="stable")
-        total = float(values.sum())
-        protected_count = int(
-            np.searchsorted(np.cumsum(values[strongest]), min_abs_fraction * total) + 1
-        )
 
-        if protected_count >= cap:
-            keep_local = strongest[:cap]
-        else:
+        def select(candidates: np.ndarray, quota: int) -> np.ndarray:
+            candidate_values = values[candidates]
+            strongest = np.argsort(-candidate_values, kind="stable")
+            total = float(candidate_values.sum())
+            protected_count = int(
+                np.searchsorted(
+                    np.cumsum(candidate_values[strongest]),
+                    min_abs_fraction * total,
+                )
+                + 1
+            )
+
+            if protected_count >= quota:
+                return candidates[strongest[:quota]]
+
             protected = strongest[:protected_count]
-            available = np.ones(n_survivors, dtype=bool)
+            available = np.ones(len(candidates), dtype=bool)
             available[protected] = False
-            candidates = np.flatnonzero(available)
-            fill_count = cap - protected_count
-            fill = candidates[np.argpartition(-scores[candidates], fill_count - 1)[:fill_count]]
-            keep_local = np.concatenate((protected, fill))
+            remaining = np.flatnonzero(available)
+            fill_count = quota - protected_count
+            fill = remaining[
+                np.argpartition(-scores[candidates[remaining]], fill_count - 1)[:fill_count]
+            ]
+            return candidates[np.concatenate((protected, fill))]
+
+        candidate_labels = None if labels is None else labels[ix, iy, iz]
+        unique_labels = np.unique(candidate_labels) if candidate_labels is not None else []
+        if len(unique_labels) <= 1:
+            keep_local = select(np.arange(n_survivors), cap)
+        else:
+            groups = [np.flatnonzero(candidate_labels == label) for label in unique_labels]
+            totals = np.array([values[group].sum() for group in groups], dtype=np.float64)
+            capacities = np.array([len(group) for group in groups], dtype=np.int64)
+            ideal = cap * totals / totals.sum()
+            quotas = np.minimum(np.floor(ideal).astype(np.int64), capacities)
+
+            if cap >= len(groups):
+                quotas = np.maximum(quotas, 1)
+
+            while quotas.sum() < cap:
+                available = quotas < capacities
+                priority = np.where(available, ideal - quotas, -np.inf)
+                quotas[int(np.argmax(priority))] += 1
+            while quotas.sum() > cap:
+                minimum = 1 if cap >= len(groups) else 0
+                removable = quotas > minimum
+                priority = np.where(removable, quotas - ideal, -np.inf)
+                quotas[int(np.argmax(priority))] -= 1
+
+            keep_local = np.concatenate(
+                [select(group, int(quota)) for group, quota in zip(groups, quotas, strict=True)]
+            )
 
         keep_local = keep_local[np.argsort(-scores[keep_local], kind="stable")]
         ix_keep = ix[keep_local]
@@ -1168,9 +1221,6 @@ class _GridDiffusionMixin:
         zone_winner_grid = self._scatter_zone_ids(
             pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
         )
-        group_winner_grid = self._scatter_id_field(
-            pos_np, circ_np, group_id_np, grid_min_np, h, nx, ny, nz, default_id=0
-        )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
@@ -1205,6 +1255,18 @@ class _GridDiffusionMixin:
             )
             self._ping = True
             return None
+        group_winner_grid = self._scatter_id_field(
+            pos_np,
+            circ_np,
+            group_id_np,
+            grid_min_np,
+            h,
+            nx,
+            ny,
+            nz,
+            default_id=0,
+            propagate_to=(ix, iy, iz),
+        )
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
         Logging.message(
             f"[GBD] Threshold retained {100.0 * threshold_retained:.4f}% "
@@ -1230,6 +1292,7 @@ class _GridDiffusionMixin:
                 cap,
                 importance=importance,
                 min_abs_fraction=cap_abs_fraction,
+                labels=group_winner_grid,
             )
             retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
             retained_total = retained * threshold_retained
@@ -1499,9 +1562,6 @@ class _GridDiffusionMixin:
         zone_winner_grid = self._scatter_zone_ids(
             pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
         )
-        group_winner_grid = self._scatter_id_field(
-            pos_np, circ_np, group_id_np, grid_min_np, h, nx, ny, nz, default_id=0
-        )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
@@ -1533,6 +1593,18 @@ class _GridDiffusionMixin:
                 _threshold_scalar(threshold),
             )
             return None
+        group_winner_grid = self._scatter_id_field(
+            pos_np,
+            circ_np,
+            group_id_np,
+            grid_min_np,
+            h,
+            nx,
+            ny,
+            nz,
+            default_id=0,
+            propagate_to=(ix, iy, iz),
+        )
 
         # -- Particle-count cap ------------------------------------------------
         cap = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
@@ -1549,6 +1621,7 @@ class _GridDiffusionMixin:
                 cap,
                 importance=importance,
                 min_abs_fraction=cap_abs_fraction,
+                labels=group_winner_grid,
             )
             retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
             Logging.message(

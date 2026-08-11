@@ -1,364 +1,90 @@
 #!/usr/bin/env python3
-"""Co-rotating vortex merger — rotation angle, core radius, and separation.
-
-Reads VTS z=0 sample files and plots
-three diagnostics against nu t / a₀²:
-  - rotation angle θ  [deg]
-  - normalised core area  a_c² / b0²
-  - normalised separation  b / b0
-
-Core detection uses peak |ωz| with a bimodality (valley) check to
-distinguish two separate vortices from the single merged core.
-
-Reference data from Cerretelli & Williamson (2003) is overlaid when available.
-"""
+"""Co-rotating vortex merger: angle, core area, and separation histories."""
 
 from __future__ import annotations
 
-import re
-import sys
 from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    BETA_RMAX,
-    REF_DIR,
-    SCHEMES,
-    build_arg_parser,
-    build_style_map,
-    load_theme,
-    pvd_time_map,
-    publication_size,
-    resolve_runtime_physics,
-    save_publication_figure,
-)
+if __package__:
+    from ._common import (
+        BETA_RMAX,
+        REF_DIR,
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+else:
+    from _common import (
+        BETA_RMAX,
+        REF_DIR,
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
 A2_REF = REF_DIR / "a2_over_b02.csv"
 B_REF = REF_DIR / "b_over_b0_tau.csv"
 
 
-def vts_files(samples_dir: Path, prefix: str, scheme: str) -> list:
-    folder = samples_dir / f"{prefix}_{scheme}"
-    if not folder.exists():
-        return []
-    result = []
-    for p in folder.glob(f"{prefix}_{scheme}_z0_*.vts"):
-        m = re.search(r"_(\d+)\.vts$", p.name)
-        if m:
-            result.append((int(m.group(1)), p))
-    return sorted(result, key=lambda x: x[0])
-
-
-def read_vts(path: Path):
-    import pyvista as pv
-
-    grid = pv.read(str(path))
-    xy = grid.points[:, :2].astype(np.float64)
-    omega_z = grid.point_data["Vorticity"][:, 2].astype(np.float64)
-    return xy, omega_z
-
-
-# =============================================================
-# Tracking diagnostics
-# =============================================================
-
-
-def _kmeans2(pts, w, init, max_iter=50, tol=1e-6):
-    centers = init.copy().astype(np.float64)
-    labels = np.empty(len(pts), dtype=np.int32)
-    for _ in range(max_iter):
-        d0 = np.sum((pts - centers[0]) ** 2, axis=1)
-        d1 = np.sum((pts - centers[1]) ** 2, axis=1)
-        labels[:] = (d1 < d0).astype(np.int32)
-        new = np.empty_like(centers)
-        conv = True
-        for k in range(2):
-            wk = w[labels == k]
-            s = wk.sum()
-            new[k] = (wk[:, None] * pts[labels == k]).sum(axis=0) / s if s > 1e-30 else centers[k]
-            if np.linalg.norm(new[k] - centers[k]) > tol:
-                conv = False
-        centers = new
-        if conv:
-            break
-    return labels, centers
-
-
-def _neighborhood_centroid(xy, w, seed, radius, max_iter=20, tol=1e-8):
-    c = seed.copy().astype(np.float64)
-    for _ in range(max_iter):
-        dist = np.linalg.norm(xy - c, axis=1)
-        mask = dist < radius
-        if not mask.any():
-            break
-        wm = w[mask]
-        s = wm.sum()
-        if s < 1e-30:
-            break
-        c_new = (wm[:, None] * xy[mask]).sum(axis=0) / s
-        if np.linalg.norm(c_new - c) < tol:
-            c = c_new
-            break
-        c = c_new
-    return c
-
-
-def _structured_scalar_field(xy, values):
-    x_round = np.round(xy[:, 0], 10)
-    y_round = np.round(xy[:, 1], 10)
-    xs = np.unique(x_round)
-    ys = np.unique(y_round)
-    if xs.size * ys.size != xy.shape[0]:
-        return None
-    ix = np.searchsorted(xs, x_round)
-    iy = np.searchsorted(ys, y_round)
-    field = np.full((ys.size, xs.size), np.nan, dtype=np.float64)
-    field[iy, ix] = values
-    if np.isnan(field).any():
-        return None
-    return xs, ys, field
-
-
-def _triangle_kernel_1d(spacing: float, support: float) -> np.ndarray:
-    half_width = max(1, int(np.ceil(support / spacing)))
-    offsets = np.arange(-half_width, half_width + 1, dtype=np.float64) * spacing
-    weights = np.maximum(1.0 - np.abs(offsets) / max(support, spacing), 0.0)
-    if weights.sum() <= 0.0:
-        return np.array([1.0], dtype=np.float64)
-    return weights / weights.sum()
-
-
-def _filtered_extrema_centers(xy, w, b0, a0, prev_c):
-    """Experimental-style center detection: extrema of triangle-filtered vorticity."""
-    grid = _structured_scalar_field(xy, w)
-    if grid is None:
-        return None
-    xs, ys, field = grid
-    if xs.size < 3 or ys.size < 3:
-        return None
-
-    try:
-        from scipy.ndimage import convolve1d, maximum_filter
-    except ImportError:
-        return None
-
-    dx = float(np.median(np.diff(xs)))
-    dy = float(np.median(np.diff(ys)))
-    support = 0.5 * a0
-    kx = _triangle_kernel_1d(dx, support)
-    ky = _triangle_kernel_1d(dy, support)
-    filt = convolve1d(field, kx, axis=1, mode="nearest")
-    filt = convolve1d(filt, ky, axis=0, mode="nearest")
-
-    # Search local extrema over roughly half a filter support to avoid picking
-    # adjacent grid points on the same filtered peak.
-    window = max(3, int(2 * np.ceil(0.5 * support / min(dx, dy)) + 1))
-    maxima = filt == maximum_filter(filt, size=window, mode="nearest")
-    coords = np.argwhere(maxima)
-    if coords.size == 0:
-        return None
-    values = filt[maxima]
-    order = np.argsort(values)[::-1]
-
-    centers = []
-    for idx in order:
-        iy, ix = coords[idx]
-        pt = np.array([xs[ix], ys[iy]], dtype=np.float64)
-        if all(np.linalg.norm(pt - c) > 0.10 * b0 for c in centers):
-            centers.append(pt)
-        if len(centers) == 2:
-            break
-
-    if len(centers) == 1:
-        centers = [centers[0], centers[0]]
-    if len(centers) < 2:
-        return None
-
-    cores = np.array(centers, dtype=np.float64)
-    if prev_c is not None:
-        direct = np.linalg.norm(cores[0] - prev_c[0]) + np.linalg.norm(cores[1] - prev_c[1])
-        swapped = np.linalg.norm(cores[1] - prev_c[0]) + np.linalg.norm(cores[0] - prev_c[1])
-        if swapped < direct:
-            cores = cores[::-1]
-    elif cores[0, 1] < cores[1, 1]:
-        cores = cores[::-1]
-    return cores
-
-
-def step_diagnostics(xy, gz, b0, a0, prev_c, prev_c1, use_filtered_extrema=False):
-    """Returns (sep, a_c2, ang, total_gamma, cores, cores[0], merged).
-
-    ``merged`` is True once the field can no longer be described as two
-    distinguishable cores: either the tracker's degenerate fallbacks collapsed
-    both "centers" onto the same point (true single-core merger), or the
-    reported separation is larger than any real two-vortex pair could sustain
-    (b can only shrink toward merger, never grow past b0) -- a tell for the
-    tracker having locked onto a noise/edge artifact as a fake second core.
-    Callers should stop extending the timeseries the first time this is True
-    rather than plot the degenerate-branch output as if it were data.
-    """
-    if xy is None or gz is None:
-        return np.nan, np.nan, np.nan, 0.0, None, None, False
-    xy = xy.astype(np.float64)
-    w = np.abs(gz).astype(np.float64)
-    if w.sum() < 1e-30:
-        return np.nan, np.nan, np.nan, 0.0, None, None, False
-
-    R = 0.45 * b0
-
-    cores = None
-    if use_filtered_extrema:
-        cores = _filtered_extrema_centers(xy, w, b0, a0, prev_c)
-
-    if cores is not None:
-        pass
-    else:
-        if prev_c is not None:
-            init = prev_c.copy()
-        else:
-            i1 = np.argmax(w)
-            p1 = xy[i1]
-            d1 = np.linalg.norm(xy - p1, axis=1)
-            w2 = w.copy()
-            w2[d1 < 0.25 * b0] = 0.0
-            if w2.max() < 0.1 * w[i1]:
-                init = np.array([p1, p1])
-            else:
-                i2 = np.argmax(w2)
-                init = np.array([p1, xy[i2]])
-
-        _, kmeans_centers = _kmeans2(xy, w, init)
-        c0 = _neighborhood_centroid(xy, w, kmeans_centers[0], R)
-        c1 = _neighborhood_centroid(xy, w, kmeans_centers[1], R)
-
-        mid_test = 0.5 * (c0 + c1)
-        d_mid = np.linalg.norm(xy - mid_test, axis=1)
-        w_mid = w[np.argmin(d_mid)]
-
-        d_c0 = np.linalg.norm(xy - c0, axis=1)
-        d_c1 = np.linalg.norm(xy - c1, axis=1)
-        w_c0 = w[np.argmin(d_c0)]
-        w_c1 = w[np.argmin(d_c1)]
-
-        sep_now = np.linalg.norm(c0 - c1)
-        if sep_now < 0.15 * b0 or w_mid > 0.96 * min(w_c0, w_c1):
-            cores = np.array([mid_test, mid_test])
-        else:
-            cores = np.array([c0, c1])
-
-    ref = prev_c1 if prev_c1 is not None else np.array([0.0, 0.5 * b0])
-    if np.linalg.norm(cores[1] - ref) < np.linalg.norm(cores[0] - ref):
-        cores = cores[::-1]
-
-    sep = float(np.linalg.norm(cores[0] - cores[1]))
-
-    # See docstring: coincident centers = genuine merger; sep > 1.15*b0 = a
-    # spurious "second core" (noise/edge artifact), since real separation only
-    # shrinks toward merger and C&W's own b/b0 never exceeds ~1.07 even at t=0
-    # (see b_over_b0_tau.csv). The old 1.5*b0 gate let post-merger artifacts
-    # through (e.g. GBD's tracker locking onto a filament at b/b0~1.25).
-    merged = sep < 0.05 * b0 or sep > 1.15 * b0
-
-    mid = 0.5 * (cores[0] + cores[1])
-    ang = float(np.arctan2(cores[0, 1] - mid[1], cores[0, 0] - mid[0]))
-
-    core_mask = w > 0.05 * w.max()
-    if core_mask.sum() >= 5:
-        pts_c, w_c = xy[core_mask], w[core_mask]
-        wt_c = w_c.sum()
-        c_sys = np.array([(w_c * pts_c[:, 0]).sum() / wt_c, (w_c * pts_c[:, 1]).sum() / wt_c])
-        r2_sys = (w_c * ((pts_c - c_sys) ** 2).sum(axis=1)).sum() / wt_c
-        a_c2 = 0.5 * max(r2_sys - (sep / 2.0) ** 2, 0.0)
-    else:
-        a_c2 = np.nan
-
-    return sep, a_c2, ang, float(w.sum()), cores.copy(), cores[0].copy(), merged
-
-
-# =============================================================
-# Data extraction
-# =============================================================
-
-
 def extract_merging_timeseries(
     samples_dir: Path,
     scheme: str,
-    nu: float,
-    b0: float,
-    a0: float,
-    target_time: float,
-    tolerance: float,
+    viscosity: float,
+    separation: float,
+    core_radius: float,
 ) -> dict | None:
-    rows = []
-    prev_c = None
-    prev_c1 = None
-
-    time_map = pvd_time_map(samples_dir, "merging", scheme)
-    if not time_map or max(time_map.values()) < target_time - tolerance:
+    path = samples_dir / f"merging_{scheme}" / "pair_diagnostics.csv"
+    if not path.is_file():
         return None
-    for step, vts_path in vts_files(samples_dir, "merging", scheme):
-        if step not in time_map:
-            continue
-        t = time_map[step]
-        xy, omega_z = read_vts(vts_path)
-
-        x_uniq = np.unique(np.round(xy[:, 0], 6))
-        dA = (x_uniq[1] - x_uniq[0]) ** 2 if len(x_uniq) > 1 else 0.0025
-        circ = omega_z.sum() * dA
-        if not rows:
-            initial_circ = max(circ, 1e-10)
-        elif abs(circ - initial_circ) / initial_circ > 0.50:
-            print(
-                f"  [{scheme}] circulation changed by "
-                f"{(circ - initial_circ) / initial_circ:+.0%} "
-                f"at step {step} — truncating."
-            )
-            break
-
-        sep, a_c2, ang, gam, prev_c, prev_c1, merged = step_diagnostics(
-            xy, omega_z, b0, a0, prev_c, prev_c1, use_filtered_extrema=True
-        )
-        if merged:
-            tau = nu * t / a0**2
-            print(
-                f"  [{scheme}] two-core tracking broke down at t={t:.3f}s "
-                f"(tau={tau:.3f}) — truncating (sep={sep / b0:.3f} b0)."
-            )
-            break
-        rows.append((t, sep, a_c2, ang, gam))
-
-    if not rows:
+    data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
+    data = data.sort_values("time_step").drop_duplicates("time_step", keep="last")
+    if data.empty:
         return None
-    d = np.array(rows, dtype=float)
-    tau = nu * d[:, 0] / (a0**2)
-    raw_ang = d[:, 3]
-    finite = np.isfinite(raw_ang)
-    if finite.sum() > 1:
-        unwrapped = np.full_like(raw_ang, np.nan)
-        unwrapped[finite] = np.unwrap(raw_ang[finite])
-        th = np.degrees(unwrapped - unwrapped[finite][0])
-    else:
-        th = np.full_like(raw_ang, np.nan)
-    b_over_b0 = d[:, 1] / b0
+
+    merged = data["merged"].astype(str).str.lower().eq("true").to_numpy()
+    if merged.any():
+        data = data.iloc[: int(np.flatnonzero(merged)[0])]
+    if data.empty:
+        return None
+
+    circulation = data["surface_circulation"].to_numpy(float)
+    drifted = np.abs(circulation / circulation[0] - 1.0) > 0.50
+    if drifted.any():
+        data = data.iloc[: int(np.flatnonzero(drifted)[0])]
+    if data.empty:
+        return None
+
+    angle = data["angle_rad"].to_numpy(float)
+    finite = np.isfinite(angle)
+    angle_degrees = np.full_like(angle, np.nan)
+    if finite.any():
+        unwrapped = np.unwrap(angle[finite])
+        angle_degrees[finite] = np.degrees(unwrapped - unwrapped[0])
+
+    time = data["flow_time"].to_numpy(float)
     return {
-        "tau": tau,
-        "theta_deg": th,
-        "a_c2_over_b02": 2.0 * BETA_RMAX**2 * d[:, 2] / b0**2,
-        "b_over_b0": b_over_b0,
-        "total_gamma": d[:, 4],
+        "tau": viscosity * time / core_radius**2,
+        "theta_deg": angle_degrees,
+        "a_c2_over_b02": (2.0 * BETA_RMAX**2 * data["core_area"].to_numpy(float) / separation**2),
+        "b_over_b0": data["separation"].to_numpy(float) / separation,
     }
-
-
-# =============================================================
-# Plot
-# =============================================================
 
 
 def plot_merging_case(args) -> int:
@@ -367,99 +93,80 @@ def plot_merging_case(args) -> int:
     out = Path(args.figures_dir) / f"merging_comparison.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    colors, theme = load_theme()
+    colors, _ = load_theme()
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
-    tau_max = 0.07
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
     fig.subplots_adjust(hspace=0.14, top=0.94, bottom=0.25, left=0.15, right=0.97)
 
     plotted_schemes = []
-    tolerance = max(0.5, 20.0 * args.dt)
+    latest_tau = 0.0
     for scheme in SCHEMES:
-        ts = extract_merging_timeseries(
+        timeseries = extract_merging_timeseries(
             samples_dir,
             scheme,
             run_nu,
             args.b0,
             a0,
-            args.total_time,
-            tolerance,
         )
-        if ts is None:
+        if timeseries is None:
             print(f"  [merging] skipping {scheme!r} — no data")
             continue
-        st = style_map[scheme]
-        plot_kw = {
-            "color": st["color"],
-            "label": st["label"],
-            "marker": st["marker"],
+        style = style_map[scheme]
+        plot_options = {
+            "color": style["color"],
+            "label": style["label"],
+            "marker": style["marker"],
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
         }
-        axes[0].plot(ts["tau"], ts["theta_deg"], **plot_kw)
-        axes[1].plot(ts["tau"], ts["a_c2_over_b02"], **plot_kw)
-        axes[2].plot(ts["tau"], ts["b_over_b0"], **plot_kw)
+        axes[0].plot(timeseries["tau"], timeseries["theta_deg"], **plot_options)
+        axes[1].plot(timeseries["tau"], timeseries["a_c2_over_b02"], **plot_options)
+        axes[2].plot(timeseries["tau"], timeseries["b_over_b0"], **plot_options)
         plotted_schemes.append(scheme)
+        latest_tau = max(latest_tau, float(timeseries["tau"][-1]))
 
-    if len(plotted_schemes) != len(SCHEMES):
+    if not plotted_schemes:
         plt.close(fig)
         out.unlink(missing_ok=True)
-        print(
-            f"  [merging] complete diagnostics available for {len(plotted_schemes)}/"
-            f"{len(SCHEMES)} methods; figure not generated"
-        )
-        return 1
+        print("  [merging] no sampled diagnostics; figure not generated")
+        return 0
 
-    # -- Reference curves -------------------------------
+    print(f"  [merging] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
 
-    run_a0_over_b0 = args.a0_over_b0
-    tau_limit = 3.5  # tau_max / (run_a0_over_b0**2)
-    a0_sigma = run_a0_over_b0 / np.sqrt(2.0)
-
-    ref_kw = dict(
-        color=colors["reference"],
-        linestyle="--",
-        linewidth=1.0,
-        zorder=100,
-        label=r"Cerretelli \& Williamson (2003)",
-    )
+    reference_options = {
+        "color": colors["reference"],
+        "linestyle": "--",
+        "linewidth": 1.0,
+        "zorder": 100,
+        "label": r"Cerretelli \& Williamson (2003)",
+    }
+    scale = args.a0_over_b0**2
     if THETA_REF.exists():
-        r = np.loadtxt(THETA_REF, delimiter=",")
-        axes[0].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
+        reference = np.loadtxt(THETA_REF, delimiter=",")
+        axes[0].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
     if A2_REF.exists():
-        r = np.loadtxt(A2_REF, delimiter=",")
-        axes[1].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
+        reference = np.loadtxt(A2_REF, delimiter=",")
+        axes[1].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
     if B_REF.exists():
-        r = np.loadtxt(B_REF, delimiter=",")
-        axes[2].plot(r[:, 0] / (run_a0_over_b0**2), r[:, 1], **ref_kw)
-
-    tau_fc = np.linspace(0.0, tau_max, 300)
-    eps2 = a0_sigma**2 + 2.0 * tau_fc
-    eps = np.sqrt(eps2)
-    corr = 1.0 + 2.0 * eps2 * (1.0 - 2.0 * np.log(np.maximum(eps, 1e-12)))
-    Re_run = args.gamma / runtime["nu"]
-    dtheta_dtau_deg = Re_run / np.pi * corr * (180.0 / np.pi)
-    theta_fc = np.cumsum(dtheta_dtau_deg * np.gradient(tau_fc))
-    theta_fc -= theta_fc[0]
+        reference = np.loadtxt(B_REF, delimiter=",")
+        axes[2].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
     axes[0].set_ylim([-10, 400])
-    axes[0].set_xlim([0, 2.6])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
     axes[1].set_ylim([0, 0.3])
-    axes[1].set_xlim([0, 2.6])
 
     axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_ylim([0, 1.2])
-    axes[2].set_xlim([0, 2.6])
+    axes[2].set_xlim([0, 1.02 * latest_tau])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
@@ -468,8 +175,8 @@ def plot_merging_case(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Co-rotating vortex merger diagnostics comparison.")
-    return plot_merging_case(p.parse_args())
+    parser = build_arg_parser("Co-rotating vortex merger diagnostics comparison.")
+    return plot_merging_case(parser.parse_args())
 
 
 if __name__ == "__main__":

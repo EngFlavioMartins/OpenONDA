@@ -67,6 +67,14 @@ def test_conservative_filter_factory_round_trip_and_validation():
             max_particles=100,
             misalignment_trigger=181.0,
         )
+    with pytest.raises(ValueError, match="enstrophy-dissipation"):
+        StabilizationConfig.conservative_filter(
+            frequency=1,
+            start_step=0,
+            grid_spacing=0.08,
+            max_particles=100,
+            enstrophy_dissipation_limit=1.0,
+        )
 
 
 def test_retention_round_trip_is_nested():
@@ -112,13 +120,15 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         assert config.processing_unit == "CPU"
         assert config.time_integration == "COUPLED"
         assert config.axisymmetric_no_swirl_axis is None
-        assert config.velocity.method == "TREECODE"
+        assert config.velocity.method == "DIRECT"
         assert config.particles_kernel == "GAUSSIAN"
         assert config.advection.scheme == config.stretching.scheme == "RK2"
-        assert config.stretching.mode == "MIXED"
-        assert config.stretching.use_treecode
+        assert config.stretching.mode == "TRANSPOSED"
+        assert not config.stretching.use_treecode
         assert config.stretching.conserve_moments
         assert config.stretching.conserve_energy
+        assert config.coupled_max_strain_increment == pytest.approx(0.15)
+        assert config.coupled_max_advection_fraction == pytest.approx(0.5)
         assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
 
     for name in ("leapfrog_dns", "leapfrog_les", "collide_dns", "collide_les"):
@@ -153,6 +163,11 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         "leapfrog_les_stabilized"
     ].stabilization.regularization_tail_budget == pytest.approx(
         namespace["REGULARIZATION_TAIL_BUDGET"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_divergence_trigger == pytest.approx(
+        namespace["REGULARIZATION_DIVERGENCE_TRIGGER"]
     )
 
 

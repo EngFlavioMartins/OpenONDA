@@ -1,11 +1,4 @@
-"""Shared utilities for lambOseenVortex plot scripts.
-
-Each plot script lives in assets/ and imports from here via::
-
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent))
-    from _common import load_theme, build_style_map, ...
-"""
+"""Shared utilities for the Lamb--Oseen plot scripts."""
 
 from __future__ import annotations
 
@@ -30,8 +23,6 @@ GAMMA = 1.0
 REYNOLDS_NUMBER = 530.0
 CORE_RADIUS = 0.125
 SEPARATION = 1.0
-TIME_STEP = 0.04
-TOTAL_TIME = 20.0
 PUBLICATION_WIDTH_CM = 12.5
 
 _THEME_MODULE = None
@@ -90,25 +81,14 @@ def build_arg_parser(description: str):
         default="png",
         help="Output figure format (default: png).",
     )
-    p.add_argument(
-        "--step",
-        type=int,
-        default=None,
-        help="Specific time-step to plot (default: last available).",
-    )
     viscosity = GAMMA / REYNOLDS_NUMBER
     p.set_defaults(
         samples_dir=SAMPLES_DIR,
         figures_dir=FIGURES_DIR,
         gamma=GAMMA,
         nu=viscosity,
-        t0=(CORE_RADIUS / BETA_RMAX) ** 2 / (4.0 * viscosity),
-        dt=TIME_STEP,
-        re=REYNOLDS_NUMBER,
-        circulation=GAMMA,
         b0=SEPARATION,
         a0_over_b0=CORE_RADIUS / SEPARATION,
-        total_time=TOTAL_TIME,
     )
     return p
 

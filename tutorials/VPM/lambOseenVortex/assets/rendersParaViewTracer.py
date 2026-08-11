@@ -3,11 +3,15 @@
 # paraview.compatibility.major = 6
 # paraview.compatibility.minor = 0
 
+from pathlib import Path
+
 #### import the simple module from the paraview
 from paraview.simple import *
 
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
+
+TUTORIAL_DIR = Path(__file__).resolve().parents[1]
 
 # get active source.
 vpm_dipole_cs_000010xdmf = GetActiveSource()
@@ -66,7 +70,7 @@ vorticityLUTColorBar.Set(
 # create a new 'PVD Reader'
 dipole_cs_z0pvd = PVDReader(
     registrationName="dipole_cs_z0.pvd",
-    FileName="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/lambOseenVortex/solution/dipole_cs/samples/dipole_cs_z0.pvd",
+    FileName=str(TUTORIAL_DIR / "samples/dipole_cs/dipole_cs_z0.pvd"),
 )
 
 # show data in view
@@ -1684,7 +1688,7 @@ animationScene1.Play()
 # create a new 'PVD Reader'
 merging_cs_z0pvd = PVDReader(
     registrationName="merging_cs_z0.pvd",
-    FileName="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/lambOseenVortex/solution/merging_cs/samples/merging_cs_z0.pvd",
+    FileName=str(TUTORIAL_DIR / "samples/merging_cs/merging_cs_z0.pvd"),
 )
 
 # show data in view

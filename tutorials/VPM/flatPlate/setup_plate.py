@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Run one flat-plate case selected by ``allrun.sh``.
 
-Usage::
-
-    python setup_plate.py NAME KINEMATICS FRAME AOA SAMPLE_PLANES \
-        SAMPLE_PERIOD BACKUP_PERIOD
+Usage: ``python setup_plate.py MODE AOA SAMPLE_PERIOD BACKUP_PERIOD``
 """
 
 from __future__ import annotations
@@ -194,6 +191,7 @@ def run_case(
         setup=VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP,
+            processing_unit="VULKAN",
             advection=AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             background_velocity=background_velocity,
@@ -238,18 +236,32 @@ def run_case(
         )
 
 
-def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments
-    name, kinematics, frame, angle, planes, sample_period, backup_period = arguments
+def run(mode: str, angle_of_attack: float, sample_period: float, backup_period: float) -> None:
+    """Run one moving-body or static-wind case."""
+    integer_angle = round(angle_of_attack)
+    if not math.isclose(angle_of_attack, integer_angle):
+        raise ValueError("The flat-plate sweep uses whole-degree angles of attack")
+    if mode not in {"moving", "static"}:
+        raise ValueError(f"Unknown flat-plate mode: {mode}")
+
+    sign = "n" if integer_angle < 0 else ""
+    name = f"exp_{mode}_aoa{sign}{abs(integer_angle):02d}"
+    moving = mode == "moving"
     run_case(
         name=name,
-        kinematics=kinematics,
-        frame=frame,
-        angle_of_attack=float(angle),
-        sample_planes=planes == "planes",
-        sample_period=float(sample_period),
-        backup_period=float(backup_period),
+        kinematics="ramp" if moving else "static",
+        frame="body" if moving else "wind",
+        angle_of_attack=angle_of_attack,
+        sample_planes=not moving and integer_angle == 8,
+        sample_period=sample_period,
+        backup_period=backup_period,
     )
+
+
+def main(arguments: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if arguments is None else arguments
+    mode, angle, sample_period, backup_period = arguments
+    run(mode, float(angle), float(sample_period), float(backup_period))
     return 0
 
 

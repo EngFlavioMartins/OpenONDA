@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
   <Collection>
-    <DataSet timestep="19.86" file="vortex_dvh_z0_000060.vts"/>
+    <DataSet timestep="19.98" file="vortex_gbd_z0_000333.vts"/>
   </Collection>
 </VTKFile>

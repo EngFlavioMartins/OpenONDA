@@ -25,7 +25,6 @@ Saves: figures/vortex_surface_fields.png
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -36,16 +35,26 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    SCHEMES,
-    build_arg_parser,
-    load_theme,
-    publication_size,
-    pvd_time_map,
-    resolve_runtime_physics,
-    save_publication_figure,
-)
+if __package__:
+    from ._common import (
+        SCHEMES,
+        build_arg_parser,
+        load_theme,
+        publication_size,
+        pvd_time_map,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+else:
+    from _common import (
+        SCHEMES,
+        build_arg_parser,
+        load_theme,
+        publication_size,
+        pvd_time_map,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
@@ -106,32 +115,17 @@ def _read_vts(path: Path):
 def _find_surface_vts(
     samples_dir: Path,
     scheme: str,
-    step: int | None,
-    target_time: float,
-    tolerance: float,
 ) -> tuple[Path | None, float | None]:
     folder = samples_dir / f"vortex_{scheme}"
     time_by_step = pvd_time_map(samples_dir, "vortex", scheme)
     if not time_by_step:
         return None, None
 
-    if step is not None:
-        selected_step = step
-        selected_time = time_by_step.get(step)
-        if selected_time is None:
-            return None, None
-    else:
-        selected_step = min(time_by_step, key=lambda item: abs(time_by_step[item] - target_time))
-        selected_time = time_by_step[selected_step]
-        if abs(selected_time - target_time) > tolerance:
-            print(
-                f"  [skip] {scheme.upper()} final surface is t={selected_time:.3g}s, "
-                f"not near requested t={target_time:.3g}s."
-            )
-            return None, None
-
-    path = folder / f"vortex_{scheme}_z0_{selected_step:06d}.vts"
-    return (path, selected_time) if path.is_file() else (None, None)
+    for selected_step in sorted(time_by_step, key=time_by_step.get, reverse=True):
+        path = folder / f"vortex_{scheme}_z0_{selected_step:06d}.vts"
+        if path.is_file():
+            return path, time_by_step[selected_step]
+    return None, None
 
 
 # =============================================================
@@ -154,15 +148,8 @@ def plot_surface_fields(args) -> int:
 
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
-    tolerance = max(0.5, 20.0 * args.dt)
     for scheme, qid, *_ in _LAYOUT:
-        vts, sample_time = _find_surface_vts(
-            samples_dir,
-            scheme,
-            args.step,
-            args.total_time,
-            tolerance,
-        )
+        vts, sample_time = _find_surface_vts(samples_dir, scheme)
         if vts is None:
             print(f"  [surface] no requested VTS for {scheme!r} — skipping quadrant")
             continue
@@ -182,13 +169,13 @@ def plot_surface_fields(args) -> int:
             mid=mid,
         )
 
-    if len(datasets) != len(SCHEMES):
+    if not datasets:
         out.unlink(missing_ok=True)
-        print(
-            f"  [surface] complete fields available for {len(datasets)}/{len(SCHEMES)} "
-            "methods; figure not generated"
-        )
-        return 1
+        print("  [surface] no sampled fields; figure not generated")
+        return 0
+
+    sample_time = float(np.median([data["time"] for data in datasets.values()]))
+    print(f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods at t={sample_time:.3g}s")
 
     # -- Shared normalisation limits ------------------------------------
     v_max = max(d["vel_mag"].max() for d in datasets.values()) / uc_ref

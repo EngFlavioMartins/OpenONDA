@@ -11,7 +11,6 @@ Saves: figures/vortex_comparison.png
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -21,17 +20,30 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    SCHEMES,
-    build_arg_parser,
-    build_style_map,
-    load_theme,
-    publication_size,
-    read_column_half_length,
-    resolve_runtime_physics,
-    save_publication_figure,
-)
+if __package__:
+    from ._common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        read_column_half_length,
+        read_flow_time,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+else:
+    from _common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        read_column_half_length,
+        read_flow_time,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
 
 
 # =============================================================
@@ -77,40 +89,24 @@ def finite_column_velocity(
 # =============================================================
 
 
-def last_csv(
-    samples_dir: Path,
-    scheme: str,
-    step: int | None,
-    dt: float,
-    target_time: float | None = None,
-):
-    folder = samples_dir / f"vortex_{scheme}"
-    path = folder / f"vortex_{scheme}_x.csv"
-    if not path.exists():
-        return None, None
+def load_profile(samples_dir: Path, scheme: str) -> tuple[pd.DataFrame, float] | None:
+    """Load the current final profile from ``samples/vortex_<scheme>/``."""
 
-    data = pd.read_csv(path)
-    if data.empty or data["Uy"].abs().max() <= 1e-10:
-        return None, None
-    if step is not None:
-        available_steps = data["time_step"].dropna().astype(int).unique()
-        if step not in available_steps:
-            return None, None
-        selected_t = float(data.loc[data["time_step"] == step, "flow_time"].iloc[0])
-        return path, selected_t
+    path = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_x.csv"
+    if not path.is_file():
+        return None
 
-    available_times = np.sort(data["flow_time"].unique())
-    selected_t = float(available_times[-1])
-    if target_time is not None:
-        selected_t = float(available_times[np.argmin(np.abs(available_times - target_time))])
-    tolerance = max(0.5, 20.0 * dt)
-    if target_time is not None and abs(selected_t - target_time) > tolerance:
-        print(
-            f"  [skip] {scheme.upper()} final sample is t={selected_t:.3g}s, "
-            f"not near requested t={target_time:.3g}s."
-        )
-        return None, None
-    return path, selected_t
+    time = read_flow_time(path)
+    if time is None:
+        return None
+
+    data = pd.read_csv(path, comment="#")
+    required_columns = {"x", "Uy", "omega_z"}
+    if data.empty or not required_columns.issubset(data.columns):
+        return None
+    if data["Uy"].abs().max() <= 1e-10:
+        return None
+    return data, time
 
 
 # =============================================================
@@ -136,18 +132,15 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
     half_length = read_column_half_length(samples_dir) or 25.0 * ac0
 
-    target_time = None if args.step is not None else args.total_time
-
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
     fig.subplots_adjust(hspace=0.12, top=0.94, bottom=0.18, left=0.17, right=0.97)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        path, t = last_csv(samples_dir, scheme, args.step, args.dt, target_time)
-        if path is None:
+        profile = load_profile(samples_dir, scheme)
+        if profile is None:
             continue
-        df = pd.read_csv(path)
-        df = df[np.isclose(df["flow_time"], t)]
+        df, t = profile
         x = df["x"].to_numpy()
         uy = df["Uy"].to_numpy()
         oz = df["omega_z"].to_numpy()
@@ -166,20 +159,14 @@ def plot_vortex_case(args) -> int:
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
-    if len(scheme_data) != len(SCHEMES):
+    if not scheme_data:
         plt.close(fig)
         out.unlink(missing_ok=True)
-        print(
-            f"  [vortex] complete profiles available for {len(scheme_data)}/{len(SCHEMES)} "
-            "methods; figure not generated"
-        )
-        return 1
+        print("  [vortex] no sampled profiles; figure not generated")
+        return 0
 
-    elapsed_time = (
-        args.total_time
-        if target_time is not None
-        else (float(np.median([s[1] for s in scheme_data])) if scheme_data else args.total_time)
-    )
+    elapsed_time = float(np.median([scheme[1] for scheme in scheme_data]))
+    print(f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s")
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": colors["reference"], "lw": 1.0, "zorder": 0, "linestyle": "--"}

@@ -13,7 +13,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 from __future__ import annotations
 
 import csv
+import inspect
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -67,7 +69,7 @@ class SamplerExecutor:
             )
             if not hasattr(sampler, "_call_count"):
                 sampler._call_count = 0
-                sampler._pvd_entries = []
+                sampler._pvd_entries = SamplerExecutor._read_pvd(solution_dir, name_prefix)
             sampler._call_count += 1
 
             seq_num = f"{solver.time_step:06d}"
@@ -116,8 +118,18 @@ class SamplerExecutor:
                 filename = f"{name_prefix}_{seq_num}.vts"
                 filepath = solution_dir / filename
                 sampler.save_vtp(solver, filepath, time=flow_time)
+                sampler._pvd_entries = [
+                    entry for entry in sampler._pvd_entries if entry[1] != filename
+                ]
                 sampler._pvd_entries.append((flow_time, filename))
+                sampler._pvd_entries.sort(key=lambda entry: (entry[0], entry[1]))
                 SamplerExecutor._write_pvd(solution_dir, name_prefix, sampler._pvd_entries)
+            elif hasattr(sampler, "save_csv"):
+                save_csv = sampler.save_csv
+                keywords = {"time": flow_time}
+                if "step" in inspect.signature(save_csv).parameters:
+                    keywords["step"] = time_step
+                save_csv(solver, solution_dir / f"{name_prefix}.csv", **keywords)
             else:
                 SamplerExecutor._append_csv(
                     sampler,
@@ -150,7 +162,7 @@ class SamplerExecutor:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         write_header = not filepath.exists() or filepath.stat().st_size == 0
         with filepath.open("a", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream)
+            writer = csv.writer(stream, lineterminator="\n")
             if write_header:
                 writer.writerow(["flow_time", "time_step", *SAMPLER_CSV_COLUMNS])
             step = "" if time_step is None else int(time_step)
@@ -185,3 +197,23 @@ class SamplerExecutor:
         lines.append("</VTKFile>")
         with open(pvd_path, "w") as fh:
             fh.write("\n".join(lines))
+
+    @staticmethod
+    def _read_pvd(output_dir: Path, name_prefix: str) -> list[tuple[float, str]]:
+        """Read an existing surface-sample index when a run is resumed."""
+        pvd_path = output_dir / f"{name_prefix}.pvd"
+        if not pvd_path.is_file():
+            return []
+
+        try:
+            root = ET.parse(pvd_path).getroot()  # noqa: S314
+            entries = []
+            for dataset in root.findall(".//DataSet"):
+                filename = dataset.get("file")
+                timestep = dataset.get("timestep")
+                if filename is not None and timestep is not None:
+                    entries.append((float(timestep), filename))
+            return entries
+        except (ET.ParseError, OSError, ValueError) as exc:
+            print(f"(Warning) Could not read sampler index '{pvd_path}': {exc}")
+            return []

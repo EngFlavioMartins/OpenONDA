@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from dataclasses import FrozenInstanceError
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 import xml.etree.ElementTree as ET
 
@@ -158,6 +159,42 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
         ["0.2", "2"],
     ]
     assert list((tmp_path / "samples").iterdir()) == [output]
+
+
+def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
+    class LegacyCSVSampler:
+        file_name = "profile"
+
+        def save_csv(self, _solver, filepath, time=None):
+            Path(filepath).write_text(f"time={time}\n", encoding="utf-8")
+
+    solver = SimpleNamespace(
+        config=SimpleNamespace(samplers=[LegacyCSVSampler()]),
+        particles=SimpleNamespace(number_of_particles=2),
+        particles_circulation=np.ones((2, 3)),
+        backup_directory=str(tmp_path),
+        flow_time=0.3,
+        time_step=3,
+    )
+
+    SamplerExecutor.execute(solver)
+
+    assert (tmp_path / "samples" / "profile.csv").read_text(encoding="utf-8") == "time=0.3\n"
+
+
+def test_surface_sampler_preserves_and_replaces_pvd_steps_after_restart(tmp_path):
+    pvd_path = tmp_path / "surface.pvd"
+    SamplerExecutor._write_pvd(tmp_path, "surface", [(0.1, "surface_000001.vts")])
+
+    entries = SamplerExecutor._read_pvd(tmp_path, "surface")
+    entries = [entry for entry in entries if entry[1] != "surface_000001.vts"]
+    entries.append((0.1, "surface_000001.vts"))
+    SamplerExecutor._write_pvd(tmp_path, "surface", entries)
+
+    datasets = ET.parse(pvd_path).getroot().findall(".//DataSet")
+    assert [(item.get("timestep"), item.get("file")) for item in datasets] == [
+        ("0.1", "surface_000001.vts")
+    ]
 
 
 def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):

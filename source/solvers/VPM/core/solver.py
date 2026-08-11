@@ -518,16 +518,24 @@ class Solver:
             "regularization_events": 0,
             "regularization_dissipative_candidate_events": 0,
             "regularization_enstrophy_restoration_events": 0,
+            "regularization_solenoidal_projection_events": 0,
+            "regularization_projection_only_events": 0,
+            "regularization_last_projection_correction_relative": 0.0,
+            "regularization_max_projection_correction_relative": 0.0,
+            "regularization_last_projection_residual_ratio": 1.0,
             "regularization_last_particles_before": 0,
             "regularization_last_particles_after": 0,
             "regularization_last_energy_change": 0.0,
             "regularization_cumulative_energy_change": 0.0,
+            "regularization_max_energy_dissipation": 0.0,
             "regularization_last_energy_transfer": 0.0,
             "regularization_cumulative_energy_transfer": 0.0,
             "regularization_equivalent_viscosity": 0.0,
             "regularization_last_step": 0,
             "regularization_last_enstrophy_change": 0.0,
             "regularization_max_abs_enstrophy_change": 0.0,
+            "regularization_max_enstrophy_injection": 0.0,
+            "regularization_max_enstrophy_dissipation": 0.0,
             "regularization_last_candidate_energy_change": 0.0,
             "regularization_last_candidate_enstrophy_change": 0.0,
             "regularization_last_moment_correction_relative": 0.0,
@@ -695,10 +703,17 @@ class Solver:
 
             # 1. VELOCITY & GRADIENTS (At t_n)
             _adv = (self.config.advection.scheme if self.config.advection else "RK3").upper()
+            _gradients_required = (
+                self.stretching_enabled
+                or self.flow_model == "LES"
+                or self.time_integration == "COUPLED"
+                or self.stabilization_config.stretching_viscosity_coefficient > 0.0
+            )
             # Fuse u + ∇u into one tree build
             _fuse_vel_grad = (
                 self.flow_model != "POTENTIAL"
                 and _adv != "NONE"
+                and _gradients_required
                 and self.num_sources == 0
                 and self.panel_solver is None
                 and getattr(self.physics, "velocity_override", None) is None
@@ -709,12 +724,18 @@ class Solver:
                 velocity_k1_ready = True
             else:
                 velocity_k1_ready = False
-                if _adv == "NONE" or self.num_sources > 0 or self.panel_solver is not None:
+                if (
+                    _adv == "NONE"
+                    or not _gradients_required
+                    or self.num_sources > 0
+                    or self.panel_solver is not None
+                ):
                     with self.profiler.section("Velocity"):
                         self._update_velocities()
                     velocity_k1_ready = True
-                with self.profiler.section("Velocity gradients"):
-                    self._update_velocity_gradients()
+                if _gradients_required:
+                    with self.profiler.section("Velocity gradients"):
+                        self._update_velocity_gradients()
 
             # 2. LES FILTER UPDATE
             with self.profiler.section("LES update"):
@@ -733,7 +754,8 @@ class Solver:
                     self._update_positions(precomputed_k1=velocity_k1_ready)
 
             if self.flow_model != "POTENTIAL":
-                self._announce_strength_update()
+                if self.stretching_enabled:
+                    self._announce_strength_update()
                 if coupled_update:
                     with self.profiler.section("Coupled advection + stretching"):
                         self._apply_coupled_update_with_subcycling(
@@ -3801,11 +3823,14 @@ class Solver:
 
         A compact Gaussian scatter supplies a well-overlapped particle cloud.
         A minimum-norm correction then restores vector circulation, linear
-        impulse, and finite-core angular impulse.  A second correction in that
-        nine-moment null space restores enstrophy using the *same exact Gaussian
-        pair integral* used by the production diagnostics.  The remaining
-        kinetic-energy decrease is therefore an explicit, measured LES-filter
-        transfer rather than an unreported remeshing error.
+        impulse, and finite-core angular impulse.  A candidate that dissipates
+        both energy and enstrophy is accepted directly; otherwise a correction
+        in that nine-moment null space restores enstrophy using the *same exact
+        Gaussian pair integral* used by production diagnostics.  A final
+        moment-constrained Helmholtz projection acts only if reconstructed
+        divergence remains excessive.  Every kinetic-energy decrease is an
+        explicit, measured LES-filter transfer rather than an unreported
+        remeshing error.
         """
 
         cfg = self.stabilization_config
@@ -3819,6 +3844,7 @@ class Solver:
 
         from ..numerics.divergence_relaxation import (
             _MomentNullspace,
+            constrained_divergence_relaxation,
             gaussian_invariant_rows,
         )
         from ..numerics.filament_refinement import gaussian_particle_moments
@@ -3833,11 +3859,23 @@ class Solver:
             return
 
         before_health = discretization_health(position, circulation, radius)
+        at_capacity = (
+            cfg.regularization_max_particles is not None
+            and len(position) >= cfg.regularization_max_particles
+        )
+        divergence_trigger = (
+            cfg.regularization_capacity_divergence_trigger
+            if at_capacity and cfg.regularization_capacity_divergence_trigger is not None
+            else cfg.regularization_divergence_trigger
+        )
+        misalignment_trigger = (
+            cfg.regularization_capacity_misalignment_trigger
+            if at_capacity and cfg.regularization_capacity_misalignment_trigger is not None
+            else cfg.regularization_misalignment_trigger
+        )
         if (
-            before_health["vorticity_divergence_error"]
-            <= cfg.regularization_divergence_trigger
-            and before_health["strength_misalignment_deg"]
-            <= cfg.regularization_misalignment_trigger
+            before_health["vorticity_divergence_error"] <= divergence_trigger
+            and before_health["strength_misalignment_deg"] <= misalignment_trigger
         ):
             return
 
@@ -3854,28 +3892,33 @@ class Solver:
             "radius": radius.astype(self.np_dtype),
             "volume": volume.astype(self.np_dtype),
             "viscosity": viscosity.astype(self.np_dtype),
-            "viscosity_turbulent": self.particles.viscosity_turbulent_cpu().astype(
-                self.np_dtype
-            ),
+            "viscosity_turbulent": self.particles.viscosity_turbulent_cpu().astype(self.np_dtype),
             "zone_id": self.particles.zone_id_cpu().astype(np.int32),
             "group_id": self.particles.group_id_cpu().astype(np.int32),
         }
         removed_before = self._particles_removed_this_step
         circulation_removed_before = self._circulation_removed_this_step.copy()
         molecular_viscosity = float(viscosity.mean())
-        proposal = self.physics.grid_based_diffusion(
-            self.particles,
-            dt=self.time_step_size,
-            h=spacing,
-            nu=molecular_viscosity,
-            domain_padding=4.0,
-            regen_threshold=cfg.regularization_tail_budget,
-            regen_threshold_mode="budget",
-            rd_ratio=4.0,
-            nu_eff=None,
-            max_nodes=cfg.regularization_max_particles,
-            cap_abs_fraction=0.995,
+        projection_only = (
+            cfg.regularization_max_particles is not None
+            and len(position) > cfg.regularization_max_particles
         )
+        if projection_only:
+            proposal = old_state.copy()
+        else:
+            proposal = self.physics.grid_based_diffusion(
+                self.particles,
+                dt=self.time_step_size,
+                h=spacing,
+                nu=molecular_viscosity,
+                domain_padding=4.0,
+                regen_threshold=cfg.regularization_tail_budget,
+                regen_threshold_mode="budget",
+                rd_ratio=4.0,
+                nu_eff=None,
+                max_nodes=cfg.regularization_max_particles,
+                cap_abs_fraction=0.995,
+            )
         if proposal is None:
             raise RuntimeError("conservative regularization produced no particle field")
 
@@ -3947,6 +3990,7 @@ class Solver:
         )
 
         used_dissipative_candidate = False
+        projection_result = None
         try:
             candidate, candidate_integrals = upload_and_integrate(moment_corrected)
             candidate_energy_change = (
@@ -3954,17 +3998,14 @@ class Solver:
                 - float(before_integrals["kinetic_energy"])
             ) / max(abs(float(before_integrals["kinetic_energy"])), np.finfo(float).tiny)
             candidate_enstrophy_change = (
-                float(candidate_integrals["enstrophy"])
-                - float(before_integrals["enstrophy"])
+                float(candidate_integrals["enstrophy"]) - float(before_integrals["enstrophy"])
             ) / max(abs(float(before_integrals["enstrophy"])), np.finfo(float).tiny)
             moment_correction_relative = float(
                 np.linalg.norm(candidate.astype(np.float64) - proposed_circulation)
                 / max(np.linalg.norm(proposed_circulation), np.finfo(float).tiny)
             )
-            if (
-                -cfg.regularization_energy_dissipation_limit
-                <= candidate_energy_change
-                <= 1.0e-7
+            if projection_only or (
+                -cfg.regularization_energy_dissipation_limit <= candidate_energy_change <= 1.0e-7
                 and -cfg.regularization_enstrophy_dissipation_limit
                 <= candidate_enstrophy_change
                 <= 1.0e-7
@@ -3972,7 +4013,9 @@ class Solver:
                 uploaded = candidate
                 after_integrals = candidate_integrals
                 energy_change = candidate_energy_change
-                used_dissipative_candidate = True
+                used_dissipative_candidate = (
+                    candidate_energy_change <= 1.0e-7 and candidate_enstrophy_change <= 1.0e-7
+                )
             else:
                 direction = nullspace.to_correction(
                     moment_corrected / nullspace.sqrt_volume[:, None]
@@ -3990,15 +4033,10 @@ class Solver:
                 candidate_enstrophy = float(candidate_integrals["enstrophy"])
                 target_enstrophy = float(before_integrals["enstrophy"])
                 linear = 0.5 * (
-                    float(plus_integrals["enstrophy"])
-                    - float(minus_integrals["enstrophy"])
+                    float(plus_integrals["enstrophy"]) - float(minus_integrals["enstrophy"])
                 )
                 quadratic = (
-                    0.5
-                    * (
-                        float(plus_integrals["enstrophy"])
-                        + float(minus_integrals["enstrophy"])
-                    )
+                    0.5 * (float(plus_integrals["enstrophy"]) + float(minus_integrals["enstrophy"]))
                     - candidate_enstrophy
                 )
                 roots = np.roots((quadratic, linear, candidate_enstrophy - target_enstrophy))
@@ -4034,9 +4072,7 @@ class Solver:
                         <= 1.0e-7
                         and abs(trial_enstrophy_change) <= 5.0e-6
                     ):
-                        admissible.append(
-                            (trial_energy_change, uploaded.copy(), trial_integrals)
-                        )
+                        admissible.append((trial_energy_change, uploaded.copy(), trial_integrals))
                     else:
                         rejected.append(
                             f"lambda={multiplier:.3e}: dE/E={trial_energy_change:.3e}, "
@@ -4047,17 +4083,43 @@ class Solver:
                         "regularization candidate changed "
                         f"dE/E={candidate_energy_change:.3e}, "
                         f"dZ/Z={candidate_enstrophy_change:.3e}; "
-                        "no dissipative enstrophy-preserving root ("
-                        + "; ".join(rejected)
-                        + ")"
+                        "no dissipative enstrophy-preserving root (" + "; ".join(rejected) + ")"
                     )
 
                 # Preserve the most energy among admissible roots: the filter
                 # removes only what is required to repair the cloud geometry.
-                energy_change, uploaded, after_integrals = max(
-                    admissible, key=lambda item: item[0]
-                )
+                energy_change, uploaded, after_integrals = max(admissible, key=lambda item: item[0])
                 uploaded, after_integrals = upload_and_integrate(uploaded)
+
+            preliminary_health = discretization_health(
+                new_position,
+                uploaded.astype(np.float64),
+                new_radius,
+            )
+            if (
+                projection_only
+                or preliminary_health["vorticity_divergence_error"]
+                > cfg.regularization_projection_trigger
+            ):
+                projection_result = constrained_divergence_relaxation(
+                    new_position,
+                    uploaded.astype(np.float64),
+                    new_radius,
+                    new_volume,
+                    grid_spacing=spacing,
+                    max_correction_norm=cfg.regularization_projection_max_correction,
+                    max_residual_ratio=0.8,
+                    energy_tolerance=0.02,
+                    enstrophy_tolerance=cfg.regularization_enstrophy_dissipation_limit,
+                    helicity_tolerance=0.05,
+                    variation_tolerance=0.05,
+                    spectral_convergence_fraction=0.25,
+                    reference_tolerances=(1.0e-4, 1.0e-4, 1.0e-4),
+                    max_projection_sweeps=1,
+                    target_moments=(before_moments[0], before_moments[2], before_moments[3]),
+                )
+                uploaded, after_integrals = upload_and_integrate(projection_result.circulation)
+
         except Exception:
             restore_old_field()
             raise
@@ -4073,14 +4135,22 @@ class Solver:
         enstrophy_change = (
             float(after_integrals["enstrophy"]) - float(before_integrals["enstrophy"])
         ) / max(abs(float(before_integrals["enstrophy"])), np.finfo(float).tiny)
+        if not -cfg.regularization_energy_dissipation_limit <= energy_change <= 1.0e-7:
+            restore_old_field()
+            raise RuntimeError(
+                f"regularization changed energy by {energy_change:.3e}, outside its "
+                "declared dissipative interval"
+            )
+        if not (-cfg.regularization_enstrophy_dissipation_limit <= enstrophy_change <= 5.0e-6):
+            restore_old_field()
+            raise RuntimeError(
+                f"regularization changed enstrophy by {enstrophy_change:.3e}, outside "
+                "its declared non-injecting interval"
+            )
 
         impulse_scale = max(
             0.5
-            * float(
-                np.linalg.norm(np.cross(position, circulation), axis=1).sum(
-                    dtype=np.float64
-                )
-            ),
+            * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
             np.finfo(float).tiny,
         )
         angular_terms = (
@@ -4118,24 +4188,47 @@ class Solver:
         diagnostics = self._regularization_diagnostics
         previous_event_step = int(diagnostics["regularization_last_step"])
         elapsed_steps = self.time_step - previous_event_step
-        averaging_steps = elapsed_steps if previous_event_step > 0 and elapsed_steps > 0 else frequency
+        averaging_steps = (
+            elapsed_steps if previous_event_step > 0 and elapsed_steps > 0 else frequency
+        )
         equivalent_viscosity = -energy_transfer / max(
-            averaging_steps
-            * self.time_step_size
-            * float(before_integrals["enstrophy"]),
+            averaging_steps * self.time_step_size * float(before_integrals["enstrophy"]),
             np.finfo(float).tiny,
         )
         diagnostics["regularization_events"] += 1
-        event_counter = (
-            "regularization_dissipative_candidate_events"
-            if used_dissipative_candidate
-            else "regularization_enstrophy_restoration_events"
-        )
-        diagnostics[event_counter] += 1
+        if projection_only:
+            diagnostics["regularization_projection_only_events"] += 1
+        if not projection_only:
+            event_counter = (
+                "regularization_dissipative_candidate_events"
+                if used_dissipative_candidate
+                else "regularization_enstrophy_restoration_events"
+            )
+            diagnostics[event_counter] += 1
+        if projection_result is not None:
+            projection_correction = projection_result.correction_norm_relative
+            diagnostics["regularization_solenoidal_projection_events"] += 1
+            diagnostics["regularization_last_projection_correction_relative"] = (
+                projection_correction
+            )
+            diagnostics["regularization_max_projection_correction_relative"] = max(
+                diagnostics["regularization_max_projection_correction_relative"],
+                projection_correction,
+            )
+            diagnostics["regularization_last_projection_residual_ratio"] = (
+                projection_result.final_residual_ratio
+            )
+        else:
+            diagnostics["regularization_last_projection_correction_relative"] = 0.0
+            diagnostics["regularization_last_projection_residual_ratio"] = 1.0
         diagnostics["regularization_last_particles_before"] = len(position)
         diagnostics["regularization_last_particles_after"] = count
         diagnostics["regularization_last_energy_change"] = energy_change
         diagnostics["regularization_cumulative_energy_change"] += energy_change
+        diagnostics["regularization_max_energy_dissipation"] = max(
+            diagnostics["regularization_max_energy_dissipation"],
+            -energy_change,
+        )
         diagnostics["regularization_last_energy_transfer"] = energy_transfer
         diagnostics["regularization_cumulative_energy_transfer"] += energy_transfer
         diagnostics["regularization_equivalent_viscosity"] = equivalent_viscosity
@@ -4145,11 +4238,17 @@ class Solver:
             diagnostics["regularization_max_abs_enstrophy_change"],
             abs(enstrophy_change),
         )
+        diagnostics["regularization_max_enstrophy_injection"] = max(
+            diagnostics["regularization_max_enstrophy_injection"],
+            enstrophy_change,
+        )
+        diagnostics["regularization_max_enstrophy_dissipation"] = max(
+            diagnostics["regularization_max_enstrophy_dissipation"],
+            -enstrophy_change,
+        )
         diagnostics["regularization_last_candidate_energy_change"] = candidate_energy_change
         diagnostics["regularization_last_candidate_enstrophy_change"] = candidate_enstrophy_change
-        diagnostics["regularization_last_moment_correction_relative"] = (
-            moment_correction_relative
-        )
+        diagnostics["regularization_last_moment_correction_relative"] = moment_correction_relative
         diagnostics["regularization_last_correction_relative"] = correction_relative
         diagnostics["regularization_max_correction_relative"] = max(
             diagnostics["regularization_max_correction_relative"],
@@ -4172,10 +4271,12 @@ class Solver:
             diagnostics[key] = max(diagnostics[key], error)
         Logging.message(
             "[Conservative regularization] "
+            f"mode={'projection-only' if projection_only else ('dissipative' if used_dissipative_candidate else 'enstrophy-restored')}, "
             f"N={len(position)}->{count}, correction={correction_relative:.3e}, "
             f"dE/E={energy_change:.3e}, dZ/Z={enstrophy_change:.3e}, "
             f"candidate=({candidate_energy_change:.3e},"
             f"{candidate_enstrophy_change:.3e}), "
+            f"projection={0.0 if projection_result is None else projection_result.correction_norm_relative:.3e}, "
             f"div={before_health['vorticity_divergence_error']:.3e}"
             f"->{after_health['vorticity_divergence_error']:.3e}, "
             f"angle={before_health['strength_misalignment_deg']:.2f}"

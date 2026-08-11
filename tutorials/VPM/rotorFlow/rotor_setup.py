@@ -4,23 +4,29 @@
 Usage: ``python rotor_setup.py SAMPLE_PERIOD BACKUP_PERIOD``
 """
 
-import argparse
+from __future__ import annotations
+
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 
-from openonda.vpm import Solver, VPMSetup, StabilizationConfig
 from openonda.vpm import (
     AdvectionConfig,
-    TurbulenceConfig,
+    ManeuverVLM,
+    Solver,
+    StabilizationConfig,
     StretchingConfig,
+    SurfaceSampler,
+    TurbulenceConfig,
     VelocityConfig,
     ViscousConfig,
+    VLMMeshSetup,
+    VLMSurfaceSetup,
+    VLMSetup,
+    VPMSetup,
 )
-from openonda.vpm import VLMMeshSetup, VLMSurfaceSetup, VLMSetup
-from openonda.vpm import ManeuverVLM
-from openonda.vpm import SurfaceSampler
 from source.solvers.VPM.utils.field_samplers import resolve_samples_dir
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
@@ -47,24 +53,6 @@ GUARD_FREQUENCY = 20
 MAX_PARTICLE_STRENGTH = 10.0
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="RotorFlow VLM-VPM simulation")
-    parser.add_argument("sample_period", type=float, nargs="?", default=0.12)
-    parser.add_argument("backup_period", type=float, nargs="?", default=0.03)
-    parser.set_defaults(
-        num_steps=NUMBER_OF_STEPS,
-        dt=TIME_STEP,
-        ramp_rotations=RAMP_ROTATIONS,
-        treecode_theta=TREECODE_THETA,
-        coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
-        coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
-        coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
-        guard_frequency=GUARD_FREQUENCY,
-        max_particle_strength=MAX_PARTICLE_STRENGTH,
-    )
-    return parser
-
-
 def nominal_wake_spacing(time_step: float) -> float:
     """Return the resolved wake length used by displacement subcycling.
 
@@ -83,19 +71,21 @@ def cadence_steps(period: float, time_step: float) -> int:
 
 
 def build_solver_config(
-    args: argparse.Namespace,
+    sample_period: float,
+    backup_period: float,
     *,
     vlm_setup: VLMSetup | None = None,
     samplers: tuple[SurfaceSampler, ...] | list[SurfaceSampler] = (),
 ) -> VPMSetup:
     """Build the rotor VPM configuration."""
-    wake_spacing = nominal_wake_spacing(args.dt)
+    wake_spacing = nominal_wake_spacing(TIME_STEP)
     return VPMSetup(
-        time_step_size=args.dt,
+        time_step_size=TIME_STEP,
+        processing_unit="VULKAN",
         time_integration="COUPLED",
-        coupled_max_strain_increment=args.coupled_max_strain_increment,
-        coupled_max_advection_fraction=args.coupled_max_advection_fraction,
-        coupled_max_substeps=args.coupled_max_substeps,
+        coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
+        coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
+        coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
         advection=AdvectionConfig(scheme="RK2"),
         vlm=vlm_setup,
         background_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
@@ -103,7 +93,7 @@ def build_solver_config(
         stretching=StretchingConfig.transposed(
             scheme="RK2",
             use_treecode=True,
-            treecode_theta=args.treecode_theta,
+            treecode_theta=TREECODE_THETA,
         ),
         stabilization=StabilizationConfig.bounded_domain(
             bounds=[
@@ -120,7 +110,7 @@ def build_solver_config(
             characteristic_distance=wake_spacing,
         ),
         velocity=VelocityConfig.treecode(
-            theta=args.treecode_theta,
+            theta=TREECODE_THETA,
             sort_particle_targets=True,
             traversal_block_dim=128,
         ),
@@ -129,8 +119,8 @@ def build_solver_config(
         backup_file_name=CASE_NAME,
         backup_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
-        backup_frequency=cadence_steps(args.backup_period, args.dt),
-        logging_frequency=cadence_steps(args.sample_period, args.dt),
+        backup_frequency=cadence_steps(backup_period, TIME_STEP),
+        logging_frequency=cadence_steps(sample_period, TIME_STEP),
         export_flow_integrals=True,
     )
 
@@ -165,17 +155,17 @@ def enforce_wake_admissibility(solver: Solver, max_particle_strength: float) -> 
         )
 
 
-def write_manifest(args: argparse.Namespace, solver: Solver) -> None:
+def write_manifest(solver: Solver) -> None:
     """Store the numerical settings beside the sampled results."""
     cfg = solver.config
     output_dir = resolve_samples_dir(SOLUTION_DIR, CASE_NAME)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "case": "rotorFlow",
-        "dt": args.dt,
-        "num_steps": args.num_steps,
-        "sample_interval": cfg.logging_frequency * args.dt,
-        "raw_backup_interval": cfg.backup_frequency * args.dt,
+        "dt": TIME_STEP,
+        "num_steps": NUMBER_OF_STEPS,
+        "sample_interval": cfg.logging_frequency * TIME_STEP,
+        "raw_backup_interval": cfg.backup_frequency * TIME_STEP,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particles_kernel,
         "molecular_viscosity": cfg.viscous.viscosity,
@@ -189,12 +179,11 @@ def write_manifest(args: argparse.Namespace, solver: Solver) -> None:
         json.dump(manifest, handle, indent=2)
 
 
-def main() -> int:
+def main(arguments: list[str] | None = None) -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
-    args = build_arg_parser().parse_args()
-
-    num_steps = args.num_steps
+    arguments = sys.argv[1:] if arguments is None else arguments
+    sample_period, backup_period = map(float, arguments)
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 
@@ -221,7 +210,7 @@ def main() -> int:
         )
 
     rotation_period = 2.0 * np.pi / ANGULAR_VELOCITY
-    ramp_time = max(0.0, args.ramp_rotations * rotation_period)
+    ramp_time = RAMP_ROTATIONS * rotation_period
 
     def rotor_angular_velocity(t: float) -> np.ndarray:
         if ramp_time > 0.0 and t < ramp_time:
@@ -249,7 +238,7 @@ def main() -> int:
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_frequency=cadence_steps(args.sample_period, args.dt),
+        logging_frequency=cadence_steps(sample_period, TIME_STEP),
     )
 
     # Downstream planes at 1.5R, 3R, and 4.5R.
@@ -266,16 +255,21 @@ def main() -> int:
         for x_loc in [1.5 * ROTOR_RADIUS, 3.0 * ROTOR_RADIUS, 4.5 * ROTOR_RADIUS]
     ]
 
-    solver_config = build_solver_config(args, vlm_setup=vlm_setup, samplers=plane_samplers)
+    solver_config = build_solver_config(
+        sample_period,
+        backup_period,
+        vlm_setup=vlm_setup,
+        samplers=plane_samplers,
+    )
     vpm = Solver(setup=solver_config)
-    write_manifest(args, vpm)
+    write_manifest(vpm)
     vpm.info()
 
     try:
-        for step in range(num_steps):
+        for step in range(NUMBER_OF_STEPS):
             vpm.update_state()
-            if (step + 1) % args.guard_frequency == 0:
-                enforce_wake_admissibility(vpm, args.max_particle_strength)
+            if (step + 1) % GUARD_FREQUENCY == 0:
+                enforce_wake_admissibility(vpm, MAX_PARTICLE_STRENGTH)
     except RuntimeError:
         vpm.save_state(str(SOLUTION_DIR / "rejected_state"))
         raise

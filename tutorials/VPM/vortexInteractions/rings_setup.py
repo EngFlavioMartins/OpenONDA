@@ -55,7 +55,12 @@ REGULARIZATION_FREQUENCY = OUTPUT_FREQUENCY
 REGULARIZATION_START_STEP = 300
 REGULARIZATION_SPACING = 0.084
 REGULARIZATION_TAIL_BUDGET = 0.003
-STABILIZED_MAX_PARTICLES = 6_000
+REGULARIZATION_DIVERGENCE_TRIGGER = 0.20
+REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER = 0.25
+REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER = 25.0
+REGULARIZATION_ENERGY_LIMIT = 0.30
+REGULARIZATION_ENSTROPHY_LIMIT = 0.25
+STABILIZED_MAX_PARTICLES = 20_000
 
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
@@ -88,6 +93,11 @@ def stabilization(variant: str) -> StabilizationConfig:
             grid_spacing=REGULARIZATION_SPACING,
             max_particles=STABILIZED_MAX_PARTICLES,
             tail_budget=REGULARIZATION_TAIL_BUDGET,
+            divergence_trigger=REGULARIZATION_DIVERGENCE_TRIGGER,
+            capacity_divergence_trigger=REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER,
+            capacity_misalignment_trigger=REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER,
+            energy_dissipation_limit=REGULARIZATION_ENERGY_LIMIT,
+            enstrophy_dissipation_limit=REGULARIZATION_ENSTROPHY_LIMIT,
         )
     return StabilizationConfig.disabled()
 
@@ -104,23 +114,18 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
     return VPMSetup(
         time_step_size=TIME_STEP,
         time_integration="COUPLED",
+        coupled_max_strain_increment=0.15,
+        coupled_max_advection_fraction=0.5,
         advection=AdvectionConfig(scheme="RK2"),
-        stretching=StretchingConfig.mixed(
+        stretching=StretchingConfig.transposed(
             scheme="RK2",
-            use_treecode=True,
-            treecode_theta=0.15,
             conserve_moments=True,
             conserve_energy=True,
         ),
         viscous=viscous_diffusion(variant),
         turbulence=turbulence(variant),
         stabilization=stabilization(variant),
-        velocity=VelocityConfig.treecode(
-            theta=0.15,
-            multipole_order=2,
-            sort_particle_targets=True,
-            traversal_block_dim=128,
-        ),
+        velocity=VelocityConfig.direct(),
         particles_kernel="GAUSSIAN",
         processing_unit="CPU",
         max_particles=STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else 5_000,

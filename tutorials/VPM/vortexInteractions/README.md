@@ -27,15 +27,26 @@ viscous-energy budget as DNS and LES.
 Residual viscosity alone cannot repair a particle cloud whose vortex vectors
 have become geometrically misaligned. The stabilized variant therefore checks
 the reconstructed divergence and circulation-weighted misalignment every 20
-steps. Once either exceeds its trigger, it scatters the Gaussian field onto a
+steps. Once either exceeds `0.20` or `20 deg`, respectively, it scatters the Gaussian field onto a
 well-overlapped grid and discards at most 0.3% of the absolute-circulation tail.
 A minimum-norm correction then restores vector circulation, linear impulse, and
-finite-core angular impulse. A correction in the null space of those nine
-constraints restores the production Gaussian enstrophy integral to within
-`5e-6` relative error.
+finite-core angular impulse. A candidate is accepted directly when both energy
+and enstrophy decrease by less than 30% and 15%, respectively. If the raw
+candidate would inject either quantity or over-dissipate enstrophy, a correction
+in the null space of those nine constraints restores the production Gaussian
+enstrophy integral to within `5e-6` while requiring energy to decrease.
+If the rebuilt cloud still has divergence error above `0.08`, a constrained
+Helmholtz projection reduces it while preserving the same moments and retaining
+the non-injecting energy/enstrophy gates.
+Once the stabilized cloud reaches its 8,000-particle budget, later health
+interventions are projection-only: the solver does not repeatedly remesh an
+expanding support or discard an ever larger circulation tail. Before each such
+projection, the current cloud is retained unchanged; the projected operation is
+accepted only when its net production energy and enstrophy transfers remain
+nonpositive.
 
 The regularization is accepted only if kinetic energy decreases. Its exact
-energy transfer is exported separately and is bounded to 15% per event; in the
+energy transfer is exported separately and is bounded to 30% per event; in the
 validated setup the transfers are far smaller. Thus this is a conservative LES
 filter with an explicit energy ledger, not a hidden remeshing source or a
 strength clip. The health trigger also means that a resolved cloud is left
@@ -45,6 +56,8 @@ All six cases use the same coupled RK2 advection/stretching discretization and
 the same minimum-norm stage projection for vector circulation, linear impulse,
 angular impulse, and discrete inviscid energy. This shared projection corrects
 finite-particle conservation error; it is not the stabilization being compared.
+Interactions are evaluated directly, so a tree-approximation change cannot be
+mistaken for a stabilization effect.
 DNS and plain LES use the fixed cloud. Stabilized LES adds the residual
 viscosity and the audited conservative filter described above.
 

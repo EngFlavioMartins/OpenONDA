@@ -4,10 +4,8 @@
 Reads flow-integral CSV files (``samples/flow_integrals.csv``) exported by
 the VPM solver when logging is active.
 
-Plots a 3x1 figure:
-  - Top panel:    single vortex
-  - Centre panel: vortex dipole
-  - Bottom panel: co-rotating merger
+Plots one panel for each physics case: single vortex, vortex dipole, and
+co-rotating merger.
 
 Filled markers show dE/dt (energy decay rate), hollow markers show -νΩ
 (viscous dissipation via enstrophy).  Colours are consistent per scheme
@@ -18,7 +16,6 @@ Saves: figures/lamboseen_energy.png
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -29,16 +26,26 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    SCHEMES,
-    build_arg_parser,
-    build_style_map,
-    load_theme,
-    publication_size,
-    resolve_runtime_physics,
-    save_publication_figure,
-)
+if __package__:
+    from ._common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
+else:
+    from _common import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        load_theme,
+        publication_size,
+        resolve_runtime_physics,
+        save_publication_figure,
+    )
 
 
 # =============================================================
@@ -49,7 +56,7 @@ from _common import (
 def read_flow_integrals(csv_path: Path) -> dict | None:
     if not csv_path.is_file():
         return None
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, on_bad_lines="skip").dropna(subset=["time"])
     if df.empty or "dEdt" not in df.columns:
         return None
     return {
@@ -92,9 +99,9 @@ def plot_case_panel(
     p_ref: float,
     gamma: float,
     t0: float,
-) -> bool:
+) -> float:
     ax.set_title(title)
-    plotted = False
+    latest_tau = 0.0
     for scheme in SCHEMES:
         csv_path = samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
         data = read_flow_integrals(csv_path)
@@ -113,8 +120,8 @@ def plot_case_panel(
         }
         ax.plot(tau, data["dedt"] / p_ref, **plot_kw)
         ax.plot(tau, data["nu_omega"] / p_ref, mfc="none", **plot_kw)
-        plotted = True
-    return plotted
+        latest_tau = max(latest_tau, float(tau.max()))
+    return latest_tau
 
 
 def plot_energy_enstrophy(args) -> int:
@@ -134,28 +141,12 @@ def plot_energy_enstrophy(args) -> int:
 
     tau_scale = run_nu / (a0**2)
     p_ref = run_nu * (args.gamma**2) / (a0**2)
-    tau_lim = 0.04 / (args.a0_over_b0**2)
-
-    tolerance = max(0.5, 20.0 * args.dt)
-    missing = []
-    for case_prefix, _, _ in CASES:
-        for scheme in SCHEMES:
-            data = read_flow_integrals(
-                samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
-            )
-            if data is None or len(data["t"]) == 0 or data["t"][-1] < args.total_time - tolerance:
-                missing.append(f"{case_prefix}_{scheme}")
-    if missing:
-        out.unlink(missing_ok=True)
-        print(f"  [energy] incomplete cases: {', '.join(missing)}; figure not generated")
-        return 1
-
     fig, axes = plt.subplots(1, 3, figsize=publication_size(7.5), sharey="row")
     fig.subplots_adjust(wspace=0.20, top=0.90, bottom=0.39, left=0.14, right=0.97)
 
     plotted = False
     for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
-        plotted |= plot_case_panel(
+        latest_tau = plot_case_panel(
             ax,
             samples_dir,
             case_prefix,
@@ -167,9 +158,11 @@ def plot_energy_enstrophy(args) -> int:
             args.gamma,
             run_t0,
         )
+        plotted |= latest_tau > 0.0
 
         ax.set_ylim([-0.5, 0])
-        ax.set_xlim([0, tau_lim])
+        if latest_tau > 0.0:
+            ax.set_xlim([0, 1.02 * latest_tau])
         ax.set_xlabel(r"$\nu t / a_{c,0}^2$")
 
     if not plotted:
@@ -180,8 +173,17 @@ def plot_energy_enstrophy(args) -> int:
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_{c,0}^2)$")
 
+    available_schemes = [
+        scheme
+        for scheme in SCHEMES
+        if any(
+            read_flow_integrals(samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv")
+            is not None
+            for case_prefix, _, _ in CASES
+        )
+    ]
     handles: list = []
-    for scheme in SCHEMES:
+    for scheme in available_schemes:
         st = style_map[scheme]
         handles.append(
             Line2D(

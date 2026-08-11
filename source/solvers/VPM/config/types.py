@@ -1067,8 +1067,9 @@ class StabilizationConfig:
 
     Conservative regularization is a separate, health-triggered LES filter.
     It rebuilds an under-resolved Gaussian cloud while restoring circulation,
-    linear impulse, angular impulse, and enstrophy.  Its accepted kinetic-energy
-    loss is reported explicitly as a filter transfer.
+    linear impulse, and angular impulse, while forbidding energy or enstrophy
+    injection.  Its accepted kinetic-energy loss is reported explicitly as a
+    filter transfer.
     """
 
     stretching_viscosity_coefficient: float = 0.0
@@ -1103,6 +1104,18 @@ class StabilizationConfig:
 
     regularization_misalignment_trigger: float = 20.0
     """Apply a scheduled regularization above this mean misalignment angle [deg]."""
+
+    regularization_capacity_divergence_trigger: float | None = None
+    """Optional higher divergence trigger after the particle budget is reached."""
+
+    regularization_capacity_misalignment_trigger: float | None = None
+    """Optional higher misalignment trigger after the particle budget is reached."""
+
+    regularization_projection_trigger: float = 0.08
+    """Apply a moment-constrained solenoidal projection above this post-filter error."""
+
+    regularization_projection_max_correction: float = 0.20
+    """Largest relative circulation correction admitted by the solenoidal projection."""
 
     def __post_init__(self) -> None:
         """Normalize and validate stabilization inputs."""
@@ -1141,6 +1154,21 @@ class StabilizationConfig:
             raise ValueError("regularization divergence trigger must be non-negative")
         if not 0.0 <= self.regularization_misalignment_trigger <= 180.0:
             raise ValueError("regularization misalignment trigger must lie in [0, 180]")
+        if (
+            self.regularization_capacity_divergence_trigger is not None
+            and self.regularization_capacity_divergence_trigger < 0.0
+        ):
+            raise ValueError("regularization capacity divergence trigger must be non-negative")
+        if self.regularization_capacity_misalignment_trigger is not None and not (
+            0.0 <= self.regularization_capacity_misalignment_trigger <= 180.0
+        ):
+            raise ValueError(
+                "regularization capacity misalignment trigger must lie in [0, 180]"
+            )
+        if self.regularization_projection_trigger < 0.0:
+            raise ValueError("regularization projection trigger must be non-negative")
+        if not 0.0 < self.regularization_projection_max_correction < 1.0:
+            raise ValueError("regularization projection correction limit must lie in (0, 1)")
 
     # -- Factory methods -------------------------------------------------------
     @staticmethod
@@ -1175,6 +1203,10 @@ class StabilizationConfig:
         enstrophy_dissipation_limit: float = 0.15,
         divergence_trigger: float = 0.04,
         misalignment_trigger: float = 20.0,
+        capacity_divergence_trigger: float | None = None,
+        capacity_misalignment_trigger: float | None = None,
+        projection_trigger: float = 0.08,
+        projection_max_correction: float = 0.20,
     ) -> "StabilizationConfig":
         """Residual viscosity plus moment/enstrophy-constrained redistribution."""
 
@@ -1189,6 +1221,10 @@ class StabilizationConfig:
             regularization_enstrophy_dissipation_limit=enstrophy_dissipation_limit,
             regularization_divergence_trigger=divergence_trigger,
             regularization_misalignment_trigger=misalignment_trigger,
+            regularization_capacity_divergence_trigger=capacity_divergence_trigger,
+            regularization_capacity_misalignment_trigger=capacity_misalignment_trigger,
+            regularization_projection_trigger=projection_trigger,
+            regularization_projection_max_correction=projection_max_correction,
         )
 
 

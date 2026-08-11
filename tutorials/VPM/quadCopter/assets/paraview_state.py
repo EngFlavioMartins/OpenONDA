@@ -1,4 +1,6 @@
 # state file generated using paraview version 6.0.1-1233-gf6d296c8ae
+from pathlib import Path
+
 import paraview
 
 paraview.compatibility.major = 6
@@ -9,6 +11,8 @@ from paraview.simple import *
 
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
+
+TUTORIAL_DIR = Path(__file__).resolve().parents[1]
 
 # ----------------------------------------------------------------
 # setup views used in the visualization
@@ -257,7 +261,7 @@ text1.Text = "$ \\| \\mathbf{u} \\|_{\\infty} $"
 # create a new 'PVD Reader'
 sampled_zplanepvd = PVDReader(
     registrationName="sampled_zplane.pvd",
-    FileName="/home/flavio-martins/Projects/OpenONDA/tutorials/VPM/quadCopterVLM/solution/samples/sampled_zplane.pvd",
+    FileName=str(TUTORIAL_DIR / "samples/quadcopter/sampled_zplane.pvd"),
 )
 sampled_zplanepvd.PointArrays = [
     "Velocity",
