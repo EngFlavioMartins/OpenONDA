@@ -43,9 +43,28 @@ The main rules are:
 - Declare VLM surfaces, transforms, kinematics, mesh distribution, force
   policy, and fluid properties in `VLMSetup`. The VPM solver creates the
   runtime VLM solver after initializing Taichi.
+- Declare the complete stabilization policy in one `StabilizationConfig`.
+  Filament refinement and divergence relaxation are nested entries of it, not
+  separate `VPMSetup` arguments:
+
+  ```python
+  stabilization=StabilizationConfig(
+      pedrizzetti_relaxation_factor=0.3,
+      filament_refinement=FilamentRefinementConfig.adaptive(frequency=20),
+      divergence_relaxation=DivergenceRelaxationConfig.constrained(
+          frequency=20, grid_spacing=0.05
+      ),
+  )
+  ```
+
 - Use `StabilizationConfig.bounded_domain()` only as a particle-retention
   policy for finite wake or coupled domains. It does not alter particle
   strengths or core sizes. Configuration dataclasses are frozen.
+- Every mechanism runs through `solver.stabilization`, the stabilization
+  master. It judges each event against three global criteria —
+  `max_circulation_error`, `max_strength_growth`, `max_vorticity_growth` — and
+  writes one compact `stabilization_*` block to `flow_integrals.csv`. Per-event
+  physics limits belong to the individual mechanism configs.
 - Use `AUTO`, `CPU`, `CUDA`, `VULKAN`, or `METAL` for the compute backend.
 - Sampler persistence has no format switch. Surface samplers write VTS/PVD
   time series; line and point samplers append to one CSV table with

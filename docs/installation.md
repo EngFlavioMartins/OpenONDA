@@ -56,10 +56,18 @@ scripts/install/install_conda.sh
 ```
 
 It creates or updates `OpenONDA` from `scripts/environment/environment.yml`,
-installs the OpenONDA wheel into that environment, initializes Gmsh and Taichi,
-advances a native FVM step from `/tmp`, and runs `pip check`. Use `--name NAME` to choose another environment,
-`--dev` for an editable contributor installation, or `--parallel` for a
-single-channel OpenMPI/PETSc/mpi4py/petsc4py stack.
+installs OpenONDA into that environment **in editable mode with the development
+tools**, initializes Gmsh and Taichi, advances a native FVM step from `/tmp`,
+and runs `pip check`. Editable means the environment links back to your clone,
+so edits under the repository take effect immediately with no reinstall.
+
+Use `--name NAME` to choose another environment, `--no-editable` to install a
+fixed copy into `site-packages` instead, or `--parallel` for a single-channel
+OpenMPI/PETSc/mpi4py/petsc4py stack.
+
+The installer refuses to reuse an environment whose Python differs from the
+version pinned in the environment file, so a stale environment cannot silently
+be reused.
 
 The environment uses Python 3.11 so one definition works on Linux, Apple
 Silicon, and Intel macOS. Platform markers in `pyproject.toml` select current

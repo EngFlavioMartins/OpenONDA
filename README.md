@@ -58,6 +58,11 @@ scripts/install/install_conda.sh
 # Then run the two activation commands printed by the installer.
 ```
 
+This installs OpenONDA in editable mode with the development tools, on the
+Python version pinned in `scripts/environment/environment.yml` (currently
+3.11). Edits under the clone take effect immediately, with no reinstall. Pass
+`--no-editable` for a fixed copy in `site-packages`.
+
 The installer reuses an existing Conda installation or offers to install
 Miniforge. It does not edit `.bashrc`/`.zshrc`, auto-activate environments, or
 require administrator privileges.
@@ -131,7 +136,7 @@ pyrefly check
 
 See [docs/contributing.md](docs/contributing.md) for the architecture and code
 quality requirements, and [docs/data_management.md](docs/data_management.md)
-for the Git/DVC result-data policy.
+for the result-data policy.
 
 ## Citation
 

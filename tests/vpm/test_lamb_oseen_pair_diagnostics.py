@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import itertools
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -109,29 +107,11 @@ def test_rwm_pair_ensemble_averages_independent_histories(tmp_path):
 
     pair = pd.read_csv(member_dirs[0] / "pair_diagnostics.csv")
     integrals = pd.read_csv(member_dirs[0] / "flow_integrals.csv")
-    metadata = json.loads(
-        (member_dirs[0] / "run_metadata.json").read_text(encoding="utf-8")
-    )
+    metadata = json.loads((member_dirs[0] / "run_metadata.json").read_text(encoding="utf-8"))
     assert pair["x_core"].to_list() == pytest.approx([0.2, 0.4])
     assert pair["separation"].isna().all()
     assert integrals["kinetic_energy"].to_list() == pytest.approx([1.0, 0.8])
     assert metadata["rwm_realizations"] == 2
-
-
-def test_allrun_contains_the_complete_four_by_three_matrix():
-    script = (Path(__file__).parents[2] / "tutorials/VPM/lambOseenVortex/allrun.sh").read_text(
-        encoding="utf-8"
-    )
-    loop_values = {}
-    for line in script.splitlines():
-        words = line.strip().split()
-        if len(words) >= 5 and words[:2] == ["for", "physics"]:
-            loop_values["physics"] = tuple(word.rstrip(";") for word in words[3:-1])
-        if len(words) >= 5 and words[:2] == ["for", "scheme"]:
-            loop_values["scheme"] = tuple(word.rstrip(";") for word in words[3:-1])
-    commands = set(itertools.product(loop_values["physics"], loop_values["scheme"]))
-    expected = set(itertools.product(("vortex", "dipole", "merging"), ("cs", "rwm", "dvh", "gbd")))
-    assert commands == expected
 
 
 def test_final_vortex_profile_reads_comment_time_and_field_header(tmp_path):

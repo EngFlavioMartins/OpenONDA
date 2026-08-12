@@ -24,7 +24,7 @@ from source.solvers.VPM.config.types import (
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.numerics.filament_refinement import particle_moments
+from source.solvers.VPM.stabilization.filament_refinement import particle_moments
 
 _SIGMA = 0.05
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -189,7 +189,7 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
 
     for index in (0, 2, 3):
         np.testing.assert_allclose(after[index], before[index], atol=1.0e-11, rtol=1.0e-11)
-    correction = solver._core_spreading_diagnostics["core_spreading_max_moment_correction_relative"]
+    correction = solver.core_spreading_correction_relative
     if needs_correction:
         assert correction > 0.0
     else:

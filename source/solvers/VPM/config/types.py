@@ -11,7 +11,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 # =========================================================
 # PRECISION CONFIGURATION
 # =========================================================
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import json
 from pathlib import Path
 import re
@@ -1052,6 +1052,195 @@ class TurbulenceConfig:
 
 
 @dataclass(frozen=True)
+class FilamentRefinementConfig:
+    """Adaptive resolution for stretched Lagrangian vortex-line elements.
+
+    At each refinement event, a particle whose strength exceeds
+    ``max_strength_factor`` times its own lineage reference is bisected along
+    its circulation direction.  Each child starts a new lineage reference.
+    The transformation preserves circulation, total strength variation,
+    volume, linear impulse, and the Gaussian kernel-corrected angular impulse
+    without resetting the viscous core radius.
+    """
+
+    frequency: int = 0
+    """Steps between refinement events; zero disables refinement."""
+
+    max_strength_factor: float = 2.0
+    """Bisect a particle once ``|Gamma|`` exceeds this multiple of its reference."""
+
+    offset_fraction: float = 0.25
+    """Child offset as a fraction of the estimated material line length."""
+
+    max_particles: int | None = None
+    """Particle budget the refinement may not exceed."""
+
+    def __post_init__(self) -> None:
+        if self.frequency < 0:
+            raise ValueError("filament-refinement frequency must be non-negative")
+        if self.max_strength_factor <= 1.0:
+            raise ValueError("max_strength_factor must be greater than one")
+        if not 0.0 <= self.offset_fraction <= 0.5:
+            raise ValueError("offset_fraction must be in [0, 0.5]")
+        if self.max_particles is not None and self.max_particles <= 0:
+            raise ValueError("max_particles must be positive or None")
+
+    @property
+    def enabled(self) -> bool:
+        return self.frequency > 0
+
+    @staticmethod
+    def disabled() -> "FilamentRefinementConfig":
+        return FilamentRefinementConfig()
+
+    @staticmethod
+    def adaptive(
+        *,
+        frequency: int,
+        max_strength_factor: float = 2.0,
+        offset_fraction: float = 0.25,
+        max_particles: int | None = None,
+    ) -> "FilamentRefinementConfig":
+        """Bisect over-stretched elements every ``frequency`` steps."""
+        return FilamentRefinementConfig(
+            frequency=frequency,
+            max_strength_factor=max_strength_factor,
+            offset_fraction=offset_fraction,
+            max_particles=max_particles,
+        )
+
+
+@dataclass(frozen=True)
+class DivergenceRelaxationConfig:
+    """Atomic iterated Winckelmans projection with hard physics gates."""
+
+    frequency: int = 0
+    start_step: int = 0
+    grid_spacing: float | None = None
+    regularization: float = 0.1
+    solver_rtol: float = 1e-5
+    max_iterations: int = 30
+    max_projection_sweeps: int = 3
+    max_grid_nodes: int = 8_000_000
+    max_correction_norm: float = 2e-2
+    max_residual_ratio: float = 0.9
+    energy_tolerance: float = 1e-6
+    enstrophy_tolerance: float = 1e-4
+    helicity_tolerance: float = 1e-4
+    variation_tolerance: float = 1e-3
+    circulation_reference_scale: float | None = None
+    linear_impulse_reference_scale: float | None = None
+    angular_impulse_reference_scale: float | None = None
+    circulation_reference_tolerance: float = 1e-3
+    linear_impulse_reference_tolerance: float = 1e-2
+    angular_impulse_reference_tolerance: float = 1e-2
+    spectral_convergence_fraction: float = 0.1
+
+    def __post_init__(self) -> None:
+        if self.frequency < 0:
+            raise ValueError("divergence-relaxation frequency must be non-negative")
+        if self.start_step < 0:
+            raise ValueError("divergence-relaxation start_step must be non-negative")
+        if self.frequency > 0 and (self.grid_spacing is None or self.grid_spacing <= 0.0):
+            raise ValueError("enabled divergence relaxation requires a positive grid_spacing")
+        if self.regularization <= 0.0 or self.solver_rtol <= 0.0:
+            raise ValueError("regularization and solver_rtol must be positive")
+        if self.max_iterations < 1 or self.max_projection_sweeps < 1 or self.max_grid_nodes < 1:
+            raise ValueError("iteration, projection-sweep, and grid-node limits must be positive")
+        if self.max_correction_norm <= 0.0:
+            raise ValueError("max_correction_norm must be positive")
+        if not 0.0 < self.max_residual_ratio < 1.0:
+            raise ValueError("max_residual_ratio must lie in (0, 1)")
+        if not 0.0 < self.spectral_convergence_fraction <= 1.0:
+            raise ValueError("spectral_convergence_fraction must lie in (0, 1]")
+        for name in (
+            "circulation_reference_scale",
+            "linear_impulse_reference_scale",
+            "angular_impulse_reference_scale",
+        ):
+            value = getattr(self, name)
+            if value is not None and value <= 0.0:
+                raise ValueError(f"{name} must be positive when provided")
+        reference_scales = (
+            self.circulation_reference_scale,
+            self.linear_impulse_reference_scale,
+            self.angular_impulse_reference_scale,
+        )
+        if any(value is not None for value in reference_scales) and not all(
+            value is not None for value in reference_scales
+        ):
+            raise ValueError("all three reference scales must be provided together")
+        for name in (
+            "energy_tolerance",
+            "enstrophy_tolerance",
+            "helicity_tolerance",
+            "variation_tolerance",
+            "circulation_reference_tolerance",
+            "linear_impulse_reference_tolerance",
+            "angular_impulse_reference_tolerance",
+        ):
+            if getattr(self, name) < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+
+    @property
+    def enabled(self) -> bool:
+        return self.frequency > 0
+
+    @staticmethod
+    def disabled() -> "DivergenceRelaxationConfig":
+        return DivergenceRelaxationConfig()
+
+    @staticmethod
+    def constrained(
+        *,
+        frequency: int,
+        grid_spacing: float,
+        start_step: int = 0,
+        regularization: float = 0.1,
+        solver_rtol: float = 1e-5,
+        max_iterations: int = 30,
+        max_projection_sweeps: int = 3,
+        max_grid_nodes: int = 8_000_000,
+        max_correction_norm: float = 2e-2,
+        max_residual_ratio: float = 0.9,
+        energy_tolerance: float = 1e-6,
+        enstrophy_tolerance: float = 1e-4,
+        helicity_tolerance: float = 1e-4,
+        variation_tolerance: float = 1e-3,
+        circulation_reference_scale: float | None = None,
+        linear_impulse_reference_scale: float | None = None,
+        angular_impulse_reference_scale: float | None = None,
+        circulation_reference_tolerance: float = 1e-3,
+        linear_impulse_reference_tolerance: float = 1e-2,
+        angular_impulse_reference_tolerance: float = 1e-2,
+        spectral_convergence_fraction: float = 0.1,
+    ) -> "DivergenceRelaxationConfig":
+        return DivergenceRelaxationConfig(
+            frequency=frequency,
+            start_step=start_step,
+            grid_spacing=grid_spacing,
+            regularization=regularization,
+            solver_rtol=solver_rtol,
+            max_iterations=max_iterations,
+            max_projection_sweeps=max_projection_sweeps,
+            max_grid_nodes=max_grid_nodes,
+            max_correction_norm=max_correction_norm,
+            max_residual_ratio=max_residual_ratio,
+            energy_tolerance=energy_tolerance,
+            enstrophy_tolerance=enstrophy_tolerance,
+            helicity_tolerance=helicity_tolerance,
+            variation_tolerance=variation_tolerance,
+            circulation_reference_scale=circulation_reference_scale,
+            linear_impulse_reference_scale=linear_impulse_reference_scale,
+            angular_impulse_reference_scale=angular_impulse_reference_scale,
+            circulation_reference_tolerance=circulation_reference_tolerance,
+            linear_impulse_reference_tolerance=linear_impulse_reference_tolerance,
+            angular_impulse_reference_tolerance=angular_impulse_reference_tolerance,
+            spectral_convergence_fraction=spectral_convergence_fraction,
+        )
+
+
+@dataclass(frozen=True)
 class StabilizationConfig:
     """Optional numerical stabilization and particle-retention policy.
 
@@ -1070,10 +1259,51 @@ class StabilizationConfig:
     linear impulse, and angular impulse, while forbidding energy or enstrophy
     injection.  Its accepted kinetic-energy loss is reported explicitly as a
     filter transfer.
+
+    Pedrizzetti relaxation is a third, purely local mechanism.  It rotates each
+    ``Gamma_p`` toward the vorticity direction reconstructed at that particle,
+
+    ``Gamma <- (1 - f) Gamma + f |Gamma| omega / |omega|``,
+
+    which drives the particle field back toward the vortex-line structure the
+    continuum equations imply.  It is a model choice, not a projection: the
+    rotation changes vector circulation and both impulses, so it is reported as
+    a measured transfer rather than gated as an invariant.
+
+    Filament refinement and divergence relaxation are configured through the
+    nested ``filament_refinement`` and ``divergence_relaxation`` entries, so one
+    object declares the complete stabilization policy of a run.
+
+    The ``max_*`` limits at the end are the only criteria applied uniformly to
+    every mechanism.  They are global, physical, and cheap to evaluate, and the
+    stabilization master enforces them on the uploaded field after each event.
+    Everything finer belongs to the mechanism that can act on it.
     """
 
     stretching_viscosity_coefficient: float = 0.0
     """Dimensionless coefficient ``C_stab``; zero disables residual viscosity."""
+
+    pedrizzetti_relaxation_factor: float = 0.0
+    """Relaxation factor ``f`` in [0, 1]; zero disables Pedrizzetti relaxation."""
+
+    pedrizzetti_relaxation_frequency: int = 1
+    """Steps between relaxation events once the factor is positive."""
+
+    pedrizzetti_relaxation_start_step: int = 0
+    """First time step on which Pedrizzetti relaxation may act."""
+
+    pedrizzetti_relaxation_conserve_strength: bool = True
+    """Rescale each relaxed vector back to its own ``|Gamma|``."""
+
+    filament_refinement: FilamentRefinementConfig = field(
+        default_factory=FilamentRefinementConfig.disabled
+    )
+    """Adaptive bisection of over-stretched Lagrangian elements."""
+
+    divergence_relaxation: DivergenceRelaxationConfig = field(
+        default_factory=DivergenceRelaxationConfig.disabled
+    )
+    """Moment-constrained Helmholtz projection of the particle strengths."""
 
     remove_particles_by_bounds: tuple[float, ...] | None = None
     """[xmin, xmax, ymin, ymax, zmin, zmax] — remove particles outside box.  None = disabled."""
@@ -1129,6 +1359,15 @@ class StabilizationConfig:
     regularization_projection_max_correction: float = 0.20
     """Largest relative circulation correction admitted by the solenoidal projection."""
 
+    max_circulation_error: float = 1.0e-5
+    """Admissible ``|d sum Gamma| / sum |Gamma|`` for a circulation-preserving event."""
+
+    max_strength_growth: float = 1.0e-3
+    """Admissible relative growth of ``sum |Gamma|``; removal is unrestricted here."""
+
+    max_vorticity_growth: float = 5.0e-2
+    """Admissible relative growth of ``max |omega|``, the instability signature."""
+
     def __post_init__(self) -> None:
         """Normalize and validate stabilization inputs."""
         if (
@@ -1136,6 +1375,15 @@ class StabilizationConfig:
             or self.stretching_viscosity_coefficient < 0.0
         ):
             raise ValueError("stretching_viscosity_coefficient must be finite and non-negative")
+        if (
+            not np.isfinite(self.pedrizzetti_relaxation_factor)
+            or not 0.0 <= self.pedrizzetti_relaxation_factor <= 1.0
+        ):
+            raise ValueError("pedrizzetti relaxation factor must be finite and lie in [0, 1]")
+        if self.pedrizzetti_relaxation_frequency < 1:
+            raise ValueError("pedrizzetti relaxation frequency must be at least one")
+        if self.pedrizzetti_relaxation_start_step < 0:
+            raise ValueError("pedrizzetti relaxation start step must be non-negative")
         if self.remove_particles_by_bounds is not None:
             object.__setattr__(
                 self,
@@ -1195,6 +1443,14 @@ class StabilizationConfig:
             raise ValueError("regularization projection trigger must be non-negative")
         if not 0.0 < self.regularization_projection_max_correction < 1.0:
             raise ValueError("regularization projection correction limit must lie in (0, 1)")
+        for name in ("max_circulation_error", "max_strength_growth", "max_vorticity_growth"):
+            value = getattr(self, name)
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+
+    @property
+    def pedrizzetti_relaxation_enabled(self) -> bool:
+        return self.pedrizzetti_relaxation_factor > 0.0
 
     # -- Factory methods -------------------------------------------------------
     @staticmethod
@@ -1215,6 +1471,37 @@ class StabilizationConfig:
         stretching rate.  Smooth rotation and compressive strain are untouched.
         """
         return StabilizationConfig(stretching_viscosity_coefficient=coefficient)
+
+    @staticmethod
+    def pedrizzetti_relaxation(
+        *,
+        factor: float = 0.3,
+        frequency: int = 1,
+        start_step: int = 0,
+        conserve_strength: bool = True,
+    ) -> "StabilizationConfig":
+        """Rotate every ``Gamma_p`` toward its local vorticity direction.
+
+        One event moves each strength the fraction ``factor`` of the way to
+        ``omega(x_p)``, so a sustained misalignment decays over roughly
+        ``1 / factor`` events.  The relaxation is the cheapest of the three
+        stabilization mechanisms here — a local rotation, no grid and no solve —
+        and the one that acts directly on the misalignment that drives the
+        classical three-dimensional vortex-method instability.
+
+        ``conserve_strength`` rescales the relaxed vector back to its original
+        ``|Gamma|``, making the update an exact rotation that cannot drain
+        particle strength.  Without it the plain convex combination shortens
+        ``Gamma_p`` by ``sqrt(1 - 2 f (1 - f)(1 - cos(theta)))``, so the
+        relaxation also dissipates enstrophy wherever it acts.
+        """
+
+        return StabilizationConfig(
+            pedrizzetti_relaxation_factor=factor,
+            pedrizzetti_relaxation_frequency=frequency,
+            pedrizzetti_relaxation_start_step=start_step,
+            pedrizzetti_relaxation_conserve_strength=conserve_strength,
+        )
 
     @staticmethod
     def conservative_filter(
@@ -1259,252 +1546,6 @@ class StabilizationConfig:
             regularization_capacity_core_radius=capacity_core_radius,
             regularization_projection_trigger=projection_trigger,
             regularization_projection_max_correction=projection_max_correction,
-        )
-
-
-@dataclass(frozen=True)
-class FilamentRefinementConfig:
-    """Adaptive resolution for stretched Lagrangian vortex-line elements.
-
-    At each refinement event, a particle whose strength exceeds
-    ``max_strength_factor`` times its own lineage reference is bisected along
-    its circulation direction.  Each child starts a new lineage reference.
-    The transformation preserves circulation, total strength variation,
-    volume, linear impulse, and the Gaussian kernel-corrected angular impulse
-    without resetting the viscous core radius.
-    """
-
-    frequency: int = 0
-    max_strength_factor: float = 2.0
-    offset_fraction: float = 0.25
-    max_particles: int | None = None
-    energy_injection_tolerance: float = 1e-4
-    energy_dissipation_tolerance: float = 1e-4
-    enstrophy_transfer_tolerance: float = 1e-4
-    helicity_transfer_tolerance: float = 1e-4
-    cumulative_energy_tolerance: float = 1e-3
-    cumulative_enstrophy_tolerance: float = 2e-2
-    cumulative_helicity_tolerance: float = 2e-2
-    cumulative_moment_tolerance: float = 1e-4
-
-    def __post_init__(self) -> None:
-        if self.frequency < 0:
-            raise ValueError("filament-refinement frequency must be non-negative")
-        if self.max_strength_factor <= 1.0:
-            raise ValueError("max_strength_factor must be greater than one")
-        if not 0.0 <= self.offset_fraction <= 0.5:
-            raise ValueError("offset_fraction must be in [0, 0.5]")
-        if self.max_particles is not None and self.max_particles <= 0:
-            raise ValueError("max_particles must be positive or None")
-        if self.energy_injection_tolerance < 0.0:
-            raise ValueError("energy_injection_tolerance must be non-negative")
-        if self.energy_dissipation_tolerance < 0.0:
-            raise ValueError("energy_dissipation_tolerance must be non-negative")
-        if self.enstrophy_transfer_tolerance < 0.0:
-            raise ValueError("enstrophy_transfer_tolerance must be non-negative")
-        if self.helicity_transfer_tolerance < 0.0:
-            raise ValueError("helicity_transfer_tolerance must be non-negative")
-        if self.cumulative_energy_tolerance < 0.0:
-            raise ValueError("cumulative_energy_tolerance must be non-negative")
-        if self.cumulative_enstrophy_tolerance < 0.0:
-            raise ValueError("cumulative_enstrophy_tolerance must be non-negative")
-        if self.cumulative_helicity_tolerance < 0.0:
-            raise ValueError("cumulative_helicity_tolerance must be non-negative")
-        if self.cumulative_moment_tolerance < 0.0:
-            raise ValueError("cumulative_moment_tolerance must be non-negative")
-
-    @property
-    def enabled(self) -> bool:
-        return self.frequency > 0
-
-    @staticmethod
-    def disabled() -> "FilamentRefinementConfig":
-        return FilamentRefinementConfig()
-
-    @staticmethod
-    def adaptive(
-        *,
-        frequency: int,
-        max_strength_factor: float = 2.0,
-        offset_fraction: float = 0.25,
-        max_particles: int | None = None,
-        energy_injection_tolerance: float = 1e-4,
-        energy_dissipation_tolerance: float = 1e-4,
-        enstrophy_transfer_tolerance: float = 1e-4,
-        helicity_transfer_tolerance: float = 1e-4,
-        cumulative_energy_tolerance: float = 1e-3,
-        cumulative_enstrophy_tolerance: float = 2e-2,
-        cumulative_helicity_tolerance: float = 2e-2,
-        cumulative_moment_tolerance: float = 1e-4,
-    ) -> "FilamentRefinementConfig":
-        return FilamentRefinementConfig(
-            frequency=frequency,
-            max_strength_factor=max_strength_factor,
-            offset_fraction=offset_fraction,
-            max_particles=max_particles,
-            energy_injection_tolerance=energy_injection_tolerance,
-            energy_dissipation_tolerance=energy_dissipation_tolerance,
-            enstrophy_transfer_tolerance=enstrophy_transfer_tolerance,
-            helicity_transfer_tolerance=helicity_transfer_tolerance,
-            cumulative_energy_tolerance=cumulative_energy_tolerance,
-            cumulative_enstrophy_tolerance=cumulative_enstrophy_tolerance,
-            cumulative_helicity_tolerance=cumulative_helicity_tolerance,
-            cumulative_moment_tolerance=cumulative_moment_tolerance,
-        )
-
-
-@dataclass(frozen=True)
-class DivergenceRelaxationConfig:
-    """Atomic iterated Winckelmans projection with hard physics gates."""
-
-    frequency: int = 0
-    start_step: int = 0
-    grid_spacing: float | None = None
-    regularization: float = 0.1
-    solver_rtol: float = 1e-5
-    max_iterations: int = 30
-    max_projection_sweeps: int = 3
-    max_grid_nodes: int = 8_000_000
-    max_correction_norm: float = 2e-2
-    max_residual_ratio: float = 0.9
-    max_direct_divergence_ratio: float = 0.98
-    energy_tolerance: float = 1e-6
-    enstrophy_tolerance: float = 1e-4
-    helicity_tolerance: float = 1e-4
-    variation_tolerance: float = 1e-3
-    circulation_reference_scale: float | None = None
-    linear_impulse_reference_scale: float | None = None
-    angular_impulse_reference_scale: float | None = None
-    circulation_reference_tolerance: float = 1e-3
-    linear_impulse_reference_tolerance: float = 1e-2
-    angular_impulse_reference_tolerance: float = 1e-2
-    spectral_convergence_fraction: float = 0.1
-    cumulative_energy_tolerance: float = 1e-3
-    cumulative_enstrophy_tolerance: float = 2e-2
-    cumulative_helicity_tolerance: float = 2e-2
-    cumulative_variation_tolerance: float = 2e-2
-    cumulative_moment_tolerance: float = 1e-4
-
-    def __post_init__(self) -> None:
-        if self.frequency < 0:
-            raise ValueError("divergence-relaxation frequency must be non-negative")
-        if self.start_step < 0:
-            raise ValueError("divergence-relaxation start_step must be non-negative")
-        if self.frequency > 0 and (self.grid_spacing is None or self.grid_spacing <= 0.0):
-            raise ValueError("enabled divergence relaxation requires a positive grid_spacing")
-        if self.regularization <= 0.0 or self.solver_rtol <= 0.0:
-            raise ValueError("regularization and solver_rtol must be positive")
-        if self.max_iterations < 1 or self.max_projection_sweeps < 1 or self.max_grid_nodes < 1:
-            raise ValueError("iteration, projection-sweep, and grid-node limits must be positive")
-        if self.max_correction_norm <= 0.0:
-            raise ValueError("max_correction_norm must be positive")
-        if not 0.0 < self.max_residual_ratio < 1.0:
-            raise ValueError("max_residual_ratio must lie in (0, 1)")
-        if not 0.0 < self.max_direct_divergence_ratio < 1.0:
-            raise ValueError("max_direct_divergence_ratio must lie in (0, 1)")
-        if not 0.0 < self.spectral_convergence_fraction <= 1.0:
-            raise ValueError("spectral_convergence_fraction must lie in (0, 1]")
-        for name in (
-            "circulation_reference_scale",
-            "linear_impulse_reference_scale",
-            "angular_impulse_reference_scale",
-        ):
-            value = getattr(self, name)
-            if value is not None and value <= 0.0:
-                raise ValueError(f"{name} must be positive when provided")
-        reference_scales = (
-            self.circulation_reference_scale,
-            self.linear_impulse_reference_scale,
-            self.angular_impulse_reference_scale,
-        )
-        if any(value is not None for value in reference_scales) and not all(
-            value is not None for value in reference_scales
-        ):
-            raise ValueError("all three reference scales must be provided together")
-        for name in (
-            "energy_tolerance",
-            "enstrophy_tolerance",
-            "helicity_tolerance",
-            "variation_tolerance",
-            "circulation_reference_tolerance",
-            "linear_impulse_reference_tolerance",
-            "angular_impulse_reference_tolerance",
-            "cumulative_energy_tolerance",
-            "cumulative_enstrophy_tolerance",
-            "cumulative_helicity_tolerance",
-            "cumulative_variation_tolerance",
-            "cumulative_moment_tolerance",
-        ):
-            if getattr(self, name) < 0.0:
-                raise ValueError(f"{name} must be non-negative")
-
-    @property
-    def enabled(self) -> bool:
-        return self.frequency > 0
-
-    @staticmethod
-    def disabled() -> "DivergenceRelaxationConfig":
-        return DivergenceRelaxationConfig()
-
-    @staticmethod
-    def constrained(
-        *,
-        frequency: int,
-        grid_spacing: float,
-        start_step: int = 0,
-        regularization: float = 0.1,
-        solver_rtol: float = 1e-5,
-        max_iterations: int = 30,
-        max_projection_sweeps: int = 3,
-        max_grid_nodes: int = 8_000_000,
-        max_correction_norm: float = 2e-2,
-        max_residual_ratio: float = 0.9,
-        max_direct_divergence_ratio: float = 0.98,
-        energy_tolerance: float = 1e-6,
-        enstrophy_tolerance: float = 1e-4,
-        helicity_tolerance: float = 1e-4,
-        variation_tolerance: float = 1e-3,
-        circulation_reference_scale: float | None = None,
-        linear_impulse_reference_scale: float | None = None,
-        angular_impulse_reference_scale: float | None = None,
-        circulation_reference_tolerance: float = 1e-3,
-        linear_impulse_reference_tolerance: float = 1e-2,
-        angular_impulse_reference_tolerance: float = 1e-2,
-        spectral_convergence_fraction: float = 0.1,
-        cumulative_energy_tolerance: float = 1e-3,
-        cumulative_enstrophy_tolerance: float = 2e-2,
-        cumulative_helicity_tolerance: float = 2e-2,
-        cumulative_variation_tolerance: float = 2e-2,
-        cumulative_moment_tolerance: float = 1e-4,
-    ) -> "DivergenceRelaxationConfig":
-        return DivergenceRelaxationConfig(
-            frequency=frequency,
-            start_step=start_step,
-            grid_spacing=grid_spacing,
-            regularization=regularization,
-            solver_rtol=solver_rtol,
-            max_iterations=max_iterations,
-            max_projection_sweeps=max_projection_sweeps,
-            max_grid_nodes=max_grid_nodes,
-            max_correction_norm=max_correction_norm,
-            max_residual_ratio=max_residual_ratio,
-            max_direct_divergence_ratio=max_direct_divergence_ratio,
-            energy_tolerance=energy_tolerance,
-            enstrophy_tolerance=enstrophy_tolerance,
-            helicity_tolerance=helicity_tolerance,
-            variation_tolerance=variation_tolerance,
-            circulation_reference_scale=circulation_reference_scale,
-            linear_impulse_reference_scale=linear_impulse_reference_scale,
-            angular_impulse_reference_scale=angular_impulse_reference_scale,
-            circulation_reference_tolerance=circulation_reference_tolerance,
-            linear_impulse_reference_tolerance=linear_impulse_reference_tolerance,
-            angular_impulse_reference_tolerance=angular_impulse_reference_tolerance,
-            spectral_convergence_fraction=spectral_convergence_fraction,
-            cumulative_energy_tolerance=cumulative_energy_tolerance,
-            cumulative_enstrophy_tolerance=cumulative_enstrophy_tolerance,
-            cumulative_helicity_tolerance=cumulative_helicity_tolerance,
-            cumulative_variation_tolerance=cumulative_variation_tolerance,
-            cumulative_moment_tolerance=cumulative_moment_tolerance,
         )
 
 
@@ -1714,17 +1755,8 @@ class VPMSetup:
     """Configuration for turbulence modeling (DNS/LES/INVISCID)."""
 
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
-    """Optional particle-retention domain used by wake and coupled cases."""
-
-    filament_refinement: FilamentRefinementConfig = field(
-        default_factory=FilamentRefinementConfig.disabled
-    )
-    """Adaptive conservative subdivision of stretched vortex-line elements."""
-
-    divergence_relaxation: DivergenceRelaxationConfig = field(
-        default_factory=DivergenceRelaxationConfig.disabled
-    )
-    """Atomic iterated constrained projection of the Gaussian particle field."""
+    """Complete stabilization policy: retention, local operators, refinement,
+    divergence relaxation, and conservative regularization."""
 
     vlm: VLMSetup | None = None
     """Complete VLM definition. ``None`` selects a pure VPM simulation."""
@@ -2004,7 +2036,10 @@ class VPMSetup:
                 raise ValueError(
                     "axisymmetric_no_swirl_axis is incompatible with particle retention"
                 )
-            if self.filament_refinement.enabled or self.divergence_relaxation.enabled:
+            if (
+                self.stabilization.filament_refinement.enabled
+                or self.stabilization.divergence_relaxation.enabled
+            ):
                 raise ValueError(
                     "axisymmetric_no_swirl_axis is incompatible with refinement or "
                     "divergence relaxation"
@@ -2075,15 +2110,18 @@ class VPMSetup:
                 "single precision regardless. Use VelocityConfig.direct() for an "
                 "f64 run, or precision='f32' with the treecode."
             )
-        if self.filament_refinement.enabled and _kernel_up != "GAUSSIAN":
+        if self.stabilization.filament_refinement.enabled and _kernel_up != "GAUSSIAN":
             raise ValueError(
                 "filament refinement currently requires the GAUSSIAN kernel so its "
                 "angular-impulse correction and exact transfer audit use the "
                 "same declared regularization"
             )
-        if self.divergence_relaxation.enabled and _kernel_up != "GAUSSIAN":
+        if self.stabilization.divergence_relaxation.enabled and _kernel_up != "GAUSSIAN":
             raise ValueError("divergence relaxation currently requires the GAUSSIAN kernel")
-        if self.divergence_relaxation.enabled and not self.filament_refinement.enabled:
+        if (
+            self.stabilization.divergence_relaxation.enabled
+            and not self.stabilization.filament_refinement.enabled
+        ):
             raise ValueError(
                 "divergence relaxation requires filament refinement so the "
                 "interpolation solve cannot hide inadequate vortex-line resolution"
@@ -2091,7 +2129,8 @@ class VPMSetup:
         if self.stabilization.regularization_frequency > 0 and _kernel_up != "GAUSSIAN":
             raise ValueError("conservative regularization currently requires GAUSSIAN particles")
         if self.stabilization.regularization_frequency > 0 and (
-            self.filament_refinement.enabled or self.divergence_relaxation.enabled
+            self.stabilization.filament_refinement.enabled
+            or self.stabilization.divergence_relaxation.enabled
         ):
             raise ValueError(
                 "conservative regularization replaces refinement and divergence relaxation"
@@ -2102,8 +2141,8 @@ class VPMSetup:
         ):
             raise ValueError("regularization_max_particles cannot exceed VPMSetup.max_particles")
         if (
-            self.filament_refinement.max_particles is not None
-            and self.filament_refinement.max_particles > self.max_particles
+            self.stabilization.filament_refinement.max_particles is not None
+            and self.stabilization.filament_refinement.max_particles > self.max_particles
         ):
             raise ValueError(
                 "filament-refinement max_particles cannot exceed VPMSetup.max_particles"
@@ -2140,8 +2179,6 @@ class VPMSetup:
             "viscous": _as_dict(self.viscous),
             "turbulence": _as_dict(self.turbulence),
             "stabilization": _as_dict(self.stabilization),
-            "filament_refinement": _as_dict(self.filament_refinement),
-            "divergence_relaxation": _as_dict(self.divergence_relaxation),
             # Runtime geometry and kinematics are not particle-state backup data.
             "vlm": None,
             "particles_kernel": self.particles_kernel,
@@ -2185,15 +2222,46 @@ class VPMSetup:
             "stretching": StretchingConfig,
             "viscous": ViscousConfig,
             "turbulence": TurbulenceConfig,
-            "stabilization": StabilizationConfig,
-            "filament_refinement": FilamentRefinementConfig,
-            "divergence_relaxation": DivergenceRelaxationConfig,
             "velocity": VelocityConfig,
         }
         for name, config_type in nested_types.items():
             if isinstance(values.get(name), dict):
                 values[name] = config_type(**values[name])
+        values["stabilization"] = cls._stabilization_from_dict(values)
         return cls(**values)
+
+    @staticmethod
+    def _stabilization_from_dict(values: dict[str, Any]) -> StabilizationConfig:
+        """Rebuild the stabilization policy, folding in pre-nesting layouts.
+
+        Checkpoints written while filament refinement and divergence relaxation
+        were top-level entries are still restorable: their sections are moved
+        under ``stabilization`` and consumed from ``values``.
+        """
+        stabilization = values.pop("stabilization", None)
+        if isinstance(stabilization, StabilizationConfig):
+            values.pop("filament_refinement", None)
+            values.pop("divergence_relaxation", None)
+            return stabilization
+        section = dict(stabilization) if isinstance(stabilization, dict) else {}
+        nested_types = {
+            "filament_refinement": FilamentRefinementConfig,
+            "divergence_relaxation": DivergenceRelaxationConfig,
+        }
+        for name, config_type in nested_types.items():
+            legacy = values.pop(name, None)
+            entry = section.get(name, legacy)
+            if isinstance(entry, dict):
+                known = {f.name for f in fields(config_type)}
+                section[name] = config_type(
+                    **{key: value for key, value in entry.items() if key in known}
+                )
+            elif isinstance(entry, config_type):
+                section[name] = entry
+            else:
+                section.pop(name, None)
+        known = {f.name for f in fields(StabilizationConfig)}
+        return StabilizationConfig(**{key: value for key, value in section.items() if key in known})
 
     @staticmethod
     def viscous_flow_simulation(

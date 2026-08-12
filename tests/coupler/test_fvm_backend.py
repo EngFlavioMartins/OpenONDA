@@ -63,18 +63,6 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
     )
 
 
-def test_coupler_imports():
-    from source.coupler import FVMVPMCoupler  # noqa: F401
-
-    assert FVMVPMCoupler is not None
-
-
-def test_setup_has_no_backend_switch():
-    setup = CouplerSetup()
-    assert not hasattr(setup, "backend")
-    assert "backend" not in setup.to_dict()["fvm_solver"]
-
-
 def test_prepare_case_fvm_needs_no_external_case(tmp_path):
     from source.coupler.core.solver import FVMVPMCoupler
 

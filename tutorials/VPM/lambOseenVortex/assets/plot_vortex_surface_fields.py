@@ -40,20 +40,20 @@ if __package__:
         SCHEMES,
         build_arg_parser,
         load_theme,
-        publication_size,
+        figure_size,
         pvd_time_map,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 else:
     from _common import (
         SCHEMES,
         build_arg_parser,
         load_theme,
-        publication_size,
+        figure_size,
         pvd_time_map,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 
 _LAYOUT = [
@@ -189,7 +189,7 @@ def plot_surface_fields(args) -> int:
     fig, (ax_v, ax_w) = plt.subplots(
         1,
         2,
-        figsize=publication_size(6.2),
+        figsize=figure_size("single_short"),
         constrained_layout=True,
     )
 
@@ -243,7 +243,7 @@ def plot_surface_fields(args) -> int:
 
     figures_dir = Path(args.figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
-    save_publication_figure(fig, out, args.dpi)
+    save_fig(fig, out, args.dpi)
     return 0
 
 

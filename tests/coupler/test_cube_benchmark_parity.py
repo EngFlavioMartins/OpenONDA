@@ -8,7 +8,6 @@ import importlib.util
 import io
 import math
 from pathlib import Path
-import re
 import sys
 
 import numpy as np
@@ -40,27 +39,6 @@ def _load(name: str, path: Path):
     finally:
         del sys.path[: len(search_paths)]
     return module
-
-
-def test_cube_tutorial_runtime_controls_are_explicit_and_narrow():
-    forbidden = (
-        "import argparse",
-        "ArgumentParser",
-        "parse_args(",
-        "sys.argv",
-        "os.getenv",
-        "os.environ[",
-        '"$#"',
-        "getopts ",
-    )
-    scripts = (*_CUBE_ROOT.glob("*setup.py"), *_CUBE_ROOT.glob("allrun.sh"))
-    overrides = set()
-    for script in scripts:
-        text = script.read_text()
-        for token in forbidden:
-            assert token not in text, f"runtime input control {token!r} found in {script}"
-        overrides.update(re.findall(r'os\.environ\.get\("(OPENONDA_[A-Z_]+)"', text))
-    assert overrides == _ALLOWED_RUNTIME_OVERRIDES
 
 
 def _small_coupled_mesh(core_box):

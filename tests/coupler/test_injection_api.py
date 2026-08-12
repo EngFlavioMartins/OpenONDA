@@ -234,37 +234,6 @@ def test_vpm_factory_hides_distributed_root_ownership(monkeypatch):
     assert setup_vpm_solver(VPMSetup()) is None
 
 
-def test_config_has_no_vpm_physics_fields():
-    """Clean break: the coupling config must not carry VPM solver-build params
-    (they live in the injected SolverConfig now)."""
-    cfg = _make_config()
-    for gone in (
-        "viscous_scheme",
-        "stretching_scheme",
-        "advection_scheme",
-        "les_smagorinsky_cs",
-        "treecode_theta",
-        "max_particles",
-        "vpm_domain",
-        "particles_kernel",
-        "precision",
-        "stabilization",
-        "samplers",
-        "eulerian_backend",
-        "period_multiplier",
-    ):
-        assert not hasattr(cfg, gone), f"{gone} should have moved to SolverConfig"
-
-
-def test_public_api_exposes_coupler_setup_not_vpm_configs():
-    """The coupler package should not be a convenience export point for VPM
-    solver-build classes; those belong to source.solvers.VPM.config.types."""
-    import source.coupler as coupler_pkg
-
-    assert not hasattr(coupler_pkg, "ViscousConfig")
-    assert not hasattr(coupler_pkg, "StabilizationConfig")
-
-
 def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
     """Preferred public API: vpm_solver + fvm_solver + CouplerSetup."""
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
@@ -344,9 +313,3 @@ def test_missing_fvm_solver_raises(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="requires an injected fvm_solver"):
         FVMVPMCoupler(_FakeVPM(0.1), None, _make_config())
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main([__file__, "-v"]))

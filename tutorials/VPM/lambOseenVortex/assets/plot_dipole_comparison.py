@@ -25,9 +25,9 @@ if __package__:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 else:
     from _common import (
@@ -35,9 +35,9 @@ else:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 
 
@@ -77,7 +77,7 @@ def plot_dipole_case(args) -> int:
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=publication_size(7.5))
+    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"))
     fig.subplots_adjust(wspace=0.43, bottom=0.34, top=0.88, left=0.13, right=0.97)
 
     plotted_schemes = []
@@ -135,7 +135,7 @@ def plot_dipole_case(args) -> int:
             ncol=len(handles),
             bbox_to_anchor=(0.5, 0.05),
         )
-    save_publication_figure(fig, out, args.dpi)
+    save_fig(fig, out, args.dpi)
     return 0
 
 

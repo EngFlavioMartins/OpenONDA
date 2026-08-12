@@ -26,9 +26,13 @@ from .config.types import (
 from .core.solver import Solver
 from .diagnostics import RingDiagnosticsSampler
 from .factory import setup_vpm_solver
-from .numerics.divergence_relaxation import DivergenceRelaxationError
-from .numerics.filament_refinement import FilamentRefinementError
 from .particles.distribution import ParticleDistributor
+from .stabilization import (
+    DivergenceRelaxationError,
+    FilamentRefinementError,
+    StabilizationError,
+    StabilizationManager,
+)
 
 __all__ = [
     "Solver",
@@ -43,6 +47,8 @@ __all__ = [
     "FilamentRefinementConfig",
     "FilamentRefinementError",
     "StabilizationConfig",
+    "StabilizationError",
+    "StabilizationManager",
     "VelocityConfig",
     "ForceConfig",
     "VLMSetup",

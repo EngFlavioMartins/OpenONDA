@@ -25,8 +25,6 @@ Reference:
 
 from __future__ import annotations
 
-import sys
-
 import numpy as np
 
 # --------------------------------------------------------------------- #
@@ -567,35 +565,3 @@ def test_lamb_oseen_profile_accuracy():
 # ===================================================================== #
 #  Main driver                                                           #
 # ===================================================================== #
-
-if __name__ == "__main__":
-    print("=" * 70)
-    print("DVH Scatter Diagnostic Tests")
-    print("=" * 70)
-
-    tests = [
-        ("Single-particle conservation", test_single_particle_conservation),
-        ("Multi-particle conservation", test_multi_particle_conservation),
-        ("Center of vorticity", test_center_of_vorticity_preservation),
-        ("Enstrophy decrease", test_enstrophy_decrease),
-        ("Symmetry", test_symmetry),
-        ("Budget pruning", test_pruning_budget_mode),
-        ("Repeated regen stability", test_repeated_regen_stability),
-        ("Lamb-Oseen profile accuracy", test_lamb_oseen_profile_accuracy),
-    ]
-
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        print(f"\n[TEST] {name}")
-        try:
-            fn()
-            passed += 1
-        except (AssertionError, Exception) as e:
-            print(f"    ✗ FAIL: {e}")
-            failed += 1
-
-    print(f"\n{'=' * 70}")
-    print(f"Results: {passed} passed, {failed} failed out of {len(tests)}")
-    print(f"{'=' * 70}")
-    sys.exit(0 if failed == 0 else 1)

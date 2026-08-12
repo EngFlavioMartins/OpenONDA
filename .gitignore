@@ -3,7 +3,6 @@
 # ===============================
 __pycache__/
 .taichi_cache/
-.dvc
 .opencode
 .codex
 .agents
@@ -80,7 +79,7 @@ processor*/
 # ParaView marker files and exported scenes (regenerated on demand)
 **/VTK/
 
-# Solution and data directories (results → DVC, never git)
+# Solution and data directories (results are never committed)
 **/solution/
 **/Solution/
 # Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
@@ -98,7 +97,7 @@ log.*
 # ===============================
 # Data, results, and scientific formats
 # ===============================
-# Large binary data files - use DVC for these
+# Large binary data files
 *.h5
 *.hdf5
 *.npz

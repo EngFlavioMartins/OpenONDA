@@ -26,11 +26,11 @@ if __package__:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         read_column_half_length,
         read_flow_time,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 else:
     from _common import (
@@ -38,12 +38,14 @@ else:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         read_column_half_length,
         read_flow_time,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
+
+from matplotlib.ticker import FormatStrFormatter
 
 
 # =============================================================
@@ -132,8 +134,8 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
     half_length = read_column_half_length(samples_dir) or 25.0 * ac0
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
-    fig.subplots_adjust(hspace=0.12, top=0.94, bottom=0.18, left=0.17, right=0.97)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
+    fig.subplots_adjust(hspace=0.12, top=0.94, bottom=0.20, left=0.13, right=0.97)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
@@ -150,7 +152,8 @@ def plot_vortex_case(args) -> int:
             "color": st["color"],
             "label": st["label"],
             "marker": st["marker"],
-            "markersize": 2.2,
+            "markersize": 2.0,
+            "markevery": 2,
             "linestyle": "None",
             "linewidth": 1.0,
         }
@@ -169,7 +172,7 @@ def plot_vortex_case(args) -> int:
     print(f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s")
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
-    ref_kw = {"color": colors["reference"], "lw": 1.0, "zorder": 100, "linestyle": "--"}
+    ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "-"}
     theory_t = run_t0 + elapsed_time
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
@@ -191,8 +194,12 @@ def plot_vortex_case(args) -> int:
     axes[2].set_ylim([-0.05, 0.13])
 
     handles, labels = axes[0].get_legend_handles_labels()
+
+    for ax in axes:
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+
     fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01))
-    save_publication_figure(fig, out, args.dpi)
+    save_fig(fig, out, args.dpi)
     return 0
 
 

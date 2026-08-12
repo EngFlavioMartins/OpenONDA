@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.VPM import FilamentRefinementConfig, VPMSetup
-from source.solvers.VPM.numerics.filament_refinement import (
+from source.solvers.VPM import FilamentRefinementConfig, StabilizationConfig, VPMSetup
+from source.solvers.VPM.stabilization.filament_refinement import (
     FilamentRefinementError,
     gaussian_particle_moments,
     gaussian_refinement_integral_transfer,
@@ -298,26 +298,26 @@ def test_axial_split_preserves_strength_weighted_centroid():
 
 def test_filament_refinement_configuration_round_trip():
     setup = VPMSetup(
-        filament_refinement=FilamentRefinementConfig.adaptive(
-            frequency=10,
-            max_strength_factor=2.5,
-            offset_fraction=0.4,
-            max_particles=120_000,
-            energy_injection_tolerance=2e-4,
-            energy_dissipation_tolerance=3e-3,
-            enstrophy_transfer_tolerance=4e-3,
-            helicity_transfer_tolerance=5e-3,
+        stabilization=StabilizationConfig(
+            filament_refinement=FilamentRefinementConfig.adaptive(
+                frequency=10,
+                max_strength_factor=2.5,
+                offset_fraction=0.4,
+                max_particles=120_000,
+            )
         )
     )
     restored = VPMSetup.from_dict(setup.to_dict())
-    assert restored.filament_refinement == setup.filament_refinement
+    assert restored.stabilization == setup.stabilization
 
 
 def test_filament_refinement_rejects_a_non_gaussian_kernel():
     with pytest.raises(ValueError, match="requires the GAUSSIAN kernel"):
         VPMSetup(
             particles_kernel="WINCKELMANS",
-            filament_refinement=FilamentRefinementConfig.adaptive(frequency=1),
+            stabilization=StabilizationConfig(
+                filament_refinement=FilamentRefinementConfig.adaptive(frequency=1)
+            ),
         )
 
 
@@ -333,8 +333,10 @@ def test_refinement_budget_must_fit_the_fixed_particle_allocation():
     with pytest.raises(ValueError, match="cannot exceed VPMSetup.max_particles"):
         VPMSetup(
             max_particles=100,
-            filament_refinement=FilamentRefinementConfig.adaptive(
-                frequency=1,
-                max_particles=101,
+            stabilization=StabilizationConfig(
+                filament_refinement=FilamentRefinementConfig.adaptive(
+                    frequency=1,
+                    max_particles=101,
+                )
             ),
         )

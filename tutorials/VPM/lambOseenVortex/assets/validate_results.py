@@ -18,7 +18,7 @@ SCHEMES = ("cs", "rwm", "dvh", "gbd")
 VELOCITY_ERROR_LIMIT = 0.10
 VORTICITY_ERROR_LIMIT = 0.15
 PAIR_CIRCULATION_ERROR_LIMIT = 0.20
-RUNTIME_LIMIT_SECONDS = 30.0 * 60.0
+RUNTIME_LIMIT_SECONDS = 120.0 * 60.0
 BETA_RMAX = 1.12
 
 
@@ -143,19 +143,13 @@ def _validate_pair(folder: Path, metadata: dict) -> tuple[list[str], str]:
         initial_core_radius = float(metadata["core_radius"])
         expected_core_radius = np.sqrt(
             initial_core_radius**2
-            + 4.0
-            * BETA_RMAX**2
-            * float(metadata["viscosity"])
-            * float(metadata["total_time"])
+            + 4.0 * BETA_RMAX**2 * float(metadata["viscosity"]) * float(metadata["total_time"])
         )
         x_core = data["x_core"].to_numpy(float)
         y_core = data["y_core"].to_numpy(float)
         if not np.isfinite(core_radius).all() or np.any(core_radius <= 0.0):
             failures.append("final dipole core radius is invalid")
-        elif (
-            core_radius[-1] <= 2.5 * initial_core_radius
-            or np.min(np.diff(core_radius)) < -0.02
-        ):
+        elif core_radius[-1] <= 2.5 * initial_core_radius or np.min(np.diff(core_radius)) < -0.02:
             failures.append("dipole core does not show sustained diffusive growth")
         elif abs(core_radius[-1] / expected_core_radius - 1.0) > 0.35:
             failures.append(

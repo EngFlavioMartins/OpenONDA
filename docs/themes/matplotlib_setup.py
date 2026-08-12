@@ -504,9 +504,11 @@ FONT_PATH = Path(__file__).with_name("DejaVuSerif.ttf")
 
 FIGURE_SIZES_CM = {
     "single": (MAX_FIGURE_WIDTH_CM, 7.0),
+    "single_short": (MAX_FIGURE_WIDTH_CM, 6.2),
     "single_tall": (MAX_FIGURE_WIDTH_CM, 8.0),
     "trajectory": (MAX_FIGURE_WIDTH_CM, 7.5),
-    "stacked": (MAX_FIGURE_WIDTH_CM, 11.0),
+    "stacked": (MAX_FIGURE_WIDTH_CM, 12.5),
+    "stacked_tall": (MAX_FIGURE_WIDTH_CM, 12.5),
     "wide": (WIDE_FIGURE_WIDTH_CM, 9.0),
     "wide_short": (WIDE_FIGURE_WIDTH_CM, 8.0),
     "wide_stacked": (WIDE_FIGURE_WIDTH_CM, 12.5),
@@ -532,7 +534,7 @@ PALETTE = {
     "orange": "#C76D24",
     "green": "#2B7A4E",
     "red": "#9C2F50",
-    "gray": "#6E8898",
+    "gray": "#5A6972",
     "light_gray": "#C0C0C0",
     "strong_gray": "#8B8B8B",
     "white": "#ffffff",
@@ -813,6 +815,7 @@ def save_fig(
     figure_format: str | None = None,
     dpi: int | None = None,
     tight_rect: tuple[float, float, float, float] | None = None,
+    bbox_inches: str | None = "tight",
 ) -> None:
     """Save a Matplotlib figure with the shared export defaults."""
     out = Path(path)
@@ -825,6 +828,6 @@ def save_fig(
             fig.tight_layout()
         else:
             fig.tight_layout(rect=tight_rect)
-    fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=bbox_inches)
     plt.close(fig)
     print(f"  Saved: {out}")

@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+rm -f solution/*.png solution/*.pdf
+
 cd "$(dirname "$0")"
 
 case "${1:--png}" in

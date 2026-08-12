@@ -6,17 +6,18 @@ import pytest
 from source.solvers.VPM import (
     DivergenceRelaxationConfig,
     FilamentRefinementConfig,
+    StabilizationConfig,
     VPMSetup,
 )
 from source.solvers.VPM.diagnostics.fourier_integrals import (
     gaussian_fourier_integrals,
 )
-from source.solvers.VPM.numerics.divergence_relaxation import (
+from source.solvers.VPM.stabilization.divergence_relaxation import (
     DivergenceRelaxationError,
     GaussianParticleGridOperator,
     constrained_divergence_relaxation,
 )
-from source.solvers.VPM.numerics.filament_refinement import (
+from source.solvers.VPM.stabilization.filament_refinement import (
     gaussian_particle_moments,
 )
 
@@ -338,14 +339,16 @@ def test_relaxation_config_round_trip_and_combined_method_contract():
         angular_impulse_reference_scale=3.0,
     )
     original = VPMSetup(
-        filament_refinement=refinement,
-        divergence_relaxation=relaxation,
+        stabilization=StabilizationConfig(
+            filament_refinement=refinement,
+            divergence_relaxation=relaxation,
+        )
     )
 
     restored = VPMSetup.from_dict(original.to_dict())
 
-    assert restored.filament_refinement == refinement
-    assert restored.divergence_relaxation == relaxation
+    assert restored.stabilization.filament_refinement == refinement
+    assert restored.stabilization.divergence_relaxation == relaxation
 
 
 def test_relaxation_requires_gaussian_particles_and_filament_refinement():
@@ -354,12 +357,14 @@ def test_relaxation_requires_gaussian_particles_and_filament_refinement():
         grid_spacing=0.03,
     )
     with pytest.raises(ValueError, match="requires filament refinement"):
-        VPMSetup(divergence_relaxation=relaxation)
+        VPMSetup(stabilization=StabilizationConfig(divergence_relaxation=relaxation))
     with pytest.raises(ValueError, match="requires the GAUSSIAN kernel"):
         VPMSetup(
             particles_kernel="WINCKELMANS",
-            filament_refinement=FilamentRefinementConfig.adaptive(frequency=1),
-            divergence_relaxation=relaxation,
+            stabilization=StabilizationConfig(
+                filament_refinement=FilamentRefinementConfig.adaptive(frequency=1),
+                divergence_relaxation=relaxation,
+            ),
         )
 
 

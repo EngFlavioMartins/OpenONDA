@@ -20,7 +20,6 @@ GAMMA = 1.0
 REYNOLDS_NUMBER = 530.0
 CORE_RADIUS = 0.125
 SEPARATION = 1.0
-PUBLICATION_WIDTH_CM = 12.5
 
 _THEME_MODULE = None
 
@@ -49,21 +48,20 @@ def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
     return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
 
 
-def publication_size(height_cm: float) -> tuple[float, float]:
-    """Return a 12.5 cm-wide publication canvas in inches."""
+def figure_size(name: str = "single") -> tuple[float, float]:
+    """Return a named figure size in inches from the shared theme."""
+    return _theme().figure_size(name)
 
-    return PUBLICATION_WIDTH_CM / 2.54, height_cm / 2.54
 
-
-def save_publication_figure(fig, path: Path, dpi: int) -> None:
-    """Save without tight bounding-box cropping so physical size stays exact."""
-
-    save_kwargs = {"dpi": dpi} if path.suffix == ".png" else {}
-    fig.savefig(path, **save_kwargs)
+def save_fig(fig, path: Path, dpi: int) -> None:
+    """Save without tight layout or cropping; manual subplots_adjust() takes precedence."""
     import matplotlib.pyplot as plt
 
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=dpi, bbox_inches=None)
     plt.close(fig)
-    print(f"  Saved: {path}")
+    print(f"  Saved: {out}")
 
 
 def build_arg_parser(description: str):
@@ -71,7 +69,7 @@ def build_arg_parser(description: str):
     import argparse
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--dpi", type=int, default=300, help="Figure DPI (PNG only).")
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI (PNG only).")
     p.add_argument(
         "--format",
         choices=_theme().EXPORT_FORMATS,

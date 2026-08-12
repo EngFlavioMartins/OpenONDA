@@ -19,9 +19,23 @@ from source.solvers.VPM.config.types import (
 _SIGMA = 0.1
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 
+# GPU DVH/GBD pre-allocate their grid, so they need explicit domain bounds.
+_GRID_DIFFUSION_BOUNDS = [-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]
 
-def _viscous_solver(make_solver, scheme, kernel="GAUSSIAN", time_step_size=0.01, **kwargs):
+
+def _viscous_solver(
+    make_solver,
+    scheme,
+    kernel="GAUSSIAN",
+    time_step_size=0.01,
+    vpm_domain_bounds=None,
+    **kwargs,
+):
     """Create a solver with only viscous diffusion active."""
+    # vpm_domain_bounds belongs to the setup, not to ViscousConfig.
+    setup_kwargs = {}
+    if vpm_domain_bounds is not None:
+        setup_kwargs["vpm_domain_bounds"] = vpm_domain_bounds
     return make_solver(
         time_step_size=time_step_size,
         particles_kernel=kernel,
@@ -29,6 +43,7 @@ def _viscous_solver(make_solver, scheme, kernel="GAUSSIAN", time_step_size=0.01,
         viscous=ViscousConfig(scheme=scheme, **kwargs),
         advection=AdvectionConfig(scheme="NONE"),
         velocity=VelocityConfig.direct(),
+        **setup_kwargs,
     )
 
 
@@ -182,6 +197,7 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
         solver_for_backend,
         "DVH",
         kernel=kernel_name,
+        vpm_domain_bounds=_GRID_DIFFUSION_BOUNDS,
         dvh_grid_spacing=h,
         dvh_threshold=1e-8,
     )
@@ -220,6 +236,7 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
         "GBD",
         kernel=kernel_name,
         time_step_size=dt,
+        vpm_domain_bounds=_GRID_DIFFUSION_BOUNDS,
         gbd_grid_spacing=h,
         gbd_threshold=1e-8,
     )

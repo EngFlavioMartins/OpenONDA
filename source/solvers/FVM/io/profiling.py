@@ -29,7 +29,8 @@ def resident_set_bytes() -> int:
             resident_pages = int(stream.read().split()[1])
         return resident_pages * int(os.sysconf("SC_PAGE_SIZE"))
     except (OSError, ValueError, IndexError):
-        return 0
+        # macOS and the BSDs have no /proc; report the peak instead of zero.
+        return peak_resident_set_bytes()
 
 
 def peak_resident_set_bytes() -> int:

@@ -19,6 +19,7 @@ import numpy as np
 import taichi as ti
 
 from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR, EPSILON, MAX_PARTICLES
+from ..stabilization.operators import StabilizationOperatorsMixin
 
 # Smallest treecode capacity worth allocating.  Below this the fixed per-node
 # cost is irrelevant and the doubling would just add rebuilds.
@@ -38,7 +39,7 @@ _HOST_TRANSFER_CHUNK_SIZE = 65536
 
 
 @ti.data_oriented
-class PhysicsBase:
+class PhysicsBase(StabilizationOperatorsMixin):
     """
     Base class for VPM physics modules providing shared functionality.
 
@@ -134,10 +135,7 @@ class PhysicsBase:
         )
         self.rate_projection_correction_ratio = 0.0
         self.rate_projection_max_correction_ratio = 0.0
-        self.stabilization_viscosity = ti.field(dtype=compute_dtype, shape=(self.max_particles,))
-        self._stabilization_viscosity_sum = ti.field(dtype=compute_dtype, shape=())
-        self._stabilization_viscosity_max = ti.field(dtype=compute_dtype, shape=())
-        self._stabilization_viscosity_active = ti.field(dtype=ti.i32, shape=())
+        self.initialize_stabilization_fields(compute_dtype, self.max_particles)
         self._axisymmetric_vector_sum_a = ti.Vector.field(
             3, dtype=compute_dtype, shape=(self.max_particles,)
         )
@@ -329,16 +327,13 @@ class PhysicsBase:
                         vector_potential += g_(rho) / convolved_radius * strength[j]
                         if distance > EPSILON:
                             energy_position_gradient -= (
-                                q_(rho)
-                                * gamma_i.dot(strength[j])
-                                / distance**3
-                                * displacement
+                                q_(rho) * gamma_i.dot(strength[j]) / distance**3 * displacement
                             )
 
                 self._rate_energy_gradient[i] = vector_potential
-                energy_rate = vector_potential.dot(
-                    strength_rate[i]
-                ) + energy_position_gradient.dot(velocity[i])
+                energy_rate = vector_potential.dot(strength_rate[i]) + energy_position_gradient.dot(
+                    velocity[i]
+                )
                 ti.atomic_add(self._rate_constraint_defect[9], energy_rate)
 
                 rows = ti.Matrix.zero(self.accumulator_dtype, 9, 3)
@@ -347,9 +342,10 @@ class PhysicsBase:
                 rows[3, 1], rows[3, 2] = -0.5 * x_i[2], 0.5 * x_i[1]
                 rows[4, 0], rows[4, 2] = 0.5 * x_i[2], -0.5 * x_i[0]
                 rows[5, 0], rows[5, 1] = -0.5 * x_i[1], 0.5 * x_i[0]
-                core_term = ti.cast(
-                    self._angular_core_coefficient, self.accumulator_dtype
-                ) * particle_radius[i] ** 2
+                core_term = (
+                    ti.cast(self._angular_core_coefficient, self.accumulator_dtype)
+                    * particle_radius[i] ** 2
+                )
                 x_sq = x_i.dot(x_i)
                 for row, column in ti.static(ti.ndrange(3, 3)):
                     rows[6 + row, column] = x_i[row] * x_i[column] / 3.0
@@ -453,70 +449,6 @@ class PhysicsBase:
 
         self._rate_constraint_multiplier.from_numpy(multipliers.astype(self.np_dtype))
         self._apply_rate_moment_correction(position, radius, strength_rate, count)
-
-    @ti.kernel
-    def _apply_stretching_viscosity_kernel(
-        self,
-        strength: ti.template(),
-        strain_rate: ti.template(),
-        volume: ti.template(),
-        viscosity: ti.template(),
-        viscosity_turbulent: ti.template(),
-        viscosity_effective: ti.template(),
-        coefficient: ti.f32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            gamma = strength[i]
-            gamma_sq = gamma.dot(gamma)
-            production = ti.cast(0.0, self.accumulator_dtype)
-            if gamma_sq > ti.cast(1.0e-30, self.accumulator_dtype):
-                production = ti.max(gamma.dot(strain_rate[i] @ gamma) / gamma_sq, 0.0)
-            delta_sq = ti.pow(ti.max(volume[i], 0.0), 2.0 / 3.0)
-            nu_stabilization = coefficient * delta_sq * production
-            self.stabilization_viscosity[i] = nu_stabilization
-            viscosity_effective[i] = viscosity[i] + viscosity_turbulent[i] + nu_stabilization
-            ti.atomic_add(self._stabilization_viscosity_sum[None], nu_stabilization)
-            ti.atomic_max(self._stabilization_viscosity_max[None], nu_stabilization)
-            if nu_stabilization > 0.0:
-                ti.atomic_add(self._stabilization_viscosity_active[None], 1)
-
-    def apply_stretching_viscosity(self, particles, coefficient: float) -> dict[str, float]:
-        """Add positive-production residual viscosity to ``nu_eff``.
-
-        ``particles.strain_rate`` must describe the same state as the current
-        particle strengths.  The returned statistics are used only for audit
-        output and do not take part in the numerical update.
-        """
-        count = len(particles)
-        self._stabilization_viscosity_sum.fill(0.0)
-        self._stabilization_viscosity_max.fill(0.0)
-        self._stabilization_viscosity_active.fill(0)
-        if count <= 0 or coefficient <= 0.0:
-            return {
-                "stabilization_viscosity_mean": 0.0,
-                "stabilization_viscosity_max": 0.0,
-                "stabilization_viscosity_active_fraction": 0.0,
-            }
-        self._apply_stretching_viscosity_kernel(
-            particles.circulation,
-            particles.strain_rate,
-            particles.volume,
-            particles.viscosity,
-            particles.viscosity_turbulent,
-            particles.viscosity_effective,
-            float(coefficient),
-            count,
-        )
-        ti.sync()
-        return {
-            "stabilization_viscosity_mean": float(self._stabilization_viscosity_sum[None]) / count,
-            "stabilization_viscosity_max": float(self._stabilization_viscosity_max[None]),
-            "stabilization_viscosity_active_fraction": float(
-                self._stabilization_viscosity_active[None]
-            )
-            / count,
-        }
 
     @ti.kernel
     def _reset_axisymmetric_accumulators(self, count: ti.i32):

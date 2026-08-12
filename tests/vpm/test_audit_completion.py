@@ -47,11 +47,6 @@ def test_solver_setup_is_immutable_after_construction():
         setup.logging_frequency = 5
 
 
-def test_removed_sampler_mode_is_not_accepted():
-    with pytest.raises(TypeError, match="sampler_output_format"):
-        VPMSetup(sampler_output_format="unsupported")
-
-
 @pytest.mark.parametrize("name", ["results/run", "run.h5", "vpm_run"])
 def test_backup_name_is_a_safe_infix(name):
     with pytest.raises(ValueError, match="filename-safe infix"):

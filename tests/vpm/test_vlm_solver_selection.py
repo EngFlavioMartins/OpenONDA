@@ -11,7 +11,6 @@ Date: May 2026
 """
 
 import numpy as np
-import pytest
 
 from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
 from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
@@ -109,7 +108,3 @@ class TestAdaptiveSolverSelection:
         assert dt < 1.0, f"SCIPY solve took {dt:.2f}s, expected < 1.0s"
         assert gamma is not None
         assert len(gamma) == n_panels
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

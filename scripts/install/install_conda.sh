@@ -7,7 +7,7 @@ ENV_DIR="$REPO_ROOT/scripts/environment"
 ENV_NAME="${OPENONDA_CONDA_ENV:-OpenONDA}"
 ENV_FILE="$ENV_DIR/environment.yml"
 AUTO_YES=0
-DEVELOPMENT=0
+EDITABLE=1
 
 usage() {
     printf '%s\n' \
@@ -15,7 +15,7 @@ usage() {
         "" \
         "  -y, --yes       install Miniforge without prompting if Conda is absent" \
         "  --parallel      install the MPI/PETSc environment" \
-        "  --dev           install OpenONDA editable with development tools" \
+        "  --no-editable   install a fixed copy instead of linking the repository" \
         "  --name NAME     choose the Conda environment name" \
         "  -h, --help      show this help"
 }
@@ -27,7 +27,8 @@ while (($#)); do
             ENV_FILE="$ENV_DIR/environment-parallel.yml"
             if [[ "$ENV_NAME" == "OpenONDA" ]]; then ENV_NAME="OpenONDA-parallel"; fi
             ;;
-        --dev) DEVELOPMENT=1 ;;
+        --no-editable) EDITABLE=0 ;;
+        --dev) ;;  # Retained for compatibility; editable is now the default.
         --name)
             shift
             [[ $# -gt 0 ]] || { echo "--name requires a value" >&2; exit 2; }
@@ -95,9 +96,7 @@ fi
 CONDA_ROOT="$("$CONDA_EXE" info --base)"
 
 echo "Creating or updating Conda environment '$ENV_NAME'..."
-CONDA_ARGS=(env update --name "$ENV_NAME" --file "$ENV_FILE")
-if [[ $AUTO_YES -eq 1 ]]; then CONDA_ARGS+=(--yes); fi
-"$CONDA_EXE" "${CONDA_ARGS[@]}"
+"$CONDA_EXE" env update --name "$ENV_NAME" --file "$ENV_FILE"
 
 ENV_PREFIX="$("$CONDA_EXE" env list | awk -v name="$ENV_NAME" '$1 == name {print $NF; exit}')"
 ENV_PYTHON="$ENV_PREFIX/bin/python"
@@ -106,20 +105,30 @@ if [[ -z "$ENV_PREFIX" || ! -x "$ENV_PYTHON" ]]; then
     exit 1
 fi
 
-if [[ $DEVELOPMENT -eq 1 ]]; then
-    echo "Installing OpenONDA in editable development mode..."
+REQUIRED_PYTHON="$(sed -n 's/^[[:space:]]*-[[:space:]]*python=\([0-9][0-9.]*\).*/\1/p' "$ENV_FILE" | head -1)"
+ACTUAL_PYTHON="$("$ENV_PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+if [[ -n "$REQUIRED_PYTHON" && "$ACTUAL_PYTHON" != "$REQUIRED_PYTHON" ]]; then
+    echo "Environment '$ENV_NAME' has Python $ACTUAL_PYTHON, but OpenONDA requires $REQUIRED_PYTHON." >&2
+    echo "Remove it and re-run this installer:  conda env remove --name $ENV_NAME" >&2
+    exit 1
+fi
+echo "Using Python $ACTUAL_PYTHON from '$ENV_NAME'."
+
+if [[ $EDITABLE -eq 1 ]]; then
+    echo "Installing OpenONDA in editable mode with development tools..."
     "$ENV_PYTHON" -m pip install -e "${REPO_ROOT}[dev]"
 else
-    echo "Installing OpenONDA..."
+    echo "Installing OpenONDA as a fixed copy..."
     "$ENV_PYTHON" -m pip install "$REPO_ROOT"
 fi
 
 echo "Verifying meshing, Taichi, and a native FVM step outside the source tree..."
 VERIFY_ARGS=()
-if [[ $DEVELOPMENT -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
+if [[ $EDITABLE -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
 (
     cd "${TMPDIR:-/tmp}"
-    PYTHONNOUSERSITE=1 "$ENV_PYTHON" -m openonda.verify_install "${VERIFY_ARGS[@]}"
+    # bash 3.2 treats an empty array as unset under "set -u".
+    PYTHONNOUSERSITE=1 "$ENV_PYTHON" -m openonda.verify_install ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}
 )
 "$ENV_PYTHON" -m pip check
 
@@ -128,3 +137,6 @@ echo "OpenONDA is ready in '$ENV_NAME'."
 printf 'Activate it with:\n  source %q\n  conda activate %q\n' \
     "$CONDA_ROOT/etc/profile.d/conda.sh" "$ENV_NAME"
 echo "The package can then be imported from any directory; PYTHONPATH is not needed."
+if [[ $EDITABLE -eq 1 ]]; then
+    echo "Edits under $REPO_ROOT take effect immediately; no reinstall is needed."
+fi

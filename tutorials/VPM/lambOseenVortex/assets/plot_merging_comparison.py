@@ -20,9 +20,9 @@ if __package__:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 else:
     from _common import (
@@ -32,9 +32,9 @@ else:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 
 
@@ -99,7 +99,7 @@ def plot_merging_case(args) -> int:
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=publication_size(13.5))
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     fig.subplots_adjust(hspace=0.14, top=0.94, bottom=0.25, left=0.15, right=0.97)
 
     plotted_schemes = []
@@ -144,15 +144,19 @@ def plot_merging_case(args) -> int:
         "label": r"Cerretelli \& Williamson (2003)",
     }
     scale = args.a0_over_b0**2
-    if THETA_REF.exists():
-        reference = np.loadtxt(THETA_REF, delimiter=",")
-        axes[0].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
-    if A2_REF.exists():
-        reference = np.loadtxt(A2_REF, delimiter=",")
-        axes[1].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
-    if B_REF.exists():
-        reference = np.loadtxt(B_REF, delimiter=",")
-        axes[2].plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
+    # Say so when the digitized reference is absent: the figure is still made,
+    # but silently dropping the experimental curve makes it look like the run
+    # was never compared against anything.
+    missing = [path.name for path in (THETA_REF, A2_REF, B_REF) if not path.exists()]
+    if missing:
+        print(
+            f"  [merging] WARNING: no reference curve for {', '.join(missing)}; "
+            f"expected under {REF_DIR}"
+        )
+    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF), (axes[2], B_REF)):
+        if path.exists():
+            reference = np.loadtxt(path, delimiter=",")
+            axis.plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
@@ -168,7 +172,7 @@ def plot_merging_case(args) -> int:
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
-    save_publication_figure(fig, out, args.dpi)
+    save_fig(fig, out, args.dpi)
     return 0
 
 

@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
-# Run the complete Lamb--Oseen benchmark and make its comparison figures.
+# Run the complete Lamb--Oseen benchmark, validate it, and make its figures.
 
 set -euo pipefail
-
 cd "$(dirname "$0")"
+
 ./allclean.sh
 
-# Output periods [s].
-VORTEX_SAMPLE_PERIOD=1.0
-DIPOLE_SAMPLE_PERIOD=2.5
-MERGING_SAMPLE_PERIOD=1.25
-BACKUP_PERIOD=40.0
+SCHEMES=(cs rwm dvh gbd)
 
 run() {
-    python vortex_setup.py "$1" "$2" "$3" "$BACKUP_PERIOD"
-    python assets/validate_results.py "$1" "$2"
-    ./allplot.sh -png
+    echo
+    echo "=== $1 ==="
+    python -u vortex_setup.py "$@"
 }
 
+for scheme in "${SCHEMES[@]}"; do
+    run "vortex_${scheme}" +1
+    run "dipole_${scheme}" +1 -1
+    run "merging_${scheme}" +1 +1
+done
+
+# A blown-up case still exits 0, so check the results before plotting them.
+echo
+echo "=== validation ==="
+validation_status=0
 for physics in vortex dipole merging; do
-    case "$physics" in
-        vortex) sample_period="$VORTEX_SAMPLE_PERIOD" ;;
-        dipole) sample_period="$DIPOLE_SAMPLE_PERIOD" ;;
-        merging) sample_period="$MERGING_SAMPLE_PERIOD" ;;
-    esac
-    for scheme in cs rwm dvh gbd; do
-        run "$physics" "$scheme" "$sample_period"
+    for scheme in "${SCHEMES[@]}"; do
+        python assets/validate_results.py "$physics" "$scheme" || validation_status=1
     done
 done
+
+./allplot.sh -png
+
+if ((validation_status)); then
+    echo "One or more cases failed validation; the figures above show the runs as computed." >&2
+    exit 1
+fi

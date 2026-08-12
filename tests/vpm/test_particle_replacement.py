@@ -318,7 +318,7 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
             raise AssertionError("retention must not run direct vorticity reconstruction")
 
         solver.physics.compute_vorticities = unexpected_reconstruction
-        solver._apply_particle_retention()
+        solver.stabilization.apply_retention()
 
         kept = np.array([0, 2])
         np.testing.assert_array_equal(solver.particles.position_cpu(), position[kept])

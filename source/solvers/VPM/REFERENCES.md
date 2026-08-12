@@ -62,7 +62,8 @@ angular-impulse correction assumes.
   flows. *Fluid Dyn. Res.* 10, 101–115.
   Relaxation of Γ toward the local vorticity direction; the misalignment
   diagnostic measures exactly the quantity this addresses.
-  → `diagnostics/resolution.py:strength_misalignment_deg`
+  → `diagnostics/resolution.py:strength_misalignment_deg`,
+  `stabilization/operators.py:apply_pedrizzetti_relaxation`
 
 Only the TRANSPOSED form conserves total circulation ΣΓ exactly — proved in
 `tests/vpm/test_conservation_structure.py`.
@@ -151,12 +152,24 @@ Only the TRANSPOSED form conserves total circulation ΣΓ exactly — proved in
 - **[WL1993]**, **[CK2000 §5.3]** — the discrete vorticity field is not
   solenoidal and stretching amplifies its divergent part; this motivates the
   projection.
-  → `numerics/divergence_relaxation.py`
+  → `stabilization/divergence_relaxation.py`
+
+- **[Pedrizzetti1992]** as above — the local alternative to that projection:
+  rotate Γ_p toward ω(x_p) by a fixed fraction each step.  It is not a
+  projection onto a conserved subspace, so the rotation's transfer of
+  circulation and impulse is reported rather than gated.
+  → `config/types.py:StabilizationConfig.pedrizzetti_relaxation`,
+  `stabilization/manager.py:StabilizationManager.apply_relaxation`
+
+- **[Alvarez2022]** Alvarez, E. J. & Ning, A. (2022). **[local]**
+  `docs/literature/alvarez2022.pdf`, Sec. II.F.
+  Reformulated VPM; adopts Pedrizzetti's relaxation as the divergence
+  treatment that makes a meshless LES stable in practice.
 
 ## Local literature not yet linked from source
 
 `docs/literature/` also holds Constant2016, Cooper2009, Meunier2005,
-alvarez2022, billuart2023, builland2024, carretelli2003, cottet2014,
+billuart2023, builland2024, carretelli2003, cottet2014,
 kornev2019, rention2025, themas2025, way2024, zeng2024. Where these back a
 specific implementation choice, add the citation key above and reference it from
 the relevant docstring rather than restating the argument in the source file.

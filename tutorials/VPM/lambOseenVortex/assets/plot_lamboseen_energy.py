@@ -32,9 +32,9 @@ if __package__:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 else:
     from _common import (
@@ -42,9 +42,9 @@ else:
         build_arg_parser,
         build_style_map,
         load_theme,
-        publication_size,
+        figure_size,
         resolve_runtime_physics,
-        save_publication_figure,
+        save_fig,
     )
 
 
@@ -141,7 +141,7 @@ def plot_energy_enstrophy(args) -> int:
 
     tau_scale = run_nu / (a0**2)
     p_ref = run_nu * (args.gamma**2) / (a0**2)
-    fig, axes = plt.subplots(1, 3, figsize=publication_size(7.5))
+    fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"))
     fig.subplots_adjust(wspace=0.28, top=0.90, bottom=0.39, left=0.14, right=0.97)
 
     plotted = False
@@ -232,7 +232,7 @@ def plot_energy_enstrophy(args) -> int:
         bbox_to_anchor=(0.5, 0.02),
     )
 
-    save_publication_figure(fig, out, args.dpi)
+    save_fig(fig, out, args.dpi)
     return 0
 
 

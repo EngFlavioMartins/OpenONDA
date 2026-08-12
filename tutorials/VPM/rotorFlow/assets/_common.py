@@ -54,7 +54,7 @@ def build_arg_parser(description: str) -> argparse.ArgumentParser:
     """Base argument parser shared by rotorFlow plot scripts."""
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
-    p.add_argument("--dpi", type=int, default=300, help="Figure DPI (PNG only).")
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI (PNG only).")
     return p
 
 

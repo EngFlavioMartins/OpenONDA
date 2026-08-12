@@ -166,10 +166,17 @@ def test_spacing_variation_warning_uses_min_over_max_ratio():
     assert any("Large variation in particle spacing" in issue for issue in result["issues"])
 
 
-def test_vpm_optional_dependency_declares_taichi():
+def test_core_dependencies_declare_taichi():
+    """VPM/VLM ship in the default install, so Taichi is required, not optional."""
     project = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    optional = project["project"]["optional-dependencies"]
+    taichi_requirements = [
+        requirement
+        for requirement in project["project"]["dependencies"]
+        if requirement.startswith("taichi")
+    ]
 
-    assert any(requirement.startswith("taichi") for requirement in optional["vpm"])
-    assert any(requirement.startswith("taichi") for requirement in optional["dev"])
-    assert any(requirement.startswith("taichi") for requirement in optional["all"])
+    assert taichi_requirements, "taichi must be a core dependency"
+    # Intel macOS is pinned to the last compatible wheel; every other platform
+    # takes the current release. Both markers must stay present.
+    assert any("platform_machine=='x86_64'" in req for req in taichi_requirements)
+    assert any("platform_machine!='x86_64'" in req for req in taichi_requirements)

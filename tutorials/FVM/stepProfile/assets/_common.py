@@ -31,7 +31,7 @@ def build_arg_parser():
     parser.add_argument("--solution-dir", default=str(SOLUTION_DIR))
     parser.add_argument("--figures-dir", default=str(FIGURES_DIR))
     parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
-    parser.add_argument("--dpi", type=int, default=400)
+    parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     return parser
 
 
@@ -48,6 +48,6 @@ def load_csv_columns(path):
     return {key: np.asarray(values) for key, values in data.items()}
 
 
-def save_fig(fig, name, figures_dir, dpi=400, figure_format="png"):
+def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):
     path = Path(figures_dir) / name
     THEME.save_fig(fig, path, figure_format=figure_format, dpi=dpi)

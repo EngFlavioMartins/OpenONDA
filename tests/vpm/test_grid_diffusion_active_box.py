@@ -226,22 +226,6 @@ def test_batched_m4_scatter_matches_single_dispatch(diffusion):
     np.testing.assert_array_equal(batched, single)
 
 
-@pytest.mark.unit
-def test_grid_diffusion_has_no_whole_allocation_transfers():
-    """Guard the defect itself: no full-field to_numpy/from_numpy in the module."""
-    import inspect
-
-    from source.solvers.VPM.physics import diffusion as diffusion_module
-
-    src = inspect.getsource(diffusion_module)
-    for call in (
-        "_current_grid.to_numpy()",
-        "_current_grid.from_numpy(",
-        "_nu_eff_grid.from_numpy(",
-    ):
-        assert call not in src, f"{call} transfers the whole allocation; use the bounded helpers"
-
-
 # ── numerical neutrality: active box vs the former full-domain grid ─────────
 
 

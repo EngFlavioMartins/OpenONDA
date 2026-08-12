@@ -206,7 +206,9 @@ class SamplerExecutor:
             return []
 
         try:
-            root = ET.parse(pvd_path).getroot()  # noqa: S314
+            # The PVD index is written by this solver in this directory; the
+            # same judgement the ruff suppression records applies to bandit.
+            root = ET.parse(pvd_path).getroot()  # noqa: S314  # nosec B314
             entries = []
             for dataset in root.findall(".//DataSet"):
                 filename = dataset.get("file")

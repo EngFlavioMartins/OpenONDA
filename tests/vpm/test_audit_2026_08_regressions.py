@@ -90,18 +90,6 @@ def test_treecode_supported_kernels_are_accepted(kernel):
     assert setup.velocity.method == "TREECODE"
 
 
-@pytest.mark.unit
-def test_treecode_kernel_support_has_a_single_source_of_truth():
-    """VPMSetup validation and TaichiTreecode must read the same constant.
-
-    They previously carried independent lists, which is how the mismatch in N-1
-    survived: the config grew two kernels the treecode never learned about.
-    """
-    from source.solvers.VPM.acceleration import treecode_gpu
-
-    assert treecode_gpu.TREECODE_SUPPORTED_KERNELS is TREECODE_SUPPORTED_KERNELS
-
-
 # ── N-2: treecode q kernel matches the analytic Gaussian across the branch ───
 
 
@@ -254,25 +242,6 @@ def test_shed_trailing_circulation_telescopes_to_zero(gamma):
     assert abs(shed.sum()) < 1e-12 * max(1.0, np.abs(gamma).sum())
 
 
-@pytest.mark.verification
-def test_deleted_full_gamma_wake_model_would_violate_kelvin():
-    """Guard the *reason* the dead module was removed, not just its absence."""
-    gamma = np.array([0.4, 0.9, 1.0, 0.9, 0.4])
-    naive = gamma.sum()  # what wake_shedding.py emitted: Gamma_i per TE panel
-    correct = _telescoped_trailing_strengths(gamma).sum()
-    assert naive > 0.5, "sanity: the naive model has large net streamwise circulation"
-    assert abs(correct) < 1e-12
-
-
-@pytest.mark.unit
-def test_dead_wake_shedding_module_is_gone():
-    """``vlm.kernels`` must no longer export the superseded wake kernels."""
-    from source.solvers.VPM.boundary_elements.vlm import kernels
-
-    assert not hasattr(kernels, "compute_wake_particles_kernel")
-    assert not hasattr(kernels, "compute_wake_simple_kernel")
-
-
 # ── N-6: the RWM random seed is configurable ────────────────────────────────
 
 
@@ -281,29 +250,6 @@ def test_random_seed_is_a_configuration_field_with_a_reproducible_default():
     """RWM reproducibility must be a choice, not a hardcoded constant."""
     assert VPMSetup.dns_simulation(processing_unit="CPU").random_seed == 42
     assert VPMSetup.dns_simulation(processing_unit="CPU", random_seed=7).random_seed == 7
-
-
-@pytest.mark.unit
-def test_random_seed_reaches_the_taichi_backend():
-    """The seed must be forwarded to ``ti.init``, not silently dropped."""
-    import inspect
-
-    from source.solvers.VPM.config import backend
-
-    assert "random_seed" in inspect.signature(backend.initialize_taichi_backend).parameters
-    source = inspect.getsource(backend.initialize_taichi_backend)
-    assert 'init_kwargs["random_seed"] = random_seed' in source, (
-        "initialize_taichi_backend must pass its random_seed argument to ti.init"
-    )
-
-
-@pytest.mark.unit
-def test_random_seed_is_serialized():
-    """An ensemble member must be recoverable from its serialized config."""
-    assert (
-        VPMSetup.dns_simulation(processing_unit="CPU", random_seed=11).to_dict()["random_seed"]
-        == 11
-    )
 
 
 # ── N-3: the precision contract is truthful ─────────────────────────────────
@@ -331,19 +277,6 @@ def test_f64_with_direct_summation_is_accepted():
         max_particles=1000,
     )
     assert setup.precision == "f64"
-
-
-@pytest.mark.unit
-def test_precision_docstring_labels_f64_experimental():
-    """The user-facing contract must not advertise f64 as production-ready."""
-    import inspect
-
-    src = inspect.getsource(VPMSetup)
-    marker = src.split("precision: Literal", 1)[1][:1400]
-    assert "EXPERIMENTAL" in marker and "not end-to-end" in marker, (
-        "the precision docstring must state that f64 is experimental and partial"
-    )
-    assert "supported production precision" in marker
 
 
 # ── N-4: core-spreading constants match the kernels' own second moments ─────

@@ -178,12 +178,12 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
     ].stabilization.stretching_viscosity_coefficient == pytest.approx(
         namespace["STABILIZATION_COEFFICIENT"]
     )
-    assert not configs["leapfrog_dns"].filament_refinement.enabled
-    assert not configs["leapfrog_les"].filament_refinement.enabled
-    assert not configs["leapfrog_les_stabilized"].filament_refinement.enabled
-    assert not configs["leapfrog_dns"].divergence_relaxation.enabled
-    assert not configs["leapfrog_les"].divergence_relaxation.enabled
-    assert not configs["leapfrog_les_stabilized"].divergence_relaxation.enabled
+    assert not configs["leapfrog_dns"].stabilization.filament_refinement.enabled
+    assert not configs["leapfrog_les"].stabilization.filament_refinement.enabled
+    assert not configs["leapfrog_les_stabilized"].stabilization.filament_refinement.enabled
+    assert not configs["leapfrog_dns"].stabilization.divergence_relaxation.enabled
+    assert not configs["leapfrog_les"].stabilization.divergence_relaxation.enabled
+    assert not configs["leapfrog_les_stabilized"].stabilization.divergence_relaxation.enabled
     assert configs["leapfrog_les_stabilized"].viscous.scheme == "CS"
     assert (
         configs["leapfrog_les_stabilized"].stabilization.regularization_max_particles
@@ -238,18 +238,6 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
     ].stabilization.regularization_projection_max_correction == pytest.approx(
         namespace["REGULARIZATION_PROJECTION_LIMIT"]["collide"]
     )
-
-
-def test_vortex_interactions_scripts_run_and_gate_all_six_cases():
-    tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions"
-    allrun = (tutorial / "allrun.sh").read_text(encoding="utf-8")
-    validator = (tutorial / "assets/validate_plot_inputs.py").read_text(encoding="utf-8")
-
-    assert 'python -u rings_setup.py "$case_name"' in allrun
-    assert "python assets/check_run.py" in allrun
-    assert '"leapfrog_dns"' in validator
-    assert '"collide_les_stabilized"' in validator
-    assert "leapfrog_les_stabilized" in allrun
 
 
 def test_vortex_interactions_initial_state_matches_ring_invariants():

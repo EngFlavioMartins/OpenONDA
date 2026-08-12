@@ -37,6 +37,11 @@ def _atomic_write_text(path: str | Path, text: str) -> None:
         raise
 
 
+def _stabilization(solver):
+    """The stabilization master, or ``None`` for a solver stand-in without one."""
+    return getattr(solver, "stabilization", None)
+
+
 class BackupSystem:
     """Atomic HDF5 snapshots and JSON-backed restart checkpoints."""
 
@@ -45,13 +50,14 @@ class BackupSystem:
         path = str(hdf5_file)
         if not BackupSystem._validate_hdf5_structure(path):
             raise ValueError(f"invalid VPM checkpoint: {path}")
-        reference_strengths = getattr(solver, "_filament_reference_strengths", None)
-        reference_lengths = getattr(solver, "_filament_reference_lengths", None)
+        stabilization = _stabilization(solver)
+        reference_strengths = getattr(stabilization, "reference_strengths", None)
+        reference_lengths = getattr(stabilization, "reference_lengths", None)
         if solver.particles.number_of_particles:
             solver.remove_particles(remove_all=True)
         if reference_strengths is not None and reference_lengths is not None:
-            solver._filament_reference_strengths = reference_strengths
-            solver._filament_reference_lengths = reference_lengths
+            stabilization.reference_strengths = reference_strengths
+            stabilization.reference_lengths = reference_lengths
         BackupSystem._load_numerical_data(solver, path)
 
     @staticmethod
@@ -105,8 +111,9 @@ class BackupSystem:
     @staticmethod
     def _save_particle_optional_fields(particles_group, solver, n_particles: int) -> None:
         """Save optional/advanced particle fields to HDF5, silently skipping unavailable ones."""
-        reference_strengths = getattr(solver, "_filament_reference_strengths", None)
-        reference_lengths = getattr(solver, "_filament_reference_lengths", None)
+        stabilization = _stabilization(solver)
+        reference_strengths = getattr(stabilization, "reference_strengths", None)
+        reference_lengths = getattr(stabilization, "reference_lengths", None)
         if (
             reference_strengths is not None
             and reference_lengths is not None
@@ -199,60 +206,10 @@ class BackupSystem:
             # steps than the uninterrupted run.
             solver_group.attrs["dvh_fire_counter"] = int(getattr(solver, "_dvh_fire_counter", 0))
             solver_group.attrs["number_of_particles"] = solver.particles.number_of_particles
-            solver_group.attrs["filament_refinement_cumulative_energy_transfer"] = float(
-                getattr(solver, "_filament_refinement_cumulative_energy_transfer", 0.0)
-            )
-            energy_reference = getattr(
-                solver,
-                "_filament_refinement_energy_reference",
-                None,
-            )
-            if energy_reference is not None:
-                solver_group.attrs["filament_refinement_energy_reference"] = float(energy_reference)
-            enstrophy_reference = getattr(
-                solver,
-                "_filament_refinement_enstrophy_reference",
-                None,
-            )
-            if enstrophy_reference is not None:
-                solver_group.attrs["filament_refinement_enstrophy_reference"] = float(
-                    enstrophy_reference
-                )
-            for name, value in getattr(
-                solver,
-                "_filament_refinement_diagnostics",
-                {},
-            ).items():
+            stabilization = _stabilization(solver)
+            for name, value in getattr(stabilization, "diagnostics", {}).items():
                 solver_group.attrs[name] = value
-            for name, value in getattr(
-                solver,
-                "_divergence_relaxation_diagnostics",
-                {},
-            ).items():
-                solver_group.attrs[name] = value
-            for name, value in getattr(
-                solver,
-                "_grid_diffusion_diagnostics",
-                {},
-            ).items():
-                solver_group.attrs[name] = value
-            for name, value in getattr(
-                solver,
-                "_core_spreading_diagnostics",
-                {},
-            ).items():
-                solver_group.attrs[name] = value
-            for name, value in getattr(
-                solver,
-                "_regularization_diagnostics",
-                {},
-            ).items():
-                solver_group.attrs[name] = value
-            reference_moments = getattr(
-                solver,
-                "_divergence_relaxation_reference_moments",
-                None,
-            )
+            reference_moments = getattr(stabilization, "reference_moments", None)
             if reference_moments is not None:
                 reference_array = np.asarray(reference_moments, dtype=np.float64)
                 if reference_array.shape != (3, 3):
@@ -670,42 +627,15 @@ class BackupSystem:
             solver.time_step_size = float(solver_group.attrs["time_step_size"])
             if "dvh_fire_counter" in solver_group.attrs:
                 solver._dvh_fire_counter = int(solver_group.attrs["dvh_fire_counter"])
-            if hasattr(solver, "_filament_refinement_diagnostics"):
-                for name in solver._filament_refinement_diagnostics:
-                    if name in solver_group.attrs:
-                        solver._filament_refinement_diagnostics[name] = solver_group.attrs[
-                            name
-                        ].item()
-                if "filament_refinement_cumulative_energy_transfer" in solver_group.attrs:
-                    solver._filament_refinement_cumulative_energy_transfer = float(
-                        solver_group.attrs["filament_refinement_cumulative_energy_transfer"]
-                    )
-                if "filament_refinement_energy_reference" in solver_group.attrs:
-                    solver._filament_refinement_energy_reference = float(
-                        solver_group.attrs["filament_refinement_energy_reference"]
-                    )
-                if "filament_refinement_enstrophy_reference" in solver_group.attrs:
-                    solver._filament_refinement_enstrophy_reference = float(
-                        solver_group.attrs["filament_refinement_enstrophy_reference"]
-                    )
-            if hasattr(solver, "_divergence_relaxation_diagnostics"):
-                for name in solver._divergence_relaxation_diagnostics:
-                    if name in solver_group.attrs:
-                        solver._divergence_relaxation_diagnostics[name] = solver_group.attrs[
-                            name
-                        ].item()
-            if hasattr(solver, "_grid_diffusion_diagnostics"):
-                for name in solver._grid_diffusion_diagnostics:
-                    if name in solver_group.attrs:
-                        solver._grid_diffusion_diagnostics[name] = solver_group.attrs[name].item()
-            if hasattr(solver, "_core_spreading_diagnostics"):
-                for name in solver._core_spreading_diagnostics:
-                    if name in solver_group.attrs:
-                        solver._core_spreading_diagnostics[name] = solver_group.attrs[name].item()
-            if hasattr(solver, "_regularization_diagnostics"):
-                for name in solver._regularization_diagnostics:
-                    if name in solver_group.attrs:
-                        solver._regularization_diagnostics[name] = solver_group.attrs[name].item()
+            stabilization = _stabilization(solver)
+            if stabilization is not None:
+                stabilization.restore_diagnostics(
+                    {
+                        name: value.item() if hasattr(value, "item") else value
+                        for name, value in solver_group.attrs.items()
+                        if name.startswith("stabilization_")
+                    }
+                )
             if "divergence_relaxation_reference_moments" in solver_group:
                 reference_array = np.asarray(
                     solver_group["divergence_relaxation_reference_moments"][:],
@@ -715,9 +645,8 @@ class BackupSystem:
                     raise ValueError(
                         "checkpoint divergence-relaxation reference moments must have shape (3, 3)"
                     )
-                solver._divergence_relaxation_reference_moments = tuple(
-                    row.copy() for row in reference_array
-                )
+                if stabilization is not None:
+                    stabilization.reference_moments = tuple(row.copy() for row in reference_array)
 
             particles_group = f["particles"]
             n_particles = int(solver_group.attrs["number_of_particles"])
@@ -760,18 +689,23 @@ class BackupSystem:
                 solver.particles.set_field("strain_rate", optional["strain_rate"])
             saved_reference_strength = optional["filament_reference_strength"]
             saved_reference_length = optional["filament_reference_length"]
-            if saved_reference_strength is not None and saved_reference_length is not None:
-                solver._filament_reference_strengths = np.asarray(
+            stabilization = _stabilization(solver)
+            if (
+                saved_reference_strength is not None
+                and saved_reference_length is not None
+                and stabilization is not None
+            ):
+                stabilization.reference_strengths = np.asarray(
                     saved_reference_strength,
                     dtype=np.float64,
                 )
-                solver._filament_reference_lengths = np.asarray(
+                stabilization.reference_lengths = np.asarray(
                     saved_reference_length,
                     dtype=np.float64,
                 )
-            elif getattr(solver.filament_refinement_config, "enabled", False):
-                references = getattr(solver, "_filament_reference_strengths", None)
-                lengths = getattr(solver, "_filament_reference_lengths", None)
+            elif solver.stabilization_config.filament_refinement.enabled:
+                references = getattr(stabilization, "reference_strengths", None)
+                lengths = getattr(stabilization, "reference_lengths", None)
                 if references is None or lengths is None or len(references) != n_particles:
                     raise ValueError(
                         "checkpoint has no filament-lineage state and its particle "

@@ -4,6 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+rm -rf figures
 mkdir -p figures
 
 plot() {
