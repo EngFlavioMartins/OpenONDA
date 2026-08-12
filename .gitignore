@@ -127,6 +127,9 @@ log.*
 *.dat
 *.csv
 
+# Digitized literature reference curves plotted against sampled results
+!tutorials/VPM/lambOseenVortex/assets/references/*.csv
+
 # VPM JSON outputs
 vpm*.json
 

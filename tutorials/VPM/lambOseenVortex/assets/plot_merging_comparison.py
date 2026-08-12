@@ -144,9 +144,6 @@ def plot_merging_case(args) -> int:
         "label": r"Cerretelli \& Williamson (2003)",
     }
     scale = args.a0_over_b0**2
-    # Say so when the digitized reference is absent: the figure is still made,
-    # but silently dropping the experimental curve makes it look like the run
-    # was never compared against anything.
     missing = [path.name for path in (THETA_REF, A2_REF, B_REF) if not path.exists()]
     if missing:
         print(
