@@ -2,7 +2,7 @@
 """Total particle-strength variation — ``rings_circulation.png``.
 
 Plots Σ|Γᵢ|/Σ|Γᵢ|₀ versus normalised time for every case discovered under
-``solution/``, read from the solver log's ``FLOW DIAGNOSTICS`` sections.
+``solution/``, read from the VPM flow-integral sampler.
 This total variation is a stretching/resolution diagnostic, not a conserved
 circulation invariant for a three-dimensional vortex-particle field.
 

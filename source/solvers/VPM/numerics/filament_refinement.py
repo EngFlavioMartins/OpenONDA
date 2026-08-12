@@ -57,12 +57,14 @@ class GaussianIntegralTransfer:
     helicity_change: float
 
 
-def gaussian_particle_moments(
+def particle_moments(
     position: np.ndarray,
     circulation: np.ndarray,
     radius: np.ndarray,
+    *,
+    angular_core_coefficient: float,
 ) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
-    """Return ``(sum Gamma, sum|Gamma|, I, A)`` for Gaussian vortex blobs."""
+    """Return ``(sum Gamma, sum|Gamma|, I, A)`` for a supported blob kernel."""
 
     position = np.asarray(position, dtype=np.float64)
     circulation = np.asarray(circulation, dtype=np.float64)
@@ -75,11 +77,26 @@ def gaussian_particle_moments(
     total = circulation.sum(axis=0, dtype=np.float64)
     variation = float(np.linalg.norm(circulation, axis=1).sum(dtype=np.float64))
     impulse = 0.5 * np.cross(position, circulation).sum(axis=0, dtype=np.float64)
-    angular = (
-        np.cross(position, np.cross(position, circulation)).sum(axis=0, dtype=np.float64) / 3.0
-        - (radius[:, None] ** 2 * circulation).sum(axis=0, dtype=np.float64) / 3.0
+    angular = np.cross(position, np.cross(position, circulation)).sum(
+        axis=0, dtype=np.float64
+    ) / 3.0 - angular_core_coefficient * (radius[:, None] ** 2 * circulation).sum(
+        axis=0, dtype=np.float64
     )
     return total, variation, impulse, angular
+
+
+def gaussian_particle_moments(
+    position: np.ndarray,
+    circulation: np.ndarray,
+    radius: np.ndarray,
+) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
+    """Return ``(sum Gamma, sum|Gamma|, I, A)`` for Gaussian vortex blobs."""
+    return particle_moments(
+        position,
+        circulation,
+        radius,
+        angular_core_coefficient=1.0 / 3.0,
+    )
 
 
 def _gaussian_energy_kernel(density: np.ndarray) -> np.ndarray:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,7 @@ import pandas as pd
 import pytest
 
 from tutorials.VPM.lambOseenVortex.assets.pair_diagnostics import PairDiagnosticsSampler
+from tutorials.VPM.lambOseenVortex.assets.rwm_ensemble import average_pair_diagnostics
 
 
 class _ParticlePair:
@@ -52,6 +54,68 @@ def test_merging_sampler_tracks_both_initial_cores(tmp_path):
     assert bool(data.loc[0, "merged"]) is False
     assert data.loc[0, "separation"] == pytest.approx(1.0)
     assert data.loc[0, "core_area"] == pytest.approx(0.00625)
+
+
+def test_pair_geometry_uses_midplane_while_circulation_uses_full_column(tmp_path):
+    path = tmp_path / "pair_diagnostics.csv"
+    solver = _ParticlePair((1.0, -1.0))
+    solver.particles_positions[:4, 2] = 0.0
+    solver.particles_positions[4:, 2] = 1.0
+    solver.particles_positions[4:, 0] = 10.0
+    sampler = PairDiagnosticsSampler("dipole", 1.0, 2.0, slab_half_width=0.1)
+
+    sampler.save_csv(solver, path, time=0.25, step=1)
+
+    data = pd.read_csv(path)
+    assert data.loc[0, "x_core"] == pytest.approx(0.0)
+    assert data.loc[0, "surface_circulation"] == pytest.approx(2.0)
+
+
+def test_rwm_pair_ensemble_averages_independent_histories(tmp_path):
+    member_dirs = []
+    for member, offset in enumerate((-0.1, 0.1)):
+        member_dir = tmp_path / f"member-{member}" / "samples" / "dipole_rwm"
+        member_dir.mkdir(parents=True)
+        pair = pd.DataFrame(
+            {
+                "flow_time": [1.0, 2.0],
+                "time_step": [5, 10],
+                "x_core": np.array([0.2, 0.4]) + offset,
+                "y_core": [0.5, 0.5],
+                "core_radius": [0.2, 0.3],
+                "separation": [np.nan, np.nan],
+                "core_area": [np.nan, np.nan],
+                "angle_rad": [np.nan, np.nan],
+                "surface_circulation": [0.99, 0.99],
+                "merged": [False, False],
+                "core_0_x": np.array([0.2, 0.4]) + offset,
+                "core_0_y": [0.5, 0.5],
+                "core_1_x": [np.nan, np.nan],
+                "core_1_y": [np.nan, np.nan],
+            }
+        )
+        pair.to_csv(member_dir / "pair_diagnostics.csv", index=False)
+        pd.DataFrame(
+            {
+                "time": [1.0, 2.0],
+                "step": [5, 10],
+                "kinetic_energy": np.array([1.0, 0.8]) + offset,
+            }
+        ).to_csv(member_dir / "flow_integrals.csv", index=False)
+        (member_dir / "run_metadata.json").write_text("{}", encoding="utf-8")
+        member_dirs.append(member_dir)
+
+    average_pair_diagnostics(member_dirs[0], member_dirs, realizations=2)
+
+    pair = pd.read_csv(member_dirs[0] / "pair_diagnostics.csv")
+    integrals = pd.read_csv(member_dirs[0] / "flow_integrals.csv")
+    metadata = json.loads(
+        (member_dirs[0] / "run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert pair["x_core"].to_list() == pytest.approx([0.2, 0.4])
+    assert pair["separation"].isna().all()
+    assert integrals["kinetic_energy"].to_list() == pytest.approx([1.0, 0.8])
+    assert metadata["rwm_realizations"] == 2
 
 
 def test_allrun_contains_the_complete_four_by_three_matrix():

@@ -52,6 +52,7 @@ class SmagorinskyModel:
         kernel_type: str = "GAUSSIAN",
         cs: float = SMAGORINSKY_CONSTANT,
         ce: float = 1.048,
+        accumulator_dtype: ti.types = ti.f32,
     ):
         """
         Initialize the Smagorinsky SGS eddy-viscosity model.
@@ -66,6 +67,7 @@ class SmagorinskyModel:
             kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
             cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
             ce: Model dissipation constant (default 1.048).
+            accumulator_dtype: Taichi floating-point type used by LES scratch fields.
         """
         self.LES_filter_type = "SMAGORINSKY"
         self.max_particles = max_particles
@@ -74,8 +76,8 @@ class SmagorinskyModel:
         self.ck = (cs**2 * ce**0.5) ** (2.0 / 3.0)
 
         # Pre-allocate fields needed for eddy-viscosity computation
-        self._delta_field = ti.field(dtype=ti.f32, shape=max_particles)
-        self._Sij_norm_field = ti.field(dtype=ti.f32, shape=max_particles)
+        self._delta_field = ti.field(dtype=accumulator_dtype, shape=max_particles)
+        self._Sij_norm_field = ti.field(dtype=accumulator_dtype, shape=max_particles)
 
     def initialize(self, particles):
         pass

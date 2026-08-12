@@ -32,7 +32,7 @@ def _make_compute_velocities_kernel(q_):
         N = num_particles
         U_inf = background_velocity[None]
         for i in range(N):
-            vel = ti.Vector([0.0, 0.0, 0.0])
+            vel = positions[i] * 0.0
             pos_i = positions[i]
             radii_i = radii[i]
 
@@ -66,7 +66,7 @@ def _make_compute_vorticities_kernel(zeta_):
     ):  # type: ignore
         N = num_particles
         for i in range(N):
-            vort = ti.Vector([0.0, 0.0, 0.0])
+            vort = strengths[i] * 0.0
             pos_i = positions[i]
             radii_i = radii[i]
 
@@ -100,8 +100,8 @@ def _make_kinetic_energy_kernel(g_):
     ):  # type: ignore
         N = num_particles
         for i in range(N):
-            energy_sum = ti.cast(0.0, ti.f32)
             str_i = strengths[i]
+            energy_sum = str_i.dot(str_i) * 0.0
             pos_i = positions[i]
 
             for j in range(N):
@@ -129,7 +129,10 @@ def _make_update_position_euler_kernel():
 
     @ti.kernel
     def update_position_euler_kernel(
-        positions: ti.template(), velocities: ti.template(), dt: ti.f32, num_particles: ti.i32
+        positions: ti.template(),
+        velocities: ti.template(),
+        dt: ti.template(),
+        num_particles: ti.i32,
     ):  # type: ignore
         N = num_particles
         for i in range(N):
@@ -146,9 +149,9 @@ def _make_step_euler_forward_strengths_kernel():
         str_in: ti.template(),
         dstr_dt: ti.template(),
         str_out: ti.template(),
-        dt: ti.f32,
+        dt: ti.template(),
         num_particles: ti.i32,
-        growth_limit: ti.f32,
+        growth_limit: ti.template(),
     ):
         """Euler step for strength update with per-particle clipping to avoid runaway growth."""
         for i in range(num_particles):
@@ -183,8 +186,8 @@ def _make_target_velocity_kernel(q_):
         N = num_particles
         U_inf = background_velocity[None]
         for i in range(M):
-            vel = ti.Vector([0.0, 0.0, 0.0])
             target_pos = target_positions[i]
+            vel = target_pos * 0.0
             for j in range(N):
                 pos_j = positions[j]
                 strength_j = strengths[j]
@@ -217,8 +220,8 @@ def _make_target_source_velocity_kernel(q_):
         M = num_targets
         N = num_sources
         for i in range(M):
-            vel = ti.Vector([0.0, 0.0, 0.0])
             target_pos = target_positions[i]
+            vel = target_pos * 0.0
             for j in range(N):
                 pos_j = source_positions[j]
                 strength_j = source_strengths[j]
@@ -251,8 +254,8 @@ def _make_target_vorticity_kernel(zeta_):
         M = num_targets
         N = num_particles
         for i in range(M):
-            vort = ti.Vector([0.0, 0.0, 0.0])
             target_pos = target_positions[i]
+            vort = target_pos * 0.0
             for j in range(N):
                 pos_j = positions[j]
                 strength_j = strengths[j]
@@ -272,7 +275,10 @@ def _make_csm_kernel(diffusivity_constant_):
 
     @ti.kernel
     def update_radius_csm_kernel(
-        radii: ti.template(), viscosities_eff: ti.template(), dt: ti.f32, num_particles: ti.i32
+        radii: ti.template(),
+        viscosities_eff: ti.template(),
+        dt: ti.template(),
+        num_particles: ti.i32,
     ):  # type: ignore
         N = num_particles
         for i in range(N):
@@ -292,7 +298,10 @@ def _make_rwm_kernel():
 
     @ti.kernel
     def update_position_rwm_kernel(
-        positions: ti.template(), viscosities_eff: ti.template(), dt: ti.f32, num_particles: ti.i32
+        positions: ti.template(),
+        viscosities_eff: ti.template(),
+        dt: ti.template(),
+        num_particles: ti.i32,
     ):  # type: ignore
         """Apply the Random Walk Method (RWM) with Brownian displacements.
 
@@ -321,20 +330,20 @@ def _make_rwm_kernel():
 
 @ti.func
 def _stretching_contribution(
-    str_i: ti.math.vec3,
-    str_j: ti.math.vec3,
-    r_ij: ti.math.vec3,
-    q_val: ti.f32,
-    zeta_val: ti.f32,
-    sigma: ti.f32,
-    r_sigma: ti.f32,
-    mode: ti.i32,
-) -> ti.math.vec3:
+    str_i,
+    str_j,
+    r_ij,
+    q_val,
+    zeta_val,
+    sigma,
+    r_sigma,
+    mode,
+):
     """Compute stretching contribution from particle j to particle i.
 
     Uses numerically stable formulation with protected denominators.
     """
-    dstr = ti.Vector([0.0, 0.0, 0.0])
+    dstr = str_i * 0.0
 
     # The regularized kernels are finite as r/sigma -> 0.  Only protect the
     # exact self denominator; do not mask near-core particle interactions.
@@ -383,7 +392,7 @@ def _make_stretching_rate_kernel(q_, zeta_):
             str_i = strengths[i]
             pos_i = positions[i]
             radii_i = radii[i]
-            dstr_dt = ti.Vector([0.0, 0.0, 0.0])
+            dstr_dt = str_i * 0.0
 
             for j in range(N):
                 pos_j = positions[j]
@@ -427,7 +436,7 @@ def _make_stretching_rate_batch_kernel(q_, zeta_):
             str_i = strengths[i]
             pos_i = positions[i]
             radii_i = radii[i]
-            dstr_dt = ti.Vector([0.0, 0.0, 0.0])
+            dstr_dt = str_i * 0.0
 
             for j in range(N):
                 pos_j = positions[j]
@@ -494,7 +503,7 @@ def _create_gradient_kernels(kernel_functions):
         for i in range(N):
             pos_i = positions[i]
             radii_i = radii[i]
-            gradu = ti.Matrix.zero(ti.f32, 3, 3)
+            gradu = pos_i.outer_product(pos_i) * 0.0
 
             for j in range(N):
                 pos_j = positions[j]
@@ -545,9 +554,9 @@ def _create_gradient_kernels(kernel_functions):
         N = num_particles
         U_inf = background_velocity[None]
         for i in range(N):
-            vel = ti.Vector([0.0, 0.0, 0.0])
-            gradu = ti.Matrix.zero(ti.f32, 3, 3)
             pos_i = positions[i]
+            vel = pos_i * 0.0
+            gradu = pos_i.outer_product(pos_i) * 0.0
             radii_i = radii[i]
             for j in range(N):
                 str_j = strengths[j]
@@ -592,8 +601,8 @@ def _create_energy_kernels(kernel_functions):
     ):  # type: ignore
         N = num_particles
         for i in range(N):
-            hel = ti.cast(0.0, ti.f32)
             str_i = strengths[i]
+            hel = str_i.dot(str_i) * 0.0
             pos_i = positions[i]
             radii_i = radii[i]
             for j in range(N):
@@ -624,7 +633,7 @@ def _create_position_update_kernels(kernel_functions):
         pos_in: ti.template(),
         vel_in: ti.template(),
         pos_out: ti.template(),
-        dt: ti.f32,
+        dt: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Simple advection: pos_out = pos_in + dt * vel_in"""
@@ -636,8 +645,8 @@ def _create_position_update_kernels(kernel_functions):
         dest: ti.template(),
         src1: ti.template(),
         src2: ti.template(),
-        w1: ti.f32,
-        w2: ti.f32,
+        w1: ti.template(),
+        w2: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Compute dest = w1 * src1 + w2 * src2 element-wise."""
@@ -649,7 +658,7 @@ def _create_position_update_kernels(kernel_functions):
         positions: ti.template(),
         k1: ti.template(),
         k2: ti.template(),
-        dt: ti.f32,
+        dt: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """RK2 Heun's method: pos += (dt/2) * (k1 + k2).
@@ -666,7 +675,7 @@ def _create_position_update_kernels(kernel_functions):
         k1: ti.template(),
         k2: ti.template(),
         k3: ti.template(),
-        dt: ti.f32,
+        dt: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """SSP-RK3 (Strong Stability Preserving): pos += (dt/6) * (k1 + k2 + 4*k3).
@@ -684,7 +693,7 @@ def _create_position_update_kernels(kernel_functions):
         k2: ti.template(),
         k3: ti.template(),
         k4: ti.template(),
-        dt: ti.f32,
+        dt: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Classic RK4: pos += (dt/6) * (k1 + 2*k2 + 2*k3 + k4).
@@ -730,7 +739,7 @@ def _create_target_eval_kernels(kernel_functions):
         N = num_particles
         for i in range(M):
             target_pos = target_positions[i]
-            gradu = ti.Matrix.zero(ti.f32, 3, 3)
+            gradu = target_pos.outer_product(target_pos) * 0.0
 
             for j in range(N):
                 pos_j = positions[j]
@@ -796,7 +805,7 @@ def _make_gradient_contraction_kernel():
         for i in range(num_particles):
             J = grad[i]
             g = strengths[i]
-            rate = ti.Vector([0.0, 0.0, 0.0])
+            rate = g * 0.0
             if mode == 0:
                 rate = J @ g
             elif mode == 1:

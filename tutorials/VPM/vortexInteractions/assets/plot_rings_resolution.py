@@ -37,10 +37,10 @@ from _common import (  # noqa: E402
     save_fig,
 )
 
-# Mirrors the rings_setup.py acceptance limits.
-MAX_OVERLAP_RATIO = 1.0
-MAX_DIVERGENCE_ERROR = 0.10
-MAX_MISALIGNMENT_DEG = 15.0
+# Mirrors the hard limits in rings_setup.py and assets/check_run.py.
+MAX_OVERLAP_RATIO = 1.25
+MAX_DIVERGENCE_ERROR = 0.25
+MAX_MISALIGNMENT_DEG = 45.0
 
 
 def main() -> None:

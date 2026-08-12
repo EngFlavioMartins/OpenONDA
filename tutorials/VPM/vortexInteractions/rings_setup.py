@@ -11,6 +11,7 @@ import numpy as np
 from openonda.vpm import (
     AdvectionConfig,
     ParticleDistributor,
+    RingDiagnosticsSampler,
     Solver,
     StabilizationConfig,
     StretchingConfig,
@@ -28,39 +29,56 @@ RING_CIRCULATION = np.pi
 CORE_RADIUS = 0.1
 KINEMATIC_VISCOSITY = RING_CIRCULATION / 3000.0
 
-PARTICLE_SPACING = 0.045
+# Five intervals across the physical core diameter produce 19 complete
+# cross-section orbits per ring without changing the Gaussian core width.
+PARTICLE_SPACING = 0.04
 PARTICLE_RADIUS = 2.0 * PARTICLE_SPACING
 TAIL_FRACTION = 0.05
+# The nondimensional step is 0.032 and the final time is t Gamma/R^2 = 36.48.
 TIME_STEP = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
-END_TIME = 11.55
-NUM_STEPS = int(np.ceil(END_TIME / TIME_STEP))
-OUTPUT_FREQUENCY = 20
+NUM_STEPS = 1140
+END_TIME = NUM_STEPS * TIME_STEP
+# Integral histories resolve the energy budget; particle snapshots resolve the
+# ring motion for visualization. Their cadences are intentionally independent.
+DIAGNOSTIC_FREQUENCY = 5
+SNAPSHOT_FREQUENCY = 10
 
 # The two fixed-particle baselines stop when vortex-line alignment or the
 # reconstructed divergence says the cloud is no longer resolved.  Peak
 # particle strength is intentionally not a stop: physical filament stretching
 # can increase it.  Stabilized LES must reach END_TIME without this allowance.
 BASELINE_MISALIGNMENT_LIMIT = 45.0
-BASELINE_DIVERGENCE_LIMIT = 0.25
+BASELINE_DIVERGENCE_LIMIT = 0.12
 
 # Modes 1--12 include the unstable Widnall band of this slender ring.
 WIDNALL_AMPLITUDE = 0.01
 WIDNALL_MODES = 12
 RING_SEEDS = (7, 19)
 
-# Deliberately strong coarse-LES damping makes the model hierarchy observable.
-LES_COEFFICIENT = 0.32
+# The classical coefficient resolves the sustained leapfrogging deformation;
+# the more violent head-on collision needs the stronger coarse-LES filter.
+LES_COEFFICIENT = {"leapfrog": 0.16, "collide": 0.32}
 STABILIZATION_COEFFICIENT = 0.5
-REGULARIZATION_FREQUENCY = OUTPUT_FREQUENCY
-REGULARIZATION_START_STEP = 300
+REGULARIZATION_FREQUENCY = 20
+REGULARIZATION_START_STEP = 380
 REGULARIZATION_SPACING = 0.084
+REGULARIZATION_CAPACITY_SPACING = 0.13
+REGULARIZATION_CORE_RADIUS = {"leapfrog": 0.23, "collide": 0.195}
+REGULARIZATION_CAPACITY_CORE_RADIUS = 0.195
 REGULARIZATION_TAIL_BUDGET = 0.003
 REGULARIZATION_DIVERGENCE_TRIGGER = 0.20
-REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER = 0.25
+# Act as vortex-line alignment first degrades; a solenoidal projection is only
+# warranted if the rebuilt field remains above the baseline divergence warning.
+REGULARIZATION_MISALIGNMENT_TRIGGER = 4.0
+REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER = 0.20
 REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER = 25.0
-REGULARIZATION_ENERGY_LIMIT = 0.30
-REGULARIZATION_ENSTROPHY_LIMIT = 0.25
+REGULARIZATION_CAPACITY_FRACTION = 0.70
+REGULARIZATION_ENERGY_LIMIT = 0.20
+REGULARIZATION_ENSTROPHY_LIMIT = 0.15
+REGULARIZATION_PROJECTION_TRIGGER = 0.12
+REGULARIZATION_PROJECTION_LIMIT = {"leapfrog": 0.05, "collide": 0.10}
 STABILIZED_MAX_PARTICLES = 20_000
+BASELINE_MAX_PARTICLES = 8_000
 
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
@@ -78,13 +96,13 @@ def ring_geometry(family: str) -> tuple[tuple[float, float], tuple[float, float]
     return (-2.5, 2.5), (RING_CIRCULATION, -RING_CIRCULATION)
 
 
-def turbulence(variant: str) -> TurbulenceConfig:
+def turbulence(family: str, variant: str) -> TurbulenceConfig:
     if variant == "dns":
         return TurbulenceConfig.dns()
-    return TurbulenceConfig.les_smagorinsky(cs=LES_COEFFICIENT)
+    return TurbulenceConfig.les_smagorinsky(cs=LES_COEFFICIENT[family])
 
 
-def stabilization(variant: str) -> StabilizationConfig:
+def stabilization(family: str, variant: str) -> StabilizationConfig:
     if variant == "les_stabilized":
         return StabilizationConfig.conservative_filter(
             coefficient=STABILIZATION_COEFFICIENT,
@@ -94,15 +112,22 @@ def stabilization(variant: str) -> StabilizationConfig:
             max_particles=STABILIZED_MAX_PARTICLES,
             tail_budget=REGULARIZATION_TAIL_BUDGET,
             divergence_trigger=REGULARIZATION_DIVERGENCE_TRIGGER,
+            misalignment_trigger=REGULARIZATION_MISALIGNMENT_TRIGGER,
             capacity_divergence_trigger=REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER,
             capacity_misalignment_trigger=REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER,
+            capacity_fraction=REGULARIZATION_CAPACITY_FRACTION,
+            capacity_grid_spacing=REGULARIZATION_CAPACITY_SPACING,
+            core_radius=REGULARIZATION_CORE_RADIUS[family],
+            capacity_core_radius=REGULARIZATION_CAPACITY_CORE_RADIUS,
             energy_dissipation_limit=REGULARIZATION_ENERGY_LIMIT,
             enstrophy_dissipation_limit=REGULARIZATION_ENSTROPHY_LIMIT,
+            projection_trigger=REGULARIZATION_PROJECTION_TRIGGER,
+            projection_max_correction=REGULARIZATION_PROJECTION_LIMIT[family],
         )
     return StabilizationConfig.disabled()
 
 
-def viscous_diffusion(variant: str) -> ViscousConfig:
+def viscous_diffusion() -> ViscousConfig:
     return ViscousConfig.cs(
         viscosity=KINEMATIC_VISCOSITY,
         characteristic_distance=PARTICLE_SPACING,
@@ -110,7 +135,7 @@ def viscous_diffusion(variant: str) -> ViscousConfig:
 
 
 def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
-    _, variant = CASES[case_name]
+    family, variant = CASES[case_name]
     return VPMSetup(
         time_step_size=TIME_STEP,
         time_integration="COUPLED",
@@ -122,19 +147,23 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
             conserve_moments=True,
             conserve_energy=True,
         ),
-        viscous=viscous_diffusion(variant),
-        turbulence=turbulence(variant),
-        stabilization=stabilization(variant),
+        viscous=viscous_diffusion(),
+        turbulence=turbulence(family, variant),
+        stabilization=stabilization(family, variant),
         velocity=VelocityConfig.direct(),
         particles_kernel="GAUSSIAN",
+        precision="f64",
         processing_unit="CPU",
-        max_particles=STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else 5_000,
+        max_particles=(
+            STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else BASELINE_MAX_PARTICLES
+        ),
         backup_directory=str(output_dir),
         backup_file_name=case_name,
-        backup_frequency=5 * OUTPUT_FREQUENCY,
-        logging_frequency=OUTPUT_FREQUENCY,
-        timing_frequency=10 * OUTPUT_FREQUENCY,
+        backup_frequency=SNAPSHOT_FREQUENCY,
+        logging_frequency=DIAGNOSTIC_FREQUENCY,
+        timing_frequency=200,
         export_flow_integrals=True,
+        samplers=(RingDiagnosticsSampler(),),
         log_mode="file",
     )
 
@@ -180,7 +209,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     output_dir = CASE_DIR / "solution" / case_name
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite existing results in {output_dir}")
-
+    output_dir.mkdir(parents=True, exist_ok=True)
     solver = Solver(setup=solver_setup(case_name, output_dir))
     centers, circulations = ring_geometry(family)
     for group, (center, circulation, seed) in enumerate(
@@ -204,12 +233,17 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         "model": variant,
         "requested_steps": num_steps,
         "requested_end_time": num_steps * TIME_STEP,
+        "diagnostic_frequency": DIAGNOSTIC_FREQUENCY,
+        "snapshot_frequency": SNAPSHOT_FREQUENCY,
         "baseline_misalignment_limit_deg": BASELINE_MISALIGNMENT_LIMIT,
         "baseline_divergence_limit": BASELINE_DIVERGENCE_LIMIT,
         "particle_spacing": PARTICLE_SPACING,
+        "particle_radius": PARTICLE_RADIUS,
+        "initial_particles": len(solver.particles),
+        "precision": "f64",
         "widnall_amplitude": WIDNALL_AMPLITUDE,
         "widnall_modes": WIDNALL_MODES,
-        "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT,
+        "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT[family],
         "stabilization_coefficient": (
             STABILIZATION_COEFFICIENT if variant == "les_stabilized" else 0.0
         ),
@@ -219,27 +253,47 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         "regularization_grid_spacing": (
             REGULARIZATION_SPACING if variant == "les_stabilized" else None
         ),
+        "regularization_capacity_grid_spacing": (
+            REGULARIZATION_CAPACITY_SPACING if variant == "les_stabilized" else None
+        ),
+        "regularization_core_radius": (
+            REGULARIZATION_CORE_RADIUS[family] if variant == "les_stabilized" else None
+        ),
+        "regularization_capacity_core_radius": (
+            REGULARIZATION_CAPACITY_CORE_RADIUS if variant == "les_stabilized" else None
+        ),
+        "regularization_capacity_fraction": (
+            REGULARIZATION_CAPACITY_FRACTION if variant == "les_stabilized" else None
+        ),
         "regularization_tail_budget": (
             REGULARIZATION_TAIL_BUDGET if variant == "les_stabilized" else 0.0
         ),
+        "regularization_misalignment_trigger_deg": (
+            REGULARIZATION_MISALIGNMENT_TRIGGER if variant == "les_stabilized" else None
+        ),
+        "regularization_projection_trigger": (
+            REGULARIZATION_PROJECTION_TRIGGER if variant == "les_stabilized" else None
+        ),
+        "regularization_projection_limit": (
+            REGULARIZATION_PROJECTION_LIMIT[family] if variant == "les_stabilized" else None
+        ),
         "diffusion_scheme": "CS",
+        "core_spreading_moment_projection": True,
     }
     manifest_path = output_dir / "run_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     solver.record_diagnostics(refresh_fields=True)
+    solver.backup_solution(str(output_dir / f"vpm_{case_name}"))
     resolution_lost = False
     for _ in range(num_steps):
         solver.update_state()
-        if variant == "les_stabilized" or solver.time_step % OUTPUT_FREQUENCY:
+        if variant == "les_stabilized" or solver.time_step % DIAGNOSTIC_FREQUENCY:
             continue
         health = solver._discretization_health
         misalignment = float(health["strength_misalignment_deg"])
         divergence = float(health["vorticity_divergence_error"])
-        if (
-            misalignment <= BASELINE_MISALIGNMENT_LIMIT
-            and divergence <= BASELINE_DIVERGENCE_LIMIT
-        ):
+        if misalignment <= BASELINE_MISALIGNMENT_LIMIT and divergence <= BASELINE_DIVERGENCE_LIMIT:
             continue
         resolution_lost = True
         print(
@@ -250,7 +304,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
             flush=True,
         )
         break
-    if not resolution_lost and solver.time_step % OUTPUT_FREQUENCY:
+    if not resolution_lost and solver.time_step % DIAGNOSTIC_FREQUENCY:
         solver.record_diagnostics(refresh_fields=True)
     solver.save_state(str(output_dir / f"vpm_{case_name}_final"))
 

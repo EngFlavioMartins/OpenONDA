@@ -1,6 +1,6 @@
 # VPM tutorial refactor and publication-figure master plan
 
-Last updated: 2026-08-11 (reduced-particle GPU preflight complete)
+Last updated: 2026-08-12 (numerically gated production campaign active)
 
 This file is the persistent source of truth for the requested VPM tutorial work.
 It records the complete scope, non-negotiable constraints, completed work,
@@ -29,9 +29,8 @@ Status notation:
 - [ ] Produce all final numerical results with the current solver by rerunning
   the complete Lamb--Oseen matrix from scratch: four viscous schemes (`cs`,
   `rwm`, `dvh`, and `gbd`) for each of the three physics cases (`vortex`,
-  `dipole`, and `merging`). The matrix is configured and preflighted; the latest
-  instruction requests short validation runs rather than starting the complete
-  production campaign in this task.
+  `dipole`, and `merging`). The matrix is configured, preflighted, and currently
+  running through the numerical acceptance gate.
 - [x] Use GPU execution for production VPM runs. CPU execution is not an
   acceptable substitute for generating the requested results.
 - [x] Make the Lamb--Oseen execution backend explicitly GPU-only (`VULKAN`) so
@@ -94,8 +93,11 @@ Status notation:
 - [x] Avoid repeatedly appending large line/surface records where a final
   publication snapshot suffices. Retain scheduled time diagnostics needed for
   trajectories, energies, and evolving physics.
-- [x] Sample compact flow-integral and pair-motion CSV diagnostics every 0.25
-  physical seconds while writing raw restart checkpoints only every 5 seconds.
+- [x] Sample compact single-vortex histories every 1.0 physical second and pair
+  histories every 2.5 seconds and pre-coalescence merger histories every 1.25
+  seconds while writing one final raw restart checkpoint. This leaves 15--20
+  usable points in every plotted history and avoids making
+  expensive flow-integral evaluations dominate the DVH runtime.
 - [x] Store a final mid-plane field and final single-vortex line profiles for
   publication comparisons, instead of storing a large field at every sampled
   time.
@@ -250,14 +252,19 @@ Status notation:
   exceeded the 20--30 minute target and is not a source of current results.
 - [x] Complete short fresh GPU preflights with the current solver and verify
   that Taichi reports the Vulkan backend.
-- [x] Leave no production campaign active after the requested short tests.
-- [ ] Complete fresh `vortex_cs` output.
-- [ ] Complete fresh `vortex_rwm` output.
-- [ ] Complete fresh `vortex_dvh` output.
-- [ ] Complete fresh `vortex_gbd` output.
-- [ ] Complete fresh `dipole_cs` output.
-- [ ] Complete fresh `dipole_rwm` output.
-- [ ] Complete fresh `dipole_dvh` output.
+- [x] Start the clean production campaign only after the short tests and
+  numerical acceptance gates passed.
+- [x] Complete fresh `vortex_cs` output.
+- [x] Complete fresh `vortex_rwm` output.
+- [x] Complete fresh `vortex_dvh` output.
+- [x] Complete fresh `vortex_gbd` output.
+- [x] Complete fresh `dipole_cs` output.
+- [x] Complete fresh `dipole_rwm` output with the corrected 0.20 s timestep;
+  it passes circulation, monotone translation, symmetry, and core-growth gates.
+- [~] Complete fresh `dipole_dvh` output. Two 20,000-particle candidates and a
+  coarse-lattice timing trial were rejected from the result set; the accepted
+  0.06 m-resolution, 22,000-particle Vulkan run is active with 2.5 s diagnostics
+  and only a final raw checkpoint.
 - [ ] Complete fresh `dipole_gbd` output.
 - [ ] Complete fresh `merging_cs` output.
 - [ ] Complete fresh `merging_rwm` output.
@@ -338,9 +345,9 @@ Status notation:
   timing test, this provides margin at the 30-minute full-pair target.
 - [x] Restrict nearest-group propagation to actual surviving diffusion nodes
   instead of traversing the full 2.8-million-node grid every step.
-- [x] Use a 0.06 s GBD timestep, safely below its reported 0.318 s diffusion
-  limit, giving 667 steps for a 40 s pair case and an estimated full runtime
-  within the requested 20--30 minute range.
+- [x] Use a 0.30 s GBD timestep, below its reported 0.318 s diffusion limit.
+  The larger valid step avoids hundreds of unnecessary remesh cycles and gives
+  133 steps for a 40 s pair case.
 - [x] Validate DVH on Vulkan at 20,000 particles: its first three cap-retention
   values were 99.999%, 99.877%, and 99.261%; both core centroids remained at
   y=+0.5 and y=-0.5; per-vortex circulation remained 0.982 after 0.993 s; and
@@ -360,9 +367,8 @@ Status notation:
 - [x] Confirm that the run controller enumerates exactly the twelve intended
   cases, cleans stale output once, and refreshes all currently possible figures
   after every completed case.
-- [ ] When final production results are requested, run the clean twelve-case
-  Vulkan campaign, monitor it, and refresh/inspect figures as methods become
-  available.
+- [~] Run the clean twelve-case Vulkan campaign, monitor it, and refresh and
+  inspect figures as methods become available.
 
 ## 12. Allrun interruption and single-format plotting
 
@@ -399,3 +405,92 @@ Status notation:
   clipped at an earlier hard-coded duration.
 - [x] Keep all plot-data discovery below the tutorial's root `samples/`
   directory, with one subdirectory per physics/scheme case.
+
+## 14. Reference visibility and physics-scale audit
+
+- [x] Render analytical and experimental reference curves above numerical
+  markers in every applicable comparison.
+- [x] Replace clipped or overly broad plot windows with fixed limits chosen
+  from the complete twelve-case sample ranges; preserve the established theme.
+- [x] Quantify and reject the earlier mismatched single-vortex end states rather
+  than attributing them to plotting. The replacement configuration now reaches
+  the expected 20 s diffusion scale for all four schemes.
+- [x] Correct the numerical causes of those rejected states: average independent
+  replicated RWM realizations, preserve the proposed diffused second moment in
+  grid regeneration, and raise only the isolated-vortex DVH/GBD caps.
+
+## 15. Numerical correctness gate and accepted production configuration
+
+- [x] Add a samples-only validator that makes `allrun.sh` stop immediately when
+  a completed case is incomplete, non-finite, too sparse, outside its physical
+  circulation budget, above the 30-minute limit, or (for the single vortex)
+  outside the analytic profile tolerances.
+- [x] Require single-vortex relative L2 errors below 10% for velocity and 15%
+  for vorticity over `|x| <= 5.5 a_c,0`.
+- [x] Treat the isolated Lamb--Oseen vortex as an Eulerian-stationary viscous
+  benchmark by disabling particle self-advection. Pair cases retain RK3
+  advection because translation and rotation are part of their physics.
+- [x] Correct capped grid regeneration so removed circulation is first assigned
+  locally, then corrected to preserve total circulation, linear impulse, and
+  the diffused angular impulse. Do not project the physical second-moment
+  growth back to its pre-diffusion value.
+- [x] Raise only the isolated-vortex DVH/GBD caps to 30,000. Keep the cheaper
+  pair caps at 22,000 for DVH and 9,000 for GBD.
+- [x] Validate the accepted full single-vortex endpoints: CS 1.7%/0.9%, RWM
+  4.2%/10.1%, DVH 5.3%/6.3%, and GBD 5.0%/7.0% velocity/vorticity error.
+- [x] Use four independent RWM seeds with 16 divided-strength replicas per
+  lattice particle, averaging only the final profile and surface fields. Keep
+  the primary realization's dense integral history and raw checkpoints.
+- [x] Reject exact-position divided-strength replicas for advecting RWM pairs.
+  A four-replica timing test projected beyond 30 min, while a two-replica run
+  halved the initialized per-vortex circulation and failed every physics gate.
+  Pair noise must be reduced across independent valid realizations instead.
+- [x] Avoid evaluating self-induced particle velocity on frozen-advection
+  steps unless a diagnostic consumes it; when due, evaluate it after diffusion
+  so the energy diagnostic describes the end-of-step state.
+- [x] Validate 3 s advecting GBD preflights for both pair types. The dipole
+  reached `x=0.402` with per-vortex circulation 0.991; the merging pair retained
+  total surface circulation 1.982 and symmetric, finite geometry.
+- [x] Pass focused VPM regression tests, Ruff, Python compilation, shell syntax,
+  and diff-whitespace checks before starting production.
+- [~] Run all twelve cases from a clean samples/solution state on Vulkan. Each
+  completed case refreshes PNG figures immediately and must pass the validator
+  before the next case begins.
+- [x] Extend the production gate beyond file completion: a dipole must
+  translate monotonically, remain on its symmetry plane, and show sustained
+  diffusive core growth; a merging pair must rotate, grow, and approach
+  coalescence.
+- [x] Reject and delete the first full/partial pair candidates instead of
+  publishing them: the old RWM pair used a coarser 0.05 s configuration with
+  excessive stochastic spread, and the first capped DVH pair stopped growing
+  after about 10 s despite conserving total circulation.
+- [x] Preserve capped DVH/GBD moments separately for each vortex group. The
+  pure-NumPy regression verifies circulation, linear impulse, and angular
+  impulse for both opposite-signed groups; the fresh 10 s Vulkan DVH preflight
+  grew monotonically and stayed within 7% of its isolated diffusive-radius
+  scale while preserving per-vortex circulation to 0.1%.
+- [x] Reject a 0.09 m pair-regeneration lattice after its first sampled core was
+  visibly over-diffused. Keep the 0.06 m lattice that passed the isolated-vortex
+  analytic field gate, increase the pair DVH cap only to 22,000, and reduce the
+  expensive pair diagnostic frequency instead of coarsening the physics.
+# Current execution blocker (2026-08-12)
+
+- [ ] **NOT RELEASE-READY:** the final eight pair cases still require fresh runs
+  after fixing pair diagnostics to use a mid-plane slab and enlarging the
+  diffusion domain for the analytically predicted final core size.
+- [ ] Delete the rejected partial `dipole_gbd` sample/checkpoint, then rerun it
+  with the final 0.075 m grid and 25,000-node cap. The 20,000-node trial matched
+  early diffusion but plateaued late and was correctly rejected.
+- [ ] Rerun the other seven pair cases from clean current-solver state, validate
+  all twelve cases, render all five figures, visually inspect every panel, and
+  audit Git-synced sample sizes.
+- [x] Pair sampling now includes the exact built-in-sampler t=0 state and uses a
+  z=0 slab for geometry while retaining full-column circulation.
+- [x] Validation now rejects late-time dipole core sizes more than 35% from the
+  analytical diffusive scale, in addition to circulation, symmetry, completion,
+  monotonicity, finiteness, and runtime gates.
+- [x] RWM pair samples use four full independent GPU realizations; same-position
+  replicas were rejected because they corrupted group diagnostics.
+- [ ] Execution paused only because the Codex workspace-operation allowance was
+  exhausted at 2026-08-12 07:xx; do not report completion on resume until every
+  unchecked gate above passes.

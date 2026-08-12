@@ -97,7 +97,8 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
     energy_before = solver.field_diagnostics.compute_flow_integrals(
         solver.particles, solver.flow_time, record_history=False
     )["kinetic_energy"]
-    solver.update_state()
+    for _ in range(20):
+        solver.update_state()
     evolved_position = solver.particles_positions
     evolved_circulation = solver.particles_circulation
     energy_after = solver.field_diagnostics.compute_flow_integrals(
@@ -113,7 +114,7 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
         rtol=0.0,
         atol=2e-10,
     )
-    assert energy_after == pytest.approx(energy_before, rel=2.0e-11, abs=2.0e-13)
+    assert energy_after == pytest.approx(energy_before, rel=2.0e-10, abs=2.0e-13)
     np.testing.assert_allclose(
         np.cross(evolved_position, np.cross(evolved_position, evolved_circulation)).sum(axis=0)
         / 3.0

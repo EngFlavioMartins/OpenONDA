@@ -118,8 +118,8 @@ def plot_case_panel(
             "linewidth": 1.0,
             "alpha": 0.85,
         }
-        ax.plot(tau, data["dedt"] / p_ref, **plot_kw)
-        ax.plot(tau, data["nu_omega"] / p_ref, mfc="none", **plot_kw)
+        ax.plot(tau, data["dedt"] / p_ref, zorder=10, **plot_kw)
+        ax.plot(tau, data["nu_omega"] / p_ref, mfc="none", zorder=100, **plot_kw)
         latest_tau = max(latest_tau, float(tau.max()))
     return latest_tau
 
@@ -141,8 +141,8 @@ def plot_energy_enstrophy(args) -> int:
 
     tau_scale = run_nu / (a0**2)
     p_ref = run_nu * (args.gamma**2) / (a0**2)
-    fig, axes = plt.subplots(1, 3, figsize=publication_size(7.5), sharey="row")
-    fig.subplots_adjust(wspace=0.20, top=0.90, bottom=0.39, left=0.14, right=0.97)
+    fig, axes = plt.subplots(1, 3, figsize=publication_size(7.5))
+    fig.subplots_adjust(wspace=0.28, top=0.90, bottom=0.39, left=0.14, right=0.97)
 
     plotted = False
     for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
@@ -160,9 +160,6 @@ def plot_energy_enstrophy(args) -> int:
         )
         plotted |= latest_tau > 0.0
 
-        ax.set_ylim([-0.5, 0])
-        if latest_tau > 0.0:
-            ax.set_xlim([0, 1.02 * latest_tau])
         ax.set_xlabel(r"$\nu t / a_{c,0}^2$")
 
     if not plotted:
@@ -172,6 +169,12 @@ def plot_energy_enstrophy(args) -> int:
         return 0
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_{c,0}^2)$")
+    axes[0].set_xlim([0.0, 2.5])
+    axes[0].set_ylim([-1.4, 0.1])
+    axes[1].set_xlim([0.0, 5.0])
+    axes[1].set_ylim([-4.5, 0.15])
+    axes[2].set_xlim([0.0, 5.0])
+    axes[2].set_ylim([-3.0, 2.8])
 
     available_schemes = [
         scheme

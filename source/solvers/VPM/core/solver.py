@@ -373,6 +373,7 @@ class Solver:
                 kernel_type=self.particles_kernel,
                 cs=final_config.turbulence.cs,
                 ce=final_config.turbulence.ce,
+                accumulator_dtype=self.accumulator_dtype,
             )
         self.stretching_enabled = final_config.stretching.enabled
         self.stretching_mode = final_config.stretching.mode
@@ -514,6 +515,14 @@ class Solver:
             "grid_diffusion_max_linear_impulse_error_relative": 0.0,
             "grid_diffusion_max_angular_impulse_error_relative": 0.0,
         }
+        self._core_spreading_diagnostics = {
+            "core_spreading_moment_projection_events": 0,
+            "core_spreading_last_moment_correction_relative": 0.0,
+            "core_spreading_max_moment_correction_relative": 0.0,
+            "core_spreading_max_circulation_error_relative": 0.0,
+            "core_spreading_max_linear_impulse_error_relative": 0.0,
+            "core_spreading_max_angular_impulse_error_relative": 0.0,
+        }
         self._regularization_diagnostics = {
             "regularization_events": 0,
             "regularization_dissipative_candidate_events": 0,
@@ -523,6 +532,9 @@ class Solver:
             "regularization_last_projection_correction_relative": 0.0,
             "regularization_max_projection_correction_relative": 0.0,
             "regularization_last_projection_residual_ratio": 1.0,
+            "regularization_adaptive_core_events": 0,
+            "regularization_last_core_radius": 0.0,
+            "regularization_max_core_radius": 0.0,
             "regularization_last_particles_before": 0,
             "regularization_last_particles_after": 0,
             "regularization_last_energy_change": 0.0,
@@ -688,6 +700,10 @@ class Solver:
         self.particles.time_step = self.time_step
         self._debug_validate_particle_geometry("step entry")
 
+        diagnostics_due = (
+            self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
+        )
+
         # The profiler times the whole step (denominator for the report) and each
         # named stage below; ``section`` synchronises the backend around the block.
         with self.profiler.step():
@@ -709,6 +725,14 @@ class Solver:
                 or self.time_integration == "COUPLED"
                 or self.stabilization_config.stretching_viscosity_coefficient > 0.0
             )
+            _defer_stationary_velocity = (
+                _adv == "NONE"
+                and not _gradients_required
+                and self.vlm_solver is None
+                and self.panel_solver is None
+                and self.num_sources == 0
+                and getattr(self.physics, "velocity_override", None) is None
+            )
             # Fuse u + ∇u into one tree build
             _fuse_vel_grad = (
                 self.flow_model != "POTENTIAL"
@@ -724,7 +748,7 @@ class Solver:
                 velocity_k1_ready = True
             else:
                 velocity_k1_ready = False
-                if (
+                if not _defer_stationary_velocity and (
                     _adv == "NONE"
                     or not _gradients_required
                     or self.num_sources > 0
@@ -777,10 +801,14 @@ class Solver:
                     self._apply_conservative_regularization()
 
             # 5 FLOW INTEGRALS (Recomputed at t_n+1 after advection/strength update)
-            _diag_due = self.logging_frequency > 0 and self.time_step % self.logging_frequency == 0
-            if _diag_due:
+            if diagnostics_due:
                 with self.profiler.section("Flow integrals"):
-                    if (
+                    if _defer_stationary_velocity:
+                        # A frozen DNS cloud needs velocity only when a diagnostic
+                        # consumes it.  Evaluate it after diffusion so energy and
+                        # sampler output describe the end-of-step particle state.
+                        self._update_velocities()
+                    elif (
                         self.flow_model == "LES"
                         or self.stabilization_config.stretching_viscosity_coefficient > 0.0
                     ):
@@ -971,6 +999,7 @@ class Solver:
         row.update(self._filament_refinement_diagnostics)
         row.update(self._divergence_relaxation_diagnostics)
         row.update(self._grid_diffusion_diagnostics)
+        row.update(self._core_spreading_diagnostics)
         row.update(self._regularization_diagnostics)
 
         df = pd.DataFrame([row])
@@ -2683,13 +2712,15 @@ class Solver:
             if self.viscous_scheme == "CS":
                 # Strang split the exact core-radius evolution around the
                 # coupled inviscid method-of-lines update.
-                self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)
+                self._apply_core_spreading_diffusion(0.5 * sub_dt)
                 reuse_velocity = False
 
+            target_moments = self._current_kernel_moments()
             self._apply_coupled_advection_stretching(sub_dt, precomputed_velocity_k1=reuse_velocity)
+            self._restore_coupled_step_moments(target_moments)
 
             if self.viscous_scheme == "CS":
-                self.physics.core_spreading_diffusion(self.particles, 0.5 * sub_dt)
+                self._apply_core_spreading_diffusion(0.5 * sub_dt)
 
             remaining -= sub_dt
             if remaining <= tolerance:
@@ -2717,6 +2748,214 @@ class Solver:
         if self.viscous_scheme in {"DVH", "GBD"}:
             self._apply_viscous_diffusion(dt)
 
+    def _current_kernel_moments(self):
+        """Return circulation and both impulses for the active blob kernel."""
+        if not self.stretching_conserve_moments or len(self.particles) == 0:
+            return None
+        from ..numerics.filament_refinement import particle_moments
+
+        return particle_moments(
+            self.particles.position_cpu(use_cache=False).astype(np.float64),
+            self.particles.circulation_cpu(use_cache=False).astype(np.float64),
+            self.particles.radius_cpu(use_cache=False).astype(np.float64),
+            angular_core_coefficient=self.physics._angular_core_coefficient,
+        )
+
+    def _restore_coupled_step_moments(self, target_moments) -> None:
+        """Remove the finite-RK drift of the coupled bilinear invariants.
+
+        Projecting every method-of-lines stage makes the instantaneous rates of
+        circulation and both impulses vanish.  Linear impulse is bilinear in
+        position and circulation, however, so a finite Runge--Kutta update can
+        still leave an ``O(dt**3)`` defect.  This minimum-norm final correction
+        restores the same nine invariants at the completed substep.  It is not
+        a dissipative stabilization and does not move particles or alter cores.
+        """
+        if target_moments is None or len(self.particles) == 0:
+            return
+        from ..numerics.divergence_relaxation import (
+            _MomentNullspace,
+            invariant_rows,
+        )
+        from ..numerics.filament_refinement import particle_moments
+
+        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
+        circulation = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        volume = self.particles.volume_cpu(use_cache=False).astype(np.float64)
+        core_coefficient = self.physics._angular_core_coefficient
+        current = particle_moments(
+            position,
+            circulation,
+            radius,
+            angular_core_coefficient=core_coefficient,
+        )
+        moment_change = np.concatenate(
+            (
+                target_moments[0] - current[0],
+                target_moments[2] - current[2],
+                target_moments[3] - current[3],
+            )
+        )
+        nullspace = _MomentNullspace(
+            invariant_rows(
+                position,
+                radius,
+                angular_core_coefficient=core_coefficient,
+            ),
+            volume,
+        )
+        correction = nullspace.correction_for_moment_change(moment_change)
+        correction_relative = float(
+            np.linalg.norm(correction) / max(np.linalg.norm(circulation), np.finfo(float).tiny)
+        )
+        self.update_particle_circulations(
+            np.ones(len(circulation), dtype=bool),
+            correction.astype(self.np_dtype),
+        )
+        self.physics.rate_projection_max_correction_ratio = max(
+            self.physics.rate_projection_max_correction_ratio,
+            correction_relative,
+        )
+
+        uploaded = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        restored = particle_moments(
+            position,
+            uploaded,
+            radius,
+            angular_core_coefficient=core_coefficient,
+        )
+        scale = max(target_moments[1], np.finfo(float).tiny)
+        impulse_scale = max(
+            0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        angular_terms = (
+            np.cross(position, np.cross(position, circulation)) / 3.0
+            - core_coefficient * radius[:, None] ** 2 * circulation
+        )
+        angular_scale = max(
+            float(np.linalg.norm(angular_terms, axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        errors = (
+            float(np.linalg.norm(restored[0] - target_moments[0])) / scale,
+            float(np.linalg.norm(restored[2] - target_moments[2])) / impulse_scale,
+            float(np.linalg.norm(restored[3] - target_moments[3])) / angular_scale,
+        )
+        if max(errors) > 4096.0 * np.finfo(self.np_dtype).eps:
+            raise RuntimeError(
+                "coupled-step moment projection exceeded its roundoff allowance: "
+                f"circulation={errors[0]:.3e}, linear_impulse={errors[1]:.3e}, "
+                f"angular_impulse={errors[2]:.3e}"
+            )
+
+    def _apply_core_spreading_diffusion(self, dt: float) -> None:
+        """Spread Gaussian cores while retaining the unbounded-flow moments.
+
+        Spatially varying LES viscosity gives each blob a different core-growth
+        rate.  Changing ``sigma_i`` alone changes the finite-core angular
+        impulse by ``-sum(delta(sigma_i**2) Gamma_i) / 3`` even though a
+        symmetric viscous/SGS stress cannot exert a net torque on an unbounded
+        flow.  When moment conservation is requested, a minimum-norm strength
+        correction restores circulation and both impulses after each Strang
+        half-step.  The correction represents the variable-viscosity terms
+        omitted by independent scalar core spreading.
+        """
+        if dt <= 0.0 or len(self.particles) == 0:
+            return
+        if not self.stretching_conserve_moments:
+            self.physics.core_spreading_diffusion(self.particles, dt)
+            return
+
+        from ..numerics.divergence_relaxation import (
+            _MomentNullspace,
+            invariant_rows,
+        )
+        from ..numerics.filament_refinement import particle_moments
+
+        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
+        circulation = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        volume = self.particles.volume_cpu(use_cache=False).astype(np.float64)
+        core_coefficient = self.physics._angular_core_coefficient
+        before = particle_moments(
+            position,
+            circulation,
+            radius,
+            angular_core_coefficient=core_coefficient,
+        )
+
+        self.physics.core_spreading_diffusion(self.particles, dt)
+        new_radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        uncorrected = particle_moments(
+            position,
+            circulation,
+            new_radius,
+            angular_core_coefficient=core_coefficient,
+        )
+        moment_change = np.concatenate(
+            (before[0] - uncorrected[0], before[2] - uncorrected[2], before[3] - uncorrected[3])
+        )
+        nullspace = _MomentNullspace(
+            invariant_rows(
+                position,
+                new_radius,
+                angular_core_coefficient=core_coefficient,
+            ),
+            volume,
+        )
+        correction = nullspace.correction_for_moment_change(moment_change)
+        correction_relative = float(
+            np.linalg.norm(correction) / max(np.linalg.norm(circulation), np.finfo(float).tiny)
+        )
+        self.update_particle_circulations(
+            np.ones(len(circulation), dtype=bool),
+            correction.astype(self.np_dtype),
+        )
+
+        uploaded = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        after = particle_moments(
+            position,
+            uploaded,
+            new_radius,
+            angular_core_coefficient=core_coefficient,
+        )
+        impulse_scale = max(
+            0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        angular_terms = (
+            np.cross(position, np.cross(position, circulation)) / 3.0
+            - core_coefficient * radius[:, None] ** 2 * circulation
+        )
+        angular_scale = max(
+            float(np.linalg.norm(angular_terms, axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        errors = {
+            "circulation": float(np.linalg.norm(after[0] - before[0]))
+            / max(before[1], np.finfo(float).tiny),
+            "linear_impulse": float(np.linalg.norm(after[2] - before[2])) / impulse_scale,
+            "angular_impulse": float(np.linalg.norm(after[3] - before[3])) / angular_scale,
+        }
+        roundoff_limit = 4096.0 * np.finfo(self.np_dtype).eps
+        if max(errors.values()) > roundoff_limit:
+            raise RuntimeError(
+                "core-spreading moment projection exceeded its roundoff allowance: "
+                + ", ".join(f"{name}={value:.3e}" for name, value in errors.items())
+            )
+        diagnostics = self._core_spreading_diagnostics
+        diagnostics["core_spreading_moment_projection_events"] += 1
+        diagnostics["core_spreading_last_moment_correction_relative"] = correction_relative
+        diagnostics["core_spreading_max_moment_correction_relative"] = max(
+            diagnostics["core_spreading_max_moment_correction_relative"],
+            correction_relative,
+        )
+        for name, error in errors.items():
+            key = f"core_spreading_max_{name}_error_relative"
+            diagnostics[key] = max(diagnostics[key], error)
+
     def _apply_viscous_diffusion(self, dt: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
         if self.viscous_scheme == "NONE":
@@ -2724,7 +2963,7 @@ class Solver:
 
         if self.viscous_scheme == "CS":
             Logging.message("Performing viscous diffusion via Core Spreading.")
-            self.physics.core_spreading_diffusion(self.particles, dt=dt)
+            self._apply_core_spreading_diffusion(dt)
         elif self.viscous_scheme == "RWM":
             Logging.message("Performing viscous diffusion via Random Walk Method.")
             self.physics.random_walk_method_diffusion(self.particles, dt=dt)
@@ -2767,11 +3006,20 @@ class Solver:
                     proposed_circulation,
                     new_radius,
                 )
+                # Regeneration must not erase the second-moment growth created
+                # by viscous diffusion.  Restore circulation and linear
+                # impulse, while retaining the angular impulse produced by the
+                # diffused grid.
+                target_moments = (
+                    old_moments[0],
+                    old_moments[2],
+                    proposed_moments[3],
+                )
                 moment_change = np.concatenate(
                     (
-                        old_moments[0] - proposed_moments[0],
-                        old_moments[2] - proposed_moments[2],
-                        old_moments[3] - proposed_moments[3],
+                        target_moments[0] - proposed_moments[0],
+                        target_moments[1] - proposed_moments[2],
+                        np.zeros(3, dtype=np.float64),
                     )
                 )
                 nullspace = _MomentNullspace(
@@ -2848,11 +3096,11 @@ class Solver:
                     np.finfo(float).tiny,
                 )
                 errors = {
-                    "circulation": float(np.linalg.norm(new_moments[0] - old_moments[0]))
+                    "circulation": float(np.linalg.norm(new_moments[0] - target_moments[0]))
                     / strength_scale,
-                    "linear_impulse": float(np.linalg.norm(new_moments[2] - old_moments[2]))
+                    "linear_impulse": float(np.linalg.norm(new_moments[2] - target_moments[1]))
                     / impulse_scale,
-                    "angular_impulse": float(np.linalg.norm(new_moments[3] - old_moments[3]))
+                    "angular_impulse": float(np.linalg.norm(new_moments[3] - target_moments[2]))
                     / angular_scale,
                 }
                 diagnostics = self._grid_diffusion_diagnostics
@@ -3849,7 +4097,6 @@ class Solver:
         )
         from ..numerics.filament_refinement import gaussian_particle_moments
 
-        spacing = float(cfg.regularization_grid_spacing)
         position = self.particles.position_cpu().astype(np.float64)
         circulation = self.particles.circulation_cpu().astype(np.float64)
         radius = self.particles.radius_cpu().astype(np.float64)
@@ -3859,9 +4106,19 @@ class Solver:
             return
 
         before_health = discretization_health(position, circulation, radius)
-        at_capacity = (
-            cfg.regularization_max_particles is not None
-            and len(position) >= cfg.regularization_max_particles
+        capacity_count = None
+        if cfg.regularization_max_particles is not None:
+            capacity_count = max(
+                1,
+                int(
+                    np.ceil(cfg.regularization_capacity_fraction * cfg.regularization_max_particles)
+                ),
+            )
+        at_capacity = capacity_count is not None and len(position) >= capacity_count
+        spacing = float(
+            cfg.regularization_capacity_grid_spacing
+            if at_capacity and cfg.regularization_capacity_grid_spacing is not None
+            else cfg.regularization_grid_spacing
         )
         divergence_trigger = (
             cfg.regularization_capacity_divergence_trigger
@@ -3921,6 +4178,17 @@ class Solver:
             )
         if proposal is None:
             raise RuntimeError("conservative regularization produced no particle field")
+        configured_core_radius = (
+            cfg.regularization_capacity_core_radius
+            if at_capacity and cfg.regularization_capacity_core_radius is not None
+            else cfg.regularization_core_radius
+        )
+        if configured_core_radius is not None:
+            proposal["radius"] = np.full(
+                len(proposal["position"]),
+                configured_core_radius,
+                dtype=self.np_dtype,
+            )
 
         new_position = np.asarray(proposal["position"], dtype=np.float64)
         proposed_circulation = np.asarray(proposal["circulation"], dtype=np.float64)
@@ -3969,41 +4237,107 @@ class Solver:
             self._particles_removed_this_step = removed_before
             self._circulation_removed_this_step = circulation_removed_before
 
-        nullspace = _MomentNullspace(
-            gaussian_invariant_rows(new_position, new_radius),
-            new_volume,
-        )
-        proposed_moments = gaussian_particle_moments(
-            new_position,
-            proposed_circulation,
-            new_radius,
-        )
-        moment_change = np.concatenate(
-            (
-                before_moments[0] - proposed_moments[0],
-                before_moments[2] - proposed_moments[2],
-                before_moments[3] - proposed_moments[3],
+        def evaluate_moment_corrected_candidate():
+            candidate_radius = np.asarray(proposal["radius"], dtype=np.float64)
+            candidate_nullspace = _MomentNullspace(
+                gaussian_invariant_rows(new_position, candidate_radius),
+                new_volume,
             )
-        )
-        moment_corrected = proposed_circulation + nullspace.correction_for_moment_change(
-            moment_change
-        )
-
-        used_dissipative_candidate = False
-        projection_result = None
-        try:
-            candidate, candidate_integrals = upload_and_integrate(moment_corrected)
-            candidate_energy_change = (
-                float(candidate_integrals["kinetic_energy"])
-                - float(before_integrals["kinetic_energy"])
+            proposed_moments = gaussian_particle_moments(
+                new_position,
+                proposed_circulation,
+                candidate_radius,
+            )
+            moment_change = np.concatenate(
+                (
+                    before_moments[0] - proposed_moments[0],
+                    before_moments[2] - proposed_moments[2],
+                    before_moments[3] - proposed_moments[3],
+                )
+            )
+            corrected = proposed_circulation + candidate_nullspace.correction_for_moment_change(
+                moment_change
+            )
+            candidate, integrals = upload_and_integrate(corrected)
+            energy_change = (
+                float(integrals["kinetic_energy"]) - float(before_integrals["kinetic_energy"])
             ) / max(abs(float(before_integrals["kinetic_energy"])), np.finfo(float).tiny)
-            candidate_enstrophy_change = (
-                float(candidate_integrals["enstrophy"]) - float(before_integrals["enstrophy"])
+            enstrophy_change = (
+                float(integrals["enstrophy"]) - float(before_integrals["enstrophy"])
             ) / max(abs(float(before_integrals["enstrophy"])), np.finfo(float).tiny)
-            moment_correction_relative = float(
+            correction_relative = float(
                 np.linalg.norm(candidate.astype(np.float64) - proposed_circulation)
                 / max(np.linalg.norm(proposed_circulation), np.finfo(float).tiny)
             )
+            return (
+                candidate_radius,
+                candidate_nullspace,
+                corrected,
+                candidate,
+                integrals,
+                energy_change,
+                enstrophy_change,
+                correction_relative,
+            )
+
+        used_dissipative_candidate = False
+        projection_result = None
+        adaptive_core_used = False
+        try:
+            (
+                new_radius,
+                nullspace,
+                moment_corrected,
+                candidate,
+                candidate_integrals,
+                candidate_energy_change,
+                candidate_enstrophy_change,
+                moment_correction_relative,
+            ) = evaluate_moment_corrected_candidate()
+
+            # Resetting a diffused cloud to a fixed, narrower core can inject
+            # both energy and enstrophy even when the scatter itself is
+            # conservative.  Broaden only an injecting candidate, retaining
+            # the first core for which both quadratic quantities are
+            # non-increasing.  This changes the filter scale, not particle
+            # circulation, and avoids repairing an unphysical candidate with
+            # a large null-space strength correction.
+            if configured_core_radius is not None and not projection_only:
+                for retry in range(1, 9):
+                    if candidate_energy_change <= 1.0e-7 and candidate_enstrophy_change <= 1.0e-7:
+                        break
+                    adaptive_core_used = True
+                    trial_core_radius = configured_core_radius * 1.05**retry
+                    proposal["radius"] = np.full(
+                        count,
+                        trial_core_radius,
+                        dtype=self.np_dtype,
+                    )
+                    (
+                        new_radius,
+                        nullspace,
+                        moment_corrected,
+                        candidate,
+                        candidate_integrals,
+                        candidate_energy_change,
+                        candidate_enstrophy_change,
+                        moment_correction_relative,
+                    ) = evaluate_moment_corrected_candidate()
+                if candidate_energy_change > 1.0e-7 or candidate_enstrophy_change > 1.0e-7:
+                    raise RuntimeError(
+                        "regularization could not find a non-injecting Gaussian core: "
+                        f"core={float(new_radius.mean()):.3e}, "
+                        f"dE/E={candidate_energy_change:.3e}, "
+                        f"dZ/Z={candidate_enstrophy_change:.3e}"
+                    )
+
+            if adaptive_core_used:
+                Logging.message(
+                    "[Conservative regularization] broadened regenerated core "
+                    f"{configured_core_radius:.3e}->{float(new_radius.mean()):.3e} m "
+                    "to prevent energy/enstrophy injection"
+                )
+
             if projection_only or (
                 -cfg.regularization_energy_dissipation_limit <= candidate_energy_change <= 1.0e-7
                 and -cfg.regularization_enstrophy_dissipation_limit
@@ -4108,7 +4442,7 @@ class Solver:
                     new_volume,
                     grid_spacing=spacing,
                     max_correction_norm=cfg.regularization_projection_max_correction,
-                    max_residual_ratio=0.8,
+                    max_residual_ratio=0.9,
                     energy_tolerance=0.02,
                     enstrophy_tolerance=cfg.regularization_enstrophy_dissipation_limit,
                     helicity_tolerance=0.05,
@@ -4221,6 +4555,13 @@ class Solver:
         else:
             diagnostics["regularization_last_projection_correction_relative"] = 0.0
             diagnostics["regularization_last_projection_residual_ratio"] = 1.0
+        if adaptive_core_used:
+            diagnostics["regularization_adaptive_core_events"] += 1
+        diagnostics["regularization_last_core_radius"] = float(new_radius.mean())
+        diagnostics["regularization_max_core_radius"] = max(
+            diagnostics["regularization_max_core_radius"],
+            float(new_radius.mean()),
+        )
         diagnostics["regularization_last_particles_before"] = len(position)
         diagnostics["regularization_last_particles_after"] = count
         diagnostics["regularization_last_energy_change"] = energy_change
@@ -4273,6 +4614,7 @@ class Solver:
             "[Conservative regularization] "
             f"mode={'projection-only' if projection_only else ('dissipative' if used_dissipative_candidate else 'enstrophy-restored')}, "
             f"N={len(position)}->{count}, correction={correction_relative:.3e}, "
+            f"core={float(new_radius.mean()):.3e}, "
             f"dE/E={energy_change:.3e}, dZ/Z={enstrophy_change:.3e}, "
             f"candidate=({candidate_energy_change:.3e},"
             f"{candidate_enstrophy_change:.3e}), "

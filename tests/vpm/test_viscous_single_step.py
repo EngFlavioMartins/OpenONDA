@@ -42,7 +42,7 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     """
     After one CS step: σ² = σ₀² + C·nu·dt.
 
-    C = 4 (Gaussian), 4 (HOG), 2 (Super-Gaussian), 5 (Winckelmans).
+    C = 4 (Gaussian), 4 (HOG), 2 (Super-Gaussian), 4 (Winckelmans).
     """
     nu = 0.01
     dt = 0.01
@@ -50,7 +50,7 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
         "GAUSSIAN": 4.0,
         "HIGH_ORDER_GAUSSIAN": 4.0,
         "SUPER_GAUSSIAN": 2.0,
-        "WINCKELMANS": 256.0 / 45.0,
+        "WINCKELMANS": 4.0,
     }[kernel_name]
 
     solver = _viscous_solver(solver_for_backend, "CS", kernel=kernel_name)

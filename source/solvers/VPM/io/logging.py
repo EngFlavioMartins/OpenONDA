@@ -464,6 +464,8 @@ class Logging:
         lines.append("VISCOUS DIFFUSION MODEL")
         lines.append("-" * 60)
         lines.append(f"  Scheme                   : {system.viscous_scheme}")
+        if system.viscous_scheme == "CS" and getattr(system, "stretching_conserve_moments", False):
+            lines.append("  Core moment projection   : circulation + both impulses")
 
         # Configured Δt and stability/accuracy limit — always shown when
         # characteristic_distance + viscosity are set on the config.
@@ -630,6 +632,19 @@ class Logging:
                 "    Grid spacing          : "
                 f"{getattr(cfg, 'regularization_grid_spacing', 0.0):.3e} m"
             )
+            capacity_spacing = getattr(cfg, "regularization_capacity_grid_spacing", None)
+            if capacity_spacing is not None:
+                lines.append(
+                    "    Capacity grid         : "
+                    f"{capacity_spacing:.3e} m at "
+                    f"{100.0 * getattr(cfg, 'regularization_capacity_fraction', 1.0):.0f}% budget"
+                )
+            core_radius = getattr(cfg, "regularization_core_radius", None)
+            if core_radius is not None:
+                lines.append(f"    Regenerated core      : {core_radius:.3e} m")
+            capacity_core = getattr(cfg, "regularization_capacity_core_radius", None)
+            if capacity_core is not None:
+                lines.append(f"    Capacity core         : {capacity_core:.3e} m")
             lines.append(
                 "    Health triggers       : "
                 f"div={getattr(cfg, 'regularization_divergence_trigger', 0.0):.3f}, "

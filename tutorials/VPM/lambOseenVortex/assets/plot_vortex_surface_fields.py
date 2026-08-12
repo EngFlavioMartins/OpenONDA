@@ -178,17 +178,12 @@ def plot_surface_fields(args) -> int:
     print(f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods at t={sample_time:.3g}s")
 
     # -- Shared normalisation limits ------------------------------------
-    v_max = max(d["vel_mag"].max() for d in datasets.values()) / uc_ref
-    w_max = max(d["vort_z"].max() for d in datasets.values()) / wc_ref
-    v_norm = mcolors.Normalize(vmin=0.0, vmax=v_max)
-    w_norm = mcolors.Normalize(vmin=0.0, vmax=w_max)
+    v_norm = mcolors.Normalize(vmin=0.0, vmax=0.45)
+    w_norm = mcolors.Normalize(vmin=0.0, vmax=0.35)
     v_cmap = theme.COLORMAPS["vortex_speed"]
     w_cmap = theme.COLORMAPS["vortex_vorticity"]
 
-    x_ext = max(abs(d["X"]).max() for d in datasets.values()) / ac0
-    y_ext = max(abs(d["Y"]).max() for d in datasets.values()) / ac0
-    ext = max(x_ext, y_ext)
-    ax_lim = ext
+    ax_lim = 5.0
 
     # -- Figure --------------------------------------------------------
     fig, (ax_v, ax_w) = plt.subplots(

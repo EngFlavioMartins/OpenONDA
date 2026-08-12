@@ -904,29 +904,83 @@ class _GridDiffusionMixin:
         scores = values if importance is None else importance[ix, iy, iz].astype(np.float64)
 
         def select(candidates: np.ndarray, quota: int) -> np.ndarray:
+            if len(candidates) <= quota:
+                return candidates
+
             candidate_values = values[candidates]
             strongest = np.argsort(-candidate_values, kind="stable")
-            total = float(candidate_values.sum())
             protected_count = int(
                 np.searchsorted(
                     np.cumsum(candidate_values[strongest]),
-                    min_abs_fraction * total,
+                    min_abs_fraction * float(candidate_values.sum()),
                 )
                 + 1
             )
-
             if protected_count >= quota:
                 return candidates[strongest[:quota]]
 
             protected = strongest[:protected_count]
             available = np.ones(len(candidates), dtype=bool)
             available[protected] = False
-            remaining = np.flatnonzero(available)
-            fill_count = quota - protected_count
-            fill = remaining[
-                np.argpartition(-scores[candidates[remaining]], fill_count - 1)[:fill_count]
-            ]
-            return candidates[np.concatenate((protected, fill))]
+            coverage = np.flatnonzero(available)
+            coverage_quota = quota - protected_count
+            if coverage_quota == 1:
+                best = coverage[np.argmax(scores[candidates[coverage]])]
+                return candidates[np.concatenate((protected, np.array([best])))]
+
+            coordinates = np.column_stack(
+                (ix[candidates[coverage]], iy[candidates[coverage]], iz[candidates[coverage]])
+            )
+            strides = np.ones(3, dtype=np.int64)
+            bin_count = len(coverage)
+            while bin_count > coverage_quota:
+                trials: list[tuple[int, int, np.ndarray]] = []
+                for axis in range(3):
+                    trial = strides.copy()
+                    trial[axis] += 1
+                    count = len(np.unique(coordinates // trial, axis=0))
+                    if count < bin_count:
+                        trials.append((count, axis, trial))
+                if not trials:
+                    break
+                above = [trial for trial in trials if trial[0] >= coverage_quota]
+                if above:
+                    bin_count, _, strides = min(above, key=lambda item: item[0])
+                else:
+                    bin_count, _, strides = max(trials, key=lambda item: item[0])
+
+            keys = coordinates // strides
+            order = np.lexsort(
+                (
+                    -values[candidates[coverage]],
+                    keys[:, 2],
+                    keys[:, 1],
+                    keys[:, 0],
+                )
+            )
+            sorted_keys = keys[order]
+            first = np.ones(len(order), dtype=bool)
+            first[1:] = np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)
+            representatives = order[first]
+
+            if len(representatives) > coverage_quota:
+                strongest_representatives = np.argsort(
+                    -values[candidates[coverage[representatives]]], kind="stable"
+                )[:coverage_quota]
+                representatives = representatives[strongest_representatives]
+            elif len(representatives) < coverage_quota:
+                unused = np.ones(len(coverage), dtype=bool)
+                unused[representatives] = False
+                remaining = np.flatnonzero(unused)
+                fill_count = coverage_quota - len(representatives)
+                fill = remaining[
+                    np.argpartition(-scores[candidates[coverage[remaining]]], fill_count - 1)[
+                        :fill_count
+                    ]
+                ]
+                representatives = np.concatenate((representatives, fill))
+            selected = np.concatenate((protected, coverage[representatives]))
+            return candidates[selected]
 
         candidate_labels = None if labels is None else labels[ix, iy, iz]
         unique_labels = np.unique(candidate_labels) if candidate_labels is not None else []
@@ -972,62 +1026,114 @@ class _GridDiffusionMixin:
         iz: np.ndarray,
         grid_min_np: np.ndarray,
         h: float,
+        labels: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Conservatively redistribute pruned circulation onto surviving nodes.
+        """Redistribute pruned circulation without suppressing diffusion.
 
-        The diffused grid conserves total circulation (Neumann Laplacian), but
-        keeping only the survivor nodes ``(ix,iy,iz)`` discards the circulation of
-        every other non-empty node.  This restores it on the survivors with the
-        weighted affine correction
+        The correction preserves total circulation, linear impulse, and angular
+        impulse of the complete diffused grid.  The last constraint is essential
+        when a particle-count cap removes weak outer nodes: merely putting their
+        circulation back into the strong core conserves circulation but reverses
+        the transverse second-moment growth produced by diffusion.
 
-            δΓ_i = w_i · (a + b × r_i),   w_i = |Γ_i| / Σ|Γ|,  r_i = x_i − x̄,
-
-        with ``a = ΔG`` and ``b = M⁻¹ (ΔL − x̄ × ΔG)`` where ΔG, ΔL are the total
-        circulation and linear-impulse deficits and M = Σ w_i(|r_i|²I − r_ir_iᵀ).
-        This conserves the 0th moment (Σ Γ) and 1st moment (Σ x×Γ) exactly; the
-        2nd moment is intentionally not forced (not a remeshing invariant).
-
-        Returns the corrected survivor circulations (n_keep, 3).  Falls back to
-        0th-moment-only (b=0) if the survivor inertia tensor is ill-conditioned
-        (few / coplanar survivors).
+        A weighted minimum-norm solve applies the nine constraints to the
+        surviving circulation vectors.  Coordinates and moments are scaled by
+        the survivor-cloud length to keep the small dense solve well-conditioned.
         """
         Gk = grid_np[ix, iy, iz].astype(np.float64)  # (Mk, 3) survivor circ
         Xk = np.stack(
             [grid_min_np[0] + ix * h, grid_min_np[1] + iy * h, grid_min_np[2] + iz * h],
             axis=1,
         ).astype(np.float64)
-        wmag = np.linalg.norm(Gk, axis=1)
-        wsum = float(wmag.sum())
-        if wsum <= 0.0 or len(ix) < 4:
-            return Gk.astype(np.float32)
-
-        # Deficit = (all non-empty nodes) - (survivors), computed via full-grid
-        # moments minus survivor moments
         nzi, nzj, nzk = np.where(circ_mag > 0.0)
         Gall = grid_np[nzi, nzj, nzk].astype(np.float64)
         Xall = np.stack(
             [grid_min_np[0] + nzi * h, grid_min_np[1] + nzj * h, grid_min_np[2] + nzk * h],
             axis=1,
         ).astype(np.float64)
-        dG = Gall.sum(axis=0) - Gk.sum(axis=0)
-        dL = np.cross(Xall, Gall).sum(axis=0) - np.cross(Xk, Gk).sum(axis=0)
-        if not (np.any(np.abs(dG) > 0) or np.any(np.abs(dL) > 0)):
-            return Gk.astype(np.float32)  # nothing pruned → exact no-op
 
-        w = wmag / wsum
-        xbar = (w[:, None] * Xk).sum(axis=0)
-        r = Xk - xbar
-        a = dG
-        r2 = np.einsum("ij,ij->i", r, r)
-        M = np.einsum("i,jk->jk", w * r2, np.eye(3)) - np.einsum("i,ij,ik->jk", w, r, r)
-        rhs = dL - np.cross(xbar, a)
-        try:
-            # zeros for degenerate survivor geometry → 0th-moment correction only
-            b = np.linalg.solve(M, rhs) if np.linalg.cond(M) < 1e12 else np.zeros(3)
-        except np.linalg.LinAlgError:
-            b = np.zeros(3)
-        dGamma = w[:, None] * (a[None, :] + np.cross(np.broadcast_to(b, r.shape), r))
-        return (Gk + dGamma).astype(np.float32)
+        def redistribute(
+            survivor_positions: np.ndarray,
+            survivor_circulation: np.ndarray,
+            all_positions: np.ndarray,
+            all_circulation: np.ndarray,
+        ) -> np.ndarray:
+            wmag = np.linalg.norm(survivor_circulation, axis=1)
+            wsum = float(wmag.sum())
+            if wsum <= 0.0 or len(survivor_positions) < 4:
+                return survivor_circulation
+
+            # Coarsen locally before applying the small global correction. This
+            # keeps capped tail circulation near its original physical location.
+            from scipy.spatial import cKDTree
+
+            nearest = cKDTree(survivor_positions).query(all_positions, k=1, workers=-1)[1]
+            corrected = np.zeros_like(survivor_circulation)
+            np.add.at(corrected, nearest, all_circulation)
+            weights = wmag / wsum
+            dG = all_circulation.sum(axis=0) - corrected.sum(axis=0)
+            dL = np.cross(all_positions, all_circulation).sum(axis=0) - np.cross(
+                survivor_positions, corrected
+            ).sum(axis=0)
+            angular_all = (
+                np.cross(all_positions, np.cross(all_positions, all_circulation)).sum(axis=0) / 3.0
+            )
+            angular_keep = (
+                np.cross(survivor_positions, np.cross(survivor_positions, corrected)).sum(axis=0)
+                / 3.0
+            )
+            dA = angular_all - angular_keep
+            if not (np.any(np.abs(dG) > 0) or np.any(np.abs(dL) > 0) or np.any(np.abs(dA) > 0)):
+                return corrected
+
+            length_scale = max(
+                float(
+                    np.sqrt(
+                        np.sum(
+                            weights * np.einsum("ij,ij->i", survivor_positions, survivor_positions)
+                        )
+                    )
+                ),
+                float(h),
+            )
+            scaled_x = survivor_positions / length_scale
+            scaled_q = np.einsum("ij,ij->i", scaled_x, scaled_x)
+            rows = np.zeros((len(survivor_positions), 9, 3), dtype=np.float64)
+            rows[:, :3, :] = np.eye(3)
+            rows[:, 3, 1] = -scaled_x[:, 2]
+            rows[:, 3, 2] = scaled_x[:, 1]
+            rows[:, 4, 0] = scaled_x[:, 2]
+            rows[:, 4, 2] = -scaled_x[:, 0]
+            rows[:, 5, 0] = -scaled_x[:, 1]
+            rows[:, 5, 1] = scaled_x[:, 0]
+            rows[:, 6:, :] = (
+                np.einsum("ij,ik->ijk", scaled_x, scaled_x) - scaled_q[:, None, None] * np.eye(3)
+            ) / 3.0
+
+            rhs = np.concatenate((dG, dL / length_scale, dA / length_scale**2))
+            gram = np.einsum("i,ijk,ilk->jl", weights, rows, rows)
+            multipliers = np.linalg.lstsq(gram, rhs, rcond=1e-12)[0]
+            dGamma = np.einsum("i,ijk,j->ik", weights, rows, multipliers)
+            return corrected + dGamma
+
+        if labels is None:
+            return redistribute(Xk, Gk, Xall, Gall).astype(np.float32)
+
+        survivor_labels = labels[ix, iy, iz]
+        all_labels = labels[nzi, nzj, nzk]
+        corrected = np.zeros_like(Gk)
+        for label in np.unique(all_labels):
+            survivor_selection = survivor_labels == label
+            all_selection = all_labels == label
+            if not survivor_selection.any():
+                return redistribute(Xk, Gk, Xall, Gall).astype(np.float32)
+            corrected[survivor_selection] = redistribute(
+                Xk[survivor_selection],
+                Gk[survivor_selection],
+                Xall[all_selection],
+                Gall[all_selection],
+            )
+        return corrected.astype(np.float32)
 
     def _build_diffusion_particle_arrays(
         self,
@@ -1265,7 +1371,7 @@ class _GridDiffusionMixin:
             ny,
             nz,
             default_id=0,
-            propagate_to=(ix, iy, iz),
+            propagate_to=np.where(circ_mag > 0.0),
         )
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
         Logging.message(
@@ -1316,7 +1422,14 @@ class _GridDiffusionMixin:
         # threshold silently deletes circulation — non-physical wake decay).
         if self.conserve_pruned_moments:
             grid_np[ix, iy, iz] = self._redistribute_pruned_moments(
-                grid_np, circ_mag, ix, iy, iz, grid_min_np, h
+                grid_np,
+                circ_mag,
+                ix,
+                iy,
+                iz,
+                grid_min_np,
+                h,
+                labels=group_winner_grid,
             )
             corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
             Logging.message(
@@ -1603,7 +1716,7 @@ class _GridDiffusionMixin:
             ny,
             nz,
             default_id=0,
-            propagate_to=(ix, iy, iz),
+            propagate_to=np.where(circ_mag > 0.0),
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1641,7 +1754,14 @@ class _GridDiffusionMixin:
         # Conservative prune (see GBD path): restore pruned circulation/impulse.
         if self.conserve_pruned_moments:
             grid_np[ix, iy, iz] = self._redistribute_pruned_moments(
-                grid_np, circ_mag, ix, iy, iz, grid_min_np, h
+                grid_np,
+                circ_mag,
+                ix,
+                iy,
+                iz,
+                grid_min_np,
+                h,
+                labels=group_winner_grid,
             )
 
         return self._build_diffusion_particle_arrays(
@@ -1784,7 +1904,7 @@ class _GridDiffusionMixin:
         """
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
-                dst[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+                dst[i, j, k] = ti.Vector.zero(ti.f32, 3)
                 continue
             # Neumann BC: clamp neighbour indices to the active domain
             im = ti.max(i - 1, 0)
@@ -1829,7 +1949,7 @@ class _GridDiffusionMixin:
         h_sq = h * h
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
-                dst[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+                dst[i, j, k] = ti.Vector.zero(ti.f32, 3)
                 continue
             im = ti.max(i - 1, 0)
             ip = ti.min(i + 1, nx - 1)
@@ -1885,7 +2005,7 @@ class _GridDiffusionMixin:
     ):
         """Zero the active sub-volume of a vec3 grid field."""
         for i, j, k in ti.ndrange(nx, ny, nz):
-            field[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+            field[i, j, k] = ti.Vector.zero(ti.f32, 3)
 
     @ti.kernel
     def _download_vec_chunk_kernel(
@@ -2028,7 +2148,7 @@ class _GridDiffusionMixin:
         """Zero vorticity in solid cells for active domain extents."""
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
-                grid[i, j, k] = ti.Vector([0.0, 0.0, 0.0])
+                grid[i, j, k] = ti.Vector.zero(ti.f32, 3)
 
 
 @ti.data_oriented

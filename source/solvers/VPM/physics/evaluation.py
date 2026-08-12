@@ -121,7 +121,7 @@ class ParticleFieldEvaluation:
 
         # Cached centroid result fields (to avoid memory leak from repeated allocations)
         # CRITICAL: Taichi fields cannot be garbage collected, so we cache and reuse
-        self._centroid_result = ti.field(dtype=ti.f32, shape=3)
+        self._centroid_result = ti.field(dtype=self.accumulator_dtype, shape=3)
 
     def _resize_fields(self, required_size: int):
         """Validate that diagnostics fit the startup particle allocation."""
@@ -511,6 +511,7 @@ class ParticleFieldEvaluation:
             positions: ti.template(),
             strengths: ti.template(),
             group_ids: ti.template(),
+            num_particles: ti.i32,
             target_group: ti.i32,
             result: ti.template(),
         ):  # type: ignore
@@ -522,8 +523,7 @@ class ParticleFieldEvaluation:
             weighted_pos = ti.Vector([0.0, 0.0, 0.0])
             total_strength_mag = 0.0
 
-            N = positions.shape[0]
-            for i in range(N):
+            for i in range(num_particles):
                 if group_ids[i] == target_group:
                     str_mag = strengths[i].norm()
                     if str_mag > EPSILON:
@@ -548,7 +548,10 @@ class ParticleFieldEvaluation:
 
         @ti.kernel
         def compute_global_centroid_kernel(
-            positions: ti.template(), strengths: ti.template(), result: ti.template()
+            positions: ti.template(),
+            strengths: ti.template(),
+            num_particles: ti.i32,
+            result: ti.template(),
         ):  # type: ignore
             """
             Compute centroid of circulation for the entire particle set.
@@ -558,8 +561,7 @@ class ParticleFieldEvaluation:
             weighted_pos = ti.Vector([0.0, 0.0, 0.0])
             total_strength_mag = 0.0
 
-            N = positions.shape[0]
-            for i in range(N):
+            for i in range(num_particles):
                 str_mag = strengths[i].norm()
                 if str_mag > EPSILON:
                     ti.atomic_add(weighted_pos[0], positions[i][0] * str_mag)
@@ -633,7 +635,10 @@ class ParticleFieldEvaluation:
 
         # Call kernel
         self.compute_global_centroid_kernel(
-            particles.position, particles.circulation, self._centroid_result
+            particles.position,
+            particles.circulation,
+            N,
+            self._centroid_result,
         )
 
         # Extract result
@@ -880,6 +885,7 @@ class ParticleFieldEvaluation:
                 particles.position,
                 particles.circulation,
                 particles.group_id,
+                N,
                 int(group_id),
                 self._centroid_result,
             )

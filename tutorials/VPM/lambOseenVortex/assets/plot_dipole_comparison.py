@@ -103,9 +103,8 @@ def plot_dipole_case(args) -> int:
             "linestyle": "None",
             "linewidth": 1.0,
         }
-        a_c_norm = a_c / a_c[0] if a_c[0] > 0 else a_c
         axes[0].plot(tau, xc / args.b0, **plot_kw)
-        axes[1].plot(tau, a_c_norm, **plot_kw)
+        axes[1].plot(tau, a_c / a0, **plot_kw)
         plotted_schemes.append(scheme)
 
     if not plotted_schemes:
@@ -119,11 +118,13 @@ def plot_dipole_case(args) -> int:
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[0].set_ylabel(r"$x_c / b_0$")
     axes[0].set_title("Core trajectory over time")
-    axes[0].set_ylim([0.0, 2.0])
+    axes[0].set_xlim([0.0, 5.0])
+    axes[0].set_ylim([0.0, 5.5])
     axes[1].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_ylim([0.9, 4.0])
+    axes[1].set_xlim([0.0, 5.0])
+    axes[1].set_ylim([0.8, 7.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:

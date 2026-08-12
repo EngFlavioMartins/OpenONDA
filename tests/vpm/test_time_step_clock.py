@@ -18,7 +18,13 @@ import numpy as np
 import pytest
 
 from source.solvers.VPM import Solver, VPMSetup
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.VPM.config.types import (
+    AdvectionConfig,
+    StretchingConfig,
+    VelocityConfig,
+    ViscousConfig,
+)
+from source.solvers.VPM.numerics.filament_refinement import particle_moments
 
 _SIGMA = 0.05
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -106,3 +112,85 @@ def test_disabled_stretching_skips_velocity_gradient_evaluation(tmp_path, monkey
 
     with contextlib.redirect_stdout(io.StringIO()):
         solver.update_state()
+
+
+def test_centroids_ignore_inactive_particle_capacity(tmp_path):
+    solver = _cpu_solver(tmp_path, dt=0.02, viscous=ViscousConfig.cs(viscosity=1e-3))
+
+    # Particle fields are capacity-sized.  A replacement may leave arbitrary
+    # values above the active count; diagnostics must never traverse them.
+    solver.particles.position[1] = [np.nan, np.nan, np.nan]
+    solver.particles.circulation[1] = [np.nan, np.nan, np.nan]
+    solver.particles.group_id[1] = 0
+
+    np.testing.assert_allclose(solver.centroid_of_circulation, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(solver.centroids_of_circulation[0], [0.0, 0.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    ("particle_kernel", "angular_core_coefficient", "needs_correction"),
+    (("GAUSSIAN", 1.0 / 3.0, True), ("HIGH_ORDER_GAUSSIAN", 0.0, False)),
+)
+def test_variable_viscosity_core_spreading_conserves_both_impulses(
+    tmp_path,
+    particle_kernel,
+    angular_core_coefficient,
+    needs_correction,
+):
+    rng = np.random.default_rng(17)
+    count = 12
+    position = rng.normal(size=(count, 3))
+    circulation = rng.normal(size=(count, 3))
+    radius = np.full(count, 0.15)
+    volume = np.full(count, 0.02)
+    solver = Solver(
+        setup=VPMSetup(
+            time_step_size=0.02,
+            time_integration="COUPLED",
+            precision="f64",
+            processing_unit="CPU",
+            max_particles=16,
+            stretching=StretchingConfig.transposed(
+                scheme="RK2",
+                conserve_moments=True,
+            ),
+            viscous=ViscousConfig.cs(viscosity=1.0e-3),
+            advection=AdvectionConfig(scheme="RK2"),
+            velocity=VelocityConfig.direct(),
+            particles_kernel=particle_kernel,
+            backup_frequency=0,
+            logging_frequency=0,
+            backup_directory=str(tmp_path),
+        )
+    )
+    solver.add_vortex_particles(
+        position=position,
+        velocity=np.zeros_like(position),
+        circulation=circulation,
+        radius=radius,
+        volume=volume,
+        viscosity=np.full(count, 1.0e-3),
+        viscosity_turbulent=np.linspace(0.0, 0.02, count),
+    )
+
+    before = particle_moments(
+        position,
+        circulation,
+        radius,
+        angular_core_coefficient=angular_core_coefficient,
+    )
+    solver._apply_core_spreading_diffusion(0.1)
+    after = particle_moments(
+        solver.particles.position_cpu(use_cache=False),
+        solver.particles.circulation_cpu(use_cache=False),
+        solver.particles.radius_cpu(use_cache=False),
+        angular_core_coefficient=angular_core_coefficient,
+    )
+
+    for index in (0, 2, 3):
+        np.testing.assert_allclose(after[index], before[index], atol=1.0e-11, rtol=1.0e-11)
+    correction = solver._core_spreading_diagnostics["core_spreading_max_moment_correction_relative"]
+    if needs_correction:
+        assert correction > 0.0
+    else:
+        assert correction < 1.0e-14

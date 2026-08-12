@@ -69,7 +69,7 @@ def create_gaussian_kernels(dtype=ti.f32):
         #         = (2/sqrt(pi)) [ (2/3) r^3 - (2/5) r^5 + (1/7) r^7 - ... ].
         # Coefficient and crossover are shared with the treecode's copy of this
         # kernel through config.constants so the two cannot drift apart.
-        res = 0.0
+        res = ti.cast(0.0, dtype)
         if density < GAUSSIAN_Q_SERIES_CROSSOVER:
             d2 = density * density
             res = (
@@ -90,7 +90,7 @@ def create_gaussian_kernels(dtype=ti.f32):
         # Energy kernel g = ∫_density^∞ q(s)/s² ds
         #                 = erf(density)/(4*pi*density).
         # The explicit origin limit is the finite vortex-blob self energy.
-        res = 0.0
+        res = ti.cast(0.0, dtype)
         if density < 1e-4:
             res = ONE_OVER_PI_15 * (0.5 - density * density / 6.0)
         else:

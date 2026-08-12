@@ -238,6 +238,12 @@ class BackupSystem:
                 solver_group.attrs[name] = value
             for name, value in getattr(
                 solver,
+                "_core_spreading_diagnostics",
+                {},
+            ).items():
+                solver_group.attrs[name] = value
+            for name, value in getattr(
+                solver,
                 "_regularization_diagnostics",
                 {},
             ).items():
@@ -692,6 +698,10 @@ class BackupSystem:
                 for name in solver._grid_diffusion_diagnostics:
                     if name in solver_group.attrs:
                         solver._grid_diffusion_diagnostics[name] = solver_group.attrs[name].item()
+            if hasattr(solver, "_core_spreading_diagnostics"):
+                for name in solver._core_spreading_diagnostics:
+                    if name in solver_group.attrs:
+                        solver._core_spreading_diagnostics[name] = solver_group.attrs[name].item()
             if hasattr(solver, "_regularization_diagnostics"):
                 for name in solver._regularization_diagnostics:
                     if name in solver_group.attrs:

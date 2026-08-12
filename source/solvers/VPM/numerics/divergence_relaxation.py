@@ -323,11 +323,13 @@ class GaussianParticleGridOperator:
         return self.gather(target_grid) - self.gather(blob_grid), before, after
 
 
-def gaussian_invariant_rows(
+def invariant_rows(
     position: np.ndarray,
     radius: np.ndarray,
+    *,
+    angular_core_coefficient: float,
 ) -> np.ndarray:
-    """Rows for vector circulation, linear impulse, and Gaussian angular impulse."""
+    """Rows for circulation and both impulses for a supported blob kernel."""
 
     position = np.asarray(position, dtype=np.float64)
     radius = np.asarray(radius, dtype=np.float64)
@@ -346,9 +348,21 @@ def gaussian_invariant_rows(
         np.einsum("pa,pb->pab", position, position)
         - np.einsum("pa,pa->p", position, position)[:, None, None] * identity
     )
-    angular = (skew_sq - radius[:, None, None] ** 2 * identity) / 3.0
+    angular = skew_sq / 3.0 - (angular_core_coefficient * radius[:, None, None] ** 2 * identity)
     rows[6:9] = np.transpose(angular, (1, 0, 2))
     return rows
+
+
+def gaussian_invariant_rows(
+    position: np.ndarray,
+    radius: np.ndarray,
+) -> np.ndarray:
+    """Rows for vector circulation, linear impulse, and Gaussian angular impulse."""
+    return invariant_rows(
+        position,
+        radius,
+        angular_core_coefficient=1.0 / 3.0,
+    )
 
 
 class _MomentNullspace:
@@ -1392,7 +1406,10 @@ def constrained_divergence_relaxation(
                     break
                 if error.gate not in amplitude_retryable_gates:
                     raise
-        assert full_sweep is not None
+        if full_sweep is None:
+            if last_error is not None:
+                raise last_error
+            raise AssertionError("projection sweep produced neither a candidate nor an error")
         if sweep_index == max_projection_sweeps - 1:
             assert last_error is not None
             raise last_error

@@ -5,12 +5,11 @@ The grid-diffusion regen keeps only nodes above a magnitude threshold and used
 to **drop** the rest, silently deleting their circulation (a non-physical decay,
 worst in 'absolute' mode where it clips the far wake every regen).  The
 conservative prune redistributes the dropped nodes' moments onto the survivors
-via  δΓ_i = w_i (a + b × r_i)  so the regeneration preserves:
+with a weighted minimum-norm correction so the regeneration preserves:
 
   * the 0th moment  Σ Γ            (total circulation, Kelvin)        — exactly,
   * the 1st moment  Σ x × Γ        (linear impulse)                   — exactly,
-
-while the 2nd moment is intentionally not forced (not a remeshing invariant).
+  * angular impulse Σ x×(x×Γ)/3 (transverse second moment)        — exactly.
 
 These are pure-NumPy tests of ``_redistribute_pruned_moments`` (no Taichi/GPU).
 """
@@ -61,7 +60,12 @@ def _moments(grid, grid_min, h, mask=None):
         ii, jj, kk = np.where(mask)
     G = grid[ii, jj, kk].astype(np.float64)
     X = np.stack([grid_min[0] + ii * h, grid_min[1] + jj * h, grid_min[2] + kk * h], axis=1)
-    return G.sum(axis=0), np.cross(X, G).sum(axis=0), (ii, jj, kk, X, G)
+    return (
+        G.sum(axis=0),
+        np.cross(X, G).sum(axis=0),
+        np.cross(X, np.cross(X, G)).sum(axis=0) / 3.0,
+        (ii, jj, kk, X, G),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +75,7 @@ def test_redistribution_conserves_circulation_and_impulse():
     grid, grid_min, h = _make_grid()
     circ_mag = np.linalg.norm(grid, axis=-1)
 
-    G_full, L_full, _ = _moments(grid, grid_min, h)
+    G_full, L_full, A_full, _ = _moments(grid, grid_min, h)
 
     # Prune the faint halo (keep ~strong core); ensure a real cut happens.
     thr = 0.05 * float(circ_mag.max())
@@ -89,6 +93,7 @@ def test_redistribution_conserves_circulation_and_impulse():
     corrected = redistribute(grid, circ_mag, ix, iy, iz, grid_min, h).astype(np.float64)
     G_post = corrected.sum(axis=0)
     L_post = np.cross(Xk, corrected).sum(axis=0)
+    A_post = np.cross(Xk, np.cross(Xk, corrected)).sum(axis=0) / 3.0
 
     ref = np.linalg.norm(G_full) + 1e-30
     assert np.linalg.norm(G_full - G_post) / ref < 1e-5, (
@@ -97,6 +102,10 @@ def test_redistribution_conserves_circulation_and_impulse():
     refL = np.linalg.norm(L_full) + 1e-30
     assert np.linalg.norm(L_full - L_post) / refL < 1e-5, (
         f"1st moment not conserved: {L_full} vs {L_post}"
+    )
+    refA = np.linalg.norm(A_full) + 1e-30
+    assert np.linalg.norm(A_full - A_post) / refA < 1e-5, (
+        f"angular impulse not conserved: {A_full} vs {A_post}"
     )
 
 
@@ -139,7 +148,7 @@ def test_circulation_conserved_across_threshold_sweep():
     """0th moment conserved for a range of prune aggressiveness."""
     grid, grid_min, h = _make_grid(seed=3)
     circ_mag = np.linalg.norm(grid, axis=-1)
-    G_full, _, _ = _moments(grid, grid_min, h)
+    G_full, _, _, _ = _moments(grid, grid_min, h)
     ref = np.linalg.norm(G_full) + 1e-30
     for frac in (0.02, 0.1, 0.3, 0.5):
         thr = frac * float(circ_mag.max())
@@ -149,3 +158,51 @@ def test_circulation_conserved_across_threshold_sweep():
         corrected = redistribute(grid, circ_mag, ix, iy, iz, grid_min, h).astype(np.float64)
         err = np.linalg.norm(G_full - corrected.sum(axis=0)) / ref
         assert err < 1e-5, f"frac={frac}: 0th moment error {err:.2e}"
+
+
+def test_redistribution_conserves_each_vortex_group():
+    """Opposite-signed vortices retain their individual diffusive moments."""
+    shape = (28, 20, 12)
+    h = 0.05
+    grid_min = np.array([-0.7, -0.5, -0.3])
+    ii, jj, kk = np.indices(shape)
+    left = np.exp(-((ii - 8) ** 2 + (jj - 10) ** 2 + (kk - 6) ** 2) / 18.0)
+    right = np.exp(-((ii - 20) ** 2 + (jj - 10) ** 2 + (kk - 6) ** 2) / 18.0)
+    labels = np.where(ii < 14, 0, 1).astype(np.int32)
+    grid = np.zeros((*shape, 3), dtype=np.float32)
+    grid[..., 2] = np.where(labels == 0, left, -right)
+    circ_mag = np.linalg.norm(grid, axis=-1)
+
+    threshold = 0.08 * float(circ_mag.max())
+    ix, iy, iz = np.where(circ_mag >= threshold)
+    corrected = redistribute(
+        grid,
+        circ_mag,
+        ix,
+        iy,
+        iz,
+        grid_min,
+        h,
+        labels=labels,
+    ).astype(np.float64)
+    positions = np.stack(
+        [grid_min[0] + ix * h, grid_min[1] + iy * h, grid_min[2] + iz * h],
+        axis=1,
+    )
+    survivor_labels = labels[ix, iy, iz]
+
+    for label in (0, 1):
+        full_mask = labels == label
+        circulation, linear, angular, _ = _moments(grid, grid_min, h, mask=full_mask)
+        selected = survivor_labels == label
+        group_circulation = corrected[selected].sum(axis=0)
+        group_linear = np.cross(positions[selected], corrected[selected]).sum(axis=0)
+        group_angular = (
+            np.cross(positions[selected], np.cross(positions[selected], corrected[selected])).sum(
+                axis=0
+            )
+            / 3.0
+        )
+        assert np.allclose(group_circulation, circulation, rtol=1e-5, atol=1e-7)
+        assert np.allclose(group_linear, linear, rtol=1e-5, atol=1e-7)
+        assert np.allclose(group_angular, angular, rtol=1e-5, atol=1e-7)

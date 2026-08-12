@@ -9,11 +9,20 @@
   "separation": 1.0,
   "column_half_length": 3.125,
   "total_time": 20.0,
-  "time_step": 0.05,
+  "time_step": 0.4,
   "in_plane_spacing": 0.06,
   "column_spacing": 0.1,
   "particle_radius": 0.09,
+  "particle_replicas": 16,
   "field_spacing": 0.0375,
-  "sample_interval": 0.25,
-  "raw_backup_interval": 5.0
+  "sample_interval": 0.8,
+  "raw_backup_interval": 4.800000000000001,
+  "wall_time_seconds": 471.2013742499985,
+  "rwm_realizations": 4,
+  "rwm_particle_replicas": 16,
+  "ensemble_averaged_samples": [
+    "vortex_rwm_x.csv",
+    "vortex_rwm_y.csv",
+    "vortex_rwm_z0_000050.vts"
+  ]
 }

@@ -1111,6 +1111,18 @@ class StabilizationConfig:
     regularization_capacity_misalignment_trigger: float | None = None
     """Optional higher misalignment trigger after the particle budget is reached."""
 
+    regularization_capacity_fraction: float = 1.0
+    """Fraction of the particle budget at which capacity settings take effect."""
+
+    regularization_capacity_grid_spacing: float | None = None
+    """Optional coarser redistribution spacing used in capacity mode."""
+
+    regularization_core_radius: float | None = None
+    """Optional regenerated Gaussian core radius, independent of grid spacing."""
+
+    regularization_capacity_core_radius: float | None = None
+    """Optional regenerated core radius used only in capacity mode."""
+
     regularization_projection_trigger: float = 0.08
     """Apply a moment-constrained solenoidal projection above this post-filter error."""
 
@@ -1138,8 +1150,7 @@ class StabilizationConfig:
         if self.regularization_frequency < 0 or self.regularization_start_step < 0:
             raise ValueError("regularization frequency and start step must be non-negative")
         if self.regularization_frequency > 0 and (
-            self.regularization_grid_spacing is None
-            or self.regularization_grid_spacing <= 0.0
+            self.regularization_grid_spacing is None or self.regularization_grid_spacing <= 0.0
         ):
             raise ValueError("enabled regularization requires a positive grid spacing")
         if self.regularization_max_particles is not None and self.regularization_max_particles <= 0:
@@ -1162,9 +1173,24 @@ class StabilizationConfig:
         if self.regularization_capacity_misalignment_trigger is not None and not (
             0.0 <= self.regularization_capacity_misalignment_trigger <= 180.0
         ):
-            raise ValueError(
-                "regularization capacity misalignment trigger must lie in [0, 180]"
-            )
+            raise ValueError("regularization capacity misalignment trigger must lie in [0, 180]")
+        if not 0.0 < self.regularization_capacity_fraction <= 1.0:
+            raise ValueError("regularization capacity fraction must lie in (0, 1]")
+        if (
+            self.regularization_capacity_grid_spacing is not None
+            and not self.regularization_capacity_grid_spacing > 0.0
+        ):
+            raise ValueError("regularization capacity grid spacing must be positive")
+        if (
+            self.regularization_core_radius is not None
+            and not self.regularization_core_radius > 0.0
+        ):
+            raise ValueError("regularization core radius must be positive")
+        if (
+            self.regularization_capacity_core_radius is not None
+            and not self.regularization_capacity_core_radius > 0.0
+        ):
+            raise ValueError("regularization capacity core radius must be positive")
         if self.regularization_projection_trigger < 0.0:
             raise ValueError("regularization projection trigger must be non-negative")
         if not 0.0 < self.regularization_projection_max_correction < 1.0:
@@ -1205,6 +1231,10 @@ class StabilizationConfig:
         misalignment_trigger: float = 20.0,
         capacity_divergence_trigger: float | None = None,
         capacity_misalignment_trigger: float | None = None,
+        capacity_fraction: float = 1.0,
+        capacity_grid_spacing: float | None = None,
+        core_radius: float | None = None,
+        capacity_core_radius: float | None = None,
         projection_trigger: float = 0.08,
         projection_max_correction: float = 0.20,
     ) -> "StabilizationConfig":
@@ -1223,6 +1253,10 @@ class StabilizationConfig:
             regularization_misalignment_trigger=misalignment_trigger,
             regularization_capacity_divergence_trigger=capacity_divergence_trigger,
             regularization_capacity_misalignment_trigger=capacity_misalignment_trigger,
+            regularization_capacity_fraction=capacity_fraction,
+            regularization_capacity_grid_spacing=capacity_grid_spacing,
+            regularization_core_radius=core_radius,
+            regularization_capacity_core_radius=capacity_core_radius,
             regularization_projection_trigger=projection_trigger,
             regularization_projection_max_correction=projection_max_correction,
         )
@@ -2056,9 +2090,8 @@ class VPMSetup:
             )
         if self.stabilization.regularization_frequency > 0 and _kernel_up != "GAUSSIAN":
             raise ValueError("conservative regularization currently requires GAUSSIAN particles")
-        if (
-            self.stabilization.regularization_frequency > 0
-            and (self.filament_refinement.enabled or self.divergence_relaxation.enabled)
+        if self.stabilization.regularization_frequency > 0 and (
+            self.filament_refinement.enabled or self.divergence_relaxation.enabled
         ):
             raise ValueError(
                 "conservative regularization replaces refinement and divergence relaxation"
@@ -2067,9 +2100,7 @@ class VPMSetup:
             self.stabilization.regularization_max_particles is not None
             and self.stabilization.regularization_max_particles > self.max_particles
         ):
-            raise ValueError(
-                "regularization_max_particles cannot exceed VPMSetup.max_particles"
-            )
+            raise ValueError("regularization_max_particles cannot exceed VPMSetup.max_particles")
         if (
             self.filament_refinement.max_particles is not None
             and self.filament_refinement.max_particles > self.max_particles

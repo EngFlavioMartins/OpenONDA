@@ -53,7 +53,7 @@ def _group_moment(
 
 
 def _particle_data(solver) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    positions = np.asarray(solver.particles_positions, dtype=np.float64)[:, :2]
+    positions = np.asarray(solver.particles_positions, dtype=np.float64)
     strengths = np.asarray(solver.particles_strengths, dtype=np.float64)
     radii = np.asarray(solver.particles_radii, dtype=np.float64)
     group_ids = np.asarray(solver.particles_group_ids, dtype=np.int32)
@@ -70,16 +70,23 @@ def _particle_data(solver) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
 
 
 class PairDiagnosticsSampler:
-    """Track vortex-pair motion without saving or reconstructing field grids."""
+    """Track mid-plane vortex-pair motion without saving field grids."""
 
     file_name = "pair_diagnostics"
 
-    def __init__(self, case_name: str, separation: float, column_length: float) -> None:
+    def __init__(
+        self,
+        case_name: str,
+        separation: float,
+        column_length: float,
+        slab_half_width: float | None = None,
+    ) -> None:
         if case_name not in {"dipole", "merging"}:
             raise ValueError(f"Pair diagnostics do not apply to {case_name!r}")
         self.case_name = case_name
         self.separation = float(separation)
         self.column_length = float(column_length)
+        self.slab_half_width = slab_half_width
         self.last_step: int | None = None
 
     def _restore(self, path: Path) -> None:
@@ -105,7 +112,23 @@ class PairDiagnosticsSampler:
         if step is not None and self.last_step is not None and step <= self.last_step:
             return
 
-        positions, weights, radii, group_ids = _particle_data(solver)
+        all_positions, all_weights, all_radii, all_group_ids = _particle_data(solver)
+        circulation_0_full = float(all_weights[all_group_ids == 0].sum()) / self.column_length
+        circulation_full = float(all_weights.sum()) / self.column_length
+
+        if self.slab_half_width is None:
+            central = np.ones(len(all_positions), dtype=bool)
+        else:
+            central = np.abs(all_positions[:, 2]) <= self.slab_half_width
+            if np.count_nonzero(central) < 4:
+                nearest = np.argsort(np.abs(all_positions[:, 2]))[:4]
+                central = np.zeros(len(all_positions), dtype=bool)
+                central[nearest] = True
+
+        positions = all_positions[central, :2]
+        weights = all_weights[central]
+        radii = all_radii[central]
+        group_ids = all_group_ids[central]
         center_0, radius_squared_0, circulation_0 = _group_moment(
             positions,
             weights,
@@ -121,7 +144,7 @@ class PairDiagnosticsSampler:
                 np.nan,
                 np.nan,
                 np.nan,
-                circulation_0 / self.column_length,
+                circulation_0_full,
                 False,
                 *center_0,
                 np.nan,
@@ -161,7 +184,7 @@ class PairDiagnosticsSampler:
                 separation,
                 core_area,
                 angle,
-                (circulation_0 + circulation_1) / self.column_length,
+                circulation_full,
                 merged,
                 *centers.ravel(),
             )

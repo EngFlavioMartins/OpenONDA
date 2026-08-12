@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import re
 import sys
 
 import numpy as np
@@ -15,6 +16,7 @@ FAMILIES = ("leapfrog", "collide")
 VARIANTS = ("dns", "les", "les_stabilized")
 EXPECTED_CASES = tuple(f"{family}_{variant}" for family in FAMILIES for variant in VARIANTS)
 RING_INVARIANT_SCALE = 2.0 * np.pi**2
+EXPECTED_SMAGORINSKY = {"leapfrog": 0.16, "collide": 0.32}
 
 
 def column(rows: list[dict[str, str]], name: str) -> np.ndarray:
@@ -22,6 +24,18 @@ def column(rows: list[dict[str, str]], name: str) -> np.ndarray:
         return np.asarray([float(row[name]) for row in rows])
     except KeyError as error:
         raise ValueError(f"missing diagnostic column {name!r}") from error
+
+
+def optional_column(
+    rows: list[dict[str, str]],
+    name: str,
+    *,
+    default: float = 0.0,
+) -> np.ndarray:
+    """Read a reporting-only diagnostic added after older baseline outputs."""
+    if not rows or name not in rows[0]:
+        return np.full(len(rows), default, dtype=float)
+    return column(rows, name)
 
 
 def vectors(rows: list[dict[str, str]], prefix: str) -> np.ndarray:
@@ -32,18 +46,78 @@ def relative_vector_drift(values: np.ndarray, scale: float) -> float:
     return float(np.linalg.norm(values - values[0], axis=1).max() / scale)
 
 
+def stability_indicators(case_name: str, through_time: float) -> dict[str, float]:
+    """Return peak instability measures over a common physical-time window."""
+    csv_path = SOLUTION_DIR / case_name / "samples" / "flow_integrals.csv"
+    with csv_path.open(newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    time = column(rows, "time")
+    selected = time <= through_time + 32.0 * np.finfo(float).eps * max(1.0, through_time)
+    if not np.any(selected):
+        raise ValueError(f"{case_name} has no diagnostic sample through t={through_time:.6g}")
+    strength = column(rows, "strength_magnitude")[selected]
+    return {
+        "strength_growth": float(np.max(strength) / strength[0]),
+        "max_divergence": float(np.max(column(rows, "vorticity_divergence_error")[selected])),
+        "max_misalignment": float(np.max(column(rows, "strength_misalignment_deg")[selected])),
+    }
+
+
+def initial_state(case_name: str) -> np.ndarray:
+    """Return the shared particle-state diagnostics before model evolution begins."""
+    csv_path = SOLUTION_DIR / case_name / "samples" / "flow_integrals.csv"
+    with csv_path.open(newline="") as stream:
+        row = next(csv.DictReader(stream))
+    names = (
+        "kinetic_energy",
+        "enstrophy",
+        "strength_magnitude",
+        "strength_x",
+        "strength_y",
+        "strength_z",
+        "impulse_x",
+        "impulse_y",
+        "impulse_z",
+        "angular_impulse_x",
+        "angular_impulse_y",
+        "angular_impulse_z",
+        "n_particles",
+        "overlap_ratio_max",
+        "vorticity_divergence_error",
+        "strength_misalignment_deg",
+    )
+    return np.asarray([float(row[name]) for name in names])
+
+
 def inspect_case(case_name: str) -> dict[str, float]:
     case_dir = SOLUTION_DIR / case_name
     manifest_path = case_dir / "run_manifest.json"
     csv_path = case_dir / "samples" / "flow_integrals.csv"
-    if not manifest_path.is_file() or not csv_path.is_file():
-        raise ValueError("run manifest or flow-integral CSV is missing")
+    ring_csv_path = case_dir / "samples" / "ring_diagnostics.csv"
+    if not all(path.is_file() for path in (manifest_path, csv_path, ring_csv_path)):
+        raise ValueError("run manifest or built-in diagnostic CSV is missing")
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    family = case_name.split("_", maxsplit=1)[0]
     variant = case_name.removeprefix("leapfrog_").removeprefix("collide_")
+    if manifest.get("case") != case_name or manifest.get("model") != variant:
+        raise ValueError("run manifest identifies a different case or model")
     status = manifest.get("status")
     completed_steps = manifest.get("completed_steps")
     requested_steps = manifest.get("requested_steps")
+    diagnostic_frequency = manifest.get("diagnostic_frequency")
+    snapshot_frequency = manifest.get("snapshot_frequency")
+    if not isinstance(diagnostic_frequency, int) or not 1 <= diagnostic_frequency <= 5:
+        raise ValueError("flow diagnostics are not sampled at least every five steps")
+    if not isinstance(snapshot_frequency, int) or not 1 <= snapshot_frequency <= 10:
+        raise ValueError("particle states are not saved at least every ten steps")
+    if float(manifest.get("particle_spacing", np.inf)) > 0.04:
+        raise ValueError("initial vortex-ring particle spacing is too coarse")
+    if int(manifest.get("initial_particles", 0)) < 6_000:
+        raise ValueError("initial vortex rings contain too few particles")
+    expected_cs = 0.0 if variant == "dns" else EXPECTED_SMAGORINSKY[family]
+    if not np.isclose(float(manifest.get("smagorinsky_coefficient", np.nan)), expected_cs):
+        raise ValueError("run used the wrong family-specific Smagorinsky coefficient")
     if variant == "les_stabilized":
         if status != "completed" or completed_steps != requested_steps:
             raise ValueError("stabilized simulation did not reach its requested end time")
@@ -61,51 +135,67 @@ def inspect_case(case_name: str) -> dict[str, float]:
         raise ValueError("fewer than three diagnostic samples were written")
 
     time = column(rows, "time")
+    step = column(rows, "step")
     energy = column(rows, "kinetic_energy")
     energy_rate = column(rows, "dEdt")
     sink = column(rows, "neg_nu_enstrophy")
     enstrophy = column(rows, "enstrophy")
+    enstrophy_test = column(rows, "enstrophy_test")
     strength_magnitude = column(rows, "strength_magnitude")
     max_gamma = column(rows, "max_gamma")
     circulation = vectors(rows, "strength")
     impulse = vectors(rows, "impulse")
     angular_impulse = vectors(rows, "angular_impulse")
     particle_count = column(rows, "n_particles")
+    core_radius = column(rows, "core_radius_mean")
+    overlap_mean = column(rows, "overlap_ratio")
     overlap = column(rows, "overlap_ratio_max")
     divergence = column(rows, "vorticity_divergence_error")
     misalignment = column(rows, "strength_misalignment_deg")
+    turbulent_viscosity_mean = column(rows, "turbulent_viscosity_mean")
     turbulent_viscosity = column(rows, "turbulent_viscosity_max")
+    effective_viscosity_mean = column(rows, "effective_viscosity_mean")
+    effective_viscosity = column(rows, "effective_viscosity_max")
     stabilization_viscosity = column(rows, "stabilization_viscosity_max")
     stabilization_active = column(rows, "stabilization_viscosity_active_fraction")
     projection_correction = column(rows, "invariant_projection_correction_ratio")
+    core_spreading_events = column(rows, "core_spreading_moment_projection_events")
+    core_spreading_correction = column(rows, "core_spreading_max_moment_correction_relative")
+    core_spreading_circulation = column(rows, "core_spreading_max_circulation_error_relative")
+    core_spreading_impulse = column(rows, "core_spreading_max_linear_impulse_error_relative")
+    core_spreading_angular = column(rows, "core_spreading_max_angular_impulse_error_relative")
     regularization_events = column(rows, "regularization_events")
     regularization_transfer = column(rows, "regularization_cumulative_energy_transfer")
-    regularization_energy_dissipation = column(
-        rows, "regularization_max_energy_dissipation"
-    )
-    regularization_enstrophy_injection = column(
-        rows, "regularization_max_enstrophy_injection"
-    )
-    regularization_enstrophy_dissipation = column(
-        rows, "regularization_max_enstrophy_dissipation"
-    )
+    regularization_energy_dissipation = column(rows, "regularization_max_energy_dissipation")
+    regularization_enstrophy_injection = column(rows, "regularization_max_enstrophy_injection")
+    regularization_enstrophy_dissipation = column(rows, "regularization_max_enstrophy_dissipation")
     regularization_correction = column(rows, "regularization_max_correction_relative")
     regularization_projection_correction = column(
         rows, "regularization_max_projection_correction_relative"
     )
-    regularization_circulation = column(
-        rows, "regularization_max_circulation_error_relative"
+    diagnostic_column = column if variant == "les_stabilized" else optional_column
+    regularization_adaptive_core_events = diagnostic_column(
+        rows, "regularization_adaptive_core_events"
     )
-    regularization_impulse = column(
-        rows, "regularization_max_linear_impulse_error_relative"
-    )
-    regularization_angular = column(
-        rows, "regularization_max_angular_impulse_error_relative"
-    )
+    regularization_max_core_radius = diagnostic_column(rows, "regularization_max_core_radius")
+    regularization_circulation = column(rows, "regularization_max_circulation_error_relative")
+    regularization_impulse = column(rows, "regularization_max_linear_impulse_error_relative")
+    regularization_angular = column(rows, "regularization_max_angular_impulse_error_relative")
 
-    values = np.column_stack(
+    try:
+        all_diagnostics = np.asarray(
+            [[float(value) for value in row.values()] for row in rows],
+            dtype=float,
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("flow diagnostics contain a non-numeric value") from error
+    if not np.isfinite(all_diagnostics).all():
+        raise ValueError("a non-finite value appears in the exported flow diagnostics")
+
+    required_values = np.column_stack(
         (
             time,
+            step,
             energy,
             energy_rate,
             sink,
@@ -123,6 +213,11 @@ def inspect_case(case_name: str) -> dict[str, float]:
             stabilization_viscosity,
             stabilization_active,
             projection_correction,
+            core_spreading_events,
+            core_spreading_correction,
+            core_spreading_circulation,
+            core_spreading_impulse,
+            core_spreading_angular,
             regularization_events,
             regularization_transfer,
             regularization_energy_dissipation,
@@ -130,23 +225,142 @@ def inspect_case(case_name: str) -> dict[str, float]:
             regularization_enstrophy_dissipation,
             regularization_correction,
             regularization_projection_correction,
+            regularization_adaptive_core_events,
+            regularization_max_core_radius,
             regularization_circulation,
             regularization_impulse,
             regularization_angular,
         )
     )
-    if not np.isfinite(values).all():
-        raise ValueError("non-finite flow diagnostics were recorded")
+    if not np.isfinite(required_values).all():
+        raise ValueError("a required flow diagnostic is non-finite")
+    expected_steps = np.arange(0, completed_steps + 1, diagnostic_frequency, dtype=float)
+    if expected_steps[-1] != completed_steps:
+        expected_steps = np.append(expected_steps, completed_steps)
+    if not np.array_equal(step, expected_steps):
+        raise ValueError("diagnostic samples are missing, duplicated, or at the wrong steps")
+    expected_dt = float(manifest["requested_end_time"]) / requested_steps
+    if not np.allclose(time, step * expected_dt, rtol=0.0, atol=1.0e-9):
+        raise ValueError("diagnostic time does not match step times the configured time step")
     if np.any(np.diff(time) <= 0.0):
         raise ValueError("diagnostic time is not strictly increasing")
+
+    with ring_csv_path.open(newline="") as stream:
+        ring_rows = list(csv.DictReader(stream))
+    try:
+        ring_values = np.asarray(
+            [[float(value) for value in row.values()] for row in ring_rows],
+            dtype=float,
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("ring sampler contains a non-numeric value") from error
+    if not np.isfinite(ring_values).all():
+        raise ValueError("ring sampler contains a non-finite value")
+    if (
+        np.any(column(ring_rows, "major_radius") <= 0.0)
+        or np.any(column(ring_rows, "tube_circulation") <= 0.0)
+        or np.any(column(ring_rows, "length_strength") <= 0.0)
+        or np.any(column(ring_rows, "max_strength") <= 0.0)
+        or np.any(column(ring_rows, "impulse_norm") < 0.0)
+        or np.any(column(ring_rows, "impulse_radius") < 0.0)
+    ):
+        raise ValueError("ring sampler contains a nonphysical radius, circulation, or impulse")
+    initial_ring_rows = ring_rows[:2]
+    expected_centers = (-0.5, 0.5) if case_name.startswith("leapfrog_") else (-2.5, 2.5)
+    if not np.allclose(
+        column(initial_ring_rows, "x_centroid"),
+        expected_centers,
+        rtol=0.0,
+        atol=2.0e-3,
+    ):
+        raise ValueError("sampled initial ring centers do not match the prescribed geometry")
+    if not np.allclose(
+        column(initial_ring_rows, "major_radius"),
+        1.0,
+        rtol=2.0e-2,
+        atol=0.0,
+    ) or not np.allclose(
+        column(initial_ring_rows, "tube_circulation"),
+        np.pi,
+        rtol=1.0e-2,
+        atol=0.0,
+    ):
+        raise ValueError("sampled initial radius or tube circulation is under-resolved")
+    ring_steps = np.asarray([int(row["time_step"]) for row in ring_rows])
+    ring_groups = np.asarray([int(row["group_id"]) for row in ring_rows])
+    expected_ring_steps = np.repeat(expected_steps.astype(int), 2)
+    expected_ring_groups = np.tile((0, 1), len(expected_steps))
+    if not np.array_equal(ring_steps, expected_ring_steps) or not np.array_equal(
+        ring_groups, expected_ring_groups
+    ):
+        raise ValueError("grouped ring diagnostics are missing, duplicated, or out of order")
+    ring_time = np.asarray([float(row["flow_time"]) for row in ring_rows])
+    if not np.allclose(
+        ring_time,
+        np.repeat(time, 2),
+        rtol=0.0,
+        atol=1.0e-9,
+    ):
+        raise ValueError("ring-sampler times do not match the global diagnostics")
+
+    numbered_snapshots = {
+        int(match.group(1))
+        for path in case_dir.glob(f"vpm_{case_name}_*.h5")
+        if (match := re.search(r"_(\d{6})\.h5$", path.name))
+    }
+    expected_snapshots = set(range(0, completed_steps + 1, snapshot_frequency))
+    if numbered_snapshots != expected_snapshots:
+        raise ValueError("scheduled particle-state snapshots are missing or duplicated")
+    if any(
+        not (case_dir / f"vpm_{case_name}_{snapshot:06d}.xdmf").is_file()
+        for snapshot in expected_snapshots
+    ):
+        raise ValueError("a scheduled particle snapshot has no XDMF descriptor")
+    if not all(
+        (case_dir / f"vpm_{case_name}_final{suffix}").is_file() for suffix in (".h5", ".xdmf")
+    ):
+        raise ValueError("final particle state or its XDMF descriptor is missing")
     if variant != "les_stabilized" and np.ptp(particle_count) != 0.0:
         raise ValueError("fixed-particle baseline changed population")
-    if np.any(energy <= 0.0) or np.any(enstrophy < 0.0) or np.any(sink > 1.0e-8):
+    if (
+        np.any(energy <= 0.0)
+        or np.any(enstrophy < 0.0)
+        or np.any(enstrophy_test < 0.0)
+        or np.any(sink > 1.0e-8)
+    ):
         raise ValueError("energy, enstrophy, or modeled dissipation has a nonphysical sign")
+    if (
+        np.any(particle_count <= 0.0)
+        or np.any(particle_count != np.floor(particle_count))
+        or np.any(strength_magnitude <= 0.0)
+        or np.any(max_gamma <= 0.0)
+        or np.any(core_radius <= 0.0)
+    ):
+        raise ValueError("particle population, circulation, or core size is nonphysical")
+    nonnegative = np.column_stack(
+        (
+            turbulent_viscosity_mean,
+            turbulent_viscosity,
+            effective_viscosity_mean,
+            effective_viscosity,
+            overlap_mean,
+            overlap,
+            divergence,
+        )
+    )
+    if np.any(nonnegative < -1.0e-14) or np.any((misalignment < 0.0) | (misalignment > 180.0)):
+        raise ValueError("viscosity, resolution, or alignment diagnostics are nonphysical")
 
     interval_rate = np.diff(energy) / np.diff(time)
     rate_scale = max(float(np.max(np.abs(interval_rate))), energy[0] / (time[-1] - time[0]))
     rate_mismatch = float(np.max(np.abs(energy_rate[1:] - interval_rate)) / rate_scale)
+    filter_rate = np.diff(regularization_transfer) / np.diff(time)
+    modeled_rate = 0.5 * (sink[1:] + sink[:-1]) + filter_rate
+    modeled_rate_mismatch = float(
+        np.sqrt(np.mean(np.square(interval_rate - modeled_rate)))
+        / max(float(np.sqrt(np.mean(np.square(modeled_rate)))), 1.0e-30)
+    )
+    positive_energy_rate = max(0.0, float(np.max(energy_rate[1:]))) / rate_scale
     energy_injection = max(0.0, float(np.max(np.diff(energy)))) / energy[0]
     if np.any(np.diff(regularization_transfer) > 1.0e-8):
         raise ValueError("conservative regularization injected kinetic energy")
@@ -160,7 +374,9 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "completed_fraction": float(completed_steps / requested_steps),
         "energy_ratio": float(energy[-1] / energy[0]),
         "energy_injection": energy_injection,
+        "positive_energy_rate": positive_energy_rate,
         "rate_mismatch": rate_mismatch,
+        "modeled_rate_mismatch": modeled_rate_mismatch,
         "budget_error": budget_error,
         "circulation_drift": relative_vector_drift(circulation, strength_magnitude[0]),
         "impulse_drift": relative_vector_drift(impulse, RING_INVARIANT_SCALE),
@@ -171,32 +387,35 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "strength_growth": float(np.max(strength_magnitude) / strength_magnitude[0]),
         "max_gamma_growth": float(np.max(max_gamma) / max_gamma[0]),
         "projection_correction": float(np.max(projection_correction)),
+        "core_spreading_events": float(np.max(core_spreading_events)),
+        "core_spreading_correction": float(np.max(core_spreading_correction)),
+        "core_spreading_circulation": float(np.max(core_spreading_circulation)),
+        "core_spreading_impulse": float(np.max(core_spreading_impulse)),
+        "core_spreading_angular": float(np.max(core_spreading_angular)),
         "turbulent_viscosity": float(np.max(turbulent_viscosity)),
         "stabilization_viscosity": float(np.max(stabilization_viscosity)),
         "stabilization_active": float(np.max(stabilization_active)),
         "regularization_events": float(np.max(regularization_events)),
         "regularization_filter_decay": filter_decay / energy[0],
-        "regularization_energy_dissipation": float(
-            np.max(regularization_energy_dissipation)
-        ),
-        "regularization_enstrophy_injection": float(
-            np.max(regularization_enstrophy_injection)
-        ),
-        "regularization_enstrophy_dissipation": float(
-            np.max(regularization_enstrophy_dissipation)
-        ),
+        "regularization_energy_dissipation": float(np.max(regularization_energy_dissipation)),
+        "regularization_enstrophy_injection": float(np.max(regularization_enstrophy_injection)),
+        "regularization_enstrophy_dissipation": float(np.max(regularization_enstrophy_dissipation)),
         "regularization_correction": float(np.max(regularization_correction)),
-        "regularization_projection_correction": float(
-            np.max(regularization_projection_correction)
-        ),
+        "regularization_projection_correction": float(np.max(regularization_projection_correction)),
+        "regularization_adaptive_core_events": float(np.max(regularization_adaptive_core_events)),
+        "regularization_max_core_radius": float(np.max(regularization_max_core_radius)),
         "regularization_circulation": float(np.max(regularization_circulation)),
         "regularization_impulse": float(np.max(regularization_impulse)),
         "regularization_angular": float(np.max(regularization_angular)),
+        "diagnostic_samples": float(len(rows)),
+        "state_snapshots": float(len(numbered_snapshots)),
     }
 
     limits = {
         "energy_injection": 2.0e-5,
+        "positive_energy_rate": 1.0e-6,
         "rate_mismatch": 2.0e-6,
+        "modeled_rate_mismatch": 0.20,
         "budget_error": 0.02,
         "circulation_drift": 5.0e-5,
         "impulse_drift": 5.0e-5,
@@ -205,11 +424,17 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "max_divergence": 0.25,
         "max_misalignment": 55.0 if variant != "les_stabilized" else 45.0,
         "projection_correction": 0.25,
+        "core_spreading_correction": 1.0e-3,
+        "core_spreading_circulation": 1.0e-10,
+        "core_spreading_impulse": 1.0e-10,
+        "core_spreading_angular": 1.0e-10,
         "regularization_enstrophy_injection": 5.0e-6,
-        "regularization_energy_dissipation": 0.30,
+        "regularization_energy_dissipation": 0.20,
         "regularization_enstrophy_dissipation": 0.15,
         "regularization_correction": 0.5,
-        "regularization_projection_correction": 0.20,
+        "regularization_projection_correction": (
+            0.051 if case_name.startswith("leapfrog_") else 0.101
+        ),
         "regularization_circulation": 1.0e-5,
         "regularization_impulse": 1.0e-5,
         "regularization_angular": 1.0e-5,
@@ -221,6 +446,8 @@ def inspect_case(case_name: str) -> dict[str, float]:
     ]
 
     viscosity_epsilon = 1.0e-12
+    if metrics["core_spreading_events"] <= 0.0:
+        failures.append("core spreading never applied its moment-conserving correction")
     if variant == "dns":
         if metrics["turbulent_viscosity"] > viscosity_epsilon:
             failures.append("DNS has nonzero turbulent viscosity")
@@ -256,20 +483,37 @@ def comparative_failures(metrics: dict[str, dict[str, float]]) -> list[str]:
     failures: list[str] = []
     indicators = ("strength_growth", "max_divergence", "max_misalignment")
     for family in FAMILIES:
+        reference_state = initial_state(f"{family}_dns")
+        for variant in VARIANTS[1:]:
+            if not np.allclose(
+                initial_state(f"{family}_{variant}"),
+                reference_state,
+                rtol=1.0e-12,
+                atol=1.0e-12,
+            ):
+                failures.append(f"{family}: model variants do not share one initial state")
+                break
         dns = metrics[f"{family}_dns"]
         les = metrics[f"{family}_les"]
-        stabilized = metrics[f"{family}_les_stabilized"]
         if les["completed_fraction"] < 1.05 * dns["completed_fraction"]:
             failures.append(f"{family}: LES does not outlive DNS by at least 5%")
-        les_improvements = [les[name] <= 0.95 * dns[name] for name in indicators]
+        dns_common = stability_indicators(f"{family}_dns", dns["end_time"])
+        les_at_dns_end = stability_indicators(f"{family}_les", dns["end_time"])
+        les_common = stability_indicators(f"{family}_les", les["end_time"])
+        stabilized_at_les_end = stability_indicators(f"{family}_les_stabilized", les["end_time"])
+        les_improvements = [les_at_dns_end[name] <= 0.95 * dns_common[name] for name in indicators]
         stabilized_improvements = [
-            stabilized[name] <= 0.90 * les[name] for name in indicators
+            stabilized_at_les_end[name] <= 0.90 * les_common[name] for name in indicators
         ]
         if sum(les_improvements) < 2:
-            failures.append(f"{family}: LES does not improve at least two stability indicators")
+            failures.append(
+                f"{family}: LES does not improve at least two stability indicators "
+                "over the DNS lifetime"
+            )
         if sum(stabilized_improvements) < 2:
             failures.append(
-                f"{family}: stabilization does not improve at least two indicators by 10%"
+                f"{family}: stabilization does not improve at least two indicators by 10% "
+                "over the plain-LES lifetime"
             )
     return failures
 
@@ -298,11 +542,27 @@ def main() -> None:
         item = metrics[name]
         print(
             f"  {name:28s} duration={item['completed_fraction']:.1%}, "
-            f"budget={item['budget_error']:.2%}, "
+            f"E/E0={item['energy_ratio']:.3f}, budget={item['budget_error']:.2%}, "
+            f"rate RMS={item['modeled_rate_mismatch']:.2%}"
+        )
+        print(
+            "  "
+            f"{'':28s} drift(G,I,A)=({item['circulation_drift']:.2e}, "
+            f"{item['impulse_drift']:.2e}, {item['angular_drift']:.2e}), "
             f"max|Gamma|/initial={item['max_gamma_growth']:.2f}, "
             f"max div(omega)={item['max_divergence']:.3f}, "
-            f"projection={item['projection_correction']:.2%}"
+            f"max angle={item['max_misalignment']:.1f} deg, "
+            f"samples/frames={int(item['diagnostic_samples'])}/"
+            f"{int(item['state_snapshots'])}"
         )
+        if name.endswith("_les_stabilized"):
+            print(
+                "  "
+                f"{'':28s} filter events={int(item['regularization_events'])}, "
+                f"adaptive cores={int(item['regularization_adaptive_core_events'])}, "
+                f"filter energy={-item['regularization_filter_decay']:.2%} E0, "
+                f"max regenerated core={item['regularization_max_core_radius']:.3f}"
+            )
 
 
 if __name__ == "__main__":

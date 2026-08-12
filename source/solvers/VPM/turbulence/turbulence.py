@@ -31,6 +31,7 @@ class ParticlesLES:
         kernel_type: str = "GAUSSIAN",
         cs: float = SMAGORINSKY_CONSTANT,
         ce: float = 1.048,
+        accumulator_dtype: ti.types = ti.f32,
     ):
         """
         Initialize the LES turbulence model.
@@ -46,19 +47,26 @@ class ParticlesLES:
             kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
             cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
             ce: Model dissipation constant (default 1.048).
+            accumulator_dtype: Taichi floating-point type used by LES fields.
         """
         self.LES_filter_type = LES_filter_type
         self.max_particles = max_particles
         self.kernel_type = kernel_type.upper()
 
         if LES_filter_type in ("SMAGORINSKY", "LES_SMAGORINSKY"):
-            self.model = SmagorinskyModel(max_particles, kernel_type, cs, ce)
+            self.model = SmagorinskyModel(
+                max_particles,
+                kernel_type,
+                cs,
+                ce,
+                accumulator_dtype,
+            )
         else:
             raise ValueError(f"Unknown LES filter type: {LES_filter_type}")
 
         self.particle_deltas = None
-        self._viscosities_t_min_field = ti.field(dtype=ti.f32, shape=())
-        self._viscosities_t_max_field = ti.field(dtype=ti.f32, shape=())
+        self._viscosities_t_min_field = ti.field(dtype=accumulator_dtype, shape=())
+        self._viscosities_t_max_field = ti.field(dtype=accumulator_dtype, shape=())
         self.viscosities_t_min = 0.0
         self.viscosities_t_max = 0.0
         self.viscosities_t_ratio_min = 0.0
@@ -73,6 +81,7 @@ class ParticlesLES:
         turbulence_config: object,
         max_particles: int = MAX_PARTICLES,
         kernel_type: str = "GAUSSIAN",
+        accumulator_dtype: ti.types = ti.f32,
     ) -> "ParticlesLES":
         model_name = getattr(turbulence_config, "model", "LES_SMAGORINSKY")
         cs = getattr(turbulence_config, "cs", SMAGORINSKY_CONSTANT)
@@ -83,6 +92,7 @@ class ParticlesLES:
             kernel_type=kernel_type,
             cs=cs,
             ce=ce,
+            accumulator_dtype=accumulator_dtype,
         )
 
     def initialize(self, particles) -> None:

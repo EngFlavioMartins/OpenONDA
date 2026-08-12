@@ -7,16 +7,24 @@ cd "$(dirname "$0")"
 ./allclean.sh
 
 # Output periods [s].
-SAMPLE_PERIOD=0.25
-BACKUP_PERIOD=5.0
+VORTEX_SAMPLE_PERIOD=1.0
+DIPOLE_SAMPLE_PERIOD=2.5
+MERGING_SAMPLE_PERIOD=1.25
+BACKUP_PERIOD=40.0
 
 run() {
-    python vortex_setup.py "$1" "$2" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
+    python vortex_setup.py "$1" "$2" "$3" "$BACKUP_PERIOD"
+    python assets/validate_results.py "$1" "$2"
     ./allplot.sh -png
 }
 
 for physics in vortex dipole merging; do
+    case "$physics" in
+        vortex) sample_period="$VORTEX_SAMPLE_PERIOD" ;;
+        dipole) sample_period="$DIPOLE_SAMPLE_PERIOD" ;;
+        merging) sample_period="$MERGING_SAMPLE_PERIOD" ;;
+    esac
     for scheme in cs rwm dvh gbd; do
-        run "$physics" "$scheme"
+        run "$physics" "$scheme" "$sample_period"
     done
 done

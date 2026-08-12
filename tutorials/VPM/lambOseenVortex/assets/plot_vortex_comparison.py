@@ -169,7 +169,7 @@ def plot_vortex_case(args) -> int:
     print(f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s")
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
-    ref_kw = {"color": colors["reference"], "lw": 1.0, "zorder": 0, "linestyle": "--"}
+    ref_kw = {"color": colors["reference"], "lw": 1.0, "zorder": 100, "linestyle": "--"}
     theory_t = run_t0 + elapsed_time
     tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
     to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
@@ -180,15 +180,15 @@ def plot_vortex_case(args) -> int:
 
     axes[0].set_title(r"Single vortex characteristics")
     axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
-    axes[0].set_xlim([-7.5, 7.5])
+    axes[0].set_xlim([-5.5, 5.5])
+    axes[0].set_ylim([-0.25, 0.25])
 
     axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
-    axes[1].set_xlim([-7.5, 7.5])
-    axes[1].set_ylim(bottom=-0.01)
+    axes[1].set_ylim([-0.01, 0.12])
 
     axes[2].set_xlabel(r"$r / a_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,a_{c,0} / U_{c,0}$")
-    axes[2].set_xlim([-7.5, 7.5])
+    axes[2].set_ylim([-0.05, 0.13])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01))

@@ -6,8 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 
-from _common import discover_cases, read_integrals
+from _common import discover_cases, read_integrals, read_ring_diagnostics
 
 
 EXPECTED_CASES = (
@@ -33,6 +34,7 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
         discovered = {name: discovered[name] for name in EXPECTED_CASES if name in discovered}
 
     for name, case_dir in sorted(discovered.items()):
+        manifest = None
         manifest_path = case_dir / "run_manifest.json"
         if not manifest_path.exists():
             failures.append(f"{name}: missing run_manifest.json")
@@ -56,16 +58,50 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
                         f"{name}: completed {completed_steps!r} of "
                         f"{requested_steps!r} requested steps"
                     )
-                elif status == "resolution_lost" and not manifest.get(
-                    "termination_reason"
-                ):
+                elif status == "resolution_lost" and not manifest.get("termination_reason"):
                     failures.append(f"{name}: resolution loss has no recorded reason")
 
         diagnostics = read_integrals(case_dir)
         if diagnostics is None or len(diagnostics) < 2:
-            failures.append(f"{name}: fewer than two flow-integral snapshots")
-        if not any(case_dir.glob("vpm_*_*.h5")):
-            failures.append(f"{name}: no VPM state backups")
+            failures.append(f"{name}: fewer than two flow-integral samples")
+
+        ring_diagnostics = read_ring_diagnostics(case_dir)
+        if ring_diagnostics is None:
+            failures.append(f"{name}: missing grouped ring diagnostics")
+        elif set(ring_diagnostics["group_id"].astype(int)) != {0, 1}:
+            failures.append(f"{name}: ring sampler does not contain both particle groups")
+
+        numbered_steps = {
+            int(match.group(1))
+            for path in case_dir.glob("vpm_*_*.h5")
+            if (match := re.search(r"_(\d{6})\.h5$", path.name))
+        }
+        if manifest is not None and isinstance(manifest.get("completed_steps"), int):
+            completed_steps = int(manifest["completed_steps"])
+            snapshot_frequency = int(manifest.get("snapshot_frequency", 0))
+            if snapshot_frequency <= 0:
+                failures.append(f"{name}: invalid snapshot frequency")
+            else:
+                expected = set(range(0, completed_steps + 1, snapshot_frequency))
+                missing_snapshots = sorted(expected - numbered_steps)
+                if missing_snapshots:
+                    failures.append(
+                        f"{name}: missing scheduled state snapshots {missing_snapshots[:5]}"
+                    )
+                missing_descriptors = [
+                    step
+                    for step in expected
+                    if not (case_dir / f"vpm_{name}_{step:06d}.xdmf").is_file()
+                ]
+                if missing_descriptors:
+                    failures.append(
+                        f"{name}: state snapshots have no XDMF descriptors "
+                        f"{missing_descriptors[:5]}"
+                    )
+        if not all(
+            (case_dir / f"vpm_{name}_final{suffix}").is_file() for suffix in (".h5", ".xdmf")
+        ):
+            failures.append(f"{name}: final VPM state or XDMF descriptor is missing")
     return failures
 
 

@@ -13,7 +13,9 @@
   "in_plane_spacing": 0.06,
   "column_spacing": 0.1,
   "particle_radius": 0.09,
+  "particle_replicas": 1,
   "field_spacing": 0.0375,
-  "sample_interval": 0.331,
-  "raw_backup_interval": 4.965
+  "sample_interval": 0.9930000000000001,
+  "raw_backup_interval": 4.965,
+  "wall_time_seconds": 739.6093088469934
 }

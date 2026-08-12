@@ -11,5 +11,11 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from .conservation import ConservationTracker
 from .resolution import discretization_health
+from .ring import RING_DIAGNOSTIC_COLUMNS, RingDiagnosticsSampler
 
-__all__ = ["ConservationTracker", "discretization_health"]
+__all__ = [
+    "ConservationTracker",
+    "RING_DIAGNOSTIC_COLUMNS",
+    "RingDiagnosticsSampler",
+    "discretization_health",
+]

@@ -14,8 +14,7 @@ The stabilized cases additionally export the exact cumulative energy transfer
 of conservative regularization. Its interval derivative is added to the
 continuous viscous sink before comparing with the measured energy decay.
 
-It reads the exported flow-integral CSV, with solver-log fallback when a CSV
-is unavailable.
+It reads the flow-integral CSV written by the VPM sampler.
 """
 
 from __future__ import annotations
@@ -48,14 +47,14 @@ from _common import (
 
 
 def read_budget(case_dir: Path) -> tuple[pd.DataFrame | None, str]:
-    """Return a monotone log-derived time series."""
+    """Return a monotone sampler-derived time series."""
     df = read_integrals(case_dir)
     if df is None:
         return None, ""
     df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["time", "kinetic_energy"])
     if len(df) < 2:
         return None, ""
-    return df.reset_index(drop=True), "log"
+    return df.reset_index(drop=True), "sampler"
 
 
 def interval_derivative(t: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -64,10 +63,6 @@ def interval_derivative(t: np.ndarray, y: np.ndarray) -> np.ndarray:
     if len(t) >= 2:
         derivative[1:] = np.diff(y) / np.diff(t)
     return derivative
-
-
-def trapz(y: np.ndarray, x: np.ndarray) -> float:
-    return float(np.trapezoid(y, x))
 
 
 def rms(x: np.ndarray) -> float:
@@ -80,8 +75,11 @@ def balance_metrics(
     dE_dt: np.ndarray,
     sink: np.ndarray,
 ) -> dict[str, float]:
-    """Compare dE/dt against a target sink time series."""
-    valid = np.isfinite(dE_dt) & np.isfinite(sink)
+    """Compare each sampled energy increment with its interval-averaged sink."""
+    dt = np.diff(t)
+    interval_rate = dE_dt[1:]
+    interval_sink = sink[1:]
+    valid = np.isfinite(interval_rate) & np.isfinite(interval_sink) & np.isfinite(dt) & (dt > 0.0)
     if valid.sum() < 2:
         return {
             "point_rel_l2": np.nan,
@@ -92,25 +90,21 @@ def balance_metrics(
             "fit_r2": np.nan,
         }
 
-    tv = t[valid]
-    ev = energy[valid]
-    dv = dE_dt[valid]
-    sv = sink[valid]
+    dv = interval_rate[valid]
+    sv = interval_sink[valid]
+    dtv = dt[valid]
     diff = dv - sv
     denom = rms(sv)
     point_rel_l2 = rms(diff) / denom if denom > 0.0 else np.nan
     point_bias = float(np.mean(diff) / (np.mean(np.abs(sv)) + 1e-30))
 
-    dE_total = float(ev[-1] - ev[0])
-    sink_int = trapz(sv, tv)
+    dE_total = float(np.sum(dv * dtv))
+    sink_int = float(np.sum(sv * dtv))
     residual_int = dE_total - sink_int
     integrated_ratio = dE_total / sink_int if abs(sink_int) > 1e-30 else np.nan
 
-    cumulative = np.zeros_like(tv)
-    if len(tv) > 1:
-        increments = 0.5 * (sv[1:] + sv[:-1]) * (tv[1:] - tv[:-1])
-        cumulative[1:] = np.cumsum(increments)
-    delta_e = ev - ev[0]
+    cumulative = np.cumsum(sv * dtv)
+    delta_e = np.cumsum(dv * dtv)
     if np.std(cumulative) > 0.0:
         slope, intercept = np.polyfit(cumulative, delta_e, 1)
         pred = slope * cumulative + intercept
@@ -152,7 +146,8 @@ def summarize_case(case_dir: Path) -> tuple[pd.DataFrame | None, dict | None]:
     )
     filter_rate = interval_derivative(t, filter_transfer)
     filter_rate[0] = 0.0
-    modeled_rate = sink_nu + filter_rate
+    modeled_rate = np.full_like(t, np.nan)
+    modeled_rate[1:] = 0.5 * (sink_nu[:-1] + sink_nu[1:]) + filter_rate[1:]
     enstrophy = (
         df["enstrophy"].to_numpy(float) if "enstrophy" in df.columns else np.full_like(t, np.nan)
     )

@@ -218,7 +218,11 @@ def _pool_bytes_from_kwargs(memory_kwargs: dict, backend: str) -> int | None:
 
 _PRECISION_MAP: dict[str, tuple] = {
     "f32": (ti.f32, ti.i32),
-    "f64": (ti.f64, ti.i64),
+    # Floating-point precision does not require 64-bit field indices.  Taichi
+    # fields and particle counts use i32; making every integer literal i64 in
+    # an f64 run produces thousands of implicit-index and atomic-cast warnings
+    # without extending any practical VPM allocation limit.
+    "f64": (ti.f64, ti.i32),
 }
 
 

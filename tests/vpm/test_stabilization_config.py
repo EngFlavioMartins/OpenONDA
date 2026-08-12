@@ -47,10 +47,18 @@ def test_conservative_filter_factory_round_trip_and_validation():
         tail_budget=0.002,
         divergence_trigger=0.03,
         misalignment_trigger=15.0,
+        capacity_fraction=0.8,
+        capacity_grid_spacing=0.12,
+        core_radius=0.2,
+        capacity_core_radius=0.19,
     )
     restored = VPMSetup.from_dict(VPMSetup(stabilization=stabilization).to_dict())
 
     assert restored.stabilization == stabilization
+    assert stabilization.regularization_capacity_fraction == pytest.approx(0.8)
+    assert stabilization.regularization_capacity_grid_spacing == pytest.approx(0.12)
+    assert stabilization.regularization_core_radius == pytest.approx(0.2)
+    assert stabilization.regularization_capacity_core_radius == pytest.approx(0.19)
     with pytest.raises(ValueError, match="tail budget"):
         StabilizationConfig.conservative_filter(
             frequency=1,
@@ -75,6 +83,23 @@ def test_conservative_filter_factory_round_trip_and_validation():
             max_particles=100,
             enstrophy_dissipation_limit=1.0,
         )
+    with pytest.raises(ValueError, match="capacity fraction"):
+        StabilizationConfig.conservative_filter(
+            frequency=1,
+            start_step=0,
+            grid_spacing=0.08,
+            max_particles=100,
+            capacity_fraction=0.0,
+        )
+    for name in ("capacity_grid_spacing", "core_radius", "capacity_core_radius"):
+        with pytest.raises(ValueError, match="positive"):
+            StabilizationConfig.conservative_filter(
+                frequency=1,
+                start_step=0,
+                grid_spacing=0.08,
+                max_particles=100,
+                **{name: np.nan},
+            )
 
 
 def test_retention_round_trip_is_nested():
@@ -113,11 +138,14 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         "collide_les",
         "collide_les_stabilized",
     )
-    assert namespace["PARTICLE_SPACING"] == pytest.approx(0.045)
-    assert namespace["TIME_STEP"] == pytest.approx(20.0 * 0.045**2 / np.pi)
-    assert namespace["END_TIME"] == pytest.approx(11.55)
+    assert namespace["PARTICLE_SPACING"] == pytest.approx(0.04)
+    assert namespace["TIME_STEP"] == pytest.approx(20.0 * 0.04**2 / np.pi)
+    assert namespace["NUM_STEPS"] == 1140
+    assert namespace["END_TIME"] == pytest.approx(1140 * namespace["TIME_STEP"])
+    assert namespace["BASELINE_DIVERGENCE_LIMIT"] == pytest.approx(0.12)
     for config in configs.values():
         assert config.processing_unit == "CPU"
+        assert config.precision == "f64"
         assert config.time_integration == "COUPLED"
         assert config.axisymmetric_no_swirl_axis is None
         assert config.velocity.method == "DIRECT"
@@ -138,7 +166,12 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         )
 
     assert configs["leapfrog_dns"].turbulence.flow_model == "DNS"
-    assert configs["leapfrog_les"].turbulence.cs == pytest.approx(namespace["LES_COEFFICIENT"])
+    assert configs["leapfrog_les"].turbulence.cs == pytest.approx(
+        namespace["LES_COEFFICIENT"]["leapfrog"]
+    )
+    assert configs["collide_les"].turbulence.cs == pytest.approx(
+        namespace["LES_COEFFICIENT"]["collide"]
+    )
     assert configs["leapfrog_les"].stabilization == StabilizationConfig.disabled()
     assert configs[
         "leapfrog_les_stabilized"
@@ -156,9 +189,10 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         configs["leapfrog_les_stabilized"].stabilization.regularization_max_particles
         == namespace["STABILIZED_MAX_PARTICLES"]
     )
-    assert configs[
-        "leapfrog_les_stabilized"
-    ].stabilization.regularization_frequency == namespace["REGULARIZATION_FREQUENCY"]
+    assert (
+        configs["leapfrog_les_stabilized"].stabilization.regularization_frequency
+        == namespace["REGULARIZATION_FREQUENCY"]
+    )
     assert configs[
         "leapfrog_les_stabilized"
     ].stabilization.regularization_tail_budget == pytest.approx(
@@ -168,6 +202,41 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         "leapfrog_les_stabilized"
     ].stabilization.regularization_divergence_trigger == pytest.approx(
         namespace["REGULARIZATION_DIVERGENCE_TRIGGER"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_misalignment_trigger == pytest.approx(
+        namespace["REGULARIZATION_MISALIGNMENT_TRIGGER"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_capacity_grid_spacing == pytest.approx(
+        namespace["REGULARIZATION_CAPACITY_SPACING"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_core_radius == pytest.approx(
+        namespace["REGULARIZATION_CORE_RADIUS"]["leapfrog"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_capacity_core_radius == pytest.approx(
+        namespace["REGULARIZATION_CAPACITY_CORE_RADIUS"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_projection_trigger == pytest.approx(
+        namespace["REGULARIZATION_PROJECTION_TRIGGER"]
+    )
+    assert configs[
+        "leapfrog_les_stabilized"
+    ].stabilization.regularization_projection_max_correction == pytest.approx(
+        namespace["REGULARIZATION_PROJECTION_LIMIT"]["leapfrog"]
+    )
+    assert configs[
+        "collide_les_stabilized"
+    ].stabilization.regularization_projection_max_correction == pytest.approx(
+        namespace["REGULARIZATION_PROJECTION_LIMIT"]["collide"]
     )
 
 

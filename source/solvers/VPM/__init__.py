@@ -24,6 +24,7 @@ from .config.types import (
     VPMSetup,
 )
 from .core.solver import Solver
+from .diagnostics import RingDiagnosticsSampler
 from .factory import setup_vpm_solver
 from .numerics.divergence_relaxation import DivergenceRelaxationError
 from .numerics.filament_refinement import FilamentRefinementError
@@ -48,6 +49,7 @@ __all__ = [
     "VLMSurfaceSetup",
     "VLMMeshSetup",
     "ParticleDistributor",
+    "RingDiagnosticsSampler",
     "PanelSolver",
     "vlm",
 ]

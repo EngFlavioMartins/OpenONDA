@@ -2,7 +2,7 @@
 """Energy and enstrophy evolution — ``rings_energy.png``.
 
 Two stacked panels for every case discovered under ``solution/`` (read from
-the solver log's ``FLOW DIAGNOSTICS`` sections):
+the VPM flow-integral sampler):
 
   (top)    Kinetic energy   E(t)/E(0)
   (bottom) Enstrophy        ε(t)/ε(0)
