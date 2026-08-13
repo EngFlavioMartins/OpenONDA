@@ -1,0 +1,23 @@
+{
+  "case": "merging",
+  "scheme": "dvh",
+  "circulations": [
+    1.0,
+    1.0
+  ],
+  "viscosity": 0.0018867924528301887,
+  "core_radius": 0.125,
+  "separation": 1.0,
+  "column_half_length": 3.125,
+  "total_time": 30.0,
+  "time_step": 0.331,
+  "in_plane_spacing": 0.06,
+  "column_spacing": 0.1,
+  "particle_radius": 0.09,
+  "particle_replicas": 1,
+  "diffusion_grid_spacing": 0.06,
+  "field_spacing": 0.0375,
+  "sample_interval": 0.9930000000000001,
+  "raw_backup_interval": 2.648,
+  "wall_time_seconds": 1600.478848791914
+}

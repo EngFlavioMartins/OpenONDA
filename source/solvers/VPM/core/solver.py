@@ -494,7 +494,7 @@ class Solver:
         Thin wrapper that delegates the CSV export to the ``SolverIO`` manager
         (which owns all exports).
         """
-        SolverIO.export_flow_integrals_csv(self)
+        self.io.export_flow_integrals_csv(self)
 
     def _execute_samplers(self) -> None:
         """Execute all configured field samplers (delegates to SamplerExecutor)."""
