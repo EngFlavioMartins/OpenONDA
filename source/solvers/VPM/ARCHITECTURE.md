@@ -78,9 +78,33 @@ update this table. Architecture tests fail when a forbidden edge appears.
   dispatch is new; the existing dispatch lives in `core/evolution.py`.
 - **Stabilization method**: `stabilization/`, implemented as a worker module
   (`filament_refinement.py`, `divergence_relaxation.py`, `regularization.py`,
-  `operators.py`). Register it with `StabilizationManager`, which decides the
-  phase (`pre_evolution`, `post_evolution`, `post_step`) in which it may act.
-  Do **not** give `physics` a dependency on it.
+  `operators.py`). Register the worker method in the appropriate phase tuple of
+  `StabilizationManager.PHASES` (see below); the step loop dispatches phases via
+  `run_phase()` and never grows a manual `apply_*()` sequence. Do **not** give
+  `physics` a dependency on it.
+
+### Stabilization lifecycle phases
+
+Stabilization acts at fixed points of a time step, and where it may act is
+numerically meaningful. `StabilizationManager` owns the schedule in one
+table, `PHASES` (a `phase name → ordered worker-method names` mapping), and the
+step loop calls `run_phase(name)`. The phases are:
+
+- `pre_evolution` — step entry, before the particle field changes (`capture_reference_state`).
+- `pre_strength` — after velocity/gradients and LES residual viscosity are at
+  their `t_n` values, before the strength update the relaxation must inform
+  (`apply_relaxation`, Pedrizzetti).  A worker that needs the current velocity
+  gradient belongs here, where that gradient describes the state being modified.
+- `post_evolution` — after advection/stretching/diffusion modified the field,
+  while the updated gradients still describe it (`apply_filament_refinement`,
+  `apply_divergence_relaxation`, `apply_regularization`).
+- `post_step` — end of the step, after diagnostics/IO (`apply_retention`).
+
+Add a new stabilization mechanism by (1) putting its algorithm in a worker
+module under `stabilization/`, and (2) registering its entry point in the right
+`PHASES` tuple. Keep worker-level policies (frequency, triggers, its own
+admissibility rules) inside the worker; the manager only judges the event
+against the master criteria.
 - **Generic numerical primitive** (a moment sum, a constrained projection, an
   interpolant) used by several subsystems: `numerics/`. The *decision* to use
   it — when and why — stays in the calling subsystem.

@@ -260,32 +260,30 @@ def test_vortex_interactions_initial_state_matches_ring_invariants():
 
 def test_rotor_flow_cli_defaults_to_physics_preserving_policy():
     namespace = _rotor_flow_namespace()
-    args = namespace["build_arg_parser"]().parse_args([])
 
-    assert args.dt == pytest.approx(0.006)
-    assert args.treecode_theta == pytest.approx(0.20)
-    assert args.coupled_max_strain_increment == pytest.approx(0.08)
-    assert args.coupled_max_advection_fraction == pytest.approx(0.25)
-    assert args.coupled_max_substeps == 128
-    assert args.guard_frequency == 20
+    assert namespace["TIME_STEP"] == pytest.approx(0.006)
+    assert namespace["TREECODE_THETA"] == pytest.approx(0.20)
+    assert namespace["COUPLED_MAX_STRAIN_INCREMENT"] == pytest.approx(0.08)
+    assert namespace["COUPLED_MAX_ADVECTION_FRACTION"] == pytest.approx(0.25)
+    assert namespace["COUPLED_MAX_SUBSTEPS"] == 128
+    assert namespace["GUARD_FREQUENCY"] == 20
 
 
 def test_rotor_flow_uses_scalable_coupled_stabilization():
     namespace = _rotor_flow_namespace()
-    args = namespace["build_arg_parser"]().parse_args([])
-    config = namespace["build_solver_config"](args)
+    config = namespace["build_solver_config"](0.12, 0.03)
 
     assert config.time_integration == "COUPLED"
     assert config.advection.scheme == config.stretching.scheme == "RK2"
     assert config.stretching.mode == "TRANSPOSED"
     assert config.stretching.use_treecode is True
-    assert config.stretching.treecode_theta == pytest.approx(args.treecode_theta)
+    assert config.stretching.treecode_theta == pytest.approx(namespace["TREECODE_THETA"])
     assert config.velocity.method == "TREECODE"
-    assert config.velocity.theta == pytest.approx(args.treecode_theta)
+    assert config.velocity.theta == pytest.approx(namespace["TREECODE_THETA"])
     assert config.particles_kernel == "WINCKELMANS"
     assert config.viscous.scheme == "CS"
     assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
     assert config.viscous.characteristic_distance == pytest.approx(
-        namespace["nominal_wake_spacing"](args.dt)
+        namespace["nominal_wake_spacing"](namespace["TIME_STEP"])
     )
     assert config.stabilization.remove_particles_by_bounds is not None

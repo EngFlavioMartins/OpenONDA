@@ -89,11 +89,49 @@ class StabilizationHealth:
         )
 
 
+# Lifecycle phases of one VPM time step, in execution order, with the worker
+# methods that are allowed to act in each.  The schedule is owned here: a new
+# stabilization worker registers in one of these tuples (and opens the manager
+# call in ``run_phase``); the solver's step loop never grows another apply_*()
+# call.  Phase names describe *where in the step* a worker may act:
+#
+# - ``pre_evolution``   at step entry, before the particle field changes.
+# - ``pre_strength``    after velocity/gradients (and LES residual viscosity)
+#                       are brought to the ``t_n`` state, before the strength
+#                       update the relaxation must inform.
+# - ``post_evolution``  after advection/stretching/diffusion have modified the
+#                       field, while the updated gradients still describe it.
+# - ``post_step``       end of the step, after diagnostics/IO.
+PHASES: dict[str, tuple[str, ...]] = {
+    "pre_evolution": ("capture_reference_state",),
+    "pre_strength": ("apply_relaxation",),
+    "post_evolution": (
+        "apply_filament_refinement",
+        "apply_divergence_relaxation",
+        "apply_regularization",
+    ),
+    "post_step": ("apply_retention",),
+}
+
+# Profiler section labels for the phased workers, kept stable so the runtime
+# timing report reads the same after a worker is re-registered under a phase.
+_PHASE_SECTION_LABELS: dict[str, str] = {
+    "apply_relaxation": "Pedrizzetti relaxation",
+    "apply_filament_refinement": "Filament refinement",
+    "apply_divergence_relaxation": "Divergence relaxation",
+    "apply_regularization": "Conservative regularization",
+    "apply_retention": "Particle retention",
+}
+
+
 class StabilizationManager:
     """Schedule the stabilization workers and audit what they did.
 
-    The solver owns one instance and calls it at the fixed points of a time
-    step; no stabilization state or bookkeeping lives on the solver itself.
+    The solver owns one instance and the step loop calls :meth:`run_phase` at
+    each lifecycle phase declared in :data:`PHASES`; no stabilization state or
+    bookkeeping lives on the solver itself.  The schedule — which worker runs
+    in which phase — is owned here, so adding a stabilization mechanism means
+    registering its worker in ``PHASES`` rather than growing the step loop.
     """
 
     def __init__(self, solver: Solver) -> None:
@@ -226,6 +264,32 @@ class StabilizationManager:
     def _due(self, frequency: int, start_step: int) -> bool:
         step = self.solver.time_step
         return frequency > 0 and step >= start_step and (step - start_step) % frequency == 0
+
+    # -- lifecycle phases -------------------------------------------------------
+
+    def run_phase(self, phase: str, profiler=None) -> None:
+        """Run every stabilization worker scheduled in ``phase``.
+
+        The phase schedule is the package-level :data:`PHASES` table, so the
+        solver's step loop only ever calls this method — it never grows its own
+        ``apply_*()`` sequence.  Each worker keeps its own admissibility rules
+        and gating; this method only dispatches them in the declared order.
+
+        When a profiler is supplied, each worker is timed under its stable
+        :data:`_PHASE_SECTION_LABELS` section name so the timing report reads
+        exactly as before the workers were folded into phases.
+        """
+        for worker_name in PHASES[phase]:
+            worker = getattr(self, worker_name)
+            if profiler is not None and worker_name in _PHASE_SECTION_LABELS:
+                with profiler.section(_PHASE_SECTION_LABELS[worker_name]):
+                    worker()
+            else:
+                worker()
+
+    def phase_workers(self, phase: str) -> tuple[str, ...]:
+        """Return the ordered worker method names scheduled in ``phase``."""
+        return PHASES[phase]
 
     # -- mechanisms ------------------------------------------------------------
 

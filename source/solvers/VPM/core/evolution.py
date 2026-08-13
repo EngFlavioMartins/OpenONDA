@@ -55,7 +55,7 @@ class EvolutionStepper:
         spreading uses symmetric Strang splitting in the coupled integrator.
         """
 
-        self.stabilization.capture_reference_state()
+        self.stabilization.run_phase("pre_evolution")
 
         self._advance_time_step()
 
@@ -126,8 +126,7 @@ class EvolutionStepper:
                 self.stabilization.update_residual_viscosity()
 
             # Relax against the same t_n gradient used by the strength update.
-            with self.profiler.section("Pedrizzetti relaxation"):
-                self.stabilization.apply_relaxation()
+            self.stabilization.run_phase("pre_strength", profiler=self.profiler)
 
             coupled_update = self.time_integration == "COUPLED" and self.flow_model != "POTENTIAL"
 
@@ -153,12 +152,7 @@ class EvolutionStepper:
                         self._apply_viscous_diffusion(self.time_step_size)
                     self._debug_validate_particle_geometry("viscous diffusion")
 
-                with self.profiler.section("Filament refinement"):
-                    self.stabilization.apply_filament_refinement()
-                with self.profiler.section("Divergence relaxation"):
-                    self.stabilization.apply_divergence_relaxation()
-                with self.profiler.section("Conservative regularization"):
-                    self.stabilization.apply_regularization()
+                self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
             if diagnostics_due:
                 with self.profiler.section("Flow integrals"):
@@ -178,8 +172,7 @@ class EvolutionStepper:
                 with self.profiler.section("VLM diagnostics"):
                     self._record_vlm_diagnostics()
 
-            with self.profiler.section("Particle retention"):
-                self.stabilization.apply_retention()
+            self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")
 
             with self.profiler.section("Backup / IO"):

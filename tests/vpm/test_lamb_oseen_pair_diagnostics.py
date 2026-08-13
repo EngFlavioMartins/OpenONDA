@@ -191,6 +191,10 @@ def test_pair_plots_render_all_four_methods_at_publication_width(tmp_path):
 
     from PIL import Image
 
+    # Both figures render at the shared publication width (MAX_FIGURE_WIDTH_CM).
+    from tutorials.VPM.lambOseenVortex.assets._common import figure_size
+
+    width_cm = figure_size("trajectory")[0] * 2.54
     for name in ("dipole_comparison.png", "merging_comparison.png"):
         with Image.open(figures_dir / name) as image:
-            assert image.width == round(12.5 / 2.54 * args.dpi)
+            assert image.width == int(width_cm / 2.54 * args.dpi)
