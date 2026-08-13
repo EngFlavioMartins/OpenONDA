@@ -76,6 +76,10 @@ DEFAULT_BUFFER_SIZE = 1024
 # SOLVER DEFAULT PARAMETERS
 # =========================================================
 
+# DVH truncation-error parameter β ≈ 0.077 (Durante et al. 2024, Eq. 14-15).
+# Controls the Gaussian width of the heat-kernel scatter: 4nu·Δt_d = β·R_d².
+_DVH_BETA = 0.077
+
 # Default time step size [s]
 DEFAULT_TIME_STEP = 0.01
 

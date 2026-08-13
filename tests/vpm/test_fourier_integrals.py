@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM.diagnostics.fourier_integrals import gaussian_fourier_integrals
+from source.solvers.VPM.numerics.fourier_integrals import gaussian_fourier_integrals
 
 pytestmark = pytest.mark.unit
 

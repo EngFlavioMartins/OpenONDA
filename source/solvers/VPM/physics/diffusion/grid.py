@@ -1,17 +1,14 @@
-"""
-Diffusion Physics Module for VPM Solver.
-========================================
-Handles viscous diffusion schemes for vortex particle methods.
+"""Shared grid-based diffusion machinery for the VPM solver.
 
-This module provides:
-- DVH (Grid-Based Diffusion / DVH) - Diffusion + particle regeneration, O(N)
-- CSM (Core Spreading Method) - Local, O(N)
-- RWM (Random Walk Method) - Stochastic, O(N)
-- Volume update from velocity divergence
+The :class:`_GridDiffusionMixin` owns the stateful grid structure and the
+kernels that both the DVH and GBD viscous-diffusion schemes share: grid
+allocation and bounds, body masking, M4' scattering, Laplacian stepping,
+particle regeneration, and the transfer buffers between the Taichi grid and
+host arrays.  The two schemes both drive this mixin through their own
+``grid_based_diffusion`` / ``gbd_diffusion`` entry points, which are kept here
+with the machinery because they share its grid state.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
@@ -21,9 +18,8 @@ from numba import njit
 import numpy as np
 import taichi as ti
 
-from ..config.constants import MAX_PARTICLES
-from ..io.logging import Logging
-from .base import PhysicsBase
+from ...config.constants import _DVH_BETA, MAX_PARTICLES
+from ...io.logging import Logging
 
 _logger = logging.getLogger("vpm")
 
@@ -38,10 +34,6 @@ _M4_SCATTER_BATCH_SIZE = 4096
 
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * h
 _REGEN_RADIUS_RATIO = 2.5
-
-# DVH truncation-error parameter β ≈ 0.077 (Durante et al. 2024, Eq. 14-15).
-# Controls the Gaussian width: 4nu·Δt_d = β·R_d².
-_DVH_BETA = 0.077
 _LOCAL_THRESHOLD_FLOOR = 1e-6
 
 
@@ -358,7 +350,7 @@ class _GridDiffusionMixin:
     @staticmethod
     def _device_pool_bytes() -> int | None:
         """Taichi device memory pool in bytes, or None when self-managed."""
-        from ..config import constants as constants_module
+        from ...config import constants as constants_module
 
         return getattr(constants_module, "TAICHI_POOL_BYTES", None)
 
@@ -2149,95 +2141,3 @@ class _GridDiffusionMixin:
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
                 grid[i, j, k] = ti.Vector.zero(ti.f32, 3)
-
-
-@ti.data_oriented
-class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
-    """
-    Diffusion physics handler for viscous effects.
-
-    Implements multiple viscous diffusion schemes with different
-    conservation properties and computational costs.
-    """
-
-    def __init__(
-        self,
-        particles_kernel: str = "GAUSSIAN",
-        max_particles: int = MAX_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
-    ):
-        """Initialize diffusion physics module."""
-        super().__init__(particles_kernel, max_particles, accumulator_dtype)
-        self._init_grid_diffusion()
-
-    # CORE SPREADING METHOD (CSM)
-
-    def core_spreading_diffusion(self, particles, dt: float):
-        """
-        Apply viscous diffusion using Core Spreading Method.
-
-        CSM models diffusion by expanding the particle core radius.  For the
-        Gaussian kernel:
-            sigma^2(t) = sigma^2(0) + 4*nu*t
-
-        which is equivalent to convolution with a Gaussian diffusion kernel.
-
-        Advantages:
-        - O(N) computational cost
-        - Simple and stable
-        - No particle interactions needed
-
-        Disadvantages:
-        - Requires periodic remeshing to prevent excessive core overlap
-        - Less accurate than direct-interaction methods for non-uniform distributions
-
-        Args:
-            particles: Particle container
-            dt: Time step size [s]
-        """
-        N = len(particles)
-        if N == 0 or dt <= 0.0:
-            return
-
-        self._resize_temp_fields(N)
-
-        self.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
-
-    # RANDOM WALK METHOD (RWM)
-
-    def random_walk_method_diffusion(self, particles, dt: float):
-        """
-        Apply viscous diffusion using Random Walk Method.
-
-        RWM models diffusion by adding Gaussian random displacements:
-            Δx = η * sqrt(2nu*dt)
-
-        where η is a normally distributed random vector.
-
-        This is a stochastic method that converges to the exact solution
-        in the limit of many particles and small time steps.
-
-        Advantages:
-        - O(N) computational cost
-        - Simple implementation
-        - Works for any particle distribution
-
-        Disadvantages:
-        - Statistical noise (requires ensemble averaging)
-        - May need very small time steps for accuracy
-
-        Args:
-            particles: Particle container
-            dt: Time step size [s]
-        """
-        N = len(particles)
-        if N == 0 or dt <= 0.0:
-            return
-
-        self._resize_temp_fields(N)
-
-        # No temp field is touched, so the temp-field zeroing is deliberately skipped.
-        # Add random displacement: x_new = x + η*sqrt(2nu*dt)
-        self.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
-
-    # VOLUME UPDATE FROM DIVERGENCE

@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..io.logging import Logging
+from .operators import StabilizationOperators
 
 if TYPE_CHECKING:
     from ..config.types import StabilizationConfig
@@ -98,6 +99,11 @@ class StabilizationManager:
     def __init__(self, solver: Solver) -> None:
         self.solver = solver
         self.config: StabilizationConfig = solver.config.stabilization
+        # The stabilization subsystem owns its own kernels and fields; the
+        # physics engine has no dependency on it.
+        self.operators = StabilizationOperators(
+            solver.compute_dtype, int(solver.particles._max_particles)
+        )
         self.events = 0
         # A readable placeholder rather than "": the record goes to CSV, and an
         # empty field reads back as a missing value.
@@ -255,7 +261,7 @@ class StabilizationManager:
         coefficient = self.config.stretching_viscosity_coefficient
         if coefficient <= 0.0:
             return
-        self.solver.physics.apply_stretching_viscosity(self.solver.particles, coefficient)
+        self.operators.apply_stretching_viscosity(self.solver.particles, coefficient)
 
     def apply_relaxation(self) -> None:
         """Rotate the scheduled fraction of the Gamma-omega misalignment away.
@@ -278,7 +284,7 @@ class StabilizationManager:
             return
 
         before = self.measure()
-        statistics = solver.physics.apply_pedrizzetti_relaxation(
+        statistics = self.operators.apply_pedrizzetti_relaxation(
             solver.particles,
             cfg.pedrizzetti_relaxation_factor,
             conserve_strength=cfg.pedrizzetti_relaxation_conserve_strength,

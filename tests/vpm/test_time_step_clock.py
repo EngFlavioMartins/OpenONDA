@@ -107,8 +107,13 @@ def test_disabled_stretching_skips_velocity_gradient_evaluation(tmp_path, monkey
     def unexpected_gradient_evaluation(*args, **kwargs):
         raise AssertionError("disabled stretching must not evaluate velocity gradients")
 
-    monkeypatch.setattr(solver, "_update_velocity_and_gradients", unexpected_gradient_evaluation)
-    monkeypatch.setattr(solver, "_update_velocity_gradients", unexpected_gradient_evaluation)
+    # The velocity/gradient evaluation primitives live on the evolution stepper.
+    monkeypatch.setattr(
+        solver.stepper, "_update_velocity_and_gradients", unexpected_gradient_evaluation
+    )
+    monkeypatch.setattr(
+        solver.stepper, "_update_velocity_gradients", unexpected_gradient_evaluation
+    )
 
     with contextlib.redirect_stdout(io.StringIO()):
         solver.update_state()
@@ -179,7 +184,7 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
         radius,
         angular_core_coefficient=angular_core_coefficient,
     )
-    solver._apply_core_spreading_diffusion(0.1)
+    solver.stepper._apply_core_spreading_diffusion(0.1)
     after = particle_moments(
         solver.particles.position_cpu(use_cache=False),
         solver.particles.circulation_cpu(use_cache=False),

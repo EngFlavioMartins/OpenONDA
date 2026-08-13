@@ -18,7 +18,9 @@ import taichi as ti
 
 from ..config.constants import MAX_PARTICLES
 from .base import PhysicsBase
-from .diffusion import _GridDiffusionMixin
+from .diffusion.core_spreading import apply_core_spreading
+from .diffusion.grid import _GridDiffusionMixin
+from .diffusion.random_walk import apply_random_walk
 
 _DIRECT_STRETCHING_BATCH_SIZE = 4096
 
@@ -576,21 +578,11 @@ class _DiffusionHandler:
 
     def core_spreading_diffusion(self, particles, dt: float):
         """Core spreading diffusion."""
-        N = len(particles)
-        if N == 0 or dt <= 0.0:
-            return
-        p = self._parent
-        p._resize_temp_fields(N)
-        p.update_radius_csm_kernel(particles.radius, particles.viscosity_effective, dt, N)
+        apply_core_spreading(self._parent, particles, dt)
 
     def random_walk_method_diffusion(self, particles, dt: float):
         """Random walk diffusion."""
-        N = len(particles)
-        if N == 0 or dt <= 0.0:
-            return
-        p = self._parent
-        p._resize_temp_fields(N)
-        p.update_position_rwm_kernel(particles.position, particles.viscosity_effective, dt, N)
+        apply_random_walk(self._parent, particles, dt)
 
 
 class _StretchingHandler:

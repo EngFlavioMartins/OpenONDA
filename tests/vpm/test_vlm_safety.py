@@ -14,7 +14,7 @@ from source.solvers.VPM.boundary_elements.vlm.solver.lattice import VLMLattice
 from source.solvers.VPM.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
 from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.VPM.config.backend import reset_taichi_backend
-from source.solvers.VPM.utils.simulation_checks import _validate_time_step_sizing
+from source.solvers.VPM.core.validation import _validate_time_step_sizing
 
 
 def _plate(*, chord: float = 2.0, panels_chord: int = 4) -> Aircraft:

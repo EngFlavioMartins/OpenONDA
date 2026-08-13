@@ -720,7 +720,7 @@ class ParticleFieldEvaluation:
         flow_time: float,
         record_history: bool,
     ) -> dict:
-        from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
+        from ..numerics.fourier_integrals import gaussian_fourier_integrals
 
         position = particles.position_cpu().astype(np.float64)
         circulation = particles.circulation_cpu().astype(np.float64)

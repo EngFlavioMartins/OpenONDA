@@ -43,11 +43,11 @@ def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path)
     strain = np.repeat(np.diag([2.0, -1.0, -1.0])[None, :, :], count, axis=0)
     solver.particles.set_field("strain_rate", strain)
 
-    diagnostics = solver.physics.apply_stretching_viscosity(solver.particles, 0.4)
+    diagnostics = solver.stabilization.operators.apply_stretching_viscosity(solver.particles, 0.4)
 
     expected_stabilization = np.array([0.2, 0.0, 0.0])
     np.testing.assert_allclose(
-        solver.physics.stabilization_viscosity.to_numpy()[:count],
+        solver.stabilization.operators.stabilization_viscosity.to_numpy()[:count],
         expected_stabilization,
         rtol=1.0e-7,
         atol=1.0e-12,

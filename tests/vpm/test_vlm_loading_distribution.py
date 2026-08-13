@@ -15,10 +15,12 @@ Also covered:
   - per-surface sampling flag plumbing (sample_surface_forces).
 """
 
+import math
+
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from source.solvers.VPM.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
@@ -252,3 +254,86 @@ def test_sampling_flag_plumbing():
     )
 
     assert vlm._surface_sampling == {"s1": True, "s2": False, "s3": True}
+
+
+def _outer_station_tip_to_root_ratio(vlm) -> float:
+    """Sum circulation per spanwise station; return outer-station Γ / root Γ.
+
+    Spanwise stations are the columns of a symmetric rectangular plate; the
+    outer-station total must show a finite-wing tip drop (an almost-constant
+    spanwise loading with no tip drop is the regression this file guards).
+    """
+    n = vlm.lattice.num_panels
+    gamma = vlm.lattice.circulation.to_numpy()[:n]
+    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
+    y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
+    grouped = {}
+    for k in range(n):
+        grouped.setdefault(round(y_mid[k], 6), []).append(gamma[k])
+    stations = sorted(grouped)
+    totals = np.array([sum(grouped[y]) for y in stations])
+    root = np.abs(totals[np.argmax(np.abs(totals))])
+    return float(abs(totals[0]) / root), float(abs(totals[-1]) / root)
+
+
+@pytest.mark.verification
+def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
+    """Standalone-VLM far trailing legs must lie in the wing plane so the finite
+    wing keeps a lifting-line tip taper (flat-plate tutorial configuration).
+
+    Regression: anticipate the far wake along the full relative-velocity vector
+    slants the semi-infinite trailing legs out of the wing plane by the angle of
+    attack.  For the α = 8° wind-frame plate that lifts the far legs ≈ 1400
+    chords above the plane, suppresses the tip downwash, and leaves the
+    spanwise loading almost constant — the outer-station Γ/root stayed near
+    0.41 at NS = 28 where coupled mode (the validated reference) gives 0.25.
+    The upcoming far legs (wing-plane projected) restore the taper.
+
+    We anchor the standalone result against the coupled solve at identical
+    resolution/stations: the two models share the panel statistics and the
+    coupled path is the validated reference, so they must agree at the tip.
+    """
+    a = math.radians(8.0)
+    u_ref = 10.0 * np.array([math.cos(a), 0.0, math.sin(a)])
+
+    wing = Wing(uid="main_wing", symmetry=2)
+    wing.add_segment(
+        WingSegment(
+            uid="segment_0",
+            vertices={
+                "a": np.array([0.0, 0.0, 0.0]),
+                "b": np.array([0.0, 5.0, 0.0]),
+                "c": np.array([1.0, 5.0, 0.0]),
+                "d": np.array([1.0, 0.0, 0.0]),
+            },
+            panels_chord=8,
+            panels_span=28,
+        )
+    )
+    aircraft = Aircraft(uid="flat_plate")
+    aircraft.add_wing(wing)
+
+    get = {}
+    for coupled in (True, False):
+        vlm = VLMSolver(
+            VLMSetup(
+                surfaces=(VLMSurfaceSetup(aircraft),),
+                mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
+                max_panels=2048,
+                linear_solver="SCIPY",
+            )
+        )
+        vlm.generate_mesh()
+        n_p = vlm.lattice.num_panels
+        vlm.solve(V_external=np.tile(u_ref, (n_p, 1)), dt=0.0125, coupled=coupled)
+        get[coupled] = _outer_station_tip_to_root_ratio(vlm)
+
+    _, coupled_lo = get[True]
+    _, standalone_lo = get[False]
+
+    # Coupled mode is the validated reference (matches Prandtl lifting line in
+    # the flatPlate tutorial); standalone must agree with it, not exceed it by
+    # the ~60% pre-fix overshoot (0.41 vs 0.25).
+    assert standalone_lo <= coupled_lo * 1.25
+    # Absolute guard: tip loading must actually drop below the root plateau.
+    assert standalone_lo < 0.35

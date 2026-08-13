@@ -26,7 +26,7 @@ import warnings
 
 import numpy as np
 
-from ....utils.field_samplers import resolve_samples_dir
+from ....io.sampling import resolve_samples_dir
 
 
 class VLMLoadingDistribution:

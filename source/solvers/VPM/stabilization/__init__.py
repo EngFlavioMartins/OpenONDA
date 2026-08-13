@@ -22,7 +22,7 @@ Configuration for all of them is centralized in
 from .divergence_relaxation import DivergenceRelaxationError, DivergenceRelaxationResult
 from .filament_refinement import FilamentRefinementError, FilamentRefinementResult
 from .manager import StabilizationError, StabilizationHealth, StabilizationManager
-from .operators import StabilizationOperatorsMixin
+from .operators import StabilizationOperators
 from .regularization import RegularizationOutcome, regularize
 
 __all__ = [
@@ -34,6 +34,6 @@ __all__ = [
     "StabilizationError",
     "StabilizationHealth",
     "StabilizationManager",
-    "StabilizationOperatorsMixin",
+    "StabilizationOperators",
     "regularize",
 ]

@@ -26,16 +26,18 @@ import taichi as ti
 
 
 @ti.data_oriented
-class StabilizationOperatorsMixin:
-    """Per-particle stabilization kernels shared by every physics engine.
+class StabilizationOperators:
+    """Per-particle stabilization kernels owned by the stabilization subsystem.
 
-    The mixin owns its own reduction fields so the concrete engine only has to
-    call :meth:`initialize_stabilization_fields` once, next to its other field
-    allocations.
+    The operators are standalone: they hold the Taichi fields they write and act
+    on particle-array templates handed in by the caller, so neither ``physics``
+    nor the particle container needs a dependency on this module.  One instance
+    is constructed by :class:`StabilizationManager`, which decides when the
+    operators may act.
     """
 
-    def initialize_stabilization_fields(self, compute_dtype, max_particles: int) -> None:
-        """Allocate the per-particle and reduction fields the operators write."""
+    def __init__(self, compute_dtype, max_particles: int) -> None:
+        self.accumulator_dtype = compute_dtype
         self.stabilization_viscosity = ti.field(dtype=compute_dtype, shape=(max_particles,))
         self._stabilization_viscosity_sum = ti.field(dtype=compute_dtype, shape=())
         self._stabilization_viscosity_max = ti.field(dtype=compute_dtype, shape=())

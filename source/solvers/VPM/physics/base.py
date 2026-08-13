@@ -19,7 +19,6 @@ import numpy as np
 import taichi as ti
 
 from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR, EPSILON, MAX_PARTICLES
-from ..stabilization.operators import StabilizationOperatorsMixin
 
 # Smallest treecode capacity worth allocating.  Below this the fixed per-node
 # cost is irrelevant and the doubling would just add rebuilds.
@@ -39,7 +38,7 @@ _HOST_TRANSFER_CHUNK_SIZE = 65536
 
 
 @ti.data_oriented
-class PhysicsBase(StabilizationOperatorsMixin):
+class PhysicsBase:
     """
     Base class for VPM physics modules providing shared functionality.
 
@@ -135,7 +134,6 @@ class PhysicsBase(StabilizationOperatorsMixin):
         )
         self.rate_projection_correction_ratio = 0.0
         self.rate_projection_max_correction_ratio = 0.0
-        self.initialize_stabilization_fields(compute_dtype, self.max_particles)
         self._axisymmetric_vector_sum_a = ti.Vector.field(
             3, dtype=compute_dtype, shape=(self.max_particles,)
         )

@@ -272,18 +272,19 @@ def test_coupled_dvh_runs_after_the_inviscid_update(tmp_path, monkeypatch):
         )
     )
     calls = []
-    monkeypatch.setattr(solver, "_coupled_stable_dt", lambda remaining: remaining)
+    stepper = solver.stepper
+    monkeypatch.setattr(stepper, "_coupled_stable_dt", lambda remaining: remaining)
     monkeypatch.setattr(
-        solver,
+        stepper,
         "_apply_coupled_advection_stretching",
         lambda dt, *, precomputed_velocity_k1: calls.append(("inviscid", dt)),
     )
     monkeypatch.setattr(
-        solver,
+        stepper,
         "_apply_viscous_diffusion",
         lambda dt: calls.append(("diffusion", dt)),
     )
 
-    solver._apply_coupled_update_with_subcycling(0.01, precomputed_velocity_k1=False)
+    stepper._apply_coupled_update_with_subcycling(0.01, precomputed_velocity_k1=False)
 
     assert calls == [("inviscid", 0.01), ("diffusion", 0.01)]

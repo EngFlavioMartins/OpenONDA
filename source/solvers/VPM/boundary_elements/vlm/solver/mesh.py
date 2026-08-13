@@ -762,6 +762,7 @@ def _mirror_vertices(a, b, c, d, symmetry_plane: int) -> tuple[np.ndarray, ...]:
 def _update_trailing_uniform_kernel(
     trailing_dirs: ti.template(),
     vortex_points: ti.template(),
+    normals: ti.template(),
     num_panels: ti.i32,
     trail_dir_x: float,
     trail_dir_y: float,
@@ -776,18 +777,32 @@ def _update_trailing_uniform_kernel(
         trailing_dirs[i, 0] = trail_dir
         trailing_dirs[i, 1] = trail_dir
 
-        # Recompute far trailing points (downstream)
+        # Recompute far trailing points (downstream). The far wake lies in the
+        # local wing (tangent) plane: we keep the streamwise wake direction but
+        # remove its component normal to the panel. Slanting the far legs along
+        # the freestream (which carries an angle-of-attack vertical component)
+        # lifts the wake out of the wing plane and suppresses the tip downwash,
+        # erasing the spanwise taper expected from finite-wing theory. The
+        # trailing_dirs field (used for VPM particle shedding) is left along
+        # the relative velocity on purpose.
+        n = normals[i]
+        d_plane = trail_dir - trail_dir.dot(n) * n
+        d_mag = d_plane.norm()
+        d_far = trail_dir
+        if d_mag > VLM_SMALL_VELOCITY:
+            d_far = d_plane / d_mag
         V2 = vortex_points[i, 1]
         V3 = vortex_points[i, 2]
 
-        vortex_points[i, 0] = V2 + trail_dir * trailing_infty
-        vortex_points[i, 3] = V3 + trail_dir * trailing_infty
+        vortex_points[i, 0] = V2 + d_far * trailing_infty
+        vortex_points[i, 3] = V3 + d_far * trailing_infty
 
 
 @ti.kernel
 def _update_trailing_local_kernel(
     trailing_dirs: ti.template(),
     vortex_points: ti.template(),
+    normals: ti.template(),
     V_local: ti.template(),
     num_panels: ti.i32,
     trailing_infty: float,
@@ -808,12 +823,19 @@ def _update_trailing_local_kernel(
         trailing_dirs[i, ti.i32(0)] = trail_dir
         trailing_dirs[i, ti.i32(1)] = trail_dir
 
-        # Recompute far trailing points (downstream)
+        # Recompute far trailing points (downstream). The far wake lies in the
+        # local wing (tangent) plane; see _update_trailing_uniform_kernel.
+        n = normals[i]
+        d_plane = trail_dir - trail_dir.dot(n) * n
+        d_mag = d_plane.norm()
+        d_far = trail_dir
+        if d_mag > VLM_SMALL_VELOCITY:
+            d_far = d_plane / d_mag
         V2 = vortex_points[i, ti.i32(1)]
         V3 = vortex_points[i, ti.i32(2)]
 
-        vortex_points[i, ti.i32(0)] = V2 + trail_dir * trailing_infty
-        vortex_points[i, ti.i32(3)] = V3 + trail_dir * trailing_infty
+        vortex_points[i, ti.i32(0)] = V2 + d_far * trailing_infty
+        vortex_points[i, ti.i32(3)] = V3 + d_far * trailing_infty
 
 
 def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
@@ -834,6 +856,7 @@ def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
     _update_trailing_uniform_kernel(
         lattice.trailing_dirs,
         lattice.vortex_points,
+        lattice.normals,
         lattice.num_panels,
         float(trail_dir[0]),
         float(trail_dir[1]),
@@ -902,6 +925,7 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
         _update_trailing_uniform_kernel(
             lattice.trailing_dirs,
             lattice.vortex_points,
+            lattice.normals,
             lattice.num_panels,
             float(trail_dir[0]),
             float(trail_dir[1]),
@@ -913,6 +937,7 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
         _update_trailing_local_kernel(
             lattice.trailing_dirs,
             lattice.vortex_points,
+            lattice.normals,
             temp_field,
             lattice.num_panels,
             trailing_infty,

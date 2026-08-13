@@ -31,16 +31,15 @@ from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     TranslatingVLM,
 )
 from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
-from source.solvers.VPM.io.backup import BackupSystem
-from source.solvers.VPM.utils import (
+from source.solvers.VPM.initial_conditions import (
     DoubletFlowVPM,
     IsotropicTurbulenceVPM,
     LambOseenVPM,
-    LineSampler,
-    SurfaceSampler,
     TaylorGreenVortexVPM,
     VortexRingVPM,
 )
+from source.solvers.VPM.io.backup import BackupSystem
+from source.solvers.VPM.io.sampling import LineSampler, SurfaceSampler
 
 __all__ = [
     "AdvectionConfig",

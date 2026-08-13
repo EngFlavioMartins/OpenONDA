@@ -9,7 +9,7 @@ from source.solvers.VPM import (
     StabilizationConfig,
     VPMSetup,
 )
-from source.solvers.VPM.diagnostics.fourier_integrals import (
+from source.solvers.VPM.numerics.fourier_integrals import (
     gaussian_fourier_integrals,
 )
 from source.solvers.VPM.stabilization.divergence_relaxation import (

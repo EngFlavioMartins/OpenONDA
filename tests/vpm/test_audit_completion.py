@@ -19,9 +19,9 @@ from source.solvers.VPM.core.solver import Solver
 from source.solvers.VPM.io.backup import BackupSystem
 from source.solvers.VPM.io.logging import Logging, _TeeLogStream
 from source.solvers.VPM.io.sampler import SamplerExecutor
+from source.solvers.VPM.io.sampling import SAMPLER_CSV_COLUMNS
 from source.solvers.VPM.particles.container import Particles
 from source.solvers.VPM.physics.base import PhysicsBase
-from source.solvers.VPM.utils.field_samplers import SAMPLER_CSV_COLUMNS
 
 
 def test_output_and_target_configuration_round_trip():

@@ -520,50 +520,6 @@ class BackupSystem:
         return output_file
 
     @staticmethod
-    def restore_solver(backup_file_name: str):
-        """
-        Restore a complete solver instance from HDF5 + JSON backup.
-
-        Args:
-            backup_file_name: Base filename (without extension)
-
-        Returns:
-            Fully restored Solver instance
-        """
-        try:
-            # Generate filenames
-            hdf5_file = f"{backup_file_name}.h5"
-            config_file = f"{backup_file_name}.config.json"
-            legacy_config_file = f"{backup_file_name}_config.json"
-            if not os.path.exists(config_file) and os.path.exists(legacy_config_file):
-                config_file = legacy_config_file
-
-            # Verify files exist
-            if not os.path.exists(hdf5_file):
-                raise FileNotFoundError(f"Numerical data file not found: {hdf5_file}")
-            if not os.path.exists(config_file):
-                raise FileNotFoundError(f"Configuration file not found: {config_file}")
-
-            # 1. Load configuration
-            config = BackupSystem._load_configuration(config_file)
-
-            # 2. Create new solver with exact configuration
-            from ..core.solver import Solver  # Import here to avoid circular dependency
-
-            solver = Solver(setup=config)
-
-            # 3. Load numerical data with full precision
-            BackupSystem._load_numerical_data(solver, hdf5_file)
-
-            print(f"Solver restored from: {hdf5_file}")
-            print(f"Configuration loaded from: {config_file}")
-
-            return solver
-
-        except Exception as e:
-            raise RuntimeError(f"Restore failed: {e}") from e
-
-    @staticmethod
     def _load_configuration(config_file: str) -> VPMSetup:
         """Load and validate solver configuration from JSON."""
         with open(config_file) as f:

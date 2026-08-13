@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 
 import h5py
 
-from ..utils.field_samplers import resolve_samples_dir
 from .backup import BackupSystem
+from .sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from ..core.solver import Solver

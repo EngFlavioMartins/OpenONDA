@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
+from source.solvers.VPM.initial_conditions import VortexRingVPM
 from source.solvers.VPM.particles.distribution import ParticleDistributor
-from source.solvers.VPM.utils.flow_models import VortexRingVPM
 
 
 @pytest.mark.unit

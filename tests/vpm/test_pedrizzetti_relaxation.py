@@ -53,7 +53,9 @@ def test_relaxation_rotates_toward_vorticity_and_keeps_each_strength(tmp_path):
     factor = 0.25
     solver = _relaxation_solver(tmp_path, StabilizationConfig.pedrizzetti_relaxation(factor=factor))
 
-    diagnostics = solver.physics.apply_pedrizzetti_relaxation(solver.particles, factor)
+    diagnostics = solver.stabilization.operators.apply_pedrizzetti_relaxation(
+        solver.particles, factor
+    )
 
     direction = np.array(
         [
@@ -79,7 +81,7 @@ def test_uncorrected_relaxation_shortens_a_misaligned_strength(tmp_path):
         StabilizationConfig.pedrizzetti_relaxation(factor=factor, conserve_strength=False),
     )
 
-    diagnostics = solver.physics.apply_pedrizzetti_relaxation(
+    diagnostics = solver.stabilization.operators.apply_pedrizzetti_relaxation(
         solver.particles, factor, conserve_strength=False
     )
 
@@ -96,7 +98,7 @@ def test_aligned_field_is_left_untouched(tmp_path):
     aligned = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0]])
     solver.particles.set_field("circulation", aligned)
 
-    diagnostics = solver.physics.apply_pedrizzetti_relaxation(solver.particles, 0.3)
+    diagnostics = solver.stabilization.operators.apply_pedrizzetti_relaxation(solver.particles, 0.3)
 
     np.testing.assert_allclose(solver.particles.circulation_cpu(), aligned, atol=1.0e-12)
     assert diagnostics["pedrizzetti_misalignment_deg"] == pytest.approx(0.0, abs=1.0e-6)

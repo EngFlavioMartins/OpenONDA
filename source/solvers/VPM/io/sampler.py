@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from ..utils.field_samplers import SAMPLER_CSV_COLUMNS, resolve_samples_dir
+from .sampling import SAMPLER_CSV_COLUMNS, resolve_samples_dir
 
 
 class SamplerExecutor:

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from source.solvers.VPM.utils.flow_models import VortexRingVPM
+from source.solvers.VPM.initial_conditions import VortexRingVPM
 
 
 def _vorticity(points: np.ndarray) -> np.ndarray:

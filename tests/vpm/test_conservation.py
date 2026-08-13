@@ -22,7 +22,7 @@ import numpy as np
 
 from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.utils.flow_models import LambOseenVPM
+from source.solvers.VPM.initial_conditions import LambOseenVPM
 
 # ── Shared physics parameters (Lamb-Oseen benchmark) ─────────────────────────
 _NU = 1.887e-3  # kinematic viscosity  [m²/s]

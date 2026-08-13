@@ -35,7 +35,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, cg
 
-from ..diagnostics.fourier_integrals import gaussian_fourier_integrals
+from ..numerics.fourier_integrals import gaussian_fourier_integrals
 from .filament_refinement import gaussian_particle_moments
 
 

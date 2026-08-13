@@ -27,7 +27,7 @@ from openonda.vpm import (
     ViscousConfig,
     VPMSetup,
 )
-from source.solvers.VPM.utils.field_samplers import resolve_samples_dir
+from source.solvers.VPM.io.sampling import resolve_samples_dir
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"

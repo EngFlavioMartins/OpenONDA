@@ -396,7 +396,7 @@ class ParticleDistributor:
         # A multiple of four represents every coordinate reflection exactly.
         azimuth_count += (-azimuth_count) % 4
         theta = 2.0 * np.pi * np.arange(azimuth_count) / azimuth_count
-        from ..utils.flow_models import vortex_ring_centerline
+        from ..initial_conditions.flow_models import vortex_ring_centerline
 
         centerline_radius, _ = vortex_ring_centerline(
             theta,
