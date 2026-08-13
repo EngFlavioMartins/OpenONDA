@@ -94,6 +94,11 @@ cl_ell = df_ell["cl"].to_numpy()
 def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     csv = SAMPLES_DIR / name / f"{name}_spanwise.csv"
     if not csv.exists():
+        print(
+            f"  [MISSING] {csv}\n"
+            f"  Skipping '{name}' experimental spanwise loading — its curve will be "
+            f"omitted from the figure. Re-run the case (setup_plate.py) to regenerate it."
+        )
         return None
     df = pd.read_csv(csv).sort_values("y").reset_index(drop=True)
     y = df["y"].to_numpy()

@@ -17,7 +17,10 @@ The comparison uses the *actual* VLM geometry:
   - the strip edges are the real panel corner y-coordinates (geometric mesh,
     NOT an assumed uniform spacing), so the mesh-dependent spacing and the
     tip cells are handled exactly;
-  - the lifting-line model is evaluated at those same station midpoints.
+  - the lifting-line model is cell-averaged over each real strip (Gauss-Legendre
+    quadrature on [edge_min, edge_max]) rather than sampled at the station
+    midpoint, so a wide or tip-bunched cell is not pinned to a single interior
+    value of a strongly-varying distribution.
 
 Checks (values certified on the tutorial configuration):
   - interior |y| < 0.8 * half-span L2 error (normalised by root gamma) <= 5%;
@@ -178,6 +181,29 @@ def _lifting_line_at(model, ys: np.ndarray):
     return np.asarray(df["Gamma"])
 
 
+def _lifting_line_cell_averaged(
+    model, edge_min: np.ndarray, edge_max: np.ndarray, n_points: int = 32
+):
+    """Cell-averaged Prandtl circulation over each real strip [edge_min, edge_max].
+
+    Each VLM strip is a finite-width cell, so the lifting-line model is averaged
+    over that cell with Gauss-Legendre quadrature instead of being sampled at the
+    station midpoint.  ``edge_min``/``edge_max`` come from the actual panel
+    corner y-coordinates of the geometric mesh.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(n_points)
+    lo = np.asarray(edge_min, dtype=np.float64)
+    hi = np.asarray(edge_max, dtype=np.float64)
+    mid = 0.5 * (hi + lo)
+    half = 0.5 * (hi - lo)
+    ys = mid[:, None] + half[:, None] * nodes[None, :]
+    df = model.liftingline_circulation(
+        ys.ravel(), FULL_SPAN, CHORD, ALPHA, U_inf=U_INF, a0=2.0 * np.pi, n_terms=LL_N_TERMS
+    )
+    gamma = np.asarray(df["Gamma"]).reshape(-1, n_points)
+    return 0.5 * (gamma * weights[None, :]).sum(axis=1)
+
+
 def _cl_model(model) -> float:
     "Integrated CL of the lifting line over the full span (rho=1)."
     y_grid = np.linspace(-HALF_SPAN, HALF_SPAN, 8001)
@@ -195,8 +221,8 @@ def test_standalone_loading_matches_lifting_line_tutorial_resolution(_lifting_li
     circulation within a few percent, on the actual geometric strips.
     """
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=14))
-    ys, totals, dy, _, _ = _spanwise_loading(vlm)
-    gamma_ll = np.abs(_lifting_line_at(_lifting_line, ys))
+    ys, totals, dy, edge_min, edge_max = _spanwise_loading(vlm)
+    gamma_ll = np.abs(_lifting_line_cell_averaged(_lifting_line, edge_min, edge_max))
 
     root = float(np.max(totals))
     interior = np.abs(ys) < 0.8 * HALF_SPAN

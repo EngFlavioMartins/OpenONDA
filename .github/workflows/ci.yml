@@ -23,6 +23,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install ".[dev]"
       - run: ruff check source tests openonda
       - run: ruff format --check source tests openonda
@@ -51,6 +56,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install build
       - run: python -m build --wheel
       - name: Install wheel in an isolated environment
@@ -72,6 +82,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install -e ".[test]"
       - run: >-
           pytest tests/fvm
@@ -93,6 +107,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install -e ".[test]"
       - run: >-
           pytest tests/coupler
@@ -114,9 +132,14 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install -e ".[test]"
       - run: >-
           pytest tests/vpm/test_kernels_math.py tests/vpm/test_biot_savart.py
+          tests/vpm/test_semi_infinite_horseshoe.py
           tests/vpm/test_vlm_standalone_lifting_line.py
           tests/vpm/test_vlm_loading_distribution.py
           tests/vpm/test_vlm_frame_equivalence.py
