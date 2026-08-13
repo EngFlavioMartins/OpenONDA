@@ -168,6 +168,72 @@ class SolverIO:
                 )
         print(f"[INFO] Diagnostics exported to {filename}")
 
+    def export_flow_integrals_csv(self, solver: "Solver") -> None:
+        """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``.
+
+        Args:
+            solver: Parent solver instance with evaluated flow integrals and
+                diagnostics available.
+        """
+        import numpy as np
+        import pandas as pd
+
+        samples_dir = resolve_samples_dir(
+            solver.backup_directory,
+            getattr(solver.config, "sample_subdirectory", None),
+        )
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = samples_dir / "flow_integrals.csv"
+
+        impulse = solver._flow_integrals.get("linear_impulse", np.zeros(3))
+        ang_impulse = solver._flow_integrals.get("angular_impulse", np.zeros(3))
+        strength = solver._flow_integrals.get("strength", np.zeros(3))
+        particle_strength = solver.particles_circulation
+        turbulent_viscosity = solver.particles.viscosity_turbulent_cpu()
+        effective_viscosity = solver.particles.viscosity_effective_cpu()
+
+        row = {
+            "time": solver.flow_time,
+            "step": solver.time_step,
+            "kinetic_energy": solver.total_kinetic_energy,
+            "enstrophy": solver.total_enstrophy,
+            "enstrophy_test": solver._flow_integrals.get("enstrophy_test", 0.0),
+            "dEdt": solver.kinetic_energy_dissipation_rate,
+            "neg_nu_enstrophy": solver.vorticity_dissipation_rate,
+            "helicity": solver.total_helicity,
+            "strength_magnitude": solver.total_strength_magnitude,
+            "strength_x": float(strength[0]),
+            "strength_y": float(strength[1]),
+            "strength_z": float(strength[2]),
+            "impulse_x": float(impulse[0]),
+            "impulse_y": float(impulse[1]),
+            "impulse_z": float(impulse[2]),
+            "angular_impulse_x": float(ang_impulse[0]),
+            "angular_impulse_y": float(ang_impulse[1]),
+            "angular_impulse_z": float(ang_impulse[2]),
+            "n_particles": solver.particles.number_of_particles,
+            "max_gamma": float(np.linalg.norm(particle_strength, axis=1).max(initial=0.0)),
+            "turbulent_viscosity_mean": float(turbulent_viscosity.mean())
+            if len(turbulent_viscosity)
+            else 0.0,
+            "turbulent_viscosity_max": float(turbulent_viscosity.max(initial=0.0)),
+            "effective_viscosity_mean": float(effective_viscosity.mean())
+            if len(effective_viscosity)
+            else 0.0,
+            "effective_viscosity_max": float(effective_viscosity.max(initial=0.0)),
+            "invariant_projection_correction_ratio": float(
+                solver.physics.rate_projection_max_correction_ratio
+            ),
+        }
+        row.update(solver._discretization_health)
+        row.update(solver.stabilization.diagnostics)
+
+        df = pd.DataFrame([row])
+        if not csv_path.exists():
+            df.to_csv(csv_path, index=False)
+        else:
+            df.to_csv(csv_path, mode="a", header=False, index=False)
+
     def save_config(self, filename: str) -> None:
         """Save solver configuration to JSON."""
         config_dict = asdict(self.solver.config)

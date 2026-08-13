@@ -49,11 +49,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..io.logging import Logging
+from .context import StabilizationContext
 from .operators import StabilizationOperators
 
 if TYPE_CHECKING:
     from ..config.types import StabilizationConfig
-    from ..core.solver import Solver
 
 
 class StabilizationError(RuntimeError):
@@ -134,13 +134,13 @@ class StabilizationManager:
     registering its worker in ``PHASES`` rather than growing the step loop.
     """
 
-    def __init__(self, solver: Solver) -> None:
-        self.solver = solver
-        self.config: StabilizationConfig = solver.config.stabilization
+    def __init__(self, context: StabilizationContext) -> None:
+        self.ctx = context
+        self.config: StabilizationConfig = context.config
         # The stabilization subsystem owns its own kernels and fields; the
         # physics engine has no dependency on it.
         self.operators = StabilizationOperators(
-            solver.compute_dtype, int(solver.particles._max_particles)
+            context.compute_dtype, int(context.particles._max_particles)
         )
         self.events = 0
         # A readable placeholder rather than "": the record goes to CSV, and an
@@ -160,7 +160,7 @@ class StabilizationManager:
 
     def measure(self) -> StabilizationHealth:
         """Return the current cloud health."""
-        return StabilizationHealth.measure(self.solver.particles)
+        return StabilizationHealth.measure(self.ctx.particles)
 
     def accept(
         self,
@@ -262,7 +262,7 @@ class StabilizationManager:
         return tuple(active)
 
     def _due(self, frequency: int, start_step: int) -> bool:
-        step = self.solver.time_step
+        step = self.ctx.time_step()
         return frequency > 0 and step >= start_step and (step - start_step) % frequency == 0
 
     # -- lifecycle phases -------------------------------------------------------
@@ -295,8 +295,8 @@ class StabilizationManager:
 
     def capture_reference_state(self) -> None:
         """Capture the lineage and moment references the workers relax toward."""
-        solver = self.solver
-        if self.reference_strengths is not None or solver.particles.number_of_particles == 0:
+        particles = self.ctx.particles
+        if self.reference_strengths is not None or particles.number_of_particles == 0:
             return
         if not (
             self.config.filament_refinement.enabled or self.config.divergence_relaxation.enabled
@@ -305,16 +305,16 @@ class StabilizationManager:
 
         from .filament_refinement import gaussian_particle_moments
 
-        circulation = solver.particles.circulation_cpu()
-        volume = solver.particles.volume_cpu()
+        circulation = particles.circulation_cpu()
+        volume = particles.volume_cpu()
         magnitude = np.linalg.norm(circulation, axis=1)
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
         self.reference_strengths = np.maximum(magnitude, floor)
         self.reference_lengths = np.cbrt(volume)
         moments = gaussian_particle_moments(
-            solver.particles.position_cpu(),
+            particles.position_cpu(),
             circulation,
-            solver.particles.radius_cpu(),
+            particles.radius_cpu(),
         )
         self.reference_moments = tuple(
             np.asarray(moments[index], dtype=np.float64).copy() for index in (0, 2, 3)
@@ -325,7 +325,7 @@ class StabilizationManager:
         coefficient = self.config.stretching_viscosity_coefficient
         if coefficient <= 0.0:
             return
-        self.operators.apply_stretching_viscosity(self.solver.particles, coefficient)
+        self.operators.apply_stretching_viscosity(self.ctx.particles, coefficient)
 
     def apply_relaxation(self) -> None:
         """Rotate the scheduled fraction of the Gamma-omega misalignment away.
@@ -336,11 +336,10 @@ class StabilizationManager:
         vector circulation with it, so the master reports that transfer instead
         of gating it.
         """
-        solver = self.solver
         cfg = self.config
         if (
             not cfg.pedrizzetti_relaxation_enabled
-            or solver.flow_model == "POTENTIAL"
+            or self.ctx.flow_model == "POTENTIAL"
             or not self._due(
                 cfg.pedrizzetti_relaxation_frequency, cfg.pedrizzetti_relaxation_start_step
             )
@@ -349,7 +348,7 @@ class StabilizationManager:
 
         before = self.measure()
         statistics = self.operators.apply_pedrizzetti_relaxation(
-            solver.particles,
+            self.ctx.particles,
             cfg.pedrizzetti_relaxation_factor,
             conserve_strength=cfg.pedrizzetti_relaxation_conserve_strength,
         )
@@ -365,9 +364,9 @@ class StabilizationManager:
 
     def apply_filament_refinement(self) -> None:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
-        solver = self.solver
+        ctx = self.ctx
         cfg = self.config.filament_refinement
-        if not cfg.enabled or solver.time_step % cfg.frequency != 0:
+        if not cfg.enabled or ctx.time_step() % cfg.frequency != 0:
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
@@ -376,23 +375,24 @@ class StabilizationManager:
             raise FilamentRefinementError(
                 "filament-refinement lineage references were not captured before time integration"
             )
-        position = solver.particles.position_cpu()
+        particles = ctx.particles
+        position = particles.position_cpu()
         if len(self.reference_strengths) != len(position) or len(self.reference_lengths) != len(
             position
         ):
             raise FilamentRefinementError(
                 "filament-refinement lineage state no longer matches the particle cloud"
             )
-        capacity = int(solver.particles._max_particles)
+        capacity = int(particles._max_particles)
         if cfg.max_particles is not None:
             capacity = min(capacity, int(cfg.max_particles))
 
         before = self.measure()
         result = split_stretched_filaments(
             position,
-            solver.particles.circulation_cpu(),
-            solver.particles.radius_cpu(),
-            solver.particles.volume_cpu(),
+            particles.circulation_cpu(),
+            particles.radius_cpu(),
+            particles.volume_cpu(),
             reference_strength=self.reference_strengths,
             reference_length=self.reference_lengths,
             max_stretch_factor=cfg.max_strength_factor,
@@ -403,20 +403,19 @@ class StabilizationManager:
             return
 
         source = result.source_index
-        solver.replace_vortex_particles(
-            position=result.position.astype(solver.np_dtype),
-            velocity=solver.particles.velocity_cpu()[source],
-            circulation=result.circulation.astype(solver.np_dtype),
-            radius=result.radius.astype(solver.np_dtype),
-            volume=result.volume.astype(solver.np_dtype),
-            viscosity=solver.particles.viscosity_cpu()[source],
-            viscosity_turbulent=solver.particles.viscosity_turbulent_cpu()[source],
-            group_id=solver.particles.group_id_cpu()[source],
-            zone_id=solver.particles.zone_id_cpu()[source],
+        ctx.replace_vortex_particles(
+            position=result.position.astype(ctx.np_dtype),
+            velocity=particles.velocity_cpu()[source],
+            circulation=result.circulation.astype(ctx.np_dtype),
+            radius=result.radius.astype(ctx.np_dtype),
+            volume=result.volume.astype(ctx.np_dtype),
+            viscosity=particles.viscosity_cpu()[source],
+            viscosity_turbulent=particles.viscosity_turbulent_cpu()[source],
+            group_id=particles.group_id_cpu()[source],
+            zone_id=particles.zone_id_cpu()[source],
+            report_removal=False,
         )
         # Refinement replaces particles without representing physical removal.
-        solver._particles_removed_this_step = 0
-        solver._circulation_removed_this_step = np.zeros(3, dtype=solver.np_dtype)
         self.reference_strengths = result.reference_strength
         self.reference_lengths = result.reference_length
         self.accept(
@@ -427,7 +426,7 @@ class StabilizationManager:
 
     def apply_divergence_relaxation(self) -> None:
         """Reassign strengths onto the solenoidal subspace of the blob field."""
-        solver = self.solver
+        ctx = self.ctx
         cfg = self.config.divergence_relaxation
         if not self._due(cfg.frequency, cfg.start_step):
             return
@@ -441,10 +440,11 @@ class StabilizationManager:
             raise DivergenceRelaxationError(
                 "divergence relaxation requires captured reference moments"
             )
-        position = solver.particles.position_cpu().astype(np.float64)
-        circulation = solver.particles.circulation_cpu().astype(np.float64)
-        radius = solver.particles.radius_cpu().astype(np.float64)
-        volume = solver.particles.volume_cpu().astype(np.float64)
+        particles = ctx.particles
+        position = particles.position_cpu().astype(np.float64)
+        circulation = particles.circulation_cpu().astype(np.float64)
+        radius = particles.radius_cpu().astype(np.float64)
+        volume = particles.volume_cpu().astype(np.float64)
         reference_scales = (
             cfg.circulation_reference_scale,
             cfg.linear_impulse_reference_scale,
@@ -481,8 +481,8 @@ class StabilizationManager:
             target_moments=self.reference_moments,
         )
 
-        uploaded_circulation = result.circulation.astype(solver.np_dtype)
-        solver.set_particles_properties(strengths=uploaded_circulation)
+        uploaded_circulation = result.circulation.astype(ctx.np_dtype)
+        ctx.set_particles_properties(strengths=uploaded_circulation)
         self._rescale_lineage_reference(circulation, uploaded_circulation.astype(np.float64))
         self.accept(
             "divergence relaxation",
@@ -502,7 +502,7 @@ class StabilizationManager:
         from .regularization import regularize
 
         before = self.measure()
-        outcome = regularize(self.solver, cfg)
+        outcome = regularize(self.ctx, cfg)
         if outcome is None:
             return
         # This worker rebuilds the cloud on its own grid, so total variation and
@@ -517,13 +517,13 @@ class StabilizationManager:
 
     def apply_retention(self) -> None:
         """Remove particles that have left the configured VPM domain."""
-        solver = self.solver
-        if solver.flow_model == "POTENTIAL":
+        ctx = self.ctx
+        if ctx.flow_model == "POTENTIAL":
             return
         bounds = self.config.remove_particles_by_bounds
         if bounds is not None:
             # Removal compacts the stored vorticity field; no O(N²) rebuild is needed.
-            solver.remove_particles_by_bounds(bounds, invert_selection=True)
+            ctx.remove_particles_by_bounds(bounds, invert_selection=True)
 
     # -- lineage bookkeeping ---------------------------------------------------
 
@@ -552,3 +552,54 @@ class StabilizationManager:
             return
         self.reference_strengths = self.reference_strengths[source_index]
         self.reference_lengths = self.reference_lengths[source_index]
+
+    def on_removal(self, *, indices=None, keep_mask=None, remove_all: bool = False) -> None:
+        """Trim the lineage references to match a particle removal.
+
+        Called by the solver's particle-mutation entry points so the refinement
+        references never drift from the live cloud.  A no-op when no lineage has
+        been captured yet (``reference_strengths is None``).
+        """
+        if self.reference_strengths is None or self.reference_lengths is None:
+            return
+        if remove_all:
+            self.reference_strengths = np.empty(0, dtype=np.float64)
+            self.reference_lengths = np.empty(0, dtype=np.float64)
+            return
+        if keep_mask is not None:
+            keep = np.asarray(keep_mask, dtype=bool)
+        elif indices is not None and len(indices) > 0:
+            keep = np.ones(len(self.reference_strengths), dtype=bool)
+            keep[np.asarray(indices, dtype=np.int64)] = False
+        else:
+            return
+        self.reference_strengths = np.asarray(self.reference_strengths)[keep]
+        self.reference_lengths = np.asarray(self.reference_lengths)[keep]
+
+    def on_replacement(self, magnitude: np.ndarray, volume: np.ndarray) -> None:
+        """Reset the lineage references to the new cloud's own magnitudes."""
+        if self.reference_strengths is None:
+            return
+        floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
+        self.reference_strengths = np.maximum(magnitude, floor)
+        self.reference_lengths = np.cbrt(np.asarray(volume, dtype=np.float64))
+
+    def on_add(
+        self, magnitude: np.ndarray, volume: np.ndarray, start: int, loading: bool = False
+    ) -> None:
+        """Extend the lineage references for an appended batch of particles."""
+        if self.reference_strengths is None or self.reference_lengths is None:
+            return
+        if loading:
+            return
+        if len(self.reference_strengths) != start:
+            raise RuntimeError(
+                "filament-refinement lineage state did not match the cloud before insertion"
+            )
+        floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
+        self.reference_strengths = np.concatenate(
+            (self.reference_strengths, np.maximum(magnitude, floor))
+        )
+        self.reference_lengths = np.concatenate(
+            (self.reference_lengths, np.cbrt(np.asarray(volume, dtype=np.float64)))
+        )

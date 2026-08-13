@@ -3,7 +3,6 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -149,76 +148,17 @@ class SolverState(BaseModel):
             raise ValueError(f"Failed to convert solver to state: {e}") from e
 
     def to_solver(self):
+        """Convert SolverState back to a solver object.
+
+        The reverse (``to_solver``) conversion is not provided here: building a
+        :class:`Solver` belongs to ``core`` and would make the leaf ``config``
+        package depend on ``core`` (see ARCHITECTURE.md).  Use ``from_solver``
+        to serialise, and construct the solver in ``core`` from the config.
         """
-        Convert SolverState back to solver object.
-
-        Returns:
-              Solver: Fully initialized solver instance
-
-        Raises:
-              ValueError: If state contains invalid parameters
-        """
-        try:
-            # Import locally to avoid circular dependencies
-            from source.solvers.VPM.config.types import (
-                AdvectionConfig,
-                StretchingConfig,
-                TurbulenceConfig,
-                ViscousConfig,
-                VPMSetup,
-            )
-            from source.solvers.VPM.core.solver import Solver
-
-            # Reconstruct Configuration Objects
-            advection = AdvectionConfig(scheme=self.advection_scheme)
-
-            stretching = StretchingConfig(
-                mode=self.stretching_mode,
-                scheme=self.stretching_scheme,
-                enabled=self.stretching_enabled,
-            )
-
-            viscous = ViscousConfig(
-                scheme=self.viscous_scheme,
-            )
-
-            # Turbulence config reconstruction
-            # Same issue for cs, etc.
-            turbulence = TurbulenceConfig.dns()
-            if self.flow_model == "LES":
-                turbulence = TurbulenceConfig.les_smagorinsky()  # Default/Placeholder
-
-            # Reconstruct full VPMSetup
-            config = VPMSetup(
-                time_step_size=self.time_step_size,
-                flow_time=self.flow_time,
-                time_step=self.time_step,
-                advection=advection,
-                stretching=stretching,
-                viscous=viscous,
-                turbulence=turbulence,
-                particles_kernel=self.particles_kernel,
-                logging_frequency=self.logging_frequency,
-                timing_frequency=self.timing_frequency,
-                backup_frequency=self.backup_frequency,
-                backup_file_name=self.backup_file_name,
-                backup_directory=self.backup_directory,
-                processing_unit=self.processing_unit,
-                # precision?
-            )
-
-            # Create new solver instance with config
-            new_solver = Solver(setup=config)
-
-            # Restore additional attributes that aren't constructor parameters
-            for key, value in self.__dict__.items():
-                if not hasattr(new_solver, key) and not key.startswith("_"):
-                    setattr(new_solver, key, value)
-
-            return new_solver
-
-        except Exception as e:
-            raise ValueError(f"Failed to create solver from state: {e}") from e
+        raise NotImplementedError(
+            "SolverState.to_solver was removed; config must not construct a Solver. "
+            "Build the solver in source.solvers.VPM.core from VPMSetup instead."
+        )
 
 
 class ParticlesState(BaseModel):
@@ -350,65 +290,18 @@ class ParticlesState(BaseModel):
             raise ValueError(f"Failed to convert particles to state: {e}") from e
 
     def to_particles(self):
+        """Convert ParticlesState back to a Particles object.
+
+        The reverse (``to_particles``) conversion is not provided here: building
+        a :class:`Particles` belongs to ``particles`` and would make the leaf
+        ``config`` package depend on ``particles`` (see ARCHITECTURE.md).  Use
+        ``from_particles`` to serialise, and construct the container in
+        ``particles`` from the state.
         """
-        Convert ParticlesState back to a fully initialized Particles object.
-
-        Returns:
-              Particles: Fully initialized particles instance
-
-        Raises:
-              ValueError: If state is invalid or conversion fails
-        """
-        try:
-            # Import locally to avoid circular dependencies
-            from source.solvers.VPM.particles.container import Particles
-
-            # Validate consistency before conversion
-            self.validate_consistency()
-
-            # Determine the number of particles
-            n_particles = len(self.positions)
-            if n_particles == 0:
-                raise ValueError("Cannot create particles from empty state")
-
-            # Create a new Particles object with sufficient capacity
-            particles = Particles(max_particles=max(n_particles, 100))
-
-            # Convert all lists to numpy arrays with proper dtypes
-            positions = np.array(self.positions, dtype=np.float32)
-            velocities = np.array(self.velocities, dtype=np.float32)
-            strengths = np.array(self.strengths, dtype=np.float32)
-            radii = np.array(self.radii, dtype=np.float32)
-            volumes = np.array(self.volumes, dtype=np.float32)
-            viscosities = np.array(self.viscosities, dtype=np.float32)
-            viscosities_t = np.array(self.viscosities_t, dtype=np.float32)
-            group_ids = np.array(self.group_ids, dtype=np.int32)
-
-            # Handle optional fields safely
-            grad_u = None
-            if self.grad_u is not None:
-                grad_u = np.array(self.grad_u, dtype=np.float32)
-
-            # Use add_vortex_particles for robust initialization
-            particles.add_vortex_particles(
-                positions=positions,
-                velocities=velocities,
-                strengths=strengths,
-                radii=radii,
-                volumes=volumes,
-                viscosities=viscosities,
-                viscosities_t=viscosities_t,
-                group_id=group_ids,
-                grad_u=grad_u,
-            )
-
-            # Ensure particle count is set correctly
-            particles.number_of_particles = n_particles
-
-            return particles
-
-        except Exception as e:
-            raise ValueError(f"Failed to create particles from state: {e}") from e
+        raise NotImplementedError(
+            "ParticlesState.to_particles was removed; config must not construct a "
+            "Particles container.  Build it in source.solvers.VPM.particles instead."
+        )
 
 
 # =========================================================

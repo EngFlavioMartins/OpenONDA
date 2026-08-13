@@ -28,11 +28,11 @@ from ..io.backup import BackupSystem
 from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
-from ..io.sampling import resolve_samples_dir
 from ..io.solver_io import SolverIO
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
 from ..stabilization import StabilizationManager
+from ..stabilization.context import StabilizationContext
 from .evolution import EvolutionStepper
 
 
@@ -330,7 +330,31 @@ class Solver:
             "vlm_lesp_max": [],
             "vlm_n_particles": [],
         }
-        self.stabilization = StabilizationManager(self)
+        self.stabilization = StabilizationManager(
+            StabilizationContext(
+                particles=self.particles,
+                physics=self.physics,
+                field_diagnostics=self.field_diagnostics,
+                config=self.config.stabilization,
+                compute_dtype=self.compute_dtype,
+                np_dtype=self.np_dtype,
+                flow_model=self.flow_model,
+                time_step=lambda: self.time_step,
+                flow_time=lambda: self.flow_time,
+                time_step_size=lambda: self.time_step_size,
+                replace_vortex_particles=self.replace_vortex_particles,
+                set_particles_properties=self.set_particles_properties,
+                remove_particles_by_bounds=self.remove_particles_by_bounds,
+                particles_removed=lambda: self._particles_removed_this_step,
+                set_particles_removed=lambda value: setattr(
+                    self, "_particles_removed_this_step", value
+                ),
+                circulation_removed=lambda: self._circulation_removed_this_step,
+                set_circulation_removed=lambda value: setattr(
+                    self, "_circulation_removed_this_step", value
+                ),
+            )
+        )
         active = self.stabilization.active_mechanisms()
         if active:
             Logging.message("Stabilization: " + ", ".join(active))
@@ -465,64 +489,12 @@ class Solver:
         self._execute_samplers()
 
     def _export_flow_integrals_csv(self) -> None:
-        """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``."""
-        import pandas as pd
+        """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``.
 
-        samples_dir = resolve_samples_dir(
-            self.backup_directory,
-            getattr(self.config, "sample_subdirectory", None),
-        )
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = samples_dir / "flow_integrals.csv"
-
-        impulse = self._flow_integrals.get("linear_impulse", np.zeros(3))
-        ang_impulse = self._flow_integrals.get("angular_impulse", np.zeros(3))
-        strength = self._flow_integrals.get("strength", np.zeros(3))
-        particle_strength = self.particles_circulation
-        turbulent_viscosity = self.particles.viscosity_turbulent_cpu()
-        effective_viscosity = self.particles.viscosity_effective_cpu()
-
-        row = {
-            "time": self.flow_time,
-            "step": self.time_step,
-            "kinetic_energy": self.total_kinetic_energy,
-            "enstrophy": self.total_enstrophy,
-            "enstrophy_test": self._flow_integrals.get("enstrophy_test", 0.0),
-            "dEdt": self.kinetic_energy_dissipation_rate,
-            "neg_nu_enstrophy": self.vorticity_dissipation_rate,
-            "helicity": self.total_helicity,
-            "strength_magnitude": self.total_strength_magnitude,
-            "strength_x": float(strength[0]),
-            "strength_y": float(strength[1]),
-            "strength_z": float(strength[2]),
-            "impulse_x": float(impulse[0]),
-            "impulse_y": float(impulse[1]),
-            "impulse_z": float(impulse[2]),
-            "angular_impulse_x": float(ang_impulse[0]),
-            "angular_impulse_y": float(ang_impulse[1]),
-            "angular_impulse_z": float(ang_impulse[2]),
-            "n_particles": self.particles.number_of_particles,
-            "max_gamma": float(np.linalg.norm(particle_strength, axis=1).max(initial=0.0)),
-            "turbulent_viscosity_mean": float(turbulent_viscosity.mean())
-            if len(turbulent_viscosity)
-            else 0.0,
-            "turbulent_viscosity_max": float(turbulent_viscosity.max(initial=0.0)),
-            "effective_viscosity_mean": float(effective_viscosity.mean())
-            if len(effective_viscosity)
-            else 0.0,
-            "effective_viscosity_max": float(effective_viscosity.max(initial=0.0)),
-            "invariant_projection_correction_ratio": float(
-                self.physics.rate_projection_max_correction_ratio
-            ),
-        }
-        row.update(self._discretization_health)
-        row.update(self.stabilization.diagnostics)
-
-        df = pd.DataFrame([row])
-        if not csv_path.exists():
-            df.to_csv(csv_path, index=False)
-        else:
-            df.to_csv(csv_path, mode="a", header=False, index=False)
+        Thin wrapper that delegates the CSV export to the ``SolverIO`` manager
+        (which owns all exports).
+        """
+        SolverIO.export_flow_integrals_csv(self)
 
     def _execute_samplers(self) -> None:
         """Execute all configured field samplers (delegates to SamplerExecutor)."""
@@ -938,85 +910,28 @@ class Solver:
                 else 1e-5
             )
         if treecode_theta is not None:
-            if temporal_method != "eulerian":
-                raise ValueError("Treecode pressure gradients require temporal_method='eulerian'")
-            points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
-            count = len(points)
-            targets = points
-            if include_viscous:
-                if h is None:
-                    h = (
-                        float(np.mean(self.particles.radius_cpu()))
-                        if self.particles.number_of_particles > 0
-                        else 1.0
-                    )
-                offsets = np.eye(3, dtype=np.float64) * float(h)
-                targets = np.concatenate(
-                    [
-                        points,
-                        *(points + offsets[j] for j in range(3)),
-                        *(points - offsets[j] for j in range(3)),
-                    ]
-                )
-            velocity_samples = self.physics.compute_target_velocities_hierarchical(
-                self.particles,
-                targets,
-                theta=float(treecode_theta),
-                include_freestream=include_freestream,
-            ).astype(np.float64)
-            if self.particles.number_of_particles == 0 and include_freestream:
-                velocity_samples[:] = self.background_velocity
-            velocity = velocity_samples[:count]
-            gradient = self.physics.compute_target_velocity_gradients_hierarchical(
-                self.particles, points, theta=float(treecode_theta)
-            ).reshape(count, 3, 3)
             body_fn = getattr(
                 self,
                 "_pressure_body_induced_fn",
                 self._body_induced_fn,
             )
-            if body_fn is not None:
-                velocity_samples += np.asarray(
-                    body_fn(targets), dtype=velocity_samples.dtype
-                ).reshape(velocity_samples.shape)
-                velocity = velocity_samples[:count]
-                gradient_h = (
-                    float(h)
-                    if h is not None
-                    else (
-                        float(np.mean(self.particles.radius_cpu()))
-                        if self.particles.number_of_particles > 0
-                        else 0.05
-                    )
-                )
-                for axis in range(3):
-                    offset = np.zeros(3, dtype=np.float64)
-                    offset[axis] = gradient_h
-                    plus = np.asarray(body_fn(points + offset), dtype=np.float64)
-                    minus = np.asarray(body_fn(points - offset), dtype=np.float64)
-                    gradient[:, :, axis] += (plus - minus) / (2.0 * gradient_h)
-            advective = np.einsum("mb,mab->ma", velocity, gradient)
-            temporal = np.zeros_like(velocity)
-            if include_temporal:
-                if velocity_previous is None or dt is None:
-                    raise ValueError("Treecode pressure gradients require velocity_previous and dt")
-                temporal = (velocity - velocity_previous) / float(dt)
-            viscous = np.zeros_like(velocity)
-            if include_viscous and nu > 0.0:
-                plus = velocity_samples[count : 4 * count].reshape(3, count, 3)
-                minus = velocity_samples[4 * count :].reshape(3, count, 3)
-                viscous = (
-                    float(nu)
-                    * np.sum(plus + minus - 2.0 * velocity[None, :, :], axis=0)
-                    / float(h) ** 2
-                )
-            result = {
-                "grad_p": density * (-temporal - advective + viscous),
-                "convective": -density * advective,
-                "viscous": density * viscous,
-                "temporal": -density * temporal,
-            }
-            return (result, velocity) if return_velocity else result
+            return self.physics.compute_target_pressure_gradients_hierarchical(
+                self.particles,
+                grid_positions,
+                density=density,
+                nu=nu,
+                include_viscous=include_viscous,
+                include_temporal=include_temporal,
+                include_freestream=include_freestream,
+                temporal_method=temporal_method,
+                velocity_previous=velocity_previous,
+                dt=dt,
+                h=h,
+                return_velocity=return_velocity,
+                theta=treecode_theta,
+                background_velocity=self.background_velocity,
+                body_fn=body_fn,
+            )
 
         from source.solvers.VPM.physics.pressure import PressurePhysics
 
@@ -1067,17 +982,11 @@ class Solver:
             self._particles_removed_this_step = 0
             self._circulation_removed_this_step = np.zeros(3)
 
-        reference_strengths = getattr(self, "_filament_reference_strengths", None)
-        reference_lengths = getattr(self, "_filament_reference_lengths", None)
-        if reference_strengths is not None and reference_lengths is not None:
-            if remove_all:
-                self._filament_reference_strengths = np.empty(0, dtype=np.float64)
-                self._filament_reference_lengths = np.empty(0, dtype=np.float64)
-            elif particle_indices is not None and len(particle_indices) > 0:
-                keep = np.ones(len(reference_strengths), dtype=bool)
-                keep[np.asarray(particle_indices, dtype=np.int64)] = False
-                self._filament_reference_strengths = reference_strengths[keep]
-                self._filament_reference_lengths = reference_lengths[keep]
+        # Trim the stabilization lineage references to match the removed set.
+        if remove_all:
+            self.stabilization.on_removal(remove_all=True)
+        elif particle_indices is not None and len(particle_indices) > 0:
+            self.stabilization.on_removal(indices=particle_indices)
 
         self.particles.remove_vortex_particles(indices=particle_indices, remove_all=remove_all)
 
@@ -1125,29 +1034,13 @@ class Solver:
             velocity_gradient=velocity_gradient,
         )
         self._axisymmetric_orbits_validated = False
-        if hasattr(self, "_filament_reference_strengths") and not getattr(
-            self,
-            "_loading_numerical_state",
-            False,
-        ):
-            added_strength = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
-            floor = max(
-                float(added_strength.max(initial=0.0)) * 1e-12,
-                np.finfo(np.float64).tiny,
-            )
-            if len(self._filament_reference_strengths) != start:
-                raise RuntimeError(
-                    "filament-refinement lineage state did not match the cloud before insertion"
-                )
-            self._filament_reference_strengths = np.concatenate(
-                (self._filament_reference_strengths, np.maximum(added_strength, floor))
-            )
-            self._filament_reference_lengths = np.concatenate(
-                (
-                    self._filament_reference_lengths,
-                    np.cbrt(np.asarray(volume, dtype=np.float64)),
-                )
-            )
+        magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+        self.stabilization.on_add(
+            magnitude,
+            volume,
+            start,
+            loading=getattr(self, "_loading_numerical_state", False),
+        )
 
     def replace_vortex_particles(
         self,
@@ -1162,15 +1055,23 @@ class Solver:
         zone_id: np.ndarray | None = None,
         velocity_gradient: np.ndarray | None = None,
         strain_rate: np.ndarray | None = None,
+        report_removal: bool = True,
     ) -> None:
-        """Replace the active particle cloud in one field-upload operation."""
-        circ_removed = (
-            self.particles.total_circulation()
-            if len(self.particles) > 0
-            else np.zeros(3, dtype=self.np_dtype)
-        )
-        self._particles_removed_this_step = len(self.particles)
-        self._circulation_removed_this_step = circ_removed
+        """Replace the active particle cloud in one field-upload operation.
+
+        ``report_removal`` should be set to ``False`` by mechanisms that rebuild
+        the cloud in place without representing physical removal (for example
+        filament refinement), so the removed-this-step diagnostic counters stay
+        untouched.
+        """
+        if report_removal:
+            circ_removed = (
+                self.particles.total_circulation()
+                if len(self.particles) > 0
+                else np.zeros(3, dtype=self.np_dtype)
+            )
+            self._particles_removed_this_step = len(self.particles)
+            self._circulation_removed_this_step = circ_removed
 
         if viscosity is None:
             nu = getattr(self._viscous_config, "viscosity", None)
@@ -1196,14 +1097,8 @@ class Solver:
             strain_rate=strain_rate,
         )
         self._axisymmetric_orbits_validated = False
-        if hasattr(self, "_filament_reference_strengths"):
-            magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
-            floor = max(
-                float(magnitude.max(initial=0.0)) * 1e-12,
-                np.finfo(np.float64).tiny,
-            )
-            self._filament_reference_strengths = np.maximum(magnitude, floor)
-            self._filament_reference_lengths = np.cbrt(np.asarray(volume, dtype=np.float64))
+        magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+        self.stabilization.on_replacement(magnitude, volume)
 
     def update_particle_circulations(
         self,
@@ -1453,8 +1348,8 @@ class Solver:
 
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
 
-        keep_reference = None
-        if hasattr(self, "_filament_reference_strengths"):
+        keep_mask = None
+        if self.stabilization.reference_strengths is not None:
             position = self.particles.position_cpu()
             inside = (
                 (xmin <= position[:, 0])
@@ -1464,18 +1359,14 @@ class Solver:
                 & (zmin <= position[:, 2])
                 & (position[:, 2] <= zmax)
             )
-            keep_reference = inside if invert_selection else ~inside
+            keep_mask = inside if invert_selection else ~inside
 
         n_removed = self.particles.remove_particles_by_bounds(
             bounds, invert_selection=invert_selection
         )
 
         if n_removed > 0:
-            if keep_reference is not None:
-                self._filament_reference_strengths = self._filament_reference_strengths[
-                    keep_reference
-                ]
-                self._filament_reference_lengths = self._filament_reference_lengths[keep_reference]
+            self.stabilization.on_removal(keep_mask=keep_mask)
             action = "outside" if invert_selection else "inside"
             Logging.info(
                 f"Removed {n_removed} particles {action} "
@@ -1502,15 +1393,10 @@ class Solver:
             percent=percent,
             per_group=per_group,
         )
-        if (
-            removed_indices is not None
-            and len(removed_indices) > 0
-            and hasattr(self, "_filament_reference_strengths")
-        ):
+        if removed_indices is not None and len(removed_indices) > 0:
             keep = np.ones(particles_before, dtype=bool)
             keep[np.asarray(removed_indices, dtype=np.int64)] = False
-            self._filament_reference_strengths = self._filament_reference_strengths[keep]
-            self._filament_reference_lengths = self._filament_reference_lengths[keep]
+            self.stabilization.on_removal(keep_mask=keep)
 
         if len(self.particles) > 0:
             self.physics.compute_vorticities(self.particles)

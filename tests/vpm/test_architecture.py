@@ -121,7 +121,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
     "coupling": {"physics", "particles", "boundary_elements", "core"},
     "diagnostics": {"particles", "physics", "numerics", "config", "io"},
     "io": {"config", "diagnostics", "particles"},
-    "config": {"boundary_elements"},
+    "config": {"boundary_elements", "runtime"},
     "initial_conditions": {"particles"},
     "particles": {"config", "initial_conditions"},
     "boundary_elements": {"config", "io"},
@@ -129,6 +129,7 @@ ALLOWED_EDGES: dict[str, set[str]] = {
     "acceleration": {"config"},
     "kernels": {"config"},
     "numerics": {"config"},
+    "runtime": {"config"},
 }
 
 # Edges explicitly forbidden regardless of the allowed set.
@@ -142,31 +143,73 @@ FORBIDDEN_EDGES: set[tuple[str, str]] = {
 }
 
 
-def _module_package(rel: tuple[str, ...]) -> tuple[str, ...]:
-    """Relative package path of a module file, e.g. ('core',) for core/solver.py."""
-    return rel[:-1]
+def _subsystem_of_dotted(dotted: str) -> str | None:
+    """First VPM subsystem in an absolute dotted path, or ``None``.
+
+    ``source.solvers.VPM.<subsystem>...`` maps to ``<subsystem>`` when that name
+    is a real subsystem package.  Anything outside the VPM package (or a
+    top-level VPM module such as ``factory``) returns ``None``.
+    """
+    parts = dotted.split(".")
+    if parts[:3] != ["source", "solvers", "VPM"]:
+        return None
+    if len(parts) > 3 and parts[3] in SUBSYSTEMS:
+        return parts[3]
+    return None
 
 
-def _collect_runtime_edges() -> set[tuple[str, str]]:
-    """Scan the tree for runtime cross-subsystem relative imports."""
+def _import_dotted(node: ast.AST) -> str | None:
+    """Resolve one import node to an absolute dotted path, or ``None``.
+
+    Handles every internal import form the tree can express:
+
+    - ``import source.solvers.VPM.<sub>...``        (``ast.Import``)
+    - ``from source.solvers.VPM.<sub>... import ...`` (absolute ``ast.ImportFrom``)
+    - ``from .something import ...``                (relative ``ast.ImportFrom``)
+    - ``from ..something import ...``               (relative ``ast.ImportFrom``)
+    """
+    if isinstance(node, ast.ImportFrom):
+        if node.level:
+            module_parts = tuple(node.module.split(".")) if node.module else ()
+            up = node.level - 1
+            prefix = _dotted_pkgpath[:-up] if up else _dotted_pkgpath
+            return ".".join(prefix + module_parts)
+        return node.module
+    if isinstance(node, ast.Import):
+        return node.names[0].name
+    return None
+
+
+_dotted_pkgpath: tuple[str, ...] = ()
+
+
+def _collect_runtime_edges(root: Path = VPM_ROOT) -> set[tuple[str, str]]:
+    """Scan the tree for runtime cross-subsystem imports.
+
+    Relative and absolute internal imports are normalized to the same dotted
+    path, so ``from ..stabilization import ...`` and
+    ``from source.solvers.VPM.stabilization import ...`` produce the identical
+    edge and are enforced identically.
+    """
+    global _dotted_pkgpath
     edges: set[tuple[str, str]] = set()
-    for path in VPM_ROOT.rglob("*.py"):
+    for path in root.rglob("*.py"):
         if "__pycache__" in str(path):
             continue
-        rel = path.relative_to(VPM_ROOT).parts
+        rel = path.relative_to(root).parts
         if len(rel) == 1:
             continue  # top-level modules (facade) may import anything
-        src, pkgpath = rel[0], rel[:-1]
+        src = rel[0]
+        _dotted_pkgpath = ("source", "solvers", "VPM") + rel[:-1]
         tree = ast.parse(path.read_text(encoding="utf-8"))
         _attach_parents(tree)
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.level >= 1:
-                if _inside_type_checking(node):
-                    continue
-                base = pkgpath[: -(node.level - 1)] if node.level > 1 else pkgpath
-                target = base + tuple(node.module.split("."))
-                if target and target[0] in SUBSYSTEMS and target[0] != src:
-                    edges.add((src, target[0]))
+            if _inside_type_checking(node):
+                continue
+            dotted = _import_dotted(node)
+            target = _subsystem_of_dotted(dotted or "")
+            if target is not None and target != src:
+                edges.add((src, target))
     return edges
 
 
@@ -211,3 +254,64 @@ def test_all_documented_edges_are_used_or_benign():
         assert src in SUBSYSTEMS, f"Unknown source subsystem {src!r} in ALLOWED_EDGES"
         for tgt in targets:
             assert tgt in SUBSYSTEMS, f"Unknown target subsystem {tgt!r} in ALLOWED_EDGES"
+
+
+def _write_synthetic_module(root: Path, module_package: list[str], source: str) -> None:
+    """Create ``source/solvers/VPM/<...>/<name>.py`` under a synthetic repo root."""
+    vpm = root / "source" / "solvers" / "VPM"
+    for subsystem in ("particles", "physics", "stabilization"):
+        init = vpm / subsystem / "__init__.py"
+        init.parent.mkdir(parents=True, exist_ok=True)
+        init.touch()
+    target = vpm.joinpath(*module_package)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source, encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_absolute_forbidden_import_is_detected(tmp_path):
+    """An absolute internal import must hit the same dependency policy as the
+    equivalent relative import (physics -> stabilization is forbidden)."""
+    _write_synthetic_module(
+        tmp_path,
+        ["physics", "module.py"],
+        "from source.solvers.VPM.stabilization.manager import StabilizationManager\n",
+    )
+    edges = _collect_runtime_edges(tmp_path / "source" / "solvers" / "VPM")
+    assert ("physics", "stabilization") in edges, (
+        "absolute internal import escaped the dependency scanner"
+    )
+
+
+@pytest.mark.unit
+def test_relative_and_absolute_imports_map_to_the_same_edge(tmp_path):
+    """The two spellings of the same dependency must be indistinguishable."""
+    _write_synthetic_module(
+        tmp_path,
+        ["physics", "rel.py"],
+        "from ..stabilization.manager import StabilizationManager\n",
+    )
+    rel_edges = _collect_runtime_edges(tmp_path / "source" / "solvers" / "VPM")
+    assert ("physics", "stabilization") in rel_edges
+
+    _write_synthetic_module(
+        tmp_path,
+        ["physics", "abs.py"],
+        "from source.solvers.VPM.stabilization.manager import StabilizationManager\n",
+    )
+    abs_edges = _collect_runtime_edges(tmp_path / "source" / "solvers" / "VPM")
+    assert ("physics", "stabilization") in abs_edges
+
+
+@pytest.mark.unit
+def test_absolute_module_import_form_is_detected(tmp_path):
+    """``import source.solvers.VPM.stabilization`` must be caught as well."""
+    _write_synthetic_module(
+        tmp_path,
+        ["particles", "module.py"],
+        "import source.solvers.VPM.stabilization\n",
+    )
+    edges = _collect_runtime_edges(tmp_path / "source" / "solvers" / "VPM")
+    assert ("particles", "stabilization") in edges, (
+        "``import source.solvers.VPM.<sub>`` escaped the dependency scanner"
+    )

@@ -418,6 +418,125 @@ class PressurePhysics(PhysicsBase):
             include_freestream=True,
         )
 
+    def compute_target_pressure_gradients_hierarchical(
+        self,
+        particles,
+        target_positions: np.ndarray,
+        density: float = 1.0,
+        nu: float = 1e-5,
+        include_viscous: bool = True,
+        include_temporal: bool = True,
+        include_freestream: bool = True,
+        temporal_method: str = "eulerian",
+        velocity_previous: np.ndarray | None = None,
+        dt: float | None = None,
+        h: float | None = None,
+        return_velocity: bool = False,
+        theta: float = 0.5,
+        background_velocity: np.ndarray | None = None,
+        body_fn=None,
+    ) -> dict | tuple[dict, np.ndarray]:
+        """
+        Compute pressure-gradient terms at target points using a Barnes-Hut treecode.
+
+        This is the O(N log N) hierarchical variant of
+        ``compute_target_pressure_gradients``. It requires the Eulerian temporal
+        method (``velocity_previous`` and ``dt``) and evaluates the velocity at the
+        targets plus the finite-difference offsets used for the viscous term in a
+        single treecode pass.
+
+        Args:
+            particles: Particle container
+            target_positions: Array of shape (M, 3) with target coordinates
+            density: Fluid density [kg/m³]
+            nu: Kinematic viscosity [m²/s]
+            include_viscous: Include viscous term (default True)
+            include_temporal: Include temporal term (default True)
+            include_freestream: Include background velocity in computations
+            temporal_method: Must be 'eulerian' (fixed-point backward differences)
+            velocity_previous: Previous velocity field [M, 3]. Required if
+                temporal_method='eulerian'
+            dt: Time step for Eulerian method. Required if temporal_method='eulerian'
+            h: Step size for the Laplacian finite difference. If None, uses average
+                particle radius
+            return_velocity: If True, also return the internally computed velocity
+            theta: Opening angle parameter for the treecode (smaller = more accurate)
+            background_velocity: Freestream velocity [3] used when there are no
+                particles
+            body_fn: Callable(position) -> velocity for body-induced velocity
+
+        Returns:
+            dict with keys ``grad_p``, ``convective``, ``viscous``, ``temporal``, or
+            a ``(dict, velocity)`` tuple when ``return_velocity`` is True.
+        """
+        if temporal_method != "eulerian":
+            raise ValueError("Treecode pressure gradients require temporal_method='eulerian'")
+        N = particles.number_of_particles
+        points = np.asarray(target_positions, dtype=np.float64).reshape(-1, 3)
+        count = len(points)
+        targets = points
+        if include_viscous:
+            if h is None:
+                h = float(np.mean(particles.radius_cpu())) if N > 0 else 1.0
+            offsets = np.eye(3, dtype=np.float64) * float(h)
+            targets = np.concatenate(
+                [
+                    points,
+                    *(points + offsets[j] for j in range(3)),
+                    *(points - offsets[j] for j in range(3)),
+                ]
+            )
+        velocity_samples = self.compute_target_velocities_hierarchical(
+            particles,
+            targets,
+            theta=float(theta),
+            include_freestream=include_freestream,
+        ).astype(np.float64)
+        if N == 0 and include_freestream:
+            velocity_samples[:] = background_velocity
+        velocity = velocity_samples[:count]
+        gradient = self.compute_target_velocity_gradients_hierarchical(
+            particles, points, theta=float(theta)
+        ).reshape(count, 3, 3)
+        if body_fn is not None:
+            velocity_samples += np.asarray(body_fn(targets), dtype=velocity_samples.dtype).reshape(
+                velocity_samples.shape
+            )
+            velocity = velocity_samples[:count]
+            gradient_h = (
+                float(h)
+                if h is not None
+                else (float(np.mean(particles.radius_cpu())) if N > 0 else 0.05)
+            )
+            for axis in range(3):
+                offset = np.zeros(3, dtype=np.float64)
+                offset[axis] = gradient_h
+                plus = np.asarray(body_fn(points + offset), dtype=np.float64)
+                minus = np.asarray(body_fn(points - offset), dtype=np.float64)
+                gradient[:, :, axis] += (plus - minus) / (2.0 * gradient_h)
+        advective = np.einsum("mb,mab->ma", velocity, gradient)
+        temporal = np.zeros_like(velocity)
+        if include_temporal:
+            if velocity_previous is None or dt is None:
+                raise ValueError("Treecode pressure gradients require velocity_previous and dt")
+            temporal = (velocity - velocity_previous) / float(dt)
+        viscous = np.zeros_like(velocity)
+        if include_viscous and nu > 0.0:
+            plus = velocity_samples[count : 4 * count].reshape(3, count, 3)
+            minus = velocity_samples[4 * count :].reshape(3, count, 3)
+            viscous = (
+                float(nu)
+                * np.sum(plus + minus - 2.0 * velocity[None, :, :], axis=0)
+                / float(h) ** 2
+            )
+        result = {
+            "grad_p": density * (-temporal - advective + viscous),
+            "convective": -density * advective,
+            "viscous": density * viscous,
+            "temporal": -density * temporal,
+        }
+        return (result, velocity) if return_velocity else result
+
     # TEMPORAL TERM COMPUTATION (Analytical VPM formulation)
 
     def _resolve_temporal_term(

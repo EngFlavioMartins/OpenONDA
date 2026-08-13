@@ -13,12 +13,13 @@ directory tree is authoritative.
 | `core/` | Construction and high-level solver lifecycle. `Solver` is a thin facade that wires subsystems and exposes the public API; `EvolutionStepper` owns the per-step time-evolution algorithm. |
 | `physics/` | Primary VPM physical operators: induced velocity, stretching, vorticity/strain evaluation, pressure-field evaluation, and the viscous-diffusion schemes (`physics/diffusion/`). |
 | `numerics/` | Reusable numerical mathematics with **no VPM policy**: interpolation/remeshing kernels, moment evaluation, constrained projection, and the Taichi kernel factories shared by the physics operators. |
-| `stabilization/` | Every algorithm whose purpose is to stabilize, regularize, relax, filter, repair or adapt the particle representation. `StabilizationManager` schedules the workers; each worker implements its own algorithm. |
+| `stabilization/` | Every algorithm whose purpose is to stabilize, regularize, relax, filter, repair or adapt the particle representation. `StabilizationManager` schedules the workers; each worker implements its own algorithm. The manager never receives the `Solver`; it is constructed with a `StabilizationContext` carrying only its genuine dependencies (the particle container, the narrow grid-diffusion/flow-integral physics capabilities, config, precision, and the specific Solver mutation entry points). |
 | `particles/` | Particle storage and primitive particle-set mutation (insert, remove, replace, field transfer). No solver policy. |
 | `coupling/` | Orchestration between VPM and the VLM/panel boundary-element solvers during one VPM step. |
 | `diagnostics/` | Measurement and reporting only. Diagnostic code must **not** modify the physical state. |
 | `io/` | Serialization, backups, logging, export and sampling (`io/sampling/` hosts the field samplers). |
 | `config/` | Configuration types and validation only. No runtime state, Taichi fields, filesystem handling or numerical evolution. |
+| `runtime/` | Taichi/backend runtime lifecycle: backend selection and initialization, memory policy, and runtime reset. `config/backend.py` re-exports its public API for backwards compatibility only. |
 | `initial_conditions/` | Analytic particle fields and canonical vortex initializers (Lamb–Oseen, vortex ring, doublet, Taylor–Green, isotropic turbulence). |
 | `kernels/` | Compact interaction-kernel definitions (Gaussian, high-order Gaussian, super-Gaussian, Winckelmans). |
 | `acceleration/` | Acceleration structures: the CPU Barnes–Hut treecode, the Taichi LBVH treecode, and the Taichi neighbour search. |
@@ -38,10 +39,12 @@ coupling          → physics (public interface), particles, boundary_elements, 
 diagnostics       → particles (read-only), physics (read-only evaluation), numerics,
                     config, io (backup reader + logging for offline diagnostics)
 io                → config, diagnostics(read-only), particles
-config            → (nothing inside VPM, except boundary_elements config types)
+config            → (nothing inside VPM, except boundary_elements config types,
+                     and runtime for the backend compatibility re-export)
 initial_conditions → particles (fields only), numpy
 particles         → initial_conditions (pure-geometry centerline helper only)
 boundary_elements → config, io (loading-distribution sampling output)
+runtime           → config (constants, read-only)
 coupling          → nothing else
 ```
 

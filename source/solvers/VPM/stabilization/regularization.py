@@ -35,7 +35,7 @@ from ..io.logging import Logging
 
 if TYPE_CHECKING:
     from ..config.types import StabilizationConfig
-    from ..core.solver import Solver
+    from .context import StabilizationContext
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class RegularizationOutcome:
         )
 
 
-def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcome | None:
+def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> RegularizationOutcome | None:
     """Redistribute the cloud if its health has fallen below the triggers.
 
     Returns ``None`` when the health triggers are not met and nothing was done.
@@ -68,11 +68,12 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
     )
     from .filament_refinement import gaussian_particle_moments
 
-    position = solver.particles.position_cpu().astype(np.float64)
-    circulation = solver.particles.circulation_cpu().astype(np.float64)
-    radius = solver.particles.radius_cpu().astype(np.float64)
-    volume = solver.particles.volume_cpu().astype(np.float64)
-    viscosity = solver.particles.viscosity_cpu().astype(np.float64)
+    particles = ctx.particles
+    position = particles.position_cpu().astype(np.float64)
+    circulation = particles.circulation_cpu().astype(np.float64)
+    radius = particles.radius_cpu().astype(np.float64)
+    volume = particles.volume_cpu().astype(np.float64)
+    viscosity = particles.viscosity_cpu().astype(np.float64)
     if len(position) == 0:
         return
 
@@ -106,24 +107,24 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
         return
 
     before_moments = gaussian_particle_moments(position, circulation, radius)
-    before_integrals = solver.field_diagnostics.compute_flow_integrals(
-        solver.particles,
-        solver.flow_time,
+    before_integrals = ctx.field_diagnostics.compute_flow_integrals(
+        particles,
+        ctx.flow_time(),
         record_history=False,
     )
     old_state = {
-        "position": position.astype(solver.np_dtype),
-        "velocity": solver.particles.velocity_cpu().astype(solver.np_dtype),
-        "circulation": circulation.astype(solver.np_dtype),
-        "radius": radius.astype(solver.np_dtype),
-        "volume": volume.astype(solver.np_dtype),
-        "viscosity": viscosity.astype(solver.np_dtype),
-        "viscosity_turbulent": solver.particles.viscosity_turbulent_cpu().astype(solver.np_dtype),
-        "zone_id": solver.particles.zone_id_cpu().astype(np.int32),
-        "group_id": solver.particles.group_id_cpu().astype(np.int32),
+        "position": position.astype(ctx.np_dtype),
+        "velocity": particles.velocity_cpu().astype(ctx.np_dtype),
+        "circulation": circulation.astype(ctx.np_dtype),
+        "radius": radius.astype(ctx.np_dtype),
+        "volume": volume.astype(ctx.np_dtype),
+        "viscosity": viscosity.astype(ctx.np_dtype),
+        "viscosity_turbulent": particles.viscosity_turbulent_cpu().astype(ctx.np_dtype),
+        "zone_id": particles.zone_id_cpu().astype(np.int32),
+        "group_id": particles.group_id_cpu().astype(np.int32),
     }
-    removed_before = solver._particles_removed_this_step
-    circulation_removed_before = solver._circulation_removed_this_step.copy()
+    removed_before = ctx.particles_removed()
+    circulation_removed_before = ctx.circulation_removed().copy()
     molecular_viscosity = float(viscosity.mean())
     projection_only = (
         cfg.regularization_max_particles is not None
@@ -132,9 +133,9 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
     if projection_only:
         proposal = old_state.copy()
     else:
-        proposal = solver.physics.grid_based_diffusion(
-            solver.particles,
-            dt=solver.time_step_size,
+        proposal = ctx.physics.grid_based_diffusion(
+            particles,
+            dt=ctx.time_step_size(),
             h=spacing,
             nu=molecular_viscosity,
             domain_padding=4.0,
@@ -156,7 +157,7 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
         proposal["radius"] = np.full(
             len(proposal["position"]),
             configured_core_radius,
-            dtype=solver.np_dtype,
+            dtype=ctx.np_dtype,
         )
 
     new_position = np.asarray(proposal["position"], dtype=np.float64)
@@ -164,13 +165,13 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
     new_radius = np.asarray(proposal["radius"], dtype=np.float64)
     new_volume = np.asarray(proposal["volume"], dtype=np.float64)
     count = len(new_position)
-    new_velocity = np.asarray(proposal.get("velocity", np.zeros((count, 3))), dtype=solver.np_dtype)
+    new_velocity = np.asarray(proposal.get("velocity", np.zeros((count, 3))), dtype=ctx.np_dtype)
     new_viscosity = np.asarray(
         proposal.get("viscosity", np.full(count, molecular_viscosity)),
-        dtype=solver.np_dtype,
+        dtype=ctx.np_dtype,
     )
     new_viscosity_turbulent = np.asarray(
-        proposal.get("viscosity_turbulent", np.zeros(count)), dtype=solver.np_dtype
+        proposal.get("viscosity_turbulent", np.zeros(count)), dtype=ctx.np_dtype
     )
     new_zone_id = np.asarray(
         proposal.get("zone_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
@@ -180,29 +181,29 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
     )
 
     def upload_and_integrate(strength: np.ndarray) -> tuple[np.ndarray, dict]:
-        uploaded_strength = np.asarray(strength, dtype=solver.np_dtype)
-        solver.replace_vortex_particles(
-            position=np.asarray(proposal["position"], dtype=solver.np_dtype),
+        uploaded_strength = np.asarray(strength, dtype=ctx.np_dtype)
+        ctx.replace_vortex_particles(
+            position=np.asarray(proposal["position"], dtype=ctx.np_dtype),
             velocity=new_velocity,
             circulation=uploaded_strength,
-            radius=np.asarray(proposal["radius"], dtype=solver.np_dtype),
-            volume=np.asarray(proposal["volume"], dtype=solver.np_dtype),
+            radius=np.asarray(proposal["radius"], dtype=ctx.np_dtype),
+            volume=np.asarray(proposal["volume"], dtype=ctx.np_dtype),
             viscosity=new_viscosity,
             viscosity_turbulent=new_viscosity_turbulent,
             zone_id=new_zone_id,
             group_id=new_group_id,
         )
-        integrals = solver.field_diagnostics.compute_flow_integrals(
-            solver.particles,
-            solver.flow_time,
+        integrals = ctx.field_diagnostics.compute_flow_integrals(
+            particles,
+            ctx.flow_time(),
             record_history=False,
         )
         return uploaded_strength, integrals
 
     def restore_old_field() -> None:
-        solver.replace_vortex_particles(**old_state)
-        solver._particles_removed_this_step = removed_before
-        solver._circulation_removed_this_step = circulation_removed_before
+        ctx.replace_vortex_particles(**old_state)
+        ctx.set_particles_removed(removed_before)
+        ctx.set_circulation_removed(circulation_removed_before)
 
     def evaluate_moment_corrected_candidate():
         candidate_radius = np.asarray(proposal["radius"], dtype=np.float64)
@@ -271,7 +272,7 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
                 proposal["radius"] = np.full(
                     count,
                     trial_core_radius,
-                    dtype=solver.np_dtype,
+                    dtype=ctx.np_dtype,
                 )
                 (
                     new_radius,
@@ -454,7 +455,7 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
         "angular_impulse": float(np.linalg.norm(after_moments[3] - before_moments[3]))
         / angular_scale,
     }
-    roundoff_limit = 1024.0 * np.finfo(solver.np_dtype).eps
+    roundoff_limit = 1024.0 * np.finfo(ctx.np_dtype).eps
     if max(errors.values()) > roundoff_limit:
         restore_old_field()
         raise RuntimeError(
@@ -462,8 +463,8 @@ def regularize(solver: Solver, cfg: StabilizationConfig) -> RegularizationOutcom
             + ", ".join(f"{name}={value:.3e}" for name, value in errors.items())
         )
 
-    solver._particles_removed_this_step = 0
-    solver._circulation_removed_this_step = np.zeros(3, dtype=solver.np_dtype)
+    ctx.set_particles_removed(0)
+    ctx.set_circulation_removed(np.zeros(3, dtype=ctx.np_dtype))
 
     return RegularizationOutcome(
         particles_before=len(position),
