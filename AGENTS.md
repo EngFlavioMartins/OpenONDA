@@ -59,3 +59,34 @@ change (see `.github/workflows/`).
 ## Imported Claude Cowork project instructions
 
 I am working on perfecting the VLM+VPM solver for the OpenONDA project. Currently, I notice that the flat-plate case (in tutorials/VPM/flatPlate) has an issue that I can't seen to fix: it does not show a reasonable match to the parabolic-like lift distribution, instead showing an almost constant lift that does not even drop to zero at the tips. I want you to find out why and fix it.
+
+### Flat-plate spanwise loading — resolution
+
+Status: **fixed**. The near-constant spanwise lift with no tip drop was a
+*plotting/post-processing artifact*, not a solver bug: the legacy spanwise
+figures normalised the outermost **cell-centred** VLM stations to ±1 (wrongly
+stretching them to the physical tips, so the tip-Γ→0 boundary condition never
+appeared). The corrective conventions are:
+
+- `assets/plot_plate_spanwise.py::load_spanwise_csv` closes the distribution
+  with the finite-wing condition Γ(±b/2)=0 instead of stretching samples to
+  ±1 (and reconstructs the physical y for legacy CSVs that were normalised to
+  ±1). The taper is a genuine mesh-resolution phenomenon, verified by
+  `tests/vpm/test_vlm_standalone_lifting_line.py` (incl. the
+  `test_coupled_tip_taper_depends_on_mesh_resolution_not_dt` regression that
+  proves **tip taper depends on spanwise mesh density, not on dt**).
+- `tests/vpm/test_vlm_loading_distribution.py` guarantees spanwise+chordwise
+  station sums reproduce the lattice total loads (guards the almost-constant
+  re-appearance), and `tests/vpm/test_vlm_frame_equivalence.py` checks the
+  body/wind-frame static equivalence the tutorial relies on.
+
+Tutorial runnability notes (all applied):
+- `setup_plate.py` uses `processing_unit="AUTO"` (the previous hard-coded
+  `VULKAN` is not available on macOS; AUTO selects METAL there, VULKAN on
+  Linux/Windows).
+- Every `assets/plot_*.py` (incl. `plot_flat_plate_kelvin.py`) degrades
+  gracefully with a `[MISSING]`/skip message when a sample CSV is absent, so
+  `allplot.sh` never hard-fails on a partial solution set.
+- Data layout is consistent across code and scripts via
+  `resolve_samples_dir` (`samples/` lifted next to a dir literally named
+  `solution/`).

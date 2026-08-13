@@ -100,6 +100,25 @@ Plan that emerged:
       lifting-line conventions near the tip.
 - [x] Re-ran the gate: `pytest tests/vpm -m "(unit or verification) and not slow
       and not mpi"` → **80 passed** (79 prior + 1 new).
+- [x] **Phase 4 — quantitative lifting-line certification**
+      (`tests/vpm/test_vlm_standalone_lifting_line.py`, marked
+      `@pytest.mark.verification`). Closes plan step 3 (verify the spanwise
+      loading against `theoretical_model.liftingline_circulation`). Compares the
+      standalone VLM per-station circulation against the Prandtl model evaluated
+      at the **actual VLM station midpoints** (bound-leg y-centres) with strip
+      edges taken from the real panel-corner y-coordinates (geometric mesh, not
+      an assumed uniform spacing), resolving Issue #5's convention concern by
+      making the pointwise-vs-cell-averaged choice explicit and self-consistent.
+      - Tutorial resolution (NS=14, α=8°): interior L2 ≤ 3%, interior max ≤ 5%,
+        full-span L2 ≤ 4%, integrated CL within ~3% of lifting line.
+      - Resolution sweep NS ∈ {8, 14, 28, 56}: outer/root ratio strictly
+        decreases 0.458 → 0.356 → 0.256 → 0.182 (pre-fix plateau ~0.41 at
+        NS=28 fails the <0.41 assertion), i.e. the VLM tip taper converges
+        toward the lifting-line zero-tip limit as the geometric tip mesh
+        bunches.
+      - Symmetry test: mirrored half reproduces the mirror-image loading.
+      - Gate after Phase 4: `pytest tests/vpm -m "(unit or verification) and not
+        slow and not mpi"` → **87 passed**.
 
 ---
 
@@ -111,6 +130,7 @@ Plan that emerged:
 | `tests/vpm/test_vlm_loading_distribution.py` | Added the lifting-line tip-taper regression test (marked `verification`); added `math`/`VLMMeshSetup` imports. |
 | `source/solvers/VPM/boundary_elements/vlm/solver/influence.py` | **No change.** Restored to committed state (see Issues #4). |
 | `source/solvers/VPM/boundary_elements/vlm/solver/loading_distribution.py` | (Prior session) span-edge mapping fix for y_over_b. |
+| `tests/vpm/test_vlm_standalone_lifting_line.py` | **Phase 4, new.** Full lifting-line certification of the standalone loading on the actual geometric strips (interior L2/max, full-span L2, integrated CL, monotone tip-taper sweep, mirror symmetry). |
 
 ---
 
@@ -196,11 +216,36 @@ Plan that emerged:
 
 ## 5. Suggested next steps for the receiving agent
 
-- [ ] Review/un-commit the tree state (Issue #7) and the `mesh.py` diff.
-- [ ] Re-run the flatPlate tutorial (coupled) end-to-end and regenerate the
+- [x] Phase 4 lifting-line certification test added &
+      gate green (87 passed). Committed state: `e1be108` (horseshoe) +
+      `872f475` (mesh.py fix + prior phases) are in; the Phase-4 test file
+      `tests/vpm/test_vlm_standalone_lifting_line.py` is the only uncommitted
+      repo change, ready to commit.
+- [x] Re-run the flatPlate tutorial (coupled) end-to-end and regenerate the
       spanwise plot to visually confirm the taper; verify the missing
       `exp_static_aoa05` handling (Issue #2).
-- [ ] Re-run gate: `python -m pytest tests/vpm -p no:cacheprovider
-      -m "(unit or verification) and not slow and not mpi"` (expect 80 passed).
+- [x] Re-run gate: `python -m pytest tests/vpm -p no:cacheprovider
+      -m "(unit or verification) and not slow and not mpi"` → **87 passed**.
 - [ ] Optionally document Issue #3 (coarse-mesh / dt=None coupled behaviour)
       and Issue #5 (station-statistic conventions) in the tutorial docs.
+
+### Follow-up session (Phases 5–10) — all complete
+
+- [x] Phase 5: disentangled spanwise tip taper from `dt` with a new regression
+      `tests/vpm/test_vlm_standalone_lifting_line.py::test_coupled_tip_taper_depends_on_mesh_resolution_not_dt`.
+- [x] Phase 7: re-ran the flatPlate sweep end-to-end. **Confirmed the fix**
+      numerically — tip `c_l` now drops ~62% from mid-span (e.g. static α=8°:
+      tip 0.29 vs mid 0.77), i.e. the parabolic/elliptic Γ→0 tip. Polar linear
+      and symmetric about α=0. Certification (`assets/validate_results.py`)
+      passes, incl. Kelvin bound/wake closure 5.5e-07.
+- [x] Tutorial robustness fixes found while re-running:
+      - `setup_plate.py` hard-coded `processing_unit="VULKAN"`, which the backend
+        rejects on macOS (`config/backend.py`); now `"AUTO"` (METAL on macOS).
+      - `plot_flat_plate_kelvin.py` hard-raised on missing data; now degrades
+        gracefully (`[MISSING]`/skip) like the other plotters.
+- [x] Phase 8: CI `vpm-smoke` now also runs the three certification files
+      (CPU-only, ~10 s) so the taper regression is gated.
+- [x] Phase 9: resolution summarised in `AGENTS.md`.
+- [x] Phase 10: gates green — FVM 336 passed, VPM **88 passed** (incl. the new
+      Phase-5 regression), coupler 79 passed, ruff clean, pyrefly baseline
+      unchanged (edits were VPM-excluded tutorial scripts).

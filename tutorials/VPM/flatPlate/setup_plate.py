@@ -191,7 +191,7 @@ def run_case(
         setup=VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP,
-            processing_unit="VULKAN",
+            processing_unit="AUTO",
             advection=AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             background_velocity=background_velocity,

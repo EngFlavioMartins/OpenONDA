@@ -47,12 +47,14 @@ def _c(key: str) -> str:
 def load_budget(samples_dir: Path, name: str):
     csv = samples_dir / name / f"{name}.csv"
     if not csv.exists():
-        raise FileNotFoundError(csv)
+        print(f"  [MISSING] {csv}")
+        return None
     df = pd.read_csv(csv)
     required = {"time", "gamma_bound_y", "gamma_wake_y"}
     missing = required.difference(df.columns)
     if missing:
-        raise ValueError(f"{csv} lacks corrected circulation columns: {sorted(missing)}")
+        print(f"  [MISSING] {csv} lacks corrected circulation columns: {sorted(missing)}")
+        return None
     t = df["time"].to_numpy(float)
     bound = df["gamma_bound_y"].to_numpy(float)
     wake = df["gamma_wake_y"].to_numpy(float)
@@ -68,7 +70,11 @@ def main() -> None:
 
     name = "exp_static_aoa08"
     angle_of_attack = 8.0
-    t, bound, wake = load_budget(CASE_DIR / "samples", name)
+    budget = load_budget(CASE_DIR / "samples", name)
+    if budget is None:
+        print("  Skipping flat_plate_kelvin: budget data unavailable.")
+        return
+    t, bound, wake = budget
     if t.size == 0:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
