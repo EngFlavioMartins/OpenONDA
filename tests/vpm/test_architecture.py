@@ -4,6 +4,10 @@ Mirrors ``source/solvers/VPM/ARCHITECTURE.md``.  These tests statically parse
 the import graph (no Taichi backend needed) and fail when a runtime import
 crosses a forbidden or unlisted subsystem boundary.  ``if TYPE_CHECKING:``
 imports are ignored; ``io/logging.py`` is a leaf allowed from any subsystem.
+
+Also guards against reintroducing imports from VPM namespaces that were deleted
+during the `utils/` -> `io/sampling/` + `numerics/fourier_integrals.py`
+restructure (see ``git log`` for the refactor).
 """
 
 from __future__ import annotations
@@ -14,8 +18,88 @@ from pathlib import Path
 import pytest
 
 VPM_ROOT = Path(__file__).resolve().parents[2] / "source" / "solvers" / "VPM"
+REPO_ROOT = VPM_ROOT.parents[2]
 
 SUBSYSTEMS = {d.name for d in VPM_ROOT.iterdir() if d.is_dir() and (d / "__init__.py").exists()}
+
+# Dotted VPM namespaces deleted by the refactor.  Nothing may import any path
+# under these anymore (compatibility was deliberately not provided).
+DELETED_NAMESPACES = (
+    "source.solvers.VPM.utils",
+    "source.solvers.VPM.diagnostics.fourier_integrals",
+)
+
+_SCAN_SKIP_PARTS = {
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    "node_modules",
+    "figures",
+    "samples",
+}
+
+
+def _file_package_for(file: Path) -> list[str]:
+    """Absolute dotted package ('source.solvers.VPM...') containing `file`."""
+    return ["source"] + list(file.relative_to(REPO_ROOT).parent.parts)
+
+
+def _all_repo_py_files():
+    for path in REPO_ROOT.rglob("*.py"):
+        if any(s in set(path.relative_to(REPO_ROOT).parts) for s in _SCAN_SKIP_PARTS):
+            continue
+        yield path
+
+
+def _banned(dotted: str) -> bool:
+    return any(dotted == ns or dotted.startswith(ns + ".") for ns in DELETED_NAMESPACES)
+
+
+def _import_targets(file: Path, tree: ast.AST):
+    base = _file_package_for(file)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                yield alias.name
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is None:
+                continue
+            if node.level:
+                up = node.level - 1
+                prefix = base[:-up] if up else base
+                yield ".".join(prefix + node.module.split("."))
+            else:
+                yield node.module
+
+
+def _collect_deleted_namespace_imports() -> list[str]:
+    hits: list[str] = []
+    for path in sorted(_all_repo_py_files()):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for dotted in _import_targets(path, tree):
+            if _banned(dotted):
+                hits.append(f"{path.relative_to(REPO_ROOT)} imports {dotted!r}")
+    return hits
+
+
+@pytest.mark.unit
+def test_no_imports_from_deleted_vpm_namespaces():
+    """No production/tutorial/test code may import the refactored-away paths.
+
+    The `utils/` package (field_samplers, flow_models, offline_diagnostics,
+    simulation_checks) moved to `io/sampling/` + `initial_conditions/` and
+    `diagnostics/fourier_integrals.py` moved to `numerics/fourier_integrals.py`.
+    Importing the deleted dotted paths would silently grab a stale module or,
+    worse, resurrect an old duplicate behaviour.  Use the new canonical paths.
+    """
+    hits = _collect_deleted_namespace_imports()
+    assert hits == [], "Imports from deleted VPM namespaces found:\n  " + "\n  ".join(hits)
+
 
 # Allowed edges exactly as documented in ARCHITECTURE.md (io/logging is a leaf
 # available to every subsystem, so `io` is allowed wherever logging is listed).

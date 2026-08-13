@@ -124,9 +124,12 @@ def horseshoe_velocity(target, v1, v2, v3, v4, gamma: float, epsilon: float):
     Compute velocity induced by a horseshoe vortex at target point.
 
     Horseshoe consists of three segments:
-    1. Left trailing leg: v1 (far upstream) → v2 (bound left)
+    1. Left trailing leg: v1 (far downstream) → v2 (bound left)
     2. Bound leg: v2 → v3 (bound right)
-    3. Right trailing leg: v3 → v4 (far upstream)
+    3. Right trailing leg: v3 → v4 (far downstream)
+
+    The far points v1/v4 lie downstream at V2 + da·∞ / V3 + db·∞ (see
+    _compute_trailing_geometry), so the trailing legs run v1→v2 and v3→v4.
     """
     # Sum contributions from all three legs
     vel_left = bound_vortex_velocity(target, v1, v2, gamma, epsilon)  # Left trailing
@@ -163,28 +166,39 @@ def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, gamma: float, epsil
     Compute velocity from horseshoe with semi-infinite trailing legs.
 
     This is the standard VLM formulation where trailing legs extend to
-    infinity in the freestream direction.
+    infinity in the freestream direction.  The canonical orientation is the
+    L → ∞ limit of the finite horseshoe (see horseshoe_velocity):
+
+        left  leg:  infinity -> v2      (semi-infinite from v2 along +da, -gamma)
+        bound:      v2 -> v3            (+gamma)
+        right leg:  v3 -> infinity      (semi-infinite from v3 along +db, +gamma)
+
+    i.e. a filament that runs v1→v2 / v3→v4 with +gamma collapses onto
+    semi_infinite(v2, da, -gamma) / semi_infinite(v3, db, +gamma) as the far
+    points v1 = v2 + da·∞, v4 = v3 + db·∞ go downstream.  This is certified
+    numerically in tests/vpm/test_semi_infinite_horseshoe.py by comparing
+    against the finite horseshoe at growing L/c.
 
     Args:
         target: Point where velocity is evaluated
         v2: Bound leg left endpoint
         v3: Bound leg right endpoint
-        da: Direction vector for left trailing leg (normalized)
-        db: Direction vector for right trailing leg (normalized)
+        da: Downstream unit direction for left trailing leg
+        db: Downstream unit direction for right trailing leg
         gamma: Circulation strength
         epsilon: Regularization parameter
 
     Returns:
         Velocity vector at target
     """
-    # Left semi-infinite trailing leg (from v2 extending in direction -da)
-    vel_left = semi_infinite_vortex_velocity(target, v2, -da, gamma, epsilon)
+    # Left semi-infinite trailing leg: infinity -> v2 (reverse of v2 -> +inf in da)
+    vel_left = semi_infinite_vortex_velocity(target, v2, da, -gamma, epsilon)
 
     # Bound leg (from v2 to v3)
     vel_bound = bound_vortex_velocity(target, v2, v3, gamma, epsilon)
 
-    # Right semi-infinite trailing leg (from v3 extending in direction -db)
-    vel_right = semi_infinite_vortex_velocity(target, v3, -db, gamma, epsilon)
+    # Right semi-infinite trailing leg: v3 -> infinity
+    vel_right = semi_infinite_vortex_velocity(target, v3, db, gamma, epsilon)
 
     vel = vel_left + vel_bound + vel_right
 

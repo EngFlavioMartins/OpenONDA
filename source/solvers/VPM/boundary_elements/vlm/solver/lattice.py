@@ -62,10 +62,10 @@ class VLMLattice:
 
         # Horseshoe vortex points (N x 4 x 3)
         # Order: [V1, V2, V3, V4]
-        #   V1 = left trailing leg far endpoint (upstream infinity)
+        #   V1 = left trailing leg far endpoint (downstream infinity)
         #   V2 = bound leg left endpoint (at 25% chord)
         #   V3 = bound leg right endpoint (at 25% chord)
-        #   V4 = right trailing leg far endpoint (upstream infinity)
+        #   V4 = right trailing leg far endpoint (downstream infinity)
         self.vortex_points = ti.Vector.field(3, dtype=dtype, shape=(max_panels, 4))
 
         # Collocation points (N x 3) - at 75% chord
