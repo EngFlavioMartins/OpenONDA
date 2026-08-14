@@ -82,12 +82,14 @@ def run_case(name: str) -> None:
             processing_unit="AUTO",
             advection=AdvectionConfig(scheme="RK3"),
             turbulence=(
-                TurbulenceConfig.dns() if mode == "dns" else TurbulenceConfig.les_smagorinsky()
+                TurbulenceConfig.dns()
+                if mode == "dns"
+                else TurbulenceConfig.les_smagorinsky(cs=0.20)
             ),
             stretching=stretching_setup(stretching),
             stabilization=StabilizationConfig.disabled(),
             velocity=VelocityConfig.treecode(
-                theta=0.35,
+                theta=0.3,
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
@@ -111,7 +113,7 @@ def run_case(name: str) -> None:
         avg_particle_radius=float(radii.mean()),
         positions=positions,
         volumes=volumes,
-        epsilon_W=0.025,
+        epsilon_W=0.05,
         anti_diffuse_flag=True,
     )
     solver.add_vortex_particles(
@@ -148,8 +150,6 @@ def main() -> int:
     print("\n===== SIMULATION =====")
     print(f"---- vortex ring variant: {args.variant} ----")
     run_case(args.variant)
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

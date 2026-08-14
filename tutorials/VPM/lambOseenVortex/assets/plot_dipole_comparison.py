@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Counter-rotating vortex dipole — core trajectory and radius comparison.
 
-Reads compact mid-plane diagnostics from each viscous scheme and plots:
+Reads the field-based vortex diagnostics (``field_diagnostics.csv``, from the
+z=L/4 velocity/vorticity plane) for each viscous scheme and plots:
   - core x-position  xc / b0  vs  ν t / b0²
   - core radius       a_c / a_{c,0}  vs  ν t / b0²
 
@@ -20,32 +21,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from ._common import (
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from .vortex_diagnostics import SCHEMES, resolve_runtime_physics
 else:
-    from _common import (
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from vortex_diagnostics import SCHEMES, resolve_runtime_physics
 
 
 def extract_dipole_timeseries(
     samples_dir: Path,
     scheme: str,
 ) -> dict | None:
-    path = samples_dir / f"dipole_{scheme}" / "pair_diagnostics.csv"
+    path = samples_dir / f"dipole_{scheme}" / "field_diagnostics.csv"
     if not path.is_file():
         return None
     data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
@@ -54,9 +41,8 @@ def extract_dipole_timeseries(
         return None
     return {
         "t": data["flow_time"].to_numpy(float),
-        "x_core": data["x_core"].to_numpy(float),
-        "a_c": data["core_radius"].to_numpy(float),
-        "total_gamma": data["surface_circulation"].to_numpy(float),
+        "x_core": data["center0_x"].to_numpy(float),
+        "a_c": data["a_c0"].to_numpy(float),
     }
 
 

@@ -306,7 +306,12 @@ def TaylorGreenVortexVPM(
         avg_particle_radius: Particle core size [m]
         positions: Particle positions [m]
         volumes: Particle volumes [m³] (optional)
-        flow_time: Initial flow time for decay calculation [s]
+        flow_time: Initial flow time [s]. The ``decay_factor`` applied at
+            ``flow_time > 0`` is the single-mode linear (Stokes) decay of this
+            initial condition, not the exact nonlinear 3D Taylor-Green
+            solution -- the true field departs from a single Fourier mode as
+            soon as the convective term acts. Use ``flow_time=0`` for the
+            canonical benchmark initial condition.
 
     Returns:
         velocities : (N,3) ndarray - Particle velocities [m/s]
@@ -331,10 +336,10 @@ def TaylorGreenVortexVPM(
     velocities[:, 1] = -decay_factor * np.cos(x) * np.sin(y) * np.cos(z)  # v
     velocities[:, 2] = 0.0  # w
 
-    # Taylor-Green vortex vorticity field
-    vorticities[:, 0] = decay_factor * np.cos(x) * np.cos(y) * np.sin(z) * scale  # ωx
-    vorticities[:, 1] = decay_factor * np.sin(x) * np.sin(y) * np.sin(z) * scale  # ωy
-    vorticities[:, 2] = -2.0 * decay_factor * np.sin(x) * np.cos(y) * np.cos(z) * scale  # ωz
+    # Taylor-Green vortex vorticity field: omega = curl(u)
+    vorticities[:, 0] = -decay_factor * np.cos(x) * np.sin(y) * np.sin(z) * scale  # ωx
+    vorticities[:, 1] = -decay_factor * np.sin(x) * np.cos(y) * np.sin(z) * scale  # ωy
+    vorticities[:, 2] = 2.0 * decay_factor * np.sin(x) * np.sin(y) * np.cos(z) * scale  # ωz
 
     # Set uniform viscosity
     viscosities = np.full(num_particles, viscosity)

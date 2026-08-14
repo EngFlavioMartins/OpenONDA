@@ -9,14 +9,14 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
+from ring_metrics import (
     FIGURES_DIR,
     SOLUTION_DIR,
     T_REF,
+    U_REF,
     load_ring_data,
     load_ring_speed,
     saffman_speed,
-    U_REF,
 )
 
 

@@ -11,19 +11,19 @@ import sys
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    build_arg_parser,
-    load_theme,
-    load_sampled_ring_circulation,
-    load_sampled_vector_circulation_error,
-    save_fig,
+from plot_style import (
     VARIANT_LABEL,
     VARIANT_STYLE,
+    build_arg_parser,
+    figure_size,
+    load_theme,
+    save_fig,
+)
+from ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
-    figure_size,
-    mark_every,
-    reference_style,
+    load_sampled_ring_circulation,
+    load_sampled_vector_circulation_error,
 )
 
 
@@ -34,9 +34,10 @@ def main() -> None:
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
-    load_theme()
+    colors, _ = load_theme()
 
     fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("single_tall"), sharex=True)
+    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.10, right=0.98, top=0.92, bottom=0.30)
     legend_handles = []
     legend_labels = []
 
@@ -50,12 +51,11 @@ def main() -> None:
         (line,) = ax_tube.plot(
             t,
             c,
-            st["linestyle"],
+            linestyle="None",
             color=st["color"],
-            lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=mark_every(),
+            markevery=2,
             mew=st["markeredgewidth"],
             label=label,
         )
@@ -63,20 +63,16 @@ def main() -> None:
             ax_sum.semilogy(
                 t_sum,
                 sum_err.clip(min=1e-12),
-                st["linestyle"],
+                linestyle="None",
                 color=st["color"],
-                lw=st["linewidth"],
                 marker=st["marker"],
                 ms=st["markersize"],
-                markevery=mark_every(),
+                markevery=2,
                 mew=st["markeredgewidth"],
                 label=label,
             )
         legend_handles.append(line)
         legend_labels.append(label)
-
-    ax_tube.axhline(1.0, **reference_style())
-    ax_sum.axhline(1e-4, **reference_style())
 
     for ax in (ax_tube, ax_sum):
         ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
@@ -88,6 +84,7 @@ def main() -> None:
     ax_sum.set_title(r"Vector-sum conservation")
     ax_sum.set_ylabel(r"$\|\Sigma\alpha-\Sigma\alpha_0\|\,/\,\Sigma|\alpha|_0$")
     ax_sum.set_ylim(1e-8, 1.0)
+    ax_sum.axhspan(1e-4, 1.0, color=colors["background_light"], linewidth=0, zorder=0)
 
     fig.legend(
         legend_handles,
@@ -100,7 +97,6 @@ def main() -> None:
         fig,
         figs / "vortex_ring_circulation.png",
         dpi=args.dpi,
-        tight_rect=(0.0, 0.16, 1.0, 1.0),
         figure_format=args.format,
     )
 

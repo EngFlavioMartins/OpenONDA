@@ -6,14 +6,13 @@ Navier-Stokes equations for an isolated vortex, so the computed flow can be
 compared directly with the analytic profile. This script runs the chosen
 benchmark case (single vortex, vortex dipole, or merging vortex pair) with the
 chosen diffusion schemes and stores the snapshots under ``solution`` while the
-sampled profiles, fields, trajectories, diagnostics, and flow integrals are
-written under ``samples``.
+sampled z=L/4 velocity/vorticity fields and flow integrals are written under
+``samples``.
 
 Examples:
-    python vortex_setup.py --gamma1 +1                            # single vortex, all schemes
-    python vortex_setup.py --gamma1 +1 --gamma2 -1 --schemes cs   # vortex dipole
-    python vortex_setup.py --gamma1 +1 --gamma2 +1 --schemes cs   # merging pair
-    python vortex_setup.py --gamma1 +1 --schemes cs rwm dvh gbd
+    python vortex_setup.py --gamma1 +1                  # single vortex, all schemes
+    python vortex_setup.py --gamma1 +1 --gamma2 -1       # vortex dipole
+    python vortex_setup.py --gamma1 +1 --gamma2 +1       # merging pair
 """
 
 from __future__ import annotations
@@ -25,10 +24,8 @@ from time import perf_counter
 
 import numpy as np
 
-from assets.pair_diagnostics import PairDiagnosticsSampler
 from openonda.vpm import (
     LambOseenVPM,
-    LineSampler,
     ParticleDistributor,
     Solver,
     SurfaceSampler,
@@ -52,7 +49,6 @@ SPACING = 0.4 * CORE_RADIUS  # default particle spacing near the core [m]
 COLUMN_SPACING = 0.80 * CORE_RADIUS  # spacing between vortex layers [m]
 PARTICLE_RADIUS = 1.50 * SPACING  # particle core radius [m]
 FIELD_SPACING = 0.30 * CORE_RADIUS  # spacing of the surface sampling grid [m]
-PROFILE_SPACING = 0.10 * CORE_RADIUS  # spacing of the line samples [m]
 
 # ---- Run control ----------------------------------------------------------
 TIME_STEP = 0.05  # time step for cs/rwm/gbd [s]
@@ -122,7 +118,6 @@ def run_case(
     physics: str,
     scheme: str,
     circulations: tuple[float, ...],
-    args: argparse.Namespace,
 ) -> None:
     """Run one benchmark case."""
     started_at = perf_counter()
@@ -130,24 +125,18 @@ def run_case(
 
     gamma = abs(circulations[0])
     viscosity = gamma / RE_GAMMA
-    spacing = args.spacing_factor * CORE_RADIUS
+    spacing = SPACING
     particle_radius = 1.50 * spacing
     viscous = viscous_config(scheme, viscosity, spacing)
     time_step = float(f"{viscous.dvh_required_dt():.3g}") if scheme == "dvh" else TIME_STEP
 
     sample_steps = cadence_steps(SAMPLE_PERIOD, time_step)
-    backup_steps = (
-        args.backup_frequency
-        if args.backup_frequency is not None
-        else cadence_steps(BACKUP_PERIOD, time_step)
-    )
+    backup_steps = cadence_steps(BACKUP_PERIOD, time_step)
 
-    number_of_steps = (
-        args.num_steps if args.num_steps is not None else round(TOTAL_TIME / time_step)
-    )
+    number_of_steps = round(TOTAL_TIME / time_step)
     y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
     initial_half_width = max(abs(y) for y in y_positions) + 7.0 * CORE_RADIUS
-    column_half_length = args.length / 2.0
+    column_half_length = COLUMN_LENGTH / 2.0
 
     # GPU DVH/GBD must pre-allocate its diffusion grid once for the whole domain
     final_core_radius = np.sqrt(CORE_RADIUS**2 + 4.0 * BETA_RMAX**2 * viscosity * TOTAL_TIME)
@@ -176,41 +165,15 @@ def run_case(
     ]
     positions, volumes, radii = column_distribution(initial_bounds, spacing, particle_radius)
 
-    scheduled_samplers = []
-    final_samplers = []
-    if physics == "vortex":
-        final_samplers.extend(
-            (
-                SurfaceSampler(
-                    point=[0, 0, 0],
-                    normal=[0, 0, 1],
-                    bounds=domain_bounds[:4],
-                    spacing=FIELD_SPACING,
-                    file_name=f"{case_name}_z0",
-                ),
-                LineSampler(
-                    [domain_bounds[0], 0, 0],
-                    [domain_bounds[1], 0, 0],
-                    PROFILE_SPACING,
-                    f"{case_name}_x",
-                ),
-                LineSampler(
-                    [0, domain_bounds[2], 0],
-                    [0, domain_bounds[3], 0],
-                    PROFILE_SPACING,
-                    f"{case_name}_y",
-                ),
-            )
-        )
-    else:
-        pair_sampler = PairDiagnosticsSampler(
-            physics,
-            SEPARATION,
-            COLUMN_LENGTH,
-            slab_half_width=1.5 * COLUMN_SPACING,
-        )
-        scheduled_samplers.append(pair_sampler)
-        final_samplers.append(pair_sampler)
+    field_sampler = SurfaceSampler(
+        point=[0, 0, COLUMN_LENGTH / 4],
+        normal=[0, 0, 1],
+        bounds=domain_bounds[:4],
+        spacing=FIELD_SPACING,
+        file_name=f"{case_name}_zq",
+    )
+    scheduled_samplers = [field_sampler]
+    final_samplers = [field_sampler]
 
     solver = Solver(
         setup=VPMSetup.viscous_flow_simulation(
@@ -224,7 +187,7 @@ def run_case(
             logging_frequency=sample_steps,
             backup_frequency=backup_steps,
             backup_file_name=case_name,
-            backup_directory=str(Path(args.solution_dir)),
+            backup_directory=str(SOLUTION_DIR),
             sample_subdirectory=case_name,
             samplers=scheduled_samplers,
             final_samplers=final_samplers,
@@ -232,7 +195,8 @@ def run_case(
         )
     )
 
-    samples_dir = resolve_samples_dir(Path(args.solution_dir), case_name)
+    # We need metadate with some constants in order to make the plots later.
+    samples_dir = resolve_samples_dir(SOLUTION_DIR, case_name)
     samples_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "case": physics,
@@ -256,6 +220,7 @@ def run_case(
     metadata_path = samples_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
+    # Add the vortex particles
     vortex_age = (CORE_RADIUS / BETA_RMAX) ** 2 / (4.0 * viscosity)
     for group_id, (circulation, y_position) in enumerate(
         zip(circulations, y_positions, strict=True)
@@ -281,8 +246,7 @@ def run_case(
             group_id=np.full(np.count_nonzero(keep), group_id, dtype=np.int32),
         )
 
-    if physics != "vortex":
-        solver.execute_final_samplers()  # Record the exact t=0 pair state.
+    solver.execute_final_samplers()  # Record the exact t=0 state.
 
     try:
         for _ in range(solver.time_step, number_of_steps):
@@ -310,56 +274,11 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="circulation of the second vortex; 0.0 = single-vortex case",
     )
-    parser.add_argument(
-        "--schemes",
-        nargs="*",
-        choices=SCHEMES,
-        default=list(SCHEMES),
-        help="diffusion schemes to run (default: all)",
-    )
-    parser.add_argument(
-        "--num-steps",
-        type=int,
-        default=None,
-        help="number of time steps (default: run to TOTAL_TIME)",
-    )
-    parser.add_argument(
-        "--length",
-        type=float,
-        default=COLUMN_LENGTH,
-        help="length of the finite vortex column [m]",
-    )
-    parser.add_argument(
-        "--spacing-factor",
-        type=float,
-        default=SPACING / CORE_RADIUS,
-        help="particle spacing as a multiple of the core radius",
-    )
-    parser.add_argument(
-        "--processing-unit",
-        default="AUTO",
-        choices=("AUTO", "CPU", "CUDA", "VULKAN", "METAL"),
-        help="computation backend",
-    )
-    parser.add_argument(
-        "--backup-frequency",
-        type=int,
-        default=None,
-        help="backup every N steps (default: every BACKUP_PERIOD seconds)",
-    )
-    parser.add_argument(
-        "--solution-dir",
-        type=Path,
-        default=SOLUTION_DIR,
-        help="directory for the simulation snapshots",
-    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.num_steps is not None and args.num_steps < 1:
-        raise SystemExit("--num-steps must be positive")
 
     # This setup is prepared to run with 1 or 2 vortices
     # In the second case, in merging or dipole modes
@@ -371,8 +290,8 @@ def main() -> int:
         physics, circulations = "merging", (args.gamma1, args.gamma2)
 
     print("\n===== SIMULATION =====")
-    for scheme in args.schemes:
-        run_case(physics, scheme, circulations, args)
+    for scheme in SCHEMES:
+        run_case(physics, scheme, circulations)
 
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

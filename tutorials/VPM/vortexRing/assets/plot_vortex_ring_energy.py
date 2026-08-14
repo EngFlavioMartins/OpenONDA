@@ -15,20 +15,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    build_arg_parser,
-    load_theme,
-    save_fig,
-    T_REF,
-    P_REF,
+from plot_style import (
     VARIANT_LABEL,
     VARIANT_STYLE,
+    build_arg_parser,
     figure_size,
+    load_theme,
     mark_every,
-    reference_style,
-    FIGURES_DIR,
-    SAMPLES_DIR,
+    save_fig,
 )
+from ring_metrics import FIGURES_DIR, P_REF, SAMPLES_DIR, T_REF
 
 
 def main() -> None:
@@ -36,9 +32,10 @@ def main() -> None:
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
-    load_theme()
+    colors, _ = load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
+    fig.subplots_adjust(wspace=0.26, hspace=0.10, left=0.10, right=0.98, top=0.92, bottom=0.29)
     legend_handles = []
     legend_labels = []
 
@@ -60,24 +57,24 @@ def main() -> None:
         (line,) = ax_de.plot(
             t,
             dedt / P_REF,
-            st["linestyle"],
+            linestyle="None",
             color=st["color"],
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=mark_every(),
+            markevery=2,
             mew=st["markeredgewidth"],
             label=label,
         )
         ax_nuens.plot(
             t,
             nuEns / P_REF,
-            st["linestyle"],
+            linestyle="None",
             color=st["color"],
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=mark_every(),
+            markevery=2,
             mew=st["markeredgewidth"],
             label=label,
         )
@@ -85,10 +82,10 @@ def main() -> None:
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
-        ax.axhline(0.0, **reference_style())
         ax.set_xlabel(r"$t\,\Gamma / R_0^2$")
         ax.set_ylim(-0.05, 0.01)
         ax.set_xlim(0, 38)
+        ax.axhspan(0.0, 0.01, color=colors["background_light"], linewidth=0, zorder=0)
 
     ax_de.set_title(r"Energy rate versus time")
     ax_de.set_ylabel(r"$(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
@@ -105,7 +102,6 @@ def main() -> None:
         fig,
         figs / "vortex_ring_energy.png",
         dpi=args.dpi,
-        tight_rect=(0.0, 0.16, 1.0, 1.0),
         figure_format=args.format,
     )
 

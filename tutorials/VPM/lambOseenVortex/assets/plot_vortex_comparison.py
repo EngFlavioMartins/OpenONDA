@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Lamb-Oseen single vortex — radial profile comparison.
 
-Reads the last x-line CSV sample from each viscous scheme and plots:
+Reads the last z=L/4 surface-field snapshot from each viscous scheme,
+slices the grid row nearest y=0, and plots:
   - azimuthal velocity  uθ / U_{c,0}
   - z-vorticity         ωz / ω_{c,0}
   - velocity gradient   (∂uy/∂x) · a_{c,0} / U_{c,0}
@@ -15,34 +16,27 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from ._common import (
+    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from .vortex_diagnostics import (
         SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        read_column_half_length,
-        read_flow_time,
+        TOTAL_TIME,
+        pvd_time_map,
+        read_surface_field,
         resolve_runtime_physics,
-        save_fig,
     )
 else:
-    from _common import (
+    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from vortex_diagnostics import (
         SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        read_column_half_length,
-        read_flow_time,
+        TOTAL_TIME,
+        pvd_time_map,
+        read_surface_field,
         resolve_runtime_physics,
-        save_fig,
     )
 
 from matplotlib.ticker import FormatStrFormatter
@@ -73,42 +67,36 @@ def lamb_oseen_gradient(r: np.ndarray, t: float, gamma: float, nu: float) -> np.
     return grad
 
 
-def finite_column_velocity(
-    x: np.ndarray,
-    t: float,
-    gamma: float,
-    nu: float,
-    half_length: float,
-) -> np.ndarray:
-    r = np.abs(x)
-    vel, _, _ = lamb_oseen_profile(r, t, gamma, nu)
-    span_factor = half_length / np.sqrt(half_length**2 + r**2)
-    return vel * span_factor * np.sign(x)
-
-
 # =============================================================
 # Data loader
 # =============================================================
 
 
-def load_profile(samples_dir: Path, scheme: str) -> tuple[pd.DataFrame, float] | None:
-    """Load the current final profile from ``samples/vortex_<scheme>/``."""
+def load_profile(
+    samples_dir: Path, scheme: str
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float] | None:
+    """Slice the y≈0 row out of the last sampled z=L/4 field for this scheme."""
 
-    path = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_x.csv"
-    if not path.is_file():
+    timeline = pvd_time_map(samples_dir, "vortex", scheme)
+    if not timeline:
+        return None
+    last_step = max(timeline, key=timeline.get)
+    vts = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{last_step:06d}.vts"
+    if not vts.is_file():
         return None
 
-    time = read_flow_time(path)
-    if time is None:
+    field = read_surface_field(vts)
+    if np.abs(field["Uy"]).max() <= 1e-10:
         return None
 
-    data = pd.read_csv(path, comment="#")
-    required_columns = {"x", "Uy", "omega_z"}
-    if data.empty or not required_columns.issubset(data.columns):
-        return None
-    if data["Uy"].abs().max() <= 1e-10:
-        return None
-    return data, time
+    # SurfaceSampler's grid is built with np.arange, so an exact y=0 row
+    # isn't guaranteed — take the row nearest to it.
+    y_1d = field["y"][0, :]
+    j0 = int(np.argmin(np.abs(y_1d)))
+    x = field["x"][:, j0]
+    uy = field["Uy"][:, j0]
+    oz = field["omega_z"][:, j0]
+    return x, uy, oz, timeline[last_step]
 
 
 # =============================================================
@@ -132,7 +120,6 @@ def plot_vortex_case(args) -> int:
     uc_ref = args.gamma / (2.0 * np.pi * ac0)
     wc_ref = args.gamma / (np.pi * ac0**2)
     gc_ref = uc_ref / ac0
-    half_length = read_column_half_length(samples_dir) or 25.0 * ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.18, left=0.12, right=0.98)
@@ -142,10 +129,7 @@ def plot_vortex_case(args) -> int:
         profile = load_profile(samples_dir, scheme)
         if profile is None:
             continue
-        df, t = profile
-        x = df["x"].to_numpy()
-        uy = df["Uy"].to_numpy()
-        oz = df["omega_z"].to_numpy()
+        x, uy, oz, t = profile
         dvx = np.gradient(uy, x)
         st = style_map[scheme]
         plot_kw = {
@@ -153,7 +137,7 @@ def plot_vortex_case(args) -> int:
             "label": st["label"],
             "marker": st["marker"],
             "markersize": 2.0,
-            "markevery": 2,
+            "markevery": 1,
             "linestyle": "None",
             "linewidth": 1.0,
         }
@@ -162,20 +146,19 @@ def plot_vortex_case(args) -> int:
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
-    if not scheme_data:
-        plt.close(fig)
-        out.unlink(missing_ok=True)
-        print("  [vortex] no sampled profiles; figure not generated")
-        return 0
-
-    elapsed_time = float(np.median([scheme[1] for scheme in scheme_data]))
-    print(f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s")
+    if scheme_data:
+        elapsed_time = float(np.median([scheme[1] for scheme in scheme_data]))
+        print(
+            f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s"
+        )
+    else:
+        elapsed_time = TOTAL_TIME
+        print(f"  [vortex] no sampled profiles; plotting reference only at t={elapsed_time:.3g}s")
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "-"}
     theory_t = run_t0 + elapsed_time
-    tv = finite_column_velocity(r_line, theory_t, args.gamma, run_nu, half_length)
-    to = lamb_oseen_profile(np.abs(r_line), theory_t, args.gamma, run_nu)[1]
+    tv, to, _ = lamb_oseen_profile(r_line, theory_t, args.gamma, run_nu)
     tg = np.gradient(tv, r_line)
     axes[0].plot(r_line / ac0, tv / uc_ref, label="Theory", **ref_kw)
     axes[1].plot(r_line / ac0, to / wc_ref, **ref_kw)

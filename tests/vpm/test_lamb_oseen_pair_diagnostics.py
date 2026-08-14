@@ -1,4 +1,4 @@
-"""Tests for compact Lamb--Oseen pair diagnostics."""
+"""Tests for the unified field-based Lamb--Oseen vortex diagnostics."""
 
 from __future__ import annotations
 
@@ -9,112 +9,157 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tutorials.VPM.lambOseenVortex.assets.pair_diagnostics import PairDiagnosticsSampler
-from tutorials.VPM.lambOseenVortex.assets.rwm_ensemble import average_pair_diagnostics
+from tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison import (
+    lamb_oseen_profile,
+    load_profile,
+)
+from tutorials.VPM.lambOseenVortex.assets.vortex_diagnostics import (
+    FIELD_CSV_COLUMNS,
+    _core_radius_utheta,
+    _diagnostics_row,
+    average_field_diagnostics,
+)
 
 
-class _ParticlePair:
-    def __init__(self, signs: tuple[float, float]) -> None:
-        offsets = np.array(((0.1, 0.0), (-0.1, 0.0), (0.0, 0.1), (0.0, -0.1)))
-        xy = np.vstack((offsets + (0.0, 0.5), offsets + (0.0, -0.5)))
-        self.particles_positions = np.column_stack((xy, np.zeros(len(xy))))
-        circulation = np.repeat(signs, len(offsets))
-        self.particles_strengths = np.column_stack(
-            (np.zeros(len(xy)), np.zeros(len(xy)), circulation)
-        )
-        self.particles_radii = np.full(len(xy), 0.05)
-        self.particles_group_ids = np.repeat((0, 1), len(offsets))
+def _superposed_lamb_oseen_field(vortices, extent=1.2, spacing=0.02) -> dict:
+    """Synthetic z=const velocity/vorticity plane from superposed Lamb-Oseen
+    vortices. ``vortices``: list of ``(cx, cy, gamma, core_radius)``."""
+    xs = np.arange(-extent, extent + spacing / 2, spacing)
+    ys = np.arange(-extent, extent + spacing / 2, spacing)
+    x, y = np.meshgrid(xs, ys, indexing="ij")
+    ux = np.zeros_like(x)
+    uy = np.zeros_like(x)
+    wz = np.zeros_like(x)
+    for cx, cy, gamma, core_radius in vortices:
+        dx = x - cx
+        dy = y - cy
+        r = np.sqrt(dx**2 + dy**2)
+        vel, oz, _ = lamb_oseen_profile(r, core_radius**2, gamma, 0.25)
+        r_safe = np.where(r > 1e-12, r, 1.0)
+        ux += vel * (-dy / r_safe)
+        uy += vel * (dx / r_safe)
+        wz += oz
+    return {"x": x, "y": y, "Ux": ux, "Uy": uy, "omega_z": wz}
 
 
-def test_dipole_sampler_writes_dense_compact_history_without_duplicate_steps(tmp_path):
-    path = tmp_path / "pair_diagnostics.csv"
-    sampler = PairDiagnosticsSampler("dipole", 1.0, 1.0)
-    solver = _ParticlePair((1.0, -1.0))
-
-    sampler.save_csv(solver, path, time=0.25, step=1)
-    sampler.save_csv(solver, path, time=0.25, step=1)
-
-    data = pd.read_csv(path)
-    assert len(data) == 1
-    assert data.loc[0, "x_core"] == pytest.approx(0.0)
-    assert data.loc[0, "y_core"] == pytest.approx(0.5)
-    assert data.loc[0, "core_radius"] == pytest.approx(np.sqrt(0.0125))
+def _row_dict(field: dict, physics: str) -> dict:
+    row = _diagnostics_row(field, physics)
+    return dict(zip(FIELD_CSV_COLUMNS, row, strict=True))
 
 
-def test_merging_sampler_tracks_both_initial_cores(tmp_path):
-    path = tmp_path / "pair_diagnostics.csv"
-    sampler = PairDiagnosticsSampler("merging", 1.0, 1.0)
-
-    sampler.save_csv(_ParticlePair((1.0, 1.0)), path, time=0.25, step=1)
-
-    data = pd.read_csv(path)
-    assert len(data) == 1
-    assert bool(data.loc[0, "merged"]) is False
-    assert data.loc[0, "separation"] == pytest.approx(1.0)
-    assert data.loc[0, "core_area"] == pytest.approx(0.00625)
+def test_core_radius_utheta_recovers_known_lamb_oseen_core():
+    field = _superposed_lamb_oseen_field([(0.0, 0.0, 1.0, 0.15)], extent=1.0, spacing=0.01)
+    a_c = _core_radius_utheta(field, np.array([0.0, 0.0]), r_max=0.45)
+    assert a_c == pytest.approx(0.15, rel=0.05)
 
 
-def test_pair_geometry_uses_midplane_while_circulation_uses_full_column(tmp_path):
-    path = tmp_path / "pair_diagnostics.csv"
-    solver = _ParticlePair((1.0, -1.0))
-    solver.particles_positions[:4, 2] = 0.0
-    solver.particles_positions[4:, 2] = 1.0
-    solver.particles_positions[4:, 0] = 10.0
-    sampler = PairDiagnosticsSampler("dipole", 1.0, 2.0, slab_half_width=0.1)
+def test_field_diagnostics_recovers_dipole_centers_and_core_radius():
+    field = _superposed_lamb_oseen_field([(0.0, 0.5, 1.0, 0.10), (0.0, -0.5, -1.0, 0.10)])
+    field["time"] = 0.25
+    field["step"] = 1
 
-    sampler.save_csv(solver, path, time=0.25, step=1)
+    result = _row_dict(field, "dipole")
 
-    data = pd.read_csv(path)
-    assert data.loc[0, "x_core"] == pytest.approx(0.0)
-    assert data.loc[0, "surface_circulation"] == pytest.approx(2.0)
+    assert result["center0_x"] == pytest.approx(0.0, abs=0.02)
+    assert result["center0_y"] == pytest.approx(0.5, abs=0.02)
+    assert result["center1_y"] == pytest.approx(-0.5, abs=0.02)
+    assert result["separation"] == pytest.approx(1.0, abs=0.03)
+    assert result["a_c0"] == pytest.approx(0.10, abs=0.02)
+    assert result["a_c1"] == pytest.approx(0.10, abs=0.02)
+    assert result["merged"] is False
 
 
-def test_merging_sampler_slab_can_be_centered_off_the_midplane(tmp_path):
-    path = tmp_path / "pair_diagnostics.csv"
-    solver = _ParticlePair((1.0, 1.0))
-    solver.particles_positions[:4, 2] = 0.0
-    solver.particles_positions[4:, 2] = 1.0
-    sampler = PairDiagnosticsSampler(
-        "merging",
-        1.0,
-        2.0,
-        slab_half_width=0.1,
-        slab_center=1.0,
+def test_field_diagnostics_flags_merged_pair_when_cores_overlap():
+    field = _superposed_lamb_oseen_field(
+        [(0.0, 0.05, 1.0, 0.15), (0.0, -0.05, 1.0, 0.15)], extent=0.8
     )
+    field["time"] = 1.0
+    field["step"] = 3
 
-    sampler.save_csv(solver, path, time=0.25, step=1)
+    result = _row_dict(field, "merging")
 
-    data = pd.read_csv(path)
-    # Only the group-1 particles (z=1) lie inside the z=1 slab; the group-0
-    # particles (z=0) are excluded and their centroid is NaN.
-    assert data.loc[0, "core_1_y"] == pytest.approx(-0.5)
-    assert np.isnan(data.loc[0, "core_0_y"])
+    # Overlapping cores collapse to a single detected peak: no second center,
+    # separation is NaN, and "merged" (defined as "no valid pair separation")
+    # follows.
+    assert np.isnan(result["center1_x"])
+    assert np.isnan(result["separation"])
+    assert result["merged"] is True
 
 
-def test_rwm_pair_ensemble_averages_independent_histories(tmp_path):
+def test_field_diagnostics_handles_lone_vortex():
+    field = _superposed_lamb_oseen_field([(0.0, 0.0, 1.0, 0.15)], extent=1.0, spacing=0.02)
+    field["time"] = 5.0
+    field["step"] = 10
+
+    result = _row_dict(field, "vortex")
+
+    assert result["center0_x"] == pytest.approx(0.0, abs=0.02)
+    assert result["center0_y"] == pytest.approx(0.0, abs=0.02)
+    assert np.isnan(result["center1_x"])
+    assert result["a_c0"] == pytest.approx(0.15, rel=0.05)
+    # No second vortex to be separated from — separation/angle are NaN, and
+    # "merged" (only meaningful for a pair) follows the NaN-separation rule.
+    assert np.isnan(result["separation"])
+    assert result["merged"] is True
+
+
+def test_final_vortex_profile_slices_the_y_zero_row(tmp_path, monkeypatch):
+    import tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison as plot_vortex_comparison
+
+    field = _superposed_lamb_oseen_field([(0.0, 0.0, 1.0, 0.15)], extent=0.6, spacing=0.02)
+    monkeypatch.setattr(plot_vortex_comparison, "pvd_time_map", lambda *a, **k: {50: 20.0})
+    monkeypatch.setattr(
+        plot_vortex_comparison,
+        "read_surface_field",
+        lambda path: field,
+    )
+    case_dir = tmp_path / "vortex_cs"
+    case_dir.mkdir()
+    (case_dir / "vortex_cs_zq_000050.vts").write_text("", encoding="utf-8")
+
+    result = load_profile(tmp_path, "cs")
+
+    assert result is not None
+    x, uy, oz, time = result
+    assert time == 20.0
+    # The y row nearest 0 should be the y=0.0 row itself (grid includes it
+    # exactly here since extent/spacing are symmetric around 0).
+    j0 = int(np.argmin(np.abs(field["y"][0, :])))
+    assert np.array_equal(x, field["x"][:, j0])
+    assert np.array_equal(uy, field["Uy"][:, j0])
+    assert np.array_equal(oz, field["omega_z"][:, j0])
+
+
+def test_vortex_profile_returns_none_without_a_pvd_index(tmp_path, monkeypatch):
+    import tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison as plot_vortex_comparison
+
+    monkeypatch.setattr(plot_vortex_comparison, "pvd_time_map", lambda *a, **k: {})
+
+    assert load_profile(tmp_path, "cs") is None
+
+
+def test_rwm_field_ensemble_averages_independent_histories(tmp_path):
     member_dirs = []
     for member, offset in enumerate((-0.1, 0.1)):
         member_dir = tmp_path / f"member-{member}" / "samples" / "dipole_rwm"
         member_dir.mkdir(parents=True)
-        pair = pd.DataFrame(
+        field = pd.DataFrame(
             {
                 "flow_time": [1.0, 2.0],
                 "time_step": [5, 10],
-                "x_core": np.array([0.2, 0.4]) + offset,
-                "y_core": [0.5, 0.5],
-                "core_radius": [0.2, 0.3],
+                "center0_x": np.array([0.2, 0.4]) + offset,
+                "center0_y": [0.5, 0.5],
+                "center1_x": [np.nan, np.nan],
+                "center1_y": [np.nan, np.nan],
                 "separation": [np.nan, np.nan],
-                "core_area": [np.nan, np.nan],
+                "a_c0": [0.2, 0.3],
+                "a_c1": [np.nan, np.nan],
+                "a_c_mean": [0.2, 0.3],
                 "angle_rad": [np.nan, np.nan],
-                "surface_circulation": [0.99, 0.99],
                 "merged": [False, False],
-                "core_0_x": np.array([0.2, 0.4]) + offset,
-                "core_0_y": [0.5, 0.5],
-                "core_1_x": [np.nan, np.nan],
-                "core_1_y": [np.nan, np.nan],
             }
         )
-        pair.to_csv(member_dir / "pair_diagnostics.csv", index=False)
+        field.to_csv(member_dir / "field_diagnostics.csv", index=False)
         pd.DataFrame(
             {
                 "time": [1.0, 2.0],
@@ -125,45 +170,15 @@ def test_rwm_pair_ensemble_averages_independent_histories(tmp_path):
         (member_dir / "run_metadata.json").write_text("{}", encoding="utf-8")
         member_dirs.append(member_dir)
 
-    average_pair_diagnostics(member_dirs[0], member_dirs, realizations=2)
+    average_field_diagnostics(member_dirs[0], member_dirs, realizations=2)
 
-    pair = pd.read_csv(member_dirs[0] / "pair_diagnostics.csv")
+    field = pd.read_csv(member_dirs[0] / "field_diagnostics.csv")
     integrals = pd.read_csv(member_dirs[0] / "flow_integrals.csv")
     metadata = json.loads((member_dirs[0] / "run_metadata.json").read_text(encoding="utf-8"))
-    assert pair["x_core"].to_list() == pytest.approx([0.2, 0.4])
-    assert pair["separation"].isna().all()
+    assert field["center0_x"].to_list() == pytest.approx([0.2, 0.4])
+    assert field["separation"].isna().all()
     assert integrals["kinetic_energy"].to_list() == pytest.approx([1.0, 0.8])
     assert metadata["rwm_realizations"] == 2
-
-
-def test_final_vortex_profile_reads_comment_time_and_field_header(tmp_path):
-    from tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison import load_profile
-
-    case_dir = tmp_path / "vortex_cs"
-    case_dir.mkdir()
-    profile = case_dir / "vortex_cs_x.csv"
-    profile.write_text(
-        "# flow_time=20.0\nx,y,z,Ux,Uy,Uz,omega_z\n-0.1,0,0,0,-0.2,0,1.0\n0.1,0,0,0,0.2,0,1.0\n",
-        encoding="utf-8",
-    )
-
-    data, time = load_profile(tmp_path, "cs")
-
-    assert time == 20.0
-    assert data.columns.tolist() == ["x", "y", "z", "Ux", "Uy", "Uz", "omega_z"]
-
-
-def test_vortex_profile_rejects_noncurrent_csv_format(tmp_path):
-    from tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison import load_profile
-
-    case_dir = tmp_path / "vortex_cs"
-    case_dir.mkdir()
-    (case_dir / "vortex_cs_x.csv").write_text(
-        "flow_time,time_step,x,Uy,omega_z\n20.0,400,0.0,0.2,1.0\n",
-        encoding="utf-8",
-    )
-
-    assert load_profile(tmp_path, "cs") is None
 
 
 def test_pair_plots_render_all_four_methods_at_publication_width(tmp_path):
@@ -179,24 +194,23 @@ def test_pair_plots_render_all_four_methods_at_publication_width(tmp_path):
         for case_name in ("dipole", "merging"):
             case_dir = samples_dir / f"{case_name}_{scheme}"
             case_dir.mkdir(parents=True)
+            a_c0 = 0.11 * np.sqrt(1.0 + time / 20.0)
             pd.DataFrame(
                 {
                     "flow_time": time,
                     "time_step": np.arange(1, len(time) + 1),
-                    "x_core": 0.02 * time + offset,
-                    "y_core": np.full_like(time, 0.5),
-                    "core_radius": 0.11 * np.sqrt(1.0 + time / 20.0),
+                    "center0_x": 0.02 * time + offset,
+                    "center0_y": np.full_like(time, 0.5),
+                    "center1_x": np.zeros_like(time),
+                    "center1_y": np.full_like(time, -0.5),
                     "separation": 1.0 - 0.01 * time,
-                    "core_area": 0.006 + 0.0005 * time,
+                    "a_c0": a_c0,
+                    "a_c1": a_c0,
+                    "a_c_mean": a_c0,
                     "angle_rad": 0.1 * time,
-                    "surface_circulation": np.full_like(time, 2.0),
                     "merged": np.zeros_like(time, dtype=bool),
-                    "core_0_x": np.zeros_like(time),
-                    "core_0_y": np.full_like(time, 0.5),
-                    "core_1_x": np.zeros_like(time),
-                    "core_1_y": np.full_like(time, -0.5),
                 }
-            ).to_csv(case_dir / "pair_diagnostics.csv", index=False)
+            ).to_csv(case_dir / "field_diagnostics.csv", index=False)
 
     args = SimpleNamespace(
         samples_dir=samples_dir,
@@ -214,7 +228,7 @@ def test_pair_plots_render_all_four_methods_at_publication_width(tmp_path):
     from PIL import Image
 
     # Both figures render at the shared publication width (MAX_FIGURE_WIDTH_CM).
-    from tutorials.VPM.lambOseenVortex.assets._common import figure_size
+    from tutorials.VPM.lambOseenVortex.assets.plot_style import figure_size
 
     width_cm = figure_size("trajectory")[0] * 2.54
     for name in ("dipole_comparison.png", "merging_comparison.png"):

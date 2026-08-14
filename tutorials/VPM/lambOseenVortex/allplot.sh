@@ -17,6 +17,11 @@ esac
 mkdir -p figures
 
 echo
+echo "===== FIELD DIAGNOSTICS ====="
+echo
+python assets/vortex_diagnostics.py
+
+echo
 echo "===== FIGURES ($format) ====="
 echo
 

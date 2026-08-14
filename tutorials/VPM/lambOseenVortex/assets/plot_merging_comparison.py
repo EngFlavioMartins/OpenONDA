@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Co-rotating vortex merger: angle, core area, and separation histories."""
+"""Co-rotating vortex merger: angle, core radius, and separation histories.
+
+Reads the field-based vortex diagnostics (``field_diagnostics.csv``, from the
+z=L/4 velocity/vorticity plane) for each viscous scheme.
+"""
 
 from __future__ import annotations
 
@@ -13,29 +17,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from ._common import (
-        BETA_RMAX,
-        REF_DIR,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from .vortex_diagnostics import REF_DIR, SCHEMES, resolve_runtime_physics
 else:
-    from _common import (
-        BETA_RMAX,
-        REF_DIR,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from vortex_diagnostics import REF_DIR, SCHEMES, resolve_runtime_physics
 
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
@@ -50,7 +36,7 @@ def extract_merging_timeseries(
     separation: float,
     core_radius: float,
 ) -> dict | None:
-    path = samples_dir / f"merging_{scheme}" / "pair_diagnostics.csv"
+    path = samples_dir / f"merging_{scheme}" / "field_diagnostics.csv"
     if not path.is_file():
         return None
     data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
@@ -66,13 +52,6 @@ def extract_merging_timeseries(
     if data.empty:
         return None
 
-    circulation = data["surface_circulation"].to_numpy(float)
-    drifted = np.abs(circulation / circulation[0] - 1.0) > 0.50
-    if drifted.any():
-        data = data.iloc[: int(np.flatnonzero(drifted)[0])]
-    if data.empty:
-        return None
-
     angle = data["angle_rad"].to_numpy(float)
     finite = np.isfinite(angle)
     angle_degrees = np.full_like(angle, np.nan)
@@ -84,7 +63,7 @@ def extract_merging_timeseries(
     return {
         "tau": viscosity * time / core_radius**2,
         "theta_deg": angle_degrees,
-        "a_c2_over_b02": (2.0 * BETA_RMAX**2 * data["core_area"].to_numpy(float) / separation**2),
+        "a_c2_over_b02": data["a_c_mean"].to_numpy(float) ** 2 / separation**2,
         "b_over_b0": data["separation"].to_numpy(float) / separation,
     }
 
@@ -130,14 +109,6 @@ def plot_merging_case(args) -> int:
         axes[2].plot(timeseries["tau"], timeseries["b_over_b0"], **plot_options)
         plotted_schemes.append(scheme)
 
-    if not plotted_schemes:
-        plt.close(fig)
-        out.unlink(missing_ok=True)
-        print("  [merging] no sampled diagnostics; figure not generated")
-        return 0
-
-    print(f"  [merging] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
-
     reference_options = {
         "color": colors["reference"],
         "linestyle": "-",
@@ -146,12 +117,7 @@ def plot_merging_case(args) -> int:
         "label": r"Cerretelli \& Williamson (2003)",
     }
     scale = args.a0_over_b0**2
-    missing = [path.name for path in (THETA_REF, A2_REF, B_REF) if not path.exists()]
-    if missing:
-        print(
-            f"  [merging] WARNING: no reference curve for {', '.join(missing)}; "
-            f"expected under {REF_DIR}"
-        )
+
     for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF), (axes[2], B_REF)):
         if path.exists():
             reference = np.loadtxt(path, delimiter=",")
@@ -170,7 +136,8 @@ def plot_merging_case(args) -> int:
     axes[2].set_ylim([0, 2.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
+
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0))
     save_fig(fig, out, args.dpi)
     return 0
 

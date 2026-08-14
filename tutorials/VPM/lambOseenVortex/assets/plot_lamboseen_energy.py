@@ -27,25 +27,11 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 if __package__:
-    from ._common import (
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from .vortex_diagnostics import SCHEMES, resolve_runtime_physics
 else:
-    from _common import (
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        load_theme,
-        figure_size,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
+    from vortex_diagnostics import SCHEMES, resolve_runtime_physics
 
 
 # =============================================================

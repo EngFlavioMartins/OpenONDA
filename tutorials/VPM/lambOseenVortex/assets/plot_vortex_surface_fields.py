@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""z = 0 symmetry-plane field comparison for the single Lamb-Oseen vortex.
+"""z = L/4 field comparison for the single Lamb-Oseen vortex.
 
 Each of the four viscous schemes (GBD, CS, RWM, DVH-R) contributes **one
 quadrant** of the plane.  The quadrants tile into a seamless image of
@@ -36,25 +36,11 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 if __package__:
-    from ._common import (
-        SCHEMES,
-        build_arg_parser,
-        load_theme,
-        figure_size,
-        pvd_time_map,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from .plot_style import build_arg_parser, figure_size, load_theme, save_fig
+    from .vortex_diagnostics import SCHEMES, pvd_time_map, resolve_runtime_physics
 else:
-    from _common import (
-        SCHEMES,
-        build_arg_parser,
-        load_theme,
-        figure_size,
-        pvd_time_map,
-        resolve_runtime_physics,
-        save_fig,
-    )
+    from plot_style import build_arg_parser, figure_size, load_theme, save_fig
+    from vortex_diagnostics import SCHEMES, pvd_time_map, resolve_runtime_physics
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
@@ -159,7 +145,7 @@ def _find_surface_vts(
         return None, None
 
     for selected_step in sorted(time_by_step, key=time_by_step.get, reverse=True):
-        path = folder / f"vortex_{scheme}_z0_{selected_step:06d}.vts"
+        path = folder / f"vortex_{scheme}_zq_{selected_step:06d}.vts"
         if path.is_file():
             return path, time_by_step[selected_step]
     return None, None
@@ -271,8 +257,8 @@ def plot_surface_fields(args) -> int:
         ax.set_xlabel(r"$x\,/\,a_{c,0}$")
         ax.set_ylabel(r"$y\,/\,a_{c,0}$")
 
-    ax_v.set_title(r"Velocity at $z=0$")
-    ax_w.set_title(r"Vorticity at $z=0$")
+    ax_v.set_title(r"Velocity at $z=L/4$")
+    ax_w.set_title(r"Vorticity at $z=L/4$")
 
     sm_v = ScalarMappable(cmap=v_cmap, norm=v_norm)
     sm_v.set_array([])
@@ -290,7 +276,7 @@ def plot_surface_fields(args) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    p = build_arg_parser("z=0 surface field tiled comparison.")
+    p = build_arg_parser("z=L/4 surface field tiled comparison.")
     return p.parse_args()
 
 

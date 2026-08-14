@@ -12,13 +12,13 @@ from source.solvers.VPM.io.sampler import SamplerExecutor
 _ASSETS = Path(__file__).resolve().parents[2] / "tutorials" / "VPM" / "vortexRing" / "assets"
 sys.path.insert(0, str(_ASSETS))
 
-from _common import (  # noqa: E402
+from ring_diagnostics import RingDiagnosticsSampler  # noqa: E402
+from ring_metrics import (  # noqa: E402
     load_length_integrated_strength,
     load_ring_circulation,
     load_sampled_ring_circulation,
     load_sampled_ring_speed,
 )
-from ring_diagnostics import RingDiagnosticsSampler  # noqa: E402
 
 
 def _write_ring_snapshot(

@@ -15,21 +15,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (
-    build_arg_parser,
-    load_theme,
-    load_sampled_ring_speed,
-    saffman_speed,
-    save_fig,
-    T_REF,
-    U_REF,
+from plot_style import (
     VARIANT_LABEL,
     VARIANT_STYLE,
+    build_arg_parser,
+    figure_size,
+    load_theme,
+    reference_style,
+    save_fig,
+)
+from ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
-    figure_size,
-    mark_every,
-    reference_style,
+    T_REF,
+    U_REF,
+    load_sampled_ring_speed,
+    saffman_speed,
 )
 
 
@@ -41,6 +42,7 @@ def main() -> None:
     load_theme()
 
     fig, ax = plt.subplots(figsize=figure_size("single_tall"))
+    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.11, right=0.97, top=0.95, bottom=0.13)
 
     # -- Ring speed — all available variants ---------------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -59,7 +61,7 @@ def main() -> None:
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=mark_every(),
+            markevery=2,
             mew=st["markeredgewidth"],
             label=label,
         )

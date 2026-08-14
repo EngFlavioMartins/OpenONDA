@@ -6,8 +6,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-SCHEMES=(cs rwm dvh gbd)
-
 echo
 echo "===== CLEAN ====="
 echo
@@ -16,17 +14,14 @@ echo
 echo
 echo "===== SIMULATE ====="
 echo
-for scheme in "${SCHEMES[@]}"; do
-    echo
-    echo "---- single vortex ($scheme) ----"
-    python -u lambossen_setup.py --gamma1 +1 --schemes "$scheme"
-    echo
-    echo "---- vortex dipole ($scheme) ----"
-    python -u lambossen_setup.py --gamma1 +1 --gamma2 -1 --schemes "$scheme"
-    echo
-    echo "---- merging pair ($scheme) ----"
-    python -u lambossen_setup.py --gamma1 +1 --gamma2 +1 --schemes "$scheme"
-done
+echo "---- single vortex (all schemes) ----"
+python -u lambossen_setup.py --gamma1 +1
+echo
+echo "---- vortex dipole (all schemes) ----"
+python -u lambossen_setup.py --gamma1 +1 --gamma2 -1
+echo
+echo "---- merging pair (all schemes) ----"
+python -u lambossen_setup.py --gamma1 +1 --gamma2 +1
 
 echo
 echo "===== FIGURES ====="
