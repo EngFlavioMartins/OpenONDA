@@ -69,15 +69,53 @@ _LAYOUT = [
 # =============================================================
 
 
-def _quad(arr: np.ndarray, qid: str, mid: int) -> np.ndarray:
+def _quad_split(X: np.ndarray, Y: np.ndarray) -> tuple[int, int]:
+    """Return ``(row0, col0)`` where the y/x coordinates first reach 0."""
+    row0 = int(np.searchsorted(Y[:, 0], 0.0))
+    col0 = int(np.searchsorted(X[0], 0.0))
+    return row0, col0
+
+
+def _boundary_edges(field: np.ndarray, row0: int, col0: int, tx: float, ty: float):
+    """Field values interpolated onto the x = 0 column and y = 0 row.
+
+    The grid has no node exactly at 0, so the tiled quadrants would leave a
+    one-cell white seam.  ``bcol``/``brow``/``corner`` linearly interpolate the
+    field on those lines so the four tiles meet without a gap.
+    """
+    bcol = field[:, col0 - 1] * (1.0 - tx) + field[:, col0] * tx
+    brow = field[row0 - 1, :] * (1.0 - ty) + field[row0, :] * ty
+    corner = brow[col0 - 1] * (1.0 - tx) + brow[col0] * tx
+    return bcol, brow, corner
+
+
+def _tile_coords(xs: np.ndarray, ys: np.ndarray, qid: str, col0: int, row0: int):
+    """1D coordinates of one quadrant, padded with its 0-coordinate edges."""
     if qid == "TL":
-        return arr[mid:, : mid + 1]
+        return np.append(xs[:col0], 0.0), np.insert(ys[row0:], 0, 0.0)
     if qid == "TR":
-        return arr[mid:, mid:]
+        return np.insert(xs[col0:], 0, 0.0), np.insert(ys[row0:], 0, 0.0)
     if qid == "BL":
-        return arr[: mid + 1, : mid + 1]
+        return np.append(xs[:col0], 0.0), np.append(ys[:row0], 0.0)
     if qid == "BR":
-        return arr[: mid + 1, mid:]
+        return np.insert(xs[col0:], 0, 0.0), np.append(ys[:row0], 0.0)
+    raise ValueError(f"Unknown quadrant id: {qid!r}")
+
+
+def _tile(field: np.ndarray, qid: str, col0: int, row0: int, bcol, brow, corner):
+    """One quadrant of ``field`` with interpolated x = 0 / y = 0 edges."""
+    if qid == "TL":
+        tile = np.column_stack([field[row0:, :col0], bcol[row0:, None]])
+        return np.vstack([tile, np.append(brow[:col0], corner)[None, :]])
+    if qid == "TR":
+        tile = np.column_stack([bcol[row0:, None], field[row0:, col0:]])
+        return np.vstack([tile, np.insert(brow[col0:], 0, corner)[None, :]])
+    if qid == "BL":
+        tile = np.column_stack([field[:row0, :col0], bcol[:row0, None]])
+        return np.vstack([tile, np.append(brow[:col0], corner)[None, :]])
+    if qid == "BR":
+        tile = np.column_stack([bcol[:row0, None], field[:row0, col0:]])
+        return np.vstack([tile, np.insert(brow[col0:], 0, corner)[None, :]])
     raise ValueError(f"Unknown quadrant id: {qid!r}")
 
 
@@ -93,7 +131,6 @@ def _read_vts(path: Path):
     dims = [0, 0, 0]
     grid.GetDimensions(dims)
     nx_d, ny_d = dims[0], dims[1]
-    mid = nx_d // 2
     n = grid.GetNumberOfPoints()
     pts = np.array([grid.GetPoint(i) for i in range(n)]).reshape(ny_d, nx_d, 3)
     X = pts[:, :, 0]
@@ -104,7 +141,7 @@ def _read_vts(path: Path):
     vort = ns.vtk_to_numpy(pd.GetArray("Vorticity")).reshape(ny_d, nx_d, 3)
     vort_z = vort[:, :, 2]
 
-    return X, Y, np.clip(vel_mag, 0.0, None), np.clip(vort_z, 0.0, None), mid
+    return X, Y, np.clip(vel_mag, 0.0, None), np.clip(vort_z, 0.0, None)
 
 
 # =============================================================
@@ -154,7 +191,7 @@ def plot_surface_fields(args) -> int:
             print(f"  [surface] no requested VTS for {scheme!r} — skipping quadrant")
             continue
         try:
-            X, Y, vm, wz, mid = _read_vts(vts)
+            X, Y, vm, wz = _read_vts(vts)
         except Exception as exc:
             print(f"  [surface] read error {vts.name}: {exc}")
             continue
@@ -166,7 +203,6 @@ def plot_surface_fields(args) -> int:
             vort_z=wz,
             step=step,
             time=sample_time,
-            mid=mid,
         )
 
     if not datasets:
@@ -178,18 +214,19 @@ def plot_surface_fields(args) -> int:
     print(f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods at t={sample_time:.3g}s")
 
     # -- Shared normalisation limits ------------------------------------
-    v_norm = mcolors.Normalize(vmin=0.0, vmax=0.45)
-    w_norm = mcolors.Normalize(vmin=0.0, vmax=0.35)
+    v_norm = mcolors.Normalize(vmin=0.0, vmax=0.2)
+    w_norm = mcolors.Normalize(vmin=0.0, vmax=0.1)
     v_cmap = theme.COLORMAPS["vortex_speed"]
     w_cmap = theme.COLORMAPS["vortex_vorticity"]
 
     ax_lim = 5.0
 
     # -- Figure --------------------------------------------------------
+    cm = 1 / 2.54
     fig, (ax_v, ax_w) = plt.subplots(
         1,
         2,
-        figsize=figure_size("single_short"),
+        figsize=([12.5 * cm, 5.1 * cm]),
         constrained_layout=True,
     )
 
@@ -197,29 +234,34 @@ def plot_surface_fields(args) -> int:
         if scheme not in datasets:
             continue
         d = datasets[scheme]
-        mid = d["mid"]
         Xn = d["X"] / ac0
         Yn = d["Y"] / ac0
-        Xs = _quad(Xn, qid, mid)
-        Ys = _quad(Yn, qid, mid)
-        vms = _quad(d["vel_mag"] / uc_ref, qid, mid)
-        wzs = _quad(d["vort_z"] / wc_ref, qid, mid)
+        row0, col0 = _quad_split(Xn, Yn)
+        xs, ys = Xn[0], Yn[:, 0]
+        tx = -xs[col0 - 1] / (xs[col0] - xs[col0 - 1])
+        ty = -ys[row0 - 1] / (ys[row0] - ys[row0 - 1])
+        Xg, Yg = np.meshgrid(*_tile_coords(xs, ys, qid, col0, row0))
+        vm_field = d["vel_mag"] / uc_ref
+        wz_field = d["vort_z"] / wc_ref
+        vms = _tile(vm_field, qid, col0, row0, *_boundary_edges(vm_field, row0, col0, tx, ty))
+        wzs = _tile(wz_field, qid, col0, row0, *_boundary_edges(wz_field, row0, col0, tx, ty))
 
         pcm_kw = dict(shading="gouraud", rasterized=True)
-        ax_v.pcolormesh(Xs, Ys, vms, cmap=v_cmap, norm=v_norm, **pcm_kw)
-        ax_w.pcolormesh(Xs, Ys, wzs, cmap=w_cmap, norm=w_norm, **pcm_kw)
+        ax_v.pcolormesh(Xg, Yg, vms, cmap=v_cmap, norm=v_norm, **pcm_kw)
+        ax_w.pcolormesh(Xg, Yg, wzs, cmap=w_cmap, norm=w_norm, **pcm_kw)
 
         tx = -0.85 * ax_lim if ha == "left" else 0.85 * ax_lim
         ty = 0.85 * ax_lim if va == "top" else -0.85 * ax_lim
         txt_kw = dict(
             ha=ha,
             va=va,
-            bbox=dict(boxstyle="round,pad=0.15", fc=colors["LightText"], alpha=0.65, lw=0),
+            bbox=dict(boxstyle="round,pad=0.15", fc=colors["LightText"], alpha=0.75, lw=0),
         )
         ax_v.text(tx, ty, label, **txt_kw)
         ax_w.text(tx, ty, label, **txt_kw)
 
-    divider_kw = dict(color=colors["LightText"], linewidth=1.0, alpha=0.9)
+    # Contro division lines
+    divider_kw = dict(color=colors["LightText"], linewidth=0.5, alpha=1.0)
     for ax in (ax_v, ax_w):
         ax.axhline(0, **divider_kw)
         ax.axvline(0, **divider_kw)
@@ -229,8 +271,8 @@ def plot_surface_fields(args) -> int:
         ax.set_xlabel(r"$x\,/\,a_{c,0}$")
         ax.set_ylabel(r"$y\,/\,a_{c,0}$")
 
-    ax_v.set_title(r"Velocity magnitude, $|\mathbf{u}|\,/\,U_{c,0}$")
-    ax_w.set_title(r"Vorticity, $\omega_z\,/\,\omega_{c,0}$")
+    ax_v.set_title(r"Velocity at $z=0$")
+    ax_w.set_title(r"Vorticity at $z=0$")
 
     sm_v = ScalarMappable(cmap=v_cmap, norm=v_norm)
     sm_v.set_array([])

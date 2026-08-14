@@ -110,7 +110,7 @@ def run(sample_period: float, backup_period: float) -> None:
     solver = Solver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
-            processing_unit="VULKAN",
+            processing_unit="AUTO",
             vlm=vlm_setup,
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig.cs(),

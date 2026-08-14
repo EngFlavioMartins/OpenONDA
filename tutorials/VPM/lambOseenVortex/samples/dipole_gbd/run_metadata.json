@@ -1,8 +1,9 @@
 {
-  "case": "vortex",
+  "case": "dipole",
   "scheme": "gbd",
   "circulations": [
-    1.0
+    1.0,
+    -1.0
   ],
   "viscosity": 0.0018867924528301887,
   "core_radius": 0.125,
@@ -18,5 +19,5 @@
   "field_spacing": 0.0375,
   "sample_interval": 1.0,
   "raw_backup_interval": 2.5,
-  "wall_time_seconds": 1927.4276315420866
+  "wall_time_seconds": 3056.8825858749915
 }

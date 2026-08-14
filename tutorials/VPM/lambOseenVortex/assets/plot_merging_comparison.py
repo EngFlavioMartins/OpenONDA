@@ -59,8 +59,10 @@ def extract_merging_timeseries(
         return None
 
     merged = data["merged"].astype(str).str.lower().eq("true").to_numpy()
-    if merged.any():
-        data = data.iloc[: int(np.flatnonzero(merged)[0])]
+    pair_separation = data["separation"].to_numpy(float)
+    collapsed = merged & (np.isnan(pair_separation) | (pair_separation < 0.5 * separation))
+    if collapsed.any():
+        data = data.iloc[: int(np.flatnonzero(collapsed)[0])]
     if data.empty:
         return None
 
@@ -100,7 +102,7 @@ def plot_merging_case(args) -> int:
     a0 = runtime["ac0"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.14, top=0.94, bottom=0.25, left=0.15, right=0.97)
+    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.23, left=0.10, right=0.98)
 
     plotted_schemes = []
     for scheme in SCHEMES:
@@ -138,7 +140,7 @@ def plot_merging_case(args) -> int:
 
     reference_options = {
         "color": colors["reference"],
-        "linestyle": "--",
+        "linestyle": "-",
         "linewidth": 1.0,
         "zorder": 100,
         "label": r"Cerretelli \& Williamson (2003)",
@@ -157,15 +159,15 @@ def plot_merging_case(args) -> int:
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
-    axes[0].set_ylim([-20, 450])
+    axes[0].set_ylim([-20, 900])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
-    axes[1].set_ylim([0, 0.60])
+    axes[1].set_ylim([-0.1, 0.70])
 
     axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_xlim([0, 3.2])
-    axes[2].set_ylim([0, 1.1])
+    axes[2].set_ylim([0, 1.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))

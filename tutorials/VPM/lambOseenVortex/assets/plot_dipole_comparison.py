@@ -78,7 +78,7 @@ def plot_dipole_case(args) -> int:
     style_map = build_style_map(colors)
 
     fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"))
-    fig.subplots_adjust(wspace=0.43, bottom=0.34, top=0.88, left=0.13, right=0.97)
+    fig.subplots_adjust(wspace=0.20, bottom=0.25, top=0.92, left=0.08, right=0.98)
 
     plotted_schemes = []
     for scheme in SCHEMES:
@@ -103,7 +103,7 @@ def plot_dipole_case(args) -> int:
             "linestyle": "None",
             "linewidth": 1.0,
         }
-        axes[0].plot(tau, xc / args.b0, **plot_kw)
+        axes[0].plot(tau, xc / a0, **plot_kw)
         axes[1].plot(tau, a_c / a0, **plot_kw)
         plotted_schemes.append(scheme)
 
@@ -116,15 +116,15 @@ def plot_dipole_case(args) -> int:
     print(f"  [dipole] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
 
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
-    axes[0].set_ylabel(r"$x_c / b_0$")
+    axes[0].set_ylabel(r"$x_c / a_{c,0}$")
     axes[0].set_title("Core trajectory over time")
-    axes[0].set_xlim([0.0, 5.0])
-    axes[0].set_ylim([0.0, 5.5])
+    axes[0].set_xlim([0.0, 3.8])
+    axes[0].set_ylim([0.0, 33.0])
     axes[1].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_xlim([0.0, 5.0])
-    axes[1].set_ylim([0.8, 7.5])
+    axes[1].set_xlim([0.0, 3.8])
+    axes[1].set_ylim([0.8, 4.5])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
@@ -133,7 +133,7 @@ def plot_dipole_case(args) -> int:
             labels,
             loc="lower center",
             ncol=len(handles),
-            bbox_to_anchor=(0.5, 0.05),
+            bbox_to_anchor=(0.5, 0.00),
         )
     save_fig(fig, out, args.dpi)
     return 0

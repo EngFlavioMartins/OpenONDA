@@ -135,7 +135,7 @@ def plot_vortex_case(args) -> int:
     half_length = read_column_half_length(samples_dir) or 25.0 * ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.12, top=0.94, bottom=0.20, left=0.13, right=0.97)
+    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.18, left=0.12, right=0.98)
 
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
@@ -187,7 +187,7 @@ def plot_vortex_case(args) -> int:
     axes[0].set_ylim([-0.25, 0.25])
 
     axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
-    axes[1].set_ylim([-0.01, 0.12])
+    axes[1].set_ylim([-0.01, 0.1])
 
     axes[2].set_xlabel(r"$r / a_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,a_{c,0} / U_{c,0}$")
@@ -198,7 +198,7 @@ def plot_vortex_case(args) -> int:
     for ax in axes:
         ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
 
-    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.01))
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0))
     save_fig(fig, out, args.dpi)
     return 0
 

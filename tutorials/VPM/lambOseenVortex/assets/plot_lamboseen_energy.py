@@ -142,7 +142,7 @@ def plot_energy_enstrophy(args) -> int:
     tau_scale = run_nu / (a0**2)
     p_ref = run_nu * (args.gamma**2) / (a0**2)
     fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"), sharey=True)
-    fig.subplots_adjust(wspace=0.09, top=0.90, bottom=0.35, left=0.14, right=0.97)
+    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.12, right=0.98)
 
     plotted = False
     for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
@@ -175,7 +175,7 @@ def plot_energy_enstrophy(args) -> int:
     axes[2].set_xlim([0.0, 3.8])
 
     # sharey=True links the y-axes, so the limit is set once and propagates.
-    axes[0].set_ylim([-2.0, 0.1])
+    axes[0].set_ylim([-1.5, 0.2])
 
     available_schemes = [
         scheme
@@ -230,7 +230,7 @@ def plot_energy_enstrophy(args) -> int:
         [h.get_label() for h in handles],
         loc="lower center",
         ncol=3,
-        bbox_to_anchor=(0.5, 0.02),
+        bbox_to_anchor=(0.5, 0.00),
     )
 
     save_fig(fig, out, args.dpi)

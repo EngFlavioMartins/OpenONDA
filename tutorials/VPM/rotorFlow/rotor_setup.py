@@ -81,7 +81,7 @@ def build_solver_config(
     wake_spacing = nominal_wake_spacing(TIME_STEP)
     return VPMSetup(
         time_step_size=TIME_STEP,
-        processing_unit="VULKAN",
+        processing_unit="AUTO",
         time_integration="COUPLED",
         coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
         coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
