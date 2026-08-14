@@ -167,7 +167,7 @@ def plot_merging_case(args) -> int:
     axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_xlim([0, 3.2])
-    axes[2].set_ylim([0, 1.5])
+    axes[2].set_ylim([0, 2.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))

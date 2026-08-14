@@ -69,6 +69,28 @@ def test_pair_geometry_uses_midplane_while_circulation_uses_full_column(tmp_path
     assert data.loc[0, "surface_circulation"] == pytest.approx(2.0)
 
 
+def test_merging_sampler_slab_can_be_centered_off_the_midplane(tmp_path):
+    path = tmp_path / "pair_diagnostics.csv"
+    solver = _ParticlePair((1.0, 1.0))
+    solver.particles_positions[:4, 2] = 0.0
+    solver.particles_positions[4:, 2] = 1.0
+    sampler = PairDiagnosticsSampler(
+        "merging",
+        1.0,
+        2.0,
+        slab_half_width=0.1,
+        slab_center=1.0,
+    )
+
+    sampler.save_csv(solver, path, time=0.25, step=1)
+
+    data = pd.read_csv(path)
+    # Only the group-1 particles (z=1) lie inside the z=1 slab; the group-0
+    # particles (z=0) are excluded and their centroid is NaN.
+    assert data.loc[0, "core_1_y"] == pytest.approx(-0.5)
+    assert np.isnan(data.loc[0, "core_0_y"])
+
+
 def test_rwm_pair_ensemble_averages_independent_histories(tmp_path):
     member_dirs = []
     for member, offset in enumerate((-0.1, 0.1)):

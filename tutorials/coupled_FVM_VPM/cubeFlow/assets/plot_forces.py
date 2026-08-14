@@ -2,6 +2,7 @@
 """Publication-style cube force history from sampled wall loads."""
 
 from pathlib import Path
+import argparse
 import sys
 
 import matplotlib
@@ -13,7 +14,6 @@ import numpy as np  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _plotutil as util  # noqa: E402
 
-FIGURE_FORMAT = "png"
 FIGURE_DPI = 400
 FORCE_MARKERS = 20
 
@@ -38,6 +38,10 @@ def _drag_split(forces: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
+
     coupled = util.load_forces("fvm")
     reference = util.load_forces("reference")
     if coupled is None or reference is None:
@@ -115,7 +119,7 @@ def main() -> None:
     ax_split.legend(loc="upper right", ncol=2)
 
     fig.tight_layout()
-    util.save(fig, "forces_history", FIGURE_FORMAT, FIGURE_DPI)
+    util.save(fig, "forces_history", args.format, FIGURE_DPI)
     plt.close(fig)
 
 

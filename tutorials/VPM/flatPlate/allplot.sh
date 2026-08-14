@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
-# Generate every flat-plate comparison figure.
-
+# Make every flat-plate figure (polar, moving vs static, spanwise, Kelvin).
+#
+# Usage:
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+format="${1:-png}"
+case "$format" in
+    png|pdf) ;;
+    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+esac
+
 mkdir -p figures
 
+echo
+echo "===== FIGURES ($format) ====="
+echo
+
 plot() {
-    for format in png pdf; do
-        python "$@" --format "$format"
-    done
+    python "$@" --format "$format"
 }
 
 plot assets/plot_plate_polar.py
@@ -17,4 +29,6 @@ plot assets/plot_plate_staticvsmoving.py
 plot assets/plot_plate_spanwise.py
 plot assets/plot_flat_plate_kelvin.py
 
-echo "Figures saved to figures/"
+echo
+echo "===== DONE ====="
+echo "Figures saved to: figures/"

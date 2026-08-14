@@ -17,14 +17,14 @@ pressure correctors.
 
 ```bash
 ./allrun.sh                 # Re = 30 steady case, h = D/16, t_end = 60
-./allplot.sh --Re 30        # figures + pass/fail vs reference values
+./allplot.sh                # figures + pass/fail vs reference values
 ```
 
 Unsteady vortex-shedding variant:
 
 ```bash
 python cylinderIBM_setup.py --Re 100 --end-time 150 --h 0.05
-./allplot.sh --Re 100
+./allplot.sh
 ```
 
 ## Quality monitors (references: Constant et al. 2017, Tables 2–3)

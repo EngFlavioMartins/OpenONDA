@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-SOLUTION_DIR="./solution"
-DPI=400
-RE=1e4
-FORMAT="png"
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
-        --dpi)          DPI="$2";          shift 2 ;;
-        --Re)           RE="$2";           shift 2 ;;
-        --format)       FORMAT="$2";       shift 2 ;;
-        *) echo "Unknown argument: $1" >&2; exit 1 ;;
-    esac
-done
-FIGURES_DIR="$SCRIPT_DIR/figures"
-mkdir -p "$FIGURES_DIR"
-echo "[allplot] solution-dir : $SOLUTION_DIR"
-echo "[allplot] figures-dir  : $FIGURES_DIR"
-echo ""
-echo "[1/2] Velocity profiles vs Blasius ..."
-python assets/plot_blasius.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
-echo "[2/2] Skin friction vs Blasius ..."
-python assets/plot_cf.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --Re "$RE" --format "$FORMAT"
-echo ""
-echo "[allplot] Done. Figures saved to $FIGURES_DIR"
+# Make every boundary-layer figure from the sampled results.
+#
+# Usage:
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+format="${1:-png}"
+case "$format" in
+    png|pdf) ;;
+    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+esac
+
+mkdir -p figures
+
+echo
+echo "===== FIGURES ($format) ====="
+echo
+
+plot() {
+    python "$@" --format "$format"
+}
+
+plot assets/plot_blasius.py
+plot assets/plot_cf.py
+
+echo
+echo "===== DONE ====="
+echo "Figures saved to: figures/"

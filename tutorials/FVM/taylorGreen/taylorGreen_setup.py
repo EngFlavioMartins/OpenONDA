@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Periodic two-dimensional Taylor–Green validation with PIMPLE."""
+"""Periodic two-dimensional Taylor–Green vortex, validated against the
+analytic decay (FVM, PIMPLE).
+
+The classic Taylor–Green vortex u = (sin x cos y, -cos x sin y) decays
+exactly as exp(-2 nu t). Because the solution is known, the numerical decay
+of kinetic energy, enstrophy, and the velocity field itself can be compared
+with the analytic values step by step (solution/history.csv). This is a
+periodic, single-time-step-invariant case; the default run uses the central
+convection scheme.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +38,13 @@ from openonda.fvm import (
 
 from assets.mesh_periodic import periodic_square_mesh
 
+# ---- Numerics ------------------------------------------------------------
+DENSITY = 1.0  # fluid density [kg/m^3]
+TIME_SCHEME = "backward"
+LINEAR_SOLVER = "spsolve"
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+
 
 def exact_velocity(centres: np.ndarray, time: float, nu: float) -> np.ndarray:
     """Return the analytic velocity at cell centres."""
@@ -53,9 +69,9 @@ def relative_l2(numerical: np.ndarray, analytic: np.ndarray, volumes: np.ndarray
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n", type=int, default=24, help="cells along each periodic direction")
-    parser.add_argument("--nu", type=float, default=0.1, help="kinematic viscosity")
-    parser.add_argument("--dt", type=float, default=0.005, help="time-step size")
-    parser.add_argument("--end-time", type=float, default=0.05)
+    parser.add_argument("--nu", type=float, default=0.1, help="kinematic viscosity [m^2/s]")
+    parser.add_argument("--dt", type=float, default=0.005, help="time-step size [s]")
+    parser.add_argument("--end-time", type=float, default=0.05, help="simulation end time [s]")
     parser.add_argument("--scheme", choices=("central", "upwind"), default="central")
     return parser.parse_args()
 
@@ -68,10 +84,15 @@ def main() -> None:
     if nsteps < 1 or not np.isclose(nsteps * args.dt, args.end_time):
         raise ValueError("end-time must be a positive integer multiple of dt")
 
+    print("\n===== MESH =====")
+    print("---- Generating the periodic square mesh ----")
     mesh = periodic_square_mesh(args.n)
-    params_schemes = SchemesConfig(convection_scheme=args.scheme, time_scheme="backward")
-    params_linear = LinearSolverConfig(linear_solver="spsolve")
-    params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
+    print(f"  cells: {mesh['n_elements']} ({args.n} x {args.n})")
+
+    print("\n===== SIMULATION =====")
+    schemes = SchemesConfig(convection_scheme=args.scheme, time_scheme=TIME_SCHEME)
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
+    pimple = PimpleControl(n_correctors=PISO_CORRECTORS, n_outer_correctors=OUTER_CORRECTORS)
     boundaries = [
         BoundaryConfig.cyclic("xmin", "xmax"),
         BoundaryConfig.cyclic("xmax", "xmin"),
@@ -87,10 +108,10 @@ def main() -> None:
             end_time=args.end_time,
             write_interval=nsteps,
         ),
-        schemes=params_schemes,
-        linear=params_linear,
-        pimple=params_pimple,
-        transport=TransportConfig(density=1.0, nu=args.nu),
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        transport=TransportConfig(density=DENSITY, nu=args.nu),
         boundaries=boundaries,
     )
 
@@ -152,6 +173,9 @@ def main() -> None:
     final = row()
     solver.write_run_manifest()
     print(f"History written: {history_path}")
+
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print(f"Final velocity L2 error: {final['velocity_l2_error']:.6e}")
     print(f"Final energy relative error: {final['energy_relative_error']:.6e}")
     print(f"Final enstrophy relative error: {final['enstrophy_relative_error']:.6e}")

@@ -3,13 +3,23 @@
 The airfoil is generated analytically, represented by the FVM immersed-
 boundary method, and coupled to VPM on a solver-native Cartesian mesh.  The
 case has no external solver, mesher, or repository-path dependency.
+
+The case can be configured through the OPENONDA_* environment variables or
+through the convenience command-line flags below, which override them.
+
+Usage:
+    python naca4412_setup.py
+    python naca4412_setup.py --smoke --end-time 0.4 --spacing 0.2
 """
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import math
 import os
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -58,9 +68,7 @@ REYNOLDS = 1000.0
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
 DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
 DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
-T_END = float(
-    os.environ.get("OPENONDA_T_END", os.environ.get("HYBRID_T_END", "0.12" if SMOKE else "12.0"))
-)
+T_END = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
 ANGLE = math.radians(ALPHA_DEG)
 U_INF = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
 NU = np.linalg.norm(U_INF) * CHORD / REYNOLDS
@@ -245,7 +253,59 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    """Build the command-line overrides for the OPENONDA_* defaults."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--smoke", action="store_true", help="fast smoke-test settings")
+    parser.add_argument("--end-time", type=float, help="simulation end time [s]")
+    parser.add_argument("--spacing", type=float, help="core grid spacing [m]")
+    parser.add_argument("--fvm-dt", type=float, help="FVM time step [s]")
+    parser.add_argument("--vpm-dt", type=float, help="VPM time step [s]")
+    parser.add_argument("--max-particles", type=int, help="particle budget")
+    parser.add_argument("--marker-ratio", type=float, help="IBM marker spacing / grid spacing")
+    return parser.parse_args(argv)
+
+
+def _run_with_overrides(argv: list[str]) -> int:
+    """Run the case with any command-line overrides applied.
+
+    The module-level constants already read the OPENONDA_* environment
+    variables (so ``OPENONDA_SMOKE=1 ./allrun.sh`` keeps working). When the
+    user passes flags, they are translated back into those environment
+    variables and the module is loaded once more so every dependent setting
+    follows.
+    """
+    args = _parse_args(argv)
+
+    overrides: dict[str, str] = {}
+    if args.smoke:
+        overrides["OPENONDA_SMOKE"] = "1"
+    for flag, key in (
+        ("end_time", "OPENONDA_T_END"),
+        ("spacing", "OPENONDA_SPACING"),
+        ("fvm_dt", "OPENONDA_FVM_DT"),
+        ("vpm_dt", "OPENONDA_VPM_DT"),
+        ("max_particles", "OPENONDA_MAX_PARTICLES"),
+        ("marker_ratio", "OPENONDA_IBM_MARKER_RATIO"),
+    ):
+        if getattr(args, flag) is not None:
+            overrides[key] = str(getattr(args, flag))
+
+    if not overrides:
+        main()
+        return 0
+
+    os.environ.update(overrides)
+    spec = importlib.util.spec_from_file_location("naca4412_setup", __file__)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+    return 0
+
+
 def main() -> None:
+    print("\n===== SIMULATION =====")
+    print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={MAX_PARTICLES}")
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(AIRFOIL, h=SPACING)
     fvm_solver.write_vtk()
@@ -253,7 +313,9 @@ def main() -> None:
     vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
     coupled_solver.run()
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(_run_with_overrides(sys.argv[1:]))

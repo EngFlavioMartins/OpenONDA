@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# Run the quadcopter case and make its figures.
-
+# Run the quadcopter climb case, then make the figures.
+# Usage: ./allrun.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+echo
+echo "===== CLEAN ====="
+echo
 ./allclean.sh
 
-SAMPLE_PERIOD=0.0375
-BACKUP_PERIOD=0.0125  # 24 animation frames per rotor revolution.
+echo
+echo "===== SIMULATE ====="
+echo
+mkdir -p solution
+python quad_setup.py 2>&1 | tee solution/quadcopter.log
 
-python quad_setup.py "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
+echo
+echo "===== FIGURES ====="
+echo
 ./allplot.sh
+
+echo
+echo "===== DONE ====="
+echo

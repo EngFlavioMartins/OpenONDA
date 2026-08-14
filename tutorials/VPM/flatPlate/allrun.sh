@@ -1,24 +1,35 @@
 #!/usr/bin/env bash
-# Run the moving- and fixed-plate angle-of-attack sweeps.
-
+# Run the moving- and fixed-plate angle-of-attack sweeps, then make the figures.
+# Usage: ./allrun.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+echo
+echo "===== CLEAN ====="
+echo
 ./allclean.sh
 
-SAMPLE_PERIOD=0.0625
-BACKUP_PERIOD=0.05  # One animation frame per half-chord of flow evolution.
-
-run() {
-    python setup_plate.py "$1" "$2" "$SAMPLE_PERIOD" "$BACKUP_PERIOD"
-}
-
+echo
+echo "===== SIMULATE ====="
+echo
 for angle in -10 -5 -2 0 2 5 8 10 12 15; do
-    run moving "$angle"
+    echo
+    echo "---- moving plate, angle $angle deg ----"
+    python setup_plate.py --mode moving --angle "$angle"
 done
 
 for angle in -10 -5 -2 0 2 5 8 10 12 15; do
-    run static "$angle"
+    echo
+    echo "---- static plate, angle $angle deg ----"
+    python setup_plate.py --mode static --angle "$angle"
 done
 
+echo
+echo "===== FIGURES ====="
+echo
 ./allplot.sh
+
+echo
+echo "===== DONE ====="
+echo

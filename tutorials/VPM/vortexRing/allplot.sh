@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
-# Generate the vortex-ring comparison figures.
-
+# Make every vortex-ring figure (motion, energy, circulation).
+#
+# Usage:
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
 set -euo pipefail
 
 cd "$(dirname "$0")"
-rm -rf figures
+
+format="${1:-png}"
+case "$format" in
+    png|pdf) ;;
+    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+esac
+
 mkdir -p figures
 
+echo
+echo "===== FIGURES ($format) ====="
+echo
+
 plot() {
-    for format in png pdf; do
-        python "$@" --format "$format"
-    done
+    python "$@" --format "$format"
 }
 
 plot assets/plot_vortex_ring_motion.py
 plot assets/plot_vortex_ring_energy.py
 plot assets/plot_vortex_ring_circulation.py
 
-echo "Figures saved to figures/"
+echo
+echo "===== DONE ====="
+echo "Figures saved to: figures/"

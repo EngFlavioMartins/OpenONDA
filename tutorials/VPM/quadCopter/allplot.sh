@@ -1,18 +1,32 @@
 #!/usr/bin/env bash
-# Generate the quadcopter diagnostic figures.
-
+# Make every quadcopter diagnostic figure (particle count, vorticity history).
+#
+# Usage:
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+format="${1:-png}"
+case "$format" in
+    png|pdf) ;;
+    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+esac
+
 mkdir -p figures
 
+echo
+echo "===== FIGURES ($format) ====="
+echo
+
 plot() {
-    for format in png pdf; do
-        python "$@" --format "$format"
-    done
+    python "$@" --format "$format"
 }
 
 plot assets/plot_quadcopter_particle_count.py
 plot assets/plot_quadcopter_vorticity_history.py
 
-echo "Figures saved to figures/"
+echo
+echo "===== DONE ====="
+echo "Figures saved to: figures/"

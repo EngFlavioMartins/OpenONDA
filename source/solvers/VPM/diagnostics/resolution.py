@@ -133,7 +133,11 @@ def discretization_health(
     if not np.isfinite(positions).all() or not np.isfinite(radii).all() or radii.max() <= 0.0:
         return empty
 
-    tree = cKDTree(positions)
+    # compact_nodes=False: the default (balanced + compact) build recurses and
+    # writes out of bounds for regular-lattice clouds, corrupting the heap
+    # (observed only after Taichi shifts the heap layout).  Queries are exact
+    # regardless of the compaction flag; only the tree structure differs.
+    tree = cKDTree(positions, compact_nodes=False)
     if n <= _MAX_PROBES:
         probes = np.arange(n, dtype=np.intp)
     else:

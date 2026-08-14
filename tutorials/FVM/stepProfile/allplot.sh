@@ -1,23 +1,32 @@
 #!/usr/bin/env bash
+# Make every step-profile figure (profiles, reattachment comparison).
+#
+# Usage:
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-SOLUTION_DIR="./solution"
-DPI=400
-FORMAT="png"
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --solution-dir) SOLUTION_DIR="$2"; shift 2 ;;
-        --dpi)          DPI="$2";          shift 2 ;;
-        --format)       FORMAT="$2";       shift 2 ;;
-        *) echo "Unknown argument: $1" >&2; exit 1 ;;
-    esac
-done
-FIGURES_DIR="$SCRIPT_DIR/figures"
-mkdir -p "$FIGURES_DIR"
-echo "[1/2] Velocity profiles ..."
-python assets/plot_profile.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --format "$FORMAT"
-echo "[2/2] Step flow and reattachment ..."
-python assets/plot_comparison.py --solution-dir "$SOLUTION_DIR" --figures-dir "$FIGURES_DIR" --dpi "$DPI" --format "$FORMAT"
-echo ""
-echo "[allplot] Done."
+
+cd "$(dirname "$0")"
+
+format="${1:-png}"
+case "$format" in
+    png|pdf) ;;
+    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+esac
+
+mkdir -p figures
+
+echo
+echo "===== FIGURES ($format) ====="
+echo
+
+plot() {
+    python "$@" --format "$format"
+}
+
+plot assets/plot_profile.py
+plot assets/plot_comparison.py
+
+echo
+echo "===== DONE ====="
+echo "Figures saved to: figures/"

@@ -2,6 +2,7 @@
 """Publication-style velocity profiles and drag history."""
 
 from pathlib import Path
+import argparse
 import sys
 
 import matplotlib
@@ -57,7 +58,7 @@ def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[f
     ax.set(xlabel=r"$x/D$", ylabel="", xlim=(-3, 10), ylim=ylim, title=title)
 
 
-def plot_frame(time: float, consts: dict) -> None:
+def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) -> None:
     U_inf, D = consts["U_inf"], consts["D"]
     fig = plt.figure(figsize=(FIGURE_WIDTH, 2 * FIGURE_HEIGHT), dpi=FIGURE_DPI)
     grid = GridSpec(2, 2, figure=fig)
@@ -115,11 +116,15 @@ def plot_frame(time: float, consts: dict) -> None:
     ax_offaxis.legend(loc="lower right")
 
     fig.tight_layout()
-    util.save(fig, f"velocity_profiles_t{time:.2f}", FIGURE_FORMAT, FIGURE_DPI)
+    util.save(fig, f"velocity_profiles_t{time:.2f}", figure_format, FIGURE_DPI)
     plt.close(fig)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
+
     times = util.common_times(
         util.line_times("fvm", "centerline"),
         util.line_times("vpm", "centerline"),
@@ -132,7 +137,7 @@ def main() -> None:
         raise SystemExit("No coincident profile samples found in samples/.")
     consts = util.run_constants()
     for time in times:
-        plot_frame(float(time), consts)
+        plot_frame(float(time), consts, args.format)
 
 
 if __name__ == "__main__":

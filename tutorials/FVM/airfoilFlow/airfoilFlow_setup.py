@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Laminar flow past a body-fitted NACA 0012 airfoil.
+"""Laminar flow past a NACA 0012 airfoil (body-fitted FVM mesh).
 
-The quasi-2D Gmsh mesh uses empty front/back patches. Force histories and the
-final surface-pressure distribution are written under ``solution``. At zero
-angle of attack, lift and upper/lower pressure asymmetry provide symmetry
-checks; no drag-reference band is claimed for this coarse tutorial mesh.
+A quasi-two-dimensional airfoil in a uniform stream. The force history and
+the final surface-pressure distribution are written under ``solution``;
+``allplot.sh`` turns them into figures. At zero angle of attack the mean lift
+and the upper/lower pressure asymmetry should both be zero, which makes a
+nice symmetry check on a coarse tutorial mesh.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
@@ -27,48 +30,66 @@ from openonda.fvm import (
 )
 from openonda.fvm import GmshImporter
 
+# ---- Case definition -----------------------------------------------------
+CASE_NAME = "airfoilFlow"
+CHORD = 1.0  # airfoil chord length [m]
+FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
+DENSITY = 1.0  # fluid density [kg/m^3]
 
-def build_config(args, u_vec):
-    """FVM configuration for the airfoil case."""
-    nu = args.u_inf * args.chord / args.Re
+# ---- Time stepping and numerics ------------------------------------------
+TIME_STEP = 0.005  # initial time step [s]
+MAX_CFL = 1.0  # target maximum Courant number
+MAX_TIME_STEP = 4 * TIME_STEP  # upper bound on the adapted time step [s]
+MIN_TIME_STEP = 1e-5  # lower bound on the adapted time step [s]
+WRITE_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+ORTHOGONAL_CORRECTORS = 1
+CONVECTION_SCHEME = "limitedLinear"
+LINEAR_SOLVER = "bicgstab"
 
-    solver_params_schemes = SchemesConfig(convection_scheme=args.convection_scheme)
-    solver_params_linear = LinearSolverConfig(linear_solver=args.linear_solver)
-    solver_params_pimple = PimpleControl(
-        n_correctors=args.n_correctors,
-        n_outer_correctors=args.n_outer,
-        n_orthogonal_correctors=1,
+
+def build_config(reynolds: float, end_time: float, u_vec: list[float]) -> FVMSetup:
+    """Build the FVM setup for the airfoil case."""
+    nu = FREESTREAM_VELOCITY * CHORD / reynolds
+
+    schemes = SchemesConfig(convection_scheme=CONVECTION_SCHEME)
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
+    pimple = PimpleControl(
+        n_correctors=PISO_CORRECTORS,
+        n_outer_correctors=OUTER_CORRECTORS,
+        n_orthogonal_correctors=ORTHOGONAL_CORRECTORS,
     )
-    solver_params_samplers = [
+    forces = [
         ForceSampler(
             patch_names=["airfoil"],
-            ref_velocity=args.u_inf,
-            ref_area=args.chord * mesher.DEPTH,
-            ref_length=args.chord,
-            moment_centre=[0.25 * args.chord, 0.0, 0.0],
+            ref_velocity=FREESTREAM_VELOCITY,
+            ref_area=CHORD * mesher.DEPTH,
+            ref_length=CHORD,
+            moment_centre=[0.25 * CHORD, 0.0, 0.0],
         )
     ]
 
-    tc = TimeConfig(
-        delta_t=args.dt,
+    time = TimeConfig(
+        delta_t=TIME_STEP,
         start_time=0.0,
-        end_time=args.end_time,
+        end_time=end_time,
         write_interval=10**9,
-        write_interval_time=args.write_interval_time,
+        write_interval_time=WRITE_INTERVAL_TIME,
         adjust_timestep=True,
-        max_cfl=args.max_cfl,
-        max_delta_t=args.dt * 4,
-        min_delta_t=1e-5,
+        max_cfl=MAX_CFL,
+        max_delta_t=MAX_TIME_STEP,
+        min_delta_t=MIN_TIME_STEP,
     )
 
     return FVMSetup(
-        case_name=args.case_name,
-        time=tc,
-        schemes=solver_params_schemes,
-        linear=solver_params_linear,
-        pimple=solver_params_pimple,
-        samplers=solver_params_samplers,
-        transport=TransportConfig(density=args.rho, nu=nu),
+        case_name=CASE_NAME,
+        time=time,
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        samplers=forces,
+        transport=TransportConfig(density=DENSITY, nu=nu),
         turbulence=None,
         boundaries=[
             BoundaryConfig.inlet("inlet", u_vec),
@@ -82,11 +103,11 @@ def build_config(args, u_vec):
     )
 
 
-def write_surface_cp(solver, sol_dir, args):
-    """Surface pressure coefficient on the airfoil patch -> surface_cp.csv."""
+def write_surface_cp(solver, sol_dir: str) -> None:
+    """Write the surface pressure coefficient to ``surface_cp.csv``."""
     n = solver.mesh_data["n_elements"]
     n_interior = solver.mesh_data["n_interior_faces"]
-    q = 0.5 * args.u_inf**2  # kinematic pressure, rho folded out
+    q = 0.5 * FREESTREAM_VELOCITY**2  # kinematic pressure (rho folds out)
     rows = []
     for patch in solver.boundaries:
         if patch["name"] != "airfoil":
@@ -96,8 +117,9 @@ def write_surface_cp(solver, sol_dir, args):
         ghost = n + (start - n_interior)
         p_face = solver.p[ghost : ghost + nf]
         for (x, y, _z), p_i in zip(centres, p_face, strict=True):
-            rows.append((x / args.chord, y / args.chord, p_i / q))
+            rows.append((x / CHORD, y / CHORD, p_i / q))
     rows.sort()
+
     path = os.path.join(sol_dir, "surface_cp.csv")
     with open(path, "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -106,48 +128,36 @@ def write_surface_cp(solver, sol_dir, args):
     print(f"  Surface Cp written: {path}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Flow past a NACA 0012 airfoil")
-    parser.add_argument("--Re", type=float, default=1000.0, help="Chord Reynolds number")
-    parser.add_argument("--angle", type=float, default=0.0, help="Angle of attack [deg]")
-    parser.add_argument("--end-time", type=float, default=25.0, help="End time [s]")
-    parser.add_argument("--dt", type=float, default=0.005, help="Initial time step [s]")
-    parser.add_argument("--max-cfl", type=float, default=1.0, help="Target max Courant")
-    parser.add_argument("--chord", type=float, default=1.0, help="Chord length")
-    parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
-    parser.add_argument("--rho", type=float, default=1.0, help="Density")
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--write-interval-time",
-        type=float,
-        default=5.0,
-        help="Write VTK every N seconds of flow time",
+        "--Re", type=float, default=1000.0, help="chord Reynolds number Re = U c / nu"
     )
-    parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
-    parser.add_argument("--n-outer", type=int, default=1, help="PIMPLE outer correctors")
-    parser.add_argument("--linear-solver", type=str, default="bicgstab")
-    parser.add_argument("--convection-scheme", type=str, default="limitedLinear")
-    parser.add_argument("--case-name", type=str, default="airfoilFlow")
+    parser.add_argument("--angle", type=float, default=0.0, help="angle of attack [deg]")
+    parser.add_argument("--end-time", type=float, default=25.0, help="simulation end time [s]")
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
-    angle_rad = math.radians(args.angle)
+    angle = math.radians(args.angle)
     u_vec = [
-        args.u_inf * math.cos(angle_rad),
-        args.u_inf * math.sin(angle_rad),
+        FREESTREAM_VELOCITY * math.cos(angle),
+        FREESTREAM_VELOCITY * math.sin(angle),
         0.0,
     ]
 
-    print("\n--- Mesh Generation (gmsh) ---")
+    print("\n===== MESH =====")
+    print("---- Generating the airfoil mesh (gmsh) ----")
     msh_path = os.path.join(case_dir, "assets", "airfoil.msh")
     mesher.generate_mesh(msh_path)
 
-    print("\n--- Mesh Import ---")
+    print("---- Importing the mesh ----")
     importer = GmshImporter()
     importer.load_mesh(msh_path)
     mesh_data = importer.get_mesh_data()
     importer.finalize()
 
-    config = build_config(args, u_vec)
+    print("\n===== SIMULATION =====")
+    config = build_config(args.Re, args.end_time, u_vec)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
 
     solver.write_vtk()
@@ -156,9 +166,10 @@ def main():
 
     sol_dir = os.path.join(case_dir, "solution")
     os.makedirs(sol_dir, exist_ok=True)
-    write_surface_cp(solver, sol_dir, args)
+    write_surface_cp(solver, sol_dir)
 
-    print("\nSimulation completed successfully.")
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     if abs(args.angle) < 1e-9:
         print("Zero-angle check: mean lift and upper/lower Cp asymmetry should approach zero.")
 

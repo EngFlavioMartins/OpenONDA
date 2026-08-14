@@ -113,7 +113,7 @@ run_vpm_smoke() {
             --length 2 --spacing-factor 0.3 --processing-unit CPU \
             --backup-frequency 1 --solution-dir "$target/solution"
     )
-    env PYTHONNOUSERSITE=1 python - "$target/solution/vortex_cs" <<'PY'
+    env PYTHONNOUSERSITE=1 python - "$target/solution" <<'PY'
 import pathlib
 import sys
 

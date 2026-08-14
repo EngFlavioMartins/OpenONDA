@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import math
 from pathlib import Path
@@ -14,6 +15,10 @@ ALPHA = math.radians(10.0)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
+
     source = CASE_DIR / "samples" / "ibm_forces_history.csv"
     with source.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
@@ -36,7 +41,7 @@ def main() -> None:
     axes[1].set(xlabel="time", ylabel="IBM no-slip error")
     axes[1].grid(alpha=0.25)
     figure.tight_layout()
-    output = figures / "force_history.png"
+    output = figures / f"force_history.{args.format}"
     figure.savefig(output, dpi=180)
     print(f"Wrote {output}")
 

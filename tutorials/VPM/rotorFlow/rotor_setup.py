@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Run the rotor VLM--VPM tutorial.
+"""Rotor in forward flight with a fully-coupled VLM--VPM wake (LES).
 
-Usage: ``python rotor_setup.py SAMPLE_PERIOD BACKUP_PERIOD``
+A three-bladed rotor flies at a tip-speed ratio of 7.0. The wake is resolved
+with vortex particles convected by a coupled (implicit) advection integrator;
+the blade loading and the downstream wake planes are sampled for the
+``allplot.sh`` figures.
+
+Usage:
+    python rotor_setup.py
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -51,6 +56,8 @@ NUMBER_OF_STEPS = 2400
 RAMP_ROTATIONS = 1.0
 GUARD_FREQUENCY = 20
 MAX_PARTICLE_STRENGTH = 10.0
+SAMPLE_PERIOD = 0.12  # write a snapshot every this many seconds
+BACKUP_PERIOD = 0.03  # about 26 animation frames per rotor revolution
 
 
 def nominal_wake_spacing(time_step: float) -> float:
@@ -179,11 +186,11 @@ def write_manifest(solver: Solver) -> None:
         json.dump(manifest, handle, indent=2)
 
 
-def main(arguments: list[str] | None = None) -> int:
+def main() -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
-    arguments = sys.argv[1:] if arguments is None else arguments
-    sample_period, backup_period = map(float, arguments)
+    sample_period = SAMPLE_PERIOD
+    backup_period = BACKUP_PERIOD
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 
@@ -265,6 +272,7 @@ def main(arguments: list[str] | None = None) -> int:
     write_manifest(vpm)
     vpm.info()
 
+    print("\n===== SIMULATION =====")
     try:
         for step in range(NUMBER_OF_STEPS):
             vpm.update_state()
@@ -273,6 +281,8 @@ def main(arguments: list[str] | None = None) -> int:
     except RuntimeError:
         vpm.save_state(str(SOLUTION_DIR / "rejected_state"))
         raise
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

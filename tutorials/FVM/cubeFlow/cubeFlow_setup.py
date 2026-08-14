@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
 """Von Karman vortex street behind a square cylinder (body-fitted FVM).
 
-Flow physics under test: laminar bluff-body vortex shedding.  A square-section
-cylinder (an extruded cube, side D) sits in a uniform stream at Re = U*D/nu.
-Above Re ~ 50 the wake becomes globally unstable and sheds a periodic von
-Karman street whose frequency and mean drag are classical validation data:
+A square-section cylinder (an extruded cube, side D) sits in a uniform stream
+at Re = U D / nu. Above Re ~ 50 the wake becomes globally unstable and sheds a
+periodic von Karman street whose frequency and mean drag are classical
+validation data:
 
   Re = 100, blockage 5%:
-    Strouhal St = f*D/U   -> 0.140-0.150
-    mean drag  Cd         -> 1.45-1.58
-  (Okajima, J. Fluid Mech. 123, 1982: exp. St ~ 0.14; Sohankar et al.,
-   Int. J. Numer. Meth. Fluids 26, 1998: St = 0.146, Cd = 1.48;
-   Sen, Mittal & Biswas, Int. J. Numer. Meth. Fluids 67, 2011:
-   St = 0.145, Cd = 1.53.)
+    Strouhal St = f D / U  ->  0.140-0.150
+    mean drag  Cd          ->  1.45-1.58
+  (Okajima, J. Fluid Mech. 123, 1982; Sohankar et al., Int. J. Numer. Meth.
+   Fluids 26, 1998; Sen, Mittal & Biswas, Int. J. Numer. Meth. Fluids 67, 2011)
 
-The case is quasi-2D (one cell thick, ``empty`` front/back) on a rectilinear
-mesh generated in-memory (assets/mesh_square.py).  Cd(t), Cl(t) are logged
-every step to samples/forces_history.csv; allplot.sh extracts the Strouhal
-number from the lift signal and compares both against the bands above.
-
-Usage:
-    python cubeFlow_setup.py --Re 100 --end-time 120
+The case is quasi-two-dimensional (one cell thick) on a rectilinear mesh built
+in memory (assets/mesh_square.py). Cd(t) and Cl(t) are logged to
+samples/forces_history.csv; ``allplot.sh`` extracts the Strouhal number from
+the lift signal and compares it with the bands above.
 """
+
+from __future__ import annotations
 
 import argparse
 import os
@@ -40,52 +37,71 @@ from openonda.fvm import (
     TransportConfig,
 )
 
+# ---- Case definition -----------------------------------------------------
+CASE_NAME = "cubeFlow"
+SIDE = 1.0  # side length of the square cylinder [m]
+FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
+DENSITY = 1.0  # fluid density [kg/m^3]
 
-def build_config(args, depth):
-    """FVM configuration for the square-cylinder shedding case."""
-    nu = args.u_inf * args.D / args.Re
+# ---- Mesh ----------------------------------------------------------------
+SPACING = 0.0625  # core grid spacing next to the cylinder [m]
+
+# ---- Time stepping and numerics ------------------------------------------
+TIME_STEP = 0.02  # initial time step [s]
+MAX_CFL = 0.9  # target maximum Courant number
+MAX_TIME_STEP = 0.05  # upper bound on the adapted time step [s]
+MIN_TIME_STEP = 1e-5  # lower bound on the adapted time step [s]
+WRITE_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+CONVECTION_SCHEME = "limitedLinear"
+LINEAR_SOLVER = "bicgstab"
+
+
+def build_config(reynolds: float, end_time: float, depth: float) -> FVMSetup:
+    """Build the FVM setup for the square-cylinder case."""
+    nu = FREESTREAM_VELOCITY * SIDE / reynolds
 
     schemes = SchemesConfig(
-        convection_scheme=args.convection_scheme,
+        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme="gauss",
     )
-    linear = LinearSolverConfig(linear_solver=args.linear_solver)
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
     pimple = PimpleControl(
-        n_correctors=args.n_correctors,
-        n_outer_correctors=args.n_outer,
+        n_correctors=PISO_CORRECTORS,
+        n_outer_correctors=OUTER_CORRECTORS,
     )
     forces = [
         ForceSampler(
             patch_names=["cube"],
-            ref_velocity=args.u_inf,
-            ref_area=args.D * depth,  # frontal area of the extruded square
-            ref_length=args.D,
+            ref_velocity=FREESTREAM_VELOCITY,
+            ref_area=SIDE * depth,  # frontal area of the extruded square
+            ref_length=SIDE,
             moment_centre=[0.0, 0.0, 0.5 * depth],
-            # default every_n_steps=1: St comes from the Cl signal
         )
     ]
 
     return FVMSetup(
-        case_name=args.case_name,
+        case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=args.initial_dt,
+            delta_t=TIME_STEP,
             start_time=0.0,
-            end_time=args.end_time,
-            write_interval=10**9,  # step-based writing off; time-based below
-            write_interval_time=args.write_interval_time,
+            end_time=end_time,
+            write_interval=10**9,
+            write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
-            max_cfl=args.max_cfl,
-            max_delta_t=args.max_dt,
-            min_delta_t=1e-5,
+            max_cfl=MAX_CFL,
+            max_delta_t=MAX_TIME_STEP,
+            min_delta_t=MIN_TIME_STEP,
         ),
         schemes=schemes,
         linear=linear,
         pimple=pimple,
         samplers=forces,
-        transport=TransportConfig(density=args.rho, nu=nu),
+        transport=TransportConfig(density=DENSITY, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[
-            BoundaryConfig.inlet("inlet", [args.u_inf, 0.0, 0.0]),
+            BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             BoundaryConfig.outlet("outlet", p=0.0),
             # Slip lateral boundaries: 20 D apart (5% blockage), no wall BL.
             BoundaryConfig(
@@ -98,54 +114,39 @@ def build_config(args, depth):
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        # Small cross-stream component breaks the wake symmetry so shedding
-        # starts within a few advective times instead of waiting for round-off.
-        initial_U=[args.u_inf, 0.05 * args.u_inf, 0.0],
+        # A tiny cross-stream component lets the vortex street start right
+        # away instead of waiting for numerical round-off to break symmetry.
+        initial_U=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
         initial_p=0.0,
     )
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Square-cylinder von Karman street")
-    parser.add_argument("--Re", type=float, default=100.0, help="Reynolds number U*D/nu")
-    parser.add_argument("--end-time", type=float, default=120.0, help="End time [s]")
-    parser.add_argument("--h", type=float, default=0.0625, help="Core grid spacing (in D units)")
-    parser.add_argument("--D", type=float, default=1.0, help="Cylinder side length")
-    parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
-    parser.add_argument("--rho", type=float, default=1.0, help="Density")
-    parser.add_argument("--initial-dt", type=float, default=0.02, help="Initial dt [s]")
-    parser.add_argument("--max-cfl", type=float, default=0.9, help="Target max Courant")
-    parser.add_argument("--max-dt", type=float, default=0.05, help="Max dt cap [s]")
-    parser.add_argument(
-        "--write-interval-time",
-        type=float,
-        default=5.0,
-        help="Write VTK every N seconds of flow time",
-    )
-    parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
-    parser.add_argument("--n-outer", type=int, default=1, help="PIMPLE outer correctors")
-    parser.add_argument("--linear-solver", type=str, default="bicgstab")
-    parser.add_argument("--convection-scheme", type=str, default="limitedLinear")
-    parser.add_argument("--case-name", type=str, default="cubeFlow")
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--Re", type=float, default=100.0, help="Reynolds number Re = U D / nu")
+    parser.add_argument("--end-time", type=float, default=120.0, help="simulation end time [s]")
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
 
-    print("\n--- Mesh Generation (rectilinear, in-memory) ---")
-    mesh_data, depth = square_cylinder_mesh(h=args.h, D=args.D)
+    print("\n===== MESH =====")
+    print("---- Generating the square-cylinder mesh ----")
+    mesh_data, depth = square_cylinder_mesh(h=SPACING, D=SIDE)
     print(
-        f"  cells: {mesh_data['n_elements']}, core spacing h = {args.h} "
-        f"(D/h = {args.D / args.h:.0f}), blockage 5%"
+        f"  cells: {mesh_data['n_elements']}, core spacing {SPACING} "
+        f"(D/h = {SIDE / SPACING:.0f}), blockage 5%"
     )
 
-    config = build_config(args, depth)
+    print("\n===== SIMULATION =====")
+    config = build_config(args.Re, args.end_time, depth)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
 
     solver.write_vtk()
     while solver.flow_time < config.time.end_time:
         solver.evolve()
 
-    print("\nSimulation completed successfully.")
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Reference values at Re = 100 (square cylinder, 5% blockage):")
     print("  St = 0.140-0.150   (Okajima 1982; Sohankar et al. 1998; Sen et al. 2011)")
     print("  mean Cd = 1.45-1.58")

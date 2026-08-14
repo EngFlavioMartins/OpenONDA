@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
-"""Run one flat-plate case selected by ``allrun.sh``.
+"""Flat-plate angle-of-attack sweep in a moving-body or wind frame (VLM--VPM).
 
-Usage: ``python setup_plate.py MODE AOA SAMPLE_PERIOD BACKUP_PERIOD``
+A rectangular flat plate of chord 1 and span 10 is accelerated impulsively to
+Freestream speed, then allowed to travel. Two families of cases are run:
+
+  * ``moving``: the plate travels through still air (body frame), a smooth
+    ramp that avoids the impulsive-start transient.
+  * ``static``: the plate is fixed and the wind hits it at the angle of attack
+    (wind frame).
+
+Each case is named ``exp_<mode>_aoa<NN>``; the sampled forces are used by
+``allplot.sh`` to build the lift/drag polar and to compare moving and static
+plates at matching angles. The ``static`` case at 8 degrees additionally
+writes cross-flow wake planes for the Kelvin theorem figure.
+
+Usage:
+    python setup_plate.py --mode moving --angle 8
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
@@ -30,11 +44,10 @@ from openonda.vpm import (
 )
 from source.solvers.VPM.io.sampling import resolve_samples_dir
 
-
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
-# Plate and flow
+# ---- Plate and flow ------------------------------------------------------
 CHORD = 1.0
 SPAN = 10.0
 CHORDWISE_PANELS = 8
@@ -43,12 +56,14 @@ FREESTREAM_SPEED = 10.0
 DENSITY = 1.0
 KINEMATIC_VISCOSITY = 1.0e-2
 
-# Time and wake resolution
+# ---- Time and wake resolution ---------------------------------------------
 TIME_STEP = 0.0125
 RAMP_LENGTH = 0.6
 FINAL_TRAVEL = 24.0
 SMAGORINSKY_COEFFICIENT = 0.30
 PARTICLE_CORE_FACTOR = 2.5
+SAMPLE_PERIOD = 0.0625  # write a snapshot every this many seconds
+BACKUP_PERIOD = 0.05  # one animation frame per half-chord of travel
 
 
 def cadence_steps(period: float) -> int:
@@ -123,13 +138,7 @@ def crossflow_samplers(name: str) -> tuple[SurfaceSampler, ...]:
 
 
 def run_case(
-    name: str,
-    kinematics: str,
-    frame: str,
-    angle_of_attack: float,
-    sample_planes: bool,
-    sample_period: float,
-    backup_period: float,
+    name: str, kinematics: str, frame: str, angle_of_attack: float, sample_planes: bool
 ) -> None:
     number_of_steps, ramp_time = time_parameters(kinematics)
     motion, background_velocity = plate_kinematics(
@@ -164,7 +173,7 @@ def run_case(
         if frame == "wind"
         else (FREESTREAM_SPEED, 0.0, 0.0)
     )
-    sample_steps = cadence_steps(sample_period)
+    sample_steps = cadence_steps(SAMPLE_PERIOD)
     vlm_setup = VLMSetup(
         surfaces=(VLMSurfaceSetup(str(surface_file), kinematics=motion),),
         mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
@@ -201,7 +210,7 @@ def run_case(
                 traversal_block_dim=128,
             ),
             logging_frequency=sample_steps,
-            backup_frequency=cadence_steps(backup_period),
+            backup_frequency=cadence_steps(BACKUP_PERIOD),
             backup_file_name=name,
             backup_directory=str(SOLUTION_DIR),
             sample_subdirectory=name,
@@ -236,7 +245,7 @@ def run_case(
         )
 
 
-def run(mode: str, angle_of_attack: float, sample_period: float, backup_period: float) -> None:
+def run(mode: str, angle_of_attack: float) -> None:
     """Run one moving-body or static-wind case."""
     integer_angle = round(angle_of_attack)
     if not math.isclose(angle_of_attack, integer_angle):
@@ -253,15 +262,21 @@ def run(mode: str, angle_of_attack: float, sample_period: float, backup_period: 
         frame="body" if moving else "wind",
         angle_of_attack=angle_of_attack,
         sample_planes=not moving and integer_angle == 8,
-        sample_period=sample_period,
-        backup_period=backup_period,
     )
 
 
-def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments
-    mode, angle, sample_period, backup_period = arguments
-    run(mode, float(angle), float(sample_period), float(backup_period))
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=("moving", "static"),
+        required=True,
+        help="plate motion: 'moving' travels through still air, 'static' is fixed",
+    )
+    parser.add_argument("--angle", type=float, required=True, help="angle of attack [deg]")
+    args = parser.parse_args()
+
+    run(args.mode, args.angle)
     return 0
 
 

@@ -2,6 +2,7 @@
 """Publication-style FVM/VPM and reference velocity fields."""
 
 from pathlib import Path
+import argparse
 import sys
 
 import matplotlib
@@ -96,6 +97,7 @@ def _field_figure(
     right_title: str,
     name: str,
     box: dict,
+    figure_format: str = FIGURE_FORMAT,
 ) -> tuple[float, float]:
     error = np.abs(left - right) * 100.0
     error[np.abs(left) < 0.01] = np.nan
@@ -128,12 +130,12 @@ def _field_figure(
     axes[2].set_title(r"$\varepsilon$ [\%]")
     _style_axes(fig, axes, box, velocity_plot, error_plot, vmax, p95)
 
-    util.save(fig, f"{name}_t{time:.2f}", FIGURE_FORMAT, FIGURE_DPI)
+    util.save(fig, f"{name}_t{time:.2f}", figure_format, FIGURE_DPI)
     plt.close(fig)
     return float(np.nanmean(error[valid])), p95
 
 
-def plot_frame(time: float, consts: dict) -> None:
+def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) -> None:
     fvm = util.load_slice("fvm", time)
     vpm = util.load_slice("vpm", time)
     reference = util.load_slice("reference", time)
@@ -156,6 +158,7 @@ def plot_frame(time: float, consts: dict) -> None:
         r"VPM, $u_x^\mathrm{VPM}$",
         "velocity_fields",
         consts["box"],
+        figure_format,
     )
     valid = np.isfinite(ux_fvm) & np.isfinite(ux_vpm)
     outlet = valid & (x >= consts["box"]["xmax"] - OUTLET_BAND)
@@ -175,11 +178,16 @@ def plot_frame(time: float, consts: dict) -> None:
         r"Stitched FVM+VPM, $u_x^\mathrm{stitched}$",
         "Stitched_RefVsHybrid",
         consts["box"],
+        figure_format,
     )
     print(f"  Stitched_RefVsHybrid t={time:.2f}: mean={mean:.1f}%, p95={p95:.1f}%")
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
+
     times = util.common_times(
         util.slice_times("fvm"),
         util.slice_times("vpm"),
@@ -189,7 +197,7 @@ def main() -> None:
         raise SystemExit("No coincident field samples found in samples/.")
     consts = util.run_constants()
     for time in times:
-        plot_frame(float(time), consts)
+        plot_frame(float(time), consts, args.format)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 """Publication-style VPM/reference wake error fields."""
 
 from pathlib import Path
+import argparse
 import sys
 
 import matplotlib
@@ -38,7 +39,13 @@ def _on_grid(source: dict, target: dict, key: str) -> np.ndarray:
     return result
 
 
-def plot_frame(time: float, vpm: dict, reference: dict, consts: dict) -> None:
+def plot_frame(
+    time: float,
+    vpm: dict,
+    reference: dict,
+    consts: dict,
+    figure_format: str = FIGURE_FORMAT,
+) -> None:
     U_inf, D = consts["U_inf"], consts["D"]
     x, y = vpm["x"] / D, vpm["y"] / D
     ux_vpm = vpm["Ux"] / U_inf
@@ -132,7 +139,7 @@ def plot_frame(time: float, vpm: dict, reference: dict, consts: dict) -> None:
         ax.set_ylabel(r"$y/D$")
     fig.suptitle(f"Wake fields VPM vs reference ($z=0$, $t={time:.2f}$ s)")
 
-    util.save(fig, f"wake_errors_t{time:.2f}", FIGURE_FORMAT, FIGURE_DPI)
+    util.save(fig, f"wake_errors_t{time:.2f}", figure_format, FIGURE_DPI)
     plt.close(fig)
 
     x_interface = consts["box"]["xmax"]
@@ -149,6 +156,10 @@ def plot_frame(time: float, vpm: dict, reference: dict, consts: dict) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
+
     times = util.common_times(
         util.slice_times("vpm", SLICE_NAME),
         util.slice_times("reference", SLICE_NAME),
@@ -160,7 +171,7 @@ def main() -> None:
         vpm = util.load_slice("vpm", float(time), SLICE_NAME)
         reference = util.load_slice("reference", float(time), SLICE_NAME)
         if vpm is not None and reference is not None:
-            plot_frame(float(time), vpm, reference, consts)
+            plot_frame(float(time), vpm, reference, consts, args.format)
 
 
 if __name__ == "__main__":

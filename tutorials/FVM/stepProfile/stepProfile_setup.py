@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Laminar backward-facing-step flow solved with PIMPLE."""
+"""Laminar backward-facing-step flow (FVM, PIMPLE).
+
+A channel with a vertical step expands from height h to height 2h at x/h = 0.
+The flow separates at the step corner and reattaches some distance downstream;
+at Re_h = U_bulk h / nu = 100 the classical reattachment length is around
+x_reatt/h ~ 4-5 (Armaly et al. 1983; Schlichting, Boundary-Layer Theory).
+The mesh contains the solid upstream block and the step, so the whole
+expansion is resolved body-fitted (this is not a scalar step-profile case).
+"""
+
+from __future__ import annotations
 
 import argparse
 import csv
@@ -21,37 +31,60 @@ from openonda.fvm import (
 )
 from openonda.fvm import geometry
 
+# ---- Case definition -----------------------------------------------------
+CASE_NAME = "stepProfile"
+STEP_HEIGHT = 1.0  # step height h [m]
+MEAN_VELOCITY = 1.0  # bulk inlet velocity [m/s]
+DENSITY = 1.0  # fluid density [kg/m^3]
 
-def inlet_velocity(mesh_data, geo_data, step_height, mean_velocity):
+# ---- Mesh ----------------------------------------------------------------
+N_UPSTREAM = 24  # cells upstream of the step (x/h < 0)
+N_DOWNSTREAM = 120  # cells downstream of the step (x/h > 0)
+N_HEIGHT = 16  # cells across the inlet channel height h
+
+# ---- Time stepping and numerics ------------------------------------------
+TIME_STEP = 0.02  # initial time step [s]
+MAX_CFL = 0.7  # target maximum Courant number
+MAX_TIME_STEP = 0.05  # upper bound on the adapted time step [s]
+MIN_TIME_STEP = 1e-6  # lower bound on the adapted time step [s]
+WRITE_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+CONVECTION_SCHEME = "limitedLinear"
+GRADIENT_SCHEME = "gauss"
+LINEAR_SOLVER = "bicgstab"
+
+
+def inlet_velocity(mesh_data, geo_data):
     """Parabolic inlet profile with the requested bulk velocity."""
     patch = next(item for item in mesh_data["boundary"] if item["name"] == "inlet")
     start = patch["startFace"]
     stop = start + patch["nFaces"]
     y = geo_data["face_centroids"][start:stop, 1]
-    eta = np.clip((y - step_height) / step_height, 0.0, 1.0)
+    eta = np.clip((y - STEP_HEIGHT) / STEP_HEIGHT, 0.0, 1.0)
     values = np.zeros((patch["nFaces"], 3))
-    values[:, 0] = 6.0 * mean_velocity * eta * (1.0 - eta)
+    values[:, 0] = 6.0 * MEAN_VELOCITY * eta * (1.0 - eta)
     return values
 
 
-def initial_velocity(geo_data, n_cells, step_height, mean_velocity):
+def initial_velocity(geo_data, n_cells):
     """Divergence-compatible profile on each side of the expansion."""
     centres = geo_data["element_centroids"][:n_cells]
     x, y = centres[:, 0], centres[:, 1]
     values = np.zeros((n_cells, 3))
 
     upstream = x < 0.0
-    eta_up = np.clip((y[upstream] - step_height) / step_height, 0.0, 1.0)
-    values[upstream, 0] = 6.0 * mean_velocity * eta_up * (1.0 - eta_up)
+    eta_up = np.clip((y[upstream] - STEP_HEIGHT) / STEP_HEIGHT, 0.0, 1.0)
+    values[upstream, 0] = 6.0 * MEAN_VELOCITY * eta_up * (1.0 - eta_up)
 
     downstream = ~upstream
-    eta_down = np.clip(y[downstream] / (2.0 * step_height), 0.0, 1.0)
-    values[downstream, 0] = 3.0 * mean_velocity * eta_down * (1.0 - eta_down)
+    eta_down = np.clip(y[downstream] / (2.0 * STEP_HEIGHT), 0.0, 1.0)
+    values[downstream, 0] = 3.0 * MEAN_VELOCITY * eta_down * (1.0 - eta_down)
     return values
 
 
-def reattachment_location(solver, step_height):
-    """Estimate x/h where the first downstream cell row changes to positive u."""
+def reattachment_location(solver):
+    """Estimate x/h where the first downstream cell row turns to positive u."""
     n_cells = solver.mesh_data["n_elements"]
     centres = solver.geo_data["element_centroids"][:n_cells]
     downstream = centres[:, 0] > 0.0
@@ -70,14 +103,15 @@ def reattachment_location(solver, step_height):
     x0, x1 = x[last_negative], x[last_negative + 1]
     u0, u1 = u[last_negative], u[last_negative + 1]
     x_re = x0 - u0 * (x1 - x0) / (u1 - u0)
-    return float(x_re / step_height), float(np.min(u))
+    return float(x_re / STEP_HEIGHT), float(np.min(u))
 
 
-def write_solution_tables(solver, solution_dir, history, step_height):
-    """Write cell fields and the reattachment/health history."""
+def write_solution_tables(solver, solution_dir, history):
+    """Write the cell fields and the reattachment/health history."""
     os.makedirs(solution_dir, exist_ok=True)
     n_cells = solver.mesh_data["n_elements"]
     centres = solver.geo_data["element_centroids"][:n_cells]
+
     fields_path = os.path.join(solution_dir, "fields.csv")
     with open(fields_path, "w", newline="") as stream:
         writer = csv.writer(stream)
@@ -87,8 +121,8 @@ def write_solution_tables(solver, solution_dir, history, step_height):
         ):
             writer.writerow(
                 [
-                    centre[0] / step_height,
-                    centre[1] / step_height,
+                    centre[0] / STEP_HEIGHT,
+                    centre[1] / STEP_HEIGHT,
                     velocity[0],
                     velocity[1],
                     pressure,
@@ -104,32 +138,34 @@ def write_solution_tables(solver, solution_dir, history, step_height):
     print(f"  Reattachment history written: {history_path}")
 
 
-def build_config(args, inlet_values, nu):
-    params_schemes = SchemesConfig(
-        convection_scheme=args.convection_scheme,
-        gradient_scheme="gauss",
+def build_config(reynolds: float, end_time: float, inlet_values: np.ndarray, nu: float) -> FVMSetup:
+    """Build the FVM setup for the backward-facing-step case."""
+    schemes = SchemesConfig(
+        convection_scheme=CONVECTION_SCHEME,
+        gradient_scheme=GRADIENT_SCHEME,
     )
-    params_linear = LinearSolverConfig(linear_solver=args.linear_solver)
-    params_pimple = PimpleControl(
-        n_correctors=args.n_correctors,
-        n_outer_correctors=args.n_outer,
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
+    pimple = PimpleControl(
+        n_correctors=PISO_CORRECTORS,
+        n_outer_correctors=OUTER_CORRECTORS,
     )
+
     return FVMSetup(
-        case_name=args.case_name,
+        case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=args.initial_dt,
-            end_time=args.end_time,
+            delta_t=TIME_STEP,
+            end_time=end_time,
             write_interval=10**9,
-            write_interval_time=args.write_interval_time,
+            write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
-            max_cfl=args.max_cfl,
-            max_delta_t=args.max_dt,
-            min_delta_t=1e-6,
+            max_cfl=MAX_CFL,
+            max_delta_t=MAX_TIME_STEP,
+            min_delta_t=MIN_TIME_STEP,
         ),
-        schemes=params_schemes,
-        linear=params_linear,
-        pimple=params_pimple,
-        transport=TransportConfig(density=args.rho, nu=nu),
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        transport=TransportConfig(density=DENSITY, nu=nu),
         turbulence=None,
         boundaries=[
             BoundaryConfig.inlet("inlet", inlet_values.tolist()),
@@ -143,64 +179,54 @@ def build_config(args, inlet_values, nu):
     )
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Laminar backward-facing-step PIMPLE tutorial")
-    parser.add_argument("--Re", type=float, default=100.0, help="Re_h = U_bulk h / nu")
-    parser.add_argument("--end-time", type=float, default=12.0)
-    parser.add_argument("--step-height", type=float, default=1.0)
-    parser.add_argument("--u-mean", type=float, default=1.0)
-    parser.add_argument("--rho", type=float, default=1.0)
-    parser.add_argument("--n-upstream", type=int, default=24)
-    parser.add_argument("--n-downstream", type=int, default=120)
-    parser.add_argument("--n-height", type=int, default=16)
-    parser.add_argument("--initial-dt", type=float, default=0.02)
-    parser.add_argument("--max-dt", type=float, default=0.05)
-    parser.add_argument("--max-cfl", type=float, default=0.7)
-    parser.add_argument("--write-interval-time", type=float, default=2.0)
-    parser.add_argument("--n-correctors", type=int, default=2)
-    parser.add_argument("--n-outer", type=int, default=1)
-    parser.add_argument("--linear-solver", default="bicgstab")
-    parser.add_argument("--convection-scheme", default="limitedLinear")
-    parser.add_argument("--case-name", default="stepProfile")
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--Re", type=float, default=100.0, help="Reynolds number Re = U_bulk h / nu"
+    )
+    parser.add_argument("--end-time", type=float, default=12.0, help="simulation end time [s]")
     args = parser.parse_args()
 
     if args.Re <= 0.0:
         parser.error("--Re must be positive")
+
     case_dir = os.path.dirname(os.path.abspath(__file__))
     solution_dir = os.path.join(case_dir, "solution")
 
-    print("\n--- Backward-facing-step mesh ---")
+    print("\n===== MESH =====")
+    print("---- Generating the backward-facing-step mesh ----")
     mesh_data, depth = backward_facing_step_mesh(
-        step_height=args.step_height,
-        n_upstream=args.n_upstream,
-        n_downstream=args.n_downstream,
-        n_height=args.n_height,
+        step_height=STEP_HEIGHT,
+        n_upstream=N_UPSTREAM,
+        n_downstream=N_DOWNSTREAM,
+        n_height=N_HEIGHT,
     )
     geo_data = geometry.compute_mesh_geometry(mesh_data)
     print(f"  cells: {mesh_data['n_elements']}; extrusion depth: {depth:g}")
     print("  geometry: inlet y/h=1..2, vertical step at x/h=0, outlet height=2h")
 
-    nu = args.u_mean * args.step_height / args.Re
-    inlet_values = inlet_velocity(mesh_data, geo_data, args.step_height, args.u_mean)
-    config = build_config(args, inlet_values, nu)
+    print("\n===== SIMULATION =====")
+    nu = MEAN_VELOCITY * STEP_HEIGHT / args.Re
+    inlet_values = inlet_velocity(mesh_data, geo_data)
+    config = build_config(args.Re, args.end_time, inlet_values, nu)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
-    solver.set_initial_velocity(
-        initial_velocity(geo_data, mesh_data["n_elements"], args.step_height, args.u_mean)
-    )
+    solver.set_initial_velocity(initial_velocity(geo_data, mesh_data["n_elements"]))
     solver.write_vtk()
 
     history = []
     while solver.flow_time < config.time.end_time:
         solver.evolve()
-        x_re, min_u = reattachment_location(solver, args.step_height)
+        x_re, min_u = reattachment_location(solver)
         diagnostics = solver.last_diagnostics
         history.append(
             [solver.flow_time, x_re, min_u, diagnostics.continuity_max, diagnostics.cfl_max]
         )
 
-    write_solution_tables(solver, solution_dir, history, args.step_height)
-    x_re, min_u = reattachment_location(solver, args.step_height)
-    print("\nSimulation completed successfully.")
+    write_solution_tables(solver, solution_dir, history)
+    x_re, min_u = reattachment_location(solver)
+
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print(f"  Re_h={args.Re:g}; minimum downstream near-wall u={min_u:.6g}")
     print(
         f"  estimated x_reattachment/h={x_re:.6g}"

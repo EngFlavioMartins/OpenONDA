@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
-"""Laminar flat-plate boundary layer (Blasius validation, FVM).
+"""Laminar flat-plate boundary layer, compared with the Blasius solution (FVM).
 
-Flow physics under test: viscous boundary-layer growth on a flat plate.
 A uniform stream (U = 1) meets a no-slip plate of length L = 1 whose leading
-edge is at x = 0; upstream of it the bottom boundary is a frictionless slip
-plane, so the layer starts growing exactly at the leading edge.  At
-Re_L = U L / nu = 1e4 the layer stays laminar over the whole plate and the
-classical Blasius similarity solution applies (Blasius 1908; Schlichting,
-Boundary-Layer Theory):
+edge is at x = 0. Upstream of the plate the bottom boundary is a frictionless
+slip plane, so the boundary layer starts growing exactly at the leading edge.
+At Re_L = U L / nu = 1e4 the layer stays laminar over the whole plate and the
+classical Blasius similarity solution applies:
 
-    u / U       = f'(eta),   eta = y * sqrt(U / (nu x))
-    Cf(x)       = 0.664 / sqrt(Re_x)
-    delta99(x)  = 5.0 x / sqrt(Re_x)
+    u / U     = f'(eta)      with  eta = y * sqrt(U / (nu x))
+    Cf(x)     = 0.664 / sqrt(Re_x)
+    delta99   = 5.0 x / sqrt(Re_x)
 
-After the run reaches steady state the script samples wall-normal velocity
+Once the flow reaches steady state the script samples wall-normal velocity
 profiles at x/L = 0.25, 0.5, 0.75 (solution/profiles.csv) and the skin
-friction along the plate (solution/cf.csv); allplot.sh compares both against
-the Blasius solution.
-
-Usage:
-    python boundaryLayer_setup.py --Re 1e4 --end-time 8
+friction along the plate (solution/cf.csv); ``allplot.sh`` compares both
+against the Blasius solution.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
@@ -42,49 +39,72 @@ from openonda.fvm import (
     TransportConfig,
 )
 
-STATIONS = (0.25, 0.5, 0.75)  # x/L sampling stations for the Blasius profiles
+# ---- Case definition -----------------------------------------------------
+CASE_NAME = "boundaryLayer"
+PLATE_LENGTH = 1.0  # plate length [m]
+FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
+DENSITY = 1.0  # fluid density [kg/m^3]
+STATIONS = (0.25, 0.5, 0.75)  # x/L positions of the Blasius profiles
+
+# ---- Mesh ----------------------------------------------------------------
+N_PLATE = 72  # cells along the plate
+DOMAIN_HEIGHT = 0.35  # height of the domain [m]
+WALL_CELL_HEIGHT = 0.0015  # height of the first cell next to the wall [m]
+WALL_STRETCHING = 1.12  # wall-normal growth factor (1.0 = uniform)
+
+# ---- Time stepping and numerics ------------------------------------------
+TIME_STEP = 0.005  # initial time step [s]
+MAX_CFL = 0.9  # target maximum Courant number
+MAX_TIME_STEP = 0.02  # upper bound on the adapted time step [s]
+MIN_TIME_STEP = 1e-6  # lower bound on the adapted time step [s]
+WRITE_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+CONVECTION_SCHEME = "limitedLinear"
+GRADIENT_SCHEME = "gauss"
+LINEAR_SOLVER = "bicgstab"
 
 
-def build_config(args, nu):
-    """FVM configuration for the flat-plate case."""
-    solver_schemes = SchemesConfig(
-        convection_scheme=args.convection_scheme,
-        gradient_scheme="gauss",
+def build_config(reynolds: float, end_time: float, nu: float) -> FVMSetup:
+    """Build the FVM setup for the flat-plate case."""
+    schemes = SchemesConfig(
+        convection_scheme=CONVECTION_SCHEME,
+        gradient_scheme=GRADIENT_SCHEME,
     )
-    solver_linear = LinearSolverConfig(linear_solver=args.linear_solver)
-    solver_pimple = PimpleControl(
-        n_correctors=args.n_correctors,
-        n_outer_correctors=args.n_outer,
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
+    pimple = PimpleControl(
+        n_correctors=PISO_CORRECTORS,
+        n_outer_correctors=OUTER_CORRECTORS,
     )
-    solver_forces = [
+    forces = [
         ForceSampler(
             patch_names=["plate"],
-            ref_velocity=args.u_inf,
-            ref_length=args.plate_length,
+            ref_velocity=FREESTREAM_VELOCITY,
+            ref_length=PLATE_LENGTH,
         )
     ]
 
     return FVMSetup(
-        case_name=args.case_name,
+        case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=args.initial_dt,
+            delta_t=TIME_STEP,
             start_time=0.0,
-            end_time=args.end_time,
+            end_time=end_time,
             write_interval=10**9,
-            write_interval_time=args.write_interval_time,
+            write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
-            max_cfl=args.max_cfl,
-            max_delta_t=args.max_dt,
-            min_delta_t=1e-6,
+            max_cfl=MAX_CFL,
+            max_delta_t=MAX_TIME_STEP,
+            min_delta_t=MIN_TIME_STEP,
         ),
-        schemes=solver_schemes,
-        linear=solver_linear,
-        pimple=solver_pimple,
-        samplers=solver_forces,
-        transport=TransportConfig(density=args.rho, nu=nu),
-        turbulence=None,  # laminar by construction (Re_x <= 1e4 << 5e5)
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        samplers=forces,
+        transport=TransportConfig(density=DENSITY, nu=nu),
+        turbulence=None,  # laminar for Re_x <= 1e4 << 5e5
         boundaries=[
-            BoundaryConfig.inlet("inlet", [args.u_inf, 0.0, 0.0]),
+            BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             BoundaryConfig.outlet("outlet", p=0.0),
             BoundaryConfig(name="floor", type_U="slip", type_p="zeroGradient"),
             BoundaryConfig.wall("plate"),
@@ -92,19 +112,19 @@ def build_config(args, nu):
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        initial_U=[args.u_inf, 0.0, 0.0],
+        initial_U=[FREESTREAM_VELOCITY, 0.0, 0.0],
         initial_p=0.0,
     )
 
 
-def write_profiles(solver, sol_dir, args, nu):
+def write_profiles(solver, sol_dir: str, nu: float) -> None:
     """Sample u(y) at the stations and Cf(x) along the plate into CSV files."""
     n = solver.mesh_data["n_elements"]
     centroids = solver.geo_data["element_centroids"][:n]
     u = solver.U[:n]
     xc, yc = centroids[:, 0], centroids[:, 1]
 
-    # Column spacing on the plate (uniform x grid there).
+    # The plate uses a uniform x grid, so the column width is easy to find.
     plate_x = np.unique(np.round(xc[xc > 0], 12))
     dx = np.min(np.diff(plate_x))
 
@@ -121,8 +141,6 @@ def write_profiles(solver, sol_dir, args, nu):
                 writer.writerow([station, x_col, y_i, u_i, v_i])
 
     # Skin friction from the wall-adjacent cell row: tau_w ~ mu * u1 / y1.
-    # p_wall and the top-row u_e diagnose spurious streamwise pressure
-    # gradients / confinement acceleration.
     p = solver.p[:n]
     y1 = yc.min()
     y_top = yc.max()
@@ -133,8 +151,9 @@ def write_profiles(solver, sol_dir, args, nu):
     u_w = u[wall, 0][order]
     p_w = p[wall][order]
     u_e = np.interp(x_w, np.sort(xc[top]), u[top, 0][np.argsort(xc[top])])
-    cf = 2.0 * nu * u_w / (y1 * args.u_inf**2)
-    rex = args.u_inf * x_w / nu
+    cf = 2.0 * nu * u_w / (y1 * FREESTREAM_VELOCITY**2)
+    rex = FREESTREAM_VELOCITY * x_w / nu
+
     with open(os.path.join(sol_dir, "cf.csv"), "w", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow(["x", "Rex", "Cf", "Cf_blasius", "p_wall", "u_top"])
@@ -145,53 +164,32 @@ def write_profiles(solver, sol_dir, args, nu):
     print(f"  Skin friction written: {os.path.join(sol_dir, 'cf.csv')}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Laminar flat-plate boundary layer")
-    parser.add_argument("--Re", type=float, default=1e4, help="Plate Reynolds number U*L/nu")
-    parser.add_argument("--end-time", type=float, default=8.0, help="End time [s]")
-    parser.add_argument("--plate-length", type=float, default=1.0, help="Plate length L")
-    parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
-    parser.add_argument("--rho", type=float, default=1.0, help="Density")
-    parser.add_argument("--n-plate", type=int, default=72, help="Cells along the plate")
-    parser.add_argument("--height", type=float, default=0.35, help="Domain height H")
-    parser.add_argument("--dy-wall", type=float, default=0.0015, help="First wall-normal cell")
-    parser.add_argument(
-        "--dy-ratio", type=float, default=1.12, help="Wall-normal stretching ratio (1 = uniform)"
-    )
-    parser.add_argument("--initial-dt", type=float, default=0.005, help="Initial dt [s]")
-    parser.add_argument("--max-cfl", type=float, default=0.9, help="Target max Courant")
-    parser.add_argument("--max-dt", type=float, default=0.02, help="Max dt cap [s]")
-    parser.add_argument(
-        "--write-interval-time",
-        type=float,
-        default=2.0,
-        help="Write VTK every N seconds of flow time",
-    )
-    parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
-    parser.add_argument("--n-outer", type=int, default=1, help="PIMPLE outer correctors")
-    parser.add_argument("--linear-solver", type=str, default="bicgstab")
-    parser.add_argument("--convection-scheme", type=str, default="limitedLinear")
-    parser.add_argument("--case-name", type=str, default="boundaryLayer")
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--Re", type=float, default=1e4, help="plate Reynolds number Re = U L / nu")
+    parser.add_argument("--end-time", type=float, default=8.0, help="simulation end time [s]")
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
-    nu = args.u_inf * args.plate_length / args.Re
+    nu = FREESTREAM_VELOCITY * PLATE_LENGTH / args.Re
 
-    print("\n--- Mesh Generation (rectilinear, in-memory) ---")
+    print("\n===== MESH =====")
+    print("---- Generating the flat-plate mesh ----")
     mesh_data, _depth = flat_plate_mesh(
-        plate_length=args.plate_length,
-        height=args.height,
-        n_plate=args.n_plate,
-        dy_wall=args.dy_wall,
-        ratio=args.dy_ratio,
+        plate_length=PLATE_LENGTH,
+        height=DOMAIN_HEIGHT,
+        n_plate=N_PLATE,
+        dy_wall=WALL_CELL_HEIGHT,
+        ratio=WALL_STRETCHING,
     )
-    delta_L = 5.0 * args.plate_length / np.sqrt(args.Re)
+    delta_L = 5.0 * PLATE_LENGTH / np.sqrt(args.Re)
     print(
-        f"  cells: {mesh_data['n_elements']}, first wall cell {args.dy_wall} "
-        f"(delta99(L)/dy_wall = {delta_L / args.dy_wall:.0f})"
+        f"  cells: {mesh_data['n_elements']}, first wall cell {WALL_CELL_HEIGHT} "
+        f"(delta99(L)/dy_wall = {delta_L / WALL_CELL_HEIGHT:.0f})"
     )
 
-    config = build_config(args, nu)
+    print("\n===== SIMULATION =====")
+    config = build_config(args.Re, args.end_time, nu)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
 
     solver.write_vtk()
@@ -200,9 +198,10 @@ def main():
 
     sol_dir = os.path.join(case_dir, "solution")
     os.makedirs(sol_dir, exist_ok=True)
-    write_profiles(solver, sol_dir, args, nu)
+    write_profiles(solver, sol_dir, nu)
 
-    print("\nSimulation completed successfully.")
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Validation targets (Blasius; Schlichting, Boundary-Layer Theory):")
     print("  u/U = f'(eta) with eta = y*sqrt(U/(nu x));  Cf = 0.664/sqrt(Re_x)")
 

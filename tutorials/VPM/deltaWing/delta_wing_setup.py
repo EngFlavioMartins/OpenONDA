@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Run the two-wing wake-crossing tutorial.
+"""Two delta wings crossing wakes (VLM--VPM, LES).
 
-Usage: ``python delta_wing_setup.py SAMPLE_PERIOD BACKUP_PERIOD``
+A leading wing and a following wing both heave and pitch through the flow,
+shedding vortex wakes that the trailing wing crosses. The sampled forces and
+circulation histories feed the ``allplot.sh`` figures.
+
+Usage:
+    python delta_wing_setup.py
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -51,6 +55,8 @@ ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 # Resolution
 TIME_STEP = 0.004
 NUMBER_OF_STEPS = 2200
+SAMPLE_PERIOD = 0.08  # write a snapshot every this many seconds
+BACKUP_PERIOD = 0.04  # 25 animation frames per heave cycle
 
 
 def cadence_steps(period: float) -> int:
@@ -79,9 +85,9 @@ def pitch_velocity(phase: float):
     return angular_velocity
 
 
-def run(sample_period: float, backup_period: float) -> None:
-    sample_steps = cadence_steps(sample_period)
-    backup_steps = cadence_steps(backup_period)
+def run() -> None:
+    sample_steps = cadence_steps(SAMPLE_PERIOD)
+    backup_steps = cadence_steps(BACKUP_PERIOD)
     surface_file = TUTORIAL_DIR / "delta_wing_surface.json"
     save_surface(
         create_delta_wing(
@@ -183,10 +189,12 @@ def run(sample_period: float, backup_period: float) -> None:
         solver.update_state()
 
 
-def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments
-    sample_period, backup_period = map(float, arguments)
-    run(sample_period, backup_period)
+def main() -> int:
+    print("\n===== SIMULATION =====")
+    print("---- Two heaving/pitching delta wings crossing wakes ----")
+    run()
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

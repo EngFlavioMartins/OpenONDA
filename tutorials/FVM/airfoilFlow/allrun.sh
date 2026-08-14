@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-set -e
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-./allclean.sh
-mkdir -p solution
+# Run the whole airfoil tutorial: clean, simulate, make the figures.
+# Usage: ./allrun.sh
+set -euo pipefail
 
-# NACA 0012 at Re = 1000 and zero angle of attack.
-# The force and pressure plots report the expected symmetry diagnostics.
-python airfoilFlow_setup.py --Re 1000 --angle 0 --end-time 25 --dt 0.005 \
-    2>&1 | tee solution/airfoilFlow.log
+cd "$(dirname "$0")"
 
-./allplot.sh --angle 0
 echo
-echo "All runs and plots complete."
+echo "===== CLEAN ====="
+echo
+./allclean.sh
+
+echo
+echo "===== SIMULATE ====="
+echo
+mkdir -p solution
+python airfoilFlow_setup.py --Re 1000 --angle 0 --end-time 25 2>&1 | tee solution/airfoilFlow.log
+
+echo
+echo "===== FIGURES ====="
+echo
+./allplot.sh
+
+echo
+echo "===== DONE ====="
+echo

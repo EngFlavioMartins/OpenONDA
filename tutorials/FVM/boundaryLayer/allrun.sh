@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-set -e
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-./allclean.sh
-mkdir -p solution
+# Run the whole boundary-layer tutorial: clean, simulate, make the figures.
+# Usage: ./allrun.sh
+set -euo pipefail
 
-# Laminar flat plate at Re_L = 1e4 (mesh built in-memory).
-# Validation: Blasius profile u/U = f'(eta) and Cf = 0.664/sqrt(Re_x)
-# (Blasius 1908; Schlichting, Boundary-Layer Theory).
+cd "$(dirname "$0")"
+
+echo
+echo "===== CLEAN ====="
+echo
+./allclean.sh
+
+echo
+echo "===== SIMULATE ====="
+echo
+mkdir -p solution
 python boundaryLayer_setup.py --Re 1e4 --end-time 8 2>&1 | tee solution/boundaryLayer.log
 
-./allplot.sh --Re 1e4
 echo
-echo "All runs and plots complete."
+echo "===== FIGURES ====="
+echo
+./allplot.sh
+
+echo
+echo "===== DONE ====="
+echo

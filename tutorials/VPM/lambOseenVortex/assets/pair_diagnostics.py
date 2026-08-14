@@ -80,6 +80,7 @@ class PairDiagnosticsSampler:
         separation: float,
         column_length: float,
         slab_half_width: float | None = None,
+        slab_center: float = 0.0,
     ) -> None:
         if case_name not in {"dipole", "merging"}:
             raise ValueError(f"Pair diagnostics do not apply to {case_name!r}")
@@ -87,6 +88,7 @@ class PairDiagnosticsSampler:
         self.separation = float(separation)
         self.column_length = float(column_length)
         self.slab_half_width = slab_half_width
+        self.slab_center = float(slab_center)
         self.last_step: int | None = None
 
     def _restore(self, path: Path) -> None:
@@ -119,9 +121,9 @@ class PairDiagnosticsSampler:
         if self.slab_half_width is None:
             central = np.ones(len(all_positions), dtype=bool)
         else:
-            central = np.abs(all_positions[:, 2]) <= self.slab_half_width
+            central = np.abs(all_positions[:, 2] - self.slab_center) <= self.slab_half_width
             if np.count_nonzero(central) < 4:
-                nearest = np.argsort(np.abs(all_positions[:, 2]))[:4]
+                nearest = np.argsort(np.abs(all_positions[:, 2] - self.slab_center))[:4]
                 central = np.zeros(len(all_positions), dtype=bool)
                 central[nearest] = True
 

@@ -146,9 +146,7 @@ def average_pair_diagnostics(
         values = np.stack([frame[column].to_numpy(float) for frame in frames])
         averaged[column] = _nanmean(values)
 
-    angles = np.stack(
-        [np.unwrap(frame["angle_rad"].to_numpy(float)) for frame in frames]
-    )
+    angles = np.stack([np.unwrap(frame["angle_rad"].to_numpy(float)) for frame in frames])
     averaged["angle_rad"] = _nanmean(angles)
     averaged["merged"] = (
         np.mean(
@@ -162,8 +160,7 @@ def average_pair_diagnostics(
     integral_frames = [pd.read_csv(directory / "flow_integrals.csv") for directory in member_dirs]
     integral_times = integral_frames[0]["time"].to_numpy()
     if any(
-        not np.allclose(frame["time"].to_numpy(), integral_times)
-        for frame in integral_frames[1:]
+        not np.allclose(frame["time"].to_numpy(), integral_times) for frame in integral_frames[1:]
     ):
         raise ValueError("RWM ensemble flow-integral times differ")
     averaged_integrals = integral_frames[0].copy()

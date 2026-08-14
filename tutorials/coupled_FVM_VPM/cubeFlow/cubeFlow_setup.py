@@ -3,12 +3,22 @@
 The FVM mesh is generated directly as solver-native data by OpenONDA's
 adaptive Cartesian mesher. No external solver case is used. Both solvers use
 the same equilibrium Smagorinsky coefficients.
+
+The case can be configured through the OPENONDA_* environment variables or
+through the convenience command-line flags below, which override them.
+
+Usage:
+    python cubeFlow_setup.py
+    python cubeFlow_setup.py --smoke --end-time 0.25 --spacing 0.2
 """
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import os
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -278,7 +288,57 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    """Build the command-line overrides for the OPENONDA_* defaults."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--smoke", action="store_true", help="fast smoke-test settings")
+    parser.add_argument("--end-time", type=float, help="simulation end time [s]")
+    parser.add_argument("--spacing", type=float, help="core grid spacing [m]")
+    parser.add_argument("--surface-cell-size", type=float, help="cells on the cube surface [m]")
+    parser.add_argument("--max-particles", type=int, help="particle budget")
+    parser.add_argument("--fvm-cores", type=int, help="CPU cores for the FVM solver")
+    return parser.parse_args(argv)
+
+
+def _run_with_overrides(argv: list[str]) -> int:
+    """Run the case with any command-line overrides applied.
+
+    The module-level constants already read the OPENONDA_* environment
+    variables (so ``OPENONDA_SMOKE=1 ./allrun.sh`` keeps working). When the
+    user passes flags, they are translated back into those environment
+    variables and the module is loaded once more so every dependent setting
+    follows.
+    """
+    args = _parse_args(argv)
+
+    overrides: dict[str, str] = {}
+    if args.smoke:
+        overrides["OPENONDA_SMOKE"] = "1"
+    for flag, key in (
+        ("end_time", "OPENONDA_T_END"),
+        ("spacing", "OPENONDA_SPACING"),
+        ("surface_cell_size", "OPENONDA_SURFACE_CELL_SIZE"),
+        ("max_particles", "OPENONDA_MAX_PARTICLES"),
+        ("fvm_cores", "OPENONDA_FVM_CORES"),
+    ):
+        if getattr(args, flag) is not None:
+            overrides[key] = str(getattr(args, flag))
+
+    if not overrides:
+        main()
+        return 0
+
+    os.environ.update(overrides)
+    spec = importlib.util.spec_from_file_location("cubeFlow_setup", __file__)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+    return 0
+
+
 def main() -> None:
+    print("\n===== SIMULATION =====")
+    print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={PARTICLE_LIMIT}")
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
 
@@ -287,7 +347,9 @@ def main() -> None:
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 
     coupled_solver.run()
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(_run_with_overrides(sys.argv[1:]))

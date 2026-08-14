@@ -1,10 +1,22 @@
-"""DNS, LES, and stabilized-LES vortex-ring interactions."""
+#!/usr/bin/env python3
+"""DNS, LES, and stabilized-LES vortex-ring interactions (VPM).
+
+Six cases, hard-coded as a matrix of two ring families (leapfrog co-rotating
+rings, colliding counter-rotating rings) times three turbulence models
+(DNS, LES, stabilized LES). The stabilized cases use a conservative
+regularization filter to preserve resolution when the stretched cores
+threaten to under-resolve the flow. ``allplot.sh`` turns the sampled
+diagnostics into the comparison figures.
+
+Usage:
+    python rings_setup.py --case leapfrog_dns
+"""
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -210,6 +222,10 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite existing results in {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    print("\n---- " + case_name + " ----")
+    print(f"  family={family}, model={variant}, steps={num_steps}")
+
     solver = Solver(setup=solver_setup(case_name, output_dir))
     centers, circulations = ring_geometry(family)
     for group, (center, circulation, seed) in enumerate(
@@ -322,10 +338,15 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 2 or sys.argv[1] not in CASES:
-        choices = " | ".join(CASES)
-        raise SystemExit(f"Usage: python rings_setup.py CASE\nCASE = {choices}")
-    run_case(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--case",
+        required=True,
+        choices=tuple(CASES),
+        help="vortex-ring interaction case to run",
+    )
+    args = parser.parse_args()
+    run_case(args.case)
 
 
 if __name__ == "__main__":

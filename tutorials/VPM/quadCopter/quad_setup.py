@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Simulate the wake of a quadcopter in climb.
+"""Simulate the wake of a quadcopter in climb (VLM--VPM).
 
-Usage: ``python quad_setup.py SAMPLE_PERIOD BACKUP_PERIOD``
+Four two-bladed rotors counter-rotate on a small quadcopter frame. The vehicle
+climbs at constant speed while the rotors shed their wakes into the flow. The
+particle count and the integrated vorticity history are sampled for the
+diagnostic figures made by ``allplot.sh``.
+
+Usage:
+    python quad_setup.py
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -26,12 +31,11 @@ from openonda.vpm import (
     VPMSetup,
 )
 
-
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
 CASE_NAME = "quadcopter"
 
-# Rotor and flow
+# ---- Rotor and flow ------------------------------------------------------
 ROTATIONS_PER_MINUTE = 200.0
 ANGULAR_VELOCITY = ROTATIONS_PER_MINUTE * 2.0 * np.pi / 60.0
 TIP_RADIUS = 0.15
@@ -42,12 +46,14 @@ NUMBER_OF_BLADES = 2
 CLIMB_SPEED = 0.8
 ARM_LENGTH = 0.16
 
-# Time resolution
+# ---- Time resolution ------------------------------------------------------
 DEGREES_PER_STEP = 7.5
 TIME_STEP = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY
 STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 6
 NUMBER_OF_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
+SAMPLE_PERIOD = 0.0375  # write a snapshot every this many seconds
+BACKUP_PERIOD = 0.0125  # 24 animation frames per rotor revolution
 
 
 def cadence_steps(period: float) -> int:
@@ -55,7 +61,7 @@ def cadence_steps(period: float) -> int:
     return max(1, round(period / TIME_STEP))
 
 
-def run(sample_period: float, backup_period: float) -> None:
+def run() -> None:
     counterclockwise_file = TUTORIAL_DIR / "assets" / "blade_ccw.json"
     clockwise_file = TUTORIAL_DIR / "assets" / "blade_cw.json"
     blade_parameters = {
@@ -106,7 +112,7 @@ def run(sample_period: float, backup_period: float) -> None:
         sigma_factor=2.5,
     )
 
-    sample_steps = cadence_steps(sample_period)
+    sample_steps = cadence_steps(SAMPLE_PERIOD)
     solver = Solver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
@@ -126,7 +132,7 @@ def run(sample_period: float, backup_period: float) -> None:
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
             logging_frequency=sample_steps,
-            backup_frequency=cadence_steps(backup_period),
+            backup_frequency=cadence_steps(BACKUP_PERIOD),
             backup_file_name=CASE_NAME,
             backup_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
@@ -146,10 +152,12 @@ def run(sample_period: float, backup_period: float) -> None:
         solver.update_state()
 
 
-def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments
-    sample_period, backup_period = map(float, arguments)
-    run(sample_period, backup_period)
+def main() -> int:
+    print("\n===== SIMULATION =====")
+    print("---- Quadcopter climb: 4 rotors, 2 blades each, 6 revolutions ----")
+    run()
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

@@ -2,22 +2,19 @@
 """Flow past a circular cylinder via the Immersed Boundary Method (FVM).
 
 Validation case for the discrete direct-forcing IBM (Pinelli et al. 2010, as
-implemented for finite-volume PISO solvers by Constant et al. — see
-docs/literature/Constant2016.pdf).
-The cylinder is represented by Lagrangian markers on a Cartesian mesh; no
-body-fitted grid is used.
+implemented for finite-volume PISO solvers by Constant et al.; see
+docs/literature/Constant2016.pdf). The cylinder is represented by Lagrangian
+markers on a Cartesian mesh, so no body-fitted grid is needed.
 
-Quality monitors (written to solution/, plotted by allplot.sh):
-  * Re = 30 (default, steady):  Cd -> 1.74-1.80, recirculation length
-    L/D -> 1.55-1.70  (Constant et al. Table 2)
-  * Re = 100 (unsteady):        mean Cd -> 1.35-1.38, Strouhal -> 0.164-0.165
-    (Constant et al. Table 3)
+Quality monitors (written under ``solution``, plotted by ``allplot.sh``):
+  * Re = 30 (steady):        Cd -> 1.74-1.80, recirculation length
+                             L/D -> 1.55-1.70   (Constant et al., Table 2)
+  * Re = 100 (unsteady):     mean Cd -> 1.35-1.38, Strouhal -> 0.164-0.165
+                             (Constant et al., Table 3)
   * marker no-slip error (IBM-specific quality signal), logged every step.
-
-Usage:
-    python cylinderIBM_setup.py --Re 30 --end-time 60
-    python cylinderIBM_setup.py --Re 100 --end-time 150 --h 0.05
 """
+
+from __future__ import annotations
 
 import argparse
 import os
@@ -37,130 +34,119 @@ from openonda.fvm import (
 )
 from openonda.fvm import ImmersedBody
 
+# ---- Case definition -----------------------------------------------------
+CASE_NAME = "cylinderIBM"
+DIAMETER = 1.0  # cylinder diameter [m]
+FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
+DENSITY = 1.0  # fluid density [kg/m^3]
 
-def build_config(args, depth):
-    """FVM configuration for the IBM cylinder case."""
-    nu = args.u_inf * args.diameter / args.Re
-    solver_schemes = SchemesConfig(
-        convection_scheme=args.convection_scheme,
+# ---- Mesh and IBM markers ------------------------------------------------
+SPACING = 0.0625  # uniform grid spacing next to the cylinder [m]
+MARKER_ALPHA = 1.0  # marker spacing / grid spacing ratio
+
+# ---- Time stepping and numerics ------------------------------------------
+TIME_STEP = 0.01  # initial time step [s]
+MAX_CFL = 0.5  # target maximum Courant number (see below)
+MAX_TIME_STEP = 0.03  # upper bound on the adapted time step [s]
+MIN_TIME_STEP = 1e-5  # lower bound on the adapted time step [s]
+MAX_FORCING_FOURIER = 0.1  # Fo = nu*dt/h^2 stability cap for the IBM
+WRITE_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
+PISO_CORRECTORS = 2
+OUTER_CORRECTORS = 1
+CONVECTION_SCHEME = "limitedLinear"
+LINEAR_SOLVER = "spsolve"
+
+
+def build_config(
+    reynolds: float, end_time: float, depth: float, time_step: float, max_time_step: float
+) -> FVMSetup:
+    """Build the FVM setup for the IBM cylinder case."""
+    nu = FREESTREAM_VELOCITY * DIAMETER / reynolds
+
+    schemes = SchemesConfig(
+        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme="gauss",
     )
-    solver_linear = LinearSolverConfig(linear_solver=args.linear_solver)
-    solver_pimple = PimpleControl(
-        n_correctors=args.n_correctors,
-        n_outer_correctors=args.n_outer,
+    linear = LinearSolverConfig(linear_solver=LINEAR_SOLVER)
+    pimple = PimpleControl(
+        n_correctors=PISO_CORRECTORS,
+        n_outer_correctors=OUTER_CORRECTORS,
     )
 
     return FVMSetup(
-        case_name="cylinderIBM",
+        case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=args.initial_dt,
+            delta_t=time_step,
             start_time=0.0,
-            end_time=args.end_time,
+            end_time=end_time,
             write_interval=10**9,
-            write_interval_time=args.write_interval_time,
+            write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
-            max_cfl=args.max_cfl,
-            max_delta_t=args.max_dt,
-            min_delta_t=1e-5,
+            max_cfl=MAX_CFL,
+            max_delta_t=max_time_step,
+            min_delta_t=MIN_TIME_STEP,
         ),
-        schemes=solver_schemes,
-        linear=solver_linear,
-        pimple=solver_pimple,
-        transport=TransportConfig(density=args.rho, nu=nu),
+        schemes=schemes,
+        linear=linear,
+        pimple=pimple,
+        transport=TransportConfig(density=DENSITY, nu=nu),
         turbulence=None,  # laminar validation case
         boundaries=[
-            BoundaryConfig.inlet("inlet", [args.u_inf, 0.0, 0.0]),
+            BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             BoundaryConfig.outlet("outlet", p=0.0),
-            BoundaryConfig.freestream("bottom", [args.u_inf, 0.0, 0.0]),
-            BoundaryConfig.freestream("top", [args.u_inf, 0.0, 0.0]),
+            BoundaryConfig.freestream("bottom", [FREESTREAM_VELOCITY, 0.0, 0.0]),
+            BoundaryConfig.freestream("top", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        initial_U=[args.u_inf, 0.0, 0.0],
+        initial_U=[FREESTREAM_VELOCITY, 0.0, 0.0],
         initial_p=0.0,
     )
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Run the cylinderIBM tutorial")
-    parser.add_argument("--Re", type=float, default=30.0, help="Reynolds number U*D/nu")
-    parser.add_argument("--end-time", type=float, default=60.0, help="End time [s]")
-    parser.add_argument(
-        "--h",
-        type=float,
-        default=0.0625,
-        help="Uniform grid spacing near the cylinder (in D units)",
-    )
-    parser.add_argument("--diameter", type=float, default=1.0, help="Cylinder diameter")
-    parser.add_argument("--u-inf", type=float, default=1.0, help="Freestream velocity")
-    parser.add_argument("--rho", type=float, default=1.0, help="Density")
-    parser.add_argument("--initial-dt", type=float, default=0.01, help="Initial dt [s]")
-    # CFL 0.5 follows Constant et al.; the direct-forcing feedback loop
-    # becomes underdamped at larger Courant numbers.
-    parser.add_argument("--max-cfl", type=float, default=0.5, help="Target max Courant")
-    parser.add_argument("--max-dt", type=float, default=0.03, help="Max dt cap [s]")
-    parser.add_argument(
-        "--max-fo",
-        type=float,
-        default=0.1,
-        help="Max forcing Fourier number nu*dt/h^2 (stability cap)",
-    )
-    parser.add_argument(
-        "--write-interval-time",
-        type=float,
-        default=5.0,
-        help="Write VTK every N seconds of flow time",
-    )
-    parser.add_argument("--n-correctors", type=int, default=2, help="PISO correctors")
-    parser.add_argument(
-        "--n-outer",
-        type=int,
-        default=1,
-        help="PIMPLE outer correctors (= IBM/pressure sub-iterations)",
-    )
-    parser.add_argument("--linear-solver", type=str, default="spsolve")
-    parser.add_argument("--convection-scheme", type=str, default="limitedLinear")
-    parser.add_argument(
-        "--marker-alpha", type=float, default=1.0, help="Marker spacing / grid spacing ratio"
-    )
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--Re", type=float, default=30.0, help="Reynolds number Re = U D / nu")
+    parser.add_argument("--end-time", type=float, default=60.0, help="simulation end time [s]")
     args = parser.parse_args()
 
     case_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # --- IBM forcing stability: Fourier-number cap on dt --------------------
-    # The direct-forcing feedback loop is stable only for
-    # Fo = nu*dt/h^2 <~ 0.1 (in addition to Co <= 0.5); above it a slow
-    # sawtooth develops in Cd/slip.  Cap dt accordingly (binds at low Re).
-    nu = args.u_inf * args.diameter / args.Re
-    dt_fo = args.max_fo * args.h**2 / nu
-    if dt_fo < args.max_dt:
-        print(f"  [IBM] capping max dt to {dt_fo:.4g} s (Fo = nu*dt/h^2 <= {args.max_fo})")
-        args.max_dt = dt_fo
-        args.initial_dt = min(args.initial_dt, dt_fo)
+    # The direct-forcing feedback loop is stable only for Fo = nu*dt/h^2 <~ 0.1
+    # (in addition to Co <= 0.5); above it a slow sawtooth develops in Cd and
+    # in the marker slip error. Cap dt accordingly (this binds at low Re).
+    nu = FREESTREAM_VELOCITY * DIAMETER / args.Re
+    max_time_step = MAX_TIME_STEP
+    time_step = TIME_STEP
+    dt_fo = MAX_FORCING_FOURIER * SPACING**2 / nu
+    if dt_fo < max_time_step:
+        print(f"  [IBM] capping max dt to {dt_fo:.4g} s (Fo = nu*dt/h^2 <= {MAX_FORCING_FOURIER})")
+        max_time_step = dt_fo
+        time_step = min(time_step, dt_fo)
 
-    # --- Mesh: uniform h core around the cylinder, stretched far field -----
-    print("\n--- Mesh Generation (rectilinear, in-memory) ---")
-    mesh_data, depth = cylinder_ibm_mesh(h=args.h, D=args.diameter)
+    print("\n===== MESH =====")
+    print("---- Generating the rectilinear IBM mesh ----")
+    mesh_data, depth = cylinder_ibm_mesh(h=SPACING, D=DIAMETER)
     print(
-        f"  cells: {mesh_data['n_elements']}, core spacing h = {args.h} "
-        f"(D/h = {args.diameter / args.h:.0f})"
+        f"  cells: {mesh_data['n_elements']}, core spacing h = {SPACING} "
+        f"(D/h = {DIAMETER / SPACING:.0f})"
     )
 
-    config = build_config(args, depth)
+    print("\n===== SIMULATION =====")
+    config = build_config(args.Re, args.end_time, depth, time_step, max_time_step)
     solver = Solver(config, case_dir, mesh_data=mesh_data)
 
-    # --- Immersed cylinder --------------------------------------------------
+    print("---- Setting the immersed cylinder ----")
     body = ImmersedBody.cylinder_z(
         centre=[0.0, 0.0, 0.5 * depth],
-        diameter=args.diameter,
-        h=args.h,
-        alpha=args.marker_alpha,
+        diameter=DIAMETER,
+        h=SPACING,
+        alpha=MARKER_ALPHA,
         name="cylinder",
     )
-    solver.set_immersed_bodies(body, h=args.h)
+    solver.set_immersed_bodies(body, h=SPACING)
 
-    # Save the marker cloud for the plotting scripts.
+    # Save the marker cloud so the plotting scripts can draw the cylinder.
     sol_dir = os.path.join(case_dir, "solution")
     os.makedirs(sol_dir, exist_ok=True)
     np.savetxt(
@@ -171,7 +157,8 @@ def main():
     while solver.flow_time < config.time.end_time:
         solver.evolve()
 
-    print("\nSimulation completed successfully.")
+    print("\n===== DONE =====")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Reference values (Constant et al. 2017):")
     if abs(args.Re - 30.0) < 1e-9:
         print("  Re=30 steady:  Cd = 1.74-1.80, recirculation L/D = 1.55-1.70")

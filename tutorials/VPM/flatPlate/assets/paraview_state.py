@@ -85,10 +85,7 @@ eq 0$"""
 # create a new 'PVD Reader'
 velocitypvd = PVDReader(
     registrationName="velocity.pvd",
-    FileName=str(
-        TUTORIAL_DIR
-        / "samples/exp_static_aoa08/exp_static_aoa08_crossflow_x15.pvd"
-    ),
+    FileName=str(TUTORIAL_DIR / "samples/exp_static_aoa08/exp_static_aoa08_crossflow_x15.pvd"),
 )
 velocitypvd.PointArrays = ["Velocity", "VelocityMagnitude", "Vorticity", "VorticityMagnitude"]
 
