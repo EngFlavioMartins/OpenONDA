@@ -1,0 +1,2082 @@
+13:20:49  [Init] Using injected VPM solver.
+13:20:49  [Init] Time steps: dt_fvm=1.0000e-02 s, dt_vpm=5.0000e-02 s, period_multiplier=5.
+13:20:49  [Handoff] ready: box x∈[-1.50,1.50]  h=0.040  σ=1.00h  ramp=0.240  dead_zone=0.000  L_buf=0.155  (CFL max_dt=5.000e-02 s)  prune: |ω|<0.005 1/s  (|Γ|<3.2e-07 m³/s)
+13:20:49  [Handoff] weighted trace (k=4), aligned remesh, circulation cap
+13:20:49  [Init] VPM grid diffusion body mask enabled for box [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5].
+13:20:49  [Init] VPM diffusion lattice aligned with the handoff lattice.
+13:20:49  [Fringe] strength=4.0 lambda_max=1.667e+01 1/s cells=171828
+13:20:49  [Init] Impulsive start: zero VPM particles.
+13:20:49  ============================================================
+13:20:49  FVM-VPM COUPLED SOLVER
+13:20:49  ============================================================
+13:20:53       [Donor] particles=0
+13:20:53       [Donor] Flux residual: raw=1.347e-07 m³/s (2.49e-09×U∞A)  post-projection=8.428e-16 m³/s (1.56e-17×U∞A)  δu_n=2.494e-09 m/s
+13:20:53       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.913 mean=0.976 max=1.000  n_face=5625
+13:20:53       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.000
+13:20:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:20:58       [FVM wall] cube: y+ min=0.19 max=3.31 avg=2.02
+13:21:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:02       [FVM wall] cube: y+ min=0.19 max=3.12 avg=1.82
+13:21:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:06       [FVM wall] cube: y+ min=0.18 max=2.91 avg=1.65
+13:21:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:11       [FVM wall] cube: y+ min=0.11 max=2.80 avg=1.52
+13:21:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:15       [FVM wall] cube: y+ min=0.15 max=2.71 avg=1.43
+13:21:20  [Handoff step=1] in=0 → out=123864  free=0  solid_removed=0  pruned=282386 (0.301% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.54e-14  flux_ratio=0.006
+13:21:20       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.527e-01
+13:21:20       [Beale] mollification residual: 67.6% → 51.0%
+13:21:20       [Inject] N_before=0  N_after=123864  |Γ|_before=0.0000e+00  |Γ|_after=1.0686e+01
+13:21:20  [Timing step=1] VPM=4.017s donor=0.003s fringe=0.182s FVM=21.461s handoff=4.764s total=30.427s
+13:21:42       [Donor] particles=131423
+13:21:42       [Donor] Flux residual: raw=4.143e-06 m³/s (7.67e-08×U∞A)  post-projection=-4.391e-15 m³/s (8.13e-17×U∞A)  δu_n=7.672e-08 m/s
+13:21:42       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.907 mean=0.975 max=1.002  n_face=5625
+13:21:42       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.008
+13:21:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:47       [FVM wall] cube: y+ min=0.14 max=2.63 avg=1.35
+13:21:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:51       [FVM wall] cube: y+ min=0.05 max=2.57 avg=1.29
+13:21:55       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:21:55       [FVM wall] cube: y+ min=0.09 max=2.53 avg=1.25
+13:22:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:22:00       [FVM wall] cube: y+ min=0.03 max=2.49 avg=1.21
+13:22:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:22:04       [FVM wall] cube: y+ min=0.10 max=2.46 avg=1.18
+13:22:07  [Handoff step=2] in=131423 → out=147575  free=0  solid_removed=0  pruned=260403 (0.280% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.14e-14  flux_ratio=0.187
+13:22:07       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.870e-01
+13:22:07       [Beale] mollification residual: 60.0% → 42.5%
+13:22:07       [Inject] N_before=131423  N_after=147575  |Γ|_before=9.3319e+00  |Γ|_after=1.0676e+01
+13:22:07  [Timing step=2] VPM=21.437s donor=0.002s fringe=0.863s FVM=21.592s handoff=3.603s total=47.497s
+13:22:46       [Donor] particles=153825
+13:22:46       [Donor] Flux residual: raw=5.449e-06 m³/s (1.01e-07×U∞A)  post-projection=1.767e-15 m³/s (3.27e-17×U∞A)  δu_n=1.009e-07 m/s
+13:22:46       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.904 mean=0.974 max=1.002  n_face=5625
+13:22:46       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.003
+13:22:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:22:49       [FVM wall] cube: y+ min=0.08 max=2.44 avg=1.15
+13:22:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:22:53       [FVM wall] cube: y+ min=0.07 max=2.42 avg=1.12
+13:22:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.91 max=1.04]
+13:22:56       [FVM wall] cube: y+ min=0.08 max=2.40 avg=1.10
+13:22:59       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.04]
+13:22:59       [FVM wall] cube: y+ min=0.08 max=2.38 avg=1.08
+13:23:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.04]
+13:23:03       [FVM wall] cube: y+ min=0.07 max=2.37 avg=1.07
+13:23:07  [Handoff step=3] in=153534 → out=183757  free=291  solid_removed=0  pruned=229615 (0.243% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.25e-13  flux_ratio=0.913
+13:23:07       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.538e-01
+13:23:07       [Beale] mollification residual: 55.3% → 38.5%
+13:23:07       [Inject] N_before=153825  N_after=184048  |Γ|_before=9.5357e+00  |Γ|_after=1.0598e+01
+13:23:07  [Timing step=3] VPM=37.932s donor=0.008s fringe=0.462s FVM=17.733s handoff=3.196s total=59.331s
+13:23:21       [Donor] particles=178006
+13:23:21       [Donor] Flux residual: raw=-1.757e-04 m³/s (3.25e-06×U∞A)  post-projection=-1.959e-14 m³/s (3.63e-16×U∞A)  δu_n=-3.254e-06 m/s
+13:23:21       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.901 mean=0.974 max=1.002  n_face=5625
+13:23:21       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.003
+13:23:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.04]
+13:23:24       [FVM wall] cube: y+ min=0.07 max=2.35 avg=1.05
+13:23:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.04]
+13:23:27       [FVM wall] cube: y+ min=0.06 max=2.34 avg=1.04
+13:23:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:23:31       [FVM wall] cube: y+ min=0.06 max=2.33 avg=1.02
+13:23:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:23:34       [FVM wall] cube: y+ min=0.02 max=2.32 avg=1.01
+13:23:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:23:37       [FVM wall] cube: y+ min=0.05 max=2.31 avg=1.00
+13:23:41  [Handoff step=4] in=176479 → out=209120  free=1527  solid_removed=0  pruned=209842 (0.224% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.10e-13  flux_ratio=1.445
+13:23:41       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.376e-01
+13:23:41       [Beale] mollification residual: 51.8% → 35.9%
+13:23:41       [Inject] N_before=178006  N_after=210647  |Γ|_before=9.4818e+00  |Γ|_after=1.0462e+01
+13:23:41  [Timing step=4] VPM=12.508s donor=0.001s fringe=0.480s FVM=16.935s handoff=3.370s total=33.293s
+13:23:57       [Donor] particles=198874
+13:23:57       [Donor] Flux residual: raw=-1.420e-04 m³/s (2.63e-06×U∞A)  post-projection=-6.775e-15 m³/s (1.25e-16×U∞A)  δu_n=-2.629e-06 m/s
+13:23:57       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.896 mean=0.973 max=1.002  n_face=5625
+13:23:57       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.005
+13:24:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:24:00       [FVM wall] cube: y+ min=0.04 max=2.30 avg=0.99
+13:24:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:24:05       [FVM wall] cube: y+ min=0.04 max=2.29 avg=0.98
+13:24:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:24:08       [FVM wall] cube: y+ min=0.03 max=2.28 avg=0.98
+13:24:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:24:12       [FVM wall] cube: y+ min=0.03 max=2.28 avg=0.97
+13:24:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:24:15       [FVM wall] cube: y+ min=0.02 max=2.27 avg=0.96
+13:24:19  [Handoff step=5] in=193375 → out=224847  free=5499  solid_removed=0  pruned=196261 (0.209% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.40e-14  flux_ratio=1.816
+13:24:19       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.256e-01
+13:24:19       [Beale] mollification residual: 49.0% → 33.8%
+13:24:19       [Inject] N_before=198874  N_after=230346  |Γ|_before=9.4287e+00  |Γ|_after=1.0423e+01
+13:24:19  [Timing step=5] VPM=15.094s donor=0.003s fringe=0.596s FVM=18.419s handoff=3.490s total=37.602s
+13:25:05       [Donor] particles=214086
+13:25:05       [Donor] Flux residual: raw=9.699e-05 m³/s (1.80e-06×U∞A)  post-projection=-2.992e-16 m³/s (5.54e-18×U∞A)  δu_n=1.796e-06 m/s
+13:25:05       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.892 mean=0.973 max=1.002  n_face=5625
+13:25:05       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.004
+13:25:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.90 max=1.03]
+13:25:09       [FVM wall] cube: y+ min=0.01 max=2.26 avg=0.96
+13:25:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:12       [FVM wall] cube: y+ min=0.01 max=2.26 avg=0.95
+13:25:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:15       [FVM wall] cube: y+ min=0.01 max=2.25 avg=0.95
+13:25:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:18       [FVM wall] cube: y+ min=0.01 max=2.24 avg=0.94
+13:25:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:22       [FVM wall] cube: y+ min=0.02 max=2.24 avg=0.94
+13:25:25  [Handoff step=6] in=203057 → out=234697  free=11029  solid_removed=0  pruned=186547 (0.197% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.30e-15  flux_ratio=1.335
+13:25:25       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.156e-01
+13:25:25       [Beale] mollification residual: 46.7% → 32.1%
+13:25:25       [Inject] N_before=214086  N_after=245726  |Γ|_before=9.4201e+00  |Γ|_after=1.0469e+01
+13:25:25  [Timing step=6] VPM=46.219s donor=0.004s fringe=0.504s FVM=16.566s handoff=3.241s total=66.535s
+13:25:42       [Donor] particles=224380
+13:25:42       [Donor] Flux residual: raw=1.943e-04 m³/s (3.60e-06×U∞A)  post-projection=1.801e-14 m³/s (3.34e-16×U∞A)  δu_n=3.599e-06 m/s
+13:25:42       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.888 mean=0.972 max=1.002  n_face=5625
+13:25:42       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.004
+13:25:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:46       [FVM wall] cube: y+ min=0.01 max=2.23 avg=0.93
+13:25:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:49       [FVM wall] cube: y+ min=0.02 max=2.23 avg=0.93
+13:25:52       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:52       [FVM wall] cube: y+ min=0.02 max=2.22 avg=0.92
+13:25:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:56       [FVM wall] cube: y+ min=0.03 max=2.22 avg=0.92
+13:25:59       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:25:59       [FVM wall] cube: y+ min=0.04 max=2.22 avg=0.92
+13:26:03  [Handoff step=7] in=207754 → out=241407  free=16626  solid_removed=0  pruned=177714 (0.189% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.75e-14  flux_ratio=0.977
+13:26:03       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.077e-01
+13:26:03       [Beale] mollification residual: 44.8% → 30.7%
+13:26:03       [Inject] N_before=224380  N_after=258033  |Γ|_before=9.5533e+00  |Γ|_after=1.0596e+01
+13:26:03  [Timing step=7] VPM=15.640s donor=0.002s fringe=0.545s FVM=16.979s handoff=3.330s total=36.496s
+13:26:21       [Donor] particles=235384
+13:26:21       [Donor] Flux residual: raw=2.270e-04 m³/s (4.20e-06×U∞A)  post-projection=4.862e-15 m³/s (9.00e-17×U∞A)  δu_n=4.203e-06 m/s
+13:26:21       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.884 mean=0.972 max=1.002  n_face=5625
+13:26:21       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.004
+13:26:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:26:24       [FVM wall] cube: y+ min=0.04 max=2.22 avg=0.91
+13:26:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:26:27       [FVM wall] cube: y+ min=0.04 max=2.22 avg=0.91
+13:26:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.89 max=1.03]
+13:26:31       [FVM wall] cube: y+ min=0.05 max=2.22 avg=0.90
+13:26:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:26:34       [FVM wall] cube: y+ min=0.05 max=2.22 avg=0.90
+13:26:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:26:37       [FVM wall] cube: y+ min=0.05 max=2.22 avg=0.90
+13:26:40  [Handoff step=8] in=212334 → out=246863  free=23050  solid_removed=0  pruned=171268 (0.181% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.63e-14  flux_ratio=0.794
+13:26:40       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=1.013e-01
+13:26:40       [Beale] mollification residual: 43.3% → 29.5%
+13:26:40       [Inject] N_before=235384  N_after=269913  |Γ|_before=9.8174e+00  |Γ|_after=1.0812e+01
+13:26:40  [Timing step=8] VPM=17.287s donor=0.003s fringe=0.556s FVM=16.387s handoff=3.326s total=37.559s
+13:27:33       [Donor] particles=244981
+13:27:33       [Donor] Flux residual: raw=5.013e-04 m³/s (9.28e-06×U∞A)  post-projection=-1.492e-14 m³/s (2.76e-16×U∞A)  δu_n=9.283e-06 m/s
+13:27:33       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.879 mean=0.971 max=1.002  n_face=5625
+13:27:33       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.005
+13:27:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:27:36       [FVM wall] cube: y+ min=0.05 max=2.22 avg=0.89
+13:27:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:27:40       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.89
+13:27:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:27:43       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.89
+13:27:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:27:46       [FVM wall] cube: y+ min=0.03 max=2.21 avg=0.88
+13:27:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:27:50       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.88
+13:27:54  [Handoff step=9] in=215607 → out=251679  free=29374  solid_removed=0  pruned=165836 (0.173% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.58e-14  flux_ratio=0.678
+13:27:54       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=9.640e-02
+13:27:54       [Beale] mollification residual: 42.1% → 28.5%
+13:27:54       [Inject] N_before=244981  N_after=281053  |Γ|_before=1.0103e+01  |Γ|_after=1.1067e+01
+13:27:54  [Timing step=9] VPM=52.032s donor=0.002s fringe=0.533s FVM=16.857s handoff=4.119s total=73.544s
+13:28:18       [Donor] particles=254472
+13:28:18       [Donor] Flux residual: raw=5.149e-04 m³/s (9.54e-06×U∞A)  post-projection=2.646e-16 m³/s (4.90e-18×U∞A)  δu_n=9.536e-06 m/s
+13:28:18       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.874 mean=0.970 max=1.002  n_face=5625
+13:28:18       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.005
+13:28:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:28:22       [FVM wall] cube: y+ min=0.05 max=2.21 avg=0.88
+13:28:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:28:25       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.87
+13:28:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.03]
+13:28:28       [FVM wall] cube: y+ min=0.04 max=2.21 avg=0.87
+13:28:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.88 max=1.04]
+13:28:31       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.87
+13:28:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:28:35       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.86
+13:28:38  [Handoff step=10] in=219549 → out=256843  free=34923  solid_removed=0  pruned=160675 (0.164% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.20e-14  flux_ratio=0.658
+13:28:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=9.248e-02
+13:28:38       [Beale] mollification residual: 41.0% → 27.6%
+13:28:38       [Inject] N_before=254472  N_after=291766  |Γ|_before=1.0394e+01  |Γ|_after=1.1337e+01
+13:28:38  [Timing step=10] VPM=22.163s donor=0.002s fringe=0.751s FVM=16.912s handoff=3.427s total=43.256s
+13:29:00       [Donor] particles=263821
+13:29:00       [Donor] Flux residual: raw=7.790e-05 m³/s (1.44e-06×U∞A)  post-projection=4.249e-15 m³/s (7.87e-17×U∞A)  δu_n=1.443e-06 m/s
+13:29:00       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.869 mean=0.970 max=1.003  n_face=5625
+13:29:00       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.005
+13:29:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:29:04       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.86
+13:29:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:29:07       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.86
+13:29:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:29:11       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.86
+13:29:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:29:14       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.85
+13:29:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:29:18       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.85
+13:29:22  [Handoff step=11] in=225497 → out=263882  free=38324  solid_removed=0  pruned=156089 (0.157% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=7.80e-14  flux_ratio=0.792
+13:29:22       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=8.932e-02
+13:29:22       [Beale] mollification residual: 40.1% → 26.9%
+13:29:22       [Inject] N_before=263821  N_after=302206  |Γ|_before=1.0685e+01  |Γ|_after=1.1612e+01
+13:29:22  [Timing step=11] VPM=20.885s donor=0.002s fringe=0.612s FVM=18.349s handoff=3.731s total=43.579s
+13:30:28       [Donor] particles=272566
+13:30:28       [Donor] Flux residual: raw=1.396e-04 m³/s (2.58e-06×U∞A)  post-projection=-1.205e-14 m³/s (2.23e-16×U∞A)  δu_n=2.585e-06 m/s
+13:30:28       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.863 mean=0.969 max=1.003  n_face=5625
+13:30:28       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.006
+13:30:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:30:32       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.85
+13:30:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:30:36       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.85
+13:30:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.87 max=1.04]
+13:30:39       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.84
+13:30:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:30:43       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.84
+13:30:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:30:46       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.84
+13:30:50  [Handoff step=12] in=229020 → out=267707  free=43546  solid_removed=0  pruned=152810 (0.152% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.34e-14  flux_ratio=0.837
+13:30:50       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=8.664e-02
+13:30:50       [Beale] mollification residual: 39.2% → 26.3%
+13:30:50       [Inject] N_before=272566  N_after=311253  |Γ|_before=1.0971e+01  |Γ|_after=1.1887e+01
+13:30:50  [Timing step=12] VPM=65.085s donor=0.004s fringe=0.580s FVM=18.707s handoff=3.762s total=88.138s
+13:31:15       [Donor] particles=280403
+13:31:15       [Donor] Flux residual: raw=7.065e-05 m³/s (1.31e-06×U∞A)  post-projection=3.290e-15 m³/s (6.09e-17×U∞A)  δu_n=1.308e-06 m/s
+13:31:15       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.857 mean=0.969 max=1.003  n_face=5625
+13:31:15       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.006
+13:31:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:31:18       [FVM wall] cube: y+ min=0.07 max=2.21 avg=0.84
+13:31:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:31:22       [FVM wall] cube: y+ min=0.06 max=2.21 avg=0.84
+13:31:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:31:25       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.83
+13:31:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:31:28       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.83
+13:31:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:31:32       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.83
+13:31:35  [Handoff step=13] in=231325 → out=270394  free=49078  solid_removed=0  pruned=150216 (0.147% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=7.49e-14  flux_ratio=0.861
+13:31:35       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=8.430e-02
+13:31:35       [Beale] mollification residual: 38.5% → 25.7%
+13:31:35       [Inject] N_before=280403  N_after=319472  |Γ|_before=1.1226e+01  |Γ|_after=1.2154e+01
+13:31:35  [Timing step=13] VPM=23.270s donor=0.002s fringe=0.657s FVM=16.769s handoff=3.505s total=44.204s
+13:32:00       [Donor] particles=287649
+13:32:00       [Donor] Flux residual: raw=-2.116e-05 m³/s (3.92e-07×U∞A)  post-projection=1.764e-14 m³/s (3.27e-16×U∞A)  δu_n=-3.918e-07 m/s
+13:32:00       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.851 mean=0.968 max=1.003  n_face=5625
+13:32:00       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.006
+13:32:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.86 max=1.04]
+13:32:04       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.83
+13:32:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:32:08       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.83
+13:32:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:32:11       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.83
+13:32:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:32:16       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.82
+13:32:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:32:19       [FVM wall] cube: y+ min=0.04 max=2.20 avg=0.82
+13:32:23  [Handoff step=14] in=232837 → out=271585  free=54812  solid_removed=0  pruned=148597 (0.143% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.42e-14  flux_ratio=0.894
+13:32:23       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=8.215e-02
+13:32:23       [Beale] mollification residual: 37.9% → 25.2%
+13:32:23       [Inject] N_before=287649  N_after=326397  |Γ|_before=1.1493e+01  |Γ|_after=1.2413e+01
+13:32:23  [Timing step=14] VPM=24.191s donor=0.003s fringe=0.613s FVM=19.148s handoff=3.791s total=47.747s
+13:33:41       [Donor] particles=294423
+13:33:41       [Donor] Flux residual: raw=2.237e-04 m³/s (4.14e-06×U∞A)  post-projection=1.788e-15 m³/s (3.31e-17×U∞A)  δu_n=4.143e-06 m/s
+13:33:41       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.845 mean=0.968 max=1.003  n_face=5625
+13:33:41       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.006
+13:33:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:33:48       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.82
+13:33:55       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:33:55       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.82
+13:34:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:34:02       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.82
+13:34:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.85 max=1.04]
+13:34:08       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.82
+13:34:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:34:16       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.81
+13:34:21  [Handoff step=15] in=234220 → out=272230  free=60203  solid_removed=0  pruned=147491 (0.139% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.44e-14  flux_ratio=0.836
+13:34:21       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=8.024e-02
+13:34:21       [Beale] mollification residual: 37.3% → 24.8%
+13:34:21       [Inject] N_before=294423  N_after=332433  |Γ|_before=1.1733e+01  |Γ|_after=1.2666e+01
+13:34:21  [Timing step=15] VPM=77.214s donor=0.003s fringe=0.661s FVM=34.937s handoff=5.362s total=118.177s
+13:34:51       [Donor] particles=301041
+13:34:51       [Donor] Flux residual: raw=1.415e-04 m³/s (2.62e-06×U∞A)  post-projection=7.625e-15 m³/s (1.41e-16×U∞A)  δu_n=2.620e-06 m/s
+13:34:51       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.838 mean=0.967 max=1.003  n_face=5625
+13:34:51       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.007
+13:34:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:34:54       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.81
+13:34:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:34:58       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.81
+13:35:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:35:01       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.81
+13:35:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:35:04       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.81
+13:35:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:35:08       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.81
+13:35:11  [Handoff step=16] in=235537 → out=272300  free=65504  solid_removed=0  pruned=146820 (0.136% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.91e-14  flux_ratio=0.882
+13:35:11       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.841e-02
+13:35:11       [Beale] mollification residual: 36.8% → 24.4%
+13:35:11       [Inject] N_before=301041  N_after=337804  |Γ|_before=1.1970e+01  |Γ|_after=1.2920e+01
+13:35:11  [Timing step=16] VPM=27.260s donor=0.002s fringe=0.571s FVM=16.441s handoff=3.569s total=47.843s
+13:35:38       [Donor] particles=307085
+13:35:38       [Donor] Flux residual: raw=1.274e-04 m³/s (2.36e-06×U∞A)  post-projection=3.330e-15 m³/s (6.17e-17×U∞A)  δu_n=2.359e-06 m/s
+13:35:38       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.832 mean=0.967 max=1.003  n_face=5625
+13:35:38       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.007
+13:35:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:35:42       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.81
+13:35:45       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.84 max=1.04]
+13:35:45       [FVM wall] cube: y+ min=0.04 max=2.20 avg=0.80
+13:35:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:35:48       [FVM wall] cube: y+ min=0.04 max=2.20 avg=0.80
+13:35:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:35:51       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.80
+13:35:55       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:35:55       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.80
+13:35:58  [Handoff step=17] in=236463 → out=272357  free=70622  solid_removed=0  pruned=146181 (0.134% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.54e-14  flux_ratio=0.839
+13:35:58       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.670e-02
+13:35:58       [Beale] mollification residual: 36.4% → 24.1%
+13:35:58       [Inject] N_before=307085  N_after=342979  |Γ|_before=1.2247e+01  |Γ|_after=1.3174e+01
+13:35:58  [Timing step=17] VPM=26.423s donor=0.002s fringe=0.616s FVM=16.327s handoff=3.580s total=46.948s
+13:37:12       [Donor] particles=313103
+13:37:12       [Donor] Flux residual: raw=-4.772e-05 m³/s (8.84e-07×U∞A)  post-projection=2.042e-14 m³/s (3.78e-16×U∞A)  δu_n=-8.837e-07 m/s
+13:37:12       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.825 mean=0.967 max=1.004  n_face=5625
+13:37:12       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.007
+13:37:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:37:15       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.80
+13:37:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:37:18       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.80
+13:37:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:37:22       [FVM wall] cube: y+ min=0.04 max=2.20 avg=0.80
+13:37:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.83 max=1.04]
+13:37:25       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.80
+13:37:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:37:29       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.79
+13:37:33  [Handoff step=18] in=237440 → out=272709  free=75663  solid_removed=0  pruned=145517 (0.131% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.57e-14  flux_ratio=0.847
+13:37:33       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.512e-02
+13:37:33       [Beale] mollification residual: 36.0% → 23.8%
+13:37:33       [Inject] N_before=313103  N_after=348372  |Γ|_before=1.2538e+01  |Γ|_after=1.3424e+01
+13:37:33  [Timing step=18] VPM=72.759s donor=0.003s fringe=0.582s FVM=17.831s handoff=3.883s total=95.058s
+13:38:03       [Donor] particles=318860
+13:38:03       [Donor] Flux residual: raw=1.863e-04 m³/s (3.45e-06×U∞A)  post-projection=-3.284e-15 m³/s (6.08e-17×U∞A)  δu_n=3.451e-06 m/s
+13:38:03       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.818 mean=0.966 max=1.004  n_face=5625
+13:38:03       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.007
+13:38:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:07       [FVM wall] cube: y+ min=0.08 max=2.20 avg=0.79
+13:38:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:10       [FVM wall] cube: y+ min=0.08 max=2.20 avg=0.79
+13:38:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:14       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.79
+13:38:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:17       [FVM wall] cube: y+ min=0.08 max=2.20 avg=0.79
+13:38:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:21       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.79
+13:38:25  [Handoff step=19] in=238511 → out=273459  free=80349  solid_removed=0  pruned=144564 (0.127% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.05e-14  flux_ratio=0.876
+13:38:25       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.361e-02
+13:38:25       [Beale] mollification residual: 35.6% → 23.5%
+13:38:25       [Inject] N_before=318860  N_after=353808  |Γ|_before=1.2811e+01  |Γ|_after=1.3670e+01
+13:38:25  [Timing step=19] VPM=28.131s donor=0.002s fringe=0.634s FVM=17.560s handoff=3.801s total=50.128s
+13:38:54       [Donor] particles=324613
+13:38:54       [Donor] Flux residual: raw=-4.346e-05 m³/s (8.05e-07×U∞A)  post-projection=2.248e-15 m³/s (4.16e-17×U∞A)  δu_n=-8.048e-07 m/s
+13:38:54       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.810 mean=0.966 max=1.005  n_face=5625
+13:38:54       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.008
+13:38:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.82 max=1.04]
+13:38:58       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.79
+13:39:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:39:02       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.79
+13:39:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:39:06       [FVM wall] cube: y+ min=0.02 max=2.20 avg=0.78
+13:39:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:39:09       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.78
+13:39:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:39:13       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.78
+13:39:17  [Handoff step=20] in=239451 → out=274630  free=85162  solid_removed=0  pruned=143190 (0.122% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.45e-14  flux_ratio=0.893
+13:39:17       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.219e-02
+13:39:17       [Beale] mollification residual: 35.2% → 23.3%
+13:39:17       [Inject] N_before=324613  N_after=359792  |Γ|_before=1.3084e+01  |Γ|_after=1.3912e+01
+13:39:17  [Timing step=20] VPM=28.984s donor=0.002s fringe=0.657s FVM=18.959s handoff=3.803s total=52.405s
+13:40:46       [Donor] particles=330791
+13:40:46       [Donor] Flux residual: raw=-7.498e-05 m³/s (1.39e-06×U∞A)  post-projection=1.067e-15 m³/s (1.98e-17×U∞A)  δu_n=-1.388e-06 m/s
+13:40:46       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.803 mean=0.966 max=1.006  n_face=5625
+13:40:46       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.009
+13:40:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:40:51       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.78
+13:40:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:40:54       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.78
+13:40:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.81 max=1.04]
+13:40:58       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.78
+13:41:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:01       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.78
+13:41:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:05       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.78
+13:41:09  [Handoff step=21] in=240988 → out=275818  free=89803  solid_removed=0  pruned=141716 (0.118% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.44e-14  flux_ratio=0.968
+13:41:09       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=7.076e-02
+13:41:09       [Beale] mollification residual: 34.9% → 23.1%
+13:41:09       [Inject] N_before=330791  N_after=365621  |Γ|_before=1.3335e+01  |Γ|_after=1.4147e+01
+13:41:09  [Timing step=21] VPM=88.556s donor=0.002s fringe=0.636s FVM=18.190s handoff=3.909s total=111.293s
+13:41:42       [Donor] particles=337274
+13:41:42       [Donor] Flux residual: raw=-1.239e-04 m³/s (2.29e-06×U∞A)  post-projection=-2.132e-15 m³/s (3.95e-17×U∞A)  δu_n=-2.294e-06 m/s
+13:41:42       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.795 mean=0.965 max=1.007  n_face=5625
+13:41:42       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.010
+13:41:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:46       [FVM wall] cube: y+ min=0.01 max=2.20 avg=0.77
+13:41:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:50       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.77
+13:41:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:54       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.77
+13:41:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.80 max=1.04]
+13:41:57       [FVM wall] cube: y+ min=0.06 max=2.20 avg=0.77
+13:42:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:01       [FVM wall] cube: y+ min=0.07 max=2.20 avg=0.77
+13:42:05  [Handoff step=22] in=242840 → out=277342  free=94434  solid_removed=0  pruned=139832 (0.113% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.64e-14  flux_ratio=1.065
+13:42:05       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.940e-02
+13:42:05       [Beale] mollification residual: 34.6% → 22.9%
+13:42:05       [Inject] N_before=337274  N_after=371776  |Γ|_before=1.3581e+01  |Γ|_after=1.4379e+01
+13:42:05  [Timing step=22] VPM=31.975s donor=0.002s fringe=0.688s FVM=18.516s handoff=3.912s total=55.094s
+13:42:37       [Donor] particles=343907
+13:42:37       [Donor] Flux residual: raw=7.288e-06 m³/s (1.35e-07×U∞A)  post-projection=-9.541e-15 m³/s (1.77e-16×U∞A)  δu_n=1.350e-07 m/s
+13:42:37       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.786 mean=0.965 max=1.008  n_face=5625
+13:42:37       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.011
+13:42:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:40       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.77
+13:42:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:44       [FVM wall] cube: y+ min=0.05 max=2.20 avg=0.77
+13:42:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:47       [FVM wall] cube: y+ min=0.04 max=2.20 avg=0.77
+13:42:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:50       [FVM wall] cube: y+ min=0.03 max=2.20 avg=0.77
+13:42:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.79 max=1.04]
+13:42:54       [FVM wall] cube: y+ min=0.02 max=2.19 avg=0.76
+13:42:58  [Handoff step=23] in=244801 → out=279308  free=99106  solid_removed=0  pruned=137628 (0.109% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.02e-14  flux_ratio=1.152
+13:42:58       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.808e-02
+13:42:58       [Beale] mollification residual: 34.3% → 22.7%
+13:42:58       [Inject] N_before=343907  N_after=378414  |Γ|_before=1.3826e+01  |Γ|_after=1.4611e+01
+13:42:58  [Timing step=23] VPM=31.309s donor=0.003s fringe=0.689s FVM=17.250s handoff=4.053s total=53.304s
+13:44:22       [Donor] particles=350709
+13:44:22       [Donor] Flux residual: raw=-6.605e-05 m³/s (1.22e-06×U∞A)  post-projection=-4.459e-15 m³/s (8.26e-17×U∞A)  δu_n=-1.223e-06 m/s
+13:44:22       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.778 mean=0.965 max=1.008  n_face=5625
+13:44:22       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.013
+13:44:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:44:26       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:44:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:44:29       [FVM wall] cube: y+ min=0.00 max=2.19 avg=0.76
+13:44:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:44:32       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:44:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:44:35       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:44:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:44:39       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:44:44  [Handoff step=24] in=247001 → out=281716  free=103708  solid_removed=0  pruned=135037 (0.104% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.24e-14  flux_ratio=1.224
+13:44:44       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.679e-02
+13:44:44       [Beale] mollification residual: 34.0% → 22.5%
+13:44:44       [Inject] N_before=350709  N_after=385424  |Γ|_before=1.4067e+01  |Γ|_after=1.4840e+01
+13:44:44  [Timing step=24] VPM=83.502s donor=0.002s fringe=0.609s FVM=16.911s handoff=4.212s total=105.235s
+13:45:20       [Donor] particles=357917
+13:45:20       [Donor] Flux residual: raw=8.354e-06 m³/s (1.55e-07×U∞A)  post-projection=1.481e-14 m³/s (2.74e-16×U∞A)  δu_n=1.547e-07 m/s
+13:45:20       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.768 mean=0.964 max=1.009  n_face=5625
+13:45:20       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.014
+13:45:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.78 max=1.04]
+13:45:23       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:45:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.77 max=1.04]
+13:45:27       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.76
+13:45:30       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.77 max=1.04]
+13:45:30       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.75
+13:45:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.77 max=1.04]
+13:45:34       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.75
+13:45:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.77 max=1.04]
+13:45:38       [FVM wall] cube: y+ min=0.02 max=2.19 avg=0.75
+13:45:42  [Handoff step=25] in=249747 → out=284471  free=108170  solid_removed=0  pruned=132230 (0.099% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.48e-14  flux_ratio=1.250
+13:45:42       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.556e-02
+13:45:42       [Beale] mollification residual: 33.8% → 22.4%
+13:45:42       [Inject] N_before=357917  N_after=392641  |Γ|_before=1.4320e+01  |Γ|_after=1.5068e+01
+13:45:42  [Timing step=25] VPM=34.258s donor=0.002s fringe=0.703s FVM=17.956s handoff=3.975s total=56.895s
+13:46:18       [Donor] particles=365116
+13:46:18       [Donor] Flux residual: raw=9.152e-05 m³/s (1.69e-06×U∞A)  post-projection=-2.244e-15 m³/s (4.16e-17×U∞A)  δu_n=1.695e-06 m/s
+13:46:18       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.757 mean=0.964 max=1.010  n_face=5625
+13:46:18       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.016
+13:46:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.77 max=1.04]
+13:46:22       [FVM wall] cube: y+ min=0.02 max=2.19 avg=0.75
+13:46:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.76 max=1.04]
+13:46:25       [FVM wall] cube: y+ min=0.02 max=2.19 avg=0.75
+13:46:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.76 max=1.04]
+13:46:29       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.75
+13:46:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.76 max=1.04]
+13:46:33       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.75
+13:46:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.76 max=1.04]
+13:46:37       [FVM wall] cube: y+ min=0.02 max=2.19 avg=0.75
+13:46:41  [Handoff step=26] in=252492 → out=287567  free=112624  solid_removed=0  pruned=129219 (0.095% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.43e-14  flux_ratio=1.292
+13:46:41       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.437e-02
+13:46:41       [Beale] mollification residual: 33.5% → 22.2%
+13:46:41       [Inject] N_before=365116  N_after=400191  |Γ|_before=1.4552e+01  |Γ|_after=1.5297e+01
+13:46:41  [Timing step=26] VPM=35.507s donor=0.001s fringe=0.740s FVM=18.939s handoff=4.069s total=59.257s
+13:48:12       [Donor] particles=371991
+13:48:12       [Donor] Flux residual: raw=1.023e-04 m³/s (1.89e-06×U∞A)  post-projection=-3.631e-15 m³/s (6.72e-17×U∞A)  δu_n=1.894e-06 m/s
+13:48:12       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.744 mean=0.964 max=1.011  n_face=5625
+13:48:12       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.017
+13:48:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.75 max=1.04]
+13:48:17       [FVM wall] cube: y+ min=0.01 max=2.19 avg=0.75
+13:48:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.75 max=1.04]
+13:48:21       [FVM wall] cube: y+ min=0.02 max=2.18 avg=0.75
+13:48:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.75 max=1.04]
+13:48:25       [FVM wall] cube: y+ min=0.04 max=2.18 avg=0.74
+13:48:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.75 max=1.05]
+13:48:28       [FVM wall] cube: y+ min=0.04 max=2.18 avg=0.74
+13:48:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.74 max=1.05]
+13:48:32       [FVM wall] cube: y+ min=0.04 max=2.18 avg=0.74
+13:48:37  [Handoff step=27] in=255073 → out=291106  free=116918  solid_removed=0  pruned=125844 (0.090% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.12e-14  flux_ratio=1.314
+13:48:37       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.322e-02
+13:48:37       [Beale] mollification residual: 33.3% → 22.0%
+13:48:37       [Inject] N_before=371991  N_after=408024  |Γ|_before=1.4783e+01  |Γ|_after=1.5527e+01
+13:48:37  [Timing step=27] VPM=90.535s donor=0.006s fringe=0.696s FVM=20.283s handoff=4.147s total=115.668s
+13:49:17       [Donor] particles=379369
+13:49:17       [Donor] Flux residual: raw=6.355e-05 m³/s (1.18e-06×U∞A)  post-projection=2.337e-15 m³/s (4.33e-17×U∞A)  δu_n=1.177e-06 m/s
+13:49:17       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.729 mean=0.964 max=1.011  n_face=5625
+13:49:17       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.019
+13:49:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.74 max=1.05]
+13:49:20       [FVM wall] cube: y+ min=0.05 max=2.18 avg=0.74
+13:49:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.74 max=1.05]
+13:49:23       [FVM wall] cube: y+ min=0.05 max=2.18 avg=0.74
+13:49:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.73 max=1.05]
+13:49:26       [FVM wall] cube: y+ min=0.05 max=2.18 avg=0.74
+13:49:30       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.73 max=1.05]
+13:49:30       [FVM wall] cube: y+ min=0.05 max=2.18 avg=0.74
+13:49:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.73 max=1.05]
+13:49:34       [FVM wall] cube: y+ min=0.05 max=2.18 avg=0.74
+13:49:38  [Handoff step=28] in=258116 → out=294608  free=121253  solid_removed=0  pruned=122794 (0.085% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.87e-14  flux_ratio=1.352
+13:49:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.214e-02
+13:49:38       [Beale] mollification residual: 33.1% → 21.9%
+13:49:38       [Inject] N_before=379369  N_after=415861  |Γ|_before=1.5026e+01  |Γ|_after=1.5756e+01
+13:49:38  [Timing step=28] VPM=37.990s donor=0.004s fringe=0.755s FVM=17.315s handoff=4.171s total=60.235s
+13:50:21       [Donor] particles=386880
+13:50:21       [Donor] Flux residual: raw=3.341e-04 m³/s (6.19e-06×U∞A)  post-projection=-1.766e-15 m³/s (3.27e-17×U∞A)  δu_n=6.187e-06 m/s
+13:50:21       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.712 mean=0.964 max=1.012  n_face=5625
+13:50:21       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+13:50:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.73 max=1.05]
+13:50:25       [FVM wall] cube: y+ min=0.03 max=2.18 avg=0.74
+13:50:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.72 max=1.05]
+13:50:29       [FVM wall] cube: y+ min=0.02 max=2.18 avg=0.73
+13:50:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.72 max=1.05]
+13:50:32       [FVM wall] cube: y+ min=0.02 max=2.18 avg=0.73
+13:50:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.72 max=1.05]
+13:50:36       [FVM wall] cube: y+ min=0.02 max=2.18 avg=0.73
+13:50:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.71 max=1.05]
+13:50:39       [FVM wall] cube: y+ min=0.04 max=2.18 avg=0.73
+13:50:44  [Handoff step=29] in=261133 → out=297968  free=125747  solid_removed=0  pruned=119835 (0.081% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.53e-14  flux_ratio=1.397
+13:50:44       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.110e-02
+13:50:44       [Beale] mollification residual: 32.9% → 21.7%
+13:50:44       [Inject] N_before=386880  N_after=423715  |Γ|_before=1.5258e+01  |Γ|_after=1.5981e+01
+13:50:44  [Timing step=29] VPM=41.581s donor=0.003s fringe=0.790s FVM=18.868s handoff=4.277s total=65.519s
+13:52:24       [Donor] particles=394074
+13:52:24       [Donor] Flux residual: raw=2.253e-04 m³/s (4.17e-06×U∞A)  post-projection=-4.382e-15 m³/s (8.12e-17×U∞A)  δu_n=4.172e-06 m/s
+13:52:24       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.694 mean=0.963 max=1.013  n_face=5625
+13:52:24       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+13:52:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.71 max=1.05]
+13:52:28       [FVM wall] cube: y+ min=0.05 max=2.17 avg=0.73
+13:52:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.71 max=1.05]
+13:52:32       [FVM wall] cube: y+ min=0.05 max=2.17 avg=0.73
+13:52:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.70 max=1.05]
+13:52:35       [FVM wall] cube: y+ min=0.06 max=2.17 avg=0.73
+13:52:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.70 max=1.05]
+13:52:38       [FVM wall] cube: y+ min=0.06 max=2.17 avg=0.73
+13:52:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.69 max=1.05]
+13:52:42       [FVM wall] cube: y+ min=0.06 max=2.17 avg=0.73
+13:52:47  [Handoff step=30] in=263847 → out=301398  free=130227  solid_removed=0  pruned=116696 (0.077% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.11e-14  flux_ratio=1.397
+13:52:47       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=6.010e-02
+13:52:47       [Beale] mollification residual: 32.7% → 21.6%
+13:52:47       [Inject] N_before=394074  N_after=431625  |Γ|_before=1.5486e+01  |Γ|_after=1.6205e+01
+13:52:47  [Timing step=30] VPM=99.623s donor=0.004s fringe=0.700s FVM=17.928s handoff=4.402s total=122.658s
+13:53:35       [Donor] particles=401712
+13:53:35       [Donor] Flux residual: raw=2.864e-04 m³/s (5.30e-06×U∞A)  post-projection=1.716e-15 m³/s (3.18e-17×U∞A)  δu_n=5.304e-06 m/s
+13:53:35       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.675 mean=0.963 max=1.014  n_face=5625
+13:53:35       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+13:53:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.69 max=1.05]
+13:53:38       [FVM wall] cube: y+ min=0.05 max=2.17 avg=0.73
+13:53:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.69 max=1.05]
+13:53:42       [FVM wall] cube: y+ min=0.05 max=2.17 avg=0.73
+13:53:45       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.68 max=1.05]
+13:53:45       [FVM wall] cube: y+ min=0.05 max=2.17 avg=0.72
+13:53:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.68 max=1.05]
+13:53:49       [FVM wall] cube: y+ min=0.04 max=2.17 avg=0.72
+13:53:52       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.67 max=1.05]
+13:53:52       [FVM wall] cube: y+ min=0.04 max=2.17 avg=0.72
+13:53:56  [Handoff step=31] in=266933 → out=304690  free=134779  solid_removed=0  pruned=113687 (0.074% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.90e-14  flux_ratio=1.422
+13:53:56       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.917e-02
+13:53:56       [Beale] mollification residual: 32.5% → 21.4%
+13:53:56       [Inject] N_before=401712  N_after=439469  |Γ|_before=1.5717e+01  |Γ|_after=1.6427e+01
+13:53:56  [Timing step=31] VPM=46.007s donor=0.003s fringe=0.843s FVM=17.424s handoff=4.070s total=68.347s
+13:54:42       [Donor] particles=409746
+13:54:42       [Donor] Flux residual: raw=3.145e-04 m³/s (5.82e-06×U∞A)  post-projection=1.227e-14 m³/s (2.27e-16×U∞A)  δu_n=5.825e-06 m/s
+13:54:42       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.654 mean=0.963 max=1.015  n_face=5625
+13:54:42       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+13:54:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.67 max=1.05]
+13:54:46       [FVM wall] cube: y+ min=0.04 max=2.17 avg=0.72
+13:54:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.67 max=1.05]
+13:54:49       [FVM wall] cube: y+ min=0.03 max=2.17 avg=0.72
+13:54:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.66 max=1.05]
+13:54:53       [FVM wall] cube: y+ min=0.03 max=2.17 avg=0.72
+13:54:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.66 max=1.05]
+13:54:56       [FVM wall] cube: y+ min=0.03 max=2.16 avg=0.72
+13:55:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.65 max=1.05]
+13:55:00       [FVM wall] cube: y+ min=0.03 max=2.16 avg=0.72
+13:55:04  [Handoff step=32] in=270299 → out=307986  free=139447  solid_removed=0  pruned=110617 (0.071% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.69e-14  flux_ratio=1.445
+13:55:04       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.826e-02
+13:55:04       [Beale] mollification residual: 32.4% → 21.3%
+13:55:04       [Inject] N_before=409746  N_after=447433  |Γ|_before=1.5938e+01  |Γ|_after=1.6648e+01
+13:55:04  [Timing step=32] VPM=45.405s donor=0.003s fringe=0.780s FVM=17.633s handoff=4.132s total=67.953s
+13:56:57       [Donor] particles=417803
+13:56:57       [Donor] Flux residual: raw=1.459e-04 m³/s (2.70e-06×U∞A)  post-projection=3.964e-15 m³/s (7.34e-17×U∞A)  δu_n=2.703e-06 m/s
+13:56:57       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.632 mean=0.963 max=1.015  n_face=5625
+13:56:57       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+13:57:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.65 max=1.05]
+13:57:01       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.72
+13:57:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.65 max=1.05]
+13:57:05       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.72
+13:57:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.64 max=1.05]
+13:57:09       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.72
+13:57:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.64 max=1.05]
+13:57:13       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.72
+13:57:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.63 max=1.05]
+13:57:19       [FVM wall] cube: y+ min=0.03 max=2.16 avg=0.71
+13:57:24  [Handoff step=33] in=273677 → out=311143  free=144126  solid_removed=0  pruned=107683 (0.068% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.49e-14  flux_ratio=1.517
+13:57:24       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.739e-02
+13:57:24       [Beale] mollification residual: 32.2% → 21.2%
+13:57:24       [Inject] N_before=417803  N_after=455269  |Γ|_before=1.6156e+01  |Γ|_after=1.6869e+01
+13:57:24  [Timing step=33] VPM=111.568s donor=0.002s fringe=0.779s FVM=21.880s handoff=4.912s total=139.141s
+13:58:16       [Donor] particles=426002
+13:58:16       [Donor] Flux residual: raw=1.886e-04 m³/s (3.49e-06×U∞A)  post-projection=-1.686e-14 m³/s (3.12e-16×U∞A)  δu_n=3.492e-06 m/s
+13:58:16       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.610 mean=0.963 max=1.016  n_face=5625
+13:58:16       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+13:58:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.63 max=1.05]
+13:58:19       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.71
+13:58:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.62 max=1.05]
+13:58:23       [FVM wall] cube: y+ min=0.01 max=2.16 avg=0.71
+13:58:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.62 max=1.05]
+13:58:26       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.71
+13:58:30       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.61 max=1.05]
+13:58:30       [FVM wall] cube: y+ min=0.01 max=2.16 avg=0.71
+13:58:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.61 max=1.05]
+13:58:34       [FVM wall] cube: y+ min=0.02 max=2.16 avg=0.71
+13:58:38  [Handoff step=34] in=277076 → out=314209  free=148926  solid_removed=0  pruned=104766 (0.066% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.43e-14  flux_ratio=1.581
+13:58:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.656e-02
+13:58:38       [Beale] mollification residual: 32.1% → 21.1%
+13:58:38       [Inject] N_before=426002  N_after=463135  |Γ|_before=1.6385e+01  |Γ|_after=1.7090e+01
+13:58:38  [Timing step=34] VPM=50.171s donor=0.005s fringe=0.890s FVM=17.781s handoff=4.242s total=73.090s
+13:59:30       [Donor] particles=434187
+13:59:30       [Donor] Flux residual: raw=1.859e-04 m³/s (3.44e-06×U∞A)  post-projection=4.335e-15 m³/s (8.03e-17×U∞A)  δu_n=3.443e-06 m/s
+13:59:30       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.587 mean=0.962 max=1.016  n_face=5625
+13:59:30       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+13:59:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.61 max=1.05]
+13:59:34       [FVM wall] cube: y+ min=0.03 max=2.16 avg=0.71
+13:59:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.60 max=1.05]
+13:59:38       [FVM wall] cube: y+ min=0.03 max=2.15 avg=0.71
+13:59:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.60 max=1.05]
+13:59:41       [FVM wall] cube: y+ min=0.04 max=2.15 avg=0.71
+13:59:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.59 max=1.05]
+13:59:44       [FVM wall] cube: y+ min=0.03 max=2.15 avg=0.71
+13:59:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.59 max=1.05]
+13:59:48       [FVM wall] cube: y+ min=0.01 max=2.15 avg=0.71
+13:59:52  [Handoff step=35] in=280515 → out=317102  free=153672  solid_removed=0  pruned=102140 (0.064% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.86e-14  flux_ratio=1.609
+13:59:52       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.577e-02
+13:59:52       [Beale] mollification residual: 32.0% → 20.9%
+13:59:52       [Inject] N_before=434187  N_after=470774  |Γ|_before=1.6615e+01  |Γ|_after=1.7311e+01
+13:59:52  [Timing step=35] VPM=51.204s donor=0.003s fringe=0.906s FVM=17.959s handoff=4.186s total=74.258s
+14:01:46       [Donor] particles=441907
+14:01:46       [Donor] Flux residual: raw=3.296e-04 m³/s (6.10e-06×U∞A)  post-projection=-4.199e-15 m³/s (7.78e-17×U∞A)  δu_n=6.103e-06 m/s
+14:01:46       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.565 mean=0.962 max=1.017  n_face=5625
+14:01:46       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.024
+14:01:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.58 max=1.05]
+14:01:49       [FVM wall] cube: y+ min=0.02 max=2.15 avg=0.71
+14:01:52       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.58 max=1.05]
+14:01:52       [FVM wall] cube: y+ min=0.02 max=2.15 avg=0.71
+14:01:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.57 max=1.05]
+14:01:56       [FVM wall] cube: y+ min=0.01 max=2.15 avg=0.71
+14:01:59       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.57 max=1.05]
+14:01:59       [FVM wall] cube: y+ min=0.02 max=2.15 avg=0.70
+14:02:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.56 max=1.05]
+14:02:02       [FVM wall] cube: y+ min=0.03 max=2.15 avg=0.70
+14:02:06  [Handoff step=36] in=283322 → out=320279  free=158585  solid_removed=0  pruned=98797 (0.061% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.13e-14  flux_ratio=1.674
+14:02:06       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.504e-02
+14:02:06       [Beale] mollification residual: 31.9% → 20.8%
+14:02:06       [Inject] N_before=441907  N_after=478864  |Γ|_before=1.6841e+01  |Γ|_after=1.7530e+01
+14:02:06  [Timing step=36] VPM=112.619s donor=0.002s fringe=0.758s FVM=16.531s handoff=4.058s total=133.968s
+14:02:59       [Donor] particles=449287
+14:02:59       [Donor] Flux residual: raw=2.122e-04 m³/s (3.93e-06×U∞A)  post-projection=-1.065e-14 m³/s (1.97e-16×U∞A)  δu_n=3.929e-06 m/s
+14:02:59       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.543 mean=0.962 max=1.017  n_face=5625
+14:02:59       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+14:03:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.56 max=1.05]
+14:03:03       [FVM wall] cube: y+ min=0.04 max=2.15 avg=0.70
+14:03:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.56 max=1.05]
+14:03:06       [FVM wall] cube: y+ min=0.04 max=2.15 avg=0.70
+14:03:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.55 max=1.05]
+14:03:09       [FVM wall] cube: y+ min=0.03 max=2.15 avg=0.70
+14:03:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.55 max=1.05]
+14:03:13       [FVM wall] cube: y+ min=0.01 max=2.15 avg=0.70
+14:03:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.54 max=1.05]
+14:03:16       [FVM wall] cube: y+ min=0.02 max=2.15 avg=0.70
+14:03:20  [Handoff step=37] in=285946 → out=323451  free=163341  solid_removed=0  pruned=95480 (0.058% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.83e-14  flux_ratio=1.730
+14:03:20       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.433e-02
+14:03:20       [Beale] mollification residual: 31.8% → 20.7%
+14:03:20       [Inject] N_before=449287  N_after=486792  |Γ|_before=1.7057e+01  |Γ|_after=1.7747e+01
+14:03:20  [Timing step=37] VPM=50.984s donor=0.004s fringe=0.807s FVM=16.830s handoff=4.124s total=72.749s
+14:04:13       [Donor] particles=457279
+14:04:13       [Donor] Flux residual: raw=2.581e-04 m³/s (4.78e-06×U∞A)  post-projection=-4.246e-15 m³/s (7.86e-17×U∞A)  δu_n=4.779e-06 m/s
+14:04:13       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.520 mean=0.962 max=1.018  n_face=5625
+14:04:13       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.026
+14:04:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.54 max=1.05]
+14:04:17       [FVM wall] cube: y+ min=0.02 max=2.15 avg=0.70
+14:04:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.53 max=1.05]
+14:04:20       [FVM wall] cube: y+ min=0.02 max=2.14 avg=0.70
+14:04:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.53 max=1.05]
+14:04:23       [FVM wall] cube: y+ min=0.03 max=2.14 avg=0.70
+14:04:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.52 max=1.05]
+14:04:27       [FVM wall] cube: y+ min=0.04 max=2.14 avg=0.70
+14:04:30       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.52 max=1.05]
+14:04:30       [FVM wall] cube: y+ min=0.05 max=2.14 avg=0.70
+14:04:34  [Handoff step=38] in=289052 → out=326264  free=168227  solid_removed=0  pruned=92868 (0.056% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.09e-14  flux_ratio=1.744
+14:04:34       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.365e-02
+14:04:34       [Beale] mollification residual: 31.7% → 20.6%
+14:04:34       [Inject] N_before=457279  N_after=494491  |Γ|_before=1.7282e+01  |Γ|_after=1.7962e+01
+14:04:34  [Timing step=38] VPM=52.123s donor=0.003s fringe=0.935s FVM=16.518s handoff=4.113s total=73.691s
+14:06:35       [Donor] particles=464939
+14:06:35       [Donor] Flux residual: raw=3.422e-04 m³/s (6.34e-06×U∞A)  post-projection=1.785e-15 m³/s (3.31e-17×U∞A)  δu_n=6.337e-06 m/s
+14:06:35       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.498 mean=0.961 max=1.018  n_face=5625
+14:06:35       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.026
+14:06:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.52 max=1.05]
+14:06:39       [FVM wall] cube: y+ min=0.06 max=2.14 avg=0.70
+14:06:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.51 max=1.05]
+14:06:42       [FVM wall] cube: y+ min=0.07 max=2.14 avg=0.70
+14:06:45       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.51 max=1.05]
+14:06:45       [FVM wall] cube: y+ min=0.07 max=2.14 avg=0.70
+14:06:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.50 max=1.05]
+14:06:48       [FVM wall] cube: y+ min=0.08 max=2.14 avg=0.70
+14:06:52       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.50 max=1.05]
+14:06:52       [FVM wall] cube: y+ min=0.09 max=2.14 avg=0.69
+14:06:56  [Handoff step=39] in=291903 → out=328970  free=173036  solid_removed=0  pruned=90357 (0.053% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.38e-14  flux_ratio=1.842
+14:06:56       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.304e-02
+14:06:56       [Beale] mollification residual: 31.6% → 20.5%
+14:06:56       [Inject] N_before=464939  N_after=502006  |Γ|_before=1.7495e+01  |Γ|_after=1.8174e+01
+14:06:56  [Timing step=39] VPM=120.474s donor=0.002s fringe=0.795s FVM=16.569s handoff=4.293s total=142.134s
+14:07:57       [Donor] particles=472209
+14:07:57       [Donor] Flux residual: raw=3.977e-04 m³/s (7.36e-06×U∞A)  post-projection=8.756e-15 m³/s (1.62e-16×U∞A)  δu_n=7.364e-06 m/s
+14:07:57       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.477 mean=0.961 max=1.018  n_face=5625
+14:07:57       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+14:08:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.49 max=1.05]
+14:08:00       [FVM wall] cube: y+ min=0.09 max=2.14 avg=0.69
+14:08:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.49 max=1.05]
+14:08:03       [FVM wall] cube: y+ min=0.09 max=2.14 avg=0.69
+14:08:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.49 max=1.05]
+14:08:07       [FVM wall] cube: y+ min=0.08 max=2.14 avg=0.69
+14:08:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.48 max=1.05]
+14:08:10       [FVM wall] cube: y+ min=0.08 max=2.14 avg=0.69
+14:08:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.48 max=1.05]
+14:08:13       [FVM wall] cube: y+ min=0.08 max=2.14 avg=0.69
+14:08:17  [Handoff step=40] in=294327 → out=331468  free=177882  solid_removed=0  pruned=87962 (0.051% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.14e-14  flux_ratio=1.868
+14:08:17       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.244e-02
+14:08:17       [Beale] mollification residual: 31.5% → 20.4%
+14:08:17       [Inject] N_before=472209  N_after=509350  |Γ|_before=1.7705e+01  |Γ|_after=1.8385e+01
+14:08:17  [Timing step=40] VPM=58.149s donor=0.002s fringe=1.272s FVM=16.413s handoff=4.160s total=79.995s
+14:09:18       [Donor] particles=479903
+14:09:18       [Donor] Flux residual: raw=2.449e-04 m³/s (4.54e-06×U∞A)  post-projection=4.374e-15 m³/s (8.10e-17×U∞A)  δu_n=4.535e-06 m/s
+14:09:18       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.456 mean=0.961 max=1.019  n_face=5625
+14:09:18       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.026
+14:09:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.47 max=1.05]
+14:09:22       [FVM wall] cube: y+ min=0.08 max=2.14 avg=0.69
+14:09:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.47 max=1.05]
+14:09:25       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:09:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.46 max=1.05]
+14:09:28       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:09:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.46 max=1.05]
+14:09:31       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:09:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.46 max=1.05]
+14:09:35       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:09:39  [Handoff step=41] in=297191 → out=334046  free=182712  solid_removed=0  pruned=85599 (0.049% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.07e-14  flux_ratio=1.926
+14:09:39       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.191e-02
+14:09:39       [Beale] mollification residual: 31.4% → 20.3%
+14:09:39       [Inject] N_before=479903  N_after=516758  |Γ|_before=1.7918e+01  |Γ|_after=1.8593e+01
+14:09:39  [Timing step=41] VPM=59.622s donor=0.002s fringe=1.342s FVM=16.158s handoff=4.205s total=81.329s
+14:12:08       [Donor] particles=487401
+14:12:08       [Donor] Flux residual: raw=1.371e-04 m³/s (2.54e-06×U∞A)  post-projection=1.002e-14 m³/s (1.86e-16×U∞A)  δu_n=2.538e-06 m/s
+14:12:08       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.436 mean=0.961 max=1.019  n_face=5625
+14:12:08       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.026
+14:12:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.45 max=1.05]
+14:12:12       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:12:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.45 max=1.05]
+14:12:15       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:12:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.44 max=1.05]
+14:12:19       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:12:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.44 max=1.05]
+14:12:22       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:12:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.44 max=1.05]
+14:12:26       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:12:30  [Handoff step=42] in=299780 → out=336495  free=187621  solid_removed=0  pruned=83127 (0.047% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.54e-14  flux_ratio=1.966
+14:12:30       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.142e-02
+14:12:30       [Beale] mollification residual: 31.4% → 20.2%
+14:12:30       [Inject] N_before=487401  N_after=524116  |Γ|_before=1.8127e+01  |Γ|_after=1.8799e+01
+14:12:30  [Timing step=42] VPM=148.418s donor=0.002s fringe=1.048s FVM=17.620s handoff=4.072s total=171.160s
+14:14:00       [Donor] particles=490000
+14:14:00       [Donor] Flux residual: raw=-1.128e-05 m³/s (2.09e-07×U∞A)  post-projection=9.188e-16 m³/s (1.70e-17×U∞A)  δu_n=-2.089e-07 m/s
+14:14:00       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.415 mean=0.960 max=1.019  n_face=5625
+14:14:00       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+14:14:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.43 max=1.05]
+14:14:04       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.69
+14:14:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.43 max=1.05]
+14:14:08       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:14:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.42 max=1.05]
+14:14:12       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:14:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.42 max=1.05]
+14:14:16       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:14:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.41 max=1.05]
+14:14:19       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:14:23  [Handoff step=43] in=298711 → out=338301  free=191289  solid_removed=0  pruned=81299 (0.046% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=7.84e-14  flux_ratio=2.043
+14:14:23       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.093e-02
+14:14:23       [Beale] mollification residual: 31.3% → 20.2%
+14:14:23       [Inject] N_before=490000  N_after=529590  |Γ|_before=1.8330e+01  |Γ|_after=1.9004e+01
+14:14:23  [Timing step=43] VPM=87.420s donor=0.003s fringe=1.428s FVM=19.257s handoff=3.805s total=111.913s
+14:16:01       [Donor] particles=490000
+14:16:01       [Donor] Flux residual: raw=-1.911e-04 m³/s (3.54e-06×U∞A)  post-projection=5.553e-15 m³/s (1.03e-16×U∞A)  δu_n=-3.539e-06 m/s
+14:16:01       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.393 mean=0.960 max=1.019  n_face=5625
+14:16:01       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.024
+14:16:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.41 max=1.05]
+14:16:05       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:16:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.41 max=1.05]
+14:16:09       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:16:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.40 max=1.05]
+14:16:12       [FVM wall] cube: y+ min=0.08 max=2.13 avg=0.68
+14:16:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.40 max=1.05]
+14:16:16       [FVM wall] cube: y+ min=0.07 max=2.12 avg=0.68
+14:16:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.39 max=1.05]
+14:16:19       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:16:23  [Handoff step=44] in=295668 → out=339729  free=194332  solid_removed=0  pruned=79783 (0.044% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.65e-14  flux_ratio=2.088
+14:16:23       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.048e-02
+14:16:23       [Beale] mollification residual: 31.2% → 20.1%
+14:16:23       [Inject] N_before=490000  N_after=534061  |Γ|_before=1.8536e+01  |Γ|_after=1.9209e+01
+14:16:23  [Timing step=44] VPM=95.503s donor=0.003s fringe=2.524s FVM=17.918s handoff=3.890s total=119.837s
+14:20:13       [Donor] particles=490000
+14:20:13       [Donor] Flux residual: raw=-3.444e-04 m³/s (6.38e-06×U∞A)  post-projection=3.083e-15 m³/s (5.71e-17×U∞A)  δu_n=-6.377e-06 m/s
+14:20:13       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.371 mean=0.960 max=1.019  n_face=5625
+14:20:13       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+14:20:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.39 max=1.05]
+14:20:17       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:20:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.38 max=1.05]
+14:20:21       [FVM wall] cube: y+ min=0.07 max=2.12 avg=0.68
+14:20:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.38 max=1.05]
+14:20:25       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:20:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.38 max=1.05]
+14:20:29       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:20:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.37 max=1.05]
+14:20:33       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:20:37  [Handoff step=45] in=293215 → out=340918  free=196785  solid_removed=0  pruned=78366 (0.043% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.77e-14  flux_ratio=2.121
+14:20:37       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=5.006e-02
+14:20:37       [Beale] mollification residual: 31.2% → 20.0%
+14:20:37       [Inject] N_before=490000  N_after=537703  |Γ|_before=1.8744e+01  |Γ|_after=1.9411e+01
+14:20:37  [Timing step=45] VPM=228.772s donor=0.004s fringe=0.956s FVM=19.729s handoff=4.393s total=253.854s
+14:22:34       [Donor] particles=490000
+14:22:34       [Donor] Flux residual: raw=-3.729e-04 m³/s (6.91e-06×U∞A)  post-projection=1.083e-14 m³/s (2.01e-16×U∞A)  δu_n=-6.905e-06 m/s
+14:22:34       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.349 mean=0.959 max=1.019  n_face=5625
+14:22:34       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+14:22:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.37 max=1.05]
+14:22:37       [FVM wall] cube: y+ min=0.08 max=2.12 avg=0.68
+14:22:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.36 max=1.05]
+14:22:41       [FVM wall] cube: y+ min=0.07 max=2.12 avg=0.68
+14:22:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.36 max=1.05]
+14:22:44       [FVM wall] cube: y+ min=0.06 max=2.12 avg=0.68
+14:22:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.35 max=1.05]
+14:22:48       [FVM wall] cube: y+ min=0.06 max=2.12 avg=0.68
+14:22:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.35 max=1.05]
+14:22:51       [FVM wall] cube: y+ min=0.05 max=2.12 avg=0.67
+14:22:55  [Handoff step=46] in=290465 → out=341686  free=199535  solid_removed=0  pruned=77145 (0.042% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.91e-14  flux_ratio=2.174
+14:22:55       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.968e-02
+14:22:55       [Beale] mollification residual: 31.1% → 19.9%
+14:22:55       [Inject] N_before=490000  N_after=541221  |Γ|_before=1.8939e+01  |Γ|_after=1.9610e+01
+14:22:55  [Timing step=46] VPM=112.678s donor=0.002s fringe=2.810s FVM=17.237s handoff=3.732s total=136.458s
+14:24:36       [Donor] particles=490000
+14:24:36       [Donor] Flux residual: raw=-4.693e-04 m³/s (8.69e-06×U∞A)  post-projection=-2.509e-15 m³/s (4.65e-17×U∞A)  δu_n=-8.691e-06 m/s
+14:24:36       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.327 mean=0.959 max=1.019  n_face=5625
+14:24:36       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+14:24:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.34 max=1.05]
+14:24:40       [FVM wall] cube: y+ min=0.05 max=2.12 avg=0.67
+14:24:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.34 max=1.05]
+14:24:43       [FVM wall] cube: y+ min=0.05 max=2.12 avg=0.67
+14:24:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.34 max=1.05]
+14:24:47       [FVM wall] cube: y+ min=0.05 max=2.12 avg=0.67
+14:24:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.33 max=1.05]
+14:24:50       [FVM wall] cube: y+ min=0.06 max=2.12 avg=0.67
+14:24:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.33 max=1.05]
+14:24:54       [FVM wall] cube: y+ min=0.07 max=2.12 avg=0.67
+14:24:57  [Handoff step=47] in=287972 → out=342749  free=202028  solid_removed=0  pruned=75523 (0.040% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.45e-14  flux_ratio=2.219
+14:24:57       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.934e-02
+14:24:57       [Beale] mollification residual: 31.1% → 19.8%
+14:24:57       [Inject] N_before=490000  N_after=544777  |Γ|_before=1.9135e+01  |Γ|_after=1.9807e+01
+14:24:57  [Timing step=47] VPM=98.683s donor=0.002s fringe=2.816s FVM=17.280s handoff=3.668s total=122.449s
+14:28:42       [Donor] particles=490000
+14:28:42       [Donor] Flux residual: raw=-4.007e-04 m³/s (7.42e-06×U∞A)  post-projection=-2.416e-15 m³/s (4.47e-17×U∞A)  δu_n=-7.421e-06 m/s
+14:28:42       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.306 mean=0.958 max=1.019  n_face=5625
+14:28:42       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+14:28:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.32 max=1.05]
+14:28:46       [FVM wall] cube: y+ min=0.06 max=2.12 avg=0.67
+14:28:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.32 max=1.05]
+14:28:49       [FVM wall] cube: y+ min=0.06 max=2.12 avg=0.67
+14:28:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.31 max=1.05]
+14:28:53       [FVM wall] cube: y+ min=0.07 max=2.11 avg=0.67
+14:28:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.31 max=1.05]
+14:28:56       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:29:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.31 max=1.05]
+14:29:00       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:29:04  [Handoff step=48] in=285592 → out=344179  free=204408  solid_removed=0  pruned=73586 (0.038% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.95e-14  flux_ratio=2.232
+14:29:04       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.904e-02
+14:29:04       [Beale] mollification residual: 31.0% → 19.8%
+14:29:04       [Inject] N_before=490000  N_after=548587  |Γ|_before=1.9327e+01  |Γ|_after=2.0002e+01
+14:29:04  [Timing step=48] VPM=222.384s donor=0.001s fringe=2.289s FVM=17.585s handoff=3.955s total=246.214s
+14:31:03       [Donor] particles=490000
+14:31:03       [Donor] Flux residual: raw=-2.904e-04 m³/s (5.38e-06×U∞A)  post-projection=-1.070e-14 m³/s (1.98e-16×U∞A)  δu_n=-5.377e-06 m/s
+14:31:03       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.283 mean=0.958 max=1.019  n_face=5625
+14:31:03       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+14:31:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.30 max=1.05]
+14:31:07       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:31:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.30 max=1.05]
+14:31:10       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:31:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.29 max=1.05]
+14:31:14       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:31:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.29 max=1.05]
+14:31:17       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:31:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.28 max=1.05]
+14:31:21       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:31:25  [Handoff step=49] in=283239 → out=346264  free=206761  solid_removed=0  pruned=71107 (0.035% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.99e-14  flux_ratio=2.268
+14:31:25       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.875e-02
+14:31:25       [Beale] mollification residual: 31.0% → 19.7%
+14:31:25       [Inject] N_before=490000  N_after=553025  |Γ|_before=1.9519e+01  |Γ|_after=2.0195e+01
+14:31:25  [Timing step=49] VPM=115.891s donor=0.003s fringe=2.697s FVM=17.357s handoff=3.815s total=139.761s
+14:33:01       [Donor] particles=490000
+14:33:01       [Donor] Flux residual: raw=-3.941e-04 m³/s (7.30e-06×U∞A)  post-projection=5.030e-15 m³/s (9.32e-17×U∞A)  δu_n=-7.298e-06 m/s
+14:33:01       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.262 mean=0.958 max=1.019  n_face=5625
+14:33:01       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+14:33:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.28 max=1.05]
+14:33:05       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:33:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.27 max=1.05]
+14:33:08       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:33:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.27 max=1.05]
+14:33:11       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:33:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.27 max=1.05]
+14:33:15       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:33:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.26 max=1.05]
+14:33:18       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.67
+14:33:22  [Handoff step=50] in=280738 → out=348184  free=209262  solid_removed=0  pruned=68741 (0.033% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.90e-14  flux_ratio=2.253
+14:33:22       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.847e-02
+14:33:22       [Beale] mollification residual: 30.9% → 19.6%
+14:33:22       [Inject] N_before=490000  N_after=557446  |Γ|_before=1.9719e+01  |Γ|_after=2.0384e+01
+14:33:22  [Timing step=50] VPM=93.439s donor=0.002s fringe=2.872s FVM=17.107s handoff=3.685s total=117.105s
+14:37:28       [Donor] particles=490000
+14:37:28       [Donor] Flux residual: raw=-1.769e-04 m³/s (3.28e-06×U∞A)  post-projection=-1.484e-14 m³/s (2.75e-16×U∞A)  δu_n=-3.276e-06 m/s
+14:37:28       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.243 mean=0.957 max=1.018  n_face=5625
+14:37:28       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+14:37:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.26 max=1.05]
+14:37:33       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:37:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.25 max=1.05]
+14:37:38       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:37:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.25 max=1.05]
+14:37:42       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:37:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.25 max=1.05]
+14:37:46       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:37:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.24 max=1.05]
+14:37:51       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:37:55  [Handoff step=51] in=278172 → out=349687  free=211828  solid_removed=0  pruned=66887 (0.031% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.19e-14  flux_ratio=2.284
+14:37:55       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.815e-02
+14:37:55       [Beale] mollification residual: 30.9% → 19.6%
+14:37:55       [Inject] N_before=490000  N_after=561515  |Γ|_before=1.9907e+01  |Γ|_after=2.0570e+01
+14:37:55  [Timing step=51] VPM=243.830s donor=0.002s fringe=2.634s FVM=22.136s handoff=4.077s total=272.678s
+14:39:50       [Donor] particles=490000
+14:39:50       [Donor] Flux residual: raw=-1.443e-04 m³/s (2.67e-06×U∞A)  post-projection=9.823e-15 m³/s (1.82e-16×U∞A)  δu_n=-2.672e-06 m/s
+14:39:50       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.223 mean=0.957 max=1.018  n_face=5625
+14:39:50       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+14:39:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.24 max=1.05]
+14:39:53       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:39:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.23 max=1.05]
+14:39:57       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:40:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.23 max=1.05]
+14:40:00       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:40:04       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.23 max=1.05]
+14:40:04       [FVM wall] cube: y+ min=0.08 max=2.11 avg=0.66
+14:40:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.22 max=1.05]
+14:40:07       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:40:12  [Handoff step=52] in=275438 → out=350909  free=214562  solid_removed=0  pruned=65490 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.06e-14  flux_ratio=2.301
+14:40:12       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.789e-02
+14:40:12       [Beale] mollification residual: 30.8% → 19.5%
+14:40:12       [Inject] N_before=490000  N_after=565471  |Γ|_before=2.0088e+01  |Γ|_after=2.0752e+01
+14:40:12  [Timing step=52] VPM=112.102s donor=0.002s fringe=1.529s FVM=17.382s handoff=4.485s total=135.500s
+14:41:28       [Donor] particles=490000
+14:41:28       [Donor] Flux residual: raw=-2.100e-04 m³/s (3.89e-06×U∞A)  post-projection=-6.178e-15 m³/s (1.14e-16×U∞A)  δu_n=-3.888e-06 m/s
+14:41:28       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.204 mean=0.956 max=1.017  n_face=5625
+14:41:29       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+14:41:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.22 max=1.05]
+14:41:32       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:41:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.22 max=1.05]
+14:41:35       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:41:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.21 max=1.05]
+14:41:39       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:41:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.21 max=1.05]
+14:41:42       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:41:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.20 max=1.05]
+14:41:46       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:41:50  [Handoff step=53] in=272702 → out=351948  free=217298  solid_removed=0  pruned=64631 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=8.08e-14  flux_ratio=2.278
+14:41:50       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.759e-02
+14:41:50       [Beale] mollification residual: 30.8% → 19.5%
+14:41:50       [Inject] N_before=490000  N_after=569246  |Γ|_before=2.0264e+01  |Γ|_after=2.0928e+01
+14:41:50  [Timing step=53] VPM=75.214s donor=0.002s fringe=1.535s FVM=17.136s handoff=4.320s total=98.207s
+14:44:53       [Donor] particles=490000
+14:44:53       [Donor] Flux residual: raw=-2.128e-04 m³/s (3.94e-06×U∞A)  post-projection=1.139e-15 m³/s (2.11e-17×U∞A)  δu_n=-3.941e-06 m/s
+14:44:53       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.185 mean=0.956 max=1.017  n_face=5625
+14:44:53       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+14:44:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.20 max=1.05]
+14:44:56       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:45:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.20 max=1.05]
+14:45:00       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:45:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.19 max=1.05]
+14:45:03       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:45:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.19 max=1.05]
+14:45:07       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:45:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.19 max=1.05]
+14:45:11       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.66
+14:45:15  [Handoff step=54] in=269949 → out=353093  free=220051  solid_removed=0  pruned=63907 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.12e-14  flux_ratio=2.271
+14:45:15       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.729e-02
+14:45:15       [Beale] mollification residual: 30.7% → 19.4%
+14:45:15       [Inject] N_before=490000  N_after=573144  |Γ|_before=2.0454e+01  |Γ|_after=2.1099e+01
+14:45:15  [Timing step=54] VPM=181.364s donor=0.004s fringe=1.103s FVM=18.211s handoff=4.544s total=205.225s
+14:46:40       [Donor] particles=490000
+14:46:40       [Donor] Flux residual: raw=-2.332e-06 m³/s (4.32e-08×U∞A)  post-projection=5.416e-15 m³/s (1.00e-16×U∞A)  δu_n=-4.319e-08 m/s
+14:46:40       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.168 mean=0.955 max=1.016  n_face=5625
+14:46:40       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+14:46:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.18 max=1.05]
+14:46:43       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:46:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.18 max=1.05]
+14:46:47       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:46:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.17 max=1.05]
+14:46:50       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:46:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.17 max=1.05]
+14:46:53       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:46:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.17 max=1.05]
+14:46:57       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:47:01  [Handoff step=55] in=267227 → out=354526  free=222773  solid_removed=0  pruned=63180 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.62e-14  flux_ratio=2.249
+14:47:01       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.697e-02
+14:47:01       [Beale] mollification residual: 30.7% → 19.4%
+14:47:01       [Inject] N_before=490000  N_after=577299  |Γ|_before=2.0616e+01  |Γ|_after=2.1264e+01
+14:47:01  [Timing step=55] VPM=81.327s donor=0.002s fringe=1.601s FVM=17.030s handoff=4.339s total=104.299s
+14:48:26       [Donor] particles=490000
+14:48:26       [Donor] Flux residual: raw=-3.916e-04 m³/s (7.25e-06×U∞A)  post-projection=8.480e-15 m³/s (1.57e-16×U∞A)  δu_n=-7.252e-06 m/s
+14:48:26       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.150 mean=0.955 max=1.016  n_face=5625
+14:48:26       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+14:48:30       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.16 max=1.05]
+14:48:30       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:48:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.16 max=1.05]
+14:48:33       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:48:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.16 max=1.05]
+14:48:37       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:48:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.15 max=1.05]
+14:48:41       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:48:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.15 max=1.05]
+14:48:44       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:48:49  [Handoff step=56] in=264195 → out=356000  free=225805  solid_removed=0  pruned=62582 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.22e-14  flux_ratio=2.259
+14:48:49       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.665e-02
+14:48:49       [Beale] mollification residual: 30.6% → 19.3%
+14:48:49       [Inject] N_before=490000  N_after=581805  |Γ|_before=2.0763e+01  |Γ|_after=2.1422e+01
+14:48:49  [Timing step=56] VPM=83.192s donor=0.002s fringe=1.646s FVM=18.093s handoff=4.760s total=107.694s
+14:52:15       [Donor] particles=490000
+14:52:15       [Donor] Flux residual: raw=-3.264e-04 m³/s (6.04e-06×U∞A)  post-projection=3.741e-15 m³/s (6.93e-17×U∞A)  δu_n=-6.045e-06 m/s
+14:52:15       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.135 mean=0.954 max=1.015  n_face=5625
+14:52:15       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+14:52:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.15 max=1.05]
+14:52:19       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:52:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.14 max=1.05]
+14:52:23       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:52:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.14 max=1.05]
+14:52:27       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:52:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.14 max=1.05]
+14:52:31       [FVM wall] cube: y+ min=0.08 max=2.10 avg=0.65
+14:52:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.13 max=1.05]
+14:52:35       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.65
+14:52:40  [Handoff step=57] in=261120 → out=357306  free=228880  solid_removed=0  pruned=62332 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.13e-14  flux_ratio=2.270
+14:52:40       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.629e-02
+14:52:40       [Beale] mollification residual: 30.6% → 19.3%
+14:52:40       [Inject] N_before=490000  N_after=586186  |Γ|_before=2.0920e+01  |Γ|_after=2.1573e+01
+14:52:40  [Timing step=57] VPM=204.624s donor=0.004s fringe=1.377s FVM=19.990s handoff=4.510s total=230.505s
+14:54:47       [Donor] particles=490000
+14:54:47       [Donor] Flux residual: raw=-1.122e-04 m³/s (2.08e-06×U∞A)  post-projection=-4.019e-15 m³/s (7.44e-17×U∞A)  δu_n=-2.079e-06 m/s
+14:54:47       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.119 mean=0.954 max=1.015  n_face=5625
+14:54:47       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+14:54:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.13 max=1.05]
+14:54:51       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.65
+14:54:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.13 max=1.05]
+14:54:54       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.65
+14:54:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.13 max=1.05]
+14:54:58       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.65
+14:55:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.12 max=1.05]
+14:55:02       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.65
+14:55:05       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.12 max=1.05]
+14:55:05       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:55:09  [Handoff step=58] in=257782 → out=358266  free=232218  solid_removed=0  pruned=62327 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.91e-14  flux_ratio=2.296
+14:55:09       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.596e-02
+14:55:09       [Beale] mollification residual: 30.5% → 19.2%
+14:55:09       [Inject] N_before=490000  N_after=590484  |Γ|_before=2.1073e+01  |Γ|_after=2.1716e+01
+14:55:09  [Timing step=58] VPM=122.861s donor=0.002s fringe=2.931s FVM=18.690s handoff=3.794s total=148.279s
+14:57:09       [Donor] particles=490000
+14:57:09       [Donor] Flux residual: raw=-3.806e-05 m³/s (7.05e-07×U∞A)  post-projection=8.608e-15 m³/s (1.59e-16×U∞A)  δu_n=-7.048e-07 m/s
+14:57:09       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.106 mean=0.954 max=1.015  n_face=5625
+14:57:09       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.024
+14:57:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.12 max=1.05]
+14:57:13       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:57:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.11 max=1.05]
+14:57:18       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:57:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.11 max=1.05]
+14:57:22       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:57:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.11 max=1.05]
+14:57:26       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:57:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.11 max=1.05]
+14:57:31       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+14:57:36  [Handoff step=59] in=258237 → out=357956  free=231763  solid_removed=0  pruned=62846 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.26e-13  flux_ratio=2.305
+14:57:36       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.559e-02
+14:57:36       [Beale] mollification residual: 30.5% → 19.2%
+14:57:36       [Inject] N_before=490000  N_after=589719  |Γ|_before=2.1218e+01  |Γ|_after=2.1851e+01
+14:57:36  [Timing step=59] VPM=116.510s donor=0.003s fringe=3.272s FVM=21.407s handoff=4.984s total=146.176s
+15:01:45       [Donor] particles=490000
+15:01:45       [Donor] Flux residual: raw=-1.364e-04 m³/s (2.53e-06×U∞A)  post-projection=5.668e-15 m³/s (1.05e-16×U∞A)  δu_n=-2.526e-06 m/s
+15:01:45       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.092 mean=0.953 max=1.015  n_face=5625
+15:01:45       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+15:01:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.10 max=1.05]
+15:01:50       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:01:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.10 max=1.05]
+15:01:54       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:01:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.10 max=1.05]
+15:01:58       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:02:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.09 max=1.05]
+15:02:03       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:02:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.09 max=1.05]
+15:02:08       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:02:12  [Handoff step=60] in=254602 → out=358054  free=235398  solid_removed=0  pruned=63306 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.01e-13  flux_ratio=2.334
+15:02:12       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.523e-02
+15:02:12       [Beale] mollification residual: 30.4% → 19.2%
+15:02:12       [Inject] N_before=490000  N_after=593452  |Γ|_before=2.1353e+01  |Γ|_after=2.1976e+01
+15:02:12  [Timing step=60] VPM=246.879s donor=0.002s fringe=2.720s FVM=22.469s handoff=4.593s total=276.663s
+15:04:24       [Donor] particles=490000
+15:04:24       [Donor] Flux residual: raw=-2.048e-04 m³/s (3.79e-06×U∞A)  post-projection=-1.178e-14 m³/s (2.18e-16×U∞A)  δu_n=-3.792e-06 m/s
+15:04:24       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.079 mean=0.953 max=1.014  n_face=5625
+15:04:24       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.024
+15:04:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.09 max=1.05]
+15:04:28       [FVM wall] cube: y+ min=0.08 max=2.09 avg=0.64
+15:04:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.09 max=1.05]
+15:04:32       [FVM wall] cube: y+ min=0.07 max=2.09 avg=0.64
+15:04:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.08 max=1.05]
+15:04:36       [FVM wall] cube: y+ min=0.07 max=2.09 avg=0.64
+15:04:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.08 max=1.05]
+15:04:40       [FVM wall] cube: y+ min=0.07 max=2.09 avg=0.64
+15:04:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.08 max=1.05]
+15:04:44       [FVM wall] cube: y+ min=0.06 max=2.09 avg=0.64
+15:04:49  [Handoff step=61] in=250448 → out=357667  free=239552  solid_removed=0  pruned=63822 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.20e-13  flux_ratio=2.361
+15:04:49       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.487e-02
+15:04:49       [Beale] mollification residual: 30.4% → 19.1%
+15:04:49       [Inject] N_before=490000  N_after=597219  |Γ|_before=2.1475e+01  |Γ|_after=2.2093e+01
+15:04:49  [Timing step=61] VPM=126.733s donor=0.002s fringe=3.312s FVM=20.833s handoff=4.554s total=155.433s
+15:07:17       [Donor] particles=490000
+15:07:17       [Donor] Flux residual: raw=-3.094e-04 m³/s (5.73e-06×U∞A)  post-projection=-1.034e-15 m³/s (1.91e-17×U∞A)  δu_n=-5.729e-06 m/s
+15:07:17       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.068 mean=0.952 max=1.014  n_face=5625
+15:07:17       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+15:07:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.08 max=1.05]
+15:07:21       [FVM wall] cube: y+ min=0.06 max=2.09 avg=0.64
+15:07:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.07 max=1.05]
+15:07:25       [FVM wall] cube: y+ min=0.05 max=2.09 avg=0.63
+15:07:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.07 max=1.05]
+15:07:29       [FVM wall] cube: y+ min=0.05 max=2.09 avg=0.63
+15:07:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.07 max=1.05]
+15:07:33       [FVM wall] cube: y+ min=0.05 max=2.09 avg=0.63
+15:07:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.07 max=1.05]
+15:07:36       [FVM wall] cube: y+ min=0.04 max=2.09 avg=0.63
+15:07:41  [Handoff step=62] in=246099 → out=356878  free=243901  solid_removed=0  pruned=64238 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=5.06e-14  flux_ratio=2.376
+15:07:41       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.453e-02
+15:07:41       [Beale] mollification residual: 30.3% → 19.1%
+15:07:41       [Inject] N_before=490000  N_after=600779  |Γ|_before=2.1587e+01  |Γ|_after=2.2202e+01
+15:07:41  [Timing step=62] VPM=144.933s donor=0.002s fringe=3.393s FVM=18.989s handoff=4.800s total=172.117s
+15:11:38       [Donor] particles=490000
+15:11:38       [Donor] Flux residual: raw=-8.578e-04 m³/s (1.59e-05×U∞A)  post-projection=7.431e-15 m³/s (1.38e-16×U∞A)  δu_n=-1.589e-05 m/s
+15:11:38       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.058 mean=0.952 max=1.014  n_face=5625
+15:11:38       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+15:11:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.07 max=1.06]
+15:11:42       [FVM wall] cube: y+ min=0.04 max=2.09 avg=0.63
+15:11:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.06 max=1.06]
+15:11:46       [FVM wall] cube: y+ min=0.03 max=2.08 avg=0.63
+15:11:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.06 max=1.06]
+15:11:50       [FVM wall] cube: y+ min=0.02 max=2.08 avg=0.63
+15:11:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.06 max=1.06]
+15:11:54       [FVM wall] cube: y+ min=0.01 max=2.08 avg=0.63
+15:11:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.06 max=1.06]
+15:11:58       [FVM wall] cube: y+ min=0.02 max=2.08 avg=0.63
+15:12:03  [Handoff step=63] in=241941 → out=356237  free=248059  solid_removed=0  pruned=64492 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=7.15e-14  flux_ratio=2.386
+15:12:03       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.421e-02
+15:12:03       [Beale] mollification residual: 30.2% → 19.0%
+15:12:03       [Inject] N_before=490000  N_after=604296  |Γ|_before=2.1696e+01  |Γ|_after=2.2303e+01
+15:12:03  [Timing step=63] VPM=235.716s donor=0.002s fringe=1.100s FVM=19.782s handoff=5.030s total=261.630s
+15:14:35       [Donor] particles=490000
+15:14:35       [Donor] Flux residual: raw=-8.515e-04 m³/s (1.58e-05×U∞A)  post-projection=5.657e-15 m³/s (1.05e-16×U∞A)  δu_n=-1.577e-05 m/s
+15:14:35       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.047 mean=0.951 max=1.014  n_face=5625
+15:14:35       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+15:14:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.06 max=1.06]
+15:14:39       [FVM wall] cube: y+ min=0.03 max=2.08 avg=0.63
+15:14:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.05 max=1.06]
+15:14:43       [FVM wall] cube: y+ min=0.03 max=2.08 avg=0.63
+15:14:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.05 max=1.06]
+15:14:47       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.63
+15:14:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.05 max=1.06]
+15:14:51       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.63
+15:14:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.05 max=1.06]
+15:14:54       [FVM wall] cube: y+ min=0.05 max=2.08 avg=0.63
+15:14:58  [Handoff step=64] in=238146 → out=355766  free=251854  solid_removed=0  pruned=64738 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.91e-14  flux_ratio=2.384
+15:14:58       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.394e-02
+15:14:58       [Beale] mollification residual: 30.2% → 19.0%
+15:14:58       [Inject] N_before=490000  N_after=607620  |Γ|_before=2.1791e+01  |Γ|_after=2.2395e+01
+15:14:58  [Timing step=64] VPM=147.514s donor=0.002s fringe=3.639s FVM=19.074s handoff=3.886s total=174.114s
+15:17:13       [Donor] particles=490000
+15:17:13       [Donor] Flux residual: raw=-1.005e-03 m³/s (1.86e-05×U∞A)  post-projection=3.179e-15 m³/s (5.89e-17×U∞A)  δu_n=-1.860e-05 m/s
+15:17:13       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.038 mean=0.950 max=1.015  n_face=5625
+15:17:13       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+15:17:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.05 max=1.06]
+15:17:17       [FVM wall] cube: y+ min=0.05 max=2.08 avg=0.63
+15:17:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.04 max=1.06]
+15:17:21       [FVM wall] cube: y+ min=0.06 max=2.08 avg=0.63
+15:17:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.04 max=1.06]
+15:17:25       [FVM wall] cube: y+ min=0.05 max=2.08 avg=0.62
+15:17:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.04 max=1.06]
+15:17:29       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:17:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.04 max=1.06]
+15:17:33       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:17:37  [Handoff step=65] in=234497 → out=355509  free=255503  solid_removed=0  pruned=64784 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.61e-13  flux_ratio=2.380
+15:17:37       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.372e-02
+15:17:37       [Beale] mollification residual: 30.1% → 19.0%
+15:17:37       [Inject] N_before=490000  N_after=611012  |Γ|_before=2.1877e+01  |Γ|_after=2.2480e+01
+15:17:37  [Timing step=65] VPM=131.575s donor=0.002s fringe=3.441s FVM=19.433s handoff=3.906s total=158.358s
+15:22:16       [Donor] particles=490000
+15:22:16       [Donor] Flux residual: raw=-7.820e-04 m³/s (1.45e-05×U∞A)  post-projection=4.545e-15 m³/s (8.42e-17×U∞A)  δu_n=-1.448e-05 m/s
+15:22:16       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.029 mean=0.950 max=1.015  n_face=5625
+15:22:16       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.024
+15:22:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.04 max=1.06]
+15:22:20       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:22:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:22:25       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:22:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:22:29       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:22:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:22:34       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:22:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:22:38       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:22:43  [Handoff step=66] in=231262 → out=355352  free=258738  solid_removed=0  pruned=64792 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.28e-14  flux_ratio=2.399
+15:22:43       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.353e-02
+15:22:43       [Beale] mollification residual: 30.0% → 19.0%
+15:22:43       [Inject] N_before=490000  N_after=614090  |Γ|_before=2.1961e+01  |Γ|_after=2.2556e+01
+15:22:43  [Timing step=66] VPM=276.185s donor=0.002s fringe=2.470s FVM=22.925s handoff=4.664s total=306.246s
+15:25:23       [Donor] particles=490000
+15:25:23       [Donor] Flux residual: raw=-1.126e-03 m³/s (2.08e-05×U∞A)  post-projection=6.798e-15 m³/s (1.26e-16×U∞A)  δu_n=-2.085e-05 m/s
+15:25:23       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.021 mean=0.949 max=1.015  n_face=5625
+15:25:23       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.023
+15:25:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:25:27       [FVM wall] cube: y+ min=0.04 max=2.08 avg=0.62
+15:25:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.03 max=1.06]
+15:25:32       [FVM wall] cube: y+ min=0.05 max=2.08 avg=0.62
+15:25:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:25:37       [FVM wall] cube: y+ min=0.06 max=2.08 avg=0.62
+15:25:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:25:41       [FVM wall] cube: y+ min=0.07 max=2.08 avg=0.62
+15:25:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:25:44       [FVM wall] cube: y+ min=0.08 max=2.08 avg=0.62
+15:25:48  [Handoff step=67] in=228364 → out=355178  free=261636  solid_removed=0  pruned=64882 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.53e-14  flux_ratio=2.399
+15:25:48       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.336e-02
+15:25:48       [Beale] mollification residual: 30.0% → 18.9%
+15:25:48       [Inject] N_before=490000  N_after=616814  |Γ|_before=2.2035e+01  |Γ|_after=2.2625e+01
+15:25:48  [Timing step=67] VPM=154.703s donor=0.003s fringe=3.747s FVM=21.534s handoff=3.850s total=183.837s
+15:28:07       [Donor] particles=490000
+15:28:07       [Donor] Flux residual: raw=-1.024e-03 m³/s (1.90e-05×U∞A)  post-projection=1.971e-14 m³/s (3.65e-16×U∞A)  δu_n=-1.896e-05 m/s
+15:28:07       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.014 mean=0.949 max=1.015  n_face=5625
+15:28:08       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+15:28:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:28:12       [FVM wall] cube: y+ min=0.08 max=2.08 avg=0.62
+15:28:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:28:17       [FVM wall] cube: y+ min=0.08 max=2.08 avg=0.62
+15:28:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:28:21       [FVM wall] cube: y+ min=0.08 max=2.08 avg=0.62
+15:28:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.02 max=1.06]
+15:28:25       [FVM wall] cube: y+ min=0.07 max=2.08 avg=0.62
+15:28:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:28:29       [FVM wall] cube: y+ min=0.07 max=2.08 avg=0.62
+15:28:33  [Handoff step=68] in=226062 → out=354889  free=263938  solid_removed=0  pruned=65055 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.22e-13  flux_ratio=2.423
+15:28:33       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.322e-02
+15:28:33       [Beale] mollification residual: 29.9% → 18.9%
+15:28:33       [Inject] N_before=490000  N_after=618827  |Γ|_before=2.2101e+01  |Γ|_after=2.2688e+01
+15:28:33  [Timing step=68] VPM=137.108s donor=0.004s fringe=1.920s FVM=21.239s handoff=4.017s total=164.287s
+15:33:38       [Donor] particles=490000
+15:33:38       [Donor] Flux residual: raw=-1.035e-03 m³/s (1.92e-05×U∞A)  post-projection=-2.026e-16 m³/s (3.75e-18×U∞A)  δu_n=-1.917e-05 m/s
+15:33:38       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.007 mean=0.948 max=1.015  n_face=5625
+15:33:38       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.022
+15:33:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:33:43       [FVM wall] cube: y+ min=0.07 max=2.08 avg=0.62
+15:33:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:33:47       [FVM wall] cube: y+ min=0.07 max=2.08 avg=0.61
+15:33:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:33:51       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:33:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:33:56       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:34:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:34:01       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:34:05  [Handoff step=69] in=224696 → out=354699  free=265304  solid_removed=0  pruned=65182 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.26e-13  flux_ratio=2.435
+15:34:05       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.308e-02
+15:34:05       [Beale] mollification residual: 29.9% → 18.9%
+15:34:05       [Inject] N_before=490000  N_after=620003  |Γ|_before=2.2160e+01  |Γ|_after=2.2746e+01
+15:34:05  [Timing step=69] VPM=304.062s donor=0.003s fringe=1.217s FVM=22.486s handoff=4.623s total=332.391s
+15:36:50       [Donor] particles=490000
+15:36:50       [Donor] Flux residual: raw=-1.234e-03 m³/s (2.29e-05×U∞A)  post-projection=-1.858e-15 m³/s (3.44e-17×U∞A)  δu_n=-2.285e-05 m/s
+15:36:50       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=0.000 mean=0.948 max=1.015  n_face=5625
+15:36:50       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.021
+15:36:55       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.01 max=1.06]
+15:36:55       [FVM wall] cube: y+ min=0.02 max=2.07 avg=0.61
+15:36:59       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.00 max=1.06]
+15:36:59       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:37:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.00 max=1.06]
+15:37:03       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:37:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.00 max=1.06]
+15:37:08       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:37:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=0.00 max=1.06]
+15:37:12       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:37:17  [Handoff step=70] in=223660 → out=354426  free=266340  solid_removed=0  pruned=65407 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.33e-13  flux_ratio=2.441
+15:37:17       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.294e-02
+15:37:17       [Beale] mollification residual: 29.8% → 18.9%
+15:37:17       [Inject] N_before=490000  N_after=620766  |Γ|_before=2.2222e+01  |Γ|_after=2.2800e+01
+15:37:17  [Timing step=70] VPM=159.579s donor=0.003s fringe=3.710s FVM=22.105s handoff=4.885s total=190.281s
+15:40:04       [Donor] particles=490000
+15:40:04       [Donor] Flux residual: raw=-9.988e-04 m³/s (1.85e-05×U∞A)  post-projection=2.164e-15 m³/s (4.01e-17×U∞A)  δu_n=-1.850e-05 m/s
+15:40:04       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.004 mean=0.947 max=1.016  n_face=5625
+15:40:04       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.019
+15:40:09       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:40:09       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:40:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:40:14       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:40:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:40:18       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:40:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:40:22       [FVM wall] cube: y+ min=0.05 max=2.07 avg=0.61
+15:40:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:40:27       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:40:32  [Handoff step=71] in=222577 → out=354184  free=267423  solid_removed=0  pruned=65564 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.41e-13  flux_ratio=2.468
+15:40:32       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.276e-02
+15:40:32       [Beale] mollification residual: 29.8% → 18.8%
+15:40:32       [Inject] N_before=490000  N_after=621607  |Γ|_before=2.2267e+01  |Γ|_after=2.2849e+01
+15:40:32  [Timing step=71] VPM=165.116s donor=0.003s fringe=2.060s FVM=22.401s handoff=5.037s total=194.618s
+15:45:27       [Donor] particles=490000
+15:45:27       [Donor] Flux residual: raw=-9.800e-04 m³/s (1.81e-05×U∞A)  post-projection=-1.443e-14 m³/s (2.67e-16×U∞A)  δu_n=-1.815e-05 m/s
+15:45:27       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.010 mean=0.947 max=1.016  n_face=5625
+15:45:27       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.019
+15:45:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.00 max=1.06]
+15:45:31       [FVM wall] cube: y+ min=0.05 max=2.07 avg=0.61
+15:45:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:45:36       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:45:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:45:41       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:45:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:45:47       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:45:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:45:53       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:45:59  [Handoff step=72] in=221472 → out=354092  free=268528  solid_removed=0  pruned=65564 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=8.49e-14  flux_ratio=2.453
+15:45:59       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.260e-02
+15:45:59       [Beale] mollification residual: 29.7% → 18.8%
+15:45:59       [Inject] N_before=490000  N_after=622620  |Γ|_before=2.2322e+01  |Γ|_after=2.2896e+01
+15:45:59  [Timing step=72] VPM=291.542s donor=0.002s fringe=3.293s FVM=26.176s handoff=5.723s total=326.736s
+15:48:02       [Donor] particles=490000
+15:48:02       [Donor] Flux residual: raw=-1.021e-03 m³/s (1.89e-05×U∞A)  post-projection=1.533e-15 m³/s (2.84e-17×U∞A)  δu_n=-1.890e-05 m/s
+15:48:02       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.015 mean=0.946 max=1.016  n_face=5625
+15:48:02       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.016
+15:48:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:48:06       [FVM wall] cube: y+ min=0.04 max=2.07 avg=0.61
+15:48:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:48:10       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:48:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:48:13       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:48:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:48:17       [FVM wall] cube: y+ min=0.07 max=2.07 avg=0.61
+15:48:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.01 max=1.06]
+15:48:21       [FVM wall] cube: y+ min=0.05 max=2.07 avg=0.61
+15:48:25  [Handoff step=73] in=220028 → out=353840  free=269972  solid_removed=0  pruned=65748 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.88e-13  flux_ratio=2.494
+15:48:25       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.238e-02
+15:48:25       [Beale] mollification residual: 29.7% → 18.8%
+15:48:25       [Inject] N_before=490000  N_after=623812  |Γ|_before=2.2367e+01  |Γ|_after=2.2943e+01
+15:48:25  [Timing step=73] VPM=117.822s donor=0.002s fringe=3.971s FVM=18.583s handoff=3.971s total=144.349s
+15:51:11       [Donor] particles=490000
+15:51:11       [Donor] Flux residual: raw=-9.437e-04 m³/s (1.75e-05×U∞A)  post-projection=-6.648e-15 m³/s (1.23e-16×U∞A)  δu_n=-1.748e-05 m/s
+15:51:11       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.019 mean=0.945 max=1.016  n_face=5625
+15:51:11       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.016
+15:51:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:51:14       [FVM wall] cube: y+ min=0.05 max=2.07 avg=0.61
+15:51:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:51:18       [FVM wall] cube: y+ min=0.05 max=2.07 avg=0.61
+15:51:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:51:21       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:51:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:51:25       [FVM wall] cube: y+ min=0.02 max=2.07 avg=0.61
+15:51:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:51:28       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:51:32  [Handoff step=74] in=218666 → out=353677  free=271334  solid_removed=0  pruned=65849 (0.026% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.37e-13  flux_ratio=2.505
+15:51:32       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.215e-02
+15:51:32       [Beale] mollification residual: 29.6% → 18.8%
+15:51:32       [Inject] N_before=490000  N_after=625011  |Γ|_before=2.2412e+01  |Γ|_after=2.2991e+01
+15:51:32  [Timing step=74] VPM=161.892s donor=0.002s fringe=3.925s FVM=17.602s handoff=4.105s total=187.526s
+15:56:06       [Donor] particles=490000
+15:56:06       [Donor] Flux residual: raw=-9.336e-04 m³/s (1.73e-05×U∞A)  post-projection=1.040e-14 m³/s (1.93e-16×U∞A)  δu_n=-1.729e-05 m/s
+15:56:06       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.024 mean=0.945 max=1.016  n_face=5625
+15:56:06       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.017
+15:56:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:56:10       [FVM wall] cube: y+ min=0.06 max=2.07 avg=0.61
+15:56:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:56:13       [FVM wall] cube: y+ min=0.04 max=2.07 avg=0.61
+15:56:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:56:17       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:56:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:56:20       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:56:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.02 max=1.06]
+15:56:25       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:56:29  [Handoff step=75] in=217002 → out=353438  free=272998  solid_removed=0  pruned=66055 (0.026% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.19e-13  flux_ratio=2.498
+15:56:29       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.191e-02
+15:56:29       [Beale] mollification residual: 29.6% → 18.7%
+15:56:29       [Inject] N_before=490000  N_after=626436  |Γ|_before=2.2461e+01  |Γ|_after=2.3039e+01
+15:56:29  [Timing step=75] VPM=269.942s donor=0.005s fringe=3.467s FVM=18.620s handoff=4.177s total=296.210s
+15:59:17       [Donor] particles=490000
+15:59:17       [Donor] Flux residual: raw=-8.514e-04 m³/s (1.58e-05×U∞A)  post-projection=-2.897e-16 m³/s (5.36e-18×U∞A)  δu_n=-1.577e-05 m/s
+15:59:17       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.028 mean=0.944 max=1.016  n_face=5625
+15:59:17       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.017
+15:59:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+15:59:21       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:59:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+15:59:24       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:59:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+15:59:28       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:59:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+15:59:32       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:59:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+15:59:37       [FVM wall] cube: y+ min=0.08 max=2.07 avg=0.61
+15:59:41  [Handoff step=76] in=215446 → out=353509  free=274554  solid_removed=0  pruned=65978 (0.026% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.87e-13  flux_ratio=2.545
+15:59:41       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.165e-02
+15:59:41       [Beale] mollification residual: 29.5% → 18.7%
+15:59:41       [Inject] N_before=490000  N_after=628063  |Γ|_before=2.2505e+01  |Γ|_after=2.3086e+01
+15:59:41  [Timing step=76] VPM=162.730s donor=0.003s fringe=4.176s FVM=19.707s handoff=4.377s total=190.993s
+16:01:51       [Donor] particles=490000
+16:01:51       [Donor] Flux residual: raw=-5.731e-04 m³/s (1.06e-05×U∞A)  post-projection=4.600e-15 m³/s (8.52e-17×U∞A)  δu_n=-1.061e-05 m/s
+16:01:51       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.034 mean=0.944 max=1.016  n_face=5625
+16:01:51       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.019
+16:01:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:01:56       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.61
+16:02:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:02:01       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.61
+16:02:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:02:06       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:02:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:02:10       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:02:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:02:14       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:02:18  [Handoff step=77] in=213836 → out=353371  free=276164  solid_removed=0  pruned=66108 (0.026% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.76e-13  flux_ratio=2.533
+16:02:18       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.144e-02
+16:02:18       [Beale] mollification residual: 29.5% → 18.7%
+16:02:18       [Inject] N_before=490000  N_after=629535  |Γ|_before=2.2551e+01  |Γ|_after=2.3134e+01
+16:02:18  [Timing step=77] VPM=125.707s donor=0.002s fringe=4.076s FVM=22.876s handoff=4.579s total=157.240s
+16:07:38       [Donor] particles=490000
+16:07:38       [Donor] Flux residual: raw=-4.759e-04 m³/s (8.81e-06×U∞A)  post-projection=1.598e-15 m³/s (2.96e-17×U∞A)  δu_n=-8.812e-06 m/s
+16:07:38       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.037 mean=0.943 max=1.016  n_face=5625
+16:07:38       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.020
+16:07:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.03 max=1.06]
+16:07:43       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:07:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:07:47       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:07:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:07:51       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:07:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:07:56       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:08:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:08:01       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:08:06  [Handoff step=78] in=212702 → out=352941  free=277298  solid_removed=0  pruned=66500 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=4.58e-13  flux_ratio=2.558
+16:08:06       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.118e-02
+16:08:06       [Beale] mollification residual: 29.5% → 18.7%
+16:08:06       [Inject] N_before=490000  N_after=630239  |Γ|_before=2.2596e+01  |Γ|_after=2.3179e+01
+16:08:06  [Timing step=78] VPM=318.129s donor=0.004s fringe=1.393s FVM=22.983s handoff=4.951s total=347.461s
+16:11:02       [Donor] particles=490000
+16:11:02       [Donor] Flux residual: raw=-4.815e-04 m³/s (8.92e-06×U∞A)  post-projection=-9.689e-15 m³/s (1.79e-16×U∞A)  δu_n=-8.916e-06 m/s
+16:11:02       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.042 mean=0.942 max=1.016  n_face=5625
+16:11:02       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.025
+16:11:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:11:07       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:11:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:11:11       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:11:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:11:15       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:11:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:11:19       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:11:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:11:24       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:11:28  [Handoff step=79] in=211682 → out=352826  free=278318  solid_removed=0  pruned=66620 (0.027% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.57e-13  flux_ratio=2.554
+16:11:28       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.099e-02
+16:11:28       [Beale] mollification residual: 29.5% → 18.7%
+16:11:28       [Inject] N_before=490000  N_after=631144  |Γ|_before=2.2635e+01  |Γ|_after=2.3220e+01
+16:11:28  [Timing step=79] VPM=170.793s donor=0.002s fringe=4.031s FVM=21.502s handoff=4.343s total=200.672s
+16:14:23       [Donor] particles=490000
+16:14:23       [Donor] Flux residual: raw=-4.662e-04 m³/s (8.63e-06×U∞A)  post-projection=9.428e-15 m³/s (1.75e-16×U∞A)  δu_n=-8.633e-06 m/s
+16:14:23       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.046 mean=0.942 max=1.016  n_face=5625
+16:14:23       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.027
+16:14:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:14:28       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:14:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:14:32       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:14:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.04 max=1.06]
+16:14:37       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:14:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:14:42       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:14:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:14:46       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:14:51  [Handoff step=80] in=210919 → out=352690  free=279081  solid_removed=0  pruned=66757 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.82e-13  flux_ratio=2.557
+16:14:51       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.078e-02
+16:14:51       [Beale] mollification residual: 29.5% → 18.7%
+16:14:51       [Inject] N_before=490000  N_after=631771  |Γ|_before=2.2678e+01  |Γ|_after=2.3256e+01
+16:14:51  [Timing step=80] VPM=172.056s donor=0.002s fringe=2.957s FVM=22.398s handoff=5.042s total=202.454s
+16:20:29       [Donor] particles=489910
+16:20:29       [Donor] Flux residual: raw=-9.877e-05 m³/s (1.83e-06×U∞A)  post-projection=3.803e-16 m³/s (7.04e-18×U∞A)  δu_n=-1.829e-06 m/s
+16:20:29       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.051 mean=0.941 max=1.016  n_face=5625
+16:20:29       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.032
+16:20:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:20:34       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:20:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:20:38       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:20:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:20:42       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:20:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:20:46       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:20:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:20:51       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:20:56  [Handoff step=81] in=210324 → out=352453  free=279586  solid_removed=0  pruned=66965 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.92e-13  flux_ratio=2.557
+16:20:56       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.060e-02
+16:20:56       [Beale] mollification residual: 29.5% → 18.7%
+16:20:56       [Inject] N_before=489910  N_after=632039  |Γ|_before=2.2715e+01  |Γ|_after=2.3290e+01
+16:20:56  [Timing step=81] VPM=334.805s donor=0.002s fringe=3.411s FVM=21.704s handoff=4.947s total=364.869s
+16:23:09       [Donor] particles=489698
+16:23:09       [Donor] Flux residual: raw=-1.224e-04 m³/s (2.27e-06×U∞A)  post-projection=1.199e-15 m³/s (2.22e-17×U∞A)  δu_n=-2.267e-06 m/s
+16:23:09       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.055 mean=0.941 max=1.016  n_face=5625
+16:23:09       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.037
+16:23:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:23:14       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:23:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:23:19       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:23:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:23:24       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:23:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:23:29       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:23:34       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.05 max=1.06]
+16:23:34       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:23:39  [Handoff step=82] in=209642 → out=352010  free=280056  solid_removed=0  pruned=67331 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.77e-13  flux_ratio=2.554
+16:23:39       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.040e-02
+16:23:39       [Beale] mollification residual: 29.4% → 18.7%
+16:23:39       [Inject] N_before=489698  N_after=632066  |Γ|_before=2.2752e+01  |Γ|_after=2.3321e+01
+16:23:39  [Timing step=82] VPM=127.675s donor=0.011s fringe=4.268s FVM=25.004s handoff=4.879s total=161.837s
+16:26:45       [Donor] particles=489670
+16:26:45       [Donor] Flux residual: raw=-1.422e-04 m³/s (2.63e-06×U∞A)  post-projection=4.627e-15 m³/s (8.57e-17×U∞A)  δu_n=-2.633e-06 m/s
+16:26:45       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.058 mean=0.940 max=1.015  n_face=5625
+16:26:45       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.043
+16:26:51       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:26:51       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:26:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:26:56       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:27:01       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:27:01       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:27:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:27:06       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:27:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:27:11       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:27:16  [Handoff step=83] in=209001 → out=351629  free=280669  solid_removed=0  pruned=67598 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.39e-13  flux_ratio=2.537
+16:27:16       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.020e-02
+16:27:16       [Beale] mollification residual: 29.4% → 18.7%
+16:27:16       [Inject] N_before=489670  N_after=632298  |Γ|_before=2.2788e+01  |Γ|_after=2.3351e+01
+16:27:16  [Timing step=83] VPM=180.947s donor=0.005s fringe=5.083s FVM=25.912s handoff=5.036s total=216.983s
+16:32:39       [Donor] particles=489596
+16:32:39       [Donor] Flux residual: raw=-1.797e-04 m³/s (3.33e-06×U∞A)  post-projection=-1.169e-14 m³/s (2.16e-16×U∞A)  δu_n=-3.327e-06 m/s
+16:32:39       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.062 mean=0.939 max=1.016  n_face=5625
+16:32:39       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.050
+16:32:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:32:43       [FVM wall] cube: y+ min=0.08 max=2.06 avg=0.60
+16:32:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:32:48       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:32:52       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:32:52       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:32:56       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:32:56       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:33:00       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:33:00       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:33:06  [Handoff step=84] in=211358 → out=350351  free=278238  solid_removed=0  pruned=68063 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.37e-13  flux_ratio=2.510
+16:33:06       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=4.001e-02
+16:33:06       [Beale] mollification residual: 29.4% → 18.6%
+16:33:06       [Inject] N_before=489596  N_after=628589  |Γ|_before=2.2816e+01  |Γ|_after=2.3378e+01
+16:33:06  [Timing step=84] VPM=319.941s donor=0.003s fringe=2.837s FVM=21.229s handoff=5.466s total=349.475s
+16:35:35       [Donor] particles=489536
+16:35:35       [Donor] Flux residual: raw=-2.362e-04 m³/s (4.37e-06×U∞A)  post-projection=-5.172e-15 m³/s (9.58e-17×U∞A)  δu_n=-4.374e-06 m/s
+16:35:35       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.066 mean=0.939 max=1.026  n_face=5625
+16:35:35       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.057
+16:35:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:35:39       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:35:43       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:35:43       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:35:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:35:46       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:35:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+16:35:50       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:35:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:35:54       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:35:58  [Handoff step=85] in=212600 → out=350131  free=276936  solid_removed=0  pruned=68070 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=3.13e-13  flux_ratio=2.472
+16:35:58       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.985e-02
+16:35:58       [Beale] mollification residual: 29.4% → 18.6%
+16:35:58       [Inject] N_before=489536  N_after=627067  |Γ|_before=2.2846e+01  |Γ|_after=2.3405e+01
+16:35:58  [Timing step=85] VPM=144.154s donor=0.002s fringe=3.215s FVM=18.874s handoff=3.909s total=170.154s
+16:38:31       [Donor] particles=489489
+16:38:31       [Donor] Flux residual: raw=-3.097e-04 m³/s (5.73e-06×U∞A)  post-projection=2.997e-15 m³/s (5.55e-17×U∞A)  δu_n=-5.735e-06 m/s
+16:38:31       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.069 mean=0.938 max=1.037  n_face=5625
+16:38:31       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.063
+16:38:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:38:35       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:38:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:38:39       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:38:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:38:44       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:38:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:38:48       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:38:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:38:53       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:38:58  [Handoff step=86] in=210641 → out=350025  free=278848  solid_removed=0  pruned=68174 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.38e-13  flux_ratio=2.431
+16:38:58       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.970e-02
+16:38:58       [Beale] mollification residual: 29.3% → 18.6%
+16:38:58       [Inject] N_before=489489  N_after=628873  |Γ|_before=2.2879e+01  |Γ|_after=2.3430e+01
+16:38:58  [Timing step=86] VPM=149.445s donor=0.003s fringe=3.562s FVM=21.903s handoff=5.035s total=179.947s
+16:44:04       [Donor] particles=489450
+16:44:04       [Donor] Flux residual: raw=-3.858e-04 m³/s (7.14e-06×U∞A)  post-projection=6.028e-15 m³/s (1.12e-16×U∞A)  δu_n=-7.144e-06 m/s
+16:44:04       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.071 mean=0.937 max=1.049  n_face=5625
+16:44:04       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.067
+16:44:08       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:44:08       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.60
+16:44:12       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:44:12       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.59
+16:44:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:44:15       [FVM wall] cube: y+ min=0.03 max=2.05 avg=0.59
+16:44:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:44:19       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.59
+16:44:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:44:24       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:44:28  [Handoff step=87] in=208575 → out=349945  free=280875  solid_removed=0  pruned=68253 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.87e-14  flux_ratio=2.394
+16:44:28       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.956e-02
+16:44:28       [Beale] mollification residual: 29.3% → 18.6%
+16:44:28       [Inject] N_before=489450  N_after=630820  |Γ|_before=2.2905e+01  |Γ|_after=2.3456e+01
+16:44:28  [Timing step=87] VPM=302.066s donor=0.002s fringe=3.774s FVM=19.794s handoff=4.645s total=330.281s
+16:47:08       [Donor] particles=489412
+16:47:08       [Donor] Flux residual: raw=-4.886e-04 m³/s (9.05e-06×U∞A)  post-projection=3.661e-15 m³/s (6.78e-17×U∞A)  δu_n=-9.048e-06 m/s
+16:47:08       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.074 mean=0.937 max=1.059  n_face=5625
+16:47:08       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.068
+16:47:13       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:47:13       [FVM wall] cube: y+ min=0.04 max=2.05 avg=0.59
+16:47:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:47:17       [FVM wall] cube: y+ min=0.04 max=2.05 avg=0.59
+16:47:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:47:21       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:47:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:47:25       [FVM wall] cube: y+ min=0.03 max=2.05 avg=0.59
+16:47:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:47:29       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.59
+16:47:33  [Handoff step=88] in=206766 → out=349880  free=282646  solid_removed=0  pruned=68367 (0.028% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=2.08e-13  flux_ratio=2.362
+16:47:33       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.943e-02
+16:47:33       [Beale] mollification residual: 29.2% → 18.5%
+16:47:33       [Inject] N_before=489412  N_after=632526  |Γ|_before=2.2944e+01  |Γ|_after=2.3487e+01
+16:47:33  [Timing step=88] VPM=157.138s donor=0.007s fringe=3.654s FVM=20.444s handoff=4.321s total=185.563s
+16:50:13       [Donor] particles=489340
+16:50:13       [Donor] Flux residual: raw=-5.933e-04 m³/s (1.10e-05×U∞A)  post-projection=-1.404e-14 m³/s (2.60e-16×U∞A)  δu_n=-1.099e-05 m/s
+16:50:13       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.076 mean=0.936 max=1.066  n_face=5625
+16:50:13       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.067
+16:50:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:50:18       [FVM wall] cube: y+ min=0.04 max=2.05 avg=0.59
+16:50:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+16:50:23       [FVM wall] cube: y+ min=0.04 max=2.05 avg=0.59
+16:50:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+16:50:27       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.59
+16:50:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+16:50:32       [FVM wall] cube: y+ min=0.07 max=2.05 avg=0.59
+16:50:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:50:37       [FVM wall] cube: y+ min=0.04 max=2.05 avg=0.59
+16:50:41  [Handoff step=89] in=205194 → out=349765  free=284146  solid_removed=0  pruned=68455 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.92e-13  flux_ratio=2.350
+16:50:41       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.931e-02
+16:50:41       [Beale] mollification residual: 29.2% → 18.5%
+16:50:41       [Inject] N_before=489340  N_after=633911  |Γ|_before=2.2981e+01  |Γ|_after=2.3521e+01
+16:50:41  [Timing step=89] VPM=155.694s donor=0.003s fringe=4.143s FVM=23.429s handoff=4.648s total=187.917s
+16:56:13       [Donor] particles=489280
+16:56:13       [Donor] Flux residual: raw=-7.066e-04 m³/s (1.31e-05×U∞A)  post-projection=7.649e-15 m³/s (1.42e-16×U∞A)  δu_n=-1.308e-05 m/s
+16:56:13       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.078 mean=0.935 max=1.072  n_face=5625
+16:56:13       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.061
+16:56:17       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:56:17       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:56:21       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:56:21       [FVM wall] cube: y+ min=0.08 max=2.05 avg=0.59
+16:56:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:56:25       [FVM wall] cube: y+ min=0.05 max=2.05 avg=0.59
+16:56:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:56:29       [FVM wall] cube: y+ min=0.05 max=2.05 avg=0.59
+16:56:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:56:33       [FVM wall] cube: y+ min=0.07 max=2.05 avg=0.59
+16:56:38  [Handoff step=90] in=203980 → out=349718  free=285300  solid_removed=0  pruned=68407 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.31e-13  flux_ratio=2.364
+16:56:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.918e-02
+16:56:38       [Beale] mollification residual: 29.1% → 18.4%
+16:56:38       [Inject] N_before=489280  N_after=635018  |Γ|_before=2.3019e+01  |Γ|_after=2.3561e+01
+16:56:38  [Timing step=90] VPM=327.761s donor=0.002s fringe=3.332s FVM=20.826s handoff=4.375s total=356.296s
+16:59:18       [Donor] particles=489265
+16:59:18       [Donor] Flux residual: raw=-8.255e-04 m³/s (1.53e-05×U∞A)  post-projection=-3.112e-15 m³/s (5.76e-17×U∞A)  δu_n=-1.529e-05 m/s
+16:59:18       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.079 mean=0.935 max=1.070  n_face=5625
+16:59:18       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.052
+16:59:22       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:59:22       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:59:26       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:59:26       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:59:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:59:31       [FVM wall] cube: y+ min=0.06 max=2.05 avg=0.59
+16:59:35       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:59:35       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.59
+16:59:39       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+16:59:39       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.59
+16:59:43  [Handoff step=91] in=203480 → out=349733  free=285785  solid_removed=0  pruned=68284 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.91e-13  flux_ratio=2.402
+16:59:43       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.905e-02
+16:59:43       [Beale] mollification residual: 29.0% → 18.3%
+16:59:43       [Inject] N_before=489265  N_after=635518  |Γ|_before=2.3064e+01  |Γ|_after=2.3605e+01
+16:59:43  [Timing step=91] VPM=154.523s donor=0.004s fringe=4.271s FVM=20.999s handoff=4.441s total=184.238s
+17:02:41       [Donor] particles=489251
+17:02:41       [Donor] Flux residual: raw=-9.250e-04 m³/s (1.71e-05×U∞A)  post-projection=-8.739e-15 m³/s (1.62e-16×U∞A)  δu_n=-1.713e-05 m/s
+17:02:41       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.080 mean=0.934 max=1.061  n_face=5625
+17:02:41       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.049
+17:02:45       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+17:02:45       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.59
+17:02:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.07]
+17:02:49       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.59
+17:02:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:02:54       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.59
+17:02:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:02:58       [FVM wall] cube: y+ min=0.04 max=2.04 avg=0.58
+17:03:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:03:02       [FVM wall] cube: y+ min=0.04 max=2.04 avg=0.58
+17:03:07  [Handoff step=92] in=203301 → out=349806  free=285950  solid_removed=0  pruned=68113 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.83e-14  flux_ratio=2.463
+17:03:07       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.892e-02
+17:03:07       [Beale] mollification residual: 28.9% → 18.2%
+17:03:07       [Inject] N_before=489251  N_after=635756  |Γ|_before=2.3114e+01  |Γ|_after=2.3656e+01
+17:03:07  [Timing step=92] VPM=173.477s donor=0.003s fringe=4.073s FVM=20.968s handoff=4.409s total=202.929s
+17:08:09       [Donor] particles=489232
+17:08:09       [Donor] Flux residual: raw=-1.015e-03 m³/s (1.88e-05×U∞A)  post-projection=-7.435e-15 m³/s (1.38e-16×U∞A)  δu_n=-1.880e-05 m/s
+17:08:09       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.079 mean=0.933 max=1.045  n_face=5625
+17:08:09       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.051
+17:08:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:08:14       [FVM wall] cube: y+ min=0.03 max=2.04 avg=0.58
+17:08:18       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:08:18       [FVM wall] cube: y+ min=0.03 max=2.04 avg=0.58
+17:08:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:08:23       [FVM wall] cube: y+ min=0.02 max=2.04 avg=0.58
+17:08:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:08:27       [FVM wall] cube: y+ min=0.02 max=2.04 avg=0.58
+17:08:32       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:08:32       [FVM wall] cube: y+ min=0.02 max=2.04 avg=0.58
+17:08:38  [Handoff step=93] in=203139 → out=349844  free=286093  solid_removed=0  pruned=67996 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=8.43e-14  flux_ratio=2.555
+17:08:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.877e-02
+17:08:38       [Beale] mollification residual: 28.7% → 18.1%
+17:08:38       [Inject] N_before=489232  N_after=635937  |Γ|_before=2.3167e+01  |Γ|_after=2.3711e+01
+17:08:38  [Timing step=93] VPM=299.388s donor=0.004s fringe=3.448s FVM=22.673s handoff=5.367s total=330.880s
+17:11:21       [Donor] particles=489210
+17:11:21       [Donor] Flux residual: raw=-1.136e-03 m³/s (2.10e-05×U∞A)  post-projection=5.666e-15 m³/s (1.05e-16×U∞A)  δu_n=-2.105e-05 m/s
+17:11:21       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.079 mean=0.933 max=1.027  n_face=5625
+17:11:21       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.063
+17:11:25       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:11:25       [FVM wall] cube: y+ min=0.02 max=2.04 avg=0.58
+17:11:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:11:29       [FVM wall] cube: y+ min=0.03 max=2.04 avg=0.58
+17:11:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:11:33       [FVM wall] cube: y+ min=0.03 max=2.04 avg=0.58
+17:11:38       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:11:38       [FVM wall] cube: y+ min=0.04 max=2.04 avg=0.58
+17:11:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:11:42       [FVM wall] cube: y+ min=0.04 max=2.04 avg=0.58
+17:11:46  [Handoff step=94] in=203030 → out=349915  free=286180  solid_removed=0  pruned=67912 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.10e-14  flux_ratio=2.662
+17:11:46       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.861e-02
+17:11:46       [Beale] mollification residual: 28.6% → 18.0%
+17:11:47       [Inject] N_before=489210  N_after=636095  |Γ|_before=2.3226e+01  |Γ|_after=2.3770e+01
+17:11:47  [Timing step=94] VPM=157.518s donor=0.004s fringe=4.115s FVM=21.497s handoff=4.341s total=187.476s
+17:14:39       [Donor] particles=489194
+17:14:39       [Donor] Flux residual: raw=-1.196e-03 m³/s (2.21e-05×U∞A)  post-projection=-2.004e-15 m³/s (3.71e-17×U∞A)  δu_n=-2.215e-05 m/s
+17:14:39       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.077 mean=0.932 max=1.012  n_face=5625
+17:14:40       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.083
+17:14:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:14:44       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.58
+17:14:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:14:48       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.58
+17:14:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:14:53       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.58
+17:14:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:14:57       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.58
+17:15:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:15:02       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.58
+17:15:06  [Handoff step=95] in=202951 → out=350009  free=286243  solid_removed=0  pruned=67757 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.59e-13  flux_ratio=2.771
+17:15:06       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.844e-02
+17:15:06       [Beale] mollification residual: 28.5% → 18.0%
+17:15:06       [Inject] N_before=489194  N_after=636252  |Γ|_before=2.3299e+01  |Γ|_after=2.3833e+01
+17:15:06  [Timing step=95] VPM=170.779s donor=0.005s fringe=2.142s FVM=22.366s handoff=4.300s total=199.593s
+17:20:35       [Donor] particles=489180
+17:20:35       [Donor] Flux residual: raw=-1.243e-03 m³/s (2.30e-05×U∞A)  post-projection=4.966e-15 m³/s (9.20e-17×U∞A)  δu_n=-2.302e-05 m/s
+17:20:35       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.075 mean=0.931 max=1.012  n_face=5625
+17:20:36       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.102
+17:20:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:20:40       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.58
+17:20:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:20:44       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:20:48       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:20:48       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:20:53       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.08 max=1.06]
+17:20:53       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:20:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:20:57       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:21:03  [Handoff step=96] in=203034 → out=350123  free=286146  solid_removed=0  pruned=67627 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=8.24e-14  flux_ratio=2.872
+17:21:03       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.826e-02
+17:21:03       [Beale] mollification residual: 28.4% → 17.9%
+17:21:03       [Inject] N_before=489180  N_after=636269  |Γ|_before=2.3366e+01  |Γ|_after=2.3897e+01
+17:21:03  [Timing step=96] VPM=325.526s donor=0.003s fringe=1.671s FVM=21.731s handoff=5.282s total=354.212s
+17:23:27       [Donor] particles=489169
+17:23:27       [Donor] Flux residual: raw=-1.275e-03 m³/s (2.36e-05×U∞A)  post-projection=-1.040e-14 m³/s (1.93e-16×U∞A)  δu_n=-2.361e-05 m/s
+17:23:27       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.072 mean=0.931 max=1.011  n_face=5625
+17:23:27       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.109
+17:23:31       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:23:31       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:23:36       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:23:36       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:23:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:23:40       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:23:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:23:44       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.58
+17:23:49       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:23:49       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.57
+17:23:53  [Handoff step=97] in=201620 → out=349308  free=287549  solid_removed=0  pruned=67988 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.94e-13  flux_ratio=2.941
+17:23:53       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.807e-02
+17:23:53       [Beale] mollification residual: 28.3% → 17.8%
+17:23:53       [Inject] N_before=489169  N_after=636857  |Γ|_before=2.3431e+01  |Γ|_after=2.3965e+01
+17:23:53  [Timing step=97] VPM=138.372s donor=0.003s fringe=4.603s FVM=21.701s handoff=4.333s total=169.011s
+17:26:50       [Donor] particles=489156
+17:26:50       [Donor] Flux residual: raw=-1.427e-03 m³/s (2.64e-05×U∞A)  post-projection=-4.916e-15 m³/s (9.10e-17×U∞A)  δu_n=-2.643e-05 m/s
+17:26:50       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.070 mean=0.930 max=1.011  n_face=5625
+17:26:50       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.104
+17:26:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:26:54       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.57
+17:26:58       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:26:58       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.57
+17:27:03       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:27:03       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.57
+17:27:07       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:27:07       [FVM wall] cube: y+ min=0.07 max=2.04 avg=0.57
+17:27:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:27:11       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:27:16  [Handoff step=98] in=202441 → out=348676  free=286715  solid_removed=0  pruned=68182 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=6.75e-14  flux_ratio=2.960
+17:27:16       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.789e-02
+17:27:16       [Beale] mollification residual: 28.2% → 17.7%
+17:27:16       [Inject] N_before=489156  N_after=635391  |Γ|_before=2.3497e+01  |Γ|_after=2.4037e+01
+17:27:16  [Timing step=98] VPM=172.583s donor=0.003s fringe=4.154s FVM=21.480s handoff=4.525s total=202.745s
+17:32:12       [Donor] particles=489145
+17:32:12       [Donor] Flux residual: raw=-1.388e-03 m³/s (2.57e-05×U∞A)  post-projection=4.743e-15 m³/s (8.78e-17×U∞A)  δu_n=-2.570e-05 m/s
+17:32:12       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.067 mean=0.930 max=1.011  n_face=5625
+17:32:12       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.092
+17:32:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:32:16       [FVM wall] cube: y+ min=0.05 max=2.04 avg=0.57
+17:32:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:32:20       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:32:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:32:24       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:32:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:32:29       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:32:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:32:33       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:32:38  [Handoff step=99] in=201940 → out=348558  free=287205  solid_removed=0  pruned=68346 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.60e-14  flux_ratio=2.927
+17:32:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.773e-02
+17:32:38       [Beale] mollification residual: 28.1% → 17.6%
+17:32:38       [Inject] N_before=489145  N_after=635763  |Γ|_before=2.3566e+01  |Γ|_after=2.4108e+01
+17:32:38  [Timing step=99] VPM=292.047s donor=0.003s fringe=3.467s FVM=21.716s handoff=4.939s total=322.172s
+17:35:33       [Donor] particles=489134
+17:35:33       [Donor] Flux residual: raw=-1.337e-03 m³/s (2.48e-05×U∞A)  post-projection=-3.682e-15 m³/s (6.82e-17×U∞A)  δu_n=-2.476e-05 m/s
+17:35:33       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.065 mean=0.929 max=1.011  n_face=5625
+17:35:33       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.075
+17:35:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:35:37       [FVM wall] cube: y+ min=0.06 max=2.04 avg=0.57
+17:35:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:35:41       [FVM wall] cube: y+ min=0.06 max=2.03 avg=0.57
+17:35:46       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:35:46       [FVM wall] cube: y+ min=0.06 max=2.03 avg=0.57
+17:35:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:35:50       [FVM wall] cube: y+ min=0.06 max=2.03 avg=0.57
+17:35:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+17:35:54       [FVM wall] cube: y+ min=0.06 max=2.03 avg=0.57
+17:36:00  [Handoff step=100] in=202036 → out=348826  free=287098  solid_removed=0  pruned=68226 (0.030% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.01e-13  flux_ratio=2.850
+17:36:00       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.756e-02
+17:36:00       [Beale] mollification residual: 28.0% → 17.6%
+17:36:00       [Inject] N_before=489134  N_after=635924  |Γ|_before=2.3635e+01  |Γ|_after=2.4179e+01
+17:36:00  [Timing step=100] VPM=169.503s donor=0.003s fringe=3.597s FVM=21.465s handoff=6.220s total=200.788s
+17:38:07       [Donor] particles=489126
+17:38:07       [Donor] Flux residual: raw=-1.286e-03 m³/s (2.38e-05×U∞A)  post-projection=6.920e-15 m³/s (1.28e-16×U∞A)  δu_n=-2.381e-05 m/s
+17:38:07       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.063 mean=0.928 max=1.011  n_face=5625
+17:38:07       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.065
+17:38:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:38:11       [FVM wall] cube: y+ min=0.06 max=2.03 avg=0.57
+17:38:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:38:16       [FVM wall] cube: y+ min=0.05 max=2.03 avg=0.57
+17:38:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:38:20       [FVM wall] cube: y+ min=0.04 max=2.03 avg=0.57
+17:38:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:38:24       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:38:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:38:29       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:38:33  [Handoff step=101] in=200401 → out=348240  free=288725  solid_removed=0  pruned=68385 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.08e-13  flux_ratio=2.758
+17:38:33       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.739e-02
+17:38:33       [Beale] mollification residual: 27.9% → 17.5%
+17:38:33       [Inject] N_before=489126  N_after=636965  |Γ|_before=2.3703e+01  |Γ|_after=2.4248e+01
+17:38:33  [Timing step=101] VPM=122.913s donor=0.002s fringe=3.471s FVM=21.687s handoff=4.451s total=152.525s
+17:44:10       [Donor] particles=489117
+17:44:10       [Donor] Flux residual: raw=-1.242e-03 m³/s (2.30e-05×U∞A)  post-projection=1.050e-14 m³/s (1.95e-16×U∞A)  δu_n=-2.300e-05 m/s
+17:44:10       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.061 mean=0.928 max=1.011  n_face=5625
+17:44:10       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.054
+17:44:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:44:14       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:44:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:44:19       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:44:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:44:23       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:44:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:44:28       [FVM wall] cube: y+ min=0.04 max=2.03 avg=0.57
+17:44:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:44:33       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:44:38  [Handoff step=102] in=197544 → out=348229  free=291573  solid_removed=0  pruned=68379 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.11e-13  flux_ratio=2.676
+17:44:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.721e-02
+17:44:38       [Beale] mollification residual: 27.8% → 17.5%
+17:44:38       [Inject] N_before=489117  N_after=639802  |Γ|_before=2.3779e+01  |Γ|_after=2.4317e+01
+17:44:38  [Timing step=102] VPM=333.485s donor=0.003s fringe=3.525s FVM=22.449s handoff=5.247s total=364.709s
+17:47:05       [Donor] particles=489111
+17:47:05       [Donor] Flux residual: raw=-1.190e-03 m³/s (2.20e-05×U∞A)  post-projection=2.571e-15 m³/s (4.76e-17×U∞A)  δu_n=-2.204e-05 m/s
+17:47:05       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.061 mean=0.927 max=1.011  n_face=5625
+17:47:05       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.049
+17:47:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:47:10       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.57
+17:47:14       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:47:14       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.57
+17:47:19       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:47:19       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.57
+17:47:23       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:47:23       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.57
+17:47:27       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:47:27       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.57
+17:47:32  [Handoff step=103] in=194513 → out=348253  free=294598  solid_removed=0  pruned=68285 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.01e-13  flux_ratio=2.625
+17:47:32       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.702e-02
+17:47:32       [Beale] mollification residual: 27.7% → 17.4%
+17:47:32       [Inject] N_before=489111  N_after=642851  |Γ|_before=2.3847e+01  |Γ|_after=2.4386e+01
+17:47:32  [Timing step=103] VPM=141.552s donor=0.004s fringe=4.264s FVM=22.202s handoff=4.624s total=172.646s
+17:50:33       [Donor] particles=489101
+17:50:33       [Donor] Flux residual: raw=-1.129e-03 m³/s (2.09e-05×U∞A)  post-projection=6.583e-15 m³/s (1.22e-16×U∞A)  δu_n=-2.091e-05 m/s
+17:50:33       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.060 mean=0.927 max=1.011  n_face=5625
+17:50:33       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.043
+17:50:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:50:37       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:50:41       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:50:41       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.57
+17:50:45       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:50:45       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.57
+17:50:50       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:50:50       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.57
+17:50:54       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:50:54       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.57
+17:51:00  [Handoff step=104] in=191907 → out=348345  free=297194  solid_removed=0  pruned=68320 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.07e-13  flux_ratio=2.589
+17:51:00       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.680e-02
+17:51:00       [Beale] mollification residual: 27.7% → 17.4%
+17:51:00       [Inject] N_before=489101  N_after=645539  |Γ|_before=2.3919e+01  |Γ|_after=2.4455e+01
+17:51:00  [Timing step=104] VPM=177.234s donor=0.004s fringe=3.395s FVM=21.418s handoff=5.620s total=207.672s
+17:56:24       [Donor] particles=489092
+17:56:24       [Donor] Flux residual: raw=-1.061e-03 m³/s (1.96e-05×U∞A)  post-projection=-1.005e-14 m³/s (1.86e-16×U∞A)  δu_n=-1.964e-05 m/s
+17:56:24       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.061 mean=0.926 max=1.011  n_face=5625
+17:56:24       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.041
+17:56:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:56:29       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.57
+17:56:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:56:33       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:56:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:56:37       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.57
+17:56:42       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:56:42       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.56
+17:56:47       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:56:47       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.56
+17:56:52  [Handoff step=105] in=189610 → out=348382  free=299482  solid_removed=0  pruned=68366 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.51e-13  flux_ratio=2.557
+17:56:52       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.656e-02
+17:56:52       [Beale] mollification residual: 27.6% → 17.3%
+17:56:52       [Inject] N_before=489092  N_after=647864  |Γ|_before=2.3988e+01  |Γ|_after=2.4523e+01
+17:56:52  [Timing step=105] VPM=320.901s donor=0.003s fringe=3.473s FVM=22.483s handoff=4.959s total=351.819s
+17:59:53       [Donor] particles=489070
+17:59:53       [Donor] Flux residual: raw=-9.939e-04 m³/s (1.84e-05×U∞A)  post-projection=1.594e-14 m³/s (2.95e-16×U∞A)  δu_n=-1.841e-05 m/s
+17:59:53       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.062 mean=0.926 max=1.011  n_face=5625
+17:59:53       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.034
+17:59:57       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+17:59:57       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.56
+18:00:02       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:00:02       [FVM wall] cube: y+ min=0.03 max=2.03 avg=0.56
+18:00:06       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:00:06       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.56
+18:00:10       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:00:10       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.56
+18:00:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:00:15       [FVM wall] cube: y+ min=0.02 max=2.03 avg=0.56
+18:00:19  [Handoff step=106] in=187229 → out=348277  free=301841  solid_removed=0  pruned=68451 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.79e-14  flux_ratio=2.533
+18:00:19       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.629e-02
+18:00:19       [Beale] mollification residual: 27.5% → 17.3%
+18:00:19       [Inject] N_before=489070  N_after=650118  |Γ|_before=2.4067e+01  |Γ|_after=2.4591e+01
+18:00:19  [Timing step=106] VPM=175.690s donor=0.003s fringe=4.131s FVM=21.750s handoff=4.587s total=206.161s
+18:03:06       [Donor] particles=489077
+18:03:06       [Donor] Flux residual: raw=-9.365e-04 m³/s (1.73e-05×U∞A)  post-projection=2.288e-14 m³/s (4.24e-16×U∞A)  δu_n=-1.734e-05 m/s
+18:03:06       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.063 mean=0.925 max=1.011  n_face=5625
+18:03:06       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.032
+18:03:11       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:03:11       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:03:15       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:03:15       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:03:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:03:20       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:03:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:03:24       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:03:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:03:29       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:03:35  [Handoff step=107] in=185190 → out=348098  free=303887  solid_removed=0  pruned=68543 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=8.63e-14  flux_ratio=2.520
+18:03:35       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.600e-02
+18:03:35       [Beale] mollification residual: 27.5% → 17.2%
+18:03:36       [Inject] N_before=489077  N_after=651985  |Γ|_before=2.4135e+01  |Γ|_after=2.4659e+01
+18:03:36  [Timing step=107] VPM=164.752s donor=0.002s fringe=2.021s FVM=22.464s handoff=6.744s total=195.983s
+18:09:11       [Donor] particles=489066
+18:09:11       [Donor] Flux residual: raw=-9.041e-04 m³/s (1.67e-05×U∞A)  post-projection=1.011e-14 m³/s (1.87e-16×U∞A)  δu_n=-1.674e-05 m/s
+18:09:11       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.066 mean=0.925 max=1.011  n_face=5625
+18:09:11       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.029
+18:09:16       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:09:16       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:09:20       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.06 max=1.06]
+18:09:20       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:09:24       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+18:09:24       [FVM wall] cube: y+ min=0.01 max=2.03 avg=0.56
+18:09:28       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+18:09:28       [FVM wall] cube: y+ min=0.01 max=2.02 avg=0.56
+18:09:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+18:09:33       [FVM wall] cube: y+ min=0.01 max=2.02 avg=0.56
+18:09:38  [Handoff step=108] in=183339 → out=347717  free=305727  solid_removed=0  pruned=68736 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=9.57e-14  flux_ratio=2.513
+18:09:38       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.572e-02
+18:09:38       [Beale] mollification residual: 27.4% → 17.2%
+18:09:38       [Inject] N_before=489066  N_after=653444  |Γ|_before=2.4205e+01  |Γ|_after=2.4725e+01
+18:09:38  [Timing step=108] VPM=332.635s donor=0.003s fringe=3.215s FVM=21.735s handoff=4.712s total=362.300s
+18:12:25       [Donor] particles=489050
+18:12:25       [Donor] Flux residual: raw=-8.667e-04 m³/s (1.60e-05×U∞A)  post-projection=-9.196e-15 m³/s (1.70e-16×U∞A)  δu_n=-1.605e-05 m/s
+18:12:25       [Donor deficit outflow axis=0 sign=+1] u_s/U∞ min=-0.069 mean=0.924 max=1.012  n_face=5625
+18:12:25       [Sub-cycle] 5×dt_fvm=1.000e-02 s  donor ΔBC max|Δu|/U∞=0.029
+18:12:29       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.06]
+18:12:29       [FVM wall] cube: y+ min=0.02 max=2.02 avg=0.56
+18:12:33       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.07]
+18:12:33       [FVM wall] cube: y+ min=0.02 max=2.02 avg=0.56
+18:12:37       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.07]
+18:12:37       [FVM wall] cube: y+ min=0.02 max=2.02 avg=0.56
+18:12:40       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.07]
+18:12:40       [FVM wall] cube: y+ min=0.02 max=2.02 avg=0.56
+18:12:44       [FVM] solved with Dirichlet U / fixedFluxPressure  u_x/U∞ face[min=-0.07 max=1.07]
+18:12:44       [FVM wall] cube: y+ min=0.03 max=2.02 avg=0.56
+18:12:49  [Handoff step=109] in=181761 → out=347368  free=307289  solid_removed=0  pruned=68960 (0.029% Σ|Γ|)  cap_pruned=0 (0.000% Σ|Γ|, δu_bound=0.000e+00 m/s)  CFL=0.32  |ΔΓ|/|Γ|=1.63e-13  flux_ratio=2.506
+18:12:49       [Body mask] removed Σ|Γ|: input=0.000e+00  remesh=0.000e+00  target=3.544e-02
+18:12:49       [Beale] mollification residual: 27.4% → 17.2%
+18:12:49       [Inject] N_before=489050  N_after=654657  |Γ|_before=2.4279e+01  |Γ|_after=2.4792e+01
+18:12:49  [Timing step=109] VPM=163.791s donor=0.002s fringe=1.978s FVM=18.665s handoff=5.008s total=189.445s

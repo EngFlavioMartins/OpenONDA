@@ -83,7 +83,7 @@ def _style_axes(fig, axes, box, velocity_plot, error_plot, vmax: float, p95: flo
         pad=0.15,
         aspect=20,
         format="%.1f",
-        label=r"$\varepsilon$ [\%]",
+        label=r"$|\Delta u_x|/U_\infty$ [\%]",
     ).set_ticks(np.linspace(0, p95, 3))
 
 
@@ -100,7 +100,6 @@ def _field_figure(
     figure_format: str = FIGURE_FORMAT,
 ) -> tuple[float, float]:
     error = np.abs(left - right) * 100.0
-    error[np.abs(left) < 0.01] = np.nan
     error[_body_mask(x, y)] = np.nan
 
     vmax = max(float(np.nanmax(np.abs(left))), float(np.nanmax(np.abs(right))))
@@ -127,7 +126,7 @@ def _field_figure(
     error_plot = axes[2].pcolormesh(
         x, y, error, cmap=util.COLORMAPS["error"], vmin=0, vmax=p95, shading="auto"
     )
-    axes[2].set_title(r"$\varepsilon$ [\%]")
+    axes[2].set_title(r"$|\Delta u_x|/U_\infty$ [\%]")
     _style_axes(fig, axes, box, velocity_plot, error_plot, vmax, p95)
 
     util.save(fig, f"{name}_t{time:.2f}", figure_format, FIGURE_DPI)
@@ -175,7 +174,7 @@ def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) ->
         ux_ref,
         ux_fvm,
         r"Reference FVM, $u_x^\mathrm{ref}$",
-        r"VPM, $u_x^\mathrm{VPM}$",
+        r"Hybrid FVM, $u_x^\mathrm{FVM}$",
         "Stitched_RefVsHybrid",
         consts["box"],
         figure_format,

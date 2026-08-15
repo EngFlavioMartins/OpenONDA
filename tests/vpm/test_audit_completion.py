@@ -177,6 +177,46 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
     assert (tmp_path / "samples" / "profile.csv").read_text(encoding="utf-8") == "time=0.3\n"
 
 
+def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
+    class TimeSeriesSampler:
+        file_name = "profile"
+        csv_time_series = True
+
+        def sample(self, _solver):
+            return {
+                name: np.asarray([index, index + 0.5])
+                for index, name in enumerate(SAMPLER_CSV_COLUMNS)
+            }
+
+        def save_csv(self, *_args, **_kwargs):
+            raise AssertionError("time-series samplers must use the executor's append path")
+
+    solver = SimpleNamespace(
+        config=SimpleNamespace(samplers=[TimeSeriesSampler()]),
+        particles=SimpleNamespace(number_of_particles=2),
+        particles_circulation=np.ones((2, 3)),
+        backup_directory=str(tmp_path),
+        flow_time=0.1,
+        time_step=1,
+    )
+
+    SamplerExecutor.execute(solver)
+    solver.flow_time = 0.2
+    solver.time_step = 2
+    SamplerExecutor.execute(solver)
+
+    with (tmp_path / "samples" / "profile.csv").open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.reader(stream))
+
+    assert rows[0] == ["flow_time", "time_step", *SAMPLER_CSV_COLUMNS]
+    assert [row[:2] for row in rows[1:]] == [
+        ["0.1", "1"],
+        ["0.1", "1"],
+        ["0.2", "2"],
+        ["0.2", "2"],
+    ]
+
+
 def test_surface_sampler_preserves_and_replaces_pvd_steps_after_restart(tmp_path):
     pvd_path = tmp_path / "surface.pvd"
     SamplerExecutor._write_pvd(tmp_path, "surface", [(0.1, "surface_000001.vts")])

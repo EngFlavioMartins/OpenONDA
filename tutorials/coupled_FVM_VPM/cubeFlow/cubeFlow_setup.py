@@ -74,7 +74,17 @@ T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
 
 DT_VPM = 0.05
-SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
+# Keep the historical OPENONDA_SPACING knob as a common fallback, but do not
+# force the Eulerian mesh, particle lattice, and diagnostic grid to have the
+# same resolution.  Resolution-matched controls show that this distinction is
+# essential when comparing drag against the fully meshed reference.
+_COMMON_SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
+PARTICLE_SPACING = float(os.environ.get("OPENONDA_PARTICLE_SPACING", _COMMON_SPACING))
+FVM_CELL_SIZE = float(os.environ.get("OPENONDA_FVM_CELL_SIZE", _COMMON_SPACING))
+SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", _COMMON_SPACING))
+# Backward-compatible import for external case scripts; internal setup uses the
+# explicit constants above.
+SPACING = PARTICLE_SPACING
 SURFACE_CELL_SIZE = float(
     os.environ.get("OPENONDA_SURFACE_CELL_SIZE", "0.10" if SMOKE else "0.015")
 )
@@ -101,14 +111,14 @@ FVM_SAMPLERS = (
     FVMLineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="fvm_centerline",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="fvm_offaxis_y075",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
@@ -116,7 +126,7 @@ FVM_SAMPLERS = (
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=SLICE_BOUNDS,
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
         schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
     ),
@@ -126,34 +136,34 @@ VPM_SAMPLERS = (
     VPMLineSampler(
         start=[VPM_DOMAIN[0], 0.0, 0.0],
         end=[VPM_DOMAIN[1], 0.0, 0.0],
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="vpm_centerline",
     ),
     VPMLineSampler(
         start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
         end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="vpm_offaxis_y075",
     ),
     VPMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=SLICE_BOUNDS,
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="vpm_slice_z0",
     ),
     VPMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0, 0, 1],
         bounds=WAKE_SLICE_BOUNDS,
-        spacing=SPACING,
+        spacing=SAMPLE_SPACING,
         file_name="vpm_wake_slice_z0",
     ),
 )
 
 FVM_MESH = AdaptiveCartesianMesher(
     domain=FVM_BOX,
-    max_cell_size=SPACING,
+    max_cell_size=FVM_CELL_SIZE,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=SURFACE_CELL_SIZE,
@@ -241,7 +251,7 @@ VPM_SETUP = VPMSetup(
     time_step_size=DT_VPM,
     background_velocity=list(U_INF),
     viscous=ViscousConfig.gbd(
-        h=SPACING,
+        h=PARTICLE_SPACING,
         padding=3.0,
         viscosity=NU,
         threshold_mode="relative_local",
@@ -277,8 +287,8 @@ VPM_SETUP = VPMSetup(
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
     wall_patch_name="cube",
-    h=SPACING,
-    buffer_thickness=6 * SPACING,
+    h=PARTICLE_SPACING,
+    buffer_thickness=6 * PARTICLE_SPACING,
     dead_zone_h=0.0,
     prune_vorticity_min=0.005,
     handoff_max_particles=PARTICLE_LIMIT,
@@ -293,7 +303,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", action="store_true", help="fast smoke-test settings")
     parser.add_argument("--end-time", type=float, help="simulation end time [s]")
-    parser.add_argument("--spacing", type=float, help="core grid spacing [m]")
+    parser.add_argument(
+        "--spacing",
+        type=float,
+        help="set FVM, particle, and sampling spacing together [m] (legacy shortcut)",
+    )
+    parser.add_argument("--particle-spacing", type=float, help="VPM/handoff spacing [m]")
+    parser.add_argument("--fvm-cell-size", type=float, help="maximum inner FVM cell size [m]")
+    parser.add_argument("--sample-spacing", type=float, help="diagnostic sampling spacing [m]")
     parser.add_argument("--surface-cell-size", type=float, help="cells on the cube surface [m]")
     parser.add_argument("--max-particles", type=int, help="particle budget")
     parser.add_argument("--fvm-cores", type=int, help="CPU cores for the FVM solver")
@@ -314,9 +331,19 @@ def _run_with_overrides(argv: list[str]) -> int:
     overrides: dict[str, str] = {}
     if args.smoke:
         overrides["OPENONDA_SMOKE"] = "1"
+    if args.spacing is not None:
+        for key in (
+            "OPENONDA_SPACING",
+            "OPENONDA_PARTICLE_SPACING",
+            "OPENONDA_FVM_CELL_SIZE",
+            "OPENONDA_SAMPLE_SPACING",
+        ):
+            overrides[key] = str(args.spacing)
     for flag, key in (
         ("end_time", "OPENONDA_T_END"),
-        ("spacing", "OPENONDA_SPACING"),
+        ("particle_spacing", "OPENONDA_PARTICLE_SPACING"),
+        ("fvm_cell_size", "OPENONDA_FVM_CELL_SIZE"),
+        ("sample_spacing", "OPENONDA_SAMPLE_SPACING"),
         ("surface_cell_size", "OPENONDA_SURFACE_CELL_SIZE"),
         ("max_particles", "OPENONDA_MAX_PARTICLES"),
         ("fvm_cores", "OPENONDA_FVM_CORES"),
@@ -338,7 +365,11 @@ def _run_with_overrides(argv: list[str]) -> int:
 
 def main() -> None:
     print("\n===== SIMULATION =====")
-    print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={PARTICLE_LIMIT}")
+    print(
+        f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
+        f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
+        f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
+    )
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
 

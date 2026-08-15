@@ -124,6 +124,14 @@ class SamplerExecutor:
                 sampler._pvd_entries.append((flow_time, filename))
                 sampler._pvd_entries.sort(key=lambda entry: (entry[0], entry[1]))
                 SamplerExecutor._write_pvd(solution_dir, name_prefix, sampler._pvd_entries)
+            elif getattr(sampler, "csv_time_series", False):
+                SamplerExecutor._append_csv(
+                    sampler,
+                    solver,
+                    solution_dir / f"{name_prefix}.csv",
+                    flow_time,
+                    time_step,
+                )
             elif hasattr(sampler, "save_csv"):
                 save_csv = sampler.save_csv
                 keywords = {"time": flow_time}

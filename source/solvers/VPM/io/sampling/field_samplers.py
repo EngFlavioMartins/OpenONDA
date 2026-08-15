@@ -590,6 +590,10 @@ class LineSampler:
         >>> print(f"Computed velocity at {sampler.n_points} points along centerline")
     """
 
+    # The sampler executor owns the persistent, time-aware CSV representation.
+    # ``save_csv`` remains available for callers that explicitly want one snapshot.
+    csv_time_series = True
+
     def __init__(
         self,
         start: np.ndarray | list,

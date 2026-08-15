@@ -150,38 +150,44 @@ def beale_strength_correction(
     sigma: float,
 ) -> tuple[np.ndarray, float, float]:
     """Apply one Gaussian mollification correction in the FVM authority zone."""
-    from scipy.ndimage import gaussian_filter
-
-    # ζ_σ ∝ e^{-r²/σ²} = e^{-r²/(2 s²)} with s = σ/√2; gaussian_filter takes
-    # s in grid cells and normalizes its discrete kernel to Σw = 1, which for
-    # s ≳ 1 cell equals the sampled ζ_σ·h³ weights to machine precision.
-    s_cells = float(sigma) / (np.sqrt(2.0) * float(h))
     h3 = float(h) ** 3
 
     g = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3).copy()
     t_omega = np.asarray(target_circ, dtype=np.float64).reshape(*shape, 3) / h3
     eta_g = np.asarray(eta, dtype=np.float64).reshape(*shape)[..., None]
 
-    def omega_sigma(gc: np.ndarray) -> np.ndarray:
-        return (
-            np.stack(
-                [
-                    gaussian_filter(gc[..., c], s_cells, mode="constant", truncate=5.0)
-                    for c in range(3)
-                ],
-                axis=-1,
-            )
-            / h3
-        )
-
     denom = float(np.linalg.norm(t_omega * eta_g)) + 1e-30
-    residual = (t_omega - omega_sigma(g)) * eta_g
+    residual = (t_omega - _gaussian_mollified_circulation(g, shape, h, sigma=sigma) / h3) * eta_g
     res_pre = float(np.linalg.norm(residual)) / denom
     g += residual * h3
-    residual = (t_omega - omega_sigma(g)) * eta_g
+    residual = (t_omega - _gaussian_mollified_circulation(g, shape, h, sigma=sigma) / h3) * eta_g
     res_post = float(np.linalg.norm(residual)) / denom
 
     return g.reshape(-1, 3), res_pre, res_post
+
+
+def _gaussian_mollified_circulation(
+    circ_grid: np.ndarray,
+    shape: tuple[int, int, int],
+    h: float,
+    *,
+    sigma: float,
+) -> np.ndarray:
+    """Return circulation represented by Gaussian particles on their lattice."""
+    from scipy.ndimage import gaussian_filter
+
+    # ζ_σ ∝ e^{-r²/σ²} = e^{-r²/(2 s²)} with s = σ/√2; gaussian_filter takes
+    # s in grid cells and normalizes its discrete kernel to Σw = 1, which for
+    # s ≳ 1 cell equals the sampled ζ_σ·h³ weights to machine precision.
+    s_cells = float(sigma) / (np.sqrt(2.0) * float(h))
+    grid = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3)
+    return np.stack(
+        [
+            gaussian_filter(grid[..., component], s_cells, mode="constant", truncate=5.0)
+            for component in range(3)
+        ],
+        axis=-1,
+    )
 
 
 # =========================================================
@@ -216,9 +222,10 @@ class HandoffResult:
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_corrected_mismatch: dict[str, float] = field(default_factory=dict)
-    # Σ|Γ|_VPM / Σ|Γ|_FVM over the outflow band (L1, well-conditioned; 1 = the
-    # particle field carries the FVM's exit vorticity content).  See the
-    # computation in continuous_handoff for why this is not a vector-sum ratio.
+    # Σ|Γσ|_VPM / Σ|Γ|_FVM over the outflow band (L1,
+    # well-conditioned; 1 = the mollified particle field carries the FVM's exit
+    # vorticity content). See the computation in continuous_handoff for why
+    # raw, deconvolved particle strengths cannot be compared to the FVM trace.
     flux_ratio: float = 0.0
 
     # Strength-correction diagnostics (η-weighted relative residual
@@ -539,15 +546,23 @@ def continuous_handoff(
     # vector sums is a quotient of two near-cancelling quantities: it swung
     # over 0.02–29 on the cube case purely from cancellation noise, with no
     # corresponding change in the fields, and that reading was once
-    # mis-attributed to the donor interior source.  Summing magnitudes is
-    # well-conditioned and answers the question the diagnostic is for: does the
-    # particle field carry the same vorticity content out of the box as the FVM
-    # holds at the exit?  1.0 = agreement.
+    # mis-attributed to the donor interior source. Raw ``grid_blended`` strengths
+    # are also invalid here: the Beale correction deliberately deconvolves them,
+    # whereas the FVM trace is a physical (mollified) circulation. Comparing
+    # those two made the cube diagnostic climb to 2.5 while directly sampled
+    # VPM/FVM vorticity remained near 1.0. Mollify the particle strengths first,
+    # then sum magnitudes; 1.0 means physical-field agreement.
     flux_ratio = 0.0
     if len(grid_pos) > 0:
         band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
         if band.any():
-            g_vpm = float(np.linalg.norm(grid_blended[band], axis=1).sum())
+            mollified = _gaussian_mollified_circulation(
+                grid_blended,
+                shape,
+                h,
+                sigma=radius_ratio * h,
+            ).reshape(-1, 3)
+            g_vpm = float(np.linalg.norm(mollified[band], axis=1).sum())
             g_fvm = float(np.linalg.norm(target[band], axis=1).sum())
             flux_ratio = float(g_vpm / (g_fvm + 1e-30))
 
