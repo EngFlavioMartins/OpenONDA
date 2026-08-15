@@ -1042,8 +1042,12 @@ class FVMVPMCoupler:
             "n_free": int(getattr(result, "n_free", 0)),
             "n_excluded": int(getattr(result, "n_excluded", 0)),
             "n_pruned": int(getattr(result, "n_pruned", 0)),
+            "n_overlap_shell_pruned": int(getattr(result, "n_overlap_shell_pruned", 0)),
             "pruned_circulation_fraction": float(
                 getattr(result, "pruned_circulation_fraction", 0.0)
+            ),
+            "overlap_shell_pruned_circulation_fraction": float(
+                getattr(result, "overlap_shell_pruned_circulation_fraction", 0.0)
             ),
             "n_population_pruned": int(getattr(result, "n_population_pruned", 0)),
             "population_pruned_circulation_fraction": float(

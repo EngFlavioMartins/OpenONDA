@@ -20,12 +20,22 @@ _REFERENCE = (
 )
 _CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow"
 _ALLOWED_RUNTIME_OVERRIDES = {
+    "OPENONDA_CHECKPOINT_INTERVAL",
+    "OPENONDA_DIAGNOSTIC_INTERVAL",
+    "OPENONDA_DT_VPM",
+    "OPENONDA_FORCE_INTERVAL",
+    "OPENONDA_FVM_CELL_SIZE",
     "OPENONDA_FVM_CORES",
     "OPENONDA_MAX_PARTICLES",
+    "OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER",
+    "OPENONDA_PARTICLE_SPACING",
+    "OPENONDA_SAMPLE_SPACING",
     "OPENONDA_SMOKE",
     "OPENONDA_SPACING",
     "OPENONDA_SURFACE_CELL_SIZE",
     "OPENONDA_T_END",
+    "OPENONDA_VOLUME_INTERVAL",
+    "OPENONDA_VPM_SCHEME",
 }
 
 
@@ -217,7 +227,11 @@ def test_output_names_and_cadence_match_allplot_contract(bench, reference):
     assert reference.FVM_SETUP.case_name == "referenceFlow"
     assert bench.VPM_SETUP.backup_file_name == ""
     assert Path(bench.VPM_SETUP.backup_directory) == bench.CASE_DIR / "solution"
-    assert pytest.approx(bench.WRITE_INTERVAL) == bench.BACKUP_PERIOD * bench.DT_VPM
+    assert bench.VPM_SETUP.backup_frequency == 0
+    assert pytest.approx(bench.CHECKPOINT_INTERVAL) == bench.BACKUP_PERIOD * bench.DT_VPM
+    assert pytest.approx(bench.DIAGNOSTIC_INTERVAL) == bench.VPM_LOG_PERIOD * bench.DT_VPM
+    assert bench.VPM_SETUP.logging_frequency == bench.VPM_LOG_PERIOD
+    assert bench.FVM_SETUP.time.write_interval_time == pytest.approx(bench.FVM_VOLUME_INTERVAL)
     hybrid_steps = round(bench.WRITE_INTERVAL / bench.DT_FVM)
     reference_steps = round(reference.WRITE_INTERVAL / reference.DT_FVM)
     assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.WRITE_INTERVAL)

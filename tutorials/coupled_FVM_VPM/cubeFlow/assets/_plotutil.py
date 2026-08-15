@@ -53,13 +53,10 @@ SOURCES = {
     "vpm": {"dir": SAMPLES, "prefix": "vpm_", "label": "Coupled VPM"},
 }
 
-# Every sampler in this tutorial (FVM, VPM, reference) is configured to fire on
-# the same physical cadence. PLOT_DT is that cadence: comparison_times() walks
-# it independently of which sampler files happen to exist, and TIME_TOL is the
-# match window a loader uses to decide "this file has that frame" versus
-# "nothing at that time" - tight enough to reject a neighbouring frame, loose
-# enough to absorb float accumulation in flow_time.
-PLOT_DT = 0.15
+# Hybrid line and surface diagnostics use a coarser cadence than the dense
+# reference history. PLOT_DT is their default comparison cadence;
+# common_times() still derives exact intersections from the files themselves.
+PLOT_DT = 0.60
 TIME_TOL = 1e-3
 
 

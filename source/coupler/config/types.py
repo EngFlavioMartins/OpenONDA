@@ -29,6 +29,7 @@ class CouplerSetup:
     buffer_thickness: float = 0.30
     dead_zone_h: float = 3.0
     prune_vorticity_min: float = 0.005
+    overlap_shell_prune_multiplier: float = 1.0
     handoff_max_particles: int | None = None
     overlap_radius_ratio: float = 1.0
 
@@ -58,6 +59,7 @@ class CouplerSetup:
             "h": self.h,
             "buffer_thickness": self.buffer_thickness,
             "overlap_radius_ratio": self.overlap_radius_ratio,
+            "overlap_shell_prune_multiplier": self.overlap_shell_prune_multiplier,
         }
         invalid = [
             name
@@ -70,6 +72,8 @@ class CouplerSetup:
             raise ValueError("backup_period must be non-negative and log_period positive")
         if self.dead_zone_h < 0.0 or self.prune_vorticity_min < 0.0:
             raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
+        if self.overlap_shell_prune_multiplier < 1.0:
+            raise ValueError("overlap_shell_prune_multiplier must be at least one")
         if self.buffer_thickness <= self.dead_zone_h * self.h:
             raise ValueError("buffer_thickness must exceed dead_zone_h * h")
         if self.overlap_radius_ratio < 1.0:
@@ -117,6 +121,7 @@ class CouplerSetup:
             },
             "coupler": {
                 "prune_vorticity_min": self.prune_vorticity_min,
+                "overlap_shell_prune_multiplier": self.overlap_shell_prune_multiplier,
                 "handoff_max_particles": self.handoff_max_particles,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
             },

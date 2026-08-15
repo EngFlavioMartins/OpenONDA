@@ -105,6 +105,61 @@ def test_free_wake_is_retained():
     np.testing.assert_allclose(result.circ, circ)
 
 
+def test_overlap_shell_pruning_protects_the_outflow_face():
+    def weak_face_target(points):
+        points = np.asarray(points)
+        target = np.zeros((len(points), 3))
+        face_nodes = (
+            (np.abs(points[:, 0]) > 0.3)
+            & (np.abs(points[:, 1]) < 0.2)
+            & (np.abs(points[:, 2]) < 0.2)
+        )
+        target[face_nodes, 2] = 4.0e-3
+        return target
+
+    result = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=weak_face_target,
+        u_inf=[1.0, 0.0, 0.0],
+        inside_mesh_at_node=lambda points: np.ones(len(points), dtype=bool),
+        ramp_width=0.3,
+        threshold_abs=1.0e-3,
+        overlap_shell_prune_multiplier=4.0,
+        lattice_anchor=np.array([-0.375, -0.375, -0.375]),
+    )
+
+    assert result.n_overlap_shell_pruned > 0
+    assert result.overlap_shell_pruned_circulation_fraction > 0.0
+    assert result.n_total > 0
+    assert np.all(result.pos[:, 0] > 0.0)
+
+
+def test_default_overlap_shell_multiplier_preserves_base_pruning():
+    def weak_target(points):
+        return np.tile([0.0, 0.0, 1.2e-3], (len(points), 1))
+
+    common = {
+        "pos": np.zeros((0, 3)),
+        "circ": np.zeros((0, 3)),
+        "box": BOX,
+        "h": H,
+        "circulation_at_node": weak_target,
+        "inside_mesh_at_node": lambda points: np.ones(len(points), dtype=bool),
+        "ramp_width": 0.3,
+        "threshold_abs": 1.0e-3,
+        "lattice_anchor": np.array([-0.375, -0.375, -0.375]),
+    }
+    implicit = continuous_handoff(**common)
+    explicit = continuous_handoff(**common, overlap_shell_prune_multiplier=1.0)
+
+    np.testing.assert_allclose(implicit.pos, explicit.pos)
+    np.testing.assert_allclose(implicit.circ, explicit.circ)
+    assert implicit.n_overlap_shell_pruned == explicit.n_overlap_shell_pruned == 0
+
+
 def test_population_cap_preserves_integral_circulation():
     rng = np.random.default_rng(3)
     pos = rng.uniform([1.0, -0.5, -0.5], [2.0, 0.5, 0.5], (8, 3))

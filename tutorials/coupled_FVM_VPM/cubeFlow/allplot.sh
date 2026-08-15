@@ -25,4 +25,5 @@ plot() {
 
 plot assets/plot_velocity_profiles.py
 plot assets/plot_velocity_fields.py
+plot assets/plot_coupling_diagnostics.py
 # plot assets/plot_wake_errors.py

@@ -124,6 +124,7 @@ class SurfaceSampler:
         bounds: np.ndarray | list,
         spacing: float,
         file_name: str | None = None,
+        include_derivatives: bool = True,
     ):
         """
         Initialize the surface sampler.
@@ -139,6 +140,10 @@ class SurfaceSampler:
             spacing: Grid point spacing.
             file_name: Optional base name for output files. If None, uses
                       default naming based on sampler class name.
+            include_derivatives: Compute and export velocity-gradient and
+                      strain-rate fields. Disable when only velocity and
+                      vorticity diagnostics are needed to avoid an additional
+                      Biot--Savart tree traversal.
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
@@ -146,6 +151,7 @@ class SurfaceSampler:
         self.bounds = np.asarray(bounds, dtype=np.float32)
         self.spacing = float(spacing)
         self.file_name = file_name
+        self.include_derivatives = bool(include_derivatives)
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None
@@ -356,8 +362,12 @@ class SurfaceSampler:
         velocity = solver.compute_target_velocities(self.grid_points, include_freestream=True)
         vorticity = solver.compute_target_vorticities(self.grid_points)
 
-        # Compute velocity gradient → strain rate via Biot-Savart
-        grad_u_flat = solver.compute_target_velocity_gradients(self.grid_points)
+        # Computing the gradient requires another full target tree traversal.
+        # Keep the legacy default, while allowing plot-only samplers to skip it.
+        if self.include_derivatives:
+            grad_u_flat = solver.compute_target_velocity_gradients(self.grid_points)
+        else:
+            grad_u_flat = np.zeros((len(self.grid_points), 9), dtype=np.float64)
         Sxx = grad_u_flat[:, 0]
         Sxy = 0.5 * (grad_u_flat[:, 1] + grad_u_flat[:, 3])
         Sxz = 0.5 * (grad_u_flat[:, 2] + grad_u_flat[:, 6])
@@ -518,18 +528,9 @@ class SurfaceSampler:
             [omega_x_2d.ravel(order="F"), omega_y_2d.ravel(order="F"), omega_z_2d.ravel(order="F")]
         )
 
-        # Reshape strain rate components
+        # Reshape optional derivative fields
         def _reshape_scalar(key):
             return data[key].reshape(self._grid_shape).ravel(order="F")
-
-        Sxx = _reshape_scalar("Sxx")
-        Sxy = _reshape_scalar("Sxy")
-        Sxz = _reshape_scalar("Sxz")
-        Syy = _reshape_scalar("Syy")
-        Syz = _reshape_scalar("Syz")
-        Szz = _reshape_scalar("Szz")
-
-        strain_rate = np.column_stack([Sxx, Sxy, Sxz, Syy, Syz, Szz])
 
         # Add velocity as vector field
         grid.point_data["Velocity"] = velocity
@@ -543,24 +544,32 @@ class SurfaceSampler:
         # Add vorticity magnitude as scalar
         grid.point_data["VorticityMagnitude"] = np.linalg.norm(vorticity, axis=1)
 
-        # Add strain rate tensor (6 components)
-        grid.point_data["StrainRate"] = strain_rate
-
-        # Add velocity gradient tensor (9 components)
-        grad_u = np.column_stack(
-            [
-                _reshape_scalar("dudx"),
-                _reshape_scalar("dudy"),
-                _reshape_scalar("dudz"),
-                _reshape_scalar("dvdx"),
-                _reshape_scalar("dvdy"),
-                _reshape_scalar("dvdz"),
-                _reshape_scalar("dwdx"),
-                _reshape_scalar("dwdy"),
-                _reshape_scalar("dwdz"),
-            ]
-        )
-        grid.point_data["VelocityGradient"] = grad_u
+        if self.include_derivatives:
+            strain_rate = np.column_stack(
+                [
+                    _reshape_scalar("Sxx"),
+                    _reshape_scalar("Sxy"),
+                    _reshape_scalar("Sxz"),
+                    _reshape_scalar("Syy"),
+                    _reshape_scalar("Syz"),
+                    _reshape_scalar("Szz"),
+                ]
+            )
+            grid.point_data["StrainRate"] = strain_rate
+            grad_u = np.column_stack(
+                [
+                    _reshape_scalar("dudx"),
+                    _reshape_scalar("dudy"),
+                    _reshape_scalar("dudz"),
+                    _reshape_scalar("dvdx"),
+                    _reshape_scalar("dvdy"),
+                    _reshape_scalar("dvdz"),
+                    _reshape_scalar("dwdx"),
+                    _reshape_scalar("dwdy"),
+                    _reshape_scalar("dwdz"),
+                ]
+            )
+            grid.point_data["VelocityGradient"] = grad_u
 
         # Save as VTS (binary by default for efficiency)
         grid.save(str(filepath), binary=True)

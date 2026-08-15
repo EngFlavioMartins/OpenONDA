@@ -73,7 +73,10 @@ DT_FVM = 0.01
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
 
-DT_VPM = 0.05
+DT_VPM = float(os.environ.get("OPENONDA_DT_VPM", "0.05"))
+VPM_SCHEME = os.environ.get("OPENONDA_VPM_SCHEME", "RK2").upper()
+if VPM_SCHEME not in {"RK2", "RK3"}:
+    raise ValueError("OPENONDA_VPM_SCHEME must be RK2 or RK3")
 # Keep the historical OPENONDA_SPACING knob as a common fallback, but do not
 # force the Eulerian mesh, particle lattice, and diagnostic grid to have the
 # same resolution.  Resolution-matched controls show that this distinction is
@@ -91,10 +94,39 @@ SURFACE_CELL_SIZE = float(
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 PARTICLE_LIMIT = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 OVERLAP_RADIUS_RATIO = 1.0
-WRITE_INTERVAL = DT_VPM if SMOKE else 0.15
-BACKUP_PERIOD = max(1, int(round(WRITE_INTERVAL / DT_VPM)))
+OVERLAP_SHELL_PRUNE_MULTIPLIER = float(
+    os.environ.get("OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER", "1.0")
+)
+# Force history remains dense enough for Cd/Strouhal analysis. Field samples,
+# raw FVM volumes, and restart checkpoints are independent because they have
+# very different costs and are not all needed by the plotting scripts.
+FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", str(DT_VPM if SMOKE else 0.15)))
+DIAGNOSTIC_INTERVAL = float(
+    os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", str(DT_VPM if SMOKE else 0.60))
+)
+CHECKPOINT_INTERVAL = float(
+    os.environ.get("OPENONDA_CHECKPOINT_INTERVAL", str(DT_VPM if SMOKE else 1.0))
+)
+FVM_VOLUME_INTERVAL = float(
+    os.environ.get("OPENONDA_VOLUME_INTERVAL", str(DT_VPM if SMOKE else 1.0))
+)
 
-SAMPLE_INTERVAL = max(1, int(round(WRITE_INTERVAL / DT_FVM)))
+
+def _step_period(name: str, interval: float, time_step: float) -> int:
+    if interval <= 0.0 or time_step <= 0.0:
+        raise ValueError(f"{name} and its time step must be positive")
+    ratio = interval / time_step
+    period = int(round(ratio))
+    if period < 1 or not np.isclose(ratio, period, rtol=0.0, atol=1.0e-10):
+        raise ValueError(f"{name} must be an integer multiple of {time_step:g} s")
+    return period
+
+
+# Backward-compatible name used by external case checks: the primary scalar
+# diagnostic is the force history.
+WRITE_INTERVAL = FORCE_INTERVAL
+VPM_LOG_PERIOD = _step_period("diagnostic interval", DIAGNOSTIC_INTERVAL, DT_VPM)
+BACKUP_PERIOD = _step_period("checkpoint interval", CHECKPOINT_INTERVAL, DT_VPM)
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
@@ -106,21 +138,21 @@ FVM_SAMPLERS = (
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+        schedule=SamplingSchedule(every_time=FORCE_INTERVAL),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_centerline",
-        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+        schedule=SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
     ),
     FVMLineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_offaxis_y075",
-        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+        schedule=SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
     ),
     FVMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -128,7 +160,7 @@ FVM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
-        schedule=SamplingSchedule(every_n_steps=SAMPLE_INTERVAL),
+        schedule=SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
     ),
 )
 
@@ -151,6 +183,7 @@ VPM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="vpm_slice_z0",
+        include_derivatives=False,
     ),
     VPMSurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -158,6 +191,7 @@ VPM_SAMPLERS = (
         bounds=WAKE_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="vpm_wake_slice_z0",
+        include_derivatives=False,
     ),
 )
 
@@ -199,7 +233,7 @@ FVM_SETUP = FVMSetup(
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
-        write_interval_time=WRITE_INTERVAL,
+        write_interval_time=FVM_VOLUME_INTERVAL,
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
@@ -260,8 +294,8 @@ VPM_SETUP = VPMSetup(
         cap_abs_fraction=0.95,
         regen_radius_ratio=OVERLAP_RADIUS_RATIO,
     ),
-    stretching=StretchingConfig.transposed(scheme="RK2"),
-    advection=AdvectionConfig(scheme="RK2"),
+    stretching=StretchingConfig.transposed(scheme=VPM_SCHEME),
+    advection=AdvectionConfig(scheme=VPM_SCHEME),
     turbulence=VPMTurbulenceConfig.equilibrium_smagorinsky(
         ck=SMAGORINSKY_CK,
         ce=SMAGORINSKY_CE,
@@ -275,8 +309,11 @@ VPM_SETUP = VPMSetup(
     max_targets=PARTICLE_LIMIT,
     vpm_domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_frequency=BACKUP_PERIOD,
-    backup_frequency=BACKUP_PERIOD,
+    logging_frequency=VPM_LOG_PERIOD,
+    timing_frequency=VPM_LOG_PERIOD,
+    # The coupler already writes one complete rolling restart. Standalone VPM
+    # histories duplicated that state and dominated output-step wall time.
+    backup_frequency=0,
     backup_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,
@@ -291,9 +328,10 @@ COUPLER_SETUP = CouplerSetup(
     buffer_thickness=6 * PARTICLE_SPACING,
     dead_zone_h=0.0,
     prune_vorticity_min=0.005,
+    overlap_shell_prune_multiplier=OVERLAP_SHELL_PRUNE_MULTIPLIER,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
-    log_period=5,
+    log_period=VPM_LOG_PERIOD,
     backup_period=BACKUP_PERIOD,
 )
 
@@ -309,11 +347,29 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="set FVM, particle, and sampling spacing together [m] (legacy shortcut)",
     )
     parser.add_argument("--particle-spacing", type=float, help="VPM/handoff spacing [m]")
+    parser.add_argument("--vpm-dt", type=float, help="VPM/coupling time step [s]")
+    parser.add_argument(
+        "--vpm-scheme",
+        type=str.upper,
+        choices=("RK2", "RK3"),
+        help="VPM advection and stretching Runge--Kutta scheme",
+    )
     parser.add_argument("--fvm-cell-size", type=float, help="maximum inner FVM cell size [m]")
     parser.add_argument("--sample-spacing", type=float, help="diagnostic sampling spacing [m]")
     parser.add_argument("--surface-cell-size", type=float, help="cells on the cube surface [m]")
     parser.add_argument("--max-particles", type=int, help="particle budget")
     parser.add_argument("--fvm-cores", type=int, help="CPU cores for the FVM solver")
+    parser.add_argument(
+        "--overlap-shell-prune-multiplier",
+        type=float,
+        help="maximum weak-particle prune multiplier away from the outflow face",
+    )
+    parser.add_argument("--force-interval", type=float, help="force sampling interval [s]")
+    parser.add_argument(
+        "--diagnostic-interval", type=float, help="line/surface sampling interval [s]"
+    )
+    parser.add_argument("--checkpoint-interval", type=float, help="rolling restart interval [s]")
+    parser.add_argument("--volume-interval", type=float, help="raw FVM VTK interval [s]")
     return parser.parse_args(argv)
 
 
@@ -341,12 +397,22 @@ def _run_with_overrides(argv: list[str]) -> int:
             overrides[key] = str(args.spacing)
     for flag, key in (
         ("end_time", "OPENONDA_T_END"),
+        ("vpm_dt", "OPENONDA_DT_VPM"),
+        ("vpm_scheme", "OPENONDA_VPM_SCHEME"),
         ("particle_spacing", "OPENONDA_PARTICLE_SPACING"),
         ("fvm_cell_size", "OPENONDA_FVM_CELL_SIZE"),
         ("sample_spacing", "OPENONDA_SAMPLE_SPACING"),
         ("surface_cell_size", "OPENONDA_SURFACE_CELL_SIZE"),
         ("max_particles", "OPENONDA_MAX_PARTICLES"),
         ("fvm_cores", "OPENONDA_FVM_CORES"),
+        (
+            "overlap_shell_prune_multiplier",
+            "OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER",
+        ),
+        ("force_interval", "OPENONDA_FORCE_INTERVAL"),
+        ("diagnostic_interval", "OPENONDA_DIAGNOSTIC_INTERVAL"),
+        ("checkpoint_interval", "OPENONDA_CHECKPOINT_INTERVAL"),
+        ("volume_interval", "OPENONDA_VOLUME_INTERVAL"),
     ):
         if getattr(args, flag) is not None:
             overrides[key] = str(getattr(args, flag))
@@ -368,6 +434,7 @@ def main() -> None:
     print(
         f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
         f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
+        f"VPM scheme={VPM_SCHEME}, shell prune×{OVERLAP_SHELL_PRUNE_MULTIPLIER:g}, "
         f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
     )
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
