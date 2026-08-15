@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,6 +12,7 @@ import pytest
 
 from tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison import (
     lamb_oseen_profile,
+    latest_common_time,
     load_profile,
 )
 from tutorials.VPM.lambOseenVortex.assets.vortex_diagnostics import (
@@ -19,7 +21,6 @@ from tutorials.VPM.lambOseenVortex.assets.vortex_diagnostics import (
     _core_radius_diagnostic,
     _core_radius_utheta,
     _diagnostics_row,
-    average_field_diagnostics,
     resolve_runtime_physics,
     unwrap_pair_orientation,
 )
@@ -52,9 +53,7 @@ def _row_dict(field: dict, physics: str) -> dict:
 
 
 def test_strength_cutoff_normalization_preserves_requested_circulation():
-    from tutorials.VPM.lambOseenVortex.lambossen_setup import (
-        normalize_retained_circulation,
-    )
+    from tutorials.VPM.lambOseenVortex.lambossen_setup import normalize_retained_circulation
 
     particle_circulation = np.array([[0.0, 0.0, 2.0], [0.0, 0.0, 1.0]])
     normalized, raw_per_length, factor = normalize_retained_circulation(
@@ -127,35 +126,34 @@ def test_merging_diagnostics_retains_two_peaks_after_high_vorticity_regions_conn
     assert result["merged"] is False
 
 
-def test_production_configuration_uses_converged_spacing_and_dvh_subcycling():
+def test_production_configuration_uses_candidate_spacing_and_dvh_subcycling():
     from tutorials.VPM.lambOseenVortex.lambossen_setup import (
         CORE_RADIUS,
         DVH_MAX_NODES,
         DVH_RD_RATIO,
         FIELD_SPACING,
         GAUSSIAN_CORE_RADIUS,
+        GBD_MAX_NODES,
+        PARTICLE_RADIUS,
         SPACING,
         TIME_STEP,
-        scheme_time_control,
+        TOTAL_TIME,
         viscous_config,
     )
 
     viscosity = 1.0 / 530.0
     viscous = viscous_config("dvh", viscosity, SPACING)
-    dt, steps, final_time, diffusion_interval, substeps = scheme_time_control(
-        "dvh", viscous, TIME_STEP, 30.0
-    )
 
     assert pytest.approx(0.3375) == SPACING / CORE_RADIUS
     assert pytest.approx(0.15) == FIELD_SPACING / CORE_RADIUS
     assert np.isclose(BETA_RMAX * GAUSSIAN_CORE_RADIUS, CORE_RADIUS)
+    assert pytest.approx(1.5) == PARTICLE_RADIUS / SPACING
     assert viscous.dvh_rd_ratio == DVH_RD_RATIO == 4
     assert viscous.dvh_max_nodes == DVH_MAX_NODES == 300_000
-    assert dt <= TIME_STEP
-    assert diffusion_interval == pytest.approx(0.291)
-    assert substeps == 30
-    assert steps == 3090
-    assert final_time == pytest.approx(29.973)
+    assert viscous_config("gbd", viscosity, SPACING).gbd_max_nodes == GBD_MAX_NODES == 300_000
+    assert float(f"{viscous.dvh_required_dt():.3g}") == pytest.approx(0.291)
+    assert pytest.approx(9) == 0.291 / TIME_STEP
+    assert round(TOTAL_TIME / TIME_STEP) == 927
 
 
 def test_field_diagnostics_handles_lone_vortex():
@@ -280,6 +278,32 @@ def test_vortex_profile_returns_none_without_a_pvd_index(tmp_path, monkeypatch):
     assert load_profile(tmp_path, "cs") is None
 
 
+def test_vortex_profile_uses_latest_common_time_during_partial_run(tmp_path, monkeypatch):
+    import tutorials.VPM.lambOseenVortex.assets.plot_vortex_comparison as comparison
+
+    timelines = {
+        "cs": {50: 10.0, 100: 20.0, 150: 30.0},
+        "dvh": {49: 9.8},
+    }
+    monkeypatch.setattr(
+        comparison, "pvd_time_map", lambda _root, _case, scheme: timelines.get(scheme, {})
+    )
+
+    assert latest_common_time(tmp_path) == pytest.approx(9.8)
+
+    case_dir = tmp_path / "vortex_cs"
+    case_dir.mkdir()
+    for step in timelines["cs"]:
+        (case_dir / f"vortex_cs_zq_{step:06d}.vts").write_text("", encoding="utf-8")
+    field = _superposed_lamb_oseen_field([(0.0, 0.0, 1.0, 0.15)])
+    monkeypatch.setattr(comparison, "read_surface_field", lambda _path: field)
+
+    result = load_profile(tmp_path, "cs", target_time=9.8)
+
+    assert result is not None
+    assert result[-1] == pytest.approx(10.0)
+
+
 def test_live_partial_pvd_index_is_nonfatal(tmp_path):
     from tutorials.VPM.lambOseenVortex.assets.vortex_diagnostics import pvd_time_map
 
@@ -288,49 +312,6 @@ def test_live_partial_pvd_index_is_nonfatal(tmp_path):
     (case / "vortex_cs_zq.pvd").write_text("<VTKFile><Collection>", encoding="utf-8")
 
     assert pvd_time_map(tmp_path, "vortex", "cs") == {}
-
-
-def test_rwm_field_ensemble_averages_independent_histories(tmp_path):
-    member_dirs = []
-    for member, offset in enumerate((-0.1, 0.1)):
-        member_dir = tmp_path / f"member-{member}" / "samples" / "dipole_rwm"
-        member_dir.mkdir(parents=True)
-        field = pd.DataFrame(
-            {
-                "flow_time": [1.0, 2.0],
-                "time_step": [5, 10],
-                "center0_x": np.array([0.2, 0.4]) + offset,
-                "center0_y": [0.5, 0.5],
-                "center1_x": [np.nan, np.nan],
-                "center1_y": [np.nan, np.nan],
-                "separation": [np.nan, np.nan],
-                "a_c0": [0.2, 0.3],
-                "a_c1": [np.nan, np.nan],
-                "a_c_mean": [0.2, 0.3],
-                "angle_rad": [np.nan, np.nan],
-                "merged": [False, False],
-            }
-        )
-        field.to_csv(member_dir / "field_diagnostics.csv", index=False)
-        pd.DataFrame(
-            {
-                "time": [1.0, 2.0],
-                "step": [5, 10],
-                "kinetic_energy": np.array([1.0, 0.8]) + offset,
-            }
-        ).to_csv(member_dir / "flow_integrals.csv", index=False)
-        (member_dir / "run_metadata.json").write_text("{}", encoding="utf-8")
-        member_dirs.append(member_dir)
-
-    average_field_diagnostics(member_dirs[0], member_dirs, realizations=2)
-
-    field = pd.read_csv(member_dirs[0] / "field_diagnostics.csv")
-    integrals = pd.read_csv(member_dirs[0] / "flow_integrals.csv")
-    metadata = json.loads((member_dirs[0] / "run_metadata.json").read_text(encoding="utf-8"))
-    assert field["center0_x"].to_list() == pytest.approx([0.2, 0.4])
-    assert field["separation"].isna().all()
-    assert integrals["kinetic_energy"].to_list() == pytest.approx([1.0, 0.8])
-    assert metadata["rwm_realizations"] == 2
 
 
 def test_pair_plots_render_all_four_methods_at_publication_width(tmp_path):
@@ -486,3 +467,14 @@ def test_postprocessing_manifest_does_not_mark_failed_run_complete(tmp_path):
 
     assert run["status"] == "failed"
     assert run["complete"] is False
+
+
+def test_allrun_uses_one_runner_for_every_viscous_method():
+    script = Path("tutorials/VPM/lambOseenVortex/allrun.sh").read_text(encoding="utf-8")
+
+    assert script.count("python -u lambossen_setup.py") == 12
+    assert script.count("--viscous_scheme") == 12
+    assert script.count("--case_name") == 12
+    assert "run_rwm_ensemble" not in script
+    assert "RWM_REALIZATIONS" not in script
+    assert "grid_independence_cs" not in script

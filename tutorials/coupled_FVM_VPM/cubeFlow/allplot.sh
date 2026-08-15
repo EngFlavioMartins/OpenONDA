@@ -8,6 +8,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+export MPLCONFIGDIR="$PWD/.matplotlib"
+mkdir -p "$MPLCONFIGDIR"
 
 format="${1:-png}"
 case "$format" in
@@ -17,19 +19,10 @@ esac
 
 mkdir -p figures
 
-echo
-echo "===== FIGURES ($format) ====="
-echo
-
 plot() {
     python "$@" --format "$format"
 }
 
 plot assets/plot_velocity_profiles.py
 plot assets/plot_velocity_fields.py
-plot assets/plot_wake_errors.py
-plot assets/plot_forces.py
-
-echo
-echo "===== DONE ====="
-echo "Figures saved to: figures/"
+# plot assets/plot_wake_errors.py

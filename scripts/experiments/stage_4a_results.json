@@ -1,0 +1,1457 @@
+{
+  "cases": [
+    {
+      "delta": 0.15,
+      "delta_over_dns_h": 3.0557749073643903,
+      "diagnostics": {
+        "activation": 0.7772729911299123,
+        "coefficient": 0.013135002967235323,
+        "consistency_error": 0.044898012372773376,
+        "high_k_amplification": 35.5224332220706,
+        "kkt_condition": 179587.62916762664,
+        "weight_sum_error": 2.1094237467877974e-15
+      },
+      "group": "AGARD development",
+      "label": "AGARD_delta_0.15",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.8062757133737247,
+          "relative_l2": 0.5920411800316434,
+          "shell_error": 0.253717644594084,
+          "transfer_ratio": 0.8927471206697523
+        },
+        "sensed": {
+          "correlation": 0.8266001735378827,
+          "relative_l2": 0.5653523374291533,
+          "shell_error": 0.29193379419204857,
+          "transfer_ratio": 0.7928560431389173
+        },
+        "structural": {
+          "correlation": 0.8337272281810594,
+          "relative_l2": 0.5862092336088053,
+          "shell_error": 0.5599258519725376,
+          "transfer_ratio": 0.4442560371788436
+        }
+      },
+      "n": 128
+    },
+    {
+      "delta": 0.2,
+      "delta_over_dns_h": 4.074366543152521,
+      "diagnostics": {
+        "activation": 0.8110500057512169,
+        "coefficient": 0.012673363971327888,
+        "consistency_error": 0.05292405559342537,
+        "high_k_amplification": 35.65033158959925,
+        "kkt_condition": 138124.4173295884,
+        "weight_sum_error": 2.220446049250313e-15
+      },
+      "group": "AGARD development",
+      "label": "AGARD_delta_0.2",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.7992349232945054,
+          "relative_l2": 0.6034997641384352,
+          "shell_error": 0.34694850283914785,
+          "transfer_ratio": 0.7284359954978341
+        },
+        "sensed": {
+          "correlation": 0.8121733984669601,
+          "relative_l2": 0.5935636491022335,
+          "shell_error": 0.39496041329688775,
+          "transfer_ratio": 0.6583479377464764
+        },
+        "structural": {
+          "correlation": 0.7991060765724127,
+          "relative_l2": 0.6384161345444134,
+          "shell_error": 0.6477062860332329,
+          "transfer_ratio": 0.35750156901102725
+        }
+      },
+      "n": 128
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.1360324625403837,
+        "coefficient": 0.009566565945425992,
+        "consistency_error": 0.01157450895597732,
+        "high_k_amplification": 19.050320712259058,
+        "kkt_condition": 8998365.972531585,
+        "weight_sum_error": 2.6645352591003757e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1500_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9686515602777215,
+          "relative_l2": 0.3236468921114444,
+          "shell_error": 0.31751192153585395,
+          "transfer_ratio": 1.2897294860592519
+        },
+        "sensed": {
+          "correlation": 0.9927103655396978,
+          "relative_l2": 0.12204145964903126,
+          "shell_error": 0.02892910780128231,
+          "transfer_ratio": 1.0072424226576733
+        },
+        "structural": {
+          "correlation": 0.9919895959368774,
+          "relative_l2": 0.1341566713657306,
+          "shell_error": 0.03673506258567006,
+          "transfer_ratio": 0.9627645815303217
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.007981140828973573,
+        "consistency_error": 0.009986829177369516,
+        "high_k_amplification": 30.523568211882676,
+        "kkt_condition": 568345.7226300136,
+        "weight_sum_error": 1.887379141862766e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1500_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9630427350657274,
+          "relative_l2": 0.3031229627388761,
+          "shell_error": 0.28248956039064765,
+          "transfer_ratio": 1.2791294556096207
+        },
+        "sensed": {
+          "correlation": 0.9804866667819964,
+          "relative_l2": 0.20441680111755905,
+          "shell_error": 0.08663385536894702,
+          "transfer_ratio": 0.9103643366952643
+        },
+        "structural": {
+          "correlation": 0.9804866667819964,
+          "relative_l2": 0.20441680111755905,
+          "shell_error": 0.08663385536894702,
+          "transfer_ratio": 0.9103643366952643
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.006430238966139999,
+        "consistency_error": 0.001903205386730021,
+        "high_k_amplification": 310.5762782752896,
+        "kkt_condition": 49734686377.30033,
+        "weight_sum_error": 2.1760371282653068e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1500_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9687253928804184,
+          "relative_l2": 0.276539524232024,
+          "shell_error": 0.39527077135733557,
+          "transfer_ratio": 1.3869678144239503
+        },
+        "sensed": {
+          "correlation": 0.9896017118242071,
+          "relative_l2": 0.1447558226768611,
+          "shell_error": 0.04859162819585364,
+          "transfer_ratio": 0.9455306678778147
+        },
+        "structural": {
+          "correlation": 0.9896017118242071,
+          "relative_l2": 0.1447558226768611,
+          "shell_error": 0.04859162819585364,
+          "transfer_ratio": 0.9455306678778147
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.16177137572074973,
+        "coefficient": 0.00836706899771191,
+        "consistency_error": 0.011929919487775172,
+        "high_k_amplification": 31.24514943675953,
+        "kkt_condition": 7996103.066691407,
+        "weight_sum_error": 3.3306690738754696e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1700_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9758919317488228,
+          "relative_l2": 0.2639762323200346,
+          "shell_error": 0.25592055652117907,
+          "transfer_ratio": 1.2425314584302172
+        },
+        "sensed": {
+          "correlation": 0.9907929809645648,
+          "relative_l2": 0.13893337151027788,
+          "shell_error": 0.033579617988002824,
+          "transfer_ratio": 1.0059087440828074
+        },
+        "structural": {
+          "correlation": 0.990042036648152,
+          "relative_l2": 0.15235821202314853,
+          "shell_error": 0.04196756541043509,
+          "transfer_ratio": 0.9602424653158752
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.051489327027369525,
+        "coefficient": 0.007093634336784222,
+        "consistency_error": 0.010542843939393977,
+        "high_k_amplification": 32.388271778588674,
+        "kkt_condition": 1049405.7079314964,
+        "weight_sum_error": 1.5543122344752192e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1700_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9635854410869048,
+          "relative_l2": 0.2849571443481052,
+          "shell_error": 0.27654463907130405,
+          "transfer_ratio": 1.26386585265476
+        },
+        "sensed": {
+          "correlation": 0.9774166780832931,
+          "relative_l2": 0.2207097628726184,
+          "shell_error": 0.056747499067066436,
+          "transfer_ratio": 0.9457766680705727
+        },
+        "structural": {
+          "correlation": 0.9767135060130224,
+          "relative_l2": 0.2255449081840816,
+          "shell_error": 0.07027921079974725,
+          "transfer_ratio": 0.9285093894667428
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.00617825808738547,
+        "consistency_error": 0.0020924782450073777,
+        "high_k_amplification": 310.5752596505394,
+        "kkt_condition": 121347002239.99402,
+        "weight_sum_error": 3.863576125695545e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1700_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9662409047919348,
+          "relative_l2": 0.28033484988572566,
+          "shell_error": 0.4233439097296417,
+          "transfer_ratio": 1.4064070966449491
+        },
+        "sensed": {
+          "correlation": 0.9892277285621985,
+          "relative_l2": 0.148465794342002,
+          "shell_error": 0.027710054249430557,
+          "transfer_ratio": 0.9673566849369767
+        },
+        "structural": {
+          "correlation": 0.9892277285621985,
+          "relative_l2": 0.148465794342002,
+          "shell_error": 0.027710054249430557,
+          "transfer_ratio": 0.9673566849369767
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.01010328415444499,
+        "consistency_error": 0.00885352326506556,
+        "high_k_amplification": 34.7716942445723,
+        "kkt_condition": 9012945.135986414,
+        "weight_sum_error": 1.1102230246251565e-16
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1900_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.963093950514952,
+          "relative_l2": 0.3473618046094961,
+          "shell_error": 0.2877715473501725,
+          "transfer_ratio": 1.2910944766404588
+        },
+        "sensed": {
+          "correlation": 0.992126453191919,
+          "relative_l2": 0.1299313555529669,
+          "shell_error": 0.02061055026845519,
+          "transfer_ratio": 0.9787808233789548
+        },
+        "structural": {
+          "correlation": 0.992126453191919,
+          "relative_l2": 0.1299313555529669,
+          "shell_error": 0.02061055026845519,
+          "transfer_ratio": 0.9787808233789548
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.010454250244261765,
+        "consistency_error": 0.00802012842522784,
+        "high_k_amplification": 31.313416537073486,
+        "kkt_condition": 750485.154856608,
+        "weight_sum_error": 6.661338147750939e-16
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1900_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9384250746958366,
+          "relative_l2": 0.4386340231733722,
+          "shell_error": 0.35987967186023356,
+          "transfer_ratio": 1.38551762216609
+        },
+        "sensed": {
+          "correlation": 0.9860577771468227,
+          "relative_l2": 0.16879666957675216,
+          "shell_error": 0.033579249130531445,
+          "transfer_ratio": 0.958840374428615
+        },
+        "structural": {
+          "correlation": 0.9860577771468227,
+          "relative_l2": 0.16879666957675216,
+          "shell_error": 0.033579249130531445,
+          "transfer_ratio": 0.958840374428615
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.011773861805725925,
+        "consistency_error": 0.0015942278187494206,
+        "high_k_amplification": 310.57522212922197,
+        "kkt_condition": 73518096858.7307,
+        "weight_sum_error": 1.3322676295501878e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_1900_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9104717535952719,
+          "relative_l2": 0.5692703932976868,
+          "shell_error": 0.5277982494468301,
+          "transfer_ratio": 1.5600776769622469
+        },
+        "sensed": {
+          "correlation": 0.995623774850331,
+          "relative_l2": 0.09345754070671908,
+          "shell_error": 0.013863367680410937,
+          "transfer_ratio": 0.9821265882124329
+        },
+        "structural": {
+          "correlation": 0.995623774850331,
+          "relative_l2": 0.09345754070671908,
+          "shell_error": 0.013863367680410937,
+          "transfer_ratio": 0.9821265882124329
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.03670752866042726,
+        "coefficient": 0.010506961330443687,
+        "consistency_error": 0.010381063173984751,
+        "high_k_amplification": 29.25259756278995,
+        "kkt_condition": 6079566.046536884,
+        "weight_sum_error": 6.661338147750939e-16
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2100_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.964845722857004,
+          "relative_l2": 0.36109964761870944,
+          "shell_error": 0.30328281203723334,
+          "transfer_ratio": 1.2995724980074626
+        },
+        "sensed": {
+          "correlation": 0.994788457377329,
+          "relative_l2": 0.10565492983783319,
+          "shell_error": 0.01925961862984178,
+          "transfer_ratio": 0.9891201705025974
+        },
+        "structural": {
+          "correlation": 0.9945272337302645,
+          "relative_l2": 0.11022956895710538,
+          "shell_error": 0.024454569160890425,
+          "transfer_ratio": 0.9772899755736016
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.010845212538821982,
+        "consistency_error": 0.009536373228858037,
+        "high_k_amplification": 30.459790525305653,
+        "kkt_condition": 329681.42396569747,
+        "weight_sum_error": 2.220446049250313e-16
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2100_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9416747712658007,
+          "relative_l2": 0.4371719009115504,
+          "shell_error": 0.4211053533124884,
+          "transfer_ratio": 1.4114457682958323
+        },
+        "sensed": {
+          "correlation": 0.9883850391352956,
+          "relative_l2": 0.15709233563230135,
+          "shell_error": 0.05479012050016786,
+          "transfer_ratio": 0.9538357324698916
+        },
+        "structural": {
+          "correlation": 0.9883850391352956,
+          "relative_l2": 0.15709233563230135,
+          "shell_error": 0.05479012050016786,
+          "transfer_ratio": 0.9538357324698916
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.012520815792045175,
+        "consistency_error": 0.0019141126462407154,
+        "high_k_amplification": 310.5755043184627,
+        "kkt_condition": 31104050108.93762,
+        "weight_sum_error": 1.509903313490213e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2100_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9092799131796472,
+          "relative_l2": 0.5669926416060961,
+          "shell_error": 0.6411424263400362,
+          "transfer_ratio": 1.634332746811708
+        },
+        "sensed": {
+          "correlation": 0.9959312721670667,
+          "relative_l2": 0.09017589539128766,
+          "shell_error": 0.01872808874085143,
+          "transfer_ratio": 0.9862113057342139
+        },
+        "structural": {
+          "correlation": 0.9959312721670667,
+          "relative_l2": 0.09017589539128766,
+          "shell_error": 0.01872808874085143,
+          "transfer_ratio": 0.9862113057342139
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.15055237701092206,
+        "coefficient": 0.011256604084881664,
+        "consistency_error": 0.01177235621051185,
+        "high_k_amplification": 34.188546347636596,
+        "kkt_condition": 4385048.740383437,
+        "weight_sum_error": 2.4424906541753444e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2300_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9490241155149874,
+          "relative_l2": 0.4210833731605786,
+          "shell_error": 0.3571051722851978,
+          "transfer_ratio": 1.3426122015532844
+        },
+        "sensed": {
+          "correlation": 0.992032540398669,
+          "relative_l2": 0.12714406275802112,
+          "shell_error": 0.04035720467446988,
+          "transfer_ratio": 1.024900610915369
+        },
+        "structural": {
+          "correlation": 0.9920561231280386,
+          "relative_l2": 0.13637461855508184,
+          "shell_error": 0.03193399969595067,
+          "transfer_ratio": 0.9685907998334986
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0825287263719332,
+        "coefficient": 0.01113188705392202,
+        "consistency_error": 0.010899523818828463,
+        "high_k_amplification": 31.574689268706557,
+        "kkt_condition": 511487.0804242399,
+        "weight_sum_error": 2.220446049250313e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2300_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9317379655168517,
+          "relative_l2": 0.4566478941263165,
+          "shell_error": 0.3888907506881773,
+          "transfer_ratio": 1.4002467295842036
+        },
+        "sensed": {
+          "correlation": 0.9826166423197382,
+          "relative_l2": 0.19144423122236068,
+          "shell_error": 0.04161120726765259,
+          "transfer_ratio": 0.9690400178339399
+        },
+        "structural": {
+          "correlation": 0.98171841237113,
+          "relative_l2": 0.20078765711162155,
+          "shell_error": 0.06813597235269764,
+          "transfer_ratio": 0.9302519470281339
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.011470781943684881,
+        "consistency_error": 0.0022016145324198024,
+        "high_k_amplification": 310.57555806364877,
+        "kkt_condition": 57181827815.503204,
+        "weight_sum_error": 3.885780586188048e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2300_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9295754010560767,
+          "relative_l2": 0.4851766893943793,
+          "shell_error": 0.560108480434465,
+          "transfer_ratio": 1.5690044169239505
+        },
+        "sensed": {
+          "correlation": 0.9915521971704142,
+          "relative_l2": 0.1315713496408514,
+          "shell_error": 0.03405766429284902,
+          "transfer_ratio": 0.9586942817056565
+        },
+        "structural": {
+          "correlation": 0.9915521971704142,
+          "relative_l2": 0.1315713496408514,
+          "shell_error": 0.03405766429284902,
+          "transfer_ratio": 0.9586942817056565
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.6872233929727672,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.21658493061666995,
+        "coefficient": 0.012383502169673762,
+        "consistency_error": 0.012764625536079566,
+        "high_k_amplification": 36.68811520520884,
+        "kkt_condition": 3767273.689865294,
+        "weight_sum_error": 0.0
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2500_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9483002561458496,
+          "relative_l2": 0.43483909569485985,
+          "shell_error": 0.3958634111151899,
+          "transfer_ratio": 1.3619708141370954
+        },
+        "sensed": {
+          "correlation": 0.9896545293651192,
+          "relative_l2": 0.14348451551394473,
+          "shell_error": 0.06409763380857367,
+          "transfer_ratio": 1.0456971787560365
+        },
+        "structural": {
+          "correlation": 0.9904603442590069,
+          "relative_l2": 0.1504697354264578,
+          "shell_error": 0.038871299497680145,
+          "transfer_ratio": 0.9582593618797172
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.9817477042468103,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.089973690621174,
+        "coefficient": 0.01282677578513836,
+        "consistency_error": 0.010988693290445516,
+        "high_k_amplification": 34.99638532370483,
+        "kkt_condition": 1499323.216808364,
+        "weight_sum_error": 2.220446049250313e-15
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2500_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9327552203546902,
+          "relative_l2": 0.4666980347416919,
+          "shell_error": 0.42450438591310946,
+          "transfer_ratio": 1.4122941091107142
+        },
+        "sensed": {
+          "correlation": 0.9800631817926678,
+          "relative_l2": 0.20401211331344582,
+          "shell_error": 0.05361353356453253,
+          "transfer_ratio": 0.9521707275474778
+        },
+        "structural": {
+          "correlation": 0.9783632686980365,
+          "relative_l2": 0.2172787341927576,
+          "shell_error": 0.09761321577347343,
+          "transfer_ratio": 0.9066786375346104
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 1.3744467859455345,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.014007644222244417,
+        "consistency_error": 0.0020976240924624133,
+        "high_k_amplification": 310.57979340900965,
+        "kkt_condition": 138441036613.1403,
+        "weight_sum_error": 2.5979218776228663e-14
+      },
+      "group": "stationary HIT development",
+      "label": "stationary HIT development_step_2500_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9262731795846645,
+          "relative_l2": 0.5179577394579258,
+          "shell_error": 0.5207159411331506,
+          "transfer_ratio": 1.5675010017884807
+        },
+        "sensed": {
+          "correlation": 0.9887114719052452,
+          "relative_l2": 0.15231090138646614,
+          "shell_error": 0.049677285827669525,
+          "transfer_ratio": 0.9436924495183452
+        },
+        "structural": {
+          "correlation": 0.9887114719052452,
+          "relative_l2": 0.15231090138646614,
+          "shell_error": 0.049677285827669525,
+          "transfer_ratio": 0.9436924495183452
+        }
+      },
+      "n": 32
+    },
+    {
+      "delta": 0.916297857297023,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.6657968676932191,
+        "coefficient": 0.0017547376797715235,
+        "consistency_error": 0.029921921829327822,
+        "high_k_amplification": 22.256630083617797,
+        "kkt_condition": 165929.42563328776,
+        "weight_sum_error": 5.551115123125783e-16
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_20_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9668495340405564,
+          "relative_l2": 0.2557118717424363,
+          "shell_error": 0.3368778623826273,
+          "transfer_ratio": 1.2137534094932354
+        },
+        "sensed": {
+          "correlation": 0.9679942881711202,
+          "relative_l2": 0.25153555097685304,
+          "shell_error": 0.34827102553300143,
+          "transfer_ratio": 0.9374974090160307
+        },
+        "structural": {
+          "correlation": 0.9675089452938523,
+          "relative_l2": 0.25345159772610176,
+          "shell_error": 0.8755695384486494,
+          "transfer_ratio": 0.3871423643770681
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.308996938995747,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.00519859494414071,
+        "consistency_error": 0.008901874249270358,
+        "high_k_amplification": 170.78753200285564,
+        "kkt_condition": 2771450061998.7314,
+        "weight_sum_error": 2.886579864025407e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_20_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9403009455315262,
+          "relative_l2": 0.34895420856175413,
+          "shell_error": 0.8566685773947809,
+          "transfer_ratio": 2.0209480631074404
+        },
+        "sensed": {
+          "correlation": 0.9551399853263977,
+          "relative_l2": 0.2985439634491379,
+          "shell_error": 0.37316980010972745,
+          "transfer_ratio": 0.8682098735892021
+        },
+        "structural": {
+          "correlation": 0.9551399853263977,
+          "relative_l2": 0.2985439634491379,
+          "shell_error": 0.37316980010972745,
+          "transfer_ratio": 0.8682098735892021
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.832595714594046,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.01048549900427241,
+        "consistency_error": 0.0003158403237396598,
+        "high_k_amplification": 13662.560628018613,
+        "kkt_condition": 1.5343239455033698e+16,
+        "weight_sum_error": 2.4158453015843406e-13
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_20_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9458078506157903,
+          "relative_l2": 0.34607064090051043,
+          "shell_error": 0.9049449934563388,
+          "transfer_ratio": 1.9713662945466035
+        },
+        "sensed": {
+          "correlation": 0.9763578996388591,
+          "relative_l2": 0.21886794776563334,
+          "shell_error": 0.04551866954962781,
+          "transfer_ratio": 0.9629830558242507
+        },
+        "structural": {
+          "correlation": 0.9763578996388591,
+          "relative_l2": 0.21886794776563334,
+          "shell_error": 0.04551866954962781,
+          "transfer_ratio": 0.9629830558242507
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 0.916297857297023,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.659060956813052,
+        "coefficient": 0.00283172850361616,
+        "consistency_error": 0.02933075633264059,
+        "high_k_amplification": 21.79153589988957,
+        "kkt_condition": 150830.71653942973,
+        "weight_sum_error": 2.6645352591003757e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_40_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9607793625265808,
+          "relative_l2": 0.2773319874106502,
+          "shell_error": 0.1809011315197646,
+          "transfer_ratio": 1.1003385750894965
+        },
+        "sensed": {
+          "correlation": 0.9632772223058853,
+          "relative_l2": 0.2688805007354674,
+          "shell_error": 0.21792954418605193,
+          "transfer_ratio": 0.9103704205807024
+        },
+        "structural": {
+          "correlation": 0.9611237125212572,
+          "relative_l2": 0.276950143389045,
+          "shell_error": 0.6240816105441461,
+          "transfer_ratio": 0.5431476100036111
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.308996938995747,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.00605274998693548,
+        "consistency_error": 0.00860566472251041,
+        "high_k_amplification": 170.78882766976378,
+        "kkt_condition": 2563772241200.786,
+        "weight_sum_error": 5.773159728050814e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_40_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9372336514491633,
+          "relative_l2": 0.36139218836047954,
+          "shell_error": 0.651168718889063,
+          "transfer_ratio": 1.7053626652512144
+        },
+        "sensed": {
+          "correlation": 0.9519789586063098,
+          "relative_l2": 0.30874823058428225,
+          "shell_error": 0.3402263416950131,
+          "transfer_ratio": 0.7968726763800662
+        },
+        "structural": {
+          "correlation": 0.9519789586063098,
+          "relative_l2": 0.30874823058428225,
+          "shell_error": 0.3402263416950131,
+          "transfer_ratio": 0.7968726763800662
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.832595714594046,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.011401072150443782,
+        "consistency_error": 0.00030011210085051105,
+        "high_k_amplification": 13664.186318881128,
+        "kkt_condition": 9184590073990206.0,
+        "weight_sum_error": 1.6058265828178264e-12
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_40_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9432509071627093,
+          "relative_l2": 0.35863691715704626,
+          "shell_error": 0.8105447689636766,
+          "transfer_ratio": 1.870337855700868
+        },
+        "sensed": {
+          "correlation": 0.9763940104800434,
+          "relative_l2": 0.21867428249818893,
+          "shell_error": 0.04566944925000734,
+          "transfer_ratio": 0.9419563738375022
+        },
+        "structural": {
+          "correlation": 0.9763940104800434,
+          "relative_l2": 0.21867428249818893,
+          "shell_error": 0.04566944925000734,
+          "transfer_ratio": 0.9419563738375022
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 0.916297857297023,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.6553444863616762,
+        "coefficient": 0.0038926801749915815,
+        "consistency_error": 0.02901447852795371,
+        "high_k_amplification": 21.912230748359953,
+        "kkt_condition": 139368.7056088925,
+        "weight_sum_error": 2.6645352591003757e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_60_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9531694306093847,
+          "relative_l2": 0.3025802701949701,
+          "shell_error": 0.14668741459672008,
+          "transfer_ratio": 1.0954582617507658
+        },
+        "sensed": {
+          "correlation": 0.957599508357231,
+          "relative_l2": 0.28841192964556667,
+          "shell_error": 0.1628456089594191,
+          "transfer_ratio": 0.9254067864256658
+        },
+        "structural": {
+          "correlation": 0.9537095247530414,
+          "relative_l2": 0.30241939337730683,
+          "shell_error": 0.5177308871342481,
+          "transfer_ratio": 0.6020627738040694
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.308996938995747,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.00682266077623307,
+        "consistency_error": 0.008400243849719909,
+        "high_k_amplification": 170.79002719557562,
+        "kkt_condition": 2457668062418.664,
+        "weight_sum_error": 3.4638958368304884e-14
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_60_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9342137950294628,
+          "relative_l2": 0.3738044472819061,
+          "shell_error": 0.5428393388672814,
+          "transfer_ratio": 1.563094082175105
+        },
+        "sensed": {
+          "correlation": 0.9482631053634636,
+          "relative_l2": 0.3199413490369476,
+          "shell_error": 0.31980671455303616,
+          "transfer_ratio": 0.7749924651814316
+        },
+        "structural": {
+          "correlation": 0.9482631053634636,
+          "relative_l2": 0.3199413490369476,
+          "shell_error": 0.31980671455303616,
+          "transfer_ratio": 0.7749924651814316
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.832595714594046,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.012074794464626126,
+        "consistency_error": 0.0002889667046249947,
+        "high_k_amplification": 13665.396866578125,
+        "kkt_condition": 9188552314610934.0,
+        "weight_sum_error": 7.815970093361102e-13
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_60_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9416505330464983,
+          "relative_l2": 0.3675872631984792,
+          "shell_error": 0.7449858572791582,
+          "transfer_ratio": 1.8006721724447934
+        },
+        "sensed": {
+          "correlation": 0.9761873569206494,
+          "relative_l2": 0.21953693128990648,
+          "shell_error": 0.05117303435181261,
+          "transfer_ratio": 0.9303844408480155
+        },
+        "structural": {
+          "correlation": 0.9761873569206494,
+          "relative_l2": 0.21953693128990648,
+          "shell_error": 0.05117303435181261,
+          "transfer_ratio": 0.9303844408480155
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 0.916297857297023,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.6545717088987755,
+        "coefficient": 0.004901339468841598,
+        "consistency_error": 0.028949568572163048,
+        "high_k_amplification": 22.55920702773523,
+        "kkt_condition": 127764.43932238665,
+        "weight_sum_error": 1.7763568394002505e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_80_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9450967323155341,
+          "relative_l2": 0.3277272858134185,
+          "shell_error": 0.14178267756926716,
+          "transfer_ratio": 1.108077774321143
+        },
+        "sensed": {
+          "correlation": 0.9517653256997223,
+          "relative_l2": 0.30704166187626086,
+          "shell_error": 0.12713539148919734,
+          "transfer_ratio": 0.946551177276221
+        },
+        "structural": {
+          "correlation": 0.9467353142668613,
+          "relative_l2": 0.3251204248633941,
+          "shell_error": 0.45563788220193824,
+          "transfer_ratio": 0.640465244583131
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.308996938995747,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.007503413899863579,
+        "consistency_error": 0.00827497013471182,
+        "high_k_amplification": 170.79067864759145,
+        "kkt_condition": 2326848487324.779,
+        "weight_sum_error": 1.176836406102666e-14
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_80_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9316343447544828,
+          "relative_l2": 0.3851433079719673,
+          "shell_error": 0.4816448337394514,
+          "transfer_ratio": 1.489255877096491
+        },
+        "sensed": {
+          "correlation": 0.9448039924338856,
+          "relative_l2": 0.3298267410728073,
+          "shell_error": 0.2998488824308268,
+          "transfer_ratio": 0.7728320254297905
+        },
+        "structural": {
+          "correlation": 0.9448039924338856,
+          "relative_l2": 0.3298267410728073,
+          "shell_error": 0.2998488824308268,
+          "transfer_ratio": 0.7728320254297905
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.832595714594046,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.012497881007724495,
+        "consistency_error": 0.0002826270417746101,
+        "high_k_amplification": 13665.430465628146,
+        "kkt_condition": 1.5639492061560122e+16,
+        "weight_sum_error": 6.821210263296962e-13
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_80_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9411714882771547,
+          "relative_l2": 0.3722072259927545,
+          "shell_error": 0.6939289262307421,
+          "transfer_ratio": 1.7467231270886387
+        },
+        "sensed": {
+          "correlation": 0.9759906086630152,
+          "relative_l2": 0.22033751759363795,
+          "shell_error": 0.056754894988780766,
+          "transfer_ratio": 0.9235707624461467
+        },
+        "structural": {
+          "correlation": 0.9759906086630152,
+          "relative_l2": 0.22033751759363795,
+          "shell_error": 0.056754894988780766,
+          "transfer_ratio": 0.9235707624461467
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 0.916297857297023,
+      "delta_over_dns_h": 3.5,
+      "diagnostics": {
+        "activation": 0.6554789107187484,
+        "coefficient": 0.005833475842185497,
+        "consistency_error": 0.02902579932294493,
+        "high_k_amplification": 23.13485608624426,
+        "kkt_condition": 114381.71788823203,
+        "weight_sum_error": 2.4424906541753444e-15
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_100_delta_3.5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9376598440685694,
+          "relative_l2": 0.3501566881651745,
+          "shell_error": 0.14795929425644266,
+          "transfer_ratio": 1.1255578050699262
+        },
+        "sensed": {
+          "correlation": 0.9465212220809073,
+          "relative_l2": 0.3227191982427977,
+          "shell_error": 0.100046242134249,
+          "transfer_ratio": 0.9688162763362989
+        },
+        "structural": {
+          "correlation": 0.9411860616533293,
+          "relative_l2": 0.34265902709807167,
+          "shell_error": 0.410471836397568,
+          "transfer_ratio": 0.6706029892105388
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.308996938995747,
+      "delta_over_dns_h": 5.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.008086621300555822,
+        "consistency_error": 0.00822077275898833,
+        "high_k_amplification": 170.7909278834394,
+        "kkt_condition": 2106694299192.3455,
+        "weight_sum_error": 1.4432899320127035e-14
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_100_delta_5h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9297181743765769,
+          "relative_l2": 0.3947320522505002,
+          "shell_error": 0.44514267970537974,
+          "transfer_ratio": 1.4477379034708062
+        },
+        "sensed": {
+          "correlation": 0.9420566971321938,
+          "relative_l2": 0.33736234758843964,
+          "shell_error": 0.2790254930874572,
+          "transfer_ratio": 0.7795811926755756
+        },
+        "structural": {
+          "correlation": 0.9420566971321938,
+          "relative_l2": 0.33736234758843964,
+          "shell_error": 0.2790254930874572,
+          "transfer_ratio": 0.7795811926755756
+        }
+      },
+      "n": 24
+    },
+    {
+      "delta": 1.832595714594046,
+      "delta_over_dns_h": 7.0,
+      "diagnostics": {
+        "activation": 0.0,
+        "coefficient": 0.012675579104725814,
+        "consistency_error": 0.0002805346586254197,
+        "high_k_amplification": 13665.241897954054,
+        "kkt_condition": 1.5011583799040128e+16,
+        "weight_sum_error": 1.4210854715202004e-12
+      },
+      "group": "transient HIT holdout",
+      "label": "transient HIT holdout_step_100_delta_7h",
+      "models": {
+        "full_ssev": {
+          "correlation": 0.9417636454888846,
+          "relative_l2": 0.3724353873220528,
+          "shell_error": 0.6501366437793868,
+          "transfer_ratio": 1.70042083436686
+        },
+        "sensed": {
+          "correlation": 0.975897724657958,
+          "relative_l2": 0.2206479260419768,
+          "shell_error": 0.06221671115158879,
+          "transfer_ratio": 0.9188639543370141
+        },
+        "structural": {
+          "correlation": 0.975897724657958,
+          "relative_l2": 0.2206479260419768,
+          "shell_error": 0.06221671115158879,
+          "transfer_ratio": 0.9188639543370141
+        }
+      },
+      "n": 24
+    }
+  ],
+  "formulation_checks": {
+    "constant_filter_relative": 0.0,
+    "divergence_relative": 0.0,
+    "galilean_stress_relative": 3.078699785534294e-13,
+    "galilean_velocity_relative": 2.291727340716284e-13,
+    "gaussian_composition_relative": 3.2827173305463084e-16,
+    "quadratic_amplitude_scaling_relative": 5.249962014882382e-13,
+    "stress_vorticity_identity_relative": 3.452657974180059e-13,
+    "uniform_torque_absolute": 0.0,
+    "yuan_width_mapping_absolute": 1.1102230246251565e-16
+  },
+  "formulation_gate_pass": true,
+  "formulation_gate_tolerance": 1e-10,
+  "frozen_model": {
+    "activation": "max(0, 1 - epsilon/e)",
+    "consistency_tolerance": 0.01,
+    "filter_to_spacing_ratio": 2.0,
+    "stencil": 5,
+    "svd_rcond": 2.7977620220553945e-14,
+    "updates": 2
+  },
+  "gate": "A",
+  "summary": {
+    "AGARD development": {
+      "full_ssev": {
+        "correlation": {
+          "max": 0.8062757133737247,
+          "mean": 0.8027553183341151,
+          "min": 0.7992349232945054
+        },
+        "relative_l2": {
+          "max": 0.6034997641384352,
+          "mean": 0.5977704720850393,
+          "min": 0.5920411800316434
+        },
+        "shell_error": {
+          "max": 0.34694850283914785,
+          "mean": 0.30033307371661594,
+          "min": 0.253717644594084
+        },
+        "transfer_ratio": {
+          "max": 0.8927471206697523,
+          "mean": 0.8105915580837932,
+          "min": 0.7284359954978341
+        }
+      },
+      "sensed": {
+        "correlation": {
+          "max": 0.8266001735378827,
+          "mean": 0.8193867860024214,
+          "min": 0.8121733984669601
+        },
+        "relative_l2": {
+          "max": 0.5935636491022335,
+          "mean": 0.5794579932656934,
+          "min": 0.5653523374291533
+        },
+        "shell_error": {
+          "max": 0.39496041329688775,
+          "mean": 0.3434471037444682,
+          "min": 0.29193379419204857
+        },
+        "transfer_ratio": {
+          "max": 0.7928560431389173,
+          "mean": 0.7256019904426969,
+          "min": 0.6583479377464764
+        }
+      },
+      "structural": {
+        "correlation": {
+          "max": 0.8337272281810594,
+          "mean": 0.816416652376736,
+          "min": 0.7991060765724127
+        },
+        "relative_l2": {
+          "max": 0.6384161345444134,
+          "mean": 0.6123126840766093,
+          "min": 0.5862092336088053
+        },
+        "shell_error": {
+          "max": 0.6477062860332329,
+          "mean": 0.6038160690028853,
+          "min": 0.5599258519725376
+        },
+        "transfer_ratio": {
+          "max": 0.4442560371788436,
+          "mean": 0.4008788030949354,
+          "min": 0.35750156901102725
+        }
+      }
+    },
+    "stationary HIT development": {
+      "full_ssev": {
+        "correlation": {
+          "max": 0.9758919317488228,
+          "mean": 0.9473108494518423,
+          "min": 0.9092799131796472
+        },
+        "relative_l2": {
+          "max": 0.5692703932976868,
+          "mean": 0.4019728246349374,
+          "min": 0.2639762323200346
+        },
+        "shell_error": {
+          "max": 0.6411424263400362,
+          "mean": 0.39662497558456916,
+          "min": 0.25592055652117907
+        },
+        "transfer_ratio": {
+          "max": 1.634332746811708,
+          "mean": 1.394683401433571,
+          "min": 1.2425314584302172
+        }
+      },
+      "sensed": {
+        "correlation": {
+          "max": 0.9959312721670667,
+          "mean": 0.9887655260320319,
+          "min": 0.9774166780832931
+        },
+        "relative_l2": {
+          "max": 0.2207097628726184,
+          "mean": 0.14857771737229447,
+          "min": 0.09017589539128766
+        },
+        "shell_error": {
+          "max": 0.08663385536894702,
+          "mean": 0.040357627058699365,
+          "min": 0.013863367680410937
+        },
+        "transfer_ratio": {
+          "max": 1.0456971787560365,
+          "mean": 0.9736272102958132,
+          "min": 0.9103643366952643
+        }
+      },
+      "structural": {
+        "correlation": {
+          "max": 0.9959312721670667,
+          "mean": 0.9885319229733347,
+          "min": 0.9767135060130224
+        },
+        "relative_l2": {
+          "max": 0.2255449081840816,
+          "mean": 0.15267636510220842,
+          "min": 0.09017589539128766
+        },
+        "shell_error": {
+          "max": 0.09761321577347343,
+          "mean": 0.044346264418428406,
+          "min": 0.013863367680410937
+        },
+        "transfer_ratio": {
+          "max": 0.9862113057342139,
+          "mean": 0.954334466840037,
+          "min": 0.9066786375346104
+        }
+      }
+    },
+    "transient HIT holdout": {
+      "full_ssev": {
+        "correlation": {
+          "max": 0.9668495340405564,
+          "mean": 0.9433533492861916,
+          "min": 0.9297181743765769
+        },
+        "relative_l2": {
+          "max": 0.3947320522505002,
+          "mean": 0.34629811615494005,
+          "min": 0.2557118717424363
+        },
+        "shell_error": {
+          "max": 0.9049449934563388,
+          "mean": 0.5157475812420055,
+          "min": 0.14178267756926716
+        },
+        "transfer_ratio": {
+          "max": 2.0209480631074404,
+          "mean": 1.5306069800648925,
+          "min": 1.0954582617507658
+        }
+      },
+      "sensed": {
+        "correlation": {
+          "max": 0.9763940104800434,
+          "mean": 0.9606818603891762,
+          "min": 0.9420566971321938
+        },
+        "relative_l2": {
+          "max": 0.33736234758843964,
+          "mean": 0.27540507189319363,
+          "min": 0.21867428249818893
+        },
+        "shell_error": {
+          "max": 0.37316980010972745,
+          "mean": 0.18864252023131983,
+          "min": 0.04551866954962781
+        },
+        "transfer_ratio": {
+          "max": 0.9688162763362989,
+          "mean": 0.8905925926789277,
+          "min": 0.7728320254297905
+        }
+      },
+      "structural": {
+        "correlation": {
+          "max": 0.9763940104800434,
+          "mean": 0.9595555931807414,
+          "min": 0.9411860616533293
+        },
+        "relative_l2": {
+          "max": 0.34265902709807167,
+          "mean": 0.27953918822499185,
+          "min": 0.21867428249818893
+        },
+        "shell_error": {
+          "max": 0.8755695384486494,
+          "mean": 0.31712678305962855,
+          "min": 0.04551866954962781
+        },
+        "transfer_ratio": {
+          "max": 0.9629830558242507,
+          "mean": 0.7675778535018277,
+          "min": 0.3871423643770681
+        }
+      }
+    }
+  }
+}

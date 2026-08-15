@@ -696,12 +696,17 @@ class EvolutionStepper:
             self.physics.random_walk_method_diffusion(self.particles, dt=dt)
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
+            diffusion_dt = dt
             if self.viscous_scheme == "DVH" and self._dvh_substeps > 1:
                 self.solver._dvh_fire_counter += 1
                 if self.solver._dvh_fire_counter < self._dvh_substeps:
                     return
                 self.solver._dvh_fire_counter = 0
-            new_p = self._apply_grid_diffusion(self._viscous_config, dt)
+                # The heat-kernel width is 4*nu*dt_d. Passing one macro-step
+                # here after waiting several steps under-diffuses by exactly
+                # _dvh_substeps. Apply the full accumulated interval.
+                diffusion_dt = dt * self._dvh_substeps
+            new_p = self._apply_grid_diffusion(self._viscous_config, diffusion_dt)
             if new_p is not None:
                 from ..stabilization.divergence_relaxation import (
                     _MomentNullspace,

@@ -138,13 +138,25 @@ def _read_vts(path: Path):
 def _find_surface_vts(
     samples_dir: Path,
     scheme: str,
+    target_time: float | None = None,
 ) -> tuple[Path | None, float | None]:
     folder = samples_dir / f"vortex_{scheme}"
     time_by_step = pvd_time_map(samples_dir, "vortex", scheme)
     if not time_by_step:
         return None, None
 
-    for selected_step in sorted(time_by_step, key=time_by_step.get, reverse=True):
+    if target_time is None:
+        ordered_steps = sorted(time_by_step, key=time_by_step.get, reverse=True)
+    else:
+        ordered_steps = sorted(
+            time_by_step,
+            key=lambda step: (
+                abs(time_by_step[step] - target_time),
+                time_by_step[step] > target_time,
+            ),
+        )
+
+    for selected_step in ordered_steps:
         path = folder / f"vortex_{scheme}_zq_{selected_step:06d}.vts"
         if path.is_file():
             return path, time_by_step[selected_step]
@@ -163,17 +175,25 @@ def plot_surface_fields(args) -> int:
 
     colors, theme = load_theme()
     runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
-    run_nu = runtime["nu"]
-    ac0 = runtime["ac0"]
-    t0 = runtime["t0"]
+    ac0 = runtime["velocity_peak_radius0"]
     run_gamma = runtime["gamma"]
     uc_ref = run_gamma / (2.0 * np.pi * ac0)
     wc_ref = run_gamma / (np.pi * ac0**2)
 
+    # During a sequential allrun, compare all available methods at the
+    # latest time reached by every one of them. This prevents a completed
+    # method from being tiled beside a much younger running solution.
+    latest_times = []
+    for scheme, *_ in _LAYOUT:
+        timeline = pvd_time_map(samples_dir, "vortex", scheme)
+        if timeline:
+            latest_times.append(max(timeline.values()))
+    comparison_time = min(latest_times) if latest_times else None
+
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}
     for scheme, qid, *_ in _LAYOUT:
-        vts, sample_time = _find_surface_vts(samples_dir, scheme)
+        vts, sample_time = _find_surface_vts(samples_dir, scheme, comparison_time)
         if vts is None:
             print(f"  [surface] no requested VTS for {scheme!r} — skipping quadrant")
             continue
@@ -197,8 +217,15 @@ def plot_surface_fields(args) -> int:
         print("  [surface] no sampled fields; figure not generated")
         return 0
 
-    sample_time = float(np.median([data["time"] for data in datasets.values()]))
-    print(f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods at t={sample_time:.3g}s")
+    selected_times = [float(data["time"]) for data in datasets.values()]
+    sample_time = (
+        comparison_time if comparison_time is not None else float(np.median(selected_times))
+    )
+    print(
+        f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods "
+        f"at common t={sample_time:.3g}s "
+        f"(selected samples {min(selected_times):.3g}–{max(selected_times):.3g}s)"
+    )
 
     # -- Shared normalisation limits ------------------------------------
     v_norm = mcolors.Normalize(vmin=0.0, vmax=0.2)

@@ -8,55 +8,14 @@
   "core_radius": 0.11160714285714285,
   "core_radius_definition": "gaussian_1_over_e_vorticity_radius",
   "velocity_peak_radius": 0.125,
-  "spacing_reference_core_definition": "radius_of_maximum_azimuthal_velocity",
-  "field_core_radius_definition": "radius_of_maximum_azimuthal_velocity",
-  "field_center_definition": "subgrid_peak_vorticity",
   "separation": 1.0,
   "column_half_length": 3.125,
-  "requested_total_time": 30.0,
-  "total_time": 30.0,
-  "requested_time_step": 0.01,
-  "time_step": 0.01,
-  "advection_scheme": "RK3",
-  "time_integration": "FRACTIONAL",
-  "treecode_theta": 0.3,
-  "treecode_multipole_order": 3,
-  "treecode_sort_particle_targets": true,
+  "total_time": 29.973,
+  "time_step": 0.03233333333333333,
   "in_plane_spacing": 0.0421875,
-  "column_spacing": 0.1,
-  "particle_radius": 0.06328125000000001,
-  "particle_replicas": 1,
-  "diffusion_grid_spacing": 0.0421875,
-  "dvh_rd_ratio": null,
-  "dvh_diffusion_interval": null,
-  "dvh_advection_substeps_per_diffusion": 1,
-  "dvh_threshold": null,
-  "dvh_threshold_mode": null,
-  "dvh_max_nodes": null,
-  "regen_radius_ratio": null,
   "field_spacing": 0.01875,
   "sample_plane_z": 1.5625,
-  "sample_plane_fraction": 0.25,
-  "processing_unit": "AUTO",
-  "random_seed": 42,
-  "strength_cutoff_relative": 0.01,
-  "circulation_normalization": "per_vortex_after_strength_cutoff",
-  "requested_sample_interval": 0.5,
-  "sample_interval": 0.5,
-  "raw_backup_interval": 2.5,
-  "status": "running",
-  "completed": false,
-  "initial_particle_count": 5040,
-  "raw_retained_circulation_per_length": [
-    0.9904056429516538
-  ],
-  "raw_retained_circulation_fraction": [
-    0.9904056429516538
-  ],
-  "circulation_normalization_factors": [
-    1.0096873004678695
-  ],
-  "retained_circulation_per_length": [
-    1.0
-  ]
+  "status": "complete",
+  "completed": true,
+  "final_time": 29.973
 }

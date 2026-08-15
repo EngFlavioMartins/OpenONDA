@@ -142,10 +142,27 @@ def save(fig, name: str, fmt: str, dpi: int) -> Path:
 
 
 def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
+    """Load a line history or a single-frame VPM line sample."""
+    with path.open(encoding="utf-8") as stream:
+        first_line = stream.readline()
+    match = re.fullmatch(r"#\s*flow_time\s*=\s*([^\s]+)\s*", first_line)
     rows = np.atleast_1d(
-        np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+        np.genfromtxt(
+            path,
+            delimiter=",",
+            names=True,
+            dtype=None,
+            encoding="utf-8",
+            skip_header=1 if match else 0,
+        )
     )
-    return {name: np.asarray(rows[name]) for name in rows.dtype.names}
+    table = {name: np.asarray(rows[name]) for name in rows.dtype.names}
+    if "flow_time" in table:
+        return table
+    if match is None:
+        raise ValueError(f"{path} has no flow_time column or metadata")
+    table["flow_time"] = np.full(rows.size, float(match.group(1)))
+    return table
 
 
 def line_times(source: str, name: str) -> np.ndarray:

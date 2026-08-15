@@ -73,22 +73,39 @@ def lamb_oseen_gradient(r: np.ndarray, t: float, gamma: float, nu: float) -> np.
 
 
 def load_profile(
-    samples_dir: Path, scheme: str
+    samples_dir: Path,
+    scheme: str,
+    target_time: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float] | None:
-    """Slice the y≈0 row out of the last sampled z=L/4 field for this scheme."""
+    """Slice y≈0 at the latest, or nearest requested, sampled time."""
 
     timeline = pvd_time_map(samples_dir, "vortex", scheme)
     if not timeline:
         return None
-    last_step = max(timeline, key=timeline.get)
-    vts = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{last_step:06d}.vts"
-    if not vts.is_file():
-        return None
+    if target_time is None:
+        ordered_steps = sorted(timeline, key=timeline.get, reverse=True)
+    else:
+        # During a sequential allrun, completed methods may be far ahead of
+        # the method currently running. Select the snapshot nearest the latest
+        # time common to every available method so the comparison is physical.
+        ordered_steps = sorted(
+            timeline,
+            key=lambda step: (abs(timeline[step] - target_time), timeline[step] > target_time),
+        )
 
-    try:
-        field = read_surface_field(vts)
-    except Exception as exc:
-        print(f"  [vortex] skipping unreadable live sample {vts.name}: {exc}")
+    field = None
+    selected_step = None
+    for step in ordered_steps:
+        vts = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
+        if not vts.is_file():
+            continue
+        try:
+            field = read_surface_field(vts)
+            selected_step = step
+            break
+        except Exception as exc:
+            print(f"  [vortex] skipping unreadable live sample {vts.name}: {exc}")
+    if field is None or selected_step is None:
         return None
     if np.abs(field["Uy"]).max() <= 1e-10:
         return None
@@ -100,7 +117,17 @@ def load_profile(
     x = field["x"][:, j0]
     uy = field["Uy"][:, j0]
     oz = field["omega_z"][:, j0]
-    return x, uy, oz, timeline[last_step]
+    return x, uy, oz, timeline[selected_step]
+
+
+def latest_common_time(samples_dir: Path) -> float | None:
+    """Latest physical time reached by every currently available method."""
+    latest = []
+    for scheme in SCHEMES:
+        timeline = pvd_time_map(samples_dir, "vortex", scheme)
+        if timeline:
+            latest.append(max(timeline.values()))
+    return min(latest) if latest else None
 
 
 # =============================================================
@@ -119,7 +146,9 @@ def plot_vortex_case(args) -> int:
     runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
     run_t0 = runtime["t0"]
-    ac0 = runtime["ac0"]
+    # All benchmark figures use the same literature/diagnostic definition:
+    # a_c is the radius of maximum azimuthal velocity.
+    ac0 = runtime["velocity_peak_radius0"]
     run_gamma = runtime["gamma"]
 
     uc_ref = run_gamma / (2.0 * np.pi * ac0)
@@ -129,9 +158,10 @@ def plot_vortex_case(args) -> int:
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.18, left=0.12, right=0.98)
 
+    comparison_time = latest_common_time(samples_dir)
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        profile = load_profile(samples_dir, scheme)
+        profile = load_profile(samples_dir, scheme, comparison_time)
         if profile is None:
             continue
         x, uy, oz, t = profile
@@ -152,9 +182,14 @@ def plot_vortex_case(args) -> int:
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
     if scheme_data:
-        elapsed_time = float(np.median([scheme[1] for scheme in scheme_data]))
+        sample_times = [scheme[1] for scheme in scheme_data]
+        elapsed_time = (
+            comparison_time if comparison_time is not None else float(np.median(sample_times))
+        )
         print(
-            f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods at t={elapsed_time:.3g}s"
+            f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods "
+            f"at common t={elapsed_time:.3g}s "
+            f"(selected samples {min(sample_times):.3g}–{max(sample_times):.3g}s)"
         )
     else:
         elapsed_time = TOTAL_TIME

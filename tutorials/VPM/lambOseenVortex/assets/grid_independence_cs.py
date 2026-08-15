@@ -29,11 +29,13 @@ else:
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 SETUP = SCRIPT_DIR / "lambossen_setup.py"
-DEFAULT_ROOT = SCRIPT_DIR / "grid_study" / "cs_single_rk3_p3"
+DEFAULT_ROOT = SCRIPT_DIR / "grid_study" / "cs_equal_protocol_v1"
 DEFAULT_LEVELS = (0.60, 0.45, 0.3375)
 FIELDS = ("velocity_l2", "vorticity_l2", "velocity_gradient_l2")
 SELF_FIELDS = ("velocity", "vorticity", "velocity_gradient")
 SELF_CONVERGENCE_TOLERANCE = 0.005
+TIME_STEP = 0.291 / 9.0
+TOTAL_TIME = 103.0 * 0.291
 
 
 def level_name(spacing_ratio: float) -> str:
@@ -76,9 +78,10 @@ def completed_metadata(
         metadata.get("scheme") == "cs",
         metadata.get("core_radius_definition") == "gaussian_1_over_e_vorticity_radius",
         metadata.get("circulation_normalization") == "per_vortex_after_strength_cutoff",
-        metadata.get("processing_unit") == "CPU",
+        metadata.get("requested_processing_unit", metadata.get("processing_unit"))
+        == args.processing_unit,
         metadata.get("advection_scheme") == "RK3",
-        np.isclose(float(metadata.get("time_step", np.nan)), 0.01),
+        np.isclose(float(metadata.get("time_step", np.nan)), args.time_step),
         np.isclose(float(metadata.get("treecode_theta", np.nan)), 0.30),
         int(metadata.get("treecode_multipole_order", -1)) == 3,
         np.isclose(float(metadata.get("in_plane_spacing", np.nan)) / a0, spacing_ratio),
@@ -116,12 +119,14 @@ def run_level(root: Path, spacing_ratio: float, args: argparse.Namespace) -> dic
         str(args.field_spacing_ratio),
         "--total-time",
         str(args.total_time),
+        "--time-step",
+        str(args.time_step),
         "--sample-plane-fraction",
         str(args.sample_plane_fraction),
         "--output-root",
         str(root),
         "--processing-unit",
-        "CPU",
+        args.processing_unit,
     ]
     print(f"  [grid] run {level_name(spacing_ratio)} (CS only)")
     subprocess.run(command, cwd=SCRIPT_DIR, check=True)  # noqa: S603
@@ -154,6 +159,9 @@ def analyze_level(root: Path, spacing_ratio: float, metadata: dict) -> dict[str,
         "final_time": float(time),
         "initial_particles": int(metadata.get("initial_particle_count", -1)),
         "wall_time_seconds": float(metadata.get("wall_time_seconds", np.nan)),
+        "resolved_processing_unit": metadata.get(
+            "resolved_processing_unit", metadata.get("processing_unit")
+        ),
         "velocity_l2": relative_l2(velocity[window], exact_velocity[window]),
         "vorticity_l2": relative_l2(vorticity[window], exact_vorticity[window]),
         "velocity_gradient_l2": relative_l2(numerical_gradient[window], exact_gradient[window]),
@@ -235,7 +243,8 @@ def write_results(
     rows: list[dict[str, float]],
     orders: dict[str, float],
     self_metrics: dict[str, dict[str, float | bool]],
-) -> None:
+    processing_unit: str,
+) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     csv_path = root / "grid_independence_cs.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
@@ -254,9 +263,18 @@ def write_results(
         field: bool(metrics["successive_difference_decreases"])
         for field, metrics in self_metrics.items()
     }
+    resolved_backends = sorted(
+        {
+            str(row["resolved_processing_unit"])
+            for row in rows
+            if row.get("resolved_processing_unit")
+        }
+    )
+    consistent_processing_backend = len(resolved_backends) == 1
     complete_three_grid_study = len(rows) == 3 and len(self_metrics) == len(SELF_FIELDS)
     numerical_grid_independent = bool(
         complete_three_grid_study
+        and consistent_processing_backend
         and all(self_differences_decrease.values())
         and all(
             float(metrics["medium_to_fine_relative_difference"]) <= SELF_CONVERGENCE_TOLERANCE
@@ -274,7 +292,9 @@ def write_results(
         "sampling_strategy": "fixed field grid at every level",
         "sample_plane_fraction": rows[0]["sample_plane_fraction"],
         "column_length_over_a0": rows[0]["column_length_over_a0"],
-        "processing_unit": "CPU",
+        "processing_unit": processing_unit,
+        "resolved_processing_units": resolved_backends,
+        "consistent_processing_backend": consistent_processing_backend,
         "complete_three_grid_study": complete_three_grid_study,
         "observed_exact_solution_error_orders": orders,
         "exact_solution_errors_decrease_under_refinement": exact_errors_decrease,
@@ -289,7 +309,8 @@ def write_results(
         ),
         "interpretation": (
             "Spatial grid independence is supported only when every successive-solution "
-            "difference decreases and every medium-to-fine difference is no larger than "
+            "difference decreases, all levels use the same resolved processing backend, "
+            "and every medium-to-fine difference is no larger than "
             f"{SELF_CONVERGENCE_TOLERANCE:.3g}. Analytical validation is reported separately: "
             "the exact reference is an infinite two-dimensional Lamb-Oseen vortex, whereas "
             "these simulations use a finite vortex column, so model-form error can impose "
@@ -300,13 +321,20 @@ def write_results(
         json.dumps(json_compatible(report), indent=2, allow_nan=False), encoding="utf-8"
     )
     print(f"  [grid] wrote {csv_path}")
+    return report
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--levels", nargs=3, type=float, default=DEFAULT_LEVELS)
     parser.add_argument("--field-spacing-ratio", type=float, default=0.15)
-    parser.add_argument("--total-time", type=float, default=30.0)
+    parser.add_argument("--total-time", type=float, default=TOTAL_TIME)
+    parser.add_argument("--time-step", type=float, default=TIME_STEP)
+    parser.add_argument(
+        "--processing-unit",
+        choices=("AUTO", "CPU", "VULKAN", "CUDA", "METAL"),
+        default="AUTO",
+    )
     parser.add_argument(
         "--sample-plane-fraction",
         type=float,
@@ -318,6 +346,11 @@ def parse_args() -> argparse.Namespace:
         "--analyze-only",
         action="store_true",
         help="do not run simulations; analyze three already-completed levels",
+    )
+    parser.add_argument(
+        "--require-converged",
+        action="store_true",
+        help="return a non-zero status unless the three-grid self-convergence gate passes",
     )
     return parser.parse_args()
 
@@ -349,7 +382,13 @@ def main() -> int:
         return 0
     orders = add_convergence_metrics(rows)
     self_metrics = self_convergence_metrics(output_root, rows, float(ratios[0]))
-    write_results(output_root, rows, orders, self_metrics)
+    report = write_results(output_root, rows, orders, self_metrics, args.processing_unit)
+    if (
+        args.require_converged
+        and report["grid_independence_verdict"] != "supported_at_stated_tolerance"
+    ):
+        print("  [grid] convergence gate failed")
+        return 1
     return 0
 
 

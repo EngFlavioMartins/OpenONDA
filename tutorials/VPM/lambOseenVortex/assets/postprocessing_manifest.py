@@ -37,14 +37,13 @@ def _last_time(path: Path, column: str) -> tuple[int, float | None]:
 def _quality_warnings(scheme: str, metadata: dict, maximum_particles: float | None) -> list[str]:
     warnings = []
     if scheme == "rwm" and metadata:
-        if int(metadata.get("rwm_realizations", 1)) < 2:
-            warnings.append("RWM is a single realization; it is not an ensemble estimate.")
-        else:
-            warnings.append("RWM pilot ensemble is not a particle/ensemble convergence study.")
-    cap = metadata.get("dvh_max_nodes") if scheme == "dvh" else None
+        warnings.append("RWM is a single realization; it is not an ensemble estimate.")
+    cap_key = {"dvh": "dvh_max_nodes", "gbd": "gbd_max_nodes"}.get(scheme)
+    cap = metadata.get(cap_key) if cap_key else None
     if cap and maximum_particles is not None and maximum_particles >= float(cap):
         warnings.append(
-            "DVH reached its particle-count guard; inspect late-time sensitivity to dvh_max_nodes."
+            f"{scheme.upper()} reached its particle-count guard; inspect late-time sensitivity "
+            f"to {cap_key}."
         )
     return warnings
 
@@ -100,14 +99,12 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 "treecode_multipole_order": metadata.get("treecode_multipole_order"),
                 "dvh_rd_ratio": metadata.get("dvh_rd_ratio"),
                 "dvh_max_nodes": metadata.get("dvh_max_nodes"),
+                "gbd_max_nodes": metadata.get("gbd_max_nodes"),
                 "circulation_normalization": metadata.get("circulation_normalization"),
                 "raw_retained_circulation_fraction": metadata.get(
                     "raw_retained_circulation_fraction"
                 ),
                 "random_seed": metadata.get("random_seed"),
-                "rwm_realizations": metadata.get("rwm_realizations", 1)
-                if scheme == "rwm" and metadata
-                else None,
                 "quality_warnings": _quality_warnings(scheme, metadata, maximum_particles),
             }
     return {

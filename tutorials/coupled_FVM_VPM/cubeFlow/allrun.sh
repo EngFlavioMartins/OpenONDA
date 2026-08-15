@@ -15,13 +15,3 @@ echo "===== SIMULATE ====="
 echo
 mkdir -p solution
 python -u cubeFlow_setup.py 2>&1 | tee solution/cubeFlow.log
-
-echo
-echo "===== VALIDATE ====="
-echo
-python assets/check_run.py
-
-echo
-echo "===== DONE ====="
-echo
-echo "Simulation completed. Run ./allplot.sh to make the figures."

@@ -30,9 +30,11 @@ test_cs_vorticity_field_matches_grown_kernel
 """
 
 import numpy as np
+import pytest
 
 from source.solvers.VPM import Solver, VPMSetup
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.VPM.core.evolution import EvolutionStepper
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
 _NU = 1e-3  # kinematic viscosity  [m²/s]
@@ -156,3 +158,26 @@ def test_cs_vorticity_field_matches_grown_kernel(tmp_path):
         f"  ω_analytical = {omega_analytical.tolist()}\n"
         f"  ω_numerical  = {omega_numerical.tolist()}"
     )
+
+
+def test_dvh_subcycling_applies_the_full_accumulated_diffusion_interval():
+    """A DVH firing after n macro-steps must diffuse over n*dt, not dt."""
+
+    class FakeSolver:
+        viscous_scheme = "DVH"
+        _dvh_substeps = 3
+        _dvh_fire_counter = 0
+        _viscous_config = object()
+
+    solver = FakeSolver()
+    stepper = EvolutionStepper(solver)
+    applied_intervals = []
+    stepper._apply_grid_diffusion = lambda _config, dt: applied_intervals.append(dt)
+
+    stepper._apply_viscous_diffusion(0.1)
+    stepper._apply_viscous_diffusion(0.1)
+    assert applied_intervals == []
+
+    stepper._apply_viscous_diffusion(0.1)
+    assert applied_intervals == pytest.approx([0.3])
+    assert solver._dvh_fire_counter == 0

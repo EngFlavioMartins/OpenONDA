@@ -175,7 +175,7 @@ def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) ->
         ux_ref,
         ux_fvm,
         r"Reference FVM, $u_x^\mathrm{ref}$",
-        r"Stitched FVM+VPM, $u_x^\mathrm{stitched}$",
+        r"VPM, $u_x^\mathrm{VPM}$",
         "Stitched_RefVsHybrid",
         consts["box"],
         figure_format,

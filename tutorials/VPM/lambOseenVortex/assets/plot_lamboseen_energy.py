@@ -133,7 +133,7 @@ def plot_energy_enstrophy(args) -> int:
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
     run_nu = runtime["nu"]
-    a0 = runtime["ac0"]
+    a0 = runtime["velocity_peak_radius0"]
     run_t0 = runtime["t0"]
     run_gamma = runtime["gamma"]
     column_length = runtime["column_length"]
