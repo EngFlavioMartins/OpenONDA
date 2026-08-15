@@ -8,6 +8,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Keep headless plotting deterministic on machines whose home cache is not
+# writable (common in CI/sandboxed runs) and avoid rebuilding the font cache
+# once for every figure script.
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${TMPDIR:-/tmp}/openonda-matplotlib-cache}"
+mkdir -p "$MPLCONFIGDIR"
+
 format="${1:-png}"
 case "$format" in
     png|pdf) ;;
@@ -34,6 +40,11 @@ plot assets/plot_dipole_comparison.py
 plot assets/plot_merging_comparison.py
 plot assets/plot_vortex_surface_fields.py
 plot assets/plot_lamboseen_energy.py
+
+echo
+echo "===== DATA STATUS ====="
+echo
+python assets/postprocessing_manifest.py
 
 echo
 echo "===== DONE ====="

@@ -85,7 +85,11 @@ def load_profile(
     if not vts.is_file():
         return None
 
-    field = read_surface_field(vts)
+    try:
+        field = read_surface_field(vts)
+    except Exception as exc:
+        print(f"  [vortex] skipping unreadable live sample {vts.name}: {exc}")
+        return None
     if np.abs(field["Uy"]).max() <= 1e-10:
         return None
 
@@ -116,9 +120,10 @@ def plot_vortex_case(args) -> int:
     run_nu = runtime["nu"]
     run_t0 = runtime["t0"]
     ac0 = runtime["ac0"]
+    run_gamma = runtime["gamma"]
 
-    uc_ref = args.gamma / (2.0 * np.pi * ac0)
-    wc_ref = args.gamma / (np.pi * ac0**2)
+    uc_ref = run_gamma / (2.0 * np.pi * ac0)
+    wc_ref = run_gamma / (np.pi * ac0**2)
     gc_ref = uc_ref / ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
@@ -158,7 +163,7 @@ def plot_vortex_case(args) -> int:
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "-"}
     theory_t = run_t0 + elapsed_time
-    tv, to, _ = lamb_oseen_profile(r_line, theory_t, args.gamma, run_nu)
+    tv, to, _ = lamb_oseen_profile(r_line, theory_t, run_gamma, run_nu)
     tg = np.gradient(tv, r_line)
     axes[0].plot(r_line / ac0, tv / uc_ref, label="Theory", **ref_kw)
     axes[1].plot(r_line / ac0, to / wc_ref, **ref_kw)

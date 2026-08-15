@@ -9,11 +9,11 @@ field* itself (the ``*_zq_*.vts`` planes written by the ``SurfaceSampler``
 at z = +L/4) — one consistent method, independent of the viscous diffusion
 scheme and the physics case:
 
-  * vortex centres   — vorticity-weighted centroids of the signed (dipole) or
-    twin-peak (merging) regions, or the single peak (lone vortex);
+  * vortex centres   — sub-grid locations of peak vorticity, matching the
+    Cerretelli--Williamson separation/orientation definition;
   * core radius a_c  — radius where the azimuthally-averaged tangential
-    velocity |u_theta(r)| peaks, divided by BETA_RMAX (the Lamb--Oseen
-    u_theta peak sits at r = BETA_RMAX * a_c);
+    velocity |u_theta(r)| peaks, measured on the outward semicircle before
+    merger and over the full circle after merger;
   * separation and orbital angle (dipole/merging pair).
 
 Run directly to extract ``<case>/field_diagnostics.csv`` next to the sampled
@@ -30,6 +30,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import ndimage
 
 # -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
@@ -44,10 +45,11 @@ SCHEMES = ("cs", "rwm", "dvh", "gbd")
 BETA_RMAX = 1.12
 GAMMA = 1.0
 REYNOLDS_NUMBER = 530.0
-CORE_RADIUS = 0.125
+CORE_RADIUS = 0.125  # paper's radius of maximum azimuthal velocity
+GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
 SEPARATION = 1.0
 COLUMN_LENGTH = 50.0 * CORE_RADIUS  # mirrors lambossen_setup.py::COLUMN_LENGTH
-FIELD_SPACING = 0.30 * CORE_RADIUS  # mirrors lambossen_setup.py::FIELD_SPACING
+FIELD_SPACING = 0.15 * CORE_RADIUS  # mirrors lambossen_setup.py::FIELD_SPACING
 TOTAL_TIME = 30.0  # fallback reference time [s] when no run data is available
 
 VTS_STEP_RE = re.compile(r"_(\d+)\.vts$")
@@ -65,7 +67,19 @@ FIELD_CSV_COLUMNS = [
     "a_c_mean",
     "angle_rad",
     "merged",
+    "a_c0_boundary_limited",
+    "a_c1_boundary_limited",
 ]
+
+
+def unwrap_pair_orientation(angle_rad: np.ndarray) -> np.ndarray:
+    """Unwrap an undirected pair axis, whose physical period is pi."""
+    angle = np.asarray(angle_rad, dtype=float)
+    result = np.full_like(angle, np.nan)
+    finite = np.isfinite(angle)
+    if finite.any():
+        result[finite] = 0.5 * np.unwrap(2.0 * angle[finite])
+    return result
 
 
 # =============================================================
@@ -104,6 +118,7 @@ def resolve_runtime_physics(
     fallback_nu: float,
     b0: float,
     a0_over_b0: float,
+    prefix: str = "vortex",
 ) -> dict[str, float]:
     """Return the physical constants for the analytic reference.
 
@@ -111,13 +126,38 @@ def resolve_runtime_physics(
     If a run has no metadata, the tutorial constants provide the reference.
     The analytic reference is never inferred from the schemes' own output.
     """
-    metadata = read_run_metadata(samples_dir)
-    ac0 = float(metadata.get("core_radius", a0_over_b0 * b0))
+    metadata = read_run_metadata(samples_dir, prefix)
+    configured_core = float(metadata.get("core_radius", a0_over_b0 * b0))
+    # Runs produced before core_radius_definition was added used CORE_RADIUS
+    # for r(u_theta,max), even though every plot interpreted it as the
+    # Gaussian-equivalent radius a = r(u_theta,max)/BETA_RMAX.  Normalize
+    # legacy data with the radius that was actually initialized.
+    if metadata.get("core_radius_definition") == "gaussian_1_over_e_vorticity_radius":
+        ac0 = configured_core
+        velocity_peak_radius0 = float(
+            metadata.get("velocity_peak_radius", BETA_RMAX * configured_core)
+        )
+    elif metadata:
+        ac0 = configured_core / BETA_RMAX
+        velocity_peak_radius0 = configured_core
+    else:
+        velocity_peak_radius0 = a0_over_b0 * b0
+        ac0 = velocity_peak_radius0 / BETA_RMAX
     nu = float(metadata.get("viscosity", fallback_nu))
     if nu <= 0.0:
         nu = fallback_nu
-    sigma0 = ac0 / BETA_RMAX
-    return {"nu": nu, "t0": sigma0**2 / (4.0 * nu), "ac0": ac0}
+    column_length = 2.0 * float(metadata.get("column_half_length", COLUMN_LENGTH / 2.0))
+    circulations = metadata.get("circulations", [gamma])
+    run_gamma = abs(float(circulations[0])) if circulations else abs(float(gamma))
+    return {
+        "nu": nu,
+        "t0": ac0**2 / (4.0 * nu),
+        "ac0": ac0,
+        "velocity_peak_radius0": velocity_peak_radius0,
+        "gamma": run_gamma,
+        "separation": float(metadata.get("separation", b0)),
+        "column_length": column_length,
+    }
 
 
 def pvd_time_map(samples_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
@@ -130,7 +170,11 @@ def pvd_time_map(samples_dir: Path, prefix: str, scheme: str) -> dict[int, float
     pvd = samples_dir / f"{prefix}_{scheme}" / f"{prefix}_{scheme}_zq.pvd"
     if not pvd.exists():
         return {}
-    tree = ET.parse(pvd)  # nosec B314
+    try:
+        tree = ET.parse(pvd)  # nosec B314
+    except (OSError, ET.ParseError) as exc:
+        print(f"  [field] skipping unreadable live index {pvd.name}: {exc}")
+        return {}
     result: dict[int, float] = {}
     for ds in tree.getroot().iter("DataSet"):
         fname = ds.attrib.get("file", "")
@@ -180,91 +224,184 @@ def _weighted_centroid(x: np.ndarray, y: np.ndarray, weight: np.ndarray):
     return np.array([float(np.dot(weight, x)) / total, float(np.dot(weight, y)) / total])
 
 
-def _initial_centers(field: dict, physics: str) -> list[np.ndarray]:
-    """Robust seeds for the vortex centre(s) from the omega_z field."""
+def _subgrid_peak_center(
+    x: np.ndarray,
+    y: np.ndarray,
+    signed_vorticity: np.ndarray,
+    peak_index: tuple[int, int],
+) -> np.ndarray:
+    """Peak-vorticity location with independent parabolic sub-grid offsets."""
+    i, j = peak_index
+    peak = float(signed_vorticity[peak_index])
+    if not np.isfinite(peak) or peak <= 0.0:
+        return np.array([np.nan, np.nan])
+
+    center = np.array([float(x[peak_index]), float(y[peak_index])])
+    for axis, coordinate in ((0, x), (1, y)):
+        minus = (i - 1, j) if axis == 0 else (i, j - 1)
+        plus = (i + 1, j) if axis == 0 else (i, j + 1)
+        f_minus = float(signed_vorticity[minus])
+        f_plus = float(signed_vorticity[plus])
+        denominator = f_minus - 2.0 * peak + f_plus
+        if denominator >= -np.finfo(float).eps:
+            continue
+        offset_cells = 0.5 * (f_minus - f_plus) / denominator
+        offset_cells = float(np.clip(offset_cells, -0.75, 0.75))
+        spacing = float(coordinate[plus] - coordinate[peak_index])
+        center[axis] += offset_cells * spacing
+    return center
+
+
+def _peak_candidates(values: np.ndarray, minimum_relative_peak: float = 0.20):
+    """Return local maxima ordered by magnitude, excluding grid boundaries."""
+    if values.size == 0 or not np.isfinite(values).any():
+        return []
+    maximum = float(np.nanmax(values))
+    if maximum <= 0.0:
+        return []
+    local_max = values == ndimage.maximum_filter(values, size=3, mode="nearest")
+    local_max &= values >= minimum_relative_peak * maximum
+    local_max[[0, -1], :] = False
+    local_max[:, [0, -1]] = False
+    indices = [tuple(index) for index in np.argwhere(local_max)]
+    return sorted(indices, key=lambda index: float(values[index]), reverse=True)
+
+
+def _merging_peak_pair(
+    field: dict,
+    candidates: list[tuple[int, int]],
+    previous_centers: list[np.ndarray] | None,
+) -> list[tuple[int, int]]:
+    """Select the physical two-peak branch using strength and continuity."""
+    x, y, values = field["x"], field["y"], field["omega_z"]
+    central = [index for index in candidates if np.hypot(x[index], y[index]) <= 0.75 * SEPARATION][
+        :12
+    ]
+    if len(central) < 2:
+        return central
+
+    pairs = []
+    for i, first in enumerate(central[:-1]):
+        for second in central[i + 1 :]:
+            p0 = np.array([x[first], y[first]], dtype=float)
+            p1 = np.array([x[second], y[second]], dtype=float)
+            separation = float(np.linalg.norm(p0 - p1))
+            if separation < 1.5 * FIELD_SPACING:
+                continue
+            strength_reward = float(values[first] + values[second]) / max(
+                float(np.nanmax(values)), np.finfo(float).tiny
+            )
+            if previous_centers is not None and len(previous_centers) == 2:
+                direct = (
+                    np.linalg.norm(p0 - previous_centers[0]) ** 2
+                    + np.linalg.norm(p1 - previous_centers[1]) ** 2
+                )
+                swapped = (
+                    np.linalg.norm(p1 - previous_centers[0]) ** 2
+                    + np.linalg.norm(p0 - previous_centers[1]) ** 2
+                )
+                score = min(direct, swapped) - 0.02 * strength_reward
+            else:
+                midpoint_penalty = float(np.linalg.norm(0.5 * (p0 + p1))) ** 2
+                separation_penalty = 0.15 * (separation - SEPARATION) ** 2
+                score = midpoint_penalty + separation_penalty - 0.02 * strength_reward
+            pairs.append((score, first, second))
+    if not pairs:
+        return central[:1]
+    _, first, second = min(pairs, key=lambda item: item[0])
+    return [first, second]
+
+
+def _vorticity_peak_centers(
+    field: dict,
+    physics: str,
+    previous_centers: list[np.ndarray] | None = None,
+) -> list[np.ndarray]:
+    """Vortex centres from sub-grid peak-vorticity locations."""
     x, y, wz = field["x"], field["y"], field["omega_z"]
-    w = np.abs(wz)
-    mask = w > 0.05 * float(w.max())
-    xs, ys = x[mask], y[mask]
-    ws = w[mask]
-    wzs = wz[mask]
 
     if physics == "dipole":
-        positive = wzs > 0.0
-        if not positive.any() or positive.all():
-            return [np.array([np.nan, np.nan]), np.array([np.nan, np.nan])]
-        c0 = _weighted_centroid(xs[positive], ys[positive], ws[positive])
-        c1 = _weighted_centroid(xs[~positive], ys[~positive], ws[~positive])
-        return [c0, c1]
+        centers = []
+        for sign in (1.0, -1.0):
+            signed = sign * wz
+            candidates = _peak_candidates(signed)
+            if not candidates:
+                centers.append(np.array([np.nan, np.nan]))
+                continue
+            centers.append(_subgrid_peak_center(x, y, signed, candidates[0]))
+        return centers
 
-    if physics == "vortex":
-        # No second core exists, by construction — a peak search would
-        # occasionally mistake numerical noise far from the core for a
-        # second vortex, so don't search for one.
-        flat = w.ravel()
-        i0 = int(np.argmax(flat))
-        return [np.array([float(x.ravel()[i0]), float(y.ravel()[i0])])]
+    signed = np.abs(wz) if physics == "vortex" else wz
+    candidates = _peak_candidates(signed, 0.35 if physics == "merging" else 0.20)
+    if not candidates:
+        return [np.array([np.nan, np.nan])]
 
-    # merging: two co-rotating positive cores -> peak search.
-    flat = w.ravel()
-    i0 = int(np.argmax(flat))
-    c0 = np.array([float(x.ravel()[i0]), float(y.ravel()[i0])])
-    d2 = (x - c0[0]) ** 2 + (y - c0[1]) ** 2
-    second = mask & (np.sqrt(d2) > 0.55 * SEPARATION)
-    if np.count_nonzero(second) < 10:
-        return [c0]
-    i1 = int(np.argmax(np.where(second, w, -1.0)))
-    c1 = np.array([float(x.ravel()[i1]), float(y.ravel()[i1])])
-    return [c0, c1]
+    if physics == "merging":
+        peaks = _merging_peak_pair(field, candidates, previous_centers)
+        return [_subgrid_peak_center(x, y, signed, peak) for peak in peaks]
+
+    center = _subgrid_peak_center(x, y, signed, candidates[0])
+    return [center] if np.isfinite(center).all() else [np.array([np.nan, np.nan])]
 
 
-def _refine_centers(field: dict, centers: list[np.ndarray]) -> list[np.ndarray]:
-    """Iterated vorticity-weighted centroid (Voronoi cell) refinement."""
-    x, y, wz = field["x"], field["y"], field["omega_z"]
-    w = np.abs(wz)
-    mask = w > 0.05 * float(w.max())
-    cells = [c.copy() for c in centers]
-    for _ in range(8):
-        new_cells = []
-        for index, cell in enumerate(cells):
-            d2 = (x - cell[0]) ** 2 + (y - cell[1]) ** 2
-            if len(cells) == 1:
-                owned = mask
-            elif index == 0:
-                owned = mask & (d2 <= (x - cells[1][0]) ** 2 + (y - cells[1][1]) ** 2)
-            else:
-                owned = mask & (d2 < (x - cells[0][0]) ** 2 + (y - cells[0][1]) ** 2)
-            new_cells.append(
-                _weighted_centroid(x[owned], y[owned], w[owned])
-                if np.count_nonzero(owned) > 0
-                else cell
-            )
-        if all(np.allclose(a, b) for a, b in zip(new_cells, cells, strict=True)):
-            return new_cells
-        cells = new_cells
-    return cells
+def _match_centers_to_previous(
+    centers: list[np.ndarray], previous_centers: list[np.ndarray] | None
+) -> list[np.ndarray]:
+    """Keep center identities continuous without changing pair geometry."""
+    if len(centers) != 2:
+        return centers
+    if previous_centers is None or len(previous_centers) != 2:
+        return sorted(centers, key=lambda center: (center[1], center[0]), reverse=True)
+    direct = sum(np.linalg.norm(a - b) ** 2 for a, b in zip(centers, previous_centers, strict=True))
+    swapped = sum(
+        np.linalg.norm(a - b) ** 2 for a, b in zip(centers[::-1], previous_centers, strict=True)
+    )
+    return centers if direct <= swapped else centers[::-1]
 
 
 def _core_radius_utheta(
     field: dict,
     center: np.ndarray,
     r_max: float,
-    bin_width: float = FIELD_SPACING,
+    bin_width: float | None = None,
 ) -> float:
-    """Core radius a_c from the azimuthally-averaged tangential velocity peak."""
+    """Velocity-peak core radius from the signed u_theta profile."""
+    return _core_radius_diagnostic(field, center, r_max, bin_width)[0]
+
+
+def _core_radius_diagnostic(
+    field: dict,
+    center: np.ndarray,
+    r_max: float,
+    bin_width: float | None = None,
+    support_mask: np.ndarray | None = None,
+) -> tuple[float, bool]:
     if not np.isfinite(center).all():
-        return float("nan")
+        return float("nan"), False
     x, y = field["x"], field["y"]
+    if bin_width is None:
+        dx_values = np.abs(np.diff(x[:, 0]))
+        dy_values = np.abs(np.diff(y[0, :]))
+        spacings = np.concatenate([dx_values[dx_values > 0.0], dy_values[dy_values > 0.0]])
+        bin_width = float(np.median(spacings)) if spacings.size else FIELD_SPACING
     dx = x - center[0]
     dy = y - center[1]
     r = np.sqrt(dx * dx + dy * dy)
     keep = (r > 0.5 * bin_width) & (r < r_max)
+    if support_mask is not None:
+        keep &= support_mask
     if np.count_nonzero(keep) < 20:
-        return float("nan")
+        return float("nan"), False
 
     e_theta_x = -dy / np.where(r > 0, r, 1.0)
     e_theta_y = dx / np.where(r > 0, r, 1.0)
-    u_theta = np.abs(field["Ux"] * e_theta_x + field["Uy"] * e_theta_y)
+    nearest = np.unravel_index(int(np.argmin(r)), r.shape)
+    translation_x = float(field["Ux"][nearest])
+    translation_y = float(field["Uy"][nearest])
+    sign = np.sign(float(field["omega_z"][nearest])) or 1.0
+    u_theta = sign * (
+        (field["Ux"] - translation_x) * e_theta_x + (field["Uy"] - translation_y) * e_theta_y
+    )
 
     edges = np.arange(0.5 * bin_width, r_max + bin_width, bin_width)
     bin_index = np.clip(np.searchsorted(edges, r[keep], side="right") - 1, 0, None)
@@ -278,7 +415,7 @@ def _core_radius_utheta(
     radii = np.asarray(radii)
     magnitudes = np.asarray(magnitudes)
     if radii.size < 3:
-        return float("nan")
+        return float("nan"), False
 
     i = int(np.argmax(magnitudes))
     if 0 < i < radii.size - 1:
@@ -291,7 +428,8 @@ def _core_radius_utheta(
             r_peak = r2
     else:
         r_peak = radii[i]
-    return float(r_peak / BETA_RMAX)
+    boundary_limited = i == radii.size - 1 or r_peak >= r_max - 1.5 * bin_width
+    return float(r_peak), bool(boundary_limited)
 
 
 def _search_radius(physics: str, separation: float) -> float:
@@ -300,15 +438,21 @@ def _search_radius(physics: str, separation: float) -> float:
     generous multiple of the *expected* final core radius instead (the core
     can diffuse well past a fixed fraction of SEPARATION by t=TOTAL_TIME)."""
     if physics == "vortex":
-        expected_final_ac = np.sqrt(
-            CORE_RADIUS**2 + 4.0 * BETA_RMAX**2 * (GAMMA / REYNOLDS_NUMBER) * TOTAL_TIME
+        expected_final_gaussian_radius = np.sqrt(
+            GAUSSIAN_CORE_RADIUS**2 + 4.0 * (GAMMA / REYNOLDS_NUMBER) * TOTAL_TIME
         )
-        return 2.0 * BETA_RMAX * expected_final_ac
-    return min(0.5, 0.45 * (separation if np.isfinite(separation) else SEPARATION))
+        return 2.0 * BETA_RMAX * expected_final_gaussian_radius
+    return 0.5
 
 
-def _diagnostics_row(field: dict, physics: str) -> list:
-    centers = _refine_centers(field, _initial_centers(field, physics))
+def _diagnostics_row(
+    field: dict,
+    physics: str,
+    previous_centers: list[np.ndarray] | None = None,
+) -> list:
+    centers = _match_centers_to_previous(
+        _vorticity_peak_centers(field, physics, previous_centers), previous_centers
+    )
     c0 = centers[0] if len(centers) >= 1 else np.array([np.nan, np.nan])
     c1 = centers[1] if len(centers) >= 2 else np.array([np.nan, np.nan])
 
@@ -317,13 +461,32 @@ def _diagnostics_row(field: dict, physics: str) -> list:
         if np.isfinite(c0).all() and np.isfinite(c1).all()
         else float("nan")
     )
-    merged = not np.isfinite(separation) or not (
-        0.05 * SEPARATION <= separation <= 1.15 * SEPARATION
-    )
+    merged = physics == "merging" and not np.isfinite(separation)
 
     r_max = _search_radius(physics, separation)
-    a_c0 = _core_radius_utheta(field, c0, r_max) if np.isfinite(c0).all() else float("nan")
-    a_c1 = _core_radius_utheta(field, c1, r_max) if np.isfinite(c1).all() else float("nan")
+    support0 = support1 = None
+    if np.isfinite(c0).all() and np.isfinite(c1).all():
+        x, y = field["x"], field["y"]
+        # The paper excludes the zone directly between the two vortices and
+        # averages u_theta on the outward semicircle of each core.
+        outward0 = c0 - c1
+        outward1 = -outward0
+        support0 = (x - c0[0]) * outward0[0] + (y - c0[1]) * outward0[1] >= 0.0
+        support1 = (x - c1[0]) * outward1[0] + (y - c1[1]) * outward1[1] >= 0.0
+    a_c0, limited0 = (
+        _core_radius_diagnostic(field, c0, r_max, support_mask=support0)
+        if np.isfinite(c0).all()
+        else (float("nan"), False)
+    )
+    a_c1, limited1 = (
+        _core_radius_diagnostic(field, c1, r_max, support_mask=support1)
+        if np.isfinite(c1).all()
+        else (float("nan"), False)
+    )
+    if limited0:
+        a_c0 = float("nan")
+    if limited1:
+        a_c1 = float("nan")
 
     a_c_mean = (
         float(np.mean([a for a in (a_c0, a_c1) if np.isfinite(a)]))
@@ -349,6 +512,8 @@ def _diagnostics_row(field: dict, physics: str) -> list:
         a_c_mean,
         angle,
         merged,
+        limited0,
+        limited1,
     ]
 
 
@@ -381,12 +546,33 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
         physics, scheme = case_name.split("_", 1)
         timeline = pvd_time_map(samples_dir, physics, scheme)
         rows = []
+        previous_centers = None
+        merged_phase = False
         for path in vts:
             step = int(VTS_STEP_RE.search(path.name).group(1))
-            field = read_surface_field(path)
+            try:
+                field = read_surface_field(path)
+            except Exception as exc:
+                # A live solver may still be writing its newest VTS.  Keep
+                # every complete sample and make the transient skip explicit.
+                print(f"  [field] {case_name}: skipping unreadable {path.name}: {exc}")
+                continue
             field["step"] = step
             field["time"] = timeline.get(step, float("nan"))
-            rows.append(_diagnostics_row(field, physics))
+            if physics == "merging" and merged_phase:
+                # Merger is a topological event.  Treat it as an absorbing
+                # state: late-time grid noise must not resurrect a vortex
+                # pair and create a fictitious separation or angle history.
+                row = _diagnostics_row(field, "vortex")
+                row[11] = True
+            else:
+                row = _diagnostics_row(field, physics, previous_centers)
+            rows.append(row)
+            if physics == "merging" and bool(row[11]):
+                merged_phase = True
+                previous_centers = None
+            elif np.isfinite(row[2:6]).all():
+                previous_centers = [np.asarray(row[2:4]), np.asarray(row[4:6])]
 
         out = samples_dir / case_name / "field_diagnostics.csv"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -460,6 +646,30 @@ def _average_vts(target: Path, sources: list[Path]) -> None:
         raise OSError(f"Could not write averaged RWM surface to {target}")
 
 
+def average_surface_histories(target_dir: Path, member_dirs: list[Path]) -> list[str]:
+    """Average every common RWM sampled plane before extracting diagnostics.
+
+    Averaging the Eulerian fields is essential: centre finding is nonlinear,
+    so averaging already-extracted noisy centre trajectories is not equivalent
+    to diagnosing the ensemble-mean vorticity field.
+    """
+    if not member_dirs:
+        raise ValueError("at least one RWM member directory is required")
+    surface_sets = [
+        {path.name for path in directory.glob("*_zq_*.vts")} for directory in member_dirs
+    ]
+    common = sorted(set.intersection(*surface_sets))
+    if not common:
+        raise ValueError("RWM ensemble members have no common sampled surfaces")
+    if any(names != surface_sets[0] for names in surface_sets[1:]):
+        raise ValueError("RWM ensemble sampled-surface histories differ")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for name in common:
+        _average_vts(target_dir / name, [directory / name for directory in member_dirs])
+    return common
+
+
 def average_final_samples(
     target_dir: Path,
     member_dirs: list[Path],
@@ -510,7 +720,9 @@ def average_field_diagnostics(
         values = np.stack([frame[column].to_numpy(float) for frame in frames])
         averaged[column] = _nanmean(values)
 
-    angles = np.stack([np.unwrap(frame["angle_rad"].to_numpy(float)) for frame in frames])
+    angles = np.stack(
+        [unwrap_pair_orientation(frame["angle_rad"].to_numpy(float)) for frame in frames]
+    )
     averaged["angle_rad"] = _nanmean(angles)
     averaged["merged"] = (
         np.mean(

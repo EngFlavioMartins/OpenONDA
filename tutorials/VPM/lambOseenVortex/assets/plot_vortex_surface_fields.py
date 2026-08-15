@@ -92,10 +92,10 @@ def _tile(field: np.ndarray, qid: str, col0: int, row0: int, bcol, brow, corner)
     """One quadrant of ``field`` with interpolated x = 0 / y = 0 edges."""
     if qid == "TL":
         tile = np.column_stack([field[row0:, :col0], bcol[row0:, None]])
-        return np.vstack([tile, np.append(brow[:col0], corner)[None, :]])
+        return np.vstack([np.append(brow[:col0], corner)[None, :], tile])
     if qid == "TR":
         tile = np.column_stack([bcol[row0:, None], field[row0:, col0:]])
-        return np.vstack([tile, np.insert(brow[col0:], 0, corner)[None, :]])
+        return np.vstack([np.insert(brow[col0:], 0, corner)[None, :], tile])
     if qid == "BL":
         tile = np.column_stack([field[:row0, :col0], bcol[:row0, None]])
         return np.vstack([tile, np.append(brow[:col0], corner)[None, :]])
@@ -166,8 +166,9 @@ def plot_surface_fields(args) -> int:
     run_nu = runtime["nu"]
     ac0 = runtime["ac0"]
     t0 = runtime["t0"]
-    uc_ref = args.gamma / (2.0 * np.pi * ac0)
-    wc_ref = args.gamma / (np.pi * ac0**2)
+    run_gamma = runtime["gamma"]
+    uc_ref = run_gamma / (2.0 * np.pi * ac0)
+    wc_ref = run_gamma / (np.pi * ac0**2)
 
     # -- Load each scheme's surface data ----------------------------------
     datasets: dict[str, dict] = {}

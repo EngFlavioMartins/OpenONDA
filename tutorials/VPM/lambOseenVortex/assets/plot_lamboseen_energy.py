@@ -42,7 +42,11 @@ else:
 def read_flow_integrals(csv_path: Path) -> dict | None:
     if not csv_path.is_file():
         return None
-    df = pd.read_csv(csv_path, on_bad_lines="skip").dropna(subset=["time"])
+    try:
+        df = pd.read_csv(csv_path, on_bad_lines="skip").dropna(subset=["time"])
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+        print(f"  [energy] skipping unreadable live CSV {csv_path.name}: {exc}")
+        return None
     if df.empty or "dEdt" not in df.columns:
         return None
     return {
@@ -63,10 +67,16 @@ CASES = (
 )
 
 
-def prepend_initial_point(data: dict, gamma: float, t0: float, n_vortices: int) -> dict:
+def prepend_initial_point(
+    data: dict,
+    gamma: float,
+    t0: float,
+    n_vortices: int,
+    column_length: float,
+) -> dict:
     if len(data["t"]) == 0 or data["t"][0] == 0.0:
         return data
-    initial_power = -n_vortices * gamma**2 / (8.0 * np.pi * t0)
+    initial_power = -n_vortices * gamma**2 * column_length / (8.0 * np.pi * t0)
     return {
         "t": np.insert(data["t"], 0, 0.0),
         "dedt": np.insert(data["dedt"], 0, initial_power),
@@ -85,6 +95,7 @@ def plot_case_panel(
     p_ref: float,
     gamma: float,
     t0: float,
+    column_length: float,
 ) -> float:
     ax.set_title(title)
     latest_tau = 0.0
@@ -93,7 +104,7 @@ def plot_case_panel(
         data = read_flow_integrals(csv_path)
         if data is None:
             continue
-        data = prepend_initial_point(data, gamma, t0, n_vortices)
+        data = prepend_initial_point(data, gamma, t0, n_vortices, column_length)
         st = style_map[scheme]
         tau = data["t"] * tau_scale
         plot_kw = {
@@ -124,9 +135,13 @@ def plot_energy_enstrophy(args) -> int:
     run_nu = runtime["nu"]
     a0 = runtime["ac0"]
     run_t0 = runtime["t0"]
+    run_gamma = runtime["gamma"]
+    column_length = runtime["column_length"]
 
     tau_scale = run_nu / (a0**2)
-    p_ref = run_nu * (args.gamma**2) / (a0**2)
+    # flow_integrals.csv contains 3-D totals.  The Lamb-Oseen dissipation
+    # formula and its natural scale are per unit length, so both must carry L.
+    p_ref = run_nu * run_gamma**2 * column_length / (a0**2)
     fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"), sharey=True)
     fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.12, right=0.98)
 
@@ -141,8 +156,9 @@ def plot_energy_enstrophy(args) -> int:
             style_map,
             tau_scale,
             p_ref,
-            args.gamma,
+            run_gamma,
             run_t0,
+            column_length,
         )
         plotted |= latest_tau > 0.0
 
@@ -154,7 +170,7 @@ def plot_energy_enstrophy(args) -> int:
         print("  [energy] no sampled flow integrals; figure not generated")
         return 0
 
-    axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 / a_{c,0}^2)$")
+    axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
 
     axes[0].set_xlim([0.0, 3.8])
     axes[1].set_xlim([0.0, 3.8])

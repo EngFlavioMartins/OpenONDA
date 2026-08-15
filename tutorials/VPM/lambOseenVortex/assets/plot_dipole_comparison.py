@@ -35,7 +35,11 @@ def extract_dipole_timeseries(
     path = samples_dir / f"dipole_{scheme}" / "field_diagnostics.csv"
     if not path.is_file():
         return None
-    data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
+    try:
+        data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+        print(f"  [dipole] skipping unreadable live CSV for {scheme!r}: {exc}")
+        return None
     data = data.sort_values("time_step").drop_duplicates("time_step", keep="last")
     if data.empty:
         return None
@@ -57,9 +61,11 @@ def plot_dipole_case(args) -> int:
     out = Path(args.figures_dir) / f"dipole_comparison.{fmt}"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(
+        samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0, prefix="dipole"
+    )
     run_nu = runtime["nu"]
-    a0 = runtime["ac0"]
+    a0 = runtime["velocity_peak_radius0"]
     colors, _ = load_theme()
     style_map = build_style_map(colors)
 
@@ -75,11 +81,10 @@ def plot_dipole_case(args) -> int:
         t = ts["t"]
         xc = ts["x_core"]
         a_c = ts["a_c"]
-        mask = np.isfinite(xc) & np.isfinite(a_c)
-        t, xc, a_c = t[mask], xc[mask], a_c[mask]
-        if len(t) == 0:
+        trajectory_mask = np.isfinite(t) & np.isfinite(xc)
+        core_mask = np.isfinite(t) & np.isfinite(a_c)
+        if not trajectory_mask.any() and not core_mask.any():
             continue
-        tau = run_nu * t / (a0**2)
         st = style_map[scheme]
         plot_kw = {
             "color": st["color"],
@@ -89,8 +94,12 @@ def plot_dipole_case(args) -> int:
             "linestyle": "None",
             "linewidth": 1.0,
         }
-        axes[0].plot(tau, xc / a0, **plot_kw)
-        axes[1].plot(tau, a_c / a0, **plot_kw)
+        if trajectory_mask.any():
+            tau = run_nu * t[trajectory_mask] / (a0**2)
+            axes[0].plot(tau, xc[trajectory_mask] / a0, **plot_kw)
+        if core_mask.any():
+            tau = run_nu * t[core_mask] / (a0**2)
+            axes[1].plot(tau, a_c[core_mask] / a0, **plot_kw)
         plotted_schemes.append(scheme)
 
     if not plotted_schemes:

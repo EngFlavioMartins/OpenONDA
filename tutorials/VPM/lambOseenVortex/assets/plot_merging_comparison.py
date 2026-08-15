@@ -18,15 +18,25 @@ import matplotlib.pyplot as plt
 
 if __package__:
     from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
-    from .vortex_diagnostics import REF_DIR, SCHEMES, resolve_runtime_physics
+    from .vortex_diagnostics import (
+        REF_DIR,
+        SCHEMES,
+        resolve_runtime_physics,
+        unwrap_pair_orientation,
+    )
 else:
     from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
-    from vortex_diagnostics import REF_DIR, SCHEMES, resolve_runtime_physics
+    from vortex_diagnostics import (
+        REF_DIR,
+        SCHEMES,
+        resolve_runtime_physics,
+        unwrap_pair_orientation,
+    )
 
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
 A2_REF = REF_DIR / "a2_over_b02.csv"
-B_REF = REF_DIR / "b_over_b0_tau.csv"
+B_DIMENSIONAL_REF = REF_DIR / "b_over_b0_time.csv"
 
 
 def extract_merging_timeseries(
@@ -39,16 +49,12 @@ def extract_merging_timeseries(
     path = samples_dir / f"merging_{scheme}" / "field_diagnostics.csv"
     if not path.is_file():
         return None
-    data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
-    data = data.sort_values("time_step").drop_duplicates("time_step", keep="last")
-    if data.empty:
+    try:
+        data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["flow_time", "time_step"])
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+        print(f"  [merging] skipping unreadable live CSV for {scheme!r}: {exc}")
         return None
-
-    merged = data["merged"].astype(str).str.lower().eq("true").to_numpy()
-    pair_separation = data["separation"].to_numpy(float)
-    collapsed = merged & (np.isnan(pair_separation) | (pair_separation < 0.5 * separation))
-    if collapsed.any():
-        data = data.iloc[: int(np.flatnonzero(collapsed)[0])]
+    data = data.sort_values("time_step").drop_duplicates("time_step", keep="last")
     if data.empty:
         return None
 
@@ -56,7 +62,9 @@ def extract_merging_timeseries(
     finite = np.isfinite(angle)
     angle_degrees = np.full_like(angle, np.nan)
     if finite.any():
-        unwrapped = np.unwrap(angle[finite])
+        # The axis joining identical vortices is undirected: swapping center
+        # labels changes phi by pi but must not change the physical angle.
+        unwrapped = unwrap_pair_orientation(angle[finite])
         angle_degrees[finite] = np.degrees(unwrapped - unwrapped[0])
 
     time = data["flow_time"].to_numpy(float)
@@ -76,9 +84,12 @@ def plot_merging_case(args) -> int:
 
     colors, _ = load_theme()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0)
+    runtime = resolve_runtime_physics(
+        samples_dir, args.gamma, args.nu, args.b0, args.a0_over_b0, prefix="merging"
+    )
     run_nu = runtime["nu"]
-    a0 = runtime["ac0"]
+    a0 = runtime["velocity_peak_radius0"]
+    b0 = runtime["separation"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.23, left=0.10, right=0.98)
@@ -89,7 +100,7 @@ def plot_merging_case(args) -> int:
             samples_dir,
             scheme,
             run_nu,
-            args.b0,
+            b0,
             a0,
         )
         if timeseries is None:
@@ -116,12 +127,17 @@ def plot_merging_case(args) -> int:
         "zorder": 100,
         "label": r"Cerretelli \& Williamson (2003)",
     }
-    scale = args.a0_over_b0**2
+    scale = (a0 / b0) ** 2
 
-    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF), (axes[2], B_REF)):
+    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF)):
         if path.exists():
             reference = np.loadtxt(path, delimiter=",")
             axis.plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
+    if B_DIMENSIONAL_REF.exists():
+        print(
+            "  [merging] separation literature curve retained as dimensional source data "
+            "but not overlaid: experimental nu/b0^2 provenance is not yet recorded"
+        )
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
