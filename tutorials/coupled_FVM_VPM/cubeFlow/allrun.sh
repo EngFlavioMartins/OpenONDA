@@ -12,9 +12,9 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Recommended next investigation: isolate the face-aware particle filter at
-# the validated RK2/0.05 s coupling cadence.  t=2.4 s gives four coincident
-# field frames (0.6, 1.2, 1.8, 2.4) before committing to the t=6 wake run.
+# Recommended next investigation: match the FVM core to the referenceFlow
+# wake resolution while retaining the validated face-aware particle filter.
+# t=2.4 s gives four coincident field frames (0.6, 1.2, 1.8, 2.4).
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
@@ -23,7 +23,8 @@ export OPENONDA_VPM_SCHEME=RK2
 
 export OPENONDA_SPACING=0.04
 export OPENONDA_PARTICLE_SPACING=0.04
-export OPENONDA_FVM_CELL_SIZE=0.04
+# referenceFlow uses MIN_DS * 2 = 0.03 throughout the resolved near wake.
+export OPENONDA_FVM_CELL_SIZE=0.03
 export OPENONDA_SAMPLE_SPACING=0.04
 export OPENONDA_SURFACE_CELL_SIZE=0.015
 export OPENONDA_MAX_PARTICLES=1500000
