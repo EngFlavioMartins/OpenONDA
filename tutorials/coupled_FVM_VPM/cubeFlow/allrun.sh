@@ -12,14 +12,14 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Compact downstream-outflow validation.  The rejected x_max=3.0 experiment is
-# preserved under baselines/hybrid_fvm0038_x3_t2p40_54117e9.
+# Recommended compact production case.  Experimental outflow variants are
+# preserved under baselines/ and are not enabled here.
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
 export OPENONDA_DT_VPM=0.05
 export OPENONDA_VPM_SCHEME=RK2
-export OPENONDA_DONOR_BOUNDARY_MODE=directional_outflow
+export OPENONDA_DONOR_BOUNDARY_MODE=dirichlet
 
 export OPENONDA_SPACING=0.04
 export OPENONDA_PARTICLE_SPACING=0.04
