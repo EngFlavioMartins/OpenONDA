@@ -25,6 +25,8 @@ CONTRACT_METHODS = [
     "set_time_step",
     "set_kinematic_viscosity",
     "set_dirichlet_velocity_boundary_condition_vec",
+    "set_freestream_velocity_boundary_condition_vec",
+    "set_freestream_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]
@@ -44,6 +46,13 @@ def _fvm_setup(tmp_path, **overrides):
     }
     kwargs.update(overrides)
     return CouplerSetup(**kwargs)
+
+
+def test_coupler_setup_validates_and_serializes_donor_boundary_mode(tmp_path):
+    setup = _fvm_setup(tmp_path, donor_boundary_mode="characteristic")
+    assert setup.to_dict()["fvm_solver"]["donor_boundary_mode"] == "characteristic"
+    with pytest.raises(ValueError, match="donor_boundary_mode"):
+        _fvm_setup(tmp_path, donor_boundary_mode="unsupported")
 
 
 def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_name=None):
@@ -187,6 +196,54 @@ def test_dirichlet_bc_and_driver_split_produce_finite_flow(built_backend):
     assert np.isfinite(U).all()
     # Uniform inflow through an empty box stays uniform.
     assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-8)
+
+
+def test_characteristic_donor_sets_matching_velocity_and_pressure(built_backend):
+    setup, fvm = built_backend
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
+    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
+    fvm.set_freestream_velocity_boundary_condition_vec(u_bc, setup.patch_name)
+    fvm.set_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
+    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
+    assert patch["bc_type_U"] == "freestream"
+    assert patch["bc_type_p"] == "freestream"
+    assert patch["value_p"] == 0.0
+
+
+def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path):
+    from source.coupler.core.solver import FVMVPMCoupler
+
+    class FakeFVM:
+        last_yplus = None
+
+        def __init__(self):
+            self.calls = []
+
+        def set_freestream_velocity_boundary_condition_vec(self, values, patch):
+            self.calls.append(("velocity", patch, np.asarray(values).copy()))
+
+        def set_freestream_pressure_boundary_condition(self, patch, value=0.0):
+            self.calls.append(("pressure", patch, value))
+
+        def solve_pimple(self):
+            self.calls.append(("solve",))
+
+        def advance_time(self):
+            self.calls.append(("advance",))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.fvm = FakeFVM()
+    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="characteristic")
+    target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
+    coupler._fvm_step("numericalBoundary", target)
+
+    assert [call[0] for call in coupler.fvm.calls] == [
+        "velocity",
+        "pressure",
+        "solve",
+        "advance",
+    ]
+    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
 
 
 def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):

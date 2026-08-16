@@ -11,7 +11,9 @@ Getters
     ``get_boundary_face_normals``, ``get_boundary_face_areas``, ``n_procs``.
 Setters
     ``set_cell_scalar_field``, ``set_cell_vector_field``, ``set_time_step``,
-    ``set_kinematic_viscosity``, ``set_dirichlet_velocity_boundary_condition_vec``.
+    ``set_kinematic_viscosity``, ``set_dirichlet_velocity_boundary_condition_vec``,
+    ``set_freestream_velocity_boundary_condition_vec``,
+    ``set_freestream_pressure_boundary_condition``.
 Driver
     ``solve_pimple`` / ``advance_time`` live on the ``Solver`` itself.
 
@@ -575,6 +577,19 @@ class CouplerInterfaceMixin:
         b["bc_type_U"] = "freestream"
         b["value_U_field"] = field
         self._write_patch_ghosts(b, field)
+
+    def set_freestream_pressure_boundary_condition(self, patch_name, value=0.0):
+        """Use zero-gradient pressure on inflow and fixed pressure on outflow."""
+        value = float(value)
+        if not np.isfinite(value):
+            raise ValueError(f"Freestream pressure for patch {patch_name!r} must be finite")
+        b = self._optional_patch(patch_name)
+        if b is None:
+            return
+        b["bc_type_p"] = "freestream"
+        b["value_p"] = value
+        b.pop("fixed_flux_pressure_external", None)
+        b.pop("fixed_flux_pressure_delta", None)
 
     def set_fixed_flux_pressure_boundary_condition(self, pressure_delta, patch_name):
         """Impose an externally recorded fixed-flux pressure increment.

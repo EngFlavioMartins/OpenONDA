@@ -1099,20 +1099,26 @@ class FVMVPMCoupler:
         patch: str,
         u_target: np.ndarray,
     ) -> None:
-        """Apply the Dirichlet velocity trace and fixed-flux pressure solve."""
+        """Apply the configured donor boundary trace and advance one FVM step."""
         assert self.fvm is not None
         u_inf_mag = float(np.linalg.norm(self.config.u_inf)) + 1e-30
-        self.fvm.set_dirichlet_velocity_boundary_condition_vec(
-            np.ascontiguousarray(u_target, dtype=np.float64), patch
-        )
+        boundary_mode = self.config.donor_boundary_mode
+        u_target = np.ascontiguousarray(u_target, dtype=np.float64)
+        if boundary_mode == "characteristic":
+            self.fvm.set_freestream_velocity_boundary_condition_vec(u_target, patch)
+            self.fvm.set_freestream_pressure_boundary_condition(patch, value=0.0)
+            boundary_description = "characteristic U/p"
+        else:
+            self.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
+            boundary_description = "Dirichlet U / fixedFluxPressure"
 
         self.fvm.solve_pimple()
         self.fvm.advance_time()
 
         if u_target.shape[0] > 0:
             logger.info(
-                "     [FVM] solved with Dirichlet U / fixedFluxPressure  "
-                "u_x/U∞ face[min=%.2f max=%.2f]",
+                "     [FVM] solved with %s  u_x/U∞ face[min=%.2f max=%.2f]",
+                boundary_description,
                 u_target[:, 0].min() / u_inf_mag,
                 u_target[:, 0].max() / u_inf_mag,
             )
