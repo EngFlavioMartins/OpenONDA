@@ -599,6 +599,32 @@ perturbation be applied. A valid instability result must select modes 5--6 and
 recover the published dominance of mode 6; the later no-model and structural
 DIAD comparisons must start from exactly the same accepted raw state.
 
+The required stopping measurement is now implemented and independently
+checked. In the frame moving with the ring, a steady axisymmetric flow without
+swirl must satisfy
+
+$$
+q=\frac{\omega_\phi}{r}=F(\psi),
+$$
+
+so points across the vortex core must collapse onto one curve when $q$ is
+plotted against the translating-frame streamfunction $\psi$. A second test
+measures $\mathbf{u}_{rel}\cdot\nabla q$, which must also approach zero. The
+code recovers a manufactured exact relation with residuals below
+$3\times10^{-6}$ and detects a deliberately broken relation with residuals
+of $0.19$ and $0.30$. Refining the field-sampling grid from $65^2$ to $129^2$
+changes the real-ring measurements by less than $0.7\%$.
+
+The first restartable relaxation pilot, through $t^*=2$, is healthy but is
+not yet quasi-steady. The two residuals decrease from $0.214$ and $0.201$ to
+$0.184$ and $0.149$, respectively. The propagation speed inferred solely by
+minimizing the steady material residual is also moving toward the independently
+measured VPM speed, but they still differ by $27.3\%$. Circulation and impulse
+drift remain below $3.1\times10^{-8}$ and the largest artificial azimuthal mode
+is below $3.9\times10^{-8}$. Therefore the particle solution is healthy and
+relaxing in the correct direction, but perturbing it now would repeat the
+original initial-condition mistake.
+
 [Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
 
 [Failed fractional time-step gate](figures/vpm_les/stage_5b_widnall_dt_gate.png) ·
@@ -610,6 +636,8 @@ DIAD comparisons must start from exactly the same accepted raw state.
 [Rejected truncated-cloud preflight](figures/vpm_les/stage_5b_relaxed_ring_preflight.png) ·
 [Gaussian-tail initial-condition gate](figures/vpm_les/stage_5b_ring_initial_condition_gate.png) ·
 [corrected short relaxation gate](figures/vpm_les/stage_5b_relaxed_ring_corrected_gate.png)
+· [verified quasi-steady measurement](figures/vpm_les/stage_5b_ring_quasi_steady.png)
+· [$t^*=2$ physical relaxation history](figures/vpm_les/stage_5b_ring_relaxation_tstar2.png)
 
 ## Reproducible research materials
 
@@ -748,11 +776,17 @@ DNS and structural DIAD in VPM.
   - [ ] Reproduce the relaxed $R=\Gamma=1$, $a=0.4131$,
     $\Gamma/\nu=3000$ base state. Gate its ring speed, energy adjustment,
     circulation, impulse, axisymmetry, and particle health before perturbing it.
-    The faster-velocity audit is complete. Before advancing, implement
-    the paper's actual quasi-steady criterion: within the ring core,
-    $\omega_\phi/r$ must become approximately a single-valued function of the
-    translating-frame streamfunction. Do not substitute an arbitrary final
-    time for that physical stopping condition.
+    - [x] Implement and verify the paper's actual quasi-steady criterion:
+      within the ring core, $\omega_\phi/r$ must become approximately a
+      single-valued function of the translating-frame streamfunction.
+    - [x] Preserve raw states every $0.5t^*$ and complete the healthy
+      $t^*=2$ pilot. Its residuals are improving but it is not quasi-steady.
+    - [ ] Continue the same raw trajectory until both residuals are below
+      $0.05$, fitted and measured speeds agree within $2\%$, and the last three
+      saved measurements form a $10\%$ plateau. Do not substitute an arbitrary
+      final time for this physical stopping condition.
+    - [ ] Confirm the accepted state with a finer particle spacing before any
+      instability or LES comparison.
   - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
     require the predicted $m=5$--$6$ band and the published dominance of mode
     6 after the initial transient. Digitize reference values with uncertainty

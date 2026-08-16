@@ -69,9 +69,12 @@ def run(
     velocity_method: str,
     processing_unit: str,
     tail_fraction: float,
+    backup_period: float,
+    axisymmetric: bool,
+    conserve_inviscid_invariants: bool,
 ) -> None:
-    if spacing <= 0.0 or time_step <= 0.0 or final_time_star <= 0.0:
-        raise ValueError("spacing, time step, and final time must be positive")
+    if spacing <= 0.0 or time_step <= 0.0 or final_time_star <= 0.0 or backup_period <= 0.0:
+        raise ValueError("spacing, time step, final time, and backup period must be positive")
     if not 0.0 < tail_fraction < 1.0:
         raise ValueError("tail fraction must lie strictly between zero and one")
     particle_radius = 1.5 * spacing if viscous_scheme == "GBD" else 2.0 * spacing
@@ -86,12 +89,18 @@ def run(
         raise FileExistsError(f"refusing to overwrite {manifest_path}")
 
     tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(tail_fraction))
-    position, volume, radius = ParticleDistributor.toroidal_distribution(
+    distributed = ParticleDistributor.toroidal_distribution(
         RING_RADIUS,
         tube_radius,
         spacing,
         epsilon_w=0.0,
+        return_orbit_ids=axisymmetric,
     )
+    if axisymmetric:
+        position, volume, radius, orbit_id = distributed
+    else:
+        position, volume, radius = distributed
+        orbit_id = None
     radius.fill(particle_radius)
     viscosity = RING_CIRCULATION / REYNOLDS_NUMBER
     velocity, particle_viscosity, circulation = VortexRingVPM(
@@ -120,9 +129,14 @@ def run(
             time_step_size=time_step,
             processing_unit=processing_unit,
             time_integration="COUPLED",
+            axisymmetric_no_swirl_axis="x" if axisymmetric else None,
             advection=AdvectionConfig(scheme="RK3"),
             turbulence=TurbulenceConfig.dns(),
-            stretching=StretchingConfig.transposed(scheme="RK3"),
+            stretching=StretchingConfig.transposed(
+                scheme="RK3",
+                conserve_moments=conserve_inviscid_invariants,
+                conserve_energy=conserve_inviscid_invariants,
+            ),
             stabilization=StabilizationConfig.disabled(),
             velocity=(
                 VelocityConfig.direct()
@@ -135,7 +149,7 @@ def run(
             ),
             viscous=viscous_config(viscous_scheme, spacing, viscosity),
             logging_frequency=cadence(0.25, time_step),
-            backup_frequency=cadence(1.0, time_step),
+            backup_frequency=cadence(backup_period, time_step),
             backup_file_name=label,
             backup_directory=str(output_directory),
             sample_subdirectory=None,
@@ -151,6 +165,7 @@ def run(
         volume=volume,
         viscosity=particle_viscosity,
         group_id=0,
+        zone_id=orbit_id,
     )
 
     requested_steps = int(np.ceil(final_time_star / time_step))
@@ -171,7 +186,10 @@ def run(
         "time_step": time_step,
         "requested_final_time_star": final_time_star,
         "requested_steps": requested_steps,
+        "backup_period_time_star": backup_period,
         "time_integration": "COUPLED_RK3",
+        "axisymmetric_no_swirl_axis": "x" if axisymmetric else None,
+        "conserve_inviscid_moments_and_energy": conserve_inviscid_invariants,
         "stretching": "TRANSPOSED",
         "velocity_method": velocity_method,
         "treecode_theta": 0.1 if velocity_method == "TREECODE" else None,
@@ -222,6 +240,9 @@ def main() -> None:
     parser.add_argument("--time-step", type=float, required=True)
     parser.add_argument("--final-time-star", type=float, required=True)
     parser.add_argument("--tail-fraction", type=float, default=DEFAULT_TAIL_FRACTION)
+    parser.add_argument("--backup-period", type=float, default=1.0)
+    parser.add_argument("--axisymmetric", action="store_true")
+    parser.add_argument("--conserve-inviscid-invariants", action="store_true")
     parser.add_argument("--viscous-scheme", choices=("CS", "GBD"), default="GBD")
     parser.add_argument("--velocity-method", choices=("DIRECT", "TREECODE"), default="DIRECT")
     parser.add_argument(
@@ -240,6 +261,9 @@ def main() -> None:
         velocity_method=args.velocity_method,
         processing_unit=args.processing_unit,
         tail_fraction=args.tail_fraction,
+        backup_period=args.backup_period,
+        axisymmetric=args.axisymmetric,
+        conserve_inviscid_invariants=args.conserve_inviscid_invariants,
     )
 
 
