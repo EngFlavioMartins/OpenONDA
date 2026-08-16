@@ -20,7 +20,9 @@ export OPENONDA_FVM_CORES=4
 export OPENONDA_DT_VPM=0.05
 export OPENONDA_VPM_SCHEME=RK2
 export OPENONDA_DONOR_BOUNDARY_MODE=pressure_gradient
-export OPENONDA_FVM_DOWNSTREAM_BUFFER=0.30
+# Eight additional cells at the compact mesh's exact 3/79 m spacing.  Keeping
+# this value aligned preserves the original 79-cell y/z grid and fitted cube.
+export OPENONDA_FVM_DOWNSTREAM_BUFFER=0.3037974683544304
 
 export OPENONDA_SPACING=0.04
 export OPENONDA_PARTICLE_SPACING=0.04
