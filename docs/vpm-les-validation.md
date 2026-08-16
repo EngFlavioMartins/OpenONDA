@@ -585,6 +585,14 @@ physical quantities by at most $2.3\times10^{-7}$. This qualifies the corrected
 ring for a longer **axisymmetric relaxation only**. It is not yet evidence of
 Widnall growth or of the LES closure.
 
+A tight tree calculation ($\theta=0.1$) also passed the same short interval:
+its speed differed from direct summation by $0.0146\%$ and its largest
+artificial mode was $1.92\times10^{-6}$. It was only $1.16$ times faster,
+however. Because the earlier perturbed-ring test showed that small tree errors
+can accumulate in modal phase, this modest saving does not justify using it for
+the long relaxation. The long pilot will use direct summation at $h/R=0.12$;
+$h/R=0.10$ remains the later spatial-confirmation case.
+
 The next calculation will establish when the initially Gaussian core has
 finished its axisymmetric adjustment. Only then will a small divergence-free
 perturbation be applied. A valid instability result must select modes 5--6 and
@@ -651,6 +659,9 @@ DIAD comparisons must start from exactly the same accepted raw state.
   `scripts/experiments/stage_5b_relaxed_ring_corrected_gate.py`. The rejected
   truncated result remains in
   `scripts/experiments/stage_5b_relaxed_ring_preflight_results.json`.
+- Short direct-versus-tree audit:
+  `scripts/experiments/stage_5b_relaxed_ring_tree_audit.py` and
+  `scripts/experiments/stage_5b_relaxed_ring_tree_audit_results.json`.
 - Single-mode direct-summation time-step result:
   `scripts/experiments/stage_5b_widnall_m22_direct_dt_results.json`.
 - Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
@@ -731,13 +742,17 @@ DNS and structural DIAD in VPM.
   - [x] Pass the corrected short direct-summation gate against Gaussian-speed
     theory, the exact energy identity, a factor-two time-step pair, a spatial
     pair, symmetry, circulation, impulse, and particle-health limits.
+  - [x] Pass a short $\theta=0.1$ tree comparison, but retain direct summation
+    because the measured $1.16\times$ speedup is too small to justify the
+    known risk of accumulated modal-phase error.
   - [ ] Reproduce the relaxed $R=\Gamma=1$, $a=0.4131$,
     $\Gamma/\nu=3000$ base state. Gate its ring speed, energy adjustment,
     circulation, impulse, axisymmetry, and particle health before perturbing it.
-    First qualify a faster velocity evaluator against direct summation over an
-    axisymmetric interval; the corrected $h/R=0.10$ direct step costs about
-    23 seconds, so an unchecked approximation would make the long gate either
-    impractical or scientifically unsafe.
+    The faster-velocity audit is complete. Before advancing, implement
+    the paper's actual quasi-steady criterion: within the ring core,
+    $\omega_\phi/r$ must become approximately a single-valued function of the
+    translating-frame streamfunction. Do not substitute an arbitrary final
+    time for that physical stopping condition.
   - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
     require the predicted $m=5$--$6$ band and the published dominance of mode
     6 after the initial transient. Digitize reference values with uncertainty

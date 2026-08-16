@@ -1,0 +1,38 @@
+{
+  "stage": "5B corrected ring direct-versus-tree short audit",
+  "status": "PASS",
+  "claim_scope": "Short axisymmetric interval only. Earlier perturbed-ring work showed that small tree errors can accumulate in modal phase.",
+  "limits": {
+    "speed_relative_difference": 0.002,
+    "energy_relative_difference": 0.002,
+    "ring_radius_relative_difference": 0.001,
+    "core_radius_relative_difference": 0.001,
+    "tree_axisymmetry_mode_amplitude": 0.0001,
+    "tree_impulse_relative_drift": 0.001,
+    "tree_circulation_relative_drift": 0.001
+  },
+  "observed": {
+    "speed_relative_difference": 0.00014647544665364663,
+    "energy_relative_difference": 4.732549433845111e-07,
+    "ring_radius_relative_difference": 9.658512784282353e-07,
+    "core_radius_relative_difference": 2.650183838476405e-07,
+    "tree_axisymmetry_mode_amplitude": 1.915072081100355e-06,
+    "tree_impulse_relative_drift": 8.308967209824658e-07,
+    "tree_circulation_relative_drift": 9.489476799906527e-07
+  },
+  "checks": {
+    "speed_relative_difference": true,
+    "energy_relative_difference": true,
+    "ring_radius_relative_difference": true,
+    "core_radius_relative_difference": true,
+    "tree_axisymmetry_mode_amplitude": true,
+    "tree_impulse_relative_drift": true,
+    "tree_circulation_relative_drift": true
+  },
+  "timing": {
+    "direct_elapsed_seconds": 237.1,
+    "tree_elapsed_seconds": 204.0,
+    "direct_over_tree_speedup": 1.1622549019607842
+  },
+  "decision": "Use direct h=0.12 for the long relaxation: the tree passes this short screen but provides too little speedup to justify its accumulated-phase risk."
+}
