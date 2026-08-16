@@ -61,6 +61,15 @@ def test_coupler_setup_validates_and_serializes_donor_boundary_mode(tmp_path):
         _fvm_setup(tmp_path, donor_boundary_mode="unsupported")
 
 
+def test_coupler_setup_validates_separate_handoff_box(tmp_path):
+    outer = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+    inner = (-1.2, 1.2, -1.2, 1.2, -1.2, 1.2)
+    setup = _fvm_setup(tmp_path, fvm_box=outer, handoff_box=inner)
+    assert setup.to_dict()["coupler"]["handoff_domain"]["xmax"] == 1.2
+    with pytest.raises(ValueError, match="contained within fvm_box"):
+        _fvm_setup(tmp_path, fvm_box=outer, handoff_box=(-1.6, 1.2, *inner[2:]))
+
+
 def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_name=None):
     from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
 

@@ -19,6 +19,7 @@ class CouplerSetup:
     log_period: int = 1
 
     fvm_box: tuple[float, float, float, float, float, float] | None = None
+    handoff_box: tuple[float, float, float, float, float, float] | None = None
     patch_name: str = "numericalBoundary"
     donor_boundary_mode: Literal[
         "dirichlet", "characteristic", "directional_outflow", "pressure_gradient"
@@ -64,6 +65,14 @@ class CouplerSetup:
                 raise ValueError("fvm_box must contain six finite bounds")
             if np.any(box[1::2] <= box[::2]):
                 raise ValueError("Each fvm_box upper bound must exceed its lower bound")
+        if self.handoff_box is not None:
+            handoff_box = np.asarray(self.handoff_box, dtype=np.float64)
+            if handoff_box.shape != (6,) or not np.all(np.isfinite(handoff_box)):
+                raise ValueError("handoff_box must contain six finite bounds")
+            if np.any(handoff_box[1::2] <= handoff_box[::2]):
+                raise ValueError("Each handoff_box upper bound must exceed its lower bound")
+            if self.fvm_box is not None:
+                self.validate_handoff_box()
 
         positive = {
             "nu": self.nu,
@@ -100,6 +109,15 @@ class CouplerSetup:
     def U_inf(self) -> np.ndarray:
         return np.asarray(self.u_inf, dtype=np.float64)
 
+    def validate_handoff_box(self) -> None:
+        """Require the vorticity-transfer box to lie inside the FVM domain."""
+        if self.handoff_box is None or self.fvm_box is None:
+            return
+        outer = np.asarray(self.fvm_box, dtype=np.float64)
+        inner = np.asarray(self.handoff_box, dtype=np.float64)
+        if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
+            raise ValueError("handoff_box must be contained within fvm_box")
+
     def to_dict(self) -> dict:
         domain = None
         if self.fvm_box is not None:
@@ -107,6 +125,15 @@ class CouplerSetup:
                 zip(
                     ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
                     self.fvm_box,
+                    strict=True,
+                )
+            )
+        handoff_domain = None
+        if self.handoff_box is not None:
+            handoff_domain = dict(
+                zip(
+                    ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+                    self.handoff_box,
                     strict=True,
                 )
             )
@@ -136,6 +163,7 @@ class CouplerSetup:
                 "h": self.h,
             },
             "coupler": {
+                "handoff_domain": handoff_domain,
                 "prune_vorticity_min": self.prune_vorticity_min,
                 "overlap_shell_prune_multiplier": self.overlap_shell_prune_multiplier,
                 "handoff_max_particles": self.handoff_max_particles,

@@ -410,6 +410,7 @@ class FVMVPMCoupler:
             )
         if cfg.fvm_box is None:
             cfg.fvm_box = tuple(float(v) for v in box)
+        cfg.validate_handoff_box()
 
     def initialize(self) -> None:
         """Adopt the injected solvers, derive sub-cycling, and build coupling

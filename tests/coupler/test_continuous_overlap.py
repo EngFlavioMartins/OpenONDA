@@ -88,6 +88,30 @@ def test_injector_reuses_native_ibm_solid_geometry():
     )
 
 
+def test_injector_uses_separate_handoff_box():
+    config = SimpleNamespace(
+        h=0.1,
+        nu=0.01,
+        buffer_thickness=0.3,
+        dead_zone_h=1.0,
+        overlap_radius_ratio=1.0,
+        u_inf=[1.0, 0.0, 0.0],
+        prune_vorticity_min=0.01,
+        fvm_box=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+        handoff_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
+        wall_patch_name=None,
+    )
+    fvm = SimpleNamespace(
+        ibm=SimpleNamespace(bodies=[]),
+        get_cell_center_coordinates=lambda: np.array([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
+    )
+    injector = ContinuousOverlapInjector(SimpleNamespace(config=config, dt_vpm=0.1, vpm=None))
+
+    injector.setup(fvm)
+
+    np.testing.assert_array_equal(injector._box, config.handoff_box)
+
+
 def test_free_wake_is_retained():
     pos = np.array([[1.0, 0.0, 0.0], [1.2, 0.1, 0.0]])
     circ = np.array([[0.0, 0.0, 0.2], [0.0, 0.1, 0.0]])

@@ -688,7 +688,8 @@ class ContinuousOverlapInjector:
 
     # ── setup ────────────────────────────────────────────────────────────────
     def setup(self, fvm):
-        self._box = np.asarray(self.config.fvm_box, dtype=np.float64)
+        transfer_box = getattr(self.config, "handoff_box", None) or self.config.fvm_box
+        self._box = np.asarray(transfer_box, dtype=np.float64)
         from scipy.spatial import cKDTree
 
         self._cell_centers = np.asarray(fvm.get_cell_center_coordinates(), dtype=np.float64)

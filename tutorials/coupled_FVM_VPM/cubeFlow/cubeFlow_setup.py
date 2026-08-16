@@ -69,6 +69,11 @@ FVM_XMAX = float(os.environ.get("OPENONDA_FVM_XMAX", "1.5"))
 if FVM_XMAX <= 0.5:
     raise ValueError("OPENONDA_FVM_XMAX must lie downstream of the cube")
 FVM_BOX = (-1.5, FVM_XMAX, -1.5, 1.5, -1.5, 1.5)
+HANDOFF_INSET = float(os.environ.get("OPENONDA_HANDOFF_INSET", "0.0"))
+HANDOFF_BOX = tuple(
+    bound + HANDOFF_INSET if index % 2 == 0 else bound - HANDOFF_INSET
+    for index, bound in enumerate(FVM_BOX)
+)
 DT_FVM = 0.01
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
@@ -324,6 +329,7 @@ VPM_SETUP = VPMSetup(
 
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
+    handoff_box=HANDOFF_BOX,
     donor_boundary_mode=DONOR_BOUNDARY_MODE,
     wall_patch_name="cube",
     h=PARTICLE_SPACING,
