@@ -2,6 +2,7 @@ import pytest
 
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
+    ExecutionConfig,
     FVMSetup,
     LinearSolverConfig,
     MeshConfig,
@@ -154,6 +155,18 @@ class TestConfigFactories:
         assert runtime_setup.execution.parallel_mode == "petsc_partitioned"
         assert runtime_setup.execution.linear_backend == "petsc"
         assert user_setup.output.asynchronous
+        assert not runtime_setup.output.asynchronous
+
+    def test_cores_preserve_explicit_replicated_petsc_mode(self):
+        user_setup = FVMSetup(
+            case_name="parallel_ibm",
+            cores=4,
+            execution=ExecutionConfig.petsc_replicated(),
+        )
+        runtime_setup = _runtime_setup(user_setup)
+
+        assert runtime_setup.execution.parallel_mode == "petsc_replicated"
+        assert runtime_setup.execution.linear_backend == "petsc"
         assert not runtime_setup.output.asynchronous
 
     def test_output_setup_is_cell_centred_appended_lz4_by_default(self):

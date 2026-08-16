@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the recommended Re=100 hybrid cylinder benchmark.
+# Run the recommended Re=500 hybrid cylinder LES benchmark.
 # This script intentionally takes no options; the complete scientific setup is
 # explicit and version-controlled below.
 set -euo pipefail
@@ -13,19 +13,19 @@ if (( $# != 0 )); then
 fi
 
 export OPENONDA_SMOKE=0
-export OPENONDA_T_END=20.0
-export OPENONDA_FVM_CORES=1
+export OPENONDA_T_END=15.0
+export OPENONDA_FVM_CORES=4
 export OPENONDA_FVM_DT=0.025
 export OPENONDA_VPM_DT=0.10
-export OPENONDA_SPACING=0.10
+export OPENONDA_SPACING=0.125
 export OPENONDA_FVM_DOWNSTREAM_BUFFER=0.50
-export OPENONDA_SAMPLE_SPACING=0.10
-export OPENONDA_MAX_PARTICLES=1200000
+export OPENONDA_SAMPLE_SPACING=0.125
+export OPENONDA_MAX_PARTICLES=800000
 
-export OPENONDA_FORCE_INTERVAL=0.10
-export OPENONDA_DIAGNOSTIC_INTERVAL=1.0
+export OPENONDA_FORCE_INTERVAL=0.05
+export OPENONDA_DIAGNOSTIC_INTERVAL=0.5
 export OPENONDA_CHECKPOINT_INTERVAL=5.0
-export OPENONDA_VOLUME_INTERVAL=10.0
+export OPENONDA_VOLUME_INTERVAL=7.5
 
 echo
 echo "===== CLEAN HYBRID ====="

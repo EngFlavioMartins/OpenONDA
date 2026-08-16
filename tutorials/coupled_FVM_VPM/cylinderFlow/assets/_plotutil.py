@@ -15,7 +15,7 @@ SAMPLES = CASE_DIR / "samples"
 REFERENCE_SAMPLES = CASE_DIR / "referenceFlow" / "samples"
 FIGURES = CASE_DIR / "figures"
 TIME_TOL = 1.0e-3
-SHEDDING_START = 8.0
+SHEDDING_START = 5.0
 
 _THEME_PATH = Path(__file__).resolve().parents[4] / "docs" / "themes" / "matplotlib_setup.py"
 _SPEC = importlib.util.spec_from_file_location("openonda_matplotlib_setup", _THEME_PATH)
@@ -163,7 +163,7 @@ def common_times(*series: np.ndarray) -> np.ndarray:
     )
 
 
-def plot_times(available: np.ndarray, interval: float = 4.0) -> np.ndarray:
+def plot_times(available: np.ndarray, interval: float = 3.0) -> np.ndarray:
     if not len(available):
         return available
     targets = np.arange(interval, available[-1] + 0.5 * interval, interval)

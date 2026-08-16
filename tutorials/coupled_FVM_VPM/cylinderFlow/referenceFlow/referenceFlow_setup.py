@@ -1,4 +1,4 @@
-"""Fully meshed FVM reference for the matched Re=100 cylinder benchmark."""
+"""Fully meshed FVM reference for the matched Re=500 cylinder LES benchmark."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from openonda.fvm import (
     SurfaceSampler,
     TimeConfig,
     TransportConfig,
+    TurbulenceConfig,
     coupling_box_mesh,
     setup_fvm_solver,
 )
@@ -31,24 +32,22 @@ SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
 DIAMETER = 1.0
 RHO = 1.0
-REYNOLDS = 100.0
+REYNOLDS = 500.0
 U_INF = (1.0, 0.0, 0.0)
 INITIAL_U = (1.0, 0.01, 0.0)
 NU = float(np.linalg.norm(U_INF)) * DIAMETER / REYNOLDS
 
-SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.10"))
+SPACING = float(os.environ.get("OPENONDA_SPACING", "0.25" if SMOKE else "0.125"))
 DT = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
-T_END = float(os.environ.get("OPENONDA_T_END", "0.20" if SMOKE else "20.0"))
-# Direct-forcing IBM interpolation is currently rank-local. Until marker
-# support is exchanged across partitions, immersed-body cases must be serial.
-CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
-DOMAIN = (-4.0, 10.4, -4.0, 4.0, -1.2, 1.2)
+T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "15.0"))
+CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+DOMAIN = (-4.0, 8.0, -3.5, 3.5, -1.0, 1.0)
 SPAN = DOMAIN[5] - DOMAIN[4]
 
-FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.10"))
-DIAGNOSTIC_INTERVAL = float(os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", "1.0"))
-VOLUME_INTERVAL = float(os.environ.get("OPENONDA_VOLUME_INTERVAL", "10.0"))
-SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", "0.10"))
+FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.05"))
+DIAGNOSTIC_INTERVAL = float(os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", "0.5"))
+VOLUME_INTERVAL = float(os.environ.get("OPENONDA_VOLUME_INTERVAL", "7.5"))
+SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", "0.125"))
 
 
 def _period(name: str, interval: float) -> int:
@@ -124,7 +123,11 @@ SAMPLERS = (
 SETUP = FVMSetup(
     case_name="reference_cylinderFlow",
     cores=CORES,
-    execution=ExecutionConfig(operator_backend="numba"),
+    execution=ExecutionConfig(
+        operator_backend="numba",
+        linear_backend="petsc",
+        parallel_mode="petsc_replicated",
+    ),
     output=OutputSetup(
         compression="lz4",
         precision="float32",
@@ -159,7 +162,7 @@ SETUP = FVMSetup(
     ),
     samplers=SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=None,
+    turbulence=TurbulenceConfig.smagorinsky(Cs=0.12),
     boundaries=[
         BoundaryConfig(
             name="numericalBoundary",
@@ -174,8 +177,9 @@ SETUP = FVMSetup(
 
 
 def main() -> None:
-    print(f"Reference cylinder: Re={REYNOLDS:g}, h={SPACING:g}, dt={DT:g}, t_end={T_END:g}")
     solver = setup_fvm_solver(SETUP, case_dir=CASE_DIR, mesh=MESH)
+    if solver.parallel.is_root:
+        print(f"Reference cylinder: Re={REYNOLDS:g}, h={SPACING:g}, dt={DT:g}, t_end={T_END:g}")
     solver.set_immersed_bodies(CYLINDER, h=SPACING)
     solver.write_vtk()
     while solver.flow_time < SETUP.time.end_time:

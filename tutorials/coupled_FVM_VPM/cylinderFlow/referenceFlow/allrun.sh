@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the matched fully meshed Re=100 cylinder reference.
+# Run the matched fully meshed Re=500 cylinder LES reference.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -11,16 +11,16 @@ if (( $# != 0 )); then
 fi
 
 export OPENONDA_SMOKE=0
-export OPENONDA_T_END=20.0
-export OPENONDA_FVM_CORES=1
+export OPENONDA_T_END=15.0
+export OPENONDA_FVM_CORES=4
 export OPENONDA_FVM_DT=0.025
-export OPENONDA_SPACING=0.10
-export OPENONDA_SAMPLE_SPACING=0.10
-export OPENONDA_FORCE_INTERVAL=0.10
-export OPENONDA_DIAGNOSTIC_INTERVAL=1.0
-# Only t=0, 10, and 20 raw FVM volumes are retained. Line/surface/force
+export OPENONDA_SPACING=0.125
+export OPENONDA_SAMPLE_SPACING=0.125
+export OPENONDA_FORCE_INTERVAL=0.05
+export OPENONDA_DIAGNOSTIC_INTERVAL=0.5
+# Only t=0, 7.5, and 15 raw FVM volumes are retained. Line/surface/force
 # samples remain dense and are sufficient for every plotting script.
-export OPENONDA_VOLUME_INTERVAL=10.0
+export OPENONDA_VOLUME_INTERVAL=7.5
 
 echo
 echo "===== CLEAN REFERENCE ====="

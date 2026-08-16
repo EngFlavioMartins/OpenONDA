@@ -38,10 +38,18 @@ def _runtime_setup(setup: FVMSetup) -> FVMSetup:
     """Return the internal execution form of a user-facing setup."""
     if setup.cores == 1:
         return setup
+    # ``cores`` normally selects the memory-scalable partitioned backend.
+    # Honour an explicit replicated request for operators such as the current
+    # direct-forcing IBM whose compact marker transfer is not partition-aware.
+    parallel_mode = (
+        "petsc_replicated"
+        if setup.execution.parallel_mode == "petsc_replicated"
+        else "petsc_partitioned"
+    )
     execution = replace(
         setup.execution,
         linear_backend="petsc",
-        parallel_mode="petsc_partitioned",
+        parallel_mode=parallel_mode,
         output_mode="synchronous",
     )
     output = replace(setup.output, asynchronous=False)
@@ -70,18 +78,24 @@ def setup_fvm_solver(
     """Construct an FVM solver from a physics setup.
 
     ``setup.cores`` is the complete parallel interface. When it is greater
-    than one this function relaunches the current case under MPI, selects the
-    partitioned PETSc backend, builds the global mesh on rank zero, and
-    distributes owned-plus-halo partitions internally.
+    than one this function relaunches the current case under MPI. The default
+    selects partitioned PETSc and distributes a root-built mesh; an explicit
+    ``ExecutionConfig.petsc_replicated()`` retains a complete mesh per rank for
+    operators such as direct-forcing IBM that require global support.
     """
     RunConfig(cpu_cores=setup.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
 
     runtime_setup = _runtime_setup(setup)
-    is_root = True
+    materialize_mesh_here = True
     if setup.cores > 1:
         from mpi4py import MPI
 
-        is_root = MPI.COMM_WORLD.Get_rank() == 0
+        # Partitioned construction distributes the root mesh. Replicated
+        # construction intentionally gives every rank a complete copy.
+        materialize_mesh_here = (
+            runtime_setup.execution.parallel_mode == "petsc_replicated"
+            or MPI.COMM_WORLD.Get_rank() == 0
+        )
     from .core.solver import Solver
 
     return Solver(
@@ -89,7 +103,7 @@ def setup_fvm_solver(
         case_dir=str(Path(case_dir).resolve()) if case_dir is not None else None,
         # Do not retain a second caller-frame reference to the complete mesh
         # while Solver partitions it and allocates rank-local state.
-        mesh_data=_materialize_mesh(mesh, is_root=is_root),
+        mesh_data=_materialize_mesh(mesh, is_root=materialize_mesh_here),
     )
 
 

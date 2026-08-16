@@ -1,4 +1,4 @@
-"""Matched hybrid FVM-VPM benchmark for laminar cylinder shedding at Re=100.
+"""Matched hybrid FVM-VPM benchmark for cylinder LES at Re=500.
 
 The near-body FVM box and the fully meshed sibling reference use the same
 uniform spacing, immersed-cylinder forcing, time scheme, and force sampler.
@@ -31,6 +31,7 @@ from openonda.fvm import (
     SurfaceSampler as FVMSurfaceSampler,
     TimeConfig,
     TransportConfig,
+    TurbulenceConfig as FVMTurbulenceConfig,
     coupling_box_mesh,
     setup_fvm_solver,
 )
@@ -52,23 +53,21 @@ SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
 DIAMETER = 1.0
 RHO = 1.0
-REYNOLDS = 100.0
+REYNOLDS = 500.0
 U_INF = (1.0, 0.0, 0.0)
 # A tiny initial cross-flow disturbance seeds the unstable wake identically in
 # the reference and hybrid solvers; the boundary condition itself remains U∞.
 INITIAL_U = (1.0, 0.01, 0.0)
 NU = float(np.linalg.norm(U_INF)) * DIAMETER / REYNOLDS
 
-SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.10"))
+SPACING = float(os.environ.get("OPENONDA_SPACING", "0.25" if SMOKE else "0.125"))
 DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
 DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.10"))
-T_END = float(os.environ.get("OPENONDA_T_END", "0.20" if SMOKE else "20.0"))
-# Direct-forcing IBM interpolation is currently rank-local. Until marker
-# support is exchanged across partitions, immersed-body cases must be serial.
-FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
-MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "150000" if SMOKE else "1200000"))
+T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "15.0"))
+FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "150000" if SMOKE else "800000"))
 
-HANDOFF_BOX = (-1.5, 2.5, -2.0, 2.0, -1.2, 1.2)
+HANDOFF_BOX = (-1.5, 2.5, -2.0, 2.0, -1.0, 1.0)
 DOWNSTREAM_BUFFER = float(
     os.environ.get("OPENONDA_FVM_DOWNSTREAM_BUFFER", "0.4" if SMOKE else "0.5")
 )
@@ -80,14 +79,14 @@ FVM_BOX = (
     HANDOFF_BOX[4],
     HANDOFF_BOX[5],
 )
-VPM_DOMAIN = (-4.0, 10.4, -4.0, 4.0, -2.0, 2.0)
+VPM_DOMAIN = (-4.0, 10.0, -3.5, 3.5, -1.5, 1.5)
 SPAN = FVM_BOX[5] - FVM_BOX[4]
 
-FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.10"))
-DIAGNOSTIC_INTERVAL = float(os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", "1.0"))
+FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.05"))
+DIAGNOSTIC_INTERVAL = float(os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", "0.5"))
 CHECKPOINT_INTERVAL = float(os.environ.get("OPENONDA_CHECKPOINT_INTERVAL", "5.0"))
-VOLUME_INTERVAL = float(os.environ.get("OPENONDA_VOLUME_INTERVAL", "10.0"))
-SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", "0.10"))
+VOLUME_INTERVAL = float(os.environ.get("OPENONDA_VOLUME_INTERVAL", "7.5"))
+SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", "0.125"))
 
 
 def _period(name: str, interval: float, dt: float) -> int:
@@ -202,7 +201,13 @@ VPM_SAMPLERS = (
 FVM_SETUP = FVMSetup(
     case_name="coupled_cylinderFlow",
     cores=FVM_CORES,
-    execution=ExecutionConfig(operator_backend="numba"),
+    # Replicated PETSc keeps the complete IBM marker support on every rank
+    # while solving the pressure/momentum systems collectively.
+    execution=ExecutionConfig(
+        operator_backend="numba",
+        linear_backend="petsc",
+        parallel_mode="petsc_replicated",
+    ),
     output=OutputSetup(
         compression="lz4",
         precision="float32",
@@ -237,7 +242,7 @@ FVM_SETUP = FVMSetup(
     ),
     samplers=FVM_SAMPLERS,
     transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=None,
+    turbulence=FVMTurbulenceConfig.smagorinsky(Cs=0.12),
     boundaries=[
         BoundaryConfig(
             name="numericalBoundary",
@@ -256,7 +261,7 @@ VPM_SETUP = VPMSetup(
     viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
-    turbulence=VPMTurbulenceConfig.dns(),
+    turbulence=VPMTurbulenceConfig.les_smagorinsky(cs=0.12),
     velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
     stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
     particles_kernel="GAUSSIAN",
@@ -290,20 +295,22 @@ COUPLER_SETUP = CouplerSetup(
 
 
 def main() -> None:
-    print("\n===== SIMULATION =====")
-    print(
-        f"  cylinder Re={REYNOLDS:g}, h={SPACING:g}, "
-        f"FVM dt={DT_FVM:g}, VPM dt={DT_VPM:g}, t_end={T_END:g}"
-    )
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    if fvm_solver.parallel.is_root:
+        print("\n===== SIMULATION =====")
+        print(
+            f"  cylinder Re={REYNOLDS:g}, h={SPACING:g}, "
+            f"FVM dt={DT_FVM:g}, VPM dt={DT_VPM:g}, t_end={T_END:g}"
+        )
     fvm_solver.set_immersed_bodies(CYLINDER, h=SPACING)
     fvm_solver.write_vtk()
 
     vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
     coupled_solver.run()
-    print("\n===== DONE =====")
-    print("Hybrid cylinder simulation completed. Run ./allplot.sh after the reference case.")
+    if fvm_solver.parallel.is_root:
+        print("\n===== DONE =====")
+        print("Hybrid cylinder simulation completed. Run ./allplot.sh after the reference case.")
 
 
 if __name__ == "__main__":
