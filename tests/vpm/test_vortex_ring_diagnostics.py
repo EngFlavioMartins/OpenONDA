@@ -12,7 +12,7 @@ from source.solvers.VPM.io.sampler import SamplerExecutor
 _ASSETS = Path(__file__).resolve().parents[2] / "tutorials" / "VPM" / "vortexRing" / "assets"
 sys.path.insert(0, str(_ASSETS))
 
-from ring_diagnostics import RingDiagnosticsSampler  # noqa: E402
+from ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler  # noqa: E402
 from ring_metrics import (  # noqa: E402
     load_length_integrated_strength,
     load_ring_circulation,
@@ -124,3 +124,32 @@ def test_ring_sampler_writes_dense_diagnostics_beside_other_samples(tmp_path):
     np.testing.assert_allclose(tube_circulation, [1.0, 1.0], rtol=1e-12, atol=1e-12)
     assert time.shape == speed_time.shape == speed.shape == (2,)
     assert np.isfinite(speed).all()
+
+
+def test_ring_mode_sampler_recovers_known_radial_and_axial_bending_modes():
+    theta = 2.0 * np.pi * (np.arange(512) + 0.5) / 512
+    radial_amplitude = 0.05
+    axial_amplitude = 0.02
+    mode = 7
+    radial_phase = 0.3
+    axial_phase = -0.4
+    radius = 1.0 + radial_amplitude * np.cos(mode * theta + radial_phase)
+    axial = axial_amplitude * np.cos(mode * theta + axial_phase)
+    positions = np.column_stack((axial, radius * np.cos(theta), radius * np.sin(theta)))
+    circulation = np.column_stack(
+        (
+            np.zeros_like(theta),
+            -np.sin(theta),
+            np.cos(theta),
+        )
+    )
+
+    sampler = RingModeDiagnosticsSampler(maximum_mode=12, azimuthal_bins=128)
+    rows = sampler._sample_group(positions, circulation)
+    measured = {int(row[0]): row for row in rows}
+
+    np.testing.assert_allclose(measured[mode][1], radial_amplitude, rtol=2e-3)
+    np.testing.assert_allclose(measured[mode][2], axial_amplitude, rtol=2e-3)
+    assert measured[mode][7] == 1.0
+    assert max(measured[index][1] for index in measured if index != mode) < 2.0e-4
+    assert max(measured[index][2] for index in measured if index != mode) < 2.0e-4
