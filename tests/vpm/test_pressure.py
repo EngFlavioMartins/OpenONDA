@@ -204,6 +204,28 @@ def test_pressure_gradients_zero_for_empty_field(tmp_path):
     )
 
 
+def test_hierarchical_pressure_can_exclude_body_velocity(tmp_path):
+    """The coupler can avoid an expensive panel reevaluation at its outer boundary."""
+    solver = _empty_solver(tmp_path)
+    solver._pressure_body_induced_fn = lambda _points: (_ for _ in ()).throw(
+        AssertionError("body callback should not be evaluated")
+    )
+    targets = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+    result, velocity = solver.compute_target_pressure_gradients(
+        targets,
+        include_viscous=False,
+        include_temporal=False,
+        include_body=False,
+        temporal_method="eulerian",
+        return_velocity=True,
+        treecode_theta=0.3,
+    )
+
+    np.testing.assert_array_equal(result["grad_p"], np.zeros_like(targets))
+    np.testing.assert_array_equal(velocity, np.zeros_like(targets))
+
+
 def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
     """
     Calling compute_target_pressure_gradients with temporal_method='eulerian'

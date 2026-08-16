@@ -896,12 +896,16 @@ class Solver:
         dt: float | None = None,
         return_velocity: bool = False,
         treecode_theta: float | None = None,
+        include_body: bool = True,
     ) -> dict | tuple[dict, np.ndarray]:
         """Evaluate pressure-gradient terms at arbitrary target points.
 
         The result contains the total pressure gradient and its convective, viscous,
         and temporal contributions. ``temporal_method='eulerian'`` requires
         ``velocity_previous`` and ``dt`` when the temporal term is enabled.
+        ``include_body=False`` omits the optional boundary-element velocity from
+        the hierarchical pressure evaluation while retaining particles and the
+        configured freestream.
         """
         if nu is None:
             nu = (
@@ -909,13 +913,23 @@ class Solver:
                 if self.particles.number_of_particles > 0
                 else 1e-5
             )
-        if treecode_theta is not None:
-            body_fn = getattr(
-                self,
-                "_pressure_body_induced_fn",
-                self._body_induced_fn,
+        if not hasattr(self, "_pressure_physics"):
+            from source.solvers.VPM.physics.pressure import PressurePhysics
+
+            self._pressure_physics = PressurePhysics(
+                particles_kernel=self.particles_kernel,
+                max_particles=int(self.config.max_particles),
+                accumulator_dtype=self.accumulator_dtype,
             )
-            return self.physics.compute_target_pressure_gradients_hierarchical(
+        if treecode_theta is not None:
+            body_fn = None
+            if include_body:
+                body_fn = getattr(
+                    self,
+                    "_pressure_body_induced_fn",
+                    self._body_induced_fn,
+                )
+            return self._pressure_physics.compute_target_pressure_gradients_hierarchical(
                 self.particles,
                 grid_positions,
                 density=density,
@@ -933,12 +947,8 @@ class Solver:
                 body_fn=body_fn,
             )
 
-        from source.solvers.VPM.physics.pressure import PressurePhysics
-
         if self.particles.number_of_particles > 0:
             self.physics.compute_velocity_gradients(self.particles)
-        if not hasattr(self, "_pressure_physics"):
-            self._pressure_physics = PressurePhysics(particles_kernel=self.particles_kernel)
         return self._pressure_physics.compute_target_pressure_gradient_components(
             self.particles,
             grid_positions,
