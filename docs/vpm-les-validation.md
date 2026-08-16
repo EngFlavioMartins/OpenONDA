@@ -479,6 +479,46 @@ arbitrarily disordered equal-volume cloud.
 [Manufactured VPM coupling and theoretical impulse](figures/vpm_les/stage_5a_vpm_torque_coupling.png) ·
 [retained random-disorder failure](figures/vpm_les/stage_5a_vpm_torque_coupling_random_fail.png)
 
+### Widnall-instability challenge
+
+The next VPM test deliberately makes a vortex ring harder to resolve. Its
+centreline is perturbed by 24 azimuthal waves. Classical stability theory says
+that a thin Gaussian ring should preferentially amplify a mode near
+
+$$
+m_{peak}\simeq 2.26\frac{R}{a}=22.6
+$$
+
+for the present ring radius $R=1$ and core radius $a=0.1$. This estimate is
+used to identify the relevant modes, not as a fitted result.
+
+The archived perturbation-$0.025$ particle run was reanalysed. Modes
+$20\ldots24$ reached at most $1.098$ times their prescribed initial amplitude,
+while normalized divergence stayed below $0.082$ (limit $0.12$) and
+vortex-line misalignment below $25.84^\circ$ (limit $45^\circ$). This is weak
+evidence of incipient growth, not a clean instability validation: the archive
+starts at $t^*=1.57$, its Cartesian particle cloud represents the intended
+mode spectrum poorly, and its time step $0.02$ exceeds the stretching-based
+recommendation for the stronger perturbation.
+
+The replacement test uses complete toroidal particle orbits and perturbation
+$0.050$. Before advancing the flow, its discrete radial spectrum must agree
+with the prescribed spectrum within $5\%$, and energy in unseeded modes must be
+below $10\%$ of that in seeded modes. The present initial condition passes at
+$2.19\%$ and $4.90\%$, respectively. A synthetic diagnostic test recovers
+known radial and axial modes within $0.2\%$.
+
+The time-step gate is prospective: compare $\Delta t=0.005$ and $0.0025$ to
+$t^*=10$ before extending the accepted $0.005$ run to $t^*=60$. The raw DNS +
+transposed calculation must show physical mode growth before particle-health
+limits are crossed. Later, no-SGS and structural-DIAD VPM runs will start from
+the identical archived state. Success will mean that the LES changes the
+growth and breakdown of the measured instability without erasing the resolved
+ring or corrupting circulation and impulse; mere numerical survival is not a
+pass.
+
+[Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
+
 ## Reproducible research materials
 
 - Formulation and frozen-field tests:
@@ -514,6 +554,9 @@ arbitrarily disordered equal-volume cloud.
   `scripts/experiments/stage_5a_vpm_torque_coupling_results.json`. The original
   independent-random-jitter failure is retained in
   `scripts/experiments/stage_5a_vpm_torque_coupling_random_fail_results.json`.
+- Widnall mode diagnostic and archived baseline audit:
+  `scripts/experiments/stage_5b_widnall_vpm_analysis.py` and
+  `scripts/experiments/stage_5b_widnall_archived_w025_results.json`.
 - Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
   archive contains 13 checkpoints (124 MB). All 26 state/metadata files pass
   their SHA-256 checksums, and a load-and-continue test reproduces every field
@@ -522,9 +565,9 @@ arbitrarily disordered equal-volume cloud.
 
 ## Progress and work remaining
 
-Updated: 2026-08-16. **Current task:** implement and verify the nonperiodic
-fixed filter on the GBD remeshing grid, then run the structural torque in the
-raw-backup vortex-ring VPM before returning to the larger spectral campaign.
+Updated: 2026-08-16. **Current task:** qualify the stronger Widnall VPM
+challenge with a time-step study and raw backups, while completing the
+nonperiodic structural filter needed to run the same challenge with DIAD.
 
 - [x] Recover the exact filtered-vorticity equation from primary literature.
 - [x] Reject coefficient models that cannot represent the exact torque.
@@ -570,6 +613,15 @@ raw-backup vortex-ring VPM before returning to the larger spectral campaign.
 - [ ] **Gate E: couple the structural torque to VPM — active.**
   - [x] Verify the circulation-source equation, M4′ transfer, theoretical
     impulse, precision, refinement, and particle-deformation sensitivity.
+  - [x] Add and synthetically verify radial/axial ring-mode diagnostics; audit
+    the archived perturbation-$0.025$ run.
+  - [x] Replace the ill-resolved Cartesian Widnall seed by complete toroidal
+    particle orbits and pass the initial discrete-spectrum gate.
+  - [ ] Compare $\Delta t=0.005$ and $0.0025$ through $t^*=10$ for the
+    perturbation-$0.050$ DNS + transposed baseline.
+  - [ ] If time-step independent, extend the baseline through $t^*=60$ and
+    preserve every raw particle state, mode history, health metric, and
+    theoretical overlay.
   - [ ] Replace the periodic FFT filter by a padded, nonperiodic Gaussian
     filter on the GBD grid. Require agreement with the periodic formulation in
     a large interior region and invariance when padding is increased.

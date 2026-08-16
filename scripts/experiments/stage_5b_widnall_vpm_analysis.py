@@ -54,6 +54,7 @@ def read_modes(run_directory: Path, prefix: str) -> tuple[np.ndarray, np.ndarray
         maximum_mode=40,
         azimuthal_bins=128,
         reference_radius=RADIUS,
+        transverse_origin=(0.0, 0.0),
     )
     times: list[float] = []
     radial: list[np.ndarray] = []

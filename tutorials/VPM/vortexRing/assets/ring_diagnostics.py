@@ -133,6 +133,7 @@ class RingModeDiagnosticsSampler:
         maximum_mode: int = 40,
         azimuthal_bins: int = 128,
         reference_radius: float = 1.0,
+        transverse_origin: tuple[float, float] | None = None,
     ) -> None:
         if maximum_mode < 1:
             raise ValueError("maximum_mode must be positive")
@@ -143,6 +144,7 @@ class RingModeDiagnosticsSampler:
         self.maximum_mode = maximum_mode
         self.azimuthal_bins = azimuthal_bins
         self.reference_radius = reference_radius
+        self.transverse_origin = transverse_origin
 
     def save_csv(
         self,
@@ -178,23 +180,52 @@ class RingModeDiagnosticsSampler:
         if total_strength <= np.finfo(float).tiny:
             return []
 
-        centroid = np.einsum("i,ij->j", strength, positions) / total_strength
-        centered = positions - centroid
+        rough_centroid = np.einsum("i,ij->j", strength, positions) / total_strength
+        if self.transverse_origin is None:
+            transverse_origin = rough_centroid[1:]
+        else:
+            transverse_origin = np.asarray(self.transverse_origin, dtype=float)
+        centered = positions.copy()
+        centered[:, 1:] -= transverse_origin
         theta = np.mod(np.arctan2(centered[:, 2], centered[:, 1]), 2.0 * np.pi)
         radial_position = np.hypot(centered[:, 1], centered[:, 2])
-        axial_position = centered[:, 0]
+        tangent = np.column_stack(
+            (
+                np.zeros_like(theta),
+                -np.sin(theta),
+                np.cos(theta),
+            )
+        )
+        # Gamma_theta contains the cylindrical volume Jacobian rho. Dividing
+        # by rho recovers the cross-sectional vorticity measure needed for a
+        # centreline moment and avoids a false bias toward the outer side of
+        # the torus. The radial circulation added by the solenoidal Widnall
+        # initialization is intentionally excluded from this weight.
+        tangential_strength = np.abs(np.einsum("ij,ij->i", circulation, tangent))
+        cross_section_weight = tangential_strength / np.maximum(
+            radial_position,
+            np.finfo(float).eps,
+        )
+        axial_centroid = float(
+            np.sum(cross_section_weight * centered[:, 0]) / np.sum(cross_section_weight)
+        )
+        axial_position = centered[:, 0] - axial_centroid
 
         bin_index = np.floor(theta * self.azimuthal_bins / (2.0 * np.pi)).astype(int)
         bin_index = np.minimum(bin_index, self.azimuthal_bins - 1)
-        bin_weight = np.bincount(bin_index, weights=strength, minlength=self.azimuthal_bins)
+        bin_weight = np.bincount(
+            bin_index,
+            weights=cross_section_weight,
+            minlength=self.azimuthal_bins,
+        )
         radial_sum = np.bincount(
             bin_index,
-            weights=strength * radial_position,
+            weights=cross_section_weight * radial_position,
             minlength=self.azimuthal_bins,
         )
         axial_sum = np.bincount(
             bin_index,
-            weights=strength * axial_position,
+            weights=cross_section_weight * axial_position,
             minlength=self.azimuthal_bins,
         )
         occupied = bin_weight > np.finfo(float).tiny

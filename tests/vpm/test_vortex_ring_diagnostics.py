@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import h5py
 import numpy as np
 
+from source.solvers.VPM.initial_conditions import vortex_ring_centerline
 from source.solvers.VPM.io.sampler import SamplerExecutor
 
 _ASSETS = Path(__file__).resolve().parents[2] / "tutorials" / "VPM" / "vortexRing" / "assets"
@@ -153,3 +154,58 @@ def test_ring_mode_sampler_recovers_known_radial_and_axial_bending_modes():
     assert measured[mode][7] == 1.0
     assert max(measured[index][1] for index in measured if index != mode) < 2.0e-4
     assert max(measured[index][2] for index in measured if index != mode) < 2.0e-4
+
+
+def test_ring_mode_sampler_recovers_flat_broadband_seed_with_toroidal_jacobian():
+    azimuth = 512
+    theta = 2.0 * np.pi * (np.arange(azimuth) + 0.5) / azimuth
+    epsilon = 0.05
+    seeded_modes = 24
+    centreline, slope = vortex_ring_centerline(
+        theta,
+        1.0,
+        epsilon_w=epsilon,
+        seed=42,
+        max_modes=seeded_modes,
+    )
+    offsets = np.array((-0.04, 0.0, 0.04))
+    rho = (centreline[None, :] + offsets[:, None]).reshape(-1)
+    tiled_theta = np.tile(theta, len(offsets))
+    positions = np.column_stack(
+        (
+            np.zeros_like(rho),
+            rho * np.cos(tiled_theta),
+            rho * np.sin(tiled_theta),
+        )
+    )
+    tangent = np.column_stack(
+        (
+            np.zeros_like(rho),
+            -np.sin(tiled_theta),
+            np.cos(tiled_theta),
+        )
+    )
+    radial = np.column_stack(
+        (
+            np.zeros_like(rho),
+            np.cos(tiled_theta),
+            np.sin(tiled_theta),
+        )
+    )
+    circulation = rho[:, None] * (
+        tangent + np.tile(slope, len(offsets))[:, None] * radial / rho[:, None]
+    )
+
+    sampler = RingModeDiagnosticsSampler(
+        maximum_mode=40,
+        azimuthal_bins=128,
+        transverse_origin=(0.0, 0.0),
+    )
+    rows = np.asarray(sampler._sample_group(positions, circulation))
+    expected = epsilon / np.sqrt(seeded_modes)
+    relative_l2 = np.linalg.norm(rows[:seeded_modes, 1] - expected) / (
+        np.sqrt(seeded_modes) * expected
+    )
+
+    assert relative_l2 < 3.0e-3
+    assert np.sqrt(np.mean(rows[seeded_modes:, 1] ** 2)) < 2.0e-4
