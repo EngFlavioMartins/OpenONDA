@@ -17,8 +17,10 @@ fi
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
-export OPENONDA_DT_VPM=0.05
-export OPENONDA_VPM_SCHEME=RK2
+# Coarse third-order VPM updates halve donor/handoff work while keeping the
+# handoff CFL below its 0.7 guard; FVM substeps interpolate both donor states.
+export OPENONDA_DT_VPM=0.10
+export OPENONDA_VPM_SCHEME=RK3
 export OPENONDA_DONOR_BOUNDARY_MODE=pressure_gradient
 # Eight additional cells at the compact mesh's exact 3/79 m spacing.  Keeping
 # this value aligned preserves the original 79-cell y/z grid and fitted cube.
