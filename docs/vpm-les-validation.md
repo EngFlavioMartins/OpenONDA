@@ -362,6 +362,53 @@ change of equations.
 [Stationarity and theoretical limits](figures/vpm_les/stage_4b2_stationary_reference.png) ·
 [final spectrum and $k^{-5/3}$ slope guide](figures/vpm_les/stage_4b2_stationary_spectrum.png)
 
+### First stationary comparison of the LES models
+
+The qualified forcing protocol was then used for one continuous
+$64^3$ reference and four $32^3$ calculations: no subgrid model, structural
+DIAD, structural DIAD with the dissipative correction always active, and the
+proposed sensed correction. The calculation covered $15.49$ large-eddy
+turnover times. The first five were excluded and the final $9.90$ were used for
+comparison. The reference independently passed the same stationarity and
+resolution checks as the previous qualification run.
+
+Structural DIAD improved every predeclared physical comparison. Relative to
+the filtered reference, its mean energy error was $2.64\%$, mean enstrophy
+error was $1.81\%$, and time-mean spectrum error was $4.62\%$. Without a
+subgrid model these errors were $3.49\%$, $7.40\%$, and $7.56\%$. Thus the most
+small-scale-sensitive error, enstrophy, fell by about $76\%$, while the
+spectrum error fell by $39\%$. Its largest high-wavenumber energy fraction was
+$0.217\%$, safely below the predeclared $1\%$ pile-up limit.
+
+The always-active dissipative correction was slightly less accurate than the
+pure structural model. The sensor remained zero for the entire run, so the
+sensed and structural trajectories were identical. The evidence therefore
+supports the structural closure; it does not yet support either dissipative
+variant.
+
+The first automated result correctly retained a `FAIL` label because its
+energy-budget diagnostic exceeded the strict $0.2\%$ tolerance. That output
+had been sampled every $1.0$ time unit even though the random force changes on
+a $0.2$ time scale, so the power integral was not numerically resolved. This
+was tested rather than assumed. The archived interval from $t=50$ to $60$ was
+replayed with diagnostics every time step, $\Delta t=0.02$, and was required to
+recover the independently archived final state exactly. All fields did so with
+zero maximum difference. The correct energy balance,
+
+$$
+E(t)-E(t_0)
+=\int_{t_0}^{t}\left(P_f-2\nu Z+P_{SGS}\right)\,dt,
+$$
+
+then closed within $0.0091\%$ for every model. The original failed diagnostic
+and the corrective audit are both preserved. Taken together, this is a pass of
+the one-seed stationary **screen**, not publication-level qualification.
+
+[Stationary histories and reference overlays](figures/vpm_les/stage_4b3_stationary_pair_histories.png) ·
+[time-mean spectrum overlay](figures/vpm_les/stage_4b3_stationary_pair_spectra.png) ·
+[model-error comparison](figures/vpm_les/stage_4b3_stationary_pair_errors.png) ·
+[time-step energy-budget audit](figures/vpm_les/stage_4b3_budget_recheck.png)
+
 ## Reproducible research materials
 
 - Formulation and frozen-field tests:
@@ -386,11 +433,22 @@ change of equations.
   `scripts/experiments/stage_4b2_stationary_reference_results.json`. The
   shorter failed attempt is retained as
   `scripts/experiments/stage_4b2_stationary_reference_short_results.json`.
+- Checkpointed stationary model screen:
+  `scripts/experiments/stage_4b3_stationary_pair.py` and
+  `scripts/experiments/stage_4b3_stationary_pair_results.json`.
+- Dense budget follow-up:
+  `scripts/experiments/stage_4b3_budget_recheck.py` and
+  `scripts/experiments/stage_4b3_budget_recheck_results.json`.
+- Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
+  archive contains 13 checkpoints (124 MB). All 26 state/metadata files pass
+  their SHA-256 checksums, and a load-and-continue test reproduces every field
+  bit for bit. This directory is ignored by Git and is not yet a redundant
+  off-machine backup.
 
 ## Progress and work remaining
 
-Updated: 2026-08-15. **Current task:** run the first stationary paired
-reference/LES comparison with the now-qualified protocol, before beginning the
+Updated: 2026-08-16. **Current task:** stress-test precision and repeat the
+stationary comparison at independent seeds before beginning the
 $128^3/64^3$ campaign.
 
 - [x] Recover the exact filtered-vorticity equation from primary literature.
@@ -407,8 +465,17 @@ $128^3/64^3$ campaign.
   - [x] Qualify a statistically stationary reference by checking energy drift,
     power input against dissipation, isotropy, and two small-scale resolution
     measures over the final ten turnover times.
-  - [ ] Run a stationary $64^3/32^3$ paired screen using the qualified
+  - [x] Run a stationary $64^3/32^3$ paired screen using the qualified
     five-turnover development and ten-turnover measurement protocol.
+  - [x] Save restartable raw fields and verify exact restart/continuation.
+  - [x] Diagnose the initially under-sampled energy budget and repeat it at
+    every time step without changing the archived trajectory.
+  - [ ] Repeat the stationary screen for two independent random seeds. Retain
+    structural DIAD as the primary candidate; do not claim evidence for the
+    inactive sensor.
+  - [ ] Test the fixed truncated reconstruction in single and double precision
+    because its largest condition number in the stationary screen was
+    $6.89\times10^{11}$.
   - [ ] Forced homogeneous turbulence at two Reynolds numbers, meaning two
     ratios of inertial to viscous effects, and three random initializations.
     Run each for at least ten large-eddy turnover times—the characteristic time
