@@ -12,9 +12,9 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Resolution-bracket validation: retain conservative Dirichlet coupling and
-# the 0.04 particle grid, while testing the inexpensive FVM point between the
-# accepted 0.04 baseline and rejected 0.03 branch.
+# Pressure-recovery validation: retain the accurate 0.038 FVM / 0.04 particle
+# resolution pair and move only the downstream interface beyond the cube's
+# near recirculation region.
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
@@ -26,6 +26,7 @@ export OPENONDA_PARTICLE_SPACING=0.04
 export OPENONDA_FVM_CELL_SIZE=0.038
 export OPENONDA_SAMPLE_SPACING=0.04
 export OPENONDA_SURFACE_CELL_SIZE=0.015
+export OPENONDA_FVM_XMAX=3.0
 export OPENONDA_MAX_PARTICLES=1500000
 
 export OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER=10.0

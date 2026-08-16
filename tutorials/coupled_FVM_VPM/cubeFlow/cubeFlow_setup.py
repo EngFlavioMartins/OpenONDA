@@ -65,7 +65,10 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
-FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+FVM_XMAX = float(os.environ.get("OPENONDA_FVM_XMAX", "1.5"))
+if FVM_XMAX <= 0.5:
+    raise ValueError("OPENONDA_FVM_XMAX must lie downstream of the cube")
+FVM_BOX = (-1.5, FVM_XMAX, -1.5, 1.5, -1.5, 1.5)
 DT_FVM = 0.01
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
