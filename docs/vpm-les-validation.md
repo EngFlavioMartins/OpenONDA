@@ -6,11 +6,10 @@ OpenONDA needs a turbulence model for three-dimensional vortex-particle
 simulations that cannot resolve every turbulent scale. This is the purpose of
 large-eddy simulation (LES): compute the large, resolved motions and model the
 effect of the smaller, unresolved motions. The present candidate reconstructs
-some of the missing small-scale velocity and calculates its effect as a
-vorticity source, or **torque**. It is promising in tests performed on known
-velocity fields, and its mathematics and numerical signs have been verified.
-It is not yet a validated LES model because only short, reduced-resolution
-time-dependent turbulence pilots have been completed.
+some missing small-scale velocity and calculates its effect as a vorticity
+source, or **torque**. The mathematics and periodic-grid implementation are
+encouraging, but the closure has not yet run inside the VPM solver. It must
+therefore be called a candidate, not a validated particle LES model.
 
 ## Why a new model is needed
 
@@ -171,6 +170,26 @@ all later gates.
   error. Very large values require precision and repeatability checks.
 
 ## Evidence obtained so far
+
+### What the evidence can honestly support
+
+The different tests answer different questions. They should not be combined
+into one vague statement that “the model works.”
+
+| Claim | Present evidence | Assessment |
+|---|---|---|
+| The filtered equation, signs, and dimensions are correct | Independent derivation and exact algebraic identities | strong |
+| The structural model approximates an exact missing torque on periodic fields | A-priori AGARD and homogeneous-turbulence tests | encouraging |
+| The model can improve one evolving periodic LES | One long $64^3/32^3$ paired calculation | preliminary; one seed and low Reynolds number |
+| The underlying vortex-particle solver can reproduce a known flow | Raw vortex-ring VPM trajectory compared with Saffman theory | supported for that laminar ring |
+| A known torque can be transferred to particle circulation correctly | Manufactured-source refinement and invariant test | supported for smooth, volume-preserving particle deformation |
+| Structural DIAD works inside VPM | No completed flow calculation | **not demonstrated** |
+| The model works with bodies, inflow, or realistic turbulence | No completed calculation | **not demonstrated** |
+
+The periodic reference and LES share Fourier operators, filtering, and domain
+assumptions. That makes their comparison precise, but also creates a risk of
+common numerical bias. It cannot replace a particle calculation or an
+independent physical benchmark.
 
 ### Tests on known turbulence fields
 
@@ -409,6 +428,57 @@ the one-seed stationary **screen**, not publication-level qualification.
 [model-error comparison](figures/vpm_les/stage_4b3_stationary_pair_errors.png) ·
 [time-step energy-budget audit](figures/vpm_les/stage_4b3_budget_recheck.png)
 
+### Existing VPM reference calculation
+
+Before adding the new closure, the current particle solver was checked using
+its complete raw vortex-ring trajectory. This calculation is independent of
+the spectral LES research code. The transposed-stretching VPM result has a
+$3.84\%$ speed error against Saffman's analytical viscous-ring law, while ring
+radius, linear impulse, and tube circulation drift by $0.155\%$, $0.048\%$,
+and $2.74\%$. The raw HDF5 sequence contains 24 snapshots through 600 steps.
+
+This supports the health of the base VPM for this smooth unbounded flow. It
+does not support the structural model: the curve called “LES” in the existing
+tutorial uses the older Smagorinsky viscosity.
+
+[VPM ring speed against Saffman theory](../tutorials/VPM/vortexRing/figures/vortex_ring_motion.png) ·
+[VPM ring conservation](../tutorials/VPM/vortexRing/figures/vortex_ring_circulation.png)
+
+### First particle-coupling gate
+
+An explicit LES torque must change particle circulation according to
+
+$$
+\frac{d\boldsymbol\Gamma_p}{dt}
+=V_p\boldsymbol g_{SGS}(\boldsymbol x_p).
+$$
+
+This mapping was tested with a manufactured divergence-free torque whose total
+circulation source is zero and whose exact linear-impulse source is
+
+$$
+\frac{d\boldsymbol I}{dt}
+=\left(0,0,\frac{27}{512}\right).
+$$
+
+The production M4′ remeshing weights were used at four particle resolutions.
+For a smooth, exactly volume-preserving shear of the particle lattice, the
+field error converged at order $3.02$ and reached $0.033\%$ at $32^3$ in both
+single and double precision. M4′ preserved the applied circulation and impulse
+to numerical precision, and the recovered impulse source differed from theory
+by $0.0007\%$.
+
+An intentionally harsher test independently displaced particles while leaving
+their volumes unchanged. It failed: $15\%h$ random displacement produced
+$12.0\%$ local torque error without convergence, although global invariants
+were still preserved. This failed result is retained. It means the production
+coupling must apply the structural torque on the GBD remeshing grid and must
+monitor particle disorder; it must not simply evaluate a torque on an
+arbitrarily disordered equal-volume cloud.
+
+[Manufactured VPM coupling and theoretical impulse](figures/vpm_les/stage_5a_vpm_torque_coupling.png) ·
+[retained random-disorder failure](figures/vpm_les/stage_5a_vpm_torque_coupling_random_fail.png)
+
 ## Reproducible research materials
 
 - Formulation and frozen-field tests:
@@ -439,6 +509,11 @@ the one-seed stationary **screen**, not publication-level qualification.
 - Dense budget follow-up:
   `scripts/experiments/stage_4b3_budget_recheck.py` and
   `scripts/experiments/stage_4b3_budget_recheck_results.json`.
+- Manufactured VPM torque-coupling gate:
+  `scripts/experiments/stage_5a_vpm_torque_coupling.py` and
+  `scripts/experiments/stage_5a_vpm_torque_coupling_results.json`. The original
+  independent-random-jitter failure is retained in
+  `scripts/experiments/stage_5a_vpm_torque_coupling_random_fail_results.json`.
 - Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
   archive contains 13 checkpoints (124 MB). All 26 state/metadata files pass
   their SHA-256 checksums, and a load-and-continue test reproduces every field
@@ -447,9 +522,9 @@ the one-seed stationary **screen**, not publication-level qualification.
 
 ## Progress and work remaining
 
-Updated: 2026-08-16. **Current task:** stress-test precision and repeat the
-stationary comparison at independent seeds before beginning the
-$128^3/64^3$ campaign.
+Updated: 2026-08-16. **Current task:** implement and verify the nonperiodic
+fixed filter on the GBD remeshing grid, then run the structural torque in the
+raw-backup vortex-ring VPM before returning to the larger spectral campaign.
 
 - [x] Recover the exact filtered-vorticity equation from primary literature.
 - [x] Reject coefficient models that cannot represent the exact torque.
@@ -492,8 +567,22 @@ $128^3/64^3$ campaign.
 - [ ] Gate C: test the unchanged model on unseen types of turbulence.
 - [ ] Gate D: verify that GBD represents molecular diffusion correctly without
   receiving any LES viscosity.
-- [ ] Gate E: show that the particle/grid evaluation reproduces the already
-  verified spectral torque as resolution is refined.
+- [ ] **Gate E: couple the structural torque to VPM — active.**
+  - [x] Verify the circulation-source equation, M4′ transfer, theoretical
+    impulse, precision, refinement, and particle-deformation sensitivity.
+  - [ ] Replace the periodic FFT filter by a padded, nonperiodic Gaussian
+    filter on the GBD grid. Require agreement with the periodic formulation in
+    a large interior region and invariance when padding is increased.
+  - [ ] Reproduce a manufactured complete structural torque—not merely a
+    prescribed source—after particle scatter, filtering, deconvolution,
+    derivatives, circulation update, and regeneration.
+  - [ ] Run the vortex ring with no SGS and structural DIAD using molecular-only
+    GBD. The closure must remain negligible as resolution increases, must not
+    worsen the Saffman speed or conservation errors by more than $2\%$
+    absolute, and must save restartable raw particles.
+  - [ ] Run a genuinely turbulent VPM flow against an external DNS or
+    experimental reference. This is required before any journal claim about
+    LES performance.
 - [ ] Gate F: run full vortex-particle simulations against reference data.
 - [ ] Gate G: measure cost and precision sensitivity, then archive every input,
   configuration, seed, result, and figure needed for a journal paper.
