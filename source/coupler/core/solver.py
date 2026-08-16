@@ -112,6 +112,9 @@ class FVMVPMCoupler:
         self.injector: ContinuousOverlapInjector | None = None
         self.fringe = None
         self._u_bc_prev: np.ndarray | None = None
+        self._pressure_gradient_bc_prev: np.ndarray | None = None
+        self._pressure_gradient_bc_next: np.ndarray | None = None
+        self._pressure_velocity_snapshot: np.ndarray | None = None
         self._velocity_global_buffer: np.ndarray | None = None
         self._velocity_gradient_global_buffer: np.ndarray | None = None
         self._last_donor_flux_diagnostics = {
@@ -733,10 +736,53 @@ class FVMVPMCoupler:
             )
             if self._u_bc_prev is None:
                 self._u_bc_prev = u_bc_next.copy()
+            if self.config.donor_boundary_mode == "pressure_gradient":
+                assert self.vpm is not None
+                assert self.config.rho is not None
+                assert self.config.nu is not None
+                assert self.dt is not None
+                pressure_result, pressure_velocity = self.vpm.compute_target_pressure_gradients(
+                    face_centers,
+                    density=float(self.config.rho),
+                    nu=float(self.config.nu),
+                    include_viscous=True,
+                    include_temporal=self._pressure_velocity_snapshot is not None,
+                    include_freestream=True,
+                    h=self.config.h,
+                    temporal_method="eulerian",
+                    velocity_previous=self._pressure_velocity_snapshot,
+                    dt=self.dt,
+                    return_velocity=True,
+                    treecode_theta=0.3,
+                )
+                pressure_gradient = np.asarray(pressure_result["grad_p"], dtype=np.float64).reshape(
+                    -1, 3
+                ) / float(self.config.rho)
+                if pressure_gradient.shape != face_centers.shape or not np.all(
+                    np.isfinite(pressure_gradient)
+                ):
+                    raise RuntimeError("VPM pressure-gradient donor returned invalid data")
+                pressure_norm = np.linalg.norm(pressure_gradient, axis=1)
+                logger.info(
+                    "     [Donor pressure] |∇(p/ρ)| rms=%.3e max=%.3e m/s²  temporal=%s",
+                    float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0,
+                    float(np.max(pressure_norm)) if len(pressure_norm) else 0.0,
+                    self._pressure_velocity_snapshot is not None,
+                )
+                self._pressure_velocity_snapshot = np.asarray(
+                    pressure_velocity, dtype=np.float64
+                ).reshape(-1, 3)
+                self._pressure_gradient_bc_next = pressure_gradient
+                if self._pressure_gradient_bc_prev is None:
+                    self._pressure_gradient_bc_prev = pressure_gradient.copy()
         else:
             u_bc_next = np.zeros_like(face_centers)
             if self._u_bc_prev is None:
                 self._u_bc_prev = np.zeros_like(face_centers)
+            if self.config.donor_boundary_mode == "pressure_gradient":
+                self._pressure_gradient_bc_next = np.zeros_like(face_centers)
+                if self._pressure_gradient_bc_prev is None:
+                    self._pressure_gradient_bc_prev = np.zeros_like(face_centers)
         t_donor = time.perf_counter() - t_donor
         return (
             self._u_bc_prev,
@@ -764,9 +810,13 @@ class FVMVPMCoupler:
             face_areas,
             u_bc_prev,
             u_bc_next,
+            self._pressure_gradient_bc_prev,
+            self._pressure_gradient_bc_next,
         )
         if self._is_master:
             self._u_bc_prev = u_bc_next
+            if self._pressure_gradient_bc_next is not None:
+                self._pressure_gradient_bc_prev = self._pressure_gradient_bc_next
         return time.perf_counter() - t_fvm
 
     def _transfer_fvm_to_vpm(
@@ -1098,6 +1148,7 @@ class FVMVPMCoupler:
         self,
         patch: str,
         u_target: np.ndarray,
+        pressure_gradient: np.ndarray | None = None,
     ) -> None:
         """Apply the configured donor boundary trace and advance one FVM step."""
         assert self.fvm is not None
@@ -1114,6 +1165,12 @@ class FVMVPMCoupler:
             )
             self.fvm.set_directional_freestream_pressure_boundary_condition(patch, value=0.0)
             boundary_description = "directional-outflow mixed U/p"
+        elif boundary_mode == "pressure_gradient":
+            if pressure_gradient is None:
+                raise RuntimeError("pressure_gradient donor mode requires pressure-gradient data")
+            self.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
+            self.fvm.set_neumann_pressure_boundary_condition(pressure_gradient, patch)
+            boundary_description = "Dirichlet U / VPM pressure gradient"
         else:
             self.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
             boundary_description = "Dirichlet U / fixedFluxPressure"
@@ -1144,6 +1201,8 @@ class FVMVPMCoupler:
         face_areas: np.ndarray,
         u_prev: np.ndarray,
         u_next: np.ndarray,
+        pressure_gradient_prev: np.ndarray | None = None,
+        pressure_gradient_next: np.ndarray | None = None,
     ) -> None:
         """Advance FVM substeps with interpolated donor boundary data."""
         n_substeps = max(1, int(self.period_multiplier))
@@ -1166,7 +1225,12 @@ class FVMVPMCoupler:
             self.fringe.push_target(alpha)
             u_bc = (1.0 - alpha) * u_prev + alpha * u_next
             u_bc = self._project_to_solenoidal(u_bc, face_normals, face_areas)
-            self._fvm_step(patch, u_bc)
+            pressure_gradient = None
+            if pressure_gradient_prev is not None and pressure_gradient_next is not None:
+                pressure_gradient = (
+                    1.0 - alpha
+                ) * pressure_gradient_prev + alpha * pressure_gradient_next
+            self._fvm_step(patch, u_bc, pressure_gradient)
 
     # =========================================================
     # Restart support

@@ -20,7 +20,9 @@ class CouplerSetup:
 
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     patch_name: str = "numericalBoundary"
-    donor_boundary_mode: Literal["dirichlet", "characteristic", "directional_outflow"] = "dirichlet"
+    donor_boundary_mode: Literal[
+        "dirichlet", "characteristic", "directional_outflow", "pressure_gradient"
+    ] = "dirichlet"
     wall_patch_name: str | None = "cube"
     grid_spacing: float | None = None
     initial_U: list[float] | None = None
@@ -49,10 +51,11 @@ class CouplerSetup:
             "dirichlet",
             "characteristic",
             "directional_outflow",
+            "pressure_gradient",
         }:
             raise ValueError(
                 "donor_boundary_mode must be 'dirichlet', 'characteristic', "
-                "or 'directional_outflow'"
+                "'directional_outflow', or 'pressure_gradient'"
             )
 
         if self.fvm_box is not None:

@@ -55,6 +55,8 @@ def test_coupler_setup_validates_and_serializes_donor_boundary_mode(tmp_path):
     assert setup.to_dict()["fvm_solver"]["donor_boundary_mode"] == "characteristic"
     directional = _fvm_setup(tmp_path, donor_boundary_mode="directional_outflow")
     assert directional.to_dict()["fvm_solver"]["donor_boundary_mode"] == "directional_outflow"
+    pressure = _fvm_setup(tmp_path, donor_boundary_mode="pressure_gradient")
+    assert pressure.to_dict()["fvm_solver"]["donor_boundary_mode"] == "pressure_gradient"
     with pytest.raises(ValueError, match="donor_boundary_mode"):
         _fvm_setup(tmp_path, donor_boundary_mode="unsupported")
 
@@ -324,6 +326,44 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
     ]
     np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
     np.testing.assert_array_equal(coupler.fvm.calls[0][3], coupler.config.U_inf)
+
+
+def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
+    from source.coupler.core.solver import FVMVPMCoupler
+
+    class FakeFVM:
+        last_yplus = None
+
+        def __init__(self):
+            self.calls = []
+
+        def set_dirichlet_velocity_boundary_condition_vec(self, values, patch):
+            self.calls.append(("velocity", patch, np.asarray(values).copy()))
+
+        def set_neumann_pressure_boundary_condition(self, values, patch):
+            self.calls.append(("pressure", patch, np.asarray(values).copy()))
+
+        def solve_pimple(self):
+            self.calls.append(("solve",))
+
+        def advance_time(self):
+            self.calls.append(("advance",))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.fvm = FakeFVM()
+    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="pressure_gradient")
+    target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
+    gradient = np.array([[0.2, 0.0, 0.0], [-0.1, 0.3, 0.0]])
+    coupler._fvm_step("numericalBoundary", target, gradient)
+
+    assert [call[0] for call in coupler.fvm.calls] == [
+        "velocity",
+        "pressure",
+        "solve",
+        "advance",
+    ]
+    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
+    np.testing.assert_array_equal(coupler.fvm.calls[1][2], gradient)
 
 
 def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):
