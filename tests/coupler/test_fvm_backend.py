@@ -213,23 +213,23 @@ def test_characteristic_donor_sets_matching_velocity_and_pressure(built_backend)
     assert patch["value_p"] == 0.0
 
 
-def test_directional_outflow_donor_fixes_only_downstream_switch(built_backend):
+def test_directional_outflow_donor_fixes_only_downstream_switch(tmp_path):
     import contextlib
     import io
 
-    setup, fvm = built_backend
+    setup = _fvm_setup(tmp_path)
+    fvm = _build_backend(tmp_path)
     fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
     u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
     fvm.set_directional_freestream_velocity_boundary_condition_vec(
         u_bc, setup.patch_name, setup.U_inf
     )
-    fvm.set_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
     patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
     outflow = patch["_freestream_outflow"]
     local_centres = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
 
     assert patch["bc_type_U"] == "freestream"
-    assert patch["bc_type_p"] == "freestream"
+    assert patch["bc_type_p"] == "fixedFluxPressure"
     assert np.count_nonzero(outflow) == 4 * 4
     assert np.allclose(local_centres[outflow, 0], BOX[1])
     with contextlib.redirect_stdout(io.StringIO()):
@@ -289,9 +289,6 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
                 ("velocity", patch, np.asarray(values).copy(), np.asarray(direction).copy())
             )
 
-        def set_freestream_pressure_boundary_condition(self, patch, value=0.0):
-            self.calls.append(("pressure", patch, value))
-
         def solve_pimple(self):
             self.calls.append(("solve",))
 
@@ -306,7 +303,6 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     assert [call[0] for call in coupler.fvm.calls] == [
         "velocity",
-        "pressure",
         "solve",
         "advance",
     ]
