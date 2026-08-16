@@ -12,9 +12,9 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Recommended next investigation: let the FVM wake leave through a
-# characteristic donor boundary while retaining the validated face-aware
-# particle filter. t=2.4 s gives four coincident field frames.
+# Recommended production baseline: conservative Dirichlet donor coupling with
+# the validated face-aware particle filter. t=2.4 s gives four coincident
+# field frames; longer wake-development runs can raise OPENONDA_T_END here.
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4

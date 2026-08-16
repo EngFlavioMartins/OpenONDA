@@ -320,7 +320,7 @@ VPM_SETUP = VPMSetup(
 
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
-    donor_boundary_mode="characteristic",
+    donor_boundary_mode="dirichlet",
     wall_patch_name="cube",
     h=PARTICLE_SPACING,
     buffer_thickness=6 * PARTICLE_SPACING,
