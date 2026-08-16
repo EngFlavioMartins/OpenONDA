@@ -5,8 +5,8 @@ the FVM–VPM coupler, and the cubeFlow tutorial:
 
 * graded 1-D node distributions — :func:`stretched`, :func:`wall_refined_axis`;
 * the 3-D generator :func:`box_mesh_3d` with six named outer patches; and
-* :func:`coupling_box_mesh`, the coupler-facing variant whose six outer sides
-  form one merged coupling patch.
+* :func:`coupling_box_mesh`, the coupler-facing variant whose outer sides form
+  one merged coupling patch (optionally leaving the spanwise pair ``empty``).
 
 Both mesh functions carve the optional ``hole_box`` out of the grid: the cells
 inside it are removed and the exposed faces become a body-fitted ``wall``
@@ -142,13 +142,16 @@ def box_mesh_3d(
     hole_box: tuple[float, float, float, float, float, float] | None = None,
     wall_patch_name: str = "cube",
     merge_outer_patch: str | None = None,
+    empty_spanwise: bool = False,
 ) -> dict:
     """Face-based ``mesh_data`` dict for a rectilinear grid with a box hole.
 
     Patch order: inlet (xmin), outlet (xmax), ymin, ymax, zmin, zmax, then the
-    ``wall_patch_name`` hole faces (type ``wall``).  With ``merge_outer_patch``
-    the six outer sides become ONE boundary patch of that name (the coupler's
-    coupling-patch layout); the face ordering is unchanged.
+    ``wall_patch_name`` hole faces (type ``wall``). With ``merge_outer_patch``
+    the outer sides become one boundary patch of that name (the coupler's
+    coupling-patch layout); the face ordering is unchanged. If
+    ``empty_spanwise`` is true, zmin/zmax remain separate ``empty`` patches and
+    only the four in-plane sides are merged.
     """
     xs = np.asarray(xs, dtype=np.float64)
     ys = np.asarray(ys, dtype=np.float64)
@@ -281,15 +284,27 @@ def box_mesh_3d(
     boundary = []
     start = n_interior
     if merge_outer_patch is not None:
-        n_outer = sum(quads.shape[0] for _, quads, _ in outer)
+        merged_outer = outer[:4] if empty_spanwise else outer
+        n_outer = sum(quads.shape[0] for _, quads, _ in merged_outer)
         boundary.append(
             {"name": merge_outer_patch, "startFace": start, "nFaces": n_outer, "type": "patch"}
         )
         start += n_outer
+        if empty_spanwise:
+            for name, quads, _ in outer[4:]:
+                boundary.append(
+                    {"name": name, "startFace": start, "nFaces": quads.shape[0], "type": "empty"}
+                )
+                start += quads.shape[0]
     else:
         for name, quads, _ in outer:
             boundary.append(
-                {"name": name, "startFace": start, "nFaces": quads.shape[0], "type": "patch"}
+                {
+                    "name": name,
+                    "startFace": start,
+                    "nFaces": quads.shape[0],
+                    "type": "empty" if empty_spanwise and name in {"zmin", "zmax"} else "patch",
+                }
             )
             start += quads.shape[0]
     if hole_box is not None:
@@ -357,12 +372,15 @@ def coupling_box_mesh(
     hole_box: tuple[float, float, float, float, float, float] | None = None,
     wall_patch_name: str = "cube",
     nodes: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    empty_spanwise: bool = False,
 ) -> dict:
     """Return a hex mesh whose six sides form one coupling patch.
 
     ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (e.g. graded,
     wall-refined via :func:`wall_refined_axis`); otherwise a uniform grid at
-    ``spacing`` is built.  With ``hole_box``, the cells inside it are removed
+    ``spacing`` is built. With ``empty_spanwise``, the zmin/zmax faces remain
+    separate ``empty`` patches while the four in-plane faces form the coupling
+    patch. With ``hole_box``, the cells inside it are removed
     (body-fitted): the exposed faces become a
     second boundary patch ``wall_patch_name`` of type ``wall``.  The hole faces
     must lie exactly on mesh planes.
@@ -394,6 +412,7 @@ def coupling_box_mesh(
         hole_box=hole_box,
         wall_patch_name=wall_patch_name,
         merge_outer_patch=patch_name,
+        empty_spanwise=empty_spanwise,
     )
 
 

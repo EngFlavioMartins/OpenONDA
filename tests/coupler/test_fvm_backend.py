@@ -122,6 +122,31 @@ def test_coupling_box_mesh_single_merged_patch():
     assert np.allclose(mesh["points"].max(axis=0), [0.5, 0.5, 0.5])
 
 
+def test_coupling_box_mesh_can_keep_spanwise_faces_empty():
+    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+
+    mesh = coupling_box_mesh(
+        BOX,
+        0.25,
+        patch_name="numericalBoundary",
+        empty_spanwise=True,
+    )
+
+    assert [patch["name"] for patch in mesh["boundary"]] == [
+        "numericalBoundary",
+        "zmin",
+        "zmax",
+    ]
+    coupling, zmin, zmax = mesh["boundary"]
+    assert coupling["nFaces"] == 4 * 4 * 4
+    assert coupling["startFace"] == mesh["n_interior_faces"]
+    assert zmin["type"] == zmax["type"] == "empty"
+    assert zmin["nFaces"] == zmax["nFaces"] == 4 * 4
+    assert zmin["startFace"] == coupling["startFace"] + coupling["nFaces"]
+    assert zmax["startFace"] == zmin["startFace"] + zmin["nFaces"]
+    assert mesh["n_faces"] == zmax["startFace"] + zmax["nFaces"]
+
+
 def test_coupling_box_mesh_rejects_non_conforming_spacing():
     from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
 
