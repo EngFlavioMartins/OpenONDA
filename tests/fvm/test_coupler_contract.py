@@ -50,6 +50,7 @@ CONTRACT_METHODS = [
     "set_kinematic_viscosity",
     "set_dirichlet_velocity_boundary_condition_vec",
     "set_freestream_velocity_boundary_condition_vec",
+    "set_directional_freestream_velocity_boundary_condition_vec",
     "set_freestream_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",

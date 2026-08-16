@@ -554,6 +554,8 @@ class CouplerInterfaceMixin:
             )
         b["bc_type_U"] = "fixedValue"
         b["value_U_field"] = field
+        b.pop("_fixed_freestream_outflow", None)
+        b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
 
     def set_freestream_velocity_boundary_condition_vec(self, u_target, patch_name):
@@ -576,6 +578,50 @@ class CouplerInterfaceMixin:
             )
         b["bc_type_U"] = "freestream"
         b["value_U_field"] = field
+        b.pop("_fixed_freestream_outflow", None)
+        b.pop("_freestream_outflow", None)
+        self._write_patch_ghosts(b, field)
+
+    def set_directional_freestream_velocity_boundary_condition_vec(
+        self, u_target, patch_name, outflow_direction
+    ):
+        """Extrapolate velocity only on the geometrically designated outflow face.
+
+        Unlike the ordinary ``freestream`` condition, the switching mask is
+        fixed by the patch normals rather than recomputed from the local face
+        flux.  This is useful for a merged FVM--VPM coupling patch: the
+        downstream face is allowed to convect out, while inlet and lateral
+        faces retain their complete nonuniform donor trace even when local
+        cross-flow points outward.
+        """
+        field = self._scatter_patch_values(patch_name, u_target, trailing_shape=(3,))
+        b = self._optional_patch(patch_name)
+        if b is None:
+            return
+        if field.shape != (b["nFaces"], 3) or not np.all(np.isfinite(field)):
+            raise ValueError(
+                f"Directional freestream data for patch {patch_name!r} must be finite "
+                f"with shape ({b['nFaces']}, 3)"
+            )
+
+        direction = np.asarray(outflow_direction, dtype=float).reshape(-1)
+        magnitude = float(np.linalg.norm(direction))
+        if direction.shape != (3,) or not np.all(np.isfinite(direction)) or magnitude <= 0.0:
+            raise ValueError("outflow_direction must be a finite nonzero three-component vector")
+        direction /= magnitude
+
+        start, n_faces = b["startFace"], b["nFaces"]
+        surface_vectors = np.asarray(self.geo_data["face_sf"][start : start + n_faces], dtype=float)
+        normals = surface_vectors / np.linalg.norm(surface_vectors, axis=1)[:, None]
+        alignment = normals @ direction
+        outflow = alignment > 0.5
+        if not np.any(outflow):
+            raise ValueError(f"Patch {patch_name!r} has no face aligned with outflow_direction")
+
+        b["bc_type_U"] = "freestream"
+        b["value_U_field"] = field
+        b["_fixed_freestream_outflow"] = outflow
+        b["_freestream_outflow"] = outflow
         self._write_patch_ghosts(b, field)
 
     def set_freestream_pressure_boundary_condition(self, patch_name, value=0.0):

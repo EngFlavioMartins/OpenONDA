@@ -12,21 +12,21 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Pressure-recovery validation: retain the accurate 0.038 FVM / 0.04 particle
-# resolution pair and move only the downstream interface beyond the cube's
-# near recirculation region.
+# Recommended compact production case.  The rejected x_max=3.0 experiment is
+# preserved under baselines/hybrid_fvm0038_x3_t2p40_54117e9.
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
 export OPENONDA_DT_VPM=0.05
 export OPENONDA_VPM_SCHEME=RK2
+export OPENONDA_DONOR_BOUNDARY_MODE=directional_outflow
 
 export OPENONDA_SPACING=0.04
 export OPENONDA_PARTICLE_SPACING=0.04
 export OPENONDA_FVM_CELL_SIZE=0.038
 export OPENONDA_SAMPLE_SPACING=0.04
 export OPENONDA_SURFACE_CELL_SIZE=0.015
-export OPENONDA_FVM_XMAX=3.0
+export OPENONDA_FVM_XMAX=1.5
 export OPENONDA_MAX_PARTICLES=1500000
 
 export OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER=10.0

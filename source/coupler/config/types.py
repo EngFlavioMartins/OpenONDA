@@ -20,7 +20,7 @@ class CouplerSetup:
 
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     patch_name: str = "numericalBoundary"
-    donor_boundary_mode: Literal["dirichlet", "characteristic"] = "dirichlet"
+    donor_boundary_mode: Literal["dirichlet", "characteristic", "directional_outflow"] = "dirichlet"
     wall_patch_name: str | None = "cube"
     grid_spacing: float | None = None
     initial_U: list[float] | None = None
@@ -45,8 +45,15 @@ class CouplerSetup:
             if initial_u.shape != (3,) or not np.all(np.isfinite(initial_u)):
                 raise ValueError("initial_U must be a finite three-component vector")
 
-        if self.donor_boundary_mode not in {"dirichlet", "characteristic"}:
-            raise ValueError("donor_boundary_mode must be 'dirichlet' or 'characteristic'")
+        if self.donor_boundary_mode not in {
+            "dirichlet",
+            "characteristic",
+            "directional_outflow",
+        }:
+            raise ValueError(
+                "donor_boundary_mode must be 'dirichlet', 'characteristic', "
+                "or 'directional_outflow'"
+            )
 
         if self.fvm_box is not None:
             box = np.asarray(self.fvm_box, dtype=np.float64)

@@ -26,6 +26,7 @@ CONTRACT_METHODS = [
     "set_kinematic_viscosity",
     "set_dirichlet_velocity_boundary_condition_vec",
     "set_freestream_velocity_boundary_condition_vec",
+    "set_directional_freestream_velocity_boundary_condition_vec",
     "set_freestream_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
@@ -51,6 +52,8 @@ def _fvm_setup(tmp_path, **overrides):
 def test_coupler_setup_validates_and_serializes_donor_boundary_mode(tmp_path):
     setup = _fvm_setup(tmp_path, donor_boundary_mode="characteristic")
     assert setup.to_dict()["fvm_solver"]["donor_boundary_mode"] == "characteristic"
+    directional = _fvm_setup(tmp_path, donor_boundary_mode="directional_outflow")
+    assert directional.to_dict()["fvm_solver"]["donor_boundary_mode"] == "directional_outflow"
     with pytest.raises(ValueError, match="donor_boundary_mode"):
         _fvm_setup(tmp_path, donor_boundary_mode="unsupported")
 
@@ -210,6 +213,30 @@ def test_characteristic_donor_sets_matching_velocity_and_pressure(built_backend)
     assert patch["value_p"] == 0.0
 
 
+def test_directional_outflow_donor_fixes_only_downstream_switch(built_backend):
+    import contextlib
+    import io
+
+    setup, fvm = built_backend
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
+    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
+    fvm.set_directional_freestream_velocity_boundary_condition_vec(
+        u_bc, setup.patch_name, setup.U_inf
+    )
+    fvm.set_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
+    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
+    outflow = patch["_freestream_outflow"]
+    local_centres = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
+
+    assert patch["bc_type_U"] == "freestream"
+    assert patch["bc_type_p"] == "freestream"
+    assert np.count_nonzero(outflow) == 4 * 4
+    assert np.allclose(local_centres[outflow, 0], BOX[1])
+    with contextlib.redirect_stdout(io.StringIO()):
+        fvm.solve_pimple()
+    np.testing.assert_array_equal(patch["_freestream_outflow"], outflow)
+
+
 def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path):
     from source.coupler.core.solver import FVMVPMCoupler
 
@@ -244,6 +271,47 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
         "advance",
     ]
     np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
+
+
+def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
+    from source.coupler.core.solver import FVMVPMCoupler
+
+    class FakeFVM:
+        last_yplus = None
+
+        def __init__(self):
+            self.calls = []
+
+        def set_directional_freestream_velocity_boundary_condition_vec(
+            self, values, patch, direction
+        ):
+            self.calls.append(
+                ("velocity", patch, np.asarray(values).copy(), np.asarray(direction).copy())
+            )
+
+        def set_freestream_pressure_boundary_condition(self, patch, value=0.0):
+            self.calls.append(("pressure", patch, value))
+
+        def solve_pimple(self):
+            self.calls.append(("solve",))
+
+        def advance_time(self):
+            self.calls.append(("advance",))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.fvm = FakeFVM()
+    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="directional_outflow")
+    target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
+    coupler._fvm_step("numericalBoundary", target)
+
+    assert [call[0] for call in coupler.fvm.calls] == [
+        "velocity",
+        "pressure",
+        "solve",
+        "advance",
+    ]
+    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
+    np.testing.assert_array_equal(coupler.fvm.calls[0][3], coupler.config.U_inf)
 
 
 def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):

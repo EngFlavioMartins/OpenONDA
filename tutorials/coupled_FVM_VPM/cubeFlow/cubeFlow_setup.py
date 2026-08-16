@@ -77,6 +77,7 @@ DT_VPM = float(os.environ.get("OPENONDA_DT_VPM", "0.05"))
 VPM_SCHEME = os.environ.get("OPENONDA_VPM_SCHEME", "RK2").upper()
 if VPM_SCHEME not in {"RK2", "RK3"}:
     raise ValueError("OPENONDA_VPM_SCHEME must be RK2 or RK3")
+DONOR_BOUNDARY_MODE = os.environ.get("OPENONDA_DONOR_BOUNDARY_MODE", "dirichlet")
 # Keep the historical OPENONDA_SPACING knob as a common fallback, but do not
 # force the Eulerian mesh, particle lattice, and diagnostic grid to have the
 # same resolution.  Resolution-matched controls show that this distinction is
@@ -323,7 +324,7 @@ VPM_SETUP = VPMSetup(
 
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
-    donor_boundary_mode="dirichlet",
+    donor_boundary_mode=DONOR_BOUNDARY_MODE,
     wall_patch_name="cube",
     h=PARTICLE_SPACING,
     buffer_thickness=6 * PARTICLE_SPACING,

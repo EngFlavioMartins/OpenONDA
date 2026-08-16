@@ -950,11 +950,15 @@ def assemble_pressure_correction_equation_rhie_chow(
             if strategy is BoundaryStrategy.FREESTREAM:
                 start = int(boundary["startFace"])
                 nf = int(boundary["nFaces"])
-                ghost = U_star[
-                    n_elements + (start - n_interior) : n_elements + (start - n_interior) + nf
-                ]
-                sf_patch = geo_data["face_sf"][start : start + nf]
-                boundary["_freestream_outflow"] = np.einsum("ij,ij->i", ghost, sf_patch) >= 0.0
+                fixed_outflow = boundary.get("_fixed_freestream_outflow")
+                if fixed_outflow is not None:
+                    boundary["_freestream_outflow"] = fixed_outflow
+                else:
+                    ghost = U_star[
+                        n_elements + (start - n_interior) : n_elements + (start - n_interior) + nf
+                    ]
+                    sf_patch = geo_data["face_sf"][start : start + nf]
+                    boundary["_freestream_outflow"] = np.einsum("ij,ij->i", ghost, sf_patch) >= 0.0
         du_components = (DU, DU, DU) if scalar_diagonal else (DU[:, 0], DU[:, 1], DU[:, 2])
         cf_b, ff_b, vf_b = _process_boundary_faces_jit(
             n_boundary_faces,
