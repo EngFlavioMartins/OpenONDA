@@ -35,6 +35,7 @@ def test_gate_requires_small_residuals_not_only_a_plateau() -> None:
                 "impulse_x": 3.0,
                 "maximum_mode_amplitude": 1.0e-8,
                 "energy_balance_relative_residual": 0.0,
+                "invariant_projection_correction_ratio": 0.0,
                 "time_star": time,
             }
         )

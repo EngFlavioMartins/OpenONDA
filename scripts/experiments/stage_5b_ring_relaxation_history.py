@@ -53,6 +53,7 @@ LIMITS = {
     "impulse_relative_drift": 1.0e-3,
     "maximum_axisymmetry_mode_amplitude": 1.0e-4,
     "energy_balance_relative_residual": 5.0e-2,
+    "maximum_invariant_projection_correction_ratio": 1.0e-2,
 }
 
 
@@ -107,6 +108,15 @@ def cumulative_energy_residuals(run_directory: Path, target_times: np.ndarray) -
     return np.asarray(residuals)
 
 
+def projection_correction_history(run_directory: Path, target_times: np.ndarray) -> np.ndarray:
+    path = run_directory / "samples/flow_integrals.csv"
+    history = np.genfromtxt(path, delimiter=",", names=True)
+    time = np.atleast_1d(history["time"])
+    correction = np.atleast_1d(history["invariant_projection_correction_ratio"])
+    order = np.argsort(time)
+    return np.interp(target_times, time[order], correction[order])
+
+
 def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
     if len(rows) < 3:
         return {"status": "INCOMPLETE", "reason": "at least three saved times are required"}
@@ -132,6 +142,9 @@ def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
             float(row["maximum_mode_amplitude"]) for row in rows
         ),
         "energy_balance_relative_residual": float(final["energy_balance_relative_residual"]),
+        "maximum_invariant_projection_correction_ratio": max(
+            float(row["invariant_projection_correction_ratio"]) for row in rows
+        ),
     }
     checks = {
         "single_valued_relation": observed["final_collapse_residual"]
@@ -147,6 +160,8 @@ def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
         <= LIMITS["maximum_axisymmetry_mode_amplitude"],
         "energy_balance": observed["energy_balance_relative_residual"]
         <= LIMITS["energy_balance_relative_residual"],
+        "small_invariant_projection": observed["maximum_invariant_projection_correction_ratio"]
+        <= LIMITS["maximum_invariant_projection_correction_ratio"],
     }
     return {
         "status": "QUASI_STEADY" if all(checks.values()) else "CONTINUE_RELAXATION",
@@ -166,6 +181,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     centers = np.asarray([item["axial_centroid"] for item in moments])
     speeds = local_speeds(times, centers)
     energy_residuals = cumulative_energy_residuals(run_directory, times)
+    projection_ratios = projection_correction_history(run_directory, times)
 
     final_base = run_directory / f"vpm_{label}_final"
     solver = Solver.continue_from_backup(str(final_base))
@@ -173,8 +189,14 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
         raise RuntimeError(f"could not restore {final_base}")
 
     rows: list[dict] = []
-    for path, state, moment, speed, energy_residual in zip(
-        paths, states, moments, speeds, energy_residuals, strict=True
+    for path, state, moment, speed, energy_residual, projection_ratio in zip(
+        paths,
+        states,
+        moments,
+        speeds,
+        energy_residuals,
+        projection_ratios,
+        strict=True,
     ):
         BackupSystem.load_numerical_state(solver, path)
         sample = sample_solver(
@@ -191,6 +213,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
                 "time_star": float(state["time"]),
                 "measured_translation_speed": float(speed),
                 "energy_balance_relative_residual": float(energy_residual),
+                "invariant_projection_correction_ratio": float(projection_ratio),
                 **moment,
                 **modes,
                 **serializable_metrics(metrics),
@@ -284,9 +307,18 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
         color="#7a5195",
         label="energy-balance residual",
     )
+    if max(float(row["invariant_projection_correction_ratio"]) for row in rows) > 0.0:
+        axis.semilogy(
+            time,
+            [row["invariant_projection_correction_ratio"] for row in rows],
+            "v-",
+            color="#ef5675",
+            label="invariant-projection correction",
+        )
     axis.axhline(1.0e-3, color=INK, linestyle="--", label="circulation/impulse limit")
     axis.axhline(1.0e-4, color=GREY, linestyle=":", label="axisymmetry limit")
     axis.axhline(5.0e-2, color="#7a5195", linestyle="--", label="energy-balance limit")
+    axis.axhline(1.0e-2, color="#ef5675", linestyle=":", label="projection limit")
     axis.set_xlabel(r"time $t^*$")
     axis.set_ylabel("relative magnitude")
     axis.set_title(f"Particle health: {gate['status'].replace('_', ' ').lower()}")

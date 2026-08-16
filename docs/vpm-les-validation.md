@@ -615,15 +615,27 @@ $3\times10^{-6}$ and detects a deliberately broken relation with residuals
 of $0.19$ and $0.30$. Refining the field-sampling grid from $65^2$ to $129^2$
 changes the real-ring measurements by less than $0.7\%$.
 
-The first restartable relaxation pilot, through $t^*=2$, is healthy but is
-not yet quasi-steady. The two residuals decrease from $0.214$ and $0.201$ to
-$0.184$ and $0.149$, respectively. The propagation speed inferred solely by
-minimizing the steady material residual is also moving toward the independently
-measured VPM speed, but they still differ by $27.3\%$. Circulation and impulse
-drift remain below $3.1\times10^{-8}$ and the largest artificial azimuthal mode
-is below $3.9\times10^{-8}$. Therefore the particle solution is healthy and
-relaxing in the correct direction, but perturbing it now would repeat the
-original initial-condition mistake.
+The first restartable relaxation pilot initially looked healthy through
+$t^*=2$. Its two quasi-steady residuals decreased from $0.214$ and $0.201$ to
+$0.184$ and $0.149$, while circulation, impulse, and axisymmetry remained
+excellent. Extending it to $t^*=4$ exposed a slower but decisive failure:
+kinetic energy fell $8.54\%$ more than the exact molecular identity permits.
+A factor-two time-step pair started from the identical $t^*=2$ particles ended
+with energies only $1.63\times10^{-6}$ apart, yet both exceeded the allowed
+energy loss by about $10.6\%$. The unprojected trajectory is therefore
+time-step converged but physically unacceptable and will not be continued.
+
+The replacement now matches the reference procedure more faithfully: the
+relaxation is explicitly axisymmetric and the discrete inviscid stretching
+rate is projected onto the exact circulation, impulse, angular-impulse, and
+energy constraints. Molecular Core Spreading remains outside this projection,
+so its physical energy sink is retained. At $t^*=0.2$, the energy-balance
+residual falls to $0.057\%$ and the projection correction is only $0.0256\%$
+of the raw stretching rate. Through $t^*=1$, cumulative energy-balance error is
+$0.097\%$, the maximum correction is $0.123\%$, impulse remains stable, and
+artificial modes stay below $1.9\times10^{-8}$. The quasi-steady residuals are
+still $0.206$ and $0.185$, so this corrected base state is healthy but not yet
+ready to perturb.
 
 [Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
 
@@ -638,6 +650,8 @@ original initial-condition mistake.
 [corrected short relaxation gate](figures/vpm_les/stage_5b_relaxed_ring_corrected_gate.png)
 · [verified quasi-steady measurement](figures/vpm_les/stage_5b_ring_quasi_steady.png)
 · [$t^*=2$ physical relaxation history](figures/vpm_les/stage_5b_ring_relaxation_tstar2.png)
+· [rejected energy audit](figures/vpm_les/stage_5b_ring_energy_audit.png)
+· [corrected axisymmetric history](figures/vpm_les/stage_5b_ring_axisproj_tstar1.png)
 
 ## Reproducible research materials
 
@@ -779,12 +793,17 @@ DNS and structural DIAD in VPM.
     - [x] Implement and verify the paper's actual quasi-steady criterion:
       within the ring core, $\omega_\phi/r$ must become approximately a
       single-valued function of the translating-frame streamfunction.
-    - [x] Preserve raw states every $0.5t^*$ and complete the healthy
-      $t^*=2$ pilot. Its residuals are improving but it is not quasi-steady.
-    - [ ] Continue the same raw trajectory until both residuals are below
+    - [x] Preserve raw states and reject the unprojected relaxation after its
+      energy balance failed independently of time-step refinement.
+    - [x] Start the explicitly axisymmetric, invariant-projected replacement;
+      verify energy balance and bound the projection correction through
+      $t^*=1$.
+    - [ ] Continue the corrected raw trajectory until both residuals are below
       $0.05$, fitted and measured speeds agree within $2\%$, and the last three
-      saved measurements form a $10\%$ plateau. Do not substitute an arbitrary
-      final time for this physical stopping condition.
+      saved measurements form a $10\%$ plateau. Also require energy-balance
+      error below $5\%$ and a small, grid-convergent projection correction. Do
+      not substitute an arbitrary final time for this physical stopping
+      condition.
     - [ ] Confirm the accepted state with a finer particle spacing before any
       instability or LES comparison.
   - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
