@@ -23,7 +23,6 @@ from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
-    BoxRefinement,
     ExecutionConfig,
     ForceSampler,
     FVMSetup,
@@ -70,13 +69,10 @@ FVM_XMAX = float(os.environ.get("OPENONDA_FVM_XMAX", "1.5"))
 if FVM_XMAX <= 0.5:
     raise ValueError("OPENONDA_FVM_XMAX must lie downstream of the cube")
 HANDOFF_BOX = (-1.5, FVM_XMAX, -1.5, 1.5, -1.5, 1.5)
-FVM_OUTER_PADDING = float(os.environ.get("OPENONDA_FVM_OUTER_PADDING", "0.0"))
-if FVM_OUTER_PADDING < 0.0:
-    raise ValueError("OPENONDA_FVM_OUTER_PADDING must be non-negative")
-FVM_BOX = tuple(
-    bound - FVM_OUTER_PADDING if index % 2 == 0 else bound + FVM_OUTER_PADDING
-    for index, bound in enumerate(HANDOFF_BOX)
-)
+FVM_DOWNSTREAM_BUFFER = float(os.environ.get("OPENONDA_FVM_DOWNSTREAM_BUFFER", "0.0"))
+if FVM_DOWNSTREAM_BUFFER < 0.0:
+    raise ValueError("OPENONDA_FVM_DOWNSTREAM_BUFFER must be non-negative")
+FVM_BOX = (-1.5, FVM_XMAX + FVM_DOWNSTREAM_BUFFER, -1.5, 1.5, -1.5, 1.5)
 DT_FVM = 0.01
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
@@ -93,7 +89,6 @@ DONOR_BOUNDARY_MODE = os.environ.get("OPENONDA_DONOR_BOUNDARY_MODE", "dirichlet"
 _COMMON_SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
 PARTICLE_SPACING = float(os.environ.get("OPENONDA_PARTICLE_SPACING", _COMMON_SPACING))
 FVM_CELL_SIZE = float(os.environ.get("OPENONDA_FVM_CELL_SIZE", _COMMON_SPACING))
-FVM_OUTER_CELL_SIZE = float(os.environ.get("OPENONDA_FVM_OUTER_CELL_SIZE", str(FVM_CELL_SIZE)))
 SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", _COMMON_SPACING))
 # Backward-compatible import for external case scripts; internal setup uses the
 # explicit constants above.
@@ -207,15 +202,10 @@ VPM_SAMPLERS = (
 
 FVM_MESH = AdaptiveCartesianMesher(
     domain=FVM_BOX,
-    max_cell_size=FVM_OUTER_CELL_SIZE,
+    max_cell_size=FVM_CELL_SIZE,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=SURFACE_CELL_SIZE,
-    refinements=(
-        (BoxRefinement(HANDOFF_BOX, FVM_CELL_SIZE, "handoffBox"),)
-        if FVM_OUTER_PADDING > 0.0
-        else ()
-    ),
     merge_outer_patch="numericalBoundary",
 )
 
