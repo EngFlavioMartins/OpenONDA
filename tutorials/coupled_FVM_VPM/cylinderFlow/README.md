@@ -7,6 +7,12 @@ solutions use the same Re=100 circular cylinder, direct-forcing IBM, uniform
 The reference meshes the complete wake domain; the hybrid replaces the domain
 outside a compact FVM box with VPM particles.
 
+The matched reference/VPM far field spans `x/D=[-4, 10.4]` and `y/D=[-4, 4]`.
+This keeps blockage modest without turning the reference into the dominant
+cost. The 2.4D extrusion is a deliberate quasi-2D compromise: this benchmark
+tests the current 3-D particle representation against its matched FVM result,
+not an analytic infinite vortex line.
+
 Run the fully meshed reference once, then the hybrid and plots:
 
 ```sh

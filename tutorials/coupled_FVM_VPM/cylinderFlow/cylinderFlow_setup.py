@@ -78,7 +78,7 @@ FVM_BOX = (
     HANDOFF_BOX[4],
     HANDOFF_BOX[5],
 )
-VPM_DOMAIN = (-3.0, 10.0, -3.0, 3.0, -2.0, 2.0)
+VPM_DOMAIN = (-4.0, 10.4, -4.0, 4.0, -2.0, 2.0)
 SPAN = FVM_BOX[5] - FVM_BOX[4]
 
 FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.10"))

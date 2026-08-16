@@ -40,7 +40,7 @@ SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.10"))
 DT = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.20" if SMOKE else "20.0"))
 CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
-DOMAIN = (-3.0, 8.0, -3.0, 3.0, -1.2, 1.2)
+DOMAIN = (-4.0, 10.4, -4.0, 4.0, -1.2, 1.2)
 SPAN = DOMAIN[5] - DOMAIN[4]
 
 FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", "0.10"))
