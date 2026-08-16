@@ -634,6 +634,30 @@ class CouplerInterfaceMixin:
             return
         b["bc_type_p"] = "freestream"
         b["value_p"] = value
+        b.pop("_directional_fixed_flux_pressure", None)
+        b.pop("fixed_flux_pressure_external", None)
+        b.pop("fixed_flux_pressure_delta", None)
+
+    def set_directional_freestream_pressure_boundary_condition(self, patch_name, value=0.0):
+        """Pair fixed outflow pressure with fixed-flux pressure on donor faces.
+
+        The patch must first receive a directional freestream velocity mask.
+        Pressure correction is Dirichlet on that geometric outflow face and
+        homogeneous Neumann elsewhere; the absolute pressure on the remaining
+        prescribed-velocity faces retains its momentum-compatible
+        ``fixedFluxPressure`` increment.
+        """
+        value = float(value)
+        if not np.isfinite(value):
+            raise ValueError(f"Directional pressure for patch {patch_name!r} must be finite")
+        b = self._optional_patch(patch_name)
+        if b is None:
+            return
+        if b.get("_fixed_freestream_outflow") is None:
+            raise ValueError("Directional pressure requires a directional freestream velocity mask")
+        b["bc_type_p"] = "freestream"
+        b["value_p"] = value
+        b["_directional_fixed_flux_pressure"] = True
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
 

@@ -28,6 +28,7 @@ CONTRACT_METHODS = [
     "set_freestream_velocity_boundary_condition_vec",
     "set_directional_freestream_velocity_boundary_condition_vec",
     "set_freestream_pressure_boundary_condition",
+    "set_directional_freestream_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]
@@ -224,17 +225,28 @@ def test_directional_outflow_donor_fixes_only_downstream_switch(tmp_path):
     fvm.set_directional_freestream_velocity_boundary_condition_vec(
         u_bc, setup.patch_name, setup.U_inf
     )
+    fvm.set_directional_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
     patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
     outflow = patch["_freestream_outflow"]
     local_centres = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
 
     assert patch["bc_type_U"] == "freestream"
-    assert patch["bc_type_p"] == "fixedFluxPressure"
+    assert patch["bc_type_p"] == "freestream"
+    assert patch["_directional_fixed_flux_pressure"] is True
     assert np.count_nonzero(outflow) == 4 * 4
     assert np.allclose(local_centres[outflow, 0], BOX[1])
     with contextlib.redirect_stdout(io.StringIO()):
         fvm.solve_pimple()
     np.testing.assert_array_equal(patch["_freestream_outflow"], outflow)
+    delta = np.asarray(patch["fixed_flux_pressure_delta"])
+    assert np.isfinite(delta).all()
+    n_cells = fvm.mesh_data["n_elements"]
+    n_interior = fvm.mesh_data["n_interior_faces"]
+    start = patch["startFace"]
+    ghosts = n_cells + np.arange(start - n_interior, start - n_interior + patch["nFaces"])
+    owners = fvm.mesh_data["owners"][start : start + patch["nFaces"]]
+    np.testing.assert_allclose(fvm.p[ghosts[outflow]], 0.0)
+    np.testing.assert_allclose(fvm.p[ghosts[~outflow]], fvm.p[owners[~outflow]] + delta[~outflow])
 
 
 def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path):
@@ -289,6 +301,9 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
                 ("velocity", patch, np.asarray(values).copy(), np.asarray(direction).copy())
             )
 
+        def set_directional_freestream_pressure_boundary_condition(self, patch, value=0.0):
+            self.calls.append(("pressure", patch, value))
+
         def solve_pimple(self):
             self.calls.append(("solve",))
 
@@ -303,6 +318,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     assert [call[0] for call in coupler.fvm.calls] == [
         "velocity",
+        "pressure",
         "solve",
         "advance",
     ]

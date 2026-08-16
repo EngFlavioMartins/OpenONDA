@@ -1112,7 +1112,8 @@ class FVMVPMCoupler:
             self.fvm.set_directional_freestream_velocity_boundary_condition_vec(
                 u_target, patch, self.config.u_inf
             )
-            boundary_description = "directional-outflow U / fixedFluxPressure"
+            self.fvm.set_directional_freestream_pressure_boundary_condition(patch, value=0.0)
+            boundary_description = "directional-outflow mixed U/p"
         else:
             self.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
             boundary_description = "Dirichlet U / fixedFluxPressure"

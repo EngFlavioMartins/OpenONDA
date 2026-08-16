@@ -333,7 +333,10 @@ def _update_fixed_flux_pressure_boundaries(
     fixed_flux_patches = []
     for boundary in boundaries:
         strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "ghost")
-        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
+        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE or (
+            strategy is BoundaryStrategy.FREESTREAM
+            and boundary.get("_directional_fixed_flux_pressure", False)
+        ):
             fixed_flux_patches.append(boundary)
     if not fixed_flux_patches:
         return grad_p
@@ -385,7 +388,11 @@ def _update_fixed_flux_pressure_boundaries(
         dpdn = (phi_hbya - phi_target) / np.maximum(pressure_flux_coefficient, 1.0e-30)
         delta = dpdn * normal_distance
         boundary["fixed_flux_pressure_delta"] = delta
-        p[ghost] = p[own] + delta
+        if boundary.get("_directional_fixed_flux_pressure", False):
+            outflow = np.asarray(boundary["_fixed_freestream_outflow"], dtype=bool)
+            p[ghost] = np.where(outflow, float(boundary.get("value_p", 0.0)), p[own] + delta)
+        else:
+            p[ghost] = p[own] + delta
         changed = True
 
     if changed:
@@ -1517,7 +1524,12 @@ def _apply_scalar_bc(
             raise ValueError(
                 f"Freestream {field_name} boundary {boundary.get('name')!r} has no value"
             )
-        phi[indices] = np.where(outflow, val, phi[owners_b])
+        if field_name == "p" and boundary.get("_directional_fixed_flux_pressure", False):
+            delta = boundary.get("fixed_flux_pressure_delta")
+            donor_value = phi[owners_b] if delta is None else phi[owners_b] + np.asarray(delta)
+            phi[indices] = np.where(outflow, val, donor_value)
+        else:
+            phi[indices] = np.where(outflow, val, phi[owners_b])
     else:
         raise ValueError(
             f"Unsupported scalar boundary strategy {strategy!r} "

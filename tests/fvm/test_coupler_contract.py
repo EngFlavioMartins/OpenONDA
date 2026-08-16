@@ -52,6 +52,7 @@ CONTRACT_METHODS = [
     "set_freestream_velocity_boundary_condition_vec",
     "set_directional_freestream_velocity_boundary_condition_vec",
     "set_freestream_pressure_boundary_condition",
+    "set_directional_freestream_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]
