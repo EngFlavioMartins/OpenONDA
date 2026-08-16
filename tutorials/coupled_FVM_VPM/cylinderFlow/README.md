@@ -46,3 +46,7 @@ developed vortex street.
 Both `allrun.sh` files intentionally accept no solver arguments. Edit their
 explicit `OPENONDA_*` blocks to create a version-controlled resolution or time
 study.
+
+The FVM is deliberately run with one rank. The current direct-forcing IBM
+operator does not exchange marker support across MPI partitions; using more
+than one FVM rank gives empty-support markers during initialization.

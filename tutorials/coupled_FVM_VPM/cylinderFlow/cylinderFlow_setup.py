@@ -63,7 +63,9 @@ SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.10"))
 DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
 DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.10"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.20" if SMOKE else "20.0"))
-FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+# Direct-forcing IBM interpolation is currently rank-local. Until marker
+# support is exchanged across partitions, immersed-body cases must be serial.
+FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "150000" if SMOKE else "1200000"))
 
 HANDOFF_BOX = (-1.5, 2.5, -2.0, 2.0, -1.2, 1.2)

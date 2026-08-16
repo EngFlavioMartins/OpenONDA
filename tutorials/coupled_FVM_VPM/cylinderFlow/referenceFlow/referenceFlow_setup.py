@@ -39,7 +39,9 @@ NU = float(np.linalg.norm(U_INF)) * DIAMETER / REYNOLDS
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.10"))
 DT = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.20" if SMOKE else "20.0"))
-CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+# Direct-forcing IBM interpolation is currently rank-local. Until marker
+# support is exchanged across partitions, immersed-body cases must be serial.
+CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
 DOMAIN = (-4.0, 10.4, -4.0, 4.0, -1.2, 1.2)
 SPAN = DOMAIN[5] - DOMAIN[4]
 
