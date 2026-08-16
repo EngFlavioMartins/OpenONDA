@@ -111,10 +111,10 @@ class RingDiagnosticsSampler:
 class RingModeDiagnosticsSampler:
     """Measure centreline bending modes of a ring whose nominal axis is x.
 
-    Particle strength is used as the cross-section weight.  The weighted
-    centreline is first reconstructed on uniformly spaced azimuthal bins, then
-    decomposed into radial and axial Fourier modes.  Amplitudes are normalized
-    by ``reference_radius``.  A perfect perturbation
+    Particle strength is used as the cross-section weight.  Radial and axial
+    Fourier moments are integrated directly over particle angles, avoiding an
+    arbitrary dependence on the number of occupied diagnostic bins. Amplitudes
+    are normalized by ``reference_radius``. A perfect perturbation
 
         r(theta) / R = 1 + epsilon cos(m theta + phi)
 
@@ -223,32 +223,23 @@ class RingModeDiagnosticsSampler:
             weights=cross_section_weight * radial_position,
             minlength=self.azimuthal_bins,
         )
-        axial_sum = np.bincount(
-            bin_index,
-            weights=cross_section_weight * axial_position,
-            minlength=self.azimuthal_bins,
-        )
         occupied = bin_weight > np.finfo(float).tiny
         coverage = float(np.mean(occupied))
         if np.count_nonzero(occupied) < 2 * self.maximum_mode + 1:
             return []
 
-        radial = radial_sum[occupied] / bin_weight[occupied]
-        axial = axial_sum[occupied] / bin_weight[occupied]
-        angles = (np.flatnonzero(occupied) + 0.5) * 2.0 * np.pi / self.azimuthal_bins
-        radial -= radial.mean()
-        axial -= axial.mean()
         major_radius = float(np.sum(radial_sum) / np.sum(bin_weight))
+        radial_displacement = radial_position - major_radius
 
         rows: list[tuple[float, ...]] = []
         for mode in range(1, self.maximum_mode + 1):
-            phase_factor = np.exp(-1j * mode * angles)
-            # A bin average attenuates mode m by sinc(m / N_bins).  Remove
-            # that known measurement transfer function so the reported value
-            # can be compared directly with the prescribed seed amplitude.
-            bin_transfer = np.sinc(mode / self.azimuthal_bins)
-            radial_coefficient = np.mean(radial * phase_factor) / bin_transfer
-            axial_coefficient = np.mean(axial * phase_factor) / bin_transfer
+            phase_factor = np.exp(-1j * mode * theta)
+            radial_coefficient = np.sum(
+                cross_section_weight * radial_displacement * phase_factor
+            ) / np.sum(cross_section_weight)
+            axial_coefficient = np.sum(
+                cross_section_weight * axial_position * phase_factor
+            ) / np.sum(cross_section_weight)
             radial_amplitude = 2.0 * abs(radial_coefficient) / self.reference_radius
             axial_amplitude = 2.0 * abs(axial_coefficient) / self.reference_radius
             rows.append(

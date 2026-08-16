@@ -561,13 +561,35 @@ relaxation. Its rapid modal decay can therefore be an initial-condition
 transient rather than a result about DNS or LES. The test is retained as a
 numerical stress test, but it is rejected as a physics-validation case.
 
-The replacement gate will first reproduce the relaxed Gaussian-ring protocol
-and its predicted mode selection. Only after that base flow passes time-step and
-spatial-refinement checks will no-SGS and structural-DIAD VPM runs start from
-the identical accepted raw state. Success will mean that LES preserves the
-resolved unstable wave while damping only the under-resolved cascade and does
-not corrupt circulation, impulse, or ring speed. Mere numerical survival—or
-decay of an incorrectly initialized wave—is not a pass.
+The replacement gate first exposed a second initial-condition problem. The
+particle cloud ended where the nominal Gaussian vorticity was still $5\%$ of
+its maximum. Using the integral definition of core thickness from Archer,
+Thomas & Coleman (2008), the finest cloud therefore represented
+$\delta_\theta=0.3862$, not the required $0.4131$. The error was $6.51\%$.
+Although that calculation conserved impulse and looked perfectly symmetric,
+it failed the benchmark-definition gate and was not advanced to a long run.
+
+The cutoff is now explicit and frozen at $0.2\%$. A cutoff below about
+$0.1\%$ would make this thick toroidal cloud cross the symmetry axis, where the
+present particle distributor is not valid. At $0.2\%$, all four tested
+spacings represent the prescribed integral core radius within $0.528\%$;
+circulation, ring radius, and axisymmetry are correct to numerical roundoff.
+
+Short direct-summation calculations then passed at $h/R=0.15$, $0.12$, and
+$0.10$. At the finest spacing, translation speed differs by $0.122\%$ from
+the Gaussian-core formula in Archer et al. The exact molecular energy balance
+closes within $1.38\%$ in every case, while impulse and circulation drift stay
+below $9\times10^{-9}$. The $h/R=0.12$ and $0.10$ results differ by $0.326\%$
+in speed and $0.912\%$ in energy. Halving the time step changes the monitored
+physical quantities by at most $2.3\times10^{-7}$. This qualifies the corrected
+ring for a longer **axisymmetric relaxation only**. It is not yet evidence of
+Widnall growth or of the LES closure.
+
+The next calculation will establish when the initially Gaussian core has
+finished its axisymmetric adjustment. Only then will a small divergence-free
+perturbation be applied. A valid instability result must select modes 5--6 and
+recover the published dominance of mode 6; the later no-model and structural
+DIAD comparisons must start from exactly the same accepted raw state.
 
 [Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
 
@@ -576,6 +598,10 @@ decay of an incorrectly initialized wave—is not a pass.
 [failed coupled RK3 $t^*=10$ gate](figures/vpm_les/stage_5b_widnall_coupled_dt_tstar10_gate.png) ·
 [tree-versus-direct audit](figures/vpm_les/stage_5b_widnall_tree_vs_direct.png) ·
 [single-mode direct time-step gate](figures/vpm_les/stage_5b_widnall_m22_direct_dt_gate.png)
+
+[Rejected truncated-cloud preflight](figures/vpm_les/stage_5b_relaxed_ring_preflight.png) ·
+[Gaussian-tail initial-condition gate](figures/vpm_les/stage_5b_ring_initial_condition_gate.png) ·
+[corrected short relaxation gate](figures/vpm_les/stage_5b_relaxed_ring_corrected_gate.png)
 
 ## Reproducible research materials
 
@@ -617,6 +643,14 @@ decay of an incorrectly initialized wave—is not a pass.
   `scripts/experiments/stage_5b_widnall_archived_w025_results.json`.
 - Primary Gaussian-ring benchmark source:
   `docs/verzicco_shariff_1994_vortex_ring_instability_primary.pdf`.
+- Primary integral-radius and finite-core speed source:
+  `docs/archer_thomas_coleman_2008_vortex_ring.pdf`.
+- Relaxed-ring initializer, initial-condition audit, and short gate:
+  `scripts/experiments/stage_5b_relaxed_ring_reference.py`,
+  `scripts/experiments/stage_5b_ring_initial_condition_gate.py`, and
+  `scripts/experiments/stage_5b_relaxed_ring_corrected_gate.py`. The rejected
+  truncated result remains in
+  `scripts/experiments/stage_5b_relaxed_ring_preflight_results.json`.
 - Single-mode direct-summation time-step result:
   `scripts/experiments/stage_5b_widnall_m22_direct_dt_results.json`.
 - Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
@@ -691,9 +725,19 @@ DNS and structural DIAD in VPM.
     evidence despite numerical convergence.
   - [x] Audit the primary Gaussian-ring benchmark and identify the missing
     axisymmetric relaxation step in the current initial condition.
+  - [x] Reject the original $5\%$ Gaussian-tail cutoff after the integral core
+    radius missed the reference by $6.51\%$; freeze a geometrically valid
+    $0.2\%$ cutoff and pass its initial-condition gate.
+  - [x] Pass the corrected short direct-summation gate against Gaussian-speed
+    theory, the exact energy identity, a factor-two time-step pair, a spatial
+    pair, symmetry, circulation, impulse, and particle-health limits.
   - [ ] Reproduce the relaxed $R=\Gamma=1$, $a=0.4131$,
     $\Gamma/\nu=3000$ base state. Gate its ring speed, energy adjustment,
     circulation, impulse, axisymmetry, and particle health before perturbing it.
+    First qualify a faster velocity evaluator against direct summation over an
+    axisymmetric interval; the corrected $h/R=0.10$ direct step costs about
+    23 seconds, so an unchecked approximation would make the long gate either
+    impractical or scientifically unsafe.
   - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
     require the predicted $m=5$--$6$ band and the published dominance of mode
     6 after the initial transient. Digitize reference values with uncertainty

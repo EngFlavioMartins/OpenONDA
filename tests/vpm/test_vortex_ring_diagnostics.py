@@ -52,6 +52,38 @@ def test_single_mode_toroidal_ring_recovers_prescribed_mode():
     assert np.sqrt(np.mean(unseeded**2)) / modes[21, 1] < 0.02
 
 
+def test_ring_mode_quadrature_is_independent_of_diagnostic_bin_count():
+    from source.solvers.VPM import ParticleDistributor
+
+    positions, volumes, radii = ParticleDistributor.toroidal_distribution(
+        1.0, 0.35, 0.15, epsilon_w=0.0
+    )
+    positions, _, _, _, _, circulation, _ = initialize_single_mode_toroidal_ring(
+        positions,
+        volumes,
+        radii,
+        viscosity=np.pi / 3000.0,
+        ring_radius=1.0,
+        ring_strength=np.pi,
+        ring_thickness=0.4,
+        amplitude=0.025,
+        mode=6,
+    )
+    recovered = []
+    for bins in (40, 64, 96):
+        sampler = RingModeDiagnosticsSampler(
+            maximum_mode=16,
+            azimuthal_bins=bins,
+            transverse_origin=(0.0, 0.0),
+        )
+        recovered.append(np.asarray(sampler._sample_group(positions, circulation)))
+
+    np.testing.assert_allclose(recovered[0][:, 1:4], recovered[1][:, 1:4], atol=1.0e-13)
+    np.testing.assert_allclose(recovered[0][:, 1:4], recovered[2][:, 1:4], atol=1.0e-13)
+    seeded_coefficients = [rows[5, 1] * np.exp(1j * rows[5, 4]) for rows in recovered]
+    np.testing.assert_allclose(seeded_coefficients, seeded_coefficients[0], atol=1.0e-13)
+
+
 def _write_ring_snapshot(
     path: Path,
     *,
