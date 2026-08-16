@@ -1,0 +1,31 @@
+{
+  "checks": {
+    "both_divergence_below_limit": true,
+    "both_misalignment_below_limit": true,
+    "centroid_trajectory_within_0p5_percent": true,
+    "complex_mode_endpoint_within_5_percent": true,
+    "complex_mode_history_within_5_percent": true,
+    "mode_endpoint_within_5_percent": true,
+    "mode_history_within_5_percent": true,
+    "ring_radius_within_0p5_percent": true
+  },
+  "comparison": "dt=0.0025 against dt=0.00125",
+  "metrics": {
+    "centroid_trajectory_relative_l2": 7.569200322037642e-05,
+    "coarse_maximum_divergence": 0.0709982714756675,
+    "coarse_maximum_misalignment_deg": 33.39597683363522,
+    "common_end_time_star": 2.002765316663493,
+    "complex_mode_endpoint_relative_l2": 0.014030634431869948,
+    "complex_mode_history_relative_l2": 0.0035161053851054114,
+    "fine_maximum_divergence": 0.0710230896036684,
+    "fine_maximum_misalignment_deg": 33.3752964950584,
+    "maximum_instantaneous_complex_mode_relative_l2": 0.06691718868282279,
+    "mode_endpoint_relative_l2": 0.013719243740661276,
+    "mode_history_relative_l2": 0.0023271895444145207,
+    "ring_radius_relative_l2": 8.622682986379481e-06
+  },
+  "modes": [
+    22
+  ],
+  "status": "PASS"
+}

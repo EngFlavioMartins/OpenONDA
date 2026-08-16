@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from assets.ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler
+from assets.ring_initialization import initialize_single_mode_toroidal_ring
 from openonda.vpm import (
     AdvectionConfig,
     ParticleDistributor,
@@ -79,21 +80,35 @@ def run_case(
     *,
     widnall_amplitude: float = DEFAULT_WIDNALL_AMPLITUDE,
     widnall_modes: int = WIDNALL_MODES,
+    widnall_single_mode: int | None = None,
     number_of_steps: int = NUMBER_OF_STEPS,
     output_directory: Path = SOLUTION_DIR,
     output_label: str | None = None,
     particle_distribution: str = "hexagonal",
     time_step: float = TIME_STEP,
+    time_integration: str = "FRACTIONAL",
+    velocity_method: str = "TREECODE",
+    treecode_theta: float = 0.3,
     processing_unit: str = "AUTO",
 ) -> None:
     if widnall_amplitude < 0.0:
         raise ValueError("widnall_amplitude must be non-negative")
     if widnall_modes < 1:
         raise ValueError("widnall_modes must be positive")
+    if widnall_single_mode is not None and widnall_single_mode < 1:
+        raise ValueError("widnall_single_mode must be positive")
     if number_of_steps < 1:
         raise ValueError("number_of_steps must be positive")
     if time_step <= 0.0:
         raise ValueError("time_step must be positive")
+    time_integration = time_integration.upper()
+    if time_integration not in {"FRACTIONAL", "COUPLED"}:
+        raise ValueError("time_integration must be FRACTIONAL or COUPLED")
+    velocity_method = velocity_method.upper()
+    if velocity_method not in {"DIRECT", "TREECODE"}:
+        raise ValueError("velocity_method must be DIRECT or TREECODE")
+    if not 0.0 < treecode_theta < 2.0:
+        raise ValueError("treecode_theta must be in (0, 2)")
 
     mode, stretching = name.lower().split("_", maxsplit=1)
     label = output_label or name
@@ -136,7 +151,7 @@ def run_case(
             RING_RADIUS,
             tube_radius,
             PARTICLE_SPACING,
-            epsilon_w=widnall_amplitude,
+            epsilon_w=0.0 if widnall_single_mode is not None else widnall_amplitude,
             seed=42,
             max_modes=widnall_modes,
         )
@@ -144,20 +159,45 @@ def run_case(
     else:
         raise ValueError(f"unknown particle_distribution {particle_distribution!r}")
 
-    velocity, particle_viscosity, circulation = VortexRingVPM(
-        viscosity=viscosity,
-        ring_center=[0, 0, 0],
-        ring_radius=RING_RADIUS,
-        ring_strength=RING_STRENGTH,
-        ring_thickness=CORE_RADIUS,
-        avg_particle_radius=float(radii.mean()),
-        positions=positions,
-        volumes=volumes,
-        epsilon_W=widnall_amplitude,
-        max_modes=widnall_modes,
-        anti_diffuse_flag=True,
-        normalize_circulation=particle_distribution == "toroidal",
-    )
+    single_mode_phase = None
+    if widnall_single_mode is not None:
+        if particle_distribution != "toroidal":
+            raise ValueError("widnall_single_mode requires the toroidal distribution")
+        (
+            positions,
+            volumes,
+            radii,
+            velocity,
+            particle_viscosity,
+            circulation,
+            single_mode_phase,
+        ) = initialize_single_mode_toroidal_ring(
+            positions,
+            volumes,
+            radii,
+            viscosity=viscosity,
+            ring_radius=RING_RADIUS,
+            ring_strength=RING_STRENGTH,
+            ring_thickness=CORE_RADIUS,
+            amplitude=widnall_amplitude,
+            mode=widnall_single_mode,
+            seed=42,
+        )
+    else:
+        velocity, particle_viscosity, circulation = VortexRingVPM(
+            viscosity=viscosity,
+            ring_center=[0, 0, 0],
+            ring_radius=RING_RADIUS,
+            ring_strength=RING_STRENGTH,
+            ring_thickness=CORE_RADIUS,
+            avg_particle_radius=float(radii.mean()),
+            positions=positions,
+            volumes=volumes,
+            epsilon_W=widnall_amplitude,
+            max_modes=widnall_modes,
+            anti_diffuse_flag=True,
+            normalize_circulation=particle_distribution == "toroidal",
+        )
     mode_sampler = RingModeDiagnosticsSampler(
         maximum_mode=40,
         azimuthal_bins=128,
@@ -165,15 +205,22 @@ def run_case(
         transverse_origin=(0.0, 0.0),
     )
     initial_modes = np.asarray(mode_sampler._sample_group(positions, circulation), dtype=float)
-    theoretical_seed_amplitude = widnall_amplitude / np.sqrt(widnall_modes)
+    seeded_modes = (
+        np.asarray([widnall_single_mode], dtype=int)
+        if widnall_single_mode is not None
+        else np.arange(1, widnall_modes + 1)
+    )
+    theoretical_seed_amplitude = widnall_amplitude / np.sqrt(len(seeded_modes))
+    seeded_indices = seeded_modes - 1
+    unseeded_indices = np.setdiff1d(np.arange(len(initial_modes)), seeded_indices)
     if theoretical_seed_amplitude > 0.0:
         initial_seed_relative_l2 = float(
-            np.linalg.norm(initial_modes[:widnall_modes, 1] - theoretical_seed_amplitude)
-            / (np.sqrt(widnall_modes) * theoretical_seed_amplitude)
+            np.linalg.norm(initial_modes[seeded_indices, 1] - theoretical_seed_amplitude)
+            / (np.sqrt(len(seeded_modes)) * theoretical_seed_amplitude)
         )
         initial_unseeded_to_seeded_rms = float(
-            np.sqrt(np.mean(initial_modes[widnall_modes:, 1] ** 2))
-            / np.sqrt(np.mean(initial_modes[:widnall_modes, 1] ** 2))
+            np.sqrt(np.mean(initial_modes[unseeded_indices, 1] ** 2))
+            / np.sqrt(np.mean(initial_modes[seeded_indices, 1] ** 2))
         )
     else:
         initial_seed_relative_l2 = 0.0
@@ -191,6 +238,7 @@ def run_case(
         setup=VPMSetup(
             time_step_size=time_step,
             processing_unit=processing_unit,
+            time_integration=time_integration,
             advection=AdvectionConfig(scheme="RK3"),
             turbulence=(
                 TurbulenceConfig.dns()
@@ -199,10 +247,14 @@ def run_case(
             ),
             stretching=stretching_setup(stretching),
             stabilization=StabilizationConfig.disabled(),
-            velocity=VelocityConfig.treecode(
-                theta=0.3,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
+            velocity=(
+                VelocityConfig.direct()
+                if velocity_method == "DIRECT"
+                else VelocityConfig.treecode(
+                    theta=treecode_theta,
+                    sort_particle_targets=True,
+                    traversal_block_dim=128,
+                )
             ),
             viscous=ViscousConfig.cs(),
             logging_frequency=cadence_steps(SAMPLE_PERIOD, time_step),
@@ -233,6 +285,9 @@ def run_case(
         "output_label": label,
         "requested_steps": number_of_steps,
         "time_step": time_step,
+        "time_integration": time_integration,
+        "velocity_method": velocity_method,
+        "treecode_theta": treecode_theta if velocity_method == "TREECODE" else None,
         "processing_unit": processing_unit,
         "ring_radius": RING_RADIUS,
         "core_radius": CORE_RADIUS,
@@ -245,6 +300,9 @@ def run_case(
         ),
         "widnall_amplitude": widnall_amplitude,
         "widnall_modes": widnall_modes,
+        "widnall_single_mode": widnall_single_mode,
+        "widnall_mode_numbers": seeded_modes.tolist(),
+        "widnall_single_mode_phase": single_mode_phase,
         "theoretical_radial_seed_amplitude_per_mode": theoretical_seed_amplitude,
         "discrete_radial_seed_relative_l2": initial_seed_relative_l2,
         "discrete_unseeded_to_seeded_rms": initial_unseeded_to_seeded_rms,
@@ -321,8 +379,25 @@ def main() -> int:
         default=WIDNALL_MODES,
         help="Number of equally seeded azimuthal modes.",
     )
+    parser.add_argument(
+        "--widnall-single-mode",
+        type=int,
+        help="Seed one azimuthal mode instead of broadband modes 1...N.",
+    )
     parser.add_argument("--number-of-steps", type=int, default=NUMBER_OF_STEPS)
     parser.add_argument("--time-step", type=float, default=TIME_STEP)
+    parser.add_argument(
+        "--time-integration",
+        choices=("FRACTIONAL", "COUPLED"),
+        default="FRACTIONAL",
+        help="COUPLED advances positions and strengths at common RK stages.",
+    )
+    parser.add_argument(
+        "--velocity-method",
+        choices=("DIRECT", "TREECODE"),
+        default="TREECODE",
+    )
+    parser.add_argument("--treecode-theta", type=float, default=0.3)
     parser.add_argument(
         "--processing-unit",
         choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
@@ -358,11 +433,15 @@ def main() -> int:
         args.variant,
         widnall_amplitude=args.widnall_amplitude,
         widnall_modes=args.widnall_modes,
+        widnall_single_mode=args.widnall_single_mode,
         number_of_steps=number_of_steps,
         output_directory=args.output_directory,
         output_label=args.output_label,
         particle_distribution=args.particle_distribution,
         time_step=args.time_step,
+        time_integration=args.time_integration,
+        velocity_method=args.velocity_method,
+        treecode_theta=args.treecode_theta,
         processing_unit=args.processing_unit,
     )
     return 0

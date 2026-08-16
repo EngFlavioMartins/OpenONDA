@@ -508,16 +508,74 @@ below $10\%$ of that in seeded modes. The present initial condition passes at
 $2.19\%$ and $4.90\%$, respectively. A synthetic diagnostic test recovers
 known radial and axial modes within $0.2\%$.
 
-The time-step gate is prospective: compare $\Delta t=0.005$ and $0.0025$ to
-$t^*=10$ before extending the accepted $0.005$ run to $t^*=60$. The raw DNS +
-transposed calculation must show physical mode growth before particle-health
-limits are crossed. Later, no-SGS and structural-DIAD VPM runs will start from
-the identical archived state. Success will mean that the LES changes the
-growth and breakdown of the measured instability without erasing the resolved
-ring or corrupting circulation and impulse; mere numerical survival is not a
-pass.
+The first time-step comparison exposed a real numerical problem. With the
+solver's older fractional update, the ring path agreed but modes $20\ldots24$
+did not: their history differed by $13.2\%$ and their endpoint by $52.4\%$.
+That calculation failed its predeclared $5\%$ gate and will not be used as
+physical evidence.
+
+The research case now advances particle positions and vortex strengths
+together at common RK3 stages. A short coupled comparison through $t^*=2$
+passes even when both Fourier magnitude and phase are checked: complex modal
+history error is $0.62\%$, endpoint error $3.64\%$, and ring-radius error
+$0.00027\%$.
+
+The same comparison through $t^*=10$ fails. The magnitude-only history error
+is $4.46\%$, but the phase-sensitive complex history error is $12.1\%$ and its
+endpoint error is $33.8\%$. The resolved ring path and particle-health measures
+still agree closely, so this is specifically a lack of convergence at the
+instability scales. A still finer $0.0025/0.00125$ pair also fails, so simply
+reducing the time step does not solve it.
+
+The cause has now been isolated to the approximate velocity evaluator. At the
+same $\Delta t=0.0025$, the $\theta=0.3$ tree trajectory and exact pairwise
+velocity trajectory differ by only $0.0051\%$ in centroid motion but by
+$7.69\%$ in complex modal history and $40.3\%$ at the endpoint by $t^*=4.71$.
+An instantaneous audit explains how this can be missed: the tree velocity error
+is only $0.275\%$ globally and $1.22\%$ in modes $20\ldots24$, but its phase
+error accumulates. The Widnall benchmark must therefore use direct velocity
+until a tighter tree configuration independently reproduces it.
+
+The requested stronger disturbance was then concentrated in the theoretically
+relevant mode $m=22$, rather than divided among 24 modes. The discrete particle
+ring represents the requested amplitude $0.050$ with $0.27\%$ error; the RMS
+leakage into all other measured modes is $1.46\%$. A direct-summation,
+factor-two time-step pair was run through $t^*=2$. Ring position, radius,
+particle divergence, and the history of the $m=22$ amplitude all agree closely.
+After correcting the analysis to include the final raw restart state, the
+phase-sensitive history error is $0.35\%$ and the true endpoint error is
+$1.40\%$: the time-step gate passes. The instantaneous relative difference
+briefly reaches $6.69\%$ near $t^*=1.89$, when the mode has decayed from
+$0.050$ to about $0.0018$, but the absolute difference there is small and the
+mode subsequently rebounds to about $0.0066$ at $t^*=2.00$.
+
+This decay must not be interpreted as successful physical damping. A primary
+reference check exposed a more basic problem with the experiment. Verzicco &
+Shariff (1994) first relaxed their Gaussian ring axisymmetrically to a
+quasi-steady state, specifically to avoid axisymmetric adjustment, and only
+then applied a divergence-free perturbation. Their reference case had
+$R=\Gamma=1$, $a=0.4131$, $\Gamma/\nu=3000$, and predicted
+$m=2.26R/a=5.47$; modes 5 or 6 were therefore expected, with mode 6 dominating
+after an initial transient. Our current $a=0.1$ ring was perturbed before such
+relaxation. Its rapid modal decay can therefore be an initial-condition
+transient rather than a result about DNS or LES. The test is retained as a
+numerical stress test, but it is rejected as a physics-validation case.
+
+The replacement gate will first reproduce the relaxed Gaussian-ring protocol
+and its predicted mode selection. Only after that base flow passes time-step and
+spatial-refinement checks will no-SGS and structural-DIAD VPM runs start from
+the identical accepted raw state. Success will mean that LES preserves the
+resolved unstable wave while damping only the under-resolved cascade and does
+not corrupt circulation, impulse, or ring speed. Mere numerical survival—or
+decay of an incorrectly initialized wave—is not a pass.
 
 [Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
+
+[Failed fractional time-step gate](figures/vpm_les/stage_5b_widnall_dt_gate.png) ·
+[passed coupled RK3 short gate](figures/vpm_les/stage_5b_widnall_coupled_dt_gate.png) ·
+[failed coupled RK3 $t^*=10$ gate](figures/vpm_les/stage_5b_widnall_coupled_dt_tstar10_gate.png) ·
+[tree-versus-direct audit](figures/vpm_les/stage_5b_widnall_tree_vs_direct.png) ·
+[single-mode direct time-step gate](figures/vpm_les/stage_5b_widnall_m22_direct_dt_gate.png)
 
 ## Reproducible research materials
 
@@ -557,6 +615,10 @@ pass.
 - Widnall mode diagnostic and archived baseline audit:
   `scripts/experiments/stage_5b_widnall_vpm_analysis.py` and
   `scripts/experiments/stage_5b_widnall_archived_w025_results.json`.
+- Primary Gaussian-ring benchmark source:
+  `docs/verzicco_shariff_1994_vortex_ring_instability_primary.pdf`.
+- Single-mode direct-summation time-step result:
+  `scripts/experiments/stage_5b_widnall_m22_direct_dt_results.json`.
 - Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
   archive contains 13 checkpoints (124 MB). All 26 state/metadata files pass
   their SHA-256 checksums, and a load-and-continue test reproduces every field
@@ -565,9 +627,9 @@ pass.
 
 ## Progress and work remaining
 
-Updated: 2026-08-16. **Current task:** qualify the stronger Widnall VPM
-challenge with a time-step study and raw backups, while completing the
-nonperiodic structural filter needed to run the same challenge with DIAD.
+Updated: 2026-08-16. **Current task:** replace the unrelaxed Widnall stress test
+with a literature-matched, relaxed Gaussian-ring benchmark before comparing
+DNS and structural DIAD in VPM.
 
 - [x] Recover the exact filtered-vorticity equation from primary literature.
 - [x] Reject coefficient models that cannot represent the exact torque.
@@ -617,11 +679,29 @@ nonperiodic structural filter needed to run the same challenge with DIAD.
     the archived perturbation-$0.025$ run.
   - [x] Replace the ill-resolved Cartesian Widnall seed by complete toroidal
     particle orbits and pass the initial discrete-spectrum gate.
-  - [ ] Compare $\Delta t=0.005$ and $0.0025$ through $t^*=10$ for the
-    perturbation-$0.050$ DNS + transposed baseline.
-  - [ ] If time-step independent, extend the baseline through $t^*=60$ and
-    preserve every raw particle state, mode history, health metric, and
-    theoretical overlay.
+  - [x] Reject fractional integration after its Widnall modes failed the
+    time-step gate; qualify coupled RK3 through $t^*=2$.
+  - [x] Run the coupled $\Delta t=0.005$/$0.0025$ comparison through $t^*=10$;
+    reject it because the phase-sensitive modal gate failed.
+  - [x] Reject the finer $\Delta t=0.0025$/$0.00125$ treecode pair and isolate
+    the accumulated modal error to the tree velocity evaluator.
+  - [x] Concentrate amplitude $0.050$ in mode $m=22$ and pass the
+    direct-summation $\Delta t=0.0025$/$0.00125$ pair. Correct the analysis to
+    include final restart states; reject the rapid transient as physics
+    evidence despite numerical convergence.
+  - [x] Audit the primary Gaussian-ring benchmark and identify the missing
+    axisymmetric relaxation step in the current initial condition.
+  - [ ] Reproduce the relaxed $R=\Gamma=1$, $a=0.4131$,
+    $\Gamma/\nu=3000$ base state. Gate its ring speed, energy adjustment,
+    circulation, impulse, axisymmetry, and particle health before perturbing it.
+  - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
+    require the predicted $m=5$--$6$ band and the published dominance of mode
+    6 after the initial transient. Digitize reference values with uncertainty
+    and overlay them rather than judging by appearance.
+  - [ ] Pass factor-two time-step and particle-spacing pairs for mode amplitude,
+    phase, growth rate, ring path, and conservation. Preserve every raw state.
+  - [ ] Repeat at amplitude $0.050$ only as a nonlinear breakup stress test;
+    do not use it to estimate a linear growth rate.
   - [ ] Replace the periodic FFT filter by a padded, nonperiodic Gaussian
     filter on the GBD grid. Require agreement with the periodic formulation in
     a large interior region and invariance when padding is increased.

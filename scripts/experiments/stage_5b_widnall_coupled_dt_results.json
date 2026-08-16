@@ -1,0 +1,35 @@
+{
+  "checks": {
+    "both_divergence_below_limit": true,
+    "both_misalignment_below_limit": true,
+    "centroid_trajectory_within_0p5_percent": true,
+    "complex_mode_endpoint_within_5_percent": true,
+    "complex_mode_history_within_5_percent": true,
+    "mode_endpoint_within_5_percent": true,
+    "mode_history_within_5_percent": true,
+    "ring_radius_within_0p5_percent": true
+  },
+  "comparison": "dt=0.005 against dt=0.0025",
+  "metrics": {
+    "centroid_trajectory_relative_l2": 1.3136232762900208e-05,
+    "coarse_maximum_divergence": 0.0698527539443559,
+    "coarse_maximum_misalignment_deg": 19.510820743201304,
+    "common_end_time_star": 1.8849555921538759,
+    "complex_mode_endpoint_relative_l2": 0.036382484893788404,
+    "complex_mode_history_relative_l2": 0.0062347686474257345,
+    "fine_maximum_divergence": 0.0698750835852002,
+    "fine_maximum_misalignment_deg": 19.493998636573515,
+    "maximum_instantaneous_complex_mode_relative_l2": 0.036382484893788404,
+    "mode_endpoint_relative_l2": 0.016991398145486912,
+    "mode_history_relative_l2": 0.0026975775571379326,
+    "ring_radius_relative_l2": 2.736251224818474e-06
+  },
+  "modes": [
+    20,
+    21,
+    22,
+    23,
+    24
+  ],
+  "status": "PASS"
+}

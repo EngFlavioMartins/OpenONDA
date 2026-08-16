@@ -7,16 +7,24 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 
 os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/openonda_stage5b_dt_matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/private/tmp/openonda_stage5b_dt_cache")
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+ROOT = Path(__file__).resolve().parents[2]
+RING_ASSETS = ROOT / "tutorials" / "VPM" / "vortexRing" / "assets"
+sys.path.insert(0, str(RING_ASSETS))
+
+from ring_diagnostics import RingModeDiagnosticsSampler  # noqa: E402
+
 CIRCULATION = np.pi
-MODES = np.arange(20, 25)
+DEFAULT_MODES = np.arange(20, 25)
 INK = "#20252a"
 BLUE = "#286f9b"
 GOLD = "#d9973b"
@@ -24,19 +32,70 @@ GREY = "#8a99a8"
 GRID = "#d8dde2"
 
 
-def mode_history(run_directory: Path) -> tuple[np.ndarray, np.ndarray]:
+def mode_history(
+    run_directory: Path, modes: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     data = pd.read_csv(run_directory / "samples" / "ring_modes.csv")
     data = data[data["group_id"] == data["group_id"].min()]
-    table = data.pivot_table(
+    amplitude_table = data.pivot_table(
         index="flow_time",
         columns="mode",
         values="combined_amplitude",
         aggfunc="last",
     ).sort_index()
-    missing = [mode for mode in MODES if mode not in table]
+    missing = [mode for mode in modes if mode not in amplitude_table]
     if missing:
         raise ValueError(f"missing modes in {run_directory}: {missing}")
-    return table.index.to_numpy(float) * CIRCULATION, table[MODES].to_numpy(float)
+    selected = data[data["mode"].isin(modes)].copy()
+    selected["radial_coefficient"] = selected["radial_amplitude"] * np.exp(
+        1j * selected["radial_phase"]
+    )
+    selected["axial_coefficient"] = selected["axial_amplitude"] * np.exp(
+        1j * selected["axial_phase"]
+    )
+    selected = selected.drop_duplicates(["flow_time", "mode"], keep="last")
+    radial = selected.pivot(
+        index="flow_time", columns="mode", values="radial_coefficient"
+    ).sort_index()
+    axial = selected.pivot(
+        index="flow_time", columns="mode", values="axial_coefficient"
+    ).sort_index()
+    coefficients = np.concatenate(
+        (radial[modes].to_numpy(complex), axial[modes].to_numpy(complex)), axis=1
+    )
+    time = amplitude_table.index.to_numpy(float) * CIRCULATION
+    amplitudes = amplitude_table[modes].to_numpy(float)
+
+    manifest = load_manifest(run_directory)
+    final_path = run_directory / f"vpm_{manifest['output_label']}_final.h5"
+    if final_path.is_file():
+        with h5py.File(final_path, "r") as handle:
+            final_time = float(handle["solver"].attrs["flow_time"]) * CIRCULATION
+            position = np.asarray(handle["particles/position"], dtype=np.float64)
+            circulation = np.asarray(handle["particles/circulation"], dtype=np.float64)
+        if final_time > time[-1] + 1.0e-12:
+            sampler = RingModeDiagnosticsSampler(
+                maximum_mode=max(40, int(modes.max())),
+                azimuthal_bins=128,
+                reference_radius=1.0,
+                transverse_origin=(0.0, 0.0),
+            )
+            rows = np.asarray(sampler._sample_group(position, circulation), dtype=float)
+            selected_rows = rows[modes - 1]
+            final_coefficients = np.concatenate(
+                (
+                    selected_rows[:, 1] * np.exp(1j * selected_rows[:, 4]),
+                    selected_rows[:, 2] * np.exp(1j * selected_rows[:, 5]),
+                )
+            )
+            time = np.append(time, final_time)
+            amplitudes = np.vstack((amplitudes, selected_rows[:, 3]))
+            coefficients = np.vstack((coefficients, final_coefficients))
+    return (
+        time,
+        amplitudes,
+        coefficients,
+    )
 
 
 def health_history(run_directory: Path) -> pd.DataFrame:
@@ -50,6 +109,8 @@ def ring_history(run_directory: Path) -> pd.DataFrame:
 
 
 def interpolate(time: np.ndarray, values: np.ndarray, target: np.ndarray) -> np.ndarray:
+    if np.iscomplexobj(values):
+        return interpolate(time, values.real, target) + 1j * interpolate(time, values.imag, target)
     return np.column_stack(
         [np.interp(target, time, values[:, column]) for column in range(values.shape[1])]
     )
@@ -59,16 +120,35 @@ def relative_l2(value: np.ndarray, reference: np.ndarray) -> float:
     return float(np.linalg.norm(value - reference) / np.linalg.norm(reference))
 
 
-def evaluate(coarse_directory: Path, fine_directory: Path) -> tuple[dict[str, object], dict]:
-    coarse_time, coarse_modes = mode_history(coarse_directory)
-    fine_time, fine_modes = mode_history(fine_directory)
+def load_manifest(run_directory: Path) -> dict[str, object]:
+    manifests = sorted(run_directory.glob("run_manifest_*.json"))
+    if len(manifests) != 1:
+        raise ValueError(f"expected one run manifest in {run_directory}, found {len(manifests)}")
+    return json.loads(manifests[0].read_text(encoding="utf-8"))
+
+
+def configured_time_step(run_directory: Path) -> float:
+    return float(load_manifest(run_directory)["time_step"])
+
+
+def evaluate(
+    coarse_directory: Path, fine_directory: Path, modes: np.ndarray
+) -> tuple[dict[str, object], dict]:
+    coarse_dt = configured_time_step(coarse_directory)
+    fine_dt = configured_time_step(fine_directory)
+    coarse_time, coarse_modes, coarse_coefficients = mode_history(coarse_directory, modes)
+    fine_time, fine_modes, fine_coefficients = mode_history(fine_directory, modes)
     common_end = min(coarse_time[-1], fine_time[-1])
     selected = coarse_time <= common_end + 1.0e-12
     time = coarse_time[selected]
     coarse_modes = coarse_modes[selected]
     fine_at_coarse = interpolate(fine_time, fine_modes, time)
-    mode_relative_error = np.linalg.norm(coarse_modes - fine_at_coarse, axis=1) / np.maximum(
-        np.linalg.norm(fine_at_coarse, axis=1),
+    coarse_coefficients = coarse_coefficients[selected]
+    fine_coefficients_at_coarse = interpolate(fine_time, fine_coefficients, time)
+    coefficient_relative_error = np.linalg.norm(
+        coarse_coefficients - fine_coefficients_at_coarse, axis=1
+    ) / np.maximum(
+        np.linalg.norm(fine_coefficients_at_coarse, axis=1),
         np.finfo(float).tiny,
     )
 
@@ -104,7 +184,13 @@ def evaluate(coarse_directory: Path, fine_directory: Path) -> tuple[dict[str, ob
         "common_end_time_star": float(common_end),
         "mode_history_relative_l2": relative_l2(coarse_modes, fine_at_coarse),
         "mode_endpoint_relative_l2": relative_l2(coarse_modes[-1], fine_at_coarse[-1]),
-        "maximum_instantaneous_mode_relative_l2": float(np.max(mode_relative_error)),
+        "complex_mode_history_relative_l2": relative_l2(
+            coarse_coefficients, fine_coefficients_at_coarse
+        ),
+        "complex_mode_endpoint_relative_l2": relative_l2(
+            coarse_coefficients[-1], fine_coefficients_at_coarse[-1]
+        ),
+        "maximum_instantaneous_complex_mode_relative_l2": float(np.max(coefficient_relative_error)),
         "ring_radius_relative_l2": relative_l2(coarse_radius, fine_radius),
         "centroid_trajectory_relative_l2": relative_l2(coarse_x[1:], fine_x[1:]),
         "coarse_maximum_divergence": float(coarse_health["vorticity_divergence_error"].max()),
@@ -115,6 +201,12 @@ def evaluate(coarse_directory: Path, fine_directory: Path) -> tuple[dict[str, ob
     checks = {
         "mode_history_within_5_percent": metrics["mode_history_relative_l2"] < 0.05,
         "mode_endpoint_within_5_percent": metrics["mode_endpoint_relative_l2"] < 0.05,
+        "complex_mode_history_within_5_percent": (
+            metrics["complex_mode_history_relative_l2"] < 0.05
+        ),
+        "complex_mode_endpoint_within_5_percent": (
+            metrics["complex_mode_endpoint_relative_l2"] < 0.05
+        ),
         "ring_radius_within_0p5_percent": metrics["ring_radius_relative_l2"] < 0.005,
         "centroid_trajectory_within_0p5_percent": (
             metrics["centroid_trajectory_relative_l2"] < 0.005
@@ -131,8 +223,8 @@ def evaluate(coarse_directory: Path, fine_directory: Path) -> tuple[dict[str, ob
     }
     result = {
         "status": "PASS" if all(checks.values()) else "FAIL",
-        "comparison": "dt=0.005 against dt=0.0025",
-        "modes": MODES.tolist(),
+        "comparison": f"dt={coarse_dt:g} against dt={fine_dt:g}",
+        "modes": modes.tolist(),
         "metrics": metrics,
         "checks": checks,
     }
@@ -140,9 +232,12 @@ def evaluate(coarse_directory: Path, fine_directory: Path) -> tuple[dict[str, ob
         "time": time,
         "coarse_modes": coarse_modes,
         "fine_modes": fine_at_coarse,
-        "mode_relative_error": mode_relative_error,
+        "coefficient_relative_error": coefficient_relative_error,
+        "coarse_dt": coarse_dt,
+        "fine_dt": fine_dt,
         "coarse_health": coarse_health,
         "fine_health": fine_health,
+        "modes": modes,
         "ring_time": ring_target,
         "coarse_radius": coarse_radius,
         "fine_radius": fine_radius,
@@ -156,22 +251,34 @@ def plot(histories: dict, output: Path) -> None:
     fine = histories["fine_modes"]
     coarse_envelope = np.sqrt(np.mean(coarse**2, axis=1))
     fine_envelope = np.sqrt(np.mean(fine**2, axis=1))
-    fig, axes = plt.subplots(2, 2, figsize=(10.8, 7.4), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(12.0, 9.4))
 
     axis = axes[0, 0]
-    axis.plot(time, coarse_envelope, color=BLUE, label=r"$\Delta t=0.005$")
-    axis.plot(time, fine_envelope, color=GOLD, linestyle="--", label=r"$\Delta t=0.0025$")
+    axis.plot(
+        time,
+        coarse_envelope,
+        color=BLUE,
+        label=histories["coarse_label"],
+    )
+    axis.plot(
+        time,
+        fine_envelope,
+        color=GOLD,
+        linestyle="--",
+        label=histories["fine_label"],
+    )
     axis.set_xlabel(r"$t^*=t\Gamma/R^2$")
-    axis.set_ylabel(r"RMS amplitude, $m=20\ldots24$")
-    axis.set_title("Widnall-band envelope")
+    mode_label = ",".join(str(mode) for mode in histories["modes"])
+    axis.set_ylabel(rf"RMS amplitude, $m={mode_label}$")
+    axis.set_title("Selected-mode envelope")
     axis.legend(frameon=False)
 
     axis = axes[0, 1]
-    axis.plot(time, 100.0 * histories["mode_relative_error"], color=BLUE)
+    axis.plot(time, 100.0 * histories["coefficient_relative_error"], color=BLUE)
     axis.axhline(5.0, color=INK, linestyle="--", label="5% gate")
     axis.set_xlabel(r"$t^*=t\Gamma/R^2$")
-    axis.set_ylabel("instantaneous modal difference (%)")
-    axis.set_title("Time-step sensitivity")
+    axis.set_ylabel("complex modal difference (%)")
+    axis.set_title(histories["sensitivity_title"])
     axis.legend(frameon=False)
 
     axis = axes[1, 0]
@@ -208,9 +315,15 @@ def plot(histories: dict, output: Path) -> None:
     for axis in axes.flat:
         axis.grid(color=GRID, linewidth=0.6)
         axis.spines[["top", "right"]].set_visible(False)
-    fig.suptitle("Widnall VPM time-step gate", color=INK, fontsize=14)
+        axis.tick_params(labelsize=9)
+        axis.xaxis.label.set_size(10)
+        axis.yaxis.label.set_size(10)
+        axis.title.set_size(11)
+        axis.legend(frameon=False, fontsize=9)
+    fig.suptitle(histories["figure_title"], color=INK, fontsize=15)
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96), pad=2.0, h_pad=3.0, w_pad=2.0)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=180, bbox_inches="tight", facecolor="white")
+    fig.savefig(output, dpi=180, facecolor="white")
     plt.close(fig)
 
 
@@ -220,13 +333,35 @@ def main() -> None:
     parser.add_argument("--fine-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--figure", type=Path, required=True)
+    parser.add_argument("--coarse-label")
+    parser.add_argument("--fine-label")
+    parser.add_argument("--comparison-label")
+    parser.add_argument("--figure-title", default="Widnall VPM time-step gate")
+    parser.add_argument("--sensitivity-title", default="Phase-sensitive time-step error")
+    parser.add_argument(
+        "--modes",
+        type=int,
+        nargs="+",
+        default=DEFAULT_MODES.tolist(),
+        help="Azimuthal modes included in the convergence gate.",
+    )
     args = parser.parse_args()
-    result, histories = evaluate(args.coarse_directory, args.fine_directory)
+    modes = np.asarray(args.modes, dtype=int)
+    if len(modes) == 0 or np.any(modes < 1) or len(np.unique(modes)) != len(modes):
+        parser.error("--modes must be unique positive integers")
+    result, histories = evaluate(args.coarse_directory, args.fine_directory, modes)
+    histories["coarse_label"] = args.coarse_label or rf"$\Delta t={histories['coarse_dt']:g}$"
+    histories["fine_label"] = args.fine_label or rf"$\Delta t={histories['fine_dt']:g}$"
+    histories["figure_title"] = args.figure_title
+    histories["sensitivity_title"] = args.sensitivity_title
+    if args.comparison_label:
+        result["comparison"] = args.comparison_label
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     plot(histories, args.figure)
     if result["status"] != "PASS":
-        raise SystemExit("WIDNALL TIME-STEP GATE FAIL")
+        raise SystemExit("WIDNALL COMPARISON GATE FAIL")
+    print("WIDNALL COMPARISON GATE PASS")
 
 
 if __name__ == "__main__":

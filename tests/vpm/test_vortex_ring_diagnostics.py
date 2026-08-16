@@ -14,12 +14,42 @@ _ASSETS = Path(__file__).resolve().parents[2] / "tutorials" / "VPM" / "vortexRin
 sys.path.insert(0, str(_ASSETS))
 
 from ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler  # noqa: E402
+from ring_initialization import initialize_single_mode_toroidal_ring  # noqa: E402
 from ring_metrics import (  # noqa: E402
     load_length_integrated_strength,
     load_ring_circulation,
     load_sampled_ring_circulation,
     load_sampled_ring_speed,
 )
+
+
+def test_single_mode_toroidal_ring_recovers_prescribed_mode():
+    from source.solvers.VPM import ParticleDistributor
+
+    positions, volumes, radii = ParticleDistributor.toroidal_distribution(
+        1.0, 0.12, 0.035, epsilon_w=0.0
+    )
+    positions, _, _, _, _, circulation, _ = initialize_single_mode_toroidal_ring(
+        positions,
+        volumes,
+        radii,
+        viscosity=np.pi / 3000.0,
+        ring_radius=1.0,
+        ring_strength=np.pi,
+        ring_thickness=0.1,
+        amplitude=0.05,
+        mode=22,
+    )
+    sampler = RingModeDiagnosticsSampler(
+        maximum_mode=30,
+        azimuthal_bins=128,
+        transverse_origin=(0.0, 0.0),
+    )
+    modes = np.asarray(sampler._sample_group(positions, circulation))
+
+    assert abs(modes[21, 1] - 0.05) / 0.05 < 5.0e-3
+    unseeded = np.delete(modes[:, 1], 21)
+    assert np.sqrt(np.mean(unseeded**2)) / modes[21, 1] < 0.02
 
 
 def _write_ring_snapshot(
