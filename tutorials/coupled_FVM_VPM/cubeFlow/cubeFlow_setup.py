@@ -69,10 +69,17 @@ FVM_XMAX = float(os.environ.get("OPENONDA_FVM_XMAX", "1.5"))
 if FVM_XMAX <= 0.5:
     raise ValueError("OPENONDA_FVM_XMAX must lie downstream of the cube")
 HANDOFF_BOX = (-1.5, FVM_XMAX, -1.5, 1.5, -1.5, 1.5)
-FVM_DOWNSTREAM_BUFFER = float(os.environ.get("OPENONDA_FVM_DOWNSTREAM_BUFFER", "0.0"))
-if FVM_DOWNSTREAM_BUFFER < 0.0:
-    raise ValueError("OPENONDA_FVM_DOWNSTREAM_BUFFER must be non-negative")
-FVM_BOX = (-1.5, FVM_XMAX + FVM_DOWNSTREAM_BUFFER, -1.5, 1.5, -1.5, 1.5)
+FVM_OVERLAP_BUFFER = float(os.environ.get("OPENONDA_FVM_OVERLAP_BUFFER", "0.0"))
+if FVM_OVERLAP_BUFFER < 0.0:
+    raise ValueError("OPENONDA_FVM_OVERLAP_BUFFER must be non-negative")
+FVM_BOX = (
+    HANDOFF_BOX[0] - FVM_OVERLAP_BUFFER,
+    HANDOFF_BOX[1] + FVM_OVERLAP_BUFFER,
+    HANDOFF_BOX[2] - FVM_OVERLAP_BUFFER,
+    HANDOFF_BOX[3] + FVM_OVERLAP_BUFFER,
+    HANDOFF_BOX[4] - FVM_OVERLAP_BUFFER,
+    HANDOFF_BOX[5] + FVM_OVERLAP_BUFFER,
+)
 DT_FVM = 0.01
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
@@ -349,7 +356,8 @@ def main() -> None:
         f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
         f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
         f"VPM scheme={VPM_SCHEME}, shell prune×{OVERLAP_SHELL_PRUNE_MULTIPLIER:g}, "
-        f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
+        f"overlap buffer={FVM_OVERLAP_BUFFER:g}, sample spacing={SAMPLE_SPACING}, "
+        f"particles<={PARTICLE_LIMIT}"
     )
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
