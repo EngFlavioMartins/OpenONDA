@@ -4,21 +4,18 @@ The FVM mesh is generated directly as solver-native data by OpenONDA's
 adaptive Cartesian mesher. No external solver case is used. Both solvers use
 the same equilibrium Smagorinsky coefficients.
 
-The case can be configured through the OPENONDA_* environment variables or
-through the convenience command-line flags below, which override them.
+The case is configured through ``OPENONDA_*`` environment variables. The
+recommended, explicit configuration lives in ``allrun.sh`` so every run is
+auditable without a second command-line configuration layer.
 
 Usage:
     python cubeFlow_setup.py
-    python cubeFlow_setup.py --smoke --end-time 0.25 --spacing 0.2
 """
 
 from __future__ import annotations
 
-import argparse
-import importlib.util
 import os
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -336,99 +333,6 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
-    """Build the command-line overrides for the OPENONDA_* defaults."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--smoke", action="store_true", help="fast smoke-test settings")
-    parser.add_argument("--end-time", type=float, help="simulation end time [s]")
-    parser.add_argument(
-        "--spacing",
-        type=float,
-        help="set FVM, particle, and sampling spacing together [m] (legacy shortcut)",
-    )
-    parser.add_argument("--particle-spacing", type=float, help="VPM/handoff spacing [m]")
-    parser.add_argument("--vpm-dt", type=float, help="VPM/coupling time step [s]")
-    parser.add_argument(
-        "--vpm-scheme",
-        type=str.upper,
-        choices=("RK2", "RK3"),
-        help="VPM advection and stretching Runge--Kutta scheme",
-    )
-    parser.add_argument("--fvm-cell-size", type=float, help="maximum inner FVM cell size [m]")
-    parser.add_argument("--sample-spacing", type=float, help="diagnostic sampling spacing [m]")
-    parser.add_argument("--surface-cell-size", type=float, help="cells on the cube surface [m]")
-    parser.add_argument("--max-particles", type=int, help="particle budget")
-    parser.add_argument("--fvm-cores", type=int, help="CPU cores for the FVM solver")
-    parser.add_argument(
-        "--overlap-shell-prune-multiplier",
-        type=float,
-        help="maximum weak-particle prune multiplier away from the outflow face",
-    )
-    parser.add_argument("--force-interval", type=float, help="force sampling interval [s]")
-    parser.add_argument(
-        "--diagnostic-interval", type=float, help="line/surface sampling interval [s]"
-    )
-    parser.add_argument("--checkpoint-interval", type=float, help="rolling restart interval [s]")
-    parser.add_argument("--volume-interval", type=float, help="raw FVM VTK interval [s]")
-    return parser.parse_args(argv)
-
-
-def _run_with_overrides(argv: list[str]) -> int:
-    """Run the case with any command-line overrides applied.
-
-    The module-level constants already read the OPENONDA_* environment
-    variables (so ``OPENONDA_SMOKE=1 ./allrun.sh`` keeps working). When the
-    user passes flags, they are translated back into those environment
-    variables and the module is loaded once more so every dependent setting
-    follows.
-    """
-    args = _parse_args(argv)
-
-    overrides: dict[str, str] = {}
-    if args.smoke:
-        overrides["OPENONDA_SMOKE"] = "1"
-    if args.spacing is not None:
-        for key in (
-            "OPENONDA_SPACING",
-            "OPENONDA_PARTICLE_SPACING",
-            "OPENONDA_FVM_CELL_SIZE",
-            "OPENONDA_SAMPLE_SPACING",
-        ):
-            overrides[key] = str(args.spacing)
-    for flag, key in (
-        ("end_time", "OPENONDA_T_END"),
-        ("vpm_dt", "OPENONDA_DT_VPM"),
-        ("vpm_scheme", "OPENONDA_VPM_SCHEME"),
-        ("particle_spacing", "OPENONDA_PARTICLE_SPACING"),
-        ("fvm_cell_size", "OPENONDA_FVM_CELL_SIZE"),
-        ("sample_spacing", "OPENONDA_SAMPLE_SPACING"),
-        ("surface_cell_size", "OPENONDA_SURFACE_CELL_SIZE"),
-        ("max_particles", "OPENONDA_MAX_PARTICLES"),
-        ("fvm_cores", "OPENONDA_FVM_CORES"),
-        (
-            "overlap_shell_prune_multiplier",
-            "OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER",
-        ),
-        ("force_interval", "OPENONDA_FORCE_INTERVAL"),
-        ("diagnostic_interval", "OPENONDA_DIAGNOSTIC_INTERVAL"),
-        ("checkpoint_interval", "OPENONDA_CHECKPOINT_INTERVAL"),
-        ("volume_interval", "OPENONDA_VOLUME_INTERVAL"),
-    ):
-        if getattr(args, flag) is not None:
-            overrides[key] = str(getattr(args, flag))
-
-    if not overrides:
-        main()
-        return 0
-
-    os.environ.update(overrides)
-    spec = importlib.util.spec_from_file_location("cubeFlow_setup", __file__)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.main()
-    return 0
-
-
 def main() -> None:
     print("\n===== SIMULATION =====")
     print(
@@ -450,4 +354,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_run_with_overrides(sys.argv[1:]))
+    main()
