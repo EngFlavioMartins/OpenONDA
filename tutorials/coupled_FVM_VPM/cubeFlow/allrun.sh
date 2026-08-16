@@ -12,9 +12,9 @@ if (( $# != 0 )); then
     exit 2
 fi
 
-# Recommended production baseline: conservative Dirichlet donor coupling with
-# the validated face-aware particle filter. t=2.4 s gives four coincident
-# field frames; longer wake-development runs can raise OPENONDA_T_END here.
+# Resolution-bracket validation: retain conservative Dirichlet coupling and
+# the 0.04 particle grid, while testing the inexpensive FVM point between the
+# accepted 0.04 baseline and rejected 0.03 branch.
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=2.4
 export OPENONDA_FVM_CORES=4
@@ -23,7 +23,7 @@ export OPENONDA_VPM_SCHEME=RK2
 
 export OPENONDA_SPACING=0.04
 export OPENONDA_PARTICLE_SPACING=0.04
-export OPENONDA_FVM_CELL_SIZE=0.04
+export OPENONDA_FVM_CELL_SIZE=0.038
 export OPENONDA_SAMPLE_SPACING=0.04
 export OPENONDA_SURFACE_CELL_SIZE=0.015
 export OPENONDA_MAX_PARTICLES=1500000
