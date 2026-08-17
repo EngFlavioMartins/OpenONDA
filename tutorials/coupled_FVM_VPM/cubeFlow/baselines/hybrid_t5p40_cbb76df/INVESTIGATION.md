@@ -34,7 +34,7 @@ fine reference reproduced the checked-in reference `Cd` to approximately
 | Fine-FVM hybrid, deconvolution ablation | 1,012,160 | 0.03000 | 4 | 1.996772 | +2.25% |
 
 The production hybrid differs from the resolution-matched full-domain control
-by only +0.61% in `Cd`. Its VPM donor also matches the fine reference on the
+by only +0.61% in `Cd`. Its VPM boundary trace also matches the fine reference on the
 inner-box interface to 0.43% RMS at this time. The original -7.15% startup gap
 is therefore primarily a mesh-resolution comparison, not a failed coupling
 boundary.
@@ -43,7 +43,7 @@ Refining only the Eulerian mesh closes about half the gap without increasing
 the VPM diffusion-grid memory. Refining both methods to `h = 0.03` is not a
 one-knob solution: the production VPM box exceeds the configured GPU-grid
 memory guard, and a startup-only reduced-box test with `dt_VPM = 0.05`
-violated the stretching stability recommendation and produced non-finite donor
+violated the stretching stability recommendation and produced non-finite VPM-BC
 velocities on its second step.
 
 Four Beale/Picard passes reduced the startup mollification residual but
@@ -80,7 +80,7 @@ resolution cannot safely carry; a fixed multi-pass correction is rejected.
    ablation shows that blindly converging the deconvolution is not the missing
    fix.
 
-No sign, gradient-layout, panel-scope, donor-flux, or fringe-complement defect
-was found. The panel in `donor` scope solves against the particle wake and is
-added only to FVM donor/fringe evaluations, avoiding body-potential
+No sign, gradient-layout, panel-scope, VPM-BC-flux, or blending-complement defect
+was found. The panel in `vpm_bc` scope solves against the particle wake and is
+added only to FVM VPM-BC and blending-zone evaluations, avoiding body-potential
 double-counting in particle advection.

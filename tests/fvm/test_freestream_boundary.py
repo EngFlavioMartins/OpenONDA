@@ -5,10 +5,24 @@ import numpy as np
 from source.solvers.FVM.config.types import BoundaryConfig
 from source.solvers.FVM.mesh import geometry
 from source.solvers.FVM.solve.simple_solver import (
+    _pressure_boundary_matrix_is_reusable,
     _pressure_requires_constraint,
     _update_velocity_bcs,
     update_scalar_boundaries,
 )
+
+
+def test_fixed_directional_freestream_can_reuse_pressure_matrix():
+    dynamic = {"bc_type_p": "freestream"}
+    directional = {
+        "bc_type_p": "freestream",
+        "_fixed_freestream_outflow": np.array([False, True]),
+    }
+    neumann = {"bc_type_p": "fixedGradient"}
+
+    assert not _pressure_boundary_matrix_is_reusable([dynamic])
+    assert _pressure_boundary_matrix_is_reusable([directional])
+    assert _pressure_boundary_matrix_is_reusable([neumann])
 
 
 def _freestream_patch(hand_built_3d_mesh):
@@ -64,7 +78,7 @@ def test_freestream_switches_velocity_and_pressure_per_face(hand_built_3d_mesh):
 
 
 def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
-    """A characteristic donor survives pressure-correction BC refreshes."""
+    """A characteristic VPM BC survives pressure-correction BC refreshes."""
     mesh, patch, geo = _freestream_patch(hand_built_3d_mesh)
     n_cells = mesh["n_elements"]
     n_interior = mesh["n_interior_faces"]

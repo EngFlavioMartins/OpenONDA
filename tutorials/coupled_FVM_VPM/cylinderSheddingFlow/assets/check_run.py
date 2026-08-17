@@ -97,9 +97,11 @@ def main() -> None:
     )
     if circulation_error > 1e-8:
         raise SystemExit(f"FAIL: corrected handoff circulation mismatch is {circulation_error:.3g}")
-    donor_error = max(abs(float(record["donor_flux"]["corrected_mismatch"])) for record in coupling)
-    if donor_error > 1e-8:
-        raise SystemExit(f"FAIL: corrected donor-flux mismatch is {donor_error:.3g}")
+    vpm_bc_error = max(
+        abs(float(record["vpm_bc_flux"]["corrected_mismatch"])) for record in coupling
+    )
+    if vpm_bc_error > 1e-8:
+        raise SystemExit(f"FAIL: corrected VPM-BC-flux mismatch is {vpm_bc_error:.3g}")
     physics_summary = _check_physics(values) if expected_end >= 40.0 else ""
     print(
         "PASS: native cylinder run completed with converged FVM solves,"

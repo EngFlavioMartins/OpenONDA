@@ -252,7 +252,7 @@ class DynamicSmagorinsky:
     def _box_filter(self, f):
         """Volume-weighted one-ring box filter — the dynamic model's test filter.
 
-        Thin alias for the shared :class:`CellBoxFilter` so the coupler's fringe
+        Thin alias for the shared :class:`CellBoxFilter` so the coupler's blending zone
         relaxation and this model cannot drift apart.
         """
         return self._filter(f)

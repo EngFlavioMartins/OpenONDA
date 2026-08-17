@@ -4,7 +4,7 @@ pressure–velocity coupling.
 
 This pins the spatial accuracy of ``assemble_momentum_equation`` and, in doing
 so, exercises the generic ``source_explicit`` hook used by both MMS forcing and
-the future coupling fringe source ``S = λ(Utarget − U)``.
+the future coupling blending source ``S = λ(Utarget − U)``.
 
 Manufactured field (divergence-free 2D Taylor–Green, uniform in z, on [0,1]³)::
 

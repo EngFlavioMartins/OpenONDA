@@ -36,7 +36,7 @@ def _cube_face_quadrature(nside: int = 6):
     return np.vstack(points), np.vstack(normals), np.full(6 * nside * nside, area)
 
 
-def test_constant_donor_is_reproduced_exactly_without_particles():
+def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
     class _Particles:
         number_of_particles = 0
 
@@ -53,9 +53,9 @@ def test_constant_donor_is_reproduced_exactly_without_particles():
     coupler._log_outflow_deficit = lambda *_: None
 
     centres, normals, areas = _cube_face_quadrature()
-    donor = coupler._donor_velocity(centres, normals, areas)
-    np.testing.assert_allclose(donor, np.tile(coupler.u_inf, (len(centres), 1)), atol=1e-15)
-    assert max(coupler._last_donor_flux_diagnostics.values()) < 1.0e-14
+    u_bc = coupler._vpm_bc_velocity(centres, normals, areas)
+    np.testing.assert_allclose(u_bc, np.tile(coupler.u_inf, (len(centres), 1)), atol=1e-15)
+    assert max(coupler._last_vpm_bc_flux_diagnostics.values()) < 1.0e-14
 
 
 def test_body_potential_is_retained_before_particle_injection():
@@ -77,16 +77,16 @@ def test_body_potential_is_retained_before_particle_injection():
     coupler._log_outflow_deficit = lambda *_: None
 
     centres, normals, areas = _cube_face_quadrature()
-    donor = coupler._donor_velocity(centres, normals, areas)
+    u_bc = coupler._vpm_bc_velocity(centres, normals, areas)
 
     np.testing.assert_allclose(
-        donor,
+        u_bc,
         np.tile([0.9, 0.0, 0.0], (len(centres), 1)),
         atol=1e-15,
     )
 
 
-def test_fringe_and_donor_share_one_target_evaluation():
+def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
     class _Particles:
         number_of_particles = 12
 
@@ -100,7 +100,7 @@ def test_fringe_and_donor_share_one_target_evaluation():
             self.calls.append(np.asarray(points).copy())
             return np.tile([1.0, 0.0, 0.0], (len(points), 1))
 
-    class _Fringe:
+    class _BlendingZone:
         active_cell_centres = np.array([[0.0, -0.5, 0.0], [0.0, 0.5, 0.0]])
 
         def __init__(self):
@@ -112,28 +112,120 @@ def test_fringe_and_donor_share_one_target_evaluation():
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
     coupler.vpm = _VPM()
-    coupler.fringe = _Fringe()
+    coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
     coupler.u_inf = np.array([1.0, 0.0, 0.0])
-    coupler.config = SimpleNamespace(donor_boundary_mode="dirichlet")
+    coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
     coupler._log_outflow_deficit = lambda *_: None
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
-    previous, donor, *_timings = coupler._transfer_vpm_to_fvm(centres, normals, areas)
+    previous, u_bc, *_timings = coupler._transfer_vpm_to_fvm(centres, normals, areas)
 
     assert len(coupler.vpm.calls) == 1
     np.testing.assert_array_equal(
         coupler.vpm.calls[0],
-        np.concatenate((coupler.fringe.active_cell_centres, centres), axis=0),
+        np.concatenate((coupler.blending.active_cell_centres, centres), axis=0),
     )
     np.testing.assert_array_equal(
-        coupler.fringe.active_velocity,
+        coupler.blending.active_velocity,
         np.tile([1.0, 0.0, 0.0], (2, 1)),
     )
-    np.testing.assert_allclose(previous, donor)
+    np.testing.assert_allclose(previous, u_bc)
 
 
-def test_zero_target_evaluation_fails_before_fringe_mutation():
+def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data():
+    class _Particles:
+        number_of_particles = 12
+
+    class _VPM:
+        particles = _Particles()
+
+        def __init__(self):
+            self.pressure_kwargs = None
+
+        @staticmethod
+        def compute_target_velocities(points, **kwargs):
+            return np.tile([0.7, 0.0, 0.0], (len(points), 1))
+
+        def compute_target_pressure_gradients(self, points, **kwargs):
+            self.pressure_kwargs = kwargs
+            result = {"grad_p": np.zeros((len(points), 3))}
+            velocity = np.tile([1.0, 0.0, 0.0], (len(points), 1))
+            return result, velocity
+
+    class _BlendingZone:
+        active_cell_centres = np.empty((0, 3))
+
+        @staticmethod
+        def update_target(_active_velocity=None):
+            pass
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    coupler.blending = _BlendingZone()
+    coupler._u_bc_prev = None
+    coupler._pressure_gradient_bc_prev = None
+    coupler._pressure_gradient_bc_next = None
+    coupler._pressure_velocity_snapshot = None
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.dt = 0.05
+    coupler.config = SimpleNamespace(
+        vpm_bc_mode="pressure_gradient",
+        rho=1.0,
+        nu=1.0e-3,
+        h=0.04,
+    )
+    coupler._log_outflow_deficit = lambda *_: None
+
+    centres, normals, areas = _cube_face_quadrature(nside=3)
+    previous, u_bc, *_timings = coupler._transfer_vpm_to_fvm(centres, normals, areas)
+
+    assert coupler.vpm.pressure_kwargs["include_body"] is True
+    expected = np.tile([1.0, 0.0, 0.0], (len(centres), 1))
+    np.testing.assert_allclose(previous, expected)
+    np.testing.assert_allclose(u_bc, expected)
+
+
+def test_post_handoff_resync_refreshes_velocity_and_pressure_snapshots_together():
+    class _VPM:
+        @staticmethod
+        def compute_target_velocities(points, **kwargs):
+            return np.column_stack(
+                (1.0 + 0.1 * points[:, 0], 0.05 * points[:, 1], 0.05 * points[:, 2])
+            )
+
+    class _BlendingZone:
+        active_cell_centres = np.array([[0.0, 0.0, 0.0]])
+
+        def __init__(self):
+            self.endpoint = None
+
+        def update_endpoint(self, values=None):
+            self.endpoint = values
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._is_master = True
+    coupler.vpm = _VPM()
+    coupler.blending = _BlendingZone()
+    coupler.config = SimpleNamespace(
+        resync_vpm_bc_after_handoff=True,
+        vpm_bc_mode="pressure_gradient",
+    )
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    centres, normals, areas = _cube_face_quadrature(nside=2)
+    coupler._u_bc_prev = np.zeros_like(centres)
+    coupler._pressure_velocity_snapshot = np.zeros_like(centres)
+
+    coupler._resync_vpm_bc(centres, normals, areas)
+
+    expected = _VPM.compute_target_velocities(centres)
+    np.testing.assert_allclose(coupler._u_bc_prev, expected)
+    np.testing.assert_allclose(coupler._pressure_velocity_snapshot, expected)
+    np.testing.assert_allclose(coupler.blending.endpoint, [[1.0, 0.0, 0.0]])
+
+
+def test_zero_target_evaluation_fails_before_blending_zone_mutation():
     class _Particles:
         number_of_particles = 12
 
@@ -144,7 +236,7 @@ def test_zero_target_evaluation_fails_before_fringe_mutation():
         def compute_target_velocities(points, **kwargs):
             return np.zeros((len(points), 3))
 
-    class _Fringe:
+    class _BlendingZone:
         active_cell_centres = np.array([[0.0, 0.0, 0.0]])
 
         def __init__(self):
@@ -156,14 +248,14 @@ def test_zero_target_evaluation_fails_before_fringe_mutation():
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
     coupler.vpm = _VPM()
-    coupler.fringe = _Fringe()
+    coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
     coupler.u_inf = np.array([1.0, 0.0, 0.0])
 
     centres, normals, areas = _cube_face_quadrature(nside=2)
     with pytest.raises(RuntimeError, match="identically zero field"):
         coupler._transfer_vpm_to_fvm(centres, normals, areas)
-    assert not coupler.fringe.was_updated
+    assert not coupler.blending.was_updated
 
 
 def test_particle_fingerprint_detects_read_only_phase_mutation():
@@ -325,7 +417,7 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     coupler = object.__new__(FVMVPMCoupler)
     coupler.period_multiplier = 3
     coupler._last_handoff_result = result
-    coupler._last_donor_flux_diagnostics = {
+    coupler._last_vpm_bc_flux_diagnostics = {
         "raw_mismatch": 0.2,
         "applied_correction": 0.05,
         "corrected_mismatch": 1.0e-12,
@@ -333,12 +425,12 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     diagnostics = coupler.compute_diagnostics()
 
     assert diagnostics["period_multiplier"] == 3
-    for section in ("conservation", "donor_flux", "handoff"):
+    for section in ("conservation", "vpm_bc_flux", "handoff"):
         assert section in diagnostics
     for values in diagnostics["conservation"].values():
         assert set(values) == {"circulation", "linear_impulse", "angular_impulse"}
         assert np.isfinite(list(values.values())).all()
-    assert np.isfinite(list(diagnostics["donor_flux"].values())).all()
+    assert np.isfinite(list(diagnostics["vpm_bc_flux"].values())).all()
     assert np.isfinite(list(diagnostics["handoff"].values())).all()
     assert diagnostics["handoff"]["n_pruned"] == result.n_pruned
     assert diagnostics["handoff"]["cfl"] == result.cfl

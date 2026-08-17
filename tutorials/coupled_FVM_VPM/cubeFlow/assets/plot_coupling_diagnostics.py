@@ -49,7 +49,7 @@ def plot(figure_format: str) -> None:
     vpm = _values(records, "timing_seconds", "vpm")
     fvm = _values(records, "timing_seconds", "fvm")
     transfer = sum(
-        (_values(records, "timing_seconds", name) for name in ("donor", "fringe", "handoff")),
+        (_values(records, "timing_seconds", name) for name in ("vpm_bc", "blending", "handoff")),
         start=np.zeros_like(time),
     )
     timing.stackplot(
@@ -90,13 +90,18 @@ def plot(figure_format: str) -> None:
     in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")
     out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")
     fidelity.semilogy(
-        time, np.maximum(in_band, 1e-14), color=util.COLORS["fvm"], label="in-band residual"
+        time,
+        np.maximum(in_band, 1e-14),
+        color=util.COLORS["fvm"],
+        label="represented-field residual",
     )
     fidelity.semilogy(
-        time, np.maximum(out_of_band, 1e-14), color=util.COLORS["vpm"], label="out-of-band (h limit)"
+        time,
+        np.maximum(out_of_band, 1e-14),
+        color=util.COLORS["vpm"],
+        label="raw-blend residual",
     )
-    fidelity.axhline(1.0, color="0.6", lw=0.8, ls=":", label="1%")
-    fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Transfer fidelity")
+    fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Local transfer residual")
     fidelity.legend(loc="upper right", fontsize=7)
 
     # Per-band |omega_VPM| / |omega_FVM|. Every curve should sit on 1.

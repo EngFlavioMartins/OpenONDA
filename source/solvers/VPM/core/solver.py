@@ -388,7 +388,7 @@ class Solver:
                 self.panel_solver.initialize(force=True)
                 scope = getattr(self.panel_solver, "coupling_scope", "full")
                 self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity
-                if scope in ("full", "donor"):
+                if scope in ("full", "vpm_bc"):
                     self.set_body_induced_velocity(self.panel_solver.compute_induced_velocity)
                 else:
                     self.set_body_induced_velocity(None)

@@ -163,8 +163,18 @@ def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
         "small_invariant_projection": observed["maximum_invariant_projection_correction_ratio"]
         <= LIMITS["maximum_invariant_projection_correction_ratio"],
     }
+    if all(checks.values()):
+        status = "QUASI_STEADY"
+    elif checks["time_plateau"] and not (
+        checks["single_valued_relation"]
+        and checks["small_material_residual"]
+        and checks["independent_speed_agreement"]
+    ):
+        status = "PLATEAUED_ABOVE_TARGET"
+    else:
+        status = "CONTINUE_RELAXATION"
     return {
-        "status": "QUASI_STEADY" if all(checks.values()) else "CONTINUE_RELAXATION",
+        "status": status,
         "limits": LIMITS,
         "observed": observed,
         "checks": checks,
@@ -251,7 +261,7 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
     axis.axhline(0.0, color=GREY, linestyle=":", label="exact steady value")
     axis.set_xlabel(r"time $t^*=t\Gamma/R^2$")
     axis.set_ylabel("dimensionless residual")
-    axis.set_title("Both independent residuals must become small")
+    axis.set_title("Quasi-steady residuals")
     axis.legend(frameon=False, fontsize=7)
 
     axis = axes[1]
@@ -273,7 +283,7 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
     axis.axhline(RELAXED_EMPIRICAL_SPEED, color=GOLD, linestyle=":", label="relaxed-core formula")
     axis.set_xlabel(r"time $t^*$")
     axis.set_ylabel(r"$UR/\Gamma$")
-    axis.set_title("Two independent speed estimates must agree")
+    axis.set_title("Translation-speed consistency")
     axis.legend(frameon=False, fontsize=7)
 
     axis = axes[2]
@@ -321,7 +331,7 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
     axis.axhline(1.0e-2, color="#ef5675", linestyle=":", label="projection limit")
     axis.set_xlabel(r"time $t^*$")
     axis.set_ylabel("relative magnitude")
-    axis.set_title(f"Particle health: {gate['status'].replace('_', ' ').lower()}")
+    axis.set_title(f"Health: {gate['status'].replace('_', ' ').lower()}")
     axis.legend(frameon=False, fontsize=7)
 
     for axis in axes:

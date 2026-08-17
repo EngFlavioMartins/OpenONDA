@@ -50,15 +50,15 @@ def _fvm_setup(tmp_path, **overrides):
     return CouplerSetup(**kwargs)
 
 
-def test_coupler_setup_validates_and_serializes_donor_boundary_mode(tmp_path):
-    setup = _fvm_setup(tmp_path, donor_boundary_mode="characteristic")
-    assert setup.to_dict()["fvm_solver"]["donor_boundary_mode"] == "characteristic"
-    directional = _fvm_setup(tmp_path, donor_boundary_mode="directional_outflow")
-    assert directional.to_dict()["fvm_solver"]["donor_boundary_mode"] == "directional_outflow"
-    pressure = _fvm_setup(tmp_path, donor_boundary_mode="pressure_gradient")
-    assert pressure.to_dict()["fvm_solver"]["donor_boundary_mode"] == "pressure_gradient"
-    with pytest.raises(ValueError, match="donor_boundary_mode"):
-        _fvm_setup(tmp_path, donor_boundary_mode="unsupported")
+def test_coupler_setup_validates_and_serializes_vpm_bc_mode(tmp_path):
+    setup = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
+    assert setup.to_dict()["fvm_solver"]["vpm_bc_mode"] == "characteristic"
+    directional = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
+    assert directional.to_dict()["fvm_solver"]["vpm_bc_mode"] == "directional_outflow"
+    pressure = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
+    assert pressure.to_dict()["fvm_solver"]["vpm_bc_mode"] == "pressure_gradient"
+    with pytest.raises(ValueError, match="vpm_bc_mode"):
+        _fvm_setup(tmp_path, vpm_bc_mode="unsupported")
 
 
 def test_coupler_setup_validates_separate_handoff_box(tmp_path):
@@ -238,7 +238,7 @@ def test_dirichlet_bc_and_driver_split_produce_finite_flow(built_backend):
     assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-8)
 
 
-def test_characteristic_donor_sets_matching_velocity_and_pressure(built_backend):
+def test_characteristic_vpm_bc_sets_matching_velocity_and_pressure(built_backend):
     setup, fvm = built_backend
     fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
     u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
@@ -250,7 +250,7 @@ def test_characteristic_donor_sets_matching_velocity_and_pressure(built_backend)
     assert patch["value_p"] == 0.0
 
 
-def test_directional_outflow_donor_fixes_only_downstream_switch(tmp_path):
+def test_directional_outflow_vpm_bc_fixes_only_downstream_switch(tmp_path):
     import contextlib
     import io
 
@@ -308,7 +308,7 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="characteristic")
+    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     coupler._fvm_step("numericalBoundary", target)
 
@@ -348,7 +348,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="directional_outflow")
+    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     coupler._fvm_step("numericalBoundary", target)
 
@@ -385,7 +385,7 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, donor_boundary_mode="pressure_gradient")
+    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     gradient = np.array([[0.2, 0.0, 0.0], [-0.1, 0.3, 0.0]])
     coupler._fvm_step("numericalBoundary", target, gradient)

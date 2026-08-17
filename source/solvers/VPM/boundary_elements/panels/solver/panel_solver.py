@@ -107,7 +107,7 @@ class PanelSolver:
         density: float = 1.225,
         U_inf: np.ndarray | None = None,
         logging_frequency: int = 1,
-        coupling_scope: Literal["full", "donor", "normal", "pressure"] = "full",
+        coupling_scope: Literal["full", "vpm_bc", "normal", "pressure"] = "full",
     ):
         self.max_panels = max_panels
         self.float_dtype = float_dtype
@@ -117,8 +117,8 @@ class PanelSolver:
         self.density = density
         self.U_inf = None if U_inf is None else np.array(U_inf, dtype=np.float64)
         self.logging_frequency = max(1, int(logging_frequency))
-        if coupling_scope not in ("full", "donor", "normal", "pressure"):
-            raise ValueError("coupling_scope must be 'full', 'donor', 'normal', or 'pressure'")
+        if coupling_scope not in ("full", "vpm_bc", "normal", "pressure"):
+            raise ValueError("coupling_scope must be 'full', 'vpm_bc', 'normal', or 'pressure'")
         self.coupling_scope = coupling_scope
         self.step = 0
         self._current_time = 0.0

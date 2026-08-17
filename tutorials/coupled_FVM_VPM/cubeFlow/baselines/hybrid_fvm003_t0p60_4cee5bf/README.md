@@ -13,5 +13,5 @@ At 0.6 s, relative to `referenceFlow`:
 - stitched off-axis Ux RMS error: 1.241% (baseline 0.623%)
 
 The finer FVM generated stronger hand-off vorticity and degraded both the
-interior solution and exterior donor field.  Nominally matching the reference
+interior solution and exterior VPM field.  Nominally matching the reference
 wake spacing is therefore not a useful correction by itself.

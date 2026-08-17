@@ -19,24 +19,6 @@ _REFERENCE = (
     / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
 )
 _CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow"
-_ALLOWED_RUNTIME_OVERRIDES = {
-    "OPENONDA_CHECKPOINT_INTERVAL",
-    "OPENONDA_DIAGNOSTIC_INTERVAL",
-    "OPENONDA_DT_VPM",
-    "OPENONDA_FORCE_INTERVAL",
-    "OPENONDA_FVM_CELL_SIZE",
-    "OPENONDA_FVM_CORES",
-    "OPENONDA_MAX_PARTICLES",
-    "OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER",
-    "OPENONDA_PARTICLE_SPACING",
-    "OPENONDA_SAMPLE_SPACING",
-    "OPENONDA_SMOKE",
-    "OPENONDA_SPACING",
-    "OPENONDA_SURFACE_CELL_SIZE",
-    "OPENONDA_T_END",
-    "OPENONDA_VOLUME_INTERVAL",
-    "OPENONDA_VPM_SCHEME",
-}
 
 
 def _load(name: str, path: Path):
@@ -94,15 +76,17 @@ def _small_coupled_mesh(core_box):
 
 @pytest.fixture(scope="module")
 def bench():
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        for name in _ALLOWED_RUNTIME_OVERRIDES:
-            monkeypatch.delenv(name, raising=False)
-        return _load("hybrid_cube_setup", _CASE)
+    return _load("hybrid_cube_setup", _CASE)
 
 
 @pytest.fixture(scope="module")
 def reference():
     return _load("reference_cube_setup", _REFERENCE)
+
+
+@pytest.fixture(scope="module")
+def vpm(bench):
+    return bench.make_vpm_setup()
 
 
 @pytest.fixture(scope="module")
@@ -142,7 +126,8 @@ def test_common_fvm_settings_identical(bench, reference):
     assert hybrid.time.delta_t == fully_meshed.time.delta_t
     assert fully_meshed.time.delta_t == pytest.approx(0.01)
     assert hybrid.time.start_time == fully_meshed.time.start_time
-    assert hybrid.time.end_time == fully_meshed.time.end_time
+    assert hybrid.time.end_time == pytest.approx(6.0)
+    assert fully_meshed.time.end_time == pytest.approx(20.0)
     assert hybrid.time.adjust_timestep is False
     assert fully_meshed.time.adjust_timestep is False
     assert hybrid.initial_U == fully_meshed.initial_U
@@ -175,8 +160,7 @@ def test_coupler_setup_owns_no_solver_physics(bench):
     assert setup.dead_zone_h == 0.0
 
 
-def test_vpm_setup_compatible(bench):
-    vpm = bench.VPM_SETUP
+def test_vpm_setup_compatible(bench, vpm):
     assert type(vpm).__name__ == "VPMSetup"
     assert vpm.viscous.viscosity == pytest.approx(bench.NU)
     assert tuple(vpm.background_velocity) == tuple(bench.U_INF)
@@ -188,57 +172,70 @@ def test_vpm_setup_compatible(bench):
     assert vpm.processing_unit == "AUTO"
     assert vpm.precision == "f32"
     assert vpm.panel_solver.bc_type == "NEUMANN"
-    assert vpm.panel_solver.coupling_scope == "donor"
+    assert vpm.panel_solver.coupling_scope == "vpm_bc"
     assert vpm.turbulence.flow_model == "LES"
     recovered_ck = (vpm.turbulence.cs**2 * vpm.turbulence.ce**0.5) ** (2.0 / 3.0)
     assert recovered_ck == pytest.approx(0.094)
 
 
-def test_mesh_domain_uses_case_setting(bench):
+def test_mesh_domain_uses_case_setting(bench, vpm):
     from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
 
     assert bench.FVM_MESH.domain == bench.FVM_BOX
-    assert bench.FVM_MESH.max_cell_size == bench.SPACING
+    assert bench.FVM_MESH.requested_max_cell_size == pytest.approx(bench.FVM_CELL_SIZE)
+    assert bench.FVM_MESH.max_cell_size <= bench.FVM_CELL_SIZE
     assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.015)
     assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
-    assert bench.VPM_SETUP.panel_solver.max_panels >= len(surface.triangles)
+    assert vpm.panel_solver.max_panels >= len(surface.triangles)
 
 
-def test_production_case_keeps_the_validated_cost_limits(bench):
-    assert bench.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-    assert pytest.approx(0.04) == bench.SPACING
+def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
+    assert bench.HANDOFF_BOX == (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
+    assert bench.FVM_BOX == (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
+    assert bench.FVM_WAKE_BOX == (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
+    assert pytest.approx(0.06) == bench.FVM_CELL_SIZE
+    assert pytest.approx(0.03) == bench.FVM_WAKE_CELL_SIZE
+    assert pytest.approx(0.04) == bench.PARTICLE_SPACING
     assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
-        0.01
+        bench.FVM_MESH.max_cell_size / 4.0
+    )
+    assert bench.FVM_MESH.effective_cell_size(bench.FVM_WAKE_CELL_SIZE) == pytest.approx(
+        bench.FVM_MESH.max_cell_size / 2.0
     )
     assert bench.PARTICLE_LIMIT == 1_500_000
-    assert bench.VPM_SETUP.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
-    assert bench.VPM_SETUP.max_particles == bench.PARTICLE_LIMIT
+    assert vpm.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
+    assert vpm.max_particles == bench.PARTICLE_LIMIT
     assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT
-    assert bench.VPM_SETUP.viscous.gbd_grid_spacing == pytest.approx(bench.SPACING)
-    assert bench.COUPLER_SETUP.h == pytest.approx(bench.SPACING)
-    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.SPACING)
+    assert vpm.viscous.gbd_grid_spacing == pytest.approx(bench.PARTICLE_SPACING)
+    assert bench.COUPLER_SETUP.h == pytest.approx(bench.PARTICLE_SPACING)
+    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.PARTICLE_SPACING)
     assert bench.COUPLER_SETUP.dead_zone_h == 0.0
+    assert bench.COUPLER_SETUP.prune_vorticity_min == pytest.approx(0.005)
+    assert bench.COUPLER_SETUP.boundary_prune_multiplier == pytest.approx(10.0)
+    assert bench.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(
+        bench.TRANSFER_AMPLIFICATION_CAP
+    )
+    assert bench.COUPLER_SETUP.resync_vpm_bc_after_handoff is False
 
 
-def test_output_names_and_cadence_match_allplot_contract(bench, reference):
+def test_output_names_and_cadence_match_allplot_contract(bench, reference, vpm):
     assert bench.FVM_SETUP.case_name.startswith("coupled_")
     assert reference.FVM_SETUP.case_name == "referenceFlow"
-    assert bench.VPM_SETUP.backup_file_name == ""
-    assert Path(bench.VPM_SETUP.backup_directory) == bench.CASE_DIR / "solution"
-    assert bench.VPM_SETUP.backup_frequency == 0
+    assert vpm.backup_file_name == ""
+    assert Path(vpm.backup_directory) == bench.CASE_DIR / "solution"
+    assert vpm.backup_frequency == 0
     assert pytest.approx(bench.CHECKPOINT_INTERVAL) == bench.BACKUP_PERIOD * bench.DT_VPM
     assert pytest.approx(bench.DIAGNOSTIC_INTERVAL) == bench.VPM_LOG_PERIOD * bench.DT_VPM
-    assert bench.VPM_SETUP.logging_frequency == bench.VPM_LOG_PERIOD
+    assert vpm.logging_frequency == bench.VPM_LOG_PERIOD
     assert bench.FVM_SETUP.time.write_interval_time == pytest.approx(bench.FVM_VOLUME_INTERVAL)
-    hybrid_steps = round(bench.WRITE_INTERVAL / bench.DT_FVM)
+    hybrid_steps = round(bench.FORCE_INTERVAL / bench.DT_FVM)
     reference_steps = round(reference.WRITE_INTERVAL / reference.DT_FVM)
-    assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.WRITE_INTERVAL)
+    assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.FORCE_INTERVAL)
     assert reference_steps * reference.DT_FVM == pytest.approx(reference.WRITE_INTERVAL)
     common_time = math.lcm(hybrid_steps, reference_steps) * bench.DT_FVM
     assert common_time <= bench.T_END
-    assert pytest.approx(bench.T_END) == reference.T_END
 
 
 def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
@@ -255,8 +252,8 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
     monkeypatch.setattr(bench.FVMVPMCoupler, "is_master_rank", staticmethod(lambda: False))
     monkeypatch.setattr(
         bench,
-        "setup_vpm_solver",
-        lambda setup: pytest.fail("worker rank must not initialize the GPU VPM"),
+        "make_vpm_setup",
+        lambda: pytest.fail("worker rank must not construct the GPU VPM setup"),
     )
     monkeypatch.setattr(
         bench,
@@ -290,6 +287,29 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
     coupler_bad.fvm = hybrid_solver
     with pytest.raises(ValueError, match="owns this value"):
         coupler_bad._resolve_eulerian_ownership()
+
+
+def test_pressure_anchor_selection_caches_nonmaster_empty_view():
+    from source.coupler import FVMVPMCoupler
+
+    class FakeFVM:
+        def __init__(self):
+            self.calls = 0
+
+        def get_cell_center_coordinates(self):
+            self.calls += 1
+            return np.empty((0, 3))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler._pressure_anchor_cells = None
+    coupler.fvm = FakeFVM()
+    coupler.config = type("Config", (), {"fvm_box": (-1, 1, -1, 1, -1, 1)})()
+    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+
+    assert coupler._pressure_anchor_selection() is None
+    assert coupler._pressure_anchor_cells is not None
+    assert coupler._pressure_anchor_selection() is None
+    assert coupler.fvm.calls == 1
 
 
 def test_incompatible_vpm_viscosity_raises(bench, tmp_path):

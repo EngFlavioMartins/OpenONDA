@@ -1,7 +1,7 @@
 """Cell-field filters on an unstructured mesh.
 
 One-ring, volume-weighted box filtering. Used by the dynamic Smagorinsky model
-(test filter) and by the coupler's fringe relaxation (to relax only the scales
+(test filter) and by the coupler's blending-zone relaxation (to relax only the scales
 its target can represent).
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team

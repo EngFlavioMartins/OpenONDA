@@ -4,9 +4,8 @@ The FVM mesh is generated directly as solver-native data by OpenONDA's
 adaptive Cartesian mesher. No external solver case is used. Both solvers use
 the same equilibrium Smagorinsky coefficients.
 
-The case is configured through ``OPENONDA_*`` environment variables. The
-recommended, explicit configuration lives in ``allrun.sh`` so every run is
-auditable without a second command-line configuration layer.
+All case parameters are kept below in one explicit configuration block. Edit
+them here to define a different case.
 
 Usage:
     python cubeFlow_setup.py
@@ -14,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +21,7 @@ from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
+    BoxRefinement,
     ExecutionConfig,
     ForceSampler,
     FVMSetup,
@@ -38,25 +37,8 @@ from openonda.fvm import (
     setup_fvm_solver,
 )
 from openonda.fvm import SamplingSchedule
-from openonda.vpm import (
-    AdvectionConfig,
-    LineSampler as VPMLineSampler,
-    PanelSolver,
-    StabilizationConfig,
-    StretchingConfig,
-    SurfaceSampler as VPMSurfaceSampler,
-    TurbulenceConfig as VPMTurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VPMSetup,
-    setup_vpm_solver,
-)
 
-CASE_DIR = Path(__file__).resolve().parent
-SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
-CUBE_STL = CASE_DIR / "assets" / "cube.stl"
-BODY_STL = str(CUBE_STL)
-
+# Physical problem
 CUBE_SIDE = 1.0
 U_INF = (1.0, 0.0, 0.0)
 RHO = 1.0
@@ -65,75 +47,48 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
-FVM_XMAX = float(os.environ.get("OPENONDA_FVM_XMAX", "1.5"))
-if FVM_XMAX <= 0.5:
-    raise ValueError("OPENONDA_FVM_XMAX must lie downstream of the cube")
-HANDOFF_BOX = (-1.5, FVM_XMAX, -1.5, 1.5, -1.5, 1.5)
-FVM_DOWNSTREAM_BUFFER = float(os.environ.get("OPENONDA_FVM_DOWNSTREAM_BUFFER", "0.0"))
-if FVM_DOWNSTREAM_BUFFER < 0.0:
-    raise ValueError("OPENONDA_FVM_DOWNSTREAM_BUFFER must be non-negative")
-FVM_BOX = (-1.5, FVM_XMAX + FVM_DOWNSTREAM_BUFFER, -1.5, 1.5, -1.5, 1.5)
+
+# Time integration
 DT_FVM = 0.01
-T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "20.0"))
-FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+DT_VPM = 0.05
+T_END = 6.0
+VPM_SCHEME = "RK2"
 
-DT_VPM = float(os.environ.get("OPENONDA_DT_VPM", "0.05"))
-VPM_SCHEME = os.environ.get("OPENONDA_VPM_SCHEME", "RK2").upper()
-if VPM_SCHEME not in {"RK2", "RK3"}:
-    raise ValueError("OPENONDA_VPM_SCHEME must be RK2 or RK3")
-DONOR_BOUNDARY_MODE = os.environ.get("OPENONDA_DONOR_BOUNDARY_MODE", "dirichlet")
-# Keep the historical OPENONDA_SPACING knob as a common fallback, but do not
-# force the Eulerian mesh, particle lattice, and diagnostic grid to have the
-# same resolution.  Resolution-matched controls show that this distinction is
-# essential when comparing drag against the fully meshed reference.
-_COMMON_SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
-PARTICLE_SPACING = float(os.environ.get("OPENONDA_PARTICLE_SPACING", _COMMON_SPACING))
-FVM_CELL_SIZE = float(os.environ.get("OPENONDA_FVM_CELL_SIZE", _COMMON_SPACING))
-SAMPLE_SPACING = float(os.environ.get("OPENONDA_SAMPLE_SPACING", _COMMON_SPACING))
-# Backward-compatible import for external case scripts; internal setup uses the
-# explicit constants above.
-SPACING = PARTICLE_SPACING
-SURFACE_CELL_SIZE = float(
-    os.environ.get("OPENONDA_SURFACE_CELL_SIZE", "0.10" if SMOKE else "0.015")
-)
+# FVM domain and mesh
+FVM_CORES = 4
+HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
+FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
+FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
+FVM_CELL_SIZE = 0.06
+FVM_WAKE_CELL_SIZE = 0.03
+SURFACE_CELL_SIZE = 0.015
+
+# VPM domain and resolution
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-PARTICLE_LIMIT = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
+PARTICLE_SPACING = 0.04
+PARTICLE_LIMIT = 1_500_000
 OVERLAP_RADIUS_RATIO = 1.0
-# Hand-off prune level, in 1/s. Wake rms |omega| is ~2.7, so 0.005 was inert.
-PRUNE_VORTICITY_MIN = float(os.environ.get("OPENONDA_PRUNE_VORTICITY_MIN", "0.05"))
-# GBD relative-local prune: a shape filter, not a population control. Measured
-# at 0.30 it removed 0.6% of nodes, so leave population control to the handoff.
-GBD_THRESHOLD = float(os.environ.get("OPENONDA_GBD_THRESHOLD", "0.30"))
-# Force history remains dense enough for Cd/Strouhal analysis. Field samples,
-# raw FVM volumes, and restart checkpoints are independent because they have
-# very different costs and are not all needed by the plotting scripts.
-FORCE_INTERVAL = float(os.environ.get("OPENONDA_FORCE_INTERVAL", str(DT_VPM if SMOKE else 0.15)))
-DIAGNOSTIC_INTERVAL = float(
-    os.environ.get("OPENONDA_DIAGNOSTIC_INTERVAL", str(DT_VPM if SMOKE else 0.60))
-)
-CHECKPOINT_INTERVAL = float(
-    os.environ.get("OPENONDA_CHECKPOINT_INTERVAL", str(DT_VPM if SMOKE else 1.0))
-)
-FVM_VOLUME_INTERVAL = float(
-    os.environ.get("OPENONDA_VOLUME_INTERVAL", str(DT_VPM if SMOKE else 1.0))
-)
+PRUNE_VORTICITY_MIN = 0.005
+BOUNDARY_PRUNE_MULTIPLIER = 10.0
+GBD_THRESHOLD = 0.30
 
+# Coupling
+VPM_BC_MODE = "dirichlet"
+TRANSFER_AMPLIFICATION_CAP = 1.8
 
-def _step_period(name: str, interval: float, time_step: float) -> int:
-    if interval <= 0.0 or time_step <= 0.0:
-        raise ValueError(f"{name} and its time step must be positive")
-    ratio = interval / time_step
-    period = int(round(ratio))
-    if period < 1 or not np.isclose(ratio, period, rtol=0.0, atol=1.0e-10):
-        raise ValueError(f"{name} must be an integer multiple of {time_step:g} s")
-    return period
+# Output and diagnostics
+FORCE_INTERVAL = 0.15
+DIAGNOSTIC_INTERVAL = 0.60
+CHECKPOINT_INTERVAL = 1.0
+FVM_VOLUME_INTERVAL = 1.0
+VPM_LOG_PERIOD = 12
+BACKUP_PERIOD = 20
+SAMPLE_SPACING = 0.04
 
-
-# Backward-compatible name used by external case checks: the primary scalar
-# diagnostic is the force history.
-WRITE_INTERVAL = FORCE_INTERVAL
-VPM_LOG_PERIOD = _step_period("diagnostic interval", DIAGNOSTIC_INTERVAL, DT_VPM)
-BACKUP_PERIOD = _step_period("checkpoint interval", CHECKPOINT_INTERVAL, DT_VPM)
+# Case files and derived sampling data
+CASE_DIR = Path(__file__).resolve().parent
+CUBE_STL = CASE_DIR / "assets" / "cube.stl"
+BODY_STL = str(CUBE_STL)
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
@@ -171,56 +126,15 @@ FVM_SAMPLERS = (
     ),
 )
 
-VPM_SAMPLERS = (
-    VPMLineSampler(
-        start=[VPM_DOMAIN[0], 0.0, 0.0],
-        end=[VPM_DOMAIN[1], 0.0, 0.0],
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_centerline",
-    ),
-    VPMLineSampler(
-        start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
-        end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_offaxis_y075",
-    ),
-    VPMSurfaceSampler(
-        point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
-        bounds=SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_slice_z0",
-        include_derivatives=False,
-    ),
-    VPMSurfaceSampler(
-        point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
-        bounds=WAKE_SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_wake_slice_z0",
-        include_derivatives=False,
-    ),
-)
-
 FVM_MESH = AdaptiveCartesianMesher(
     domain=FVM_BOX,
     max_cell_size=FVM_CELL_SIZE,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=SURFACE_CELL_SIZE,
+    refinements=(BoxRefinement(FVM_WAKE_BOX, FVM_WAKE_CELL_SIZE, "wakeBox"),),
     merge_outer_patch="numericalBoundary",
 )
-
-PANEL_SOLVER = PanelSolver(
-    max_panels=128,
-    float_dtype="f32",
-    linear_solver="BICGSTAB_GPU",
-    bc_type="NEUMANN",
-    density=RHO,
-    U_inf=np.asarray(U_INF),
-    coupling_scope="donor",
-)
-
 
 FVM_SETUP = FVMSetup(
     case_name="coupled_hybridFlow",
@@ -288,85 +202,143 @@ FVM_SETUP = FVMSetup(
     initial_p=0.0,
 )
 
-VPM_SETUP = VPMSetup(
-    time_step_size=DT_VPM,
-    background_velocity=list(U_INF),
-    viscous=ViscousConfig.gbd(
-        h=PARTICLE_SPACING,
-        padding=3.0,
-        viscosity=NU,
-        threshold_mode="relative_local",
-        threshold=GBD_THRESHOLD,
-        max_nodes=PARTICLE_LIMIT,
-        cap_abs_fraction=0.95,
-        regen_radius_ratio=OVERLAP_RADIUS_RATIO,
-    ),
-    stretching=StretchingConfig.transposed(scheme=VPM_SCHEME),
-    advection=AdvectionConfig(scheme=VPM_SCHEME),
-    turbulence=VPMTurbulenceConfig.equilibrium_smagorinsky(
-        ck=SMAGORINSKY_CK,
-        ce=SMAGORINSKY_CE,
-    ),
-    velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
-    stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
-    particles_kernel="GAUSSIAN",
-    precision="f32",
-    processing_unit="AUTO",
-    max_particles=PARTICLE_LIMIT,
-    max_targets=PARTICLE_LIMIT,
-    vpm_domain_bounds=list(VPM_DOMAIN),
-    log_mode="file",
-    logging_frequency=VPM_LOG_PERIOD,
-    timing_frequency=VPM_LOG_PERIOD,
-    # The coupler already writes one complete rolling restart. Standalone VPM
-    # histories duplicated that state and dominated output-step wall time.
-    backup_frequency=0,
-    backup_directory=str(CASE_DIR / "solution"),
-    export_flow_integrals=False,
-    samplers=VPM_SAMPLERS,
-    panel_solver=PANEL_SOLVER,
-    body_stl=BODY_STL,
-)
-
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
     handoff_box=HANDOFF_BOX,
-    donor_boundary_mode=DONOR_BOUNDARY_MODE,
+    vpm_bc_mode=VPM_BC_MODE,
     wall_patch_name="cube",
     h=PARTICLE_SPACING,
     buffer_thickness=6 * PARTICLE_SPACING,
     dead_zone_h=0.0,
-    # 0.005 removed 2.8% of nodes; the lattice therefore became particles almost
-    # everywhere. 0.05 removes 38% for 2% of Sum|Gamma|, redistributed locally.
     prune_vorticity_min=PRUNE_VORTICITY_MIN,
+    boundary_prune_multiplier=BOUNDARY_PRUNE_MULTIPLIER,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
-    transfer_amplification_cap=2.0,
-    resync_donor_after_handoff=True,
+    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
+    resync_vpm_bc_after_handoff=False,
     anchor_pressure=True,
     log_period=VPM_LOG_PERIOD,
     backup_period=BACKUP_PERIOD,
 )
 
 
-def main() -> None:
-    print("\n===== SIMULATION =====")
-    print(
-        f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
-        f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
-        f"VPM scheme={VPM_SCHEME}, "
-        f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
+def make_vpm_setup():
+    """Build the VPM setup on the MPI rank that owns the VPM solver."""
+    from openonda.vpm import (
+        AdvectionConfig,
+        LineSampler,
+        PanelSolver,
+        StabilizationConfig,
+        StretchingConfig,
+        SurfaceSampler,
+        TurbulenceConfig,
+        VelocityConfig,
+        ViscousConfig,
+        VPMSetup,
     )
+
+    samplers = (
+        LineSampler(
+            start=[VPM_DOMAIN[0], 0.0, 0.0],
+            end=[VPM_DOMAIN[1], 0.0, 0.0],
+            spacing=SAMPLE_SPACING,
+            file_name="vpm_centerline",
+        ),
+        LineSampler(
+            start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
+            end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
+            spacing=SAMPLE_SPACING,
+            file_name="vpm_offaxis_y075",
+        ),
+        SurfaceSampler(
+            point=[0.0, 0.0, 0.0],
+            normal=[0, 0, 1],
+            bounds=SLICE_BOUNDS,
+            spacing=SAMPLE_SPACING,
+            file_name="vpm_slice_z0",
+            include_derivatives=False,
+        ),
+        SurfaceSampler(
+            point=[0.0, 0.0, 0.0],
+            normal=[0, 0, 1],
+            bounds=WAKE_SLICE_BOUNDS,
+            spacing=SAMPLE_SPACING,
+            file_name="vpm_wake_slice_z0",
+            include_derivatives=False,
+        ),
+    )
+    panel_solver = PanelSolver(
+        max_panels=128,
+        float_dtype="f32",
+        linear_solver="BICGSTAB_GPU",
+        bc_type="NEUMANN",
+        density=RHO,
+        U_inf=np.asarray(U_INF),
+        coupling_scope="vpm_bc",
+    )
+    return VPMSetup(
+        time_step_size=DT_VPM,
+        background_velocity=list(U_INF),
+        viscous=ViscousConfig.gbd(
+            h=PARTICLE_SPACING,
+            padding=3.0,
+            viscosity=NU,
+            threshold_mode="relative_local",
+            threshold=GBD_THRESHOLD,
+            max_nodes=PARTICLE_LIMIT,
+            cap_abs_fraction=0.95,
+            regen_radius_ratio=OVERLAP_RADIUS_RATIO,
+        ),
+        stretching=StretchingConfig.transposed(scheme=VPM_SCHEME),
+        advection=AdvectionConfig(scheme=VPM_SCHEME),
+        turbulence=TurbulenceConfig.equilibrium_smagorinsky(
+            ck=SMAGORINSKY_CK,
+            ce=SMAGORINSKY_CE,
+        ),
+        velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
+        stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
+        particles_kernel="GAUSSIAN",
+        precision="f32",
+        processing_unit="AUTO",
+        max_particles=PARTICLE_LIMIT,
+        max_targets=PARTICLE_LIMIT,
+        vpm_domain_bounds=list(VPM_DOMAIN),
+        log_mode="file",
+        logging_frequency=VPM_LOG_PERIOD,
+        timing_frequency=VPM_LOG_PERIOD,
+        backup_frequency=0,
+        backup_directory=str(CASE_DIR / "solution"),
+        export_flow_integrals=False,
+        samplers=samplers,
+        panel_solver=panel_solver,
+        body_stl=BODY_STL,
+    )
+
+
+def main() -> None:
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
 
-    vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
+    is_master = FVMVPMCoupler.is_master_rank()
+    vpm_solver = None
+    if is_master:
+        from openonda.vpm import setup_vpm_solver
+
+        vpm_solver = setup_vpm_solver(make_vpm_setup())
+        print("\n===== SIMULATION =====")
+        print(
+            f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
+            f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
+            f"VPM scheme={VPM_SCHEME}, "
+            f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
+        )
 
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 
     coupled_solver.run()
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
+    if is_master:
+        print("\n===== DONE =====")
+        print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
 
 
 if __name__ == "__main__":

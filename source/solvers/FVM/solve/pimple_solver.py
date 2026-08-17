@@ -139,10 +139,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
-        pressure_matrix_reusable = all(
-            simple_solver.BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
-            is not simple_solver.BoundaryStrategy.FREESTREAM
-            for boundary in self.boundaries
+        pressure_matrix_reusable = simple_solver._pressure_boundary_matrix_is_reusable(
+            self.boundaries
         )
 
         def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:

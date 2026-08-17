@@ -21,7 +21,7 @@ class CouplerSetup:
     fvm_box: tuple[float, float, float, float, float, float] | None = None
     handoff_box: tuple[float, float, float, float, float, float] | None = None
     patch_name: str = "numericalBoundary"
-    donor_boundary_mode: Literal[
+    vpm_bc_mode: Literal[
         "dirichlet", "characteristic", "directional_outflow", "pressure_gradient"
     ] = "dirichlet"
     wall_patch_name: str | None = "cube"
@@ -34,14 +34,15 @@ class CouplerSetup:
     buffer_thickness: float = 0.30
     dead_zone_h: float = 3.0
     prune_vorticity_min: float = 0.005
+    boundary_prune_multiplier: float = 1.0
     handoff_max_particles: int | None = None
     overlap_radius_ratio: float = 1.0
     # Cap on the inverse-mollification gain. What the lattice cannot carry is
     # reported, not amplified into grid-scale noise.
     transfer_amplification_cap: float = 2.0
-    # Re-evaluate the donor from the corrected particles after the hand-off.
+    # Re-evaluate the VPM BC from the corrected particles after the hand-off.
     # Otherwise the next interval starts from a stale prediction.
-    resync_donor_after_handoff: bool = True
+    resync_vpm_bc_after_handoff: bool = True
     # Datum the FVM pressure. Every coupling face is Neumann in pressure.
     anchor_pressure: bool = True
 
@@ -55,14 +56,14 @@ class CouplerSetup:
             if initial_u.shape != (3,) or not np.all(np.isfinite(initial_u)):
                 raise ValueError("initial_U must be a finite three-component vector")
 
-        if self.donor_boundary_mode not in {
+        if self.vpm_bc_mode not in {
             "dirichlet",
             "characteristic",
             "directional_outflow",
             "pressure_gradient",
         }:
             raise ValueError(
-                "donor_boundary_mode must be 'dirichlet', 'characteristic', "
+                "vpm_bc_mode must be 'dirichlet', 'characteristic', "
                 "'directional_outflow', or 'pressure_gradient'"
             )
 
@@ -91,6 +92,7 @@ class CouplerSetup:
             "buffer_thickness": self.buffer_thickness,
             "overlap_radius_ratio": self.overlap_radius_ratio,
             "transfer_amplification_cap": self.transfer_amplification_cap,
+            "boundary_prune_multiplier": self.boundary_prune_multiplier,
         }
         invalid = [
             name
@@ -105,6 +107,8 @@ class CouplerSetup:
             raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
         if self.transfer_amplification_cap < 1.0:
             raise ValueError("transfer_amplification_cap must be at least one")
+        if self.boundary_prune_multiplier < 1.0:
+            raise ValueError("boundary_prune_multiplier must be at least one")
         if self.buffer_thickness <= self.dead_zone_h * self.h:
             raise ValueError("buffer_thickness must exceed dead_zone_h * h")
         if self.overlap_radius_ratio < 1.0:
@@ -156,7 +160,7 @@ class CouplerSetup:
             },
             "fvm_solver": {
                 "patch_name": self.patch_name,
-                "donor_boundary_mode": self.donor_boundary_mode,
+                "vpm_bc_mode": self.vpm_bc_mode,
                 "wall_patch_name": self.wall_patch_name,
                 "grid_spacing": self.grid_spacing,
                 "initial_U": self.initial_U,
@@ -172,10 +176,11 @@ class CouplerSetup:
             "coupler": {
                 "handoff_domain": handoff_domain,
                 "prune_vorticity_min": self.prune_vorticity_min,
+                "boundary_prune_multiplier": self.boundary_prune_multiplier,
                 "handoff_max_particles": self.handoff_max_particles,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
                 "transfer_amplification_cap": self.transfer_amplification_cap,
-                "resync_donor_after_handoff": self.resync_donor_after_handoff,
+                "resync_vpm_bc_after_handoff": self.resync_vpm_bc_after_handoff,
                 "anchor_pressure": self.anchor_pressure,
             },
         }

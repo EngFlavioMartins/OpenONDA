@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
+  <Collection>
+    <DataSet timestep="0.6" file="vpm_slice_z0_000012.vts"/>
+    <DataSet timestep="1.2" file="vpm_slice_z0_000024.vts"/>
+    <DataSet timestep="1.8" file="vpm_slice_z0_000036.vts"/>
+    <DataSet timestep="2.4" file="vpm_slice_z0_000048.vts"/>
+    <DataSet timestep="3.0" file="vpm_slice_z0_000060.vts"/>
+  </Collection>
+</VTKFile>

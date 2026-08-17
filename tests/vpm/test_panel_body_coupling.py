@@ -69,7 +69,7 @@ def test_body_field_is_added_at_each_advection_velocity_evaluation():
 def test_target_only_panel_field_is_not_added_to_particle_advection():
     class Panel:
         lattice = SimpleNamespace(num_panels=12)
-        coupling_scope = "donor"
+        coupling_scope = "vpm_bc"
 
         @staticmethod
         def initialize(force=False):
@@ -113,14 +113,12 @@ def test_pressure_only_panel_field_is_not_added_to_velocity_targets():
 def test_panel_field_contributes_to_pressure_gradient():
     matrix = np.array([[0.2, 0.1, 0.0], [-0.1, 0.05, 0.0], [0.0, 0.0, -0.25]])
 
-    class Physics:
+    class PressurePhysics:
         @staticmethod
-        def compute_target_velocities_hierarchical(_particles, points, theta, include_freestream):
-            return np.zeros_like(points)
-
-        @staticmethod
-        def compute_target_velocity_gradients_hierarchical(_particles, points, theta):
-            return np.zeros((len(points), 9))
+        def compute_target_pressure_gradients_hierarchical(_particles, points, **kwargs):
+            body_velocity = kwargs["body_fn"](points)
+            velocity = kwargs["background_velocity"] + body_velocity
+            return {"grad_p": -np.einsum("mb,ab->ma", velocity, matrix)}
 
     solver = Solver.__new__(Solver)
     freestream = np.array([1.0, 0.0, 0.0])
@@ -128,7 +126,7 @@ def test_panel_field_contributes_to_pressure_gradient():
         number_of_particles=0,
         velocity_background_cpu=lambda: freestream,
     )
-    solver.physics = Physics()
+    solver._pressure_physics = PressurePhysics()
     solver._body_induced_fn = lambda points: np.asarray(points) @ matrix.T
 
     points = np.array([[0.4, -0.2, 0.1]])

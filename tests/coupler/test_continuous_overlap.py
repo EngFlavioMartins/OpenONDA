@@ -53,8 +53,8 @@ def test_aligned_handoff_excludes_solid():
         BOX,
         H,
         circulation_at_node=target,
-        mesh_weight_at_node=lambda points: 1.0 - smoothstep(
-            np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8
+        mesh_weight_at_node=lambda points: (
+            1.0 - smoothstep(np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8)
         ),
         fluid_weight_at_node=fluid_weight,
         interior_at_node=solid,
@@ -213,6 +213,13 @@ def test_local_redistribution_preserves_linear_impulse():
     before = 0.5 * np.cross(coords, (shrunk + field).reshape(-1, 3)).sum(axis=0)
     after = 0.5 * np.cross(coords, out).sum(axis=0)
     np.testing.assert_allclose(after, before, atol=1e-18)
+
+
+def test_local_redistribution_does_not_resurrect_an_all_weak_region():
+    shape = (5, 5, 5)
+    removed = np.ones((*shape, 3)) * 1.0e-8
+    redistributed = redistribute_locally(removed, np.zeros_like(removed), shape)
+    assert not np.any(redistributed)
 
 
 def test_smoothstep_is_c1_and_bounded():

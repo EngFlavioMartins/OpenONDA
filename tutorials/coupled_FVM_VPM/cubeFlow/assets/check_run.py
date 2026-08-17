@@ -45,11 +45,13 @@ def _check_coupling_history(coupling: list[dict]) -> None:
         abs(float(record["conservation"]["corrected_mismatch"]["circulation"]))
         for record in coupling
     )
-    donor_error = max(abs(float(record["donor_flux"]["corrected_mismatch"])) for record in coupling)
+    vpm_bc_error = max(
+        abs(float(record["vpm_bc_flux"]["corrected_mismatch"])) for record in coupling
+    )
     if circulation_error > 1e-8:
         raise SystemExit(f"FAIL: corrected handoff circulation mismatch is {circulation_error:.3g}")
-    if donor_error > 1e-8:
-        raise SystemExit(f"FAIL: corrected donor-flux mismatch is {donor_error:.3g}")
+    if vpm_bc_error > 1e-8:
+        raise SystemExit(f"FAIL: corrected VPM-BC-flux mismatch is {vpm_bc_error:.3g}")
     handoff_cfl = max(float(record.get("handoff", {}).get("cfl", 0.0)) for record in coupling)
     if handoff_cfl > 1.0:
         raise SystemExit(f"FAIL: peak handoff CFL is excessive ({handoff_cfl:.3g})")

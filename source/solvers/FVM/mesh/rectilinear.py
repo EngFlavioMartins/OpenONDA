@@ -112,7 +112,7 @@ def wall_refined_axis(
 
 def _cells_along(lo: float, hi: float, spacing: float, axis: str) -> int:
     """Number of cells along one axis; the box must be an integer number of
-    cells wide (the hand-off lattice and the fringe band assume a uniform,
+    cells wide (the hand-off lattice and the blending zone assume a uniform,
     box-conforming grid)."""
     length = float(hi) - float(lo)
     if length <= 0.0:

@@ -537,6 +537,24 @@ def _pressure_boundary_signature(boundaries) -> tuple[tuple[int, int, str], ...]
     return tuple(signature)
 
 
+def _pressure_boundary_matrix_is_reusable(boundaries) -> bool:
+    """Return whether pressure boundary coefficients stay fixed this step.
+
+    Ordinary freestream faces switch between pressure Dirichlet and Neumann
+    with the evolving face flux. A directional coupling patch carries an
+    immutable geometric outflow mask, so its pressure matrix is just as static
+    as a conventional fixed-value/fixed-gradient layout.
+    """
+    for boundary in boundaries:
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        if (
+            strategy is BoundaryStrategy.FREESTREAM
+            and boundary.get("_fixed_freestream_outflow") is None
+        ):
+            return False
+    return True
+
+
 def build_pressure_boundary_layout(boundaries, n_interior, n_faces) -> PressureBoundaryLayout:
     """Build immutable, vectorized pressure boundary-face metadata."""
     n_bnd = n_faces - n_interior
@@ -1214,8 +1232,8 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
     (zeroGradient); incoming flux (φ < 0) → impose ``value_U_field`` when
     present, otherwise the uniform ``value_U`` (the inletValue, default 0).
-    The per-face path is required by the FVM--VPM characteristic donor:
-    pressure-correction refreshes must not replace its non-uniform donor trace
+    The per-face path is required by the FVM--VPM characteristic VPM BC:
+    pressure-correction refreshes must not replace its non-uniform VPM-BC trace
     with the uniform freestream.
     """
     start = boundary["startFace"]
@@ -1278,7 +1296,7 @@ def _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy):
     """Apply fixedValue or noSlip velocity BC.
 
     Honours a per-face ``value_U_field`` (n_faces_patch, 3) when present (e.g. a
-    non-uniform coupler donor BC), otherwise the uniform ``value_U``.
+    non-uniform coupler VPM BC), otherwise the uniform ``value_U``.
     """
     start = boundary["startFace"]
     nf = boundary["nFaces"]
@@ -1526,8 +1544,8 @@ def _apply_scalar_bc(
             )
         if field_name == "p" and boundary.get("_directional_fixed_flux_pressure", False):
             delta = boundary.get("fixed_flux_pressure_delta")
-            donor_value = phi[owners_b] if delta is None else phi[owners_b] + np.asarray(delta)
-            phi[indices] = np.where(outflow, val, donor_value)
+            owner_value = phi[owners_b] if delta is None else phi[owners_b] + np.asarray(delta)
+            phi[indices] = np.where(outflow, val, owner_value)
         else:
             phi[indices] = np.where(outflow, val, phi[owners_b])
     else:
@@ -1680,7 +1698,7 @@ class SIMPLESolver:
         ``U_old_old`` and the flux histories are accepted for interface parity
         with the transient driver but are unused by steady SIMPLE.
         ``source_explicit``/``source_implicit``
-        are optional volumetric momentum sources (e.g. the coupling fringe
+        are optional volumetric momentum sources (e.g. the coupling blending source
         S = λ(Utarget − U)) forwarded to the momentum predictor.
 
         Args:

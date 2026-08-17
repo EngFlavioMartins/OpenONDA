@@ -1,17 +1,37 @@
-# Vortex-particle large-eddy simulation: research history and validation plan
+# OpenONDA vortex-particle LES: independent audit record
 
-## The project in one paragraph
+**Audit state:** complete for the tested formulations
 
-OpenONDA needs a turbulence model for three-dimensional vortex-particle
-simulations that cannot resolve every turbulent scale. This is the purpose of
-large-eddy simulation (LES): compute the large, resolved motions and model the
-effect of the smaller, unresolved motions. The present candidate reconstructs
-some missing small-scale velocity and calculates its effect as a vorticity
-source, or **torque**. The mathematics and periodic-grid implementation are
-encouraging, but the closure has not yet run inside the VPM solver. It must
-therefore be called a candidate, not a validated particle LES model.
+**Last updated:** 17 August 2026
 
-## Why a new model is needed
+**Intended reader:** an independent researcher or AI reviewer
+
+## Decision first
+
+This project asked whether OpenONDA can obtain a stable and physically correct
+three-dimensional large-eddy simulation (LES) by adding a turbulence closure
+to its vortex-particle method (VPM).
+
+The present answer is **no, not with either closure tested here**:
+
+1. Dynamic iterative approximate deconvolution (DIAD) was implemented
+   consistently for an added Gaussian filter, but that filter accounts for
+   only $0.44\%$ of the true unresolved enstrophy transfer. Particle smoothing
+   accounts for the other $99.56\%$. DIAD therefore solves the wrong dominant
+   closure problem in the current architecture.
+2. A filter-consistent Mansfield eddy-diffusivity model was then tested as a
+   fallback. Its fixed coefficient improved enstrophy in one posterior test,
+   but overdamped kinetic energy and the energy spectrum. Its primary dynamic
+   coefficient was negative and became zero under the required non-negative
+   clipping. It also failed the stated acceptance gates.
+
+These are useful negative results, not a validated VPM--LES. No tested closure
+should be merged into production. OpenONDA may still use VPM for adequately
+resolved coherent wakes and use the finite-volume LES solver in turbulent
+regions. A new meshless LES effort must model the particle-filter stress
+directly or adopt a substantially reformulated VPM.
+
+## 1. Question, scope, and acceptance standard
 
 The incompressible vorticity equation is
 
@@ -22,908 +42,314 @@ $$
 +\nu\nabla^2\boldsymbol\omega.
 $$
 
-Here $\boldsymbol u$ is velocity, $\boldsymbol\omega$ is vorticity, and $\nu$
-is molecular viscosity. LES applies a spatial filter because the numerical
-method cannot represent motions smaller than its working resolution. Filtering
-the nonlinear terms creates an unknown subgrid-scale contribution:
+LES resolves large motions and represents the influence of unresolved motions
+with a subgrid-scale (SGS) vorticity source $\boldsymbol g_{SGS}$. The research
+goal was a closure that:
+
+- follows from the filtered vorticity equation;
+- respects the actual OpenONDA particle and grid filters;
+- is numerically stable and insensitive to ordinary round-off;
+- reproduces SGS structure and enstrophy transfer in an a-priori test;
+- improves kinetic energy, enstrophy, and spectra in a time-dependent test;
+- keeps molecular diffusion separate from the LES contribution.
+
+This audit covers theory, offline numerical implementation, an a-priori test
+against a $128^3$ homogeneous-turbulence field, and a one-turnover posterior
+test. It does **not** claim publication-level validation across Reynolds
+numbers, resolutions, or engineering flows.
+
+## 2. The decisive theoretical point
+
+OpenONDA smooths the field once through its particle representation and again
+through the auxiliary LES filter used by DIAD. Let $P=K_\sigma$ denote particle
+regularization, $G=G_\delta$ the added Gaussian filter, and $H=GP$ their total
+effect:
 
 $$
-\frac{\partial\overline{\boldsymbol\omega}}{\partial t}
-+\overline{\boldsymbol u}\cdot\nabla\overline{\boldsymbol\omega}
-=\overline{\boldsymbol\omega}\cdot\nabla\overline{\boldsymbol u}
-+\nu\nabla^2\overline{\boldsymbol\omega}
-+\boldsymbol g_{SGS}.
-$$
-
-$\boldsymbol g_{SGS}$ is the influence of unresolved turbulence on resolved
-vorticity. This is the quantity the project must model.
-
-OpenONDA represents vorticity with particles. Molecular viscosity will be
-handled separately by Grid-Based Diffusion (GBD). The LES model must therefore
-add $\boldsymbol g_{SGS}$ directly to particle circulation—the amount of
-vorticity carried by each particle. It must not disguise the turbulent
-contribution as molecular viscosity or as a change in particle core radius.
-
-## How the research reached the present candidate
-
-### 1. The filter scale was separated from particle core size
-
-The Mansfield formulation was audited from the primary paper. The important
-lesson was that the LES filter describes **resolved numerical scale**, whereas
-particle core radius describes the particle basis used to represent a field.
-They are not interchangeable. In this project the LES width is tied to the
-working grid spacing $h$, not to particle core radius $\sigma$.
-
-This removed an early architectural confusion. Core Spreading is not required;
-OpenONDA can use GBD for molecular diffusion while the LES torque is handled
-separately.
-
-### 2. Simple coefficient models were rejected
-
-The first modeling route was Mansfield's dynamic eddy-diffusivity idea,
-together with the Germano–Lilly procedure for determining a coefficient from
-the evolving flow. The motivation was attractive: let the simulation determine
-how much small-scale dissipation it needs instead of prescribing a constant.
-
-Tests showed that one coefficient, and later two functional basis terms, could
-not represent unresolved vorticity transport and unresolved vortex stretching
-simultaneously. Even when the coefficients were chosen optimally using the
-reference answer, typical field correlations remained around $0.4$. A mixed
-model combining reconstruction with another dynamically fitted coefficient was
-also unreliable. These approaches were stopped rather than tuned further.
-
-### 3. The project moved from a functional model to a structural model
-
-A functional model prescribes the effect that unresolved turbulence *should*
-have, usually as extra dissipation. A structural model instead attempts to
-reconstruct the missing field and recompute the missing nonlinear products.
-
-A preliminary van-Cittert approximate-deconvolution test produced a clear jump
-in accuracy. This justified studying Yuan et al.'s dynamic iterative
-approximate deconvolution (DIAD), which constructs the reconstruction weights
-from the resolved field. If $\boldsymbol u^\star$ is the reconstructed
-velocity, the structural stress is
-
-$$
-\tau^S_{ij}
-=G_\delta\!\left(u_i^\star u_j^\star\right)
--G_\delta\!\left(u_i^\star\right)
- G_\delta\!\left(u_j^\star\right).
-$$
-
-The associated vorticity torque is
-
-$$
-\boldsymbol g_{SGS}
-=-\nabla\times\left(\nabla\cdot\boldsymbol\tau^S\right).
-$$
-
-This construction follows directly from the exact filtered equation instead
-of guessing a new torque shape. It produced a large improvement over the
-rejected coefficient models.
-
-### 4. A dissipative correction remains a hypothesis
-
-Yuan also includes a small-scale eddy-viscosity (SSEV) correction, denoted here
-by $\boldsymbol\tau^{SSEV}$. Applying it continuously removed too much energy
-in some development cases. The current candidate therefore uses
-
-$$
-\boldsymbol\tau^m
-=\boldsymbol\tau^S+s\boldsymbol\tau^{SSEV},
+\widetilde{\boldsymbol u}=P\boldsymbol u,
 \qquad
-s=\max\left(0,1-\frac{\varepsilon}{e}\right),
+\overline{\boldsymbol u}=G\widetilde{\boldsymbol u}.
+$$
+
+The exact stress under the total filter is
+
+$$
+\tau^H_{ij}=H(u_i u_j)-H(u_i)H(u_j).
+$$
+
+Adding and subtracting $G(\widetilde u_i\widetilde u_j)$ gives the exact
+two-filter decomposition
+
+$$
+\tau^H_{ij}
+=G\!\left[P(u_i u_j)-\widetilde u_i\widetilde u_j\right]
++\left[G(\widetilde u_i\widetilde u_j)
+-\overline u_i\overline u_j\right].
+$$
+
+The first bracket is stress lost through particle regularization. The second
+is stress introduced by the added filter. The implemented DIAD reconstruction
+inverts only $G$, so it models only the second bracket.
+
+At the tested operating point,
+
+$$
+\frac{\sigma}{h}=2.5,
 \qquad
-\varepsilon=0.01.
-$$
-
-$e$ measures how poorly the reconstructed field reproduces the known filtered
-field. The correction is activated only when this inconsistency is larger than
-$1\%$. This activation rule was created in this project; it is **not** claimed
-as a result of Yuan et al. The structural model has evidence behind it, but the
-activation rule is still under test.
-
-## Frozen model definition
-
-The filter and reconstruction are now fixed so later tests cannot be improved
-by case-specific tuning:
-
-- Gaussian filter:
-
-  $$
-  G_\delta(\boldsymbol k)
-  =\exp\left(-\frac{\delta^2|\boldsymbol k|^2}{4}\right).
-  $$
-
-  Here $\boldsymbol k$ is the wavenumber vector: larger
-  $|\boldsymbol k|$ represents smaller spatial motion.
-
-- Yuan filter width: $\Delta=\sqrt6\,\delta$.
-- Numerical hierarchy: $\Delta=2h$.
-- DIAD reconstruction: five-point stencil in each direction, two weight
-  updates, and weights constrained to sum to one so a uniform velocity remains
-  unchanged.
-- Nearly singular systems: one fixed singular-value-decomposition cutoff is
-  used to discard numerically unresolved directions. The threshold is identical
-  for every flow; there is no case-specific regularization.
-- Molecular diffusion: GBD receives molecular $\nu$ only.
-- LES action: the modeled torque is added explicitly to vorticity circulation.
-
-Changing any of these choices resets the current time-dependent validation and
-all later gates.
-
-## How to read the reported measurements
-
-- **Correlation:** whether modeled and exact torque have the same local
-  pattern. One is perfect; zero means no linear agreement.
-- **Relative $L_2$ error:** total field error divided by the size of the exact
-  field. Zero is perfect.
-- **Transfer ratio:** modeled mean enstrophy transfer divided by the exact
-  transfer. One is correct; values above one are too strong.
-- **Shell-transfer error:** error in how transfer is distributed over
-  wavenumbers, hence over large and small resolved scales. Zero is perfect.
-- **Energy spectrum:** kinetic energy carried by each wavenumber. Excess energy
-  near the largest represented wavenumbers signals unresolved pile-up.
-- **Enstrophy:** one half of mean squared vorticity. It is more sensitive than
-  energy to small-scale errors.
-- **Condition number:** sensitivity of the reconstruction weights to numerical
-  error. Very large values require precision and repeatability checks.
-
-## Evidence obtained so far
-
-### What the evidence can honestly support
-
-The different tests answer different questions. They should not be combined
-into one vague statement that “the model works.”
-
-| Claim | Present evidence | Assessment |
-|---|---|---|
-| The filtered equation, signs, and dimensions are correct | Independent derivation and exact algebraic identities | strong |
-| The structural model approximates an exact missing torque on periodic fields | A-priori AGARD and homogeneous-turbulence tests | encouraging |
-| The model can improve one evolving periodic LES | One long $64^3/32^3$ paired calculation | preliminary; one seed and low Reynolds number |
-| The underlying vortex-particle solver can reproduce a known flow | Raw vortex-ring VPM trajectory compared with Saffman theory | supported for that laminar ring |
-| A known torque can be transferred to particle circulation correctly | Manufactured-source refinement and invariant test | supported for smooth, volume-preserving particle deformation |
-| Structural DIAD works inside VPM | No completed flow calculation | **not demonstrated** |
-| The model works with bodies, inflow, or realistic turbulence | No completed calculation | **not demonstrated** |
-
-The periodic reference and LES share Fourier operators, filtering, and domain
-assumptions. That makes their comparison precise, but also creates a risk of
-common numerical bias. It cannot replace a particle calculation or an
-independent physical benchmark.
-
-### Tests on known turbulence fields
-
-These are *a-priori* tests: an accurately resolved field is filtered, its exact
-missing torque is computed, and the model is evaluated without advancing time.
-AGARD refers to the former Advisory Group for Aerospace Research and
-Development, which published the reference turbulence dataset.
-
-| Field | Cases | Correlation | Relative $L_2$ error | Transfer ratio | Shell error |
-|---|---:|---:|---:|---:|---:|
-| AGARD decaying homogeneous turbulence, development data | 2 | 0.819 | 0.580 | 0.726 | 0.343 |
-| Stationary forced homogeneous turbulence, development data | 18 | 0.989 | 0.149 | 0.974 | 0.040 |
-| Transient homogeneous turbulence, untouched holdout data | 15 | 0.961 | 0.275 | 0.891 | 0.189 |
-
-The untouched holdout result is important: it was not used to invent the
-activation rule. Nevertheless, these fields are small and mostly
-homogeneous isotropic turbulence (HIT) cases, so they are not publication-level
-validation by themselves.
-
-[A-priori comparison figure](figures/vpm_les/stage_4a_apriori_metrics.png) ·
-[formulation residuals](figures/vpm_les/stage_4a_formulation_residuals.png)
-
-### Exact time-dependent solutions
-
-Before judging turbulence physics, the research solver was tested against a
-decaying shear wave and an Arnold–Beltrami–Childress (ABC) field. Their exact
-solutions are
-
-$$
-\boldsymbol u(t)=\boldsymbol u_0e^{-\nu k^2t},
+\frac{\Delta}{h}=2,
 \qquad
-E(t)=E_0e^{-2\nu k^2t},
+\frac{\Delta_{\mathrm{eff}}}{h}
+=\sqrt{\left(\frac{\Delta}{h}\right)^2
++6\left(\frac{\sigma}{h}\right)^2}=6.442.
+$$
+
+The Gaussian particle kernel at the grid Nyquist wavenumber is approximately
+
+$$
+\widehat K_\sigma(\pi/h)
+=\exp\!\left[-\frac{(2.5\pi)^2}{4}\right]
+\approx 2\times10^{-7}.
+$$
+
+Thus the particle representation has already erased the high-wavenumber
+information that an auxiliary-filter deconvolution would need. This is the
+mathematical reason the method can reconstruct its own small added-filter
+stress accurately while still missing the physical total SGS torque.
+
+## 3. What was tested
+
+The study proceeded through hard gates. A pass allowed the next test; a fail
+stopped development of that model.
+
+| Gate | Question | Result |
+|---|---|---:|
+| Composite filter | Is the particle/grid/filter operator monotone, non-amplifying, and acceptably isotropic? | **PASS** |
+| Offline DIAD bridge | Does the full numerical torque approach the same modeled operator as resolution increases? | **PASS** |
+| Exact composite SGS audit | Does DIAD represent the dominant SGS term created by the actual total filter? | **FAIL** |
+| Mansfield a-priori audit | Can a particle-filter eddy-diffusivity closure reproduce the missing transfer? | **FAIL** for the dynamic primary model |
+| Mansfield posterior audit | Does the best fixed fallback improve objective flow statistics over one turnover? | **FAIL** |
+
+Earlier scalar, two-basis, and mixed Germano/Lilly functional fits were stopped
+because even optimally fitted fields reached only about $0.4$ correlation and
+could not represent unresolved convection and stretching together. Ordinary
+van-Cittert deconvolution improved that structure enough to justify DIAD, but
+the later exact filter decomposition showed why the apparent improvement did
+not transfer to the total particle-filter stress.
+
+DIAD follows Yuan et al., *Physics of Fluids* 33, 085125 (2021),
+[DOI 10.1063/5.0059643](https://doi.org/10.1063/5.0059643). The vorticity
+closure was derived from the exact filtered vorticity equation; it was not
+claimed to reproduce Hou et al.'s later, inaccessible implementation.
+
+## 4. Reproducible results
+
+### 4.1 Composite numerical filter
+
+The combined Gaussian particle core, M4' particle/grid transfer, added
+Gaussian filter, and derivative operator passed for
+$2.25\leq\sigma/h\leq2.75$. Maximum passband anisotropy was $1.65\%$ and
+maximum particle/grid phase sensitivity was $3.74\%$. The older
+$\sigma/h=1.5$ setting failed and was excluded.
+
+![Composite-filter transfer functions](figures/vpm_les/stage_6a_composite_filter_gate.png)
+
+This proves that the numerical filter is well behaved. It does not prove that
+the closure represents the missing physics.
+
+### 4.2 Offline DIAD implementation
+
+The complete particle-to-grid, DIAD, torque, and grid-to-particle bridge was
+compared with an oversampled evaluation of the **same modeled operator** at
+$16^3$, $24^3$, and $32^3$. At $32^3$:
+
+- single-precision correlation: $0.999971$;
+- single-precision relative $L_2$ error: $0.00864$;
+- observed convergence order: $2.43$;
+- float32/float64 relative difference: $0.00246$;
+- float32 torque change under a controlled round-off perturbation: $0.000908$.
+
+![Offline torque convergence](figures/vpm_les/stage_6b_full_offline_torque_gate.png)
+
+This is an implementation-convergence result only. The reference here is the
+modeled DIAD operator, not the exact physical SGS torque.
+
+### 4.3 Exact composite SGS audit
+
+The exact stress decomposition was evaluated on the AGARD $128^3$
+homogeneous-turbulence field, with a nominal $32^3$ LES resolution,
+$\sigma/h=2.5$, and $\Delta/h=2$. The algebraic identity closed to
+$3.12\times10^{-15}$ in relative $L_2$ norm.
+
+| Quantity | Particle term | Added-filter term |
+|---|---:|---:|
+| Torque RMS divided by total | $0.9854$ | $0.0310$ |
+| Enstrophy-transfer share | $0.99559$ | $0.00441$ |
+
+| Model comparison | Correlation | Relative $L_2$ error | Transfer ratio | Shell error |
+|---|---:|---:|---:|---:|
+| DIAD vs exact added-filter term | $0.999997$ | $0.00241$ | $0.99900$ | $0.00128$ |
+| DIAD vs exact total SGS | $0.4823$ | $0.9854$ | $0.00440$ | $0.9964$ |
+| DIAD applied to complete $H$ vs exact total | $0.5964$ | $0.8317$ | $0.0979$ | $0.9027$ |
+
+![Exact two-filter SGS decomposition](figures/vpm_les/stage_7a_composite_sgs_audit.png)
+
+DIAD accurately reproduces the small term it was designed to reconstruct, but
+misses almost all total transfer. This gate falsified DIAD for the present
+particle architecture.
+
+### 4.4 Mansfield particle-filter fallback
+
+Mansfield's primary model is
+
+$$
+\boldsymbol g_M
+=-\nabla\times\left(\nu_t\nabla\times\overline{\boldsymbol\omega}\right),
 \qquad
-Z(t)=Z_0e^{-2\nu k^2t}.
+\nu_t=(C_r\Delta_p)^2|\overline S|.
 $$
 
-For these fields the exact subgrid torque is zero. The numerical histories
-overlap the theoretical curves, the measured time order is at least $2.006$,
-and the largest false modeled torque is $2.37\times10^{-14}$. Taylor–Green
-initial energy, enstrophy, and energy-decay rate agree with theory within
-$1.23\times10^{-15}$.
+For $\nu_t\geq0$ this operator is solenoidal and removes resolved enstrophy on
+average. The energy-equivalent width of OpenONDA's tested particle filter is
+$\Delta_p/h=7.77494$. Mansfield used $C_r=0.12$ for a third-order Gaussian;
+the paper's Appendix-A procedure gives $C_r=0.136700$ for the OpenONDA
+Gaussian under the stated skewness assumption $-0.4$.
 
-This verifies the signs, normalization, filtering, divergence control, and
-time integration. It does not yet prove that the model represents turbulence.
-
-[Exact-solution overlays](figures/vpm_les/stage_4b0_exact_overlays.png) ·
-[time-step convergence](figures/vpm_les/stage_4b0_temporal_convergence.png) ·
-[Taylor–Green identities](figures/vpm_les/stage_4b0_tgv_references.png)
-
-### Identical forcing on the reference and LES grids
-
-Before running forced turbulence, the external stirring method was verified.
-One smooth random acceleration history is prescribed for the resolved LES
-equation. The reference-grid force is then chosen so that filtering it produces
-exactly that LES force:
+The fixed adjusted model obtained correlation $0.5181$, transfer ratio
+$0.6916$, and shell-transfer error $0.3470$. This was good enough only to
+justify a short posterior screen. The primary dynamic procedure gave
 
 $$
-G_\delta\boldsymbol f_{reference}=\boldsymbol f_{LES}.
+C_{r,\mathrm{raw}}^2=-0.006673,
 $$
 
-This matters because applying the same *raw* force on both grids would not be
-consistent: the reference force is filtered before it appears in the LES
-equation.
+using a test-filter ratio of two and global spatial averaging. Enforcing the
+model's non-negative diffusivity clipped the coefficient to zero, so the
+dynamic model supplied no SGS transfer. The current OpenONDA closure is not a
+Mansfield implementation: it uses $\Delta=h$ and
+$\nu_t\nabla^2\boldsymbol\omega$, whereas Mansfield uses the particle-filter
+width and the curl--curl operator above.
 
-The construction follows Eswaran and Pope's primary forcing study. They use a
-low-wavenumber Ornstein--Uhlenbeck acceleration, project it onto the
-divergence-free plane, and prescribe the temporal covariance
+![Particle-filter functional-model audit](figures/vpm_les/stage_8a_particle_functional_gate.png)
 
-$$
-\left\langle b_i(t)b_j^*(t+s)\right\rangle
-=2\sigma_f^2\delta_{ij}\exp(-s/T_f).
-$$
+### 4.5 One-turnover posterior test
 
-This is preferable here to forcing proportional to the instantaneous velocity:
-it remains an external field, independent of which LES closure is being
-tested. Consequently every model can receive the same filtered physical force.
+Three $32^3$ branches started from the same filtered checkpoint of a qualified
+$64^3$ statistically stationary reference at $t=60$. They used
+$\nu=0.02$, $\Delta t=0.02$, duration $4.0$, and $\sigma/h=2.5$:
 
-The forcing follows a prescribed temporal correlation and is divergence free,
-nearly isotropic, and restricted to wavenumbers $1\leq|\boldsymbol k|\leq2$.
-The filtered reference-grid and LES-grid fields agree to
-$3.16\times10^{-16}$. The
-component-variance departure from perfect isotropy is $0.0105$, and the
-measured correlation curve differs from its theoretical curve by $0.025$ in
-root-mean-square terms.
+1. no SGS model;
+2. the current OpenONDA eddy viscosity;
+3. fixed, Gaussian-adjusted Mansfield.
 
-Without a subgrid model, the exact resolved energy balance is
+The filtered-forcing relation closed to $3.89\times10^{-16}$; the reference
+high-wavenumber energy fraction stayed below $5.26\times10^{-5}$; all energy
+budget residuals were below $1.15\times10^{-4}$. The comparison itself was
+therefore numerically healthy.
 
-$$
-\frac{dE}{dt}=P_f-2\nu Z,
-$$
+| Branch | Mean energy error | Mean enstrophy error | Mean spectral error | Mean SGS power |
+|---|---:|---:|---:|---:|
+| No SGS | $0.1416$ | $0.4032$ | $0.1067$ | $0$ |
+| Current OpenONDA | $0.1243$ | $0.3551$ | $0.0944$ | $-0.00324$ |
+| Fixed Mansfield | $0.1559$ | $0.2220$ | $0.1446$ | $-0.04081$ |
 
-where $P_f$ is power supplied by the forcing. The numerical balance converges
-with measured order $1.978$; its finest-step relative residual is
-$9.85\times10^{-6}$. The forcing method therefore passes and is now frozen for
-paired comparisons.
+![Posterior histories](figures/vpm_les/stage_8b_functional_histories.png)
 
-[Forcing/reference overlays](figures/vpm_les/stage_4b1_forcing_verification.png) ·
-[energy-balance overlay](figures/vpm_les/stage_4b1_forcing_budget.png)
+![Posterior statistics against the filtered reference](figures/vpm_les/stage_8b_functional_reference_overlay.png)
 
-The primary study reports that this flow usually needs about three to five
-large-eddy turnover times to become statistically stationary. It also warns
-that reliable averages require a sampling interval much longer than the
-quantity's correlation time. The present protocol therefore discards the first
-five turnover times and judges the next ten. Differences between the first and
-second half of that window must be smaller than their autocorrelation-based
-95% uncertainty and smaller than a 20% absolute guardrail.
+![Posterior energy-budget closure](figures/vpm_les/stage_8b_functional_energy_budget.png)
 
-### First time-dependent turbulence pilot
+Mansfield reduced enstrophy error but worsened both energy and spectrum. It
+failed every predeclared $10\%$ accuracy target, improved only one of three
+statistics relative to the current closure, and made the spectral error
+$35.6\%$ worse than using no SGS model. The fixed coefficient is therefore not
+a validated fallback.
 
-A reduced $48^3/24^3$ Taylor–Green calculation was run to $t=4$. Without a
-subgrid model, final energy error was $12.4\%$ and enstrophy error was
-$37.2\%$. Structural DIAD reduced them to $0.25\%$ and $3.35\%$.
+## 5. What the evidence does and does not establish
 
-This is encouraging, but it also exposed an unresolved issue. The proposed
-sensor switched the dissipative correction off after $t=0.2$, making the
-sensed model identical to the structural model. The fully active correction
-gave better final enstrophy but slightly worse integrated energy and spectral
-error. The sensor is therefore neither accepted nor rejected yet.
+Established:
 
-The constrained reconstruction systems also reached condition numbers near
-$10^{17}$. The fixed truncated solve remained stable, but precision sensitivity
-must be tested explicitly.
+- the two-filter stress decomposition is exact to machine precision;
+- the auxiliary-filter DIAD implementation is numerically convergent;
+- particle smoothing dominates the SGS transfer at the tested operating point;
+- the tested DIAD closure cannot recover that dominant term;
+- the dynamic Mansfield coefficient is inadmissible under the tested model's
+  non-negative eddy-diffusivity constraint;
+- fixed Mansfield is too dissipative in the bounded posterior test;
+- the posterior reference, forcing relation, resolution check, and energy
+  budgets are internally consistent.
 
-[Time histories](figures/vpm_les/stage_4b_pilot_histories.png) ·
-[energy spectra](figures/vpm_les/stage_4b_pilot_spectra.png) ·
-[model diagnostics](figures/vpm_les/stage_4b_pilot_diagnostics.png)
+Not established:
 
-### First forced-turbulence pilot with a resolved reference
+- that every possible particle-filter closure must fail;
+- that Mansfield fails for every flow or averaging strategy;
+- that one snapshot and one turnover are sufficient for a journal claim of
+  universality;
+- that a stable VPM--LES exists in the current OpenONDA formulation;
+- engineering-flow accuracy, Reynolds-number robustness, or production
+  stability.
 
-An initial $48^3/24^3$ comparison was rejected because the proposed reference
-contained as much as $7.0\%$ of its energy near its own resolution limit. It
-would have been misleading to call that field a reliable reference.
+The negative decision is consequently narrow but strong: **do not continue
+tuning or production-testing these two formulations in this architecture.**
 
-The pilot was repeated at $64^3/32^3$ and lower Reynolds number
-($\nu=0.02$). The fine-grid high-wavenumber energy then remained below
-$0.476\%$, satisfying the predeclared $1\%$ reference-resolution limit. All
-model energy balances closed within $7.0\times10^{-4}$.
+Alvarez and Ning's stable meshless LES is not a drop-in counterexample. Their
+primary paper reports that the anisotropic SGS model and a reformulated VPM
+were jointly required; adding the SGS model to the classic VPM did not provide
+the reported turbulent-flow stability. Adopting that route would be a new,
+invasive research programme.
 
-Without a subgrid model, final energy and enstrophy errors were $5.57\%$ and
-$26.1\%$. Structural DIAD reduced them to $0.80\%$ and $1.23\%$. Its mean
-energy-spectrum error was $1.94\%$, compared with $9.16\%$ without a model.
-The continuously active eddy-viscosity correction gave a slightly smaller
-mean spectrum error, $1.86\%$, but larger final energy and enstrophy errors,
-$1.63\%$ and $1.99\%$.
+## 6. Reproduction and evidence manifest
 
-The sensor remained off throughout, so sensed DIAD was identical to structural
-DIAD. This pilot therefore supports the structural closure but does not decide
-whether the dissipative correction should be sensed or continuously active.
-The run spans only about $0.35$--$0.38$ large-eddy turnover times and has
-Taylor-scale Reynolds number near $5.8$; it is a numerical and physical screen,
-not turbulence-model qualification.
+All narrative history has been consolidated into this file. The remaining
+items below are primary sources, executable experiments, figures, or raw data.
 
-[Forced-flow histories](figures/vpm_les/stage_4b1_forced_hit_histories.png) ·
-[spectrum/reference overlay](figures/vpm_les/stage_4b1_forced_hit_spectra.png) ·
-[theoretical energy balances](figures/vpm_les/stage_4b1_forced_hit_budgets.png) ·
-[reference-resolution check](figures/vpm_les/stage_4b1_forced_hit_reference_resolution.png)
+| Purpose | Evidence |
+|---|---|
+| Primary Mansfield formulation | [mansfield1998.pdf](mansfield1998.pdf) |
+| Reformulated VPM comparison | [alvarez_ning_2024_stable_vpm_les.pdf](alvarez_ning_2024_stable_vpm_les.pdf) |
+| AGARD source field | [dns/agard_hom02/CB128_9.bin](dns/agard_hom02/CB128_9.bin) and [AGARD-AR-345.pdf](dns/agard_hom02/AGARD-AR-345.pdf) |
+| Composite-filter gate | [stage_6a_composite_filter_gate.py](../scripts/experiments/stage_6a_composite_filter_gate.py), [results](../scripts/experiments/stage_6a_composite_filter_results.json) |
+| Offline torque gate | [stage_6b_full_offline_torque_gate.py](../scripts/experiments/stage_6b_full_offline_torque_gate.py), [results](../scripts/experiments/stage_6b_full_offline_torque_results.json) |
+| Exact SGS decomposition | [stage_7a_composite_sgs_audit.py](../scripts/experiments/stage_7a_composite_sgs_audit.py), [results](../scripts/experiments/stage_7a_composite_sgs_results.json) |
+| Mansfield a-priori gate | [stage_8a_particle_functional_gate.py](../scripts/experiments/stage_8a_particle_functional_gate.py), [results](../scripts/experiments/stage_8a_particle_functional_results.json) |
+| Posterior gate | [stage_8b_particle_functional_posterior.py](../scripts/experiments/stage_8b_particle_functional_posterior.py), [results](../scripts/experiments/stage_8b_particle_functional_results.json) |
+| Stationary reference | [stage_4b3_seed20260817](../artifacts/vpm_les/stage_4b3_seed20260817/) contains 13 checkpoints, per-checkpoint hashes, and restart verification; total size $124$ MB |
+| Posterior final state | [stage_8b_particle_functional_final.npz](../artifacts/vpm_les/stage_8b_particle_functional_final.npz), [SHA-256](../artifacts/vpm_les/stage_8b_particle_functional_final.sha256) |
 
-### Statistically stationary reference gate
+Posterior final-state SHA-256:
 
-A first $64^3$ reference was stopped after 7.73 turnover times. It was well
-resolved and its mean power balance was correct, but a three-turnover slice was
-too short to distinguish slow random fluctuations from drift. That attempt is
-retained as a failed result; it was not reclassified.
+    da585f76b6b2829bb90b6cbdd1d17930fadf17bc7fb590efa3d00d3313d4e680
 
-The test was repeated for 15.44 turnover times. The first five were discarded,
-and the final 9.98-turnover window covered 12.42 measured correlation times.
-All checks passed:
+No closure from these experiments was accepted into production code.
 
-- energy and dissipation slopes were $0.0073$ and $0.0166$ per turnover;
-- mean power input and dissipation differed by $1.81\%$;
-- time-averaged component-energy anisotropy was $5.98\%$;
-- $k_{max}\eta$ remained above $2.095$ compared with the theoretical minimum
-  of one;
-- the high-wavenumber energy fraction remained below
-  $2.35\times10^{-5}$ compared with the $0.01$ limit.
+## 7. Questions for the independent auditor
 
-The faster reference implementation uses
+The reviewer should answer these explicitly:
 
-$$
-\frac{\partial\boldsymbol\omega}{\partial t}
-=\nabla\times(\boldsymbol u\times\boldsymbol\omega)
-+\nu\nabla^2\boldsymbol\omega+\nabla\times\boldsymbol f.
-$$
+1. Are the total-filter stress and its particle/auxiliary decomposition derived
+   with the correct products, signs, and filter order?
+2. Does the measured $99.56\%$ particle-transfer share justify rejecting the
+   auxiliary-filter DIAD route at $\sigma/h=2.5$?
+3. Is the energy-equivalent particle-filter width used in the Mansfield test
+   consistent with the Gaussian and M4' transfer symbols?
+4. Is clipping $C_r^2<0$ to zero the correct admissible treatment for a purely
+   dissipative Mansfield model, or should the failure be described differently?
+5. Do the a-priori and one-turnover results support rejecting these specific
+   closures, while avoiding the stronger claim that all VPM--LES is impossible?
+6. Is the recommended scope boundary sound: VPM for adequately resolved
+   coherent wakes, qualified finite-volume LES for turbulent regions, and no
+   production VPM--LES claim?
 
-It agrees with the previously verified convection-plus-stretching form to
-$9.38\times10^{-16}$, so this is a computational optimization rather than a
-change of equations.
-
-[Stationarity and theoretical limits](figures/vpm_les/stage_4b2_stationary_reference.png) ·
-[final spectrum and $k^{-5/3}$ slope guide](figures/vpm_les/stage_4b2_stationary_spectrum.png)
-
-### First stationary comparison of the LES models
-
-The qualified forcing protocol was then used for one continuous
-$64^3$ reference and four $32^3$ calculations: no subgrid model, structural
-DIAD, structural DIAD with the dissipative correction always active, and the
-proposed sensed correction. The calculation covered $15.49$ large-eddy
-turnover times. The first five were excluded and the final $9.90$ were used for
-comparison. The reference independently passed the same stationarity and
-resolution checks as the previous qualification run.
-
-Structural DIAD improved every predeclared physical comparison. Relative to
-the filtered reference, its mean energy error was $2.64\%$, mean enstrophy
-error was $1.81\%$, and time-mean spectrum error was $4.62\%$. Without a
-subgrid model these errors were $3.49\%$, $7.40\%$, and $7.56\%$. Thus the most
-small-scale-sensitive error, enstrophy, fell by about $76\%$, while the
-spectrum error fell by $39\%$. Its largest high-wavenumber energy fraction was
-$0.217\%$, safely below the predeclared $1\%$ pile-up limit.
-
-The always-active dissipative correction was slightly less accurate than the
-pure structural model. The sensor remained zero for the entire run, so the
-sensed and structural trajectories were identical. The evidence therefore
-supports the structural closure; it does not yet support either dissipative
-variant.
-
-The first automated result correctly retained a `FAIL` label because its
-energy-budget diagnostic exceeded the strict $0.2\%$ tolerance. That output
-had been sampled every $1.0$ time unit even though the random force changes on
-a $0.2$ time scale, so the power integral was not numerically resolved. This
-was tested rather than assumed. The archived interval from $t=50$ to $60$ was
-replayed with diagnostics every time step, $\Delta t=0.02$, and was required to
-recover the independently archived final state exactly. All fields did so with
-zero maximum difference. The correct energy balance,
+## Final status
 
 $$
-E(t)-E(t_0)
-=\int_{t_0}^{t}\left(P_f-2\nu Z+P_{SGS}\right)\,dt,
+\boxed{\text{No stable, physically validated VPM--LES formulation has been obtained.}}
 $$
 
-then closed within $0.0091\%$ for every model. The original failed diagnostic
-and the corrective audit are both preserved. Taken together, this is a pass of
-the one-seed stationary **screen**, not publication-level qualification.
-
-[Stationary histories and reference overlays](figures/vpm_les/stage_4b3_stationary_pair_histories.png) ·
-[time-mean spectrum overlay](figures/vpm_les/stage_4b3_stationary_pair_spectra.png) ·
-[model-error comparison](figures/vpm_les/stage_4b3_stationary_pair_errors.png) ·
-[time-step energy-budget audit](figures/vpm_les/stage_4b3_budget_recheck.png)
-
-### Existing VPM reference calculation
-
-Before adding the new closure, the current particle solver was checked using
-its complete raw vortex-ring trajectory. This calculation is independent of
-the spectral LES research code. The transposed-stretching VPM result has a
-$3.84\%$ speed error against Saffman's analytical viscous-ring law, while ring
-radius, linear impulse, and tube circulation drift by $0.155\%$, $0.048\%$,
-and $2.74\%$. The raw HDF5 sequence contains 24 snapshots through 600 steps.
-
-This supports the health of the base VPM for this smooth unbounded flow. It
-does not support the structural model: the curve called “LES” in the existing
-tutorial uses the older Smagorinsky viscosity.
-
-[VPM ring speed against Saffman theory](../tutorials/VPM/vortexRing/figures/vortex_ring_motion.png) ·
-[VPM ring conservation](../tutorials/VPM/vortexRing/figures/vortex_ring_circulation.png)
-
-### First particle-coupling gate
-
-An explicit LES torque must change particle circulation according to
-
 $$
-\frac{d\boldsymbol\Gamma_p}{dt}
-=V_p\boldsymbol g_{SGS}(\boldsymbol x_p).
+\boxed{\text{DIAD and the tested Mansfield fallback are closed research branches.}}
 $$
 
-This mapping was tested with a manufactured divergence-free torque whose total
-circulation source is zero and whose exact linear-impulse source is
-
-$$
-\frac{d\boldsymbol I}{dt}
-=\left(0,0,\frac{27}{512}\right).
-$$
-
-The production M4′ remeshing weights were used at four particle resolutions.
-For a smooth, exactly volume-preserving shear of the particle lattice, the
-field error converged at order $3.02$ and reached $0.033\%$ at $32^3$ in both
-single and double precision. M4′ preserved the applied circulation and impulse
-to numerical precision, and the recovered impulse source differed from theory
-by $0.0007\%$.
-
-An intentionally harsher test independently displaced particles while leaving
-their volumes unchanged. It failed: $15\%h$ random displacement produced
-$12.0\%$ local torque error without convergence, although global invariants
-were still preserved. This failed result is retained. It means the production
-coupling must apply the structural torque on the GBD remeshing grid and must
-monitor particle disorder; it must not simply evaluate a torque on an
-arbitrarily disordered equal-volume cloud.
-
-[Manufactured VPM coupling and theoretical impulse](figures/vpm_les/stage_5a_vpm_torque_coupling.png) ·
-[retained random-disorder failure](figures/vpm_les/stage_5a_vpm_torque_coupling_random_fail.png)
-
-### Widnall-instability challenge
-
-The next VPM test deliberately makes a vortex ring harder to resolve. Its
-centreline is perturbed by 24 azimuthal waves. Classical stability theory says
-that a thin Gaussian ring should preferentially amplify a mode near
-
-$$
-m_{peak}\simeq 2.26\frac{R}{a}=22.6
-$$
-
-for the present ring radius $R=1$ and core radius $a=0.1$. This estimate is
-used to identify the relevant modes, not as a fitted result.
-
-The archived perturbation-$0.025$ particle run was reanalysed. Modes
-$20\ldots24$ reached at most $1.098$ times their prescribed initial amplitude,
-while normalized divergence stayed below $0.082$ (limit $0.12$) and
-vortex-line misalignment below $25.84^\circ$ (limit $45^\circ$). This is weak
-evidence of incipient growth, not a clean instability validation: the archive
-starts at $t^*=1.57$, its Cartesian particle cloud represents the intended
-mode spectrum poorly, and its time step $0.02$ exceeds the stretching-based
-recommendation for the stronger perturbation.
-
-The replacement test uses complete toroidal particle orbits and perturbation
-$0.050$. Before advancing the flow, its discrete radial spectrum must agree
-with the prescribed spectrum within $5\%$, and energy in unseeded modes must be
-below $10\%$ of that in seeded modes. The present initial condition passes at
-$2.19\%$ and $4.90\%$, respectively. A synthetic diagnostic test recovers
-known radial and axial modes within $0.2\%$.
-
-The first time-step comparison exposed a real numerical problem. With the
-solver's older fractional update, the ring path agreed but modes $20\ldots24$
-did not: their history differed by $13.2\%$ and their endpoint by $52.4\%$.
-That calculation failed its predeclared $5\%$ gate and will not be used as
-physical evidence.
-
-The research case now advances particle positions and vortex strengths
-together at common RK3 stages. A short coupled comparison through $t^*=2$
-passes even when both Fourier magnitude and phase are checked: complex modal
-history error is $0.62\%$, endpoint error $3.64\%$, and ring-radius error
-$0.00027\%$.
-
-The same comparison through $t^*=10$ fails. The magnitude-only history error
-is $4.46\%$, but the phase-sensitive complex history error is $12.1\%$ and its
-endpoint error is $33.8\%$. The resolved ring path and particle-health measures
-still agree closely, so this is specifically a lack of convergence at the
-instability scales. A still finer $0.0025/0.00125$ pair also fails, so simply
-reducing the time step does not solve it.
-
-The cause has now been isolated to the approximate velocity evaluator. At the
-same $\Delta t=0.0025$, the $\theta=0.3$ tree trajectory and exact pairwise
-velocity trajectory differ by only $0.0051\%$ in centroid motion but by
-$7.69\%$ in complex modal history and $40.3\%$ at the endpoint by $t^*=4.71$.
-An instantaneous audit explains how this can be missed: the tree velocity error
-is only $0.275\%$ globally and $1.22\%$ in modes $20\ldots24$, but its phase
-error accumulates. The Widnall benchmark must therefore use direct velocity
-until a tighter tree configuration independently reproduces it.
-
-The requested stronger disturbance was then concentrated in the theoretically
-relevant mode $m=22$, rather than divided among 24 modes. The discrete particle
-ring represents the requested amplitude $0.050$ with $0.27\%$ error; the RMS
-leakage into all other measured modes is $1.46\%$. A direct-summation,
-factor-two time-step pair was run through $t^*=2$. Ring position, radius,
-particle divergence, and the history of the $m=22$ amplitude all agree closely.
-After correcting the analysis to include the final raw restart state, the
-phase-sensitive history error is $0.35\%$ and the true endpoint error is
-$1.40\%$: the time-step gate passes. The instantaneous relative difference
-briefly reaches $6.69\%$ near $t^*=1.89$, when the mode has decayed from
-$0.050$ to about $0.0018$, but the absolute difference there is small and the
-mode subsequently rebounds to about $0.0066$ at $t^*=2.00$.
-
-This decay must not be interpreted as successful physical damping. A primary
-reference check exposed a more basic problem with the experiment. Verzicco &
-Shariff (1994) first relaxed their Gaussian ring axisymmetrically to a
-quasi-steady state, specifically to avoid axisymmetric adjustment, and only
-then applied a divergence-free perturbation. Their reference case had
-$R=\Gamma=1$, $a=0.4131$, $\Gamma/\nu=3000$, and predicted
-$m=2.26R/a=5.47$; modes 5 or 6 were therefore expected, with mode 6 dominating
-after an initial transient. Our current $a=0.1$ ring was perturbed before such
-relaxation. Its rapid modal decay can therefore be an initial-condition
-transient rather than a result about DNS or LES. The test is retained as a
-numerical stress test, but it is rejected as a physics-validation case.
-
-The replacement gate first exposed a second initial-condition problem. The
-particle cloud ended where the nominal Gaussian vorticity was still $5\%$ of
-its maximum. Using the integral definition of core thickness from Archer,
-Thomas & Coleman (2008), the finest cloud therefore represented
-$\delta_\theta=0.3862$, not the required $0.4131$. The error was $6.51\%$.
-Although that calculation conserved impulse and looked perfectly symmetric,
-it failed the benchmark-definition gate and was not advanced to a long run.
-
-The cutoff is now explicit and frozen at $0.2\%$. A cutoff below about
-$0.1\%$ would make this thick toroidal cloud cross the symmetry axis, where the
-present particle distributor is not valid. At $0.2\%$, all four tested
-spacings represent the prescribed integral core radius within $0.528\%$;
-circulation, ring radius, and axisymmetry are correct to numerical roundoff.
-
-Short direct-summation calculations then passed at $h/R=0.15$, $0.12$, and
-$0.10$. At the finest spacing, translation speed differs by $0.122\%$ from
-the Gaussian-core formula in Archer et al. The exact molecular energy balance
-closes within $1.38\%$ in every case, while impulse and circulation drift stay
-below $9\times10^{-9}$. The $h/R=0.12$ and $0.10$ results differ by $0.326\%$
-in speed and $0.912\%$ in energy. Halving the time step changes the monitored
-physical quantities by at most $2.3\times10^{-7}$. This qualifies the corrected
-ring for a longer **axisymmetric relaxation only**. It is not yet evidence of
-Widnall growth or of the LES closure.
-
-A tight tree calculation ($\theta=0.1$) also passed the same short interval:
-its speed differed from direct summation by $0.0146\%$ and its largest
-artificial mode was $1.92\times10^{-6}$. It was only $1.16$ times faster,
-however. Because the earlier perturbed-ring test showed that small tree errors
-can accumulate in modal phase, this modest saving does not justify using it for
-the long relaxation. The long pilot will use direct summation at $h/R=0.12$;
-$h/R=0.10$ remains the later spatial-confirmation case.
-
-The next calculation will establish when the initially Gaussian core has
-finished its axisymmetric adjustment. Only then will a small divergence-free
-perturbation be applied. A valid instability result must select modes 5--6 and
-recover the published dominance of mode 6; the later no-model and structural
-DIAD comparisons must start from exactly the same accepted raw state.
-
-The required stopping measurement is now implemented and independently
-checked. In the frame moving with the ring, a steady axisymmetric flow without
-swirl must satisfy
-
-$$
-q=\frac{\omega_\phi}{r}=F(\psi),
-$$
-
-so points across the vortex core must collapse onto one curve when $q$ is
-plotted against the translating-frame streamfunction $\psi$. A second test
-measures $\mathbf{u}_{rel}\cdot\nabla q$, which must also approach zero. The
-code recovers a manufactured exact relation with residuals below
-$3\times10^{-6}$ and detects a deliberately broken relation with residuals
-of $0.19$ and $0.30$. Refining the field-sampling grid from $65^2$ to $129^2$
-changes the real-ring measurements by less than $0.7\%$.
-
-The first restartable relaxation pilot initially looked healthy through
-$t^*=2$. Its two quasi-steady residuals decreased from $0.214$ and $0.201$ to
-$0.184$ and $0.149$, while circulation, impulse, and axisymmetry remained
-excellent. Extending it to $t^*=4$ exposed a slower but decisive failure:
-kinetic energy fell $8.54\%$ more than the exact molecular identity permits.
-A factor-two time-step pair started from the identical $t^*=2$ particles ended
-with energies only $1.63\times10^{-6}$ apart, yet both exceeded the allowed
-energy loss by about $10.6\%$. The unprojected trajectory is therefore
-time-step converged but physically unacceptable and will not be continued.
-
-The replacement now matches the reference procedure more faithfully: the
-relaxation is explicitly axisymmetric and the discrete inviscid stretching
-rate is projected onto the exact circulation, impulse, angular-impulse, and
-energy constraints. Molecular Core Spreading remains outside this projection,
-so its physical energy sink is retained. At $t^*=0.2$, the energy-balance
-residual falls to $0.057\%$ and the projection correction is only $0.0256\%$
-of the raw stretching rate. Through $t^*=1$, cumulative energy-balance error is
-$0.097\%$, the maximum correction is $0.123\%$, impulse remains stable, and
-artificial modes stay below $1.9\times10^{-8}$. The quasi-steady residuals are
-still $0.206$ and $0.185$, so this corrected base state is healthy but not yet
-ready to perturb.
-
-[Archived $0.025$ modal audit and theoretical mode estimate](figures/vpm_les/stage_5b_widnall_archived_w025.png)
-
-[Failed fractional time-step gate](figures/vpm_les/stage_5b_widnall_dt_gate.png) ·
-[passed coupled RK3 short gate](figures/vpm_les/stage_5b_widnall_coupled_dt_gate.png) ·
-[failed coupled RK3 $t^*=10$ gate](figures/vpm_les/stage_5b_widnall_coupled_dt_tstar10_gate.png) ·
-[tree-versus-direct audit](figures/vpm_les/stage_5b_widnall_tree_vs_direct.png) ·
-[single-mode direct time-step gate](figures/vpm_les/stage_5b_widnall_m22_direct_dt_gate.png)
-
-[Rejected truncated-cloud preflight](figures/vpm_les/stage_5b_relaxed_ring_preflight.png) ·
-[Gaussian-tail initial-condition gate](figures/vpm_les/stage_5b_ring_initial_condition_gate.png) ·
-[corrected short relaxation gate](figures/vpm_les/stage_5b_relaxed_ring_corrected_gate.png)
-· [verified quasi-steady measurement](figures/vpm_les/stage_5b_ring_quasi_steady.png)
-· [$t^*=2$ physical relaxation history](figures/vpm_les/stage_5b_ring_relaxation_tstar2.png)
-· [rejected energy audit](figures/vpm_les/stage_5b_ring_energy_audit.png)
-· [corrected axisymmetric history](figures/vpm_les/stage_5b_ring_axisproj_tstar1.png)
-
-## Reproducible research materials
-
-- Formulation and frozen-field tests:
-  `scripts/experiments/stage_4a_formulation.py` and
-  `scripts/experiments/stage_4a_results.json`.
-- Exact-solution verification:
-  `scripts/experiments/stage_4b0_exact_verification.py` and
-  `scripts/experiments/stage_4b0_exact_results.json`.
-- First time-dependent turbulence pilot:
-  `scripts/experiments/stage_4b_spectral_pilot.py` and
-  `scripts/experiments/stage_4b_pilot_results.json`.
-- Nested-grid forcing verification:
-  `scripts/experiments/stage_4b1_forcing_verification.py` and
-  `scripts/experiments/stage_4b1_forcing_results.json`.
-- Primary stationary-forcing source:
-  `docs/eswaran_pope_1988_forcing.pdf`.
-- Resolved-reference forced-turbulence pilot:
-  `scripts/experiments/stage_4b1_forced_hit_pilot.py` and
-  `scripts/experiments/stage_4b1_forced_hit_64_32_results.json`.
-- Stationary-reference qualification:
-  `scripts/experiments/stage_4b2_stationary_reference.py` and
-  `scripts/experiments/stage_4b2_stationary_reference_results.json`. The
-  shorter failed attempt is retained as
-  `scripts/experiments/stage_4b2_stationary_reference_short_results.json`.
-- Checkpointed stationary model screen:
-  `scripts/experiments/stage_4b3_stationary_pair.py` and
-  `scripts/experiments/stage_4b3_stationary_pair_results.json`.
-- Dense budget follow-up:
-  `scripts/experiments/stage_4b3_budget_recheck.py` and
-  `scripts/experiments/stage_4b3_budget_recheck_results.json`.
-- Manufactured VPM torque-coupling gate:
-  `scripts/experiments/stage_5a_vpm_torque_coupling.py` and
-  `scripts/experiments/stage_5a_vpm_torque_coupling_results.json`. The original
-  independent-random-jitter failure is retained in
-  `scripts/experiments/stage_5a_vpm_torque_coupling_random_fail_results.json`.
-- Widnall mode diagnostic and archived baseline audit:
-  `scripts/experiments/stage_5b_widnall_vpm_analysis.py` and
-  `scripts/experiments/stage_5b_widnall_archived_w025_results.json`.
-- Primary Gaussian-ring benchmark source:
-  `docs/verzicco_shariff_1994_vortex_ring_instability_primary.pdf`.
-- Primary integral-radius and finite-core speed source:
-  `docs/archer_thomas_coleman_2008_vortex_ring.pdf`.
-- Relaxed-ring initializer, initial-condition audit, and short gate:
-  `scripts/experiments/stage_5b_relaxed_ring_reference.py`,
-  `scripts/experiments/stage_5b_ring_initial_condition_gate.py`, and
-  `scripts/experiments/stage_5b_relaxed_ring_corrected_gate.py`. The rejected
-  truncated result remains in
-  `scripts/experiments/stage_5b_relaxed_ring_preflight_results.json`.
-- Short direct-versus-tree audit:
-  `scripts/experiments/stage_5b_relaxed_ring_tree_audit.py` and
-  `scripts/experiments/stage_5b_relaxed_ring_tree_audit_results.json`.
-- Single-mode direct-summation time-step result:
-  `scripts/experiments/stage_5b_widnall_m22_direct_dt_results.json`.
-- Restartable raw states: `artifacts/vpm_les/stage_4b3_seed20260817`. The local
-  archive contains 13 checkpoints (124 MB). All 26 state/metadata files pass
-  their SHA-256 checksums, and a load-and-continue test reproduces every field
-  bit for bit. This directory is ignored by Git and is not yet a redundant
-  off-machine backup.
-
-## Progress and work remaining
-
-Updated: 2026-08-16. **Current task:** replace the unrelaxed Widnall stress test
-with a literature-matched, relaxed Gaussian-ring benchmark before comparing
-DNS and structural DIAD in VPM.
-
-- [x] Recover the exact filtered-vorticity equation from primary literature.
-- [x] Reject coefficient models that cannot represent the exact torque.
-- [x] Select and freeze the DIAD structural candidate.
-- [x] Gate A: verify mathematical and discrete identities.
-- [x] Gate B.0: reproduce exact time-dependent solutions.
-- [x] Gate B pilot: complete the reduced Taylor–Green calculation.
-- [ ] **Gate B.1: spectral turbulence validation — active.**
-  - [x] Verify identical nested-grid forcing, isotropy, temporal correlation,
-    and the theoretical forced energy balance.
-  - [x] Complete a low-Reynolds-number transient pilot with a reference that
-    independently passes its resolution check.
-  - [x] Qualify a statistically stationary reference by checking energy drift,
-    power input against dissipation, isotropy, and two small-scale resolution
-    measures over the final ten turnover times.
-  - [x] Run a stationary $64^3/32^3$ paired screen using the qualified
-    five-turnover development and ten-turnover measurement protocol.
-  - [x] Save restartable raw fields and verify exact restart/continuation.
-  - [x] Diagnose the initially under-sampled energy budget and repeat it at
-    every time step without changing the archived trajectory.
-  - [ ] Repeat the stationary screen for two independent random seeds. Retain
-    structural DIAD as the primary candidate; do not claim evidence for the
-    inactive sensor.
-  - [ ] Test the fixed truncated reconstruction in single and double precision
-    because its largest condition number in the stationary screen was
-    $6.89\times10^{11}$.
-  - [ ] Forced homogeneous turbulence at two Reynolds numbers, meaning two
-    ratios of inertial to viscous effects, and three random initializations.
-    Run each for at least ten large-eddy turnover times—the characteristic time
-    of the largest energetic motion.
-  - [ ] Taylor–Green flow through maximum dissipation and two turnover times
-    beyond it.
-  - [ ] Decaying homogeneous turbulence initialized independently of the AGARD
-    field already used during development.
-  - [ ] First resolution pair: $128^3$ reference and $64^3$ LES.
-  - [ ] Repeat the decisive cases at $256^3/128^3$.
-  - [ ] Compare against no model, fifth-order approximate deconvolution,
-    continuously active eddy viscosity, structural and sensed DIAD, and a
-    recognized functional LES baseline.
-- [ ] Gate C: test the unchanged model on unseen types of turbulence.
-- [ ] Gate D: verify that GBD represents molecular diffusion correctly without
-  receiving any LES viscosity.
-- [ ] **Gate E: couple the structural torque to VPM — active.**
-  - [x] Verify the circulation-source equation, M4′ transfer, theoretical
-    impulse, precision, refinement, and particle-deformation sensitivity.
-  - [x] Add and synthetically verify radial/axial ring-mode diagnostics; audit
-    the archived perturbation-$0.025$ run.
-  - [x] Replace the ill-resolved Cartesian Widnall seed by complete toroidal
-    particle orbits and pass the initial discrete-spectrum gate.
-  - [x] Reject fractional integration after its Widnall modes failed the
-    time-step gate; qualify coupled RK3 through $t^*=2$.
-  - [x] Run the coupled $\Delta t=0.005$/$0.0025$ comparison through $t^*=10$;
-    reject it because the phase-sensitive modal gate failed.
-  - [x] Reject the finer $\Delta t=0.0025$/$0.00125$ treecode pair and isolate
-    the accumulated modal error to the tree velocity evaluator.
-  - [x] Concentrate amplitude $0.050$ in mode $m=22$ and pass the
-    direct-summation $\Delta t=0.0025$/$0.00125$ pair. Correct the analysis to
-    include final restart states; reject the rapid transient as physics
-    evidence despite numerical convergence.
-  - [x] Audit the primary Gaussian-ring benchmark and identify the missing
-    axisymmetric relaxation step in the current initial condition.
-  - [x] Reject the original $5\%$ Gaussian-tail cutoff after the integral core
-    radius missed the reference by $6.51\%$; freeze a geometrically valid
-    $0.2\%$ cutoff and pass its initial-condition gate.
-  - [x] Pass the corrected short direct-summation gate against Gaussian-speed
-    theory, the exact energy identity, a factor-two time-step pair, a spatial
-    pair, symmetry, circulation, impulse, and particle-health limits.
-  - [x] Pass a short $\theta=0.1$ tree comparison, but retain direct summation
-    because the measured $1.16\times$ speedup is too small to justify the
-    known risk of accumulated modal-phase error.
-  - [ ] Reproduce the relaxed $R=\Gamma=1$, $a=0.4131$,
-    $\Gamma/\nu=3000$ base state. Gate its ring speed, energy adjustment,
-    circulation, impulse, axisymmetry, and particle health before perturbing it.
-    - [x] Implement and verify the paper's actual quasi-steady criterion:
-      within the ring core, $\omega_\phi/r$ must become approximately a
-      single-valued function of the translating-frame streamfunction.
-    - [x] Preserve raw states and reject the unprojected relaxation after its
-      energy balance failed independently of time-step refinement.
-    - [x] Start the explicitly axisymmetric, invariant-projected replacement;
-      verify energy balance and bound the projection correction through
-      $t^*=1$.
-    - [ ] Continue the corrected raw trajectory until both residuals are below
-      $0.05$, fitted and measured speeds agree within $2\%$, and the last three
-      saved measurements form a $10\%$ plateau. Also require energy-balance
-      error below $5\%$ and a small, grid-convergent projection correction. Do
-      not substitute an arbitrary final time for this physical stopping
-      condition.
-    - [ ] Confirm the accepted state with a finer particle spacing before any
-      instability or LES comparison.
-  - [ ] Apply a small divergence-free disturbance to the frozen relaxed state;
-    require the predicted $m=5$--$6$ band and the published dominance of mode
-    6 after the initial transient. Digitize reference values with uncertainty
-    and overlay them rather than judging by appearance.
-  - [ ] Pass factor-two time-step and particle-spacing pairs for mode amplitude,
-    phase, growth rate, ring path, and conservation. Preserve every raw state.
-  - [ ] Repeat at amplitude $0.050$ only as a nonlinear breakup stress test;
-    do not use it to estimate a linear growth rate.
-  - [ ] Replace the periodic FFT filter by a padded, nonperiodic Gaussian
-    filter on the GBD grid. Require agreement with the periodic formulation in
-    a large interior region and invariance when padding is increased.
-  - [ ] Reproduce a manufactured complete structural torque—not merely a
-    prescribed source—after particle scatter, filtering, deconvolution,
-    derivatives, circulation update, and regeneration.
-  - [ ] Run the vortex ring with no SGS and structural DIAD using molecular-only
-    GBD. The closure must remain negligible as resolution increases, must not
-    worsen the Saffman speed or conservation errors by more than $2\%$
-    absolute, and must save restartable raw particles.
-  - [ ] Run a genuinely turbulent VPM flow against an external DNS or
-    experimental reference. This is required before any journal claim about
-    LES performance.
-- [ ] Gate F: run full vortex-particle simulations against reference data.
-- [ ] Gate G: measure cost and precision sensitivity, then archive every input,
-  configuration, seed, result, and figure needed for a journal paper.
-
-## Why the remaining gates are ordered this way
-
-### Gate B.1 — Does the model work when turbulence evolves?
-
-**Motivation.** A model can correlate well with a frozen field and still become
-unstable or systematically remove the wrong amount of energy over time.
-
-**Test.** Compare each LES directly with a filtered direct numerical simulation
-(DNS), meaning a more highly resolved calculation used as the reference. Plot
-energy, enstrophy, dissipation, energy spectra, scale-by-scale transfer,
-backscatter, sensor activation, and reconstruction conditioning over time.
-Theoretical energy balances will be overlaid wherever an exact balance exists.
-
-**Pass.** No instability or high-wavenumber pile-up; mean energy, dissipation,
-and resolved spectra within $10\%$ of filtered DNS; correct forced or decaying
-energy balance; and no coefficient changes between cases. The sensor is kept
-only if it improves time-integrated spectral error over the structural model in
-at least $80\%$ of paired runs.
-
-### Gate C — Does it generalize beyond the flows used to develop it?
-
-**Motivation.** Good performance on familiar homogeneous turbulence may be
-overfitting rather than general physics.
-
-**Test.** Lock the model and evaluate unseen homogeneous shear, another Reynolds
-number, and one wall-bounded or free-shear dataset. Use independent time blocks
-and report $95\%$ confidence intervals.
-
-**Pass.** At least $80\%$ of cases have torque correlation above $0.75$,
-transfer ratio between $0.8$ and $1.2$, and lower shell-transfer error than the
-simple deconvolution and continuously dissipative alternatives. A failed flow
-class narrows the paper's claim; it does not permit retuning.
-
-### Gate D — Is molecular diffusion still correct?
-
-**Motivation.** LES and molecular viscosity represent different physics. Their
-numerical implementations must remain separate.
-
-**Test.** Use Gaussian-vortex and vortex-ring diffusion, three grid spacings,
-three time steps, and two particle core sizes. GBD receives molecular $\nu$
-only. Check analytical diffusion rate, circulation, linear impulse, splitting
-error, and particle-pruning loss.
-
-**Pass.** Expected convergence with refinement, conservation errors below the
-declared numerical tolerance, and less than $5\%$ LES change when core size is
-varied at fixed resolved field, with that change decreasing under refinement.
-
-### Gate E — Can the spectral model be transferred to particles?
-
-**Motivation.** The equations may be correct while interpolation, particle
-irregularity, boundaries, or finite precision corrupt their evaluation in
-OpenONDA.
-
-**Test.** Convert frozen turbulence fields to particles, evaluate the closure on
-the fixed GBD lattice, and compare the resulting torque with the spectral
-implementation. Refine $h$ and vary precision, particle jitter, pruning, and
-boundary padding.
-
-**Pass.** At the finest grid, torque correlation at least $0.95$, relative
-$L_2$ error at most $0.10$, and monotonic improvement with refinement. Failure
-here stops particle integration.
-
-### Gate F — Does the complete vortex-particle LES predict a real flow?
-
-**Motivation.** Stability alone is insufficient; the particle solver must show
-converged physical statistics.
-
-**Test.** Add a research-only DIAD path that applies modeled torque directly to
-particle circulation. Run spatial and time-step refinements for a mixing layer
-or turbulent wake and compare with high-quality numerical or experimental
-reference data.
-
-**Pass.** Stable budgets, controlled particle count, converged results,
-statistics within $10$--$15\%$ of the reference, and agreement with the
-spectral implementation within its uncertainty.
-
-### Gate G — Is the work publishable and reproducible?
-
-Measure runtime, memory, conditioning failures, activation statistics, boundary
-sensitivity, and precision sensitivity. Archive raw inputs, random seeds,
-configurations, the exact code version, and one command that regenerates every
-table and figure.
-
-## Stop conditions
-
-- Remove the sensor if it creates persistent bias or is consistently worse
-  than the structural model.
-- Do not integrate the closure into production OpenONDA if the particle/grid
-  bridge does not converge.
-- Return to the model equations, rather than tuning individual cases, if the
-  fixed reconstruction solve is unstable or precision dependent.
-- Do not claim a validated LES from stability alone; the energy and
-  scale-by-scale transfer must also agree with independent references.
-
-Production solver code remains unchanged until the spectral and
-spectral-to-particle gates pass.
+The next scientifically defensible action is independent audit. If that audit
+agrees, archive this closure campaign and continue the hybrid-solver thesis
+without a VPM--LES claim. Reopening meshless LES should require a new proposal
+that targets the particle-filter stress or reformulates the VPM itself.

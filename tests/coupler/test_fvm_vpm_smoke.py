@@ -84,13 +84,13 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "period_multiplier=3" in coupler_log
     checkpoint = sol / "checkpoint"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
-    assert manifest["format_version"] == 3
+    assert manifest["format_version"] == 4
     assert manifest["kind"] == "openonda.coupled_checkpoint"
     assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
     assert manifest["artifacts"] == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
-        "donor": "donor_000002.npz",
+        "vpm_bc": "vpm_bc_000002.npz",
     }
     assert not list(checkpoint.glob("*_000001*"))
 

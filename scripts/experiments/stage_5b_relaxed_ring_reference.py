@@ -40,7 +40,9 @@ def cadence(period: float, time_step: float) -> int:
     return max(1, round(period / time_step))
 
 
-def viscous_config(scheme: str, spacing: float, viscosity: float) -> ViscousConfig:
+def viscous_config(
+    scheme: str, spacing: float, viscosity: float, regen_radius_ratio: float
+) -> ViscousConfig:
     if scheme == "CS":
         return ViscousConfig.cs(
             viscosity=viscosity,
@@ -54,7 +56,7 @@ def viscous_config(scheme: str, spacing: float, viscosity: float) -> ViscousConf
         viscosity=viscosity,
         max_nodes=150_000,
         cap_abs_fraction=0.999,
-        regen_radius_ratio=1.5,
+        regen_radius_ratio=regen_radius_ratio,
     )
 
 
@@ -72,12 +74,15 @@ def run(
     backup_period: float,
     axisymmetric: bool,
     conserve_inviscid_invariants: bool,
+    regen_radius_ratio: float,
 ) -> None:
     if spacing <= 0.0 or time_step <= 0.0 or final_time_star <= 0.0 or backup_period <= 0.0:
         raise ValueError("spacing, time step, final time, and backup period must be positive")
     if not 0.0 < tail_fraction < 1.0:
         raise ValueError("tail fraction must lie strictly between zero and one")
-    particle_radius = 1.5 * spacing if viscous_scheme == "GBD" else 2.0 * spacing
+    if regen_radius_ratio <= 0.0:
+        raise ValueError("regeneration radius ratio must be positive")
+    particle_radius = regen_radius_ratio * spacing if viscous_scheme == "GBD" else 2.0 * spacing
     represented_core_sq = CORE_RADIUS**2 - particle_radius**2
     if represented_core_sq <= 0.0:
         raise ValueError("particle radius must be smaller than the Gaussian core radius")
@@ -147,7 +152,7 @@ def run(
                     traversal_block_dim=128,
                 )
             ),
-            viscous=viscous_config(viscous_scheme, spacing, viscosity),
+            viscous=viscous_config(viscous_scheme, spacing, viscosity, regen_radius_ratio),
             logging_frequency=cadence(0.25, time_step),
             backup_frequency=cadence(backup_period, time_step),
             backup_file_name=label,
@@ -182,6 +187,7 @@ def run(
         "circulation_reynolds_number": REYNOLDS_NUMBER,
         "particle_spacing": spacing,
         "particle_radius": particle_radius,
+        "regen_radius_ratio": regen_radius_ratio if viscous_scheme == "GBD" else None,
         "initial_particles": len(position),
         "time_step": time_step,
         "requested_final_time_star": final_time_star,
@@ -244,6 +250,7 @@ def main() -> None:
     parser.add_argument("--axisymmetric", action="store_true")
     parser.add_argument("--conserve-inviscid-invariants", action="store_true")
     parser.add_argument("--viscous-scheme", choices=("CS", "GBD"), default="GBD")
+    parser.add_argument("--regen-radius-ratio", type=float, default=2.5)
     parser.add_argument("--velocity-method", choices=("DIRECT", "TREECODE"), default="DIRECT")
     parser.add_argument(
         "--processing-unit",
@@ -264,6 +271,7 @@ def main() -> None:
         backup_period=args.backup_period,
         axisymmetric=args.axisymmetric,
         conserve_inviscid_invariants=args.conserve_inviscid_invariants,
+        regen_radius_ratio=args.regen_radius_ratio,
     )
 
 

@@ -1,6 +1,6 @@
 """Spectral contract of CellBoxFilter.
 
-The fringe relaxation in the FVM-VPM coupler builds its source from the filter
+The blending-zone relaxation in the FVM-VPM coupler builds its source from the filter
 RESIDUAL ``f - G*f``, so the transfer function's sign matters: a filter with a
 negative grid-scale lobe makes the residual larger than the field itself, which
 flips the source's sign and drives the very modes it is meant to leave alone.
@@ -45,7 +45,7 @@ def test_constant_is_preserved(centre_weight):
 def test_neighbour_sum_has_no_negative_lobe():
     """DC gain 1, grid-scale gain 0 — so the residual stays within [0, 1]*f.
 
-    This is the property the scale-selective fringe source depends on.
+    This is the property the scale-selective blending source depends on.
     """
     n = 12
     mesh, geo = _chain(n)
@@ -55,7 +55,7 @@ def test_neighbour_sum_has_no_negative_lobe():
 
     assert f(m["dc"])[i, 0] == pytest.approx(1.0)
     assert f(m["nyquist"])[i, 0] / m["nyquist"][i, 0] == pytest.approx(0.0, abs=1e-12)
-    # Retained fraction (what the fringe leaves unrelaxed) must not exceed 1.
+    # Retained fraction (what the blending zone leaves unrelaxed) must not exceed 1.
     retained_nyq = (m["nyquist"] - f(m["nyquist"]))[i, 0] / m["nyquist"][i, 0]
     retained_smooth = (m["smooth"] - f(m["smooth"]))[i, 0] / m["smooth"][i, 0]
     assert retained_nyq == pytest.approx(1.0)
@@ -64,7 +64,7 @@ def test_neighbour_sum_has_no_negative_lobe():
 
 def test_volume_weighting_does_have_a_negative_lobe():
     """The classical box filter overshoots — documented, and why it is not the
-    default for the fringe.  Kept as the dynamic Smagorinsky test filter."""
+    default for the blending zone.  Kept as the dynamic Smagorinsky test filter."""
     n = 12
     mesh, geo = _chain(n)
     f = CellBoxFilter(mesh, geo, centre_weight="volume")
@@ -73,7 +73,7 @@ def test_volume_weighting_does_have_a_negative_lobe():
 
     assert f(m["nyquist"])[i, 0] / m["nyquist"][i, 0] == pytest.approx(-1.0 / 3.0)
     retained = (m["nyquist"] - f(m["nyquist"]))[i, 0] / m["nyquist"][i, 0]
-    assert retained > 1.0  # exactly the amplification the fringe must avoid
+    assert retained > 1.0  # exactly the amplification the blending zone must avoid
 
 
 @pytest.mark.parametrize("shape", [(12,), (12, 3), (12, 3, 3)])

@@ -1,6 +1,6 @@
-# Rejected characteristic donor-boundary branch
+# Rejected characteristic VPM BC-boundary branch
 
-This production-resolution run tested `donor_boundary_mode="characteristic"`
+This production-resolution run tested `vpm_bc_mode="characteristic"`
 on cubeFlow's merged six-face coupling patch.  It was stopped after the first
 coupling step at 0.05 s: the mixed inflow/outflow switch created a strong
 outer-boundary vorticity sheet and handed off 397,999 particles, compared with

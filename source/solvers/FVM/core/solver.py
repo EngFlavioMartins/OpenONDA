@@ -535,10 +535,10 @@ class Solver(CouplerInterfaceMixin):
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
-        # Fringe relaxation acts on the resolved scales only (see _fringe_source).
+        # Blending-zone relaxation acts on the resolved scales only (see _blending_source).
         # Set False to recover the plain S = λ(Utarget − U).
-        self.fringe_scale_selective = True
-        self._fringe_filter = None  # lazy CellBoxFilter, built on first fringe solve
+        self.blending_scale_selective = True
+        self._blending_filter = None  # lazy CellBoxFilter, built on first blending-zone solve
         self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
         self._current_dt = self.dt
         self._last_residuals = None
@@ -833,33 +833,33 @@ class Solver(CouplerInterfaceMixin):
         )
         return self.ibm
 
-    def _fringe_source(self):
+    def _blending_source(self):
         """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − Ḡ) from
         registered coupling fields, or (None, None) if not set.
 
         ``lambdaRelax`` (volScalarField) and ``Utarget`` (volVectorField) are
-        pushed by the coupler (source/coupler/core/helpers/fvm_fringe.py).
+        pushed by the coupler (source/coupler/core/helpers/fvm_blending_zone.py).
         Sp = λ goes on the momentum diagonal (fvm::Sp) and Su on the RHS, so the
-        cell velocity relaxes toward the VPM target in the fringe band while the
+        cell velocity relaxes toward the VPM target in the blending zone while the
         FVM core (λ = 0) is untouched.
 
         SCALE-SELECTIVE.  ``Utarget`` is the Biot–Savart velocity of Gaussian
         blobs of core σ on a lattice of spacing h ≈ σ, so it carries no
         information below ~2σ.  Relaxing the full velocity toward it therefore
         destroys FVM structure the target could never have represented — measured
-        on the coupled cubeFlow case, the fringe band erased 95% of any FVM–VPM
+        on the coupled cubeFlow case, the blending zone erased 95% of any FVM–VPM
         disagreement per transit and the vorticity reaching the coupling face fell
         to 0.51 of its value in the FVM core.  Relaxing only the resolved part,
 
             S = λ(Utarget − G∗U) = λ(Utarget + (U − G∗U)) − λ·U
 
         leaves the sub-filter fluctuation (U − G∗U) untouched while still pulling
-        the resolved field onto the donor.  Sp is unchanged, so the implicit
+        the resolved field onto the VPM BC.  Sp is unchanged, so the implicit
         diagonal and its dominance are unchanged; the added explicit term is the
         high-pass part of the current iterate, which is small next to U — a
         deferred correction, not a new stiff term.
 
-        Set ``fringe_scale_selective = False`` on the solver to recover the plain
+        Set ``blending_scale_selective = False`` on the solver to recover the plain
         S = λ(Utarget − U) (the A/B control).
         """
         lam = self.registered_fields.get("lambdaRelax")
@@ -868,13 +868,13 @@ class Solver(CouplerInterfaceMixin):
             return None, None
         if lam is None or ut is None:
             raise RuntimeError(
-                "Incomplete fringe source: lambdaRelax and Utarget must be registered together"
+                "Incomplete blending source: lambdaRelax and Utarget must be registered together"
             )
         n = self.mesh_data["n_elements"]
         lam = np.asarray(lam, dtype=np.float64)[:n]
         ut = np.asarray(ut, dtype=np.float64)[:n]
 
-        if not getattr(self, "fringe_scale_selective", True):
+        if not getattr(self, "blending_scale_selective", True):
             return lam[:, np.newaxis] * ut, lam
 
         # One pass only: its width follows the LOCAL cell size, which near a
@@ -888,21 +888,21 @@ class Solver(CouplerInterfaceMixin):
         # and flip the source's sign — anti-damping the very modes it is meant to
         # leave untouched.  The neighbour-sum centre weight gives gain 1 at DC and
         # exactly 0 at the grid scale, so the retained fraction stays in [0, 1].
-        if getattr(self, "_fringe_filter", None) is None:
+        if getattr(self, "_blending_filter", None) is None:
             from ..fields.filters import CellBoxFilter
 
-            self._fringe_filter = CellBoxFilter(
+            self._blending_filter = CellBoxFilter(
                 self.mesh_data, self.geo_data, centre_weight="neighbour_sum"
             )
         u = np.asarray(self.U, dtype=np.float64)[:n]
-        u_high = u - self._fringe_filter(u)
+        u_high = u - self._blending_filter(u)
         return lam[:, np.newaxis] * (ut + u_high), lam
 
     def solve_pimple(self, dt: float | None = None):
         """Solve the pressure–velocity system at the current time level WITHOUT
         advancing the clock (coupler-facing method).
 
-        Re-callable within a step: the coupler's donor-BC↔pressure Picard loop
+        Re-callable within a step: the coupler's VPM-BC↔pressure Picard loop
         calls this repeatedly with the boundary condition re-imposed between
         solves, then a single :meth:`advance_time`.  The committed previous level
         ``U_old`` is the transient reference on every call.
@@ -929,9 +929,9 @@ class Solver(CouplerInterfaceMixin):
         )
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         u_old_old_arg = self.U_old_old if self._n_committed >= 1 else None
-        logging.Timer.start("Fringe source")
-        src_exp, src_imp = self._fringe_source()
-        logging.Timer.log("Fringe source", sink=self.logger)
+        logging.Timer.start("Blending source")
+        src_exp, src_imp = self._blending_source()
+        logging.Timer.log("Blending source", sink=self.logger)
 
         self.U, self.p, self.phi, residuals = self.algorithm.step(
             self.U,

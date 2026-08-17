@@ -1,0 +1,123 @@
+{
+  "stage": "7A \u2014 exact composite SGS a-priori audit",
+  "status": "FAIL",
+  "source_field": "docs/dns/agard_hom02/CB128_9.bin",
+  "configuration": {
+    "dns_n": 128,
+    "nominal_les_n": 32,
+    "sigma_over_h": 2.5,
+    "delta_over_h": 2.0,
+    "delta_effective_over_h": 6.442049363362562,
+    "particle_grid_phase": [
+      0.0,
+      0.21,
+      0.37
+    ],
+    "particle_operator": "Gaussian core followed by M4' P2M/M2P symbol",
+    "added_filter": "Gaussian G_delta"
+  },
+  "model_scope": {
+    "current_G_only": "reconstructs particle-filtered velocity and models only the additional G-filter stress",
+    "candidate_complete_H": "reconstructs the unfiltered velocity using the complete P*G symbol and models the total composite stress"
+  },
+  "identity_residuals": {
+    "torque_decomposition_relative_l2": 3.116827564399908e-15,
+    "resolved_velocity_relative_l2": 3.282710289325078e-16
+  },
+  "component_shares": {
+    "particle_torque_rms_over_total": 0.9853973087970499,
+    "added_filter_torque_rms_over_total": 0.031037523309668226,
+    "particle_transfer_over_total": 0.9955910158115675,
+    "added_filter_transfer_over_total": 0.004408984188432445
+  },
+  "transfers": {
+    "exact_total": -0.3511406934154654,
+    "exact_particle_filtered": -0.3495925196502814,
+    "exact_added_filter": -0.0015481737651839918,
+    "model_G_only": -0.0015466254826566129,
+    "model_complete_H": -0.03436880481717136
+  },
+  "metrics": {
+    "current_G_model_vs_exact_added_filter": {
+      "correlation": 0.9999971166440341,
+      "relative_l2": 0.0024131484482846567,
+      "transfer_ratio": 0.99899992974807,
+      "shell_error": 0.001283980707031903
+    },
+    "current_G_model_vs_exact_total": {
+      "correlation": 0.4823449210195701,
+      "relative_l2": 0.9854077780894214,
+      "transfer_ratio": 0.004404574894504364,
+      "shell_error": 0.996425532207084
+    },
+    "complete_H_model_vs_exact_total": {
+      "correlation": 0.596357945275644,
+      "relative_l2": 0.8316853112676376,
+      "transfer_ratio": 0.09787758998501096,
+      "shell_error": 0.9027135054454127
+    }
+  },
+  "diagnostics": {
+    "current_G_model": {
+      "history": [
+        {
+          "update": 1.0,
+          "consistency_error": 0.0003092133218722526,
+          "weight_sum_error": 4.440892098500626e-16,
+          "max_abs_weight": 3.39098918798249,
+          "transfer_gain": 19.4699021163934,
+          "rank": 122.0,
+          "condition": 281497023264865.1,
+          "relative_residual": 1.1180635349858815e-13
+        },
+        {
+          "update": 2.0,
+          "consistency_error": 0.00031452518591858935,
+          "weight_sum_error": 6.661338147750939e-16,
+          "max_abs_weight": 3.3031178486110084,
+          "transfer_gain": 17.61113243889558,
+          "rank": 125.0,
+          "condition": 281499096560512.0,
+          "relative_residual": 2.40355042908042e-13
+        }
+      ],
+      "consistency_error": 0.00031452518591858935,
+      "high_k_amplification": 17.61113243889558
+    },
+    "complete_H_model": {
+      "history": [
+        {
+          "update": 1,
+          "consistency_error": 0.08356333962750472,
+          "weight_sum_error": 4.218847493575595e-15,
+          "max_abs_weight": 5.867187699114941,
+          "transfer_gain": 27.668359259331098,
+          "rank": 126.0,
+          "condition": 18175006.54112669,
+          "relative_residual": 4.700741620775323e-15
+        },
+        {
+          "update": 2,
+          "consistency_error": 0.09161853759801974,
+          "weight_sum_error": 3.3306690738754696e-16,
+          "max_abs_weight": 6.5022117725706545,
+          "transfer_gain": 35.63740121951479,
+          "rank": 126.0,
+          "condition": 126833.33564689333,
+          "relative_residual": 1.2225149165910027e-14
+        }
+      ],
+      "consistency_error": 0.09161853759801974,
+      "high_k_amplification": 35.63740121951479
+    }
+  },
+  "predeclared_checks": {
+    "exact_nested_filter_identity": true,
+    "resolved_fields_identical": true,
+    "current_G_model_resolves_its_declared_subproblem": true,
+    "complete_H_model_has_useful_local_structure": false,
+    "complete_H_model_has_useful_spectral_transfer": false,
+    "complete_H_reconstruction_gain_below_100": true
+  },
+  "interpretation": "PASS means the complete-filter reconstruction is accurate enough to justify one inexpensive posterior spectral screen. It does not validate VPM LES."
+}

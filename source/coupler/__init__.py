@@ -9,7 +9,7 @@ particles every step.
 Organization:
 - config/types.py: CouplerSetup (one flat coupling-setup dataclass)
 - core/solver.py:  FVMVPMCoupler (the four-step coupling loop)
-- core/helpers/:   hand-off, fringe relaxation, and I/O redirection
+- core/helpers/:   hand-off, blending-zone relaxation, and I/O redirection
 - diagnostics/:    conservation recovery and validation signals
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team

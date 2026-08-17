@@ -1,4 +1,4 @@
-"""FVM–VPM coupling driver with donor boundaries and conservative hand-off."""
+"""FVM–VPM coupling driver with VPM boundary conditions and conservative hand-off."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ import numpy as np
 
 from source.coupler.config.types import CouplerSetup
 from source.coupler.core.helpers.continuous_overlap import ContinuousOverlapInjector
-from source.coupler.core.helpers.fvm_fringe import FringeFields
+from source.coupler.core.helpers.fvm_blending_zone import BlendingZone
 from source.coupler.core.helpers.output_redirector import OutputRedirector
 
 if TYPE_CHECKING:
@@ -34,7 +34,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger("coupler")
 
 CHECKPOINT_DIRECTORY = "checkpoint"
-CHECKPOINT_FORMAT_VERSION = 3
+# 4: checkpoints store the VPM boundary-condition history as ``vpm_bc_*.npz``
+#    under the ``vpm_bc`` manifest key. Earlier checkpoints are rejected rather
+#    than silently mis-read.
+CHECKPOINT_FORMAT_VERSION = 4
 
 
 def _world_rank() -> int:
@@ -67,7 +70,7 @@ def _vpm_solver_info(vpm_solver) -> str:
 
 class FVMVPMCoupler:
     """
-    FVM-VPM coupler: the four-step overset loop with fringe relaxation.
+    FVM-VPM coupler: the four-step overset loop with blending-zone relaxation.
     """
 
     def __init__(self, vpm_solver, fvm_solver, coupler_setup: CouplerSetup):
@@ -110,14 +113,14 @@ class FVMVPMCoupler:
         self.vpm: VPM_Solver | None = None
         self.fvm: FVM_Solver | None = None
         self.injector: ContinuousOverlapInjector | None = None
-        self.fringe = None
+        self.blending = None
         self._u_bc_prev: np.ndarray | None = None
         self._pressure_gradient_bc_prev: np.ndarray | None = None
         self._pressure_gradient_bc_next: np.ndarray | None = None
         self._pressure_velocity_snapshot: np.ndarray | None = None
         self._velocity_global_buffer: np.ndarray | None = None
         self._velocity_gradient_global_buffer: np.ndarray | None = None
-        self._last_donor_flux_diagnostics = {
+        self._last_vpm_bc_flux_diagnostics = {
             "raw_mismatch": 0.0,
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
@@ -215,7 +218,7 @@ class FVMVPMCoupler:
             if bg.size == 3 and not np.allclose(bg, np.asarray(cfg.u_inf), atol=1e-9):
                 raise ValueError(
                     f"Incompatible freestream: VPM background_velocity {tuple(bg)} "
-                    f"!= coupling u_inf {tuple(cfg.u_inf)}. The donor far-field and "
+                    f"!= coupling u_inf {tuple(cfg.u_inf)}. The VPM far-field and "
                     "the VPM advection frame must agree."
                 )
 
@@ -512,7 +515,7 @@ class FVMVPMCoupler:
                 physics.configure_grid_lattice_anchor(anchor, self.config.h)
                 logger.info("[Init] VPM diffusion lattice aligned with the handoff lattice.")
 
-        self.fringe = FringeFields(cfg, self.vpm, self.fvm, coupling_dt=self.dt_vpm)
+        self.blending = BlendingZone(cfg, self.vpm, self.fvm, coupling_dt=self.dt_vpm)
         self._prepare_pressure_anchor()
 
         if self._is_master:
@@ -550,18 +553,18 @@ class FVMVPMCoupler:
             time_end = step * self.dt
             vpm_time = self._advance_vpm(step, time_end)
             particle_guard = self._vpm_particle_fingerprint(validate=True)
-            donor_state = self._transfer_vpm_to_fvm(*face_geometry)
+            vpm_bc_state = self._transfer_vpm_to_fvm(*face_geometry)
             self._assert_vpm_particle_fingerprint(particle_guard, "target evaluation")
-            fvm_time = self._advance_fvm(*face_geometry, *donor_state)
+            fvm_time = self._advance_fvm(*face_geometry, *vpm_bc_state)
             self._assert_vpm_particle_fingerprint(particle_guard, "FVM subcycling")
             self._anchor_pressure_datum()
             handoff_result, handoff_time = self._transfer_fvm_to_vpm(*face_geometry)
-            self._resync_donor(*face_geometry)
+            self._resync_vpm_bc(*face_geometry)
             self._last_handoff_result = handoff_result
             self._record_step(
                 step,
                 time_end,
-                (vpm_time, donor_state[-2], donor_state[-1], fvm_time, handoff_time),
+                (vpm_time, vpm_bc_state[-2], vpm_bc_state[-1], fvm_time, handoff_time),
                 handoff_result,
             )
         self._finalize_run()
@@ -688,15 +691,15 @@ class FVMVPMCoupler:
         face_normals: np.ndarray,
         face_areas: np.ndarray,
     ):
-        """Update fringe data and construct the next donor boundary trace."""
-        assert self.fringe is not None
-        t_fringe = time.perf_counter()
-        donor_velocity = None
+        """Update blending-zone data and construct the next VPM boundary condition trace."""
+        assert self.blending is not None
+        t_blending = time.perf_counter()
+        vpm_bc_velocity = None
         if self._is_master:
             assert self.vpm is not None
-            fringe_points = self.fringe.active_cell_centres
-            n_fringe = len(fringe_points)
-            target_points = np.concatenate((fringe_points, face_centers), axis=0)
+            blend_cell_centres = self.blending.active_cell_centres
+            n_blend_cells = len(blend_cell_centres)
+            target_points = np.concatenate((blend_cell_centres, face_centers), axis=0)
             target_velocity = np.asarray(
                 self.vpm.compute_target_velocities(
                     target_points,
@@ -706,7 +709,7 @@ class FVMVPMCoupler:
                 ),
                 dtype=np.float64,
             ).reshape(-1, 3)
-            expected_targets = n_fringe + len(face_centers)
+            expected_targets = n_blend_cells + len(face_centers)
             if target_velocity.shape != (expected_targets, 3):
                 raise RuntimeError(
                     "VPM target evaluation returned an invalid shape: "
@@ -723,27 +726,19 @@ class FVMVPMCoupler:
             ):
                 raise RuntimeError(
                     "VPM target evaluation returned an identically zero field despite a "
-                    "nonzero freestream; aborting before the corrupted donor data reaches the FVM"
+                    "nonzero freestream; aborting before the corrupted VPM-BC data reaches the FVM"
                 )
-            self.fringe.update_target(target_velocity[:n_fringe])
-            donor_velocity = target_velocity[n_fringe:]
+            self.blending.update_target(target_velocity[:n_blend_cells])
+            vpm_bc_velocity = target_velocity[n_blend_cells:]
         else:
             # The non-master rank has empty gathered cell geometry, but still
             # participates in the collective native-FVM boundary update.
-            self.fringe.update_target()
-        t_fringe = time.perf_counter() - t_fringe
+            self.blending.update_target()
+        t_blending = time.perf_counter() - t_blending
 
-        t_donor = time.perf_counter()
+        t_vpm_bc = time.perf_counter()
         if self._is_master:
-            u_bc_next = self._donor_velocity(
-                face_centers,
-                face_normals,
-                face_areas,
-                evaluated_velocity=donor_velocity,
-            )
-            if self._u_bc_prev is None:
-                self._u_bc_prev = u_bc_next.copy()
-            if self.config.donor_boundary_mode == "pressure_gradient":
+            if self.config.vpm_bc_mode == "pressure_gradient":
                 assert self.vpm is not None
                 assert self.config.rho is not None
                 assert self.config.nu is not None
@@ -755,7 +750,7 @@ class FVMVPMCoupler:
                     include_viscous=False,
                     include_temporal=self._pressure_velocity_snapshot is not None,
                     include_freestream=True,
-                    include_body=False,
+                    include_body=True,
                     h=self.config.h,
                     temporal_method="eulerian",
                     velocity_previous=self._pressure_velocity_snapshot,
@@ -766,37 +761,54 @@ class FVMVPMCoupler:
                 pressure_gradient = np.asarray(pressure_result["grad_p"], dtype=np.float64).reshape(
                     -1, 3
                 ) / float(self.config.rho)
+                pressure_velocity = np.asarray(pressure_velocity, dtype=np.float64).reshape(-1, 3)
                 if pressure_gradient.shape != face_centers.shape or not np.all(
                     np.isfinite(pressure_gradient)
                 ):
-                    raise RuntimeError("VPM pressure-gradient donor returned invalid data")
+                    raise RuntimeError("VPM pressure-gradient VPM BC returned invalid data")
+                if pressure_velocity.shape != face_centers.shape or not np.all(
+                    np.isfinite(pressure_velocity)
+                ):
+                    raise RuntimeError(
+                        "VPM pressure-gradient VPM BC returned invalid velocity data"
+                    )
+                # Dirichlet U and Neumann grad(p) must be formed from the same
+                # body-complete velocity field. Using the separate target
+                # evaluation here silently supplied incompatible Cauchy data.
+                vpm_bc_velocity = pressure_velocity
                 pressure_norm = np.linalg.norm(pressure_gradient, axis=1)
                 logger.info(
-                    "     [Donor pressure] |∇(p/ρ)| rms=%.3e max=%.3e m/s²  temporal=%s",
+                    "     [VPM-BC pressure] |∇(p/ρ)| rms=%.3e max=%.3e m/s²  temporal=%s",
                     float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0,
                     float(np.max(pressure_norm)) if len(pressure_norm) else 0.0,
                     self._pressure_velocity_snapshot is not None,
                 )
-                self._pressure_velocity_snapshot = np.asarray(
-                    pressure_velocity, dtype=np.float64
-                ).reshape(-1, 3)
+                self._pressure_velocity_snapshot = pressure_velocity.copy()
                 self._pressure_gradient_bc_next = pressure_gradient
                 if self._pressure_gradient_bc_prev is None:
                     self._pressure_gradient_bc_prev = pressure_gradient.copy()
+            u_bc_next = self._vpm_bc_velocity(
+                face_centers,
+                face_normals,
+                face_areas,
+                evaluated_velocity=vpm_bc_velocity,
+            )
+            if self._u_bc_prev is None:
+                self._u_bc_prev = u_bc_next.copy()
         else:
             u_bc_next = np.zeros_like(face_centers)
             if self._u_bc_prev is None:
                 self._u_bc_prev = np.zeros_like(face_centers)
-            if self.config.donor_boundary_mode == "pressure_gradient":
+            if self.config.vpm_bc_mode == "pressure_gradient":
                 self._pressure_gradient_bc_next = np.zeros_like(face_centers)
                 if self._pressure_gradient_bc_prev is None:
                     self._pressure_gradient_bc_prev = np.zeros_like(face_centers)
-        t_donor = time.perf_counter() - t_donor
+        t_vpm_bc = time.perf_counter() - t_vpm_bc
         return (
             self._u_bc_prev,
             u_bc_next,
-            t_fringe,
-            t_donor,
+            t_blending,
+            t_vpm_bc,
         )
 
     def _advance_fvm(
@@ -806,8 +818,8 @@ class FVMVPMCoupler:
         face_areas: np.ndarray,
         u_bc_prev: np.ndarray,
         u_bc_next: np.ndarray,
-        _fringe_time: float,
-        _donor_time: float,
+        _blending_time: float,
+        _vpm_bc_time: float,
     ) -> float:
         """Run FVM sub-cycles and refresh its velocity snapshot."""
         t_fvm = time.perf_counter()
@@ -872,62 +884,74 @@ class FVMVPMCoupler:
         return handoff_result, time.perf_counter() - t_handoff
 
     # =========================================================
-    # Post-handoff consistency: donor resync and pressure datum
+    # Post-handoff consistency: VPM-BC resync and pressure datum
     # =========================================================
 
-    def _resync_donor(
+    def _resync_vpm_bc(
         self,
         face_centers: np.ndarray,
         _face_normals: np.ndarray,
         _face_areas: np.ndarray,
     ) -> None:
-        """Re-evaluate the donor trace from the corrected particle field.
+        """Re-evaluate the VPM-BC trace from the corrected particle field.
 
         Otherwise each interval starts from a stale prediction. Not a Picard
         sweep: the FVM is not re-solved.
         """
-        if not self.config.resync_donor_after_handoff:
+        if not self.config.resync_vpm_bc_after_handoff:
             return
-        assert self.fringe is not None
+        assert self.blending is not None
         if not self._is_master:
-            self.fringe.update_endpoint()
+            self.blending.update_endpoint()
             return
 
         assert self.vpm is not None
-        fringe_points = self.fringe.active_cell_centres
-        n_fringe = len(fringe_points)
-        targets = np.concatenate((fringe_points, face_centers), axis=0)
+        blend_cell_centres = self.blending.active_cell_centres
+        n_blend_cells = len(blend_cell_centres)
+        targets = np.concatenate((blend_cell_centres, face_centers), axis=0)
         corrected = np.asarray(
             self.vpm.compute_target_velocities(
                 targets, include_freestream=True, zone_mask=None, include_body=True
             ),
             dtype=np.float64,
         ).reshape(-1, 3)
-        if corrected.shape != (n_fringe + len(face_centers), 3) or not np.all(
+        if corrected.shape != (n_blend_cells + len(face_centers), 3) or not np.all(
             np.isfinite(corrected)
         ):
-            raise RuntimeError("donor resynchronisation returned invalid velocities")
+            raise RuntimeError("VPM-BC resynchronisation returned invalid velocities")
 
-        self.fringe.update_endpoint(corrected[:n_fringe])
+        self.blending.update_endpoint(corrected[:n_blend_cells])
         u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
         drift = (
-            float(np.max(np.linalg.norm(corrected[n_fringe:] - self._u_bc_prev, axis=1)))
+            float(np.max(np.linalg.norm(corrected[n_blend_cells:] - self._u_bc_prev, axis=1)))
             / u_inf_mag
             if self._u_bc_prev is not None and len(face_centers)
             else 0.0
         )
-        self._u_bc_prev = corrected[n_fringe:]
-        logger.info("     [Resync] donor endpoint moved max|du|/Uinf=%.3e", drift)
+        self._u_bc_prev = corrected[n_blend_cells:]
+        if self.config.vpm_bc_mode == "pressure_gradient":
+            # The FVM-to-VPM handoff replaces the particle representation at
+            # fixed physical time. Refresh the Eulerian pressure history so
+            # that the next backward difference does not interpret that
+            # representation jump as a physical temporal acceleration.
+            self._pressure_velocity_snapshot = corrected[n_blend_cells:].copy()
+        logger.info("     [Resync] VPM-BC endpoint moved max|du|/Uinf=%.3e", drift)
 
     def _pressure_anchor_selection(self) -> np.ndarray | None:
-        """Indices of the cells used to re-datum the pressure (master only)."""
+        """Indices of the cells used to re-datum the pressure on the master.
+
+        The cell-centre getter is collective under partitioned MPI. Every rank
+        therefore enters this method once; non-master ranks cache an empty
+        selection so later calls do not enter a mismatched collective.
+        """
         if self._pressure_anchor_cells is not None:
-            return self._pressure_anchor_cells
+            return self._pressure_anchor_cells if self._pressure_anchor_cells.size else None
         assert self.fvm is not None
         centres = np.asarray(self.fvm.get_cell_center_coordinates(), dtype=np.float64).reshape(
             -1, 3
         )
         if centres.shape[0] == 0 or self.config.fvm_box is None:
+            self._pressure_anchor_cells = np.empty(0, dtype=np.int64)
             return None
         axis, sign = self._outflow_axis_sign()
         box = np.asarray(self.config.fvm_box, dtype=np.float64)
@@ -944,8 +968,8 @@ class FVMVPMCoupler:
             margin = span * (hi - lo)
             near &= (centres[:, other] >= lo + margin) & (centres[:, other] <= hi - margin)
         index = np.flatnonzero(near)
-        self._pressure_anchor_cells = index if index.size else None
-        return self._pressure_anchor_cells
+        self._pressure_anchor_cells = index
+        return index if index.size else None
 
     def _anchor_pressure_datum(self) -> None:
         """Re-datum the FVM pressure onto ``p = 0`` in the undisturbed stream.
@@ -953,23 +977,25 @@ class FVMVPMCoupler:
         Every coupling face is Neumann, so the solver otherwise pins an
         arbitrary cell.
         """
-        if not self.config.anchor_pressure or not self._pressure_anchor_available:
+        if (
+            not self.config.anchor_pressure
+            or self.config.vpm_bc_mode == "directional_outflow"
+            or not self._pressure_anchor_available
+        ):
             return
         assert self.fvm is not None
-        # Both getters gather to root under a partitioned backend, so every rank
-        # must call them; only the master forms the shift.
+        # These getters and the anchor selection gather to root under a
+        # partitioned backend, so every rank must call them in this order.
+        # Only the master forms the pressure shift.
         pressure = np.asarray(self.fvm.get_pressure_field(), dtype=np.float64).ravel()
         velocity = self._get_velocity_field_buffer()
+        index = self._pressure_anchor_selection()
 
         delta = 0.0
-        if self._is_master:
-            index = self._pressure_anchor_selection()
-            if index is not None and index.size and index.max() < len(pressure):
-                head = pressure[index] + 0.5 * np.einsum(
-                    "ij,ij->i", velocity[index], velocity[index]
-                )
-                freestream_head = 0.5 * float(np.dot(self.u_inf, self.u_inf))
-                delta = float(freestream_head - np.mean(head))
+        if self._is_master and index is not None and index.size and index.max() < len(pressure):
+            head = pressure[index] + 0.5 * np.einsum("ij,ij->i", velocity[index], velocity[index])
+            freestream_head = 0.5 * float(np.dot(self.u_inf, self.u_inf))
+            delta = float(freestream_head - np.mean(head))
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
             delta = float(_mpi4py_comm.bcast(delta if self._is_master else None, root=0))
         if not np.isfinite(delta):
@@ -981,6 +1007,13 @@ class FVMVPMCoupler:
         """Decide once whether the pressure datum can and should be re-anchored."""
         self._pressure_anchor_available = False
         if not self.config.anchor_pressure:
+            return
+        if self.config.vpm_bc_mode == "directional_outflow":
+            if self._is_master:
+                logger.info(
+                    "[Init] The downstream fixed-pressure face supplies the pressure datum; "
+                    "pressure re-anchoring disabled."
+                )
             return
         if not callable(getattr(self.fvm, "shift_pressure_field", None)) or not callable(
             getattr(self.fvm, "get_pressure_field", None)
@@ -1017,12 +1050,12 @@ class FVMVPMCoupler:
         _handoff_result,
     ) -> None:
         """Persist diagnostics and synchronize a completed coupling step."""
-        t_vpm, t_fringe, t_donor, t_fvm, t_handoff = timing
+        t_vpm, t_blending, t_vpm_bc, t_fvm, t_handoff = timing
         diagnostics = self.compute_diagnostics(_handoff_result)
         timing_data = {
             "vpm": float(t_vpm),
-            "donor": float(t_donor),
-            "fringe": float(t_fringe),
+            "vpm_bc": float(t_vpm_bc),
+            "blending": float(t_blending),
             "fvm": float(t_fvm),
             "handoff": float(t_handoff),
             "total": float(sum(timing)),
@@ -1046,12 +1079,12 @@ class FVMVPMCoupler:
                 float(stats.get("sum_after", 0.0)),
             )
             logger.info(
-                "[Timing step=%d] VPM=%.3fs donor=%.3fs fringe=%.3fs "
+                "[Timing step=%d] VPM=%.3fs vpm_bc=%.3fs blending=%.3fs "
                 "FVM=%.3fs handoff=%.3fs total=%.3fs",
                 step,
                 timing_data["vpm"],
-                timing_data["donor"],
-                timing_data["fringe"],
+                timing_data["vpm_bc"],
+                timing_data["blending"],
                 timing_data["fvm"],
                 timing_data["handoff"],
                 timing_data["total"],
@@ -1059,7 +1092,7 @@ class FVMVPMCoupler:
             print()
             print(f"[Step {step:4d}] t={time_end:.3f}s | Particles: {int(stats.get('n_after', 0))}")
             print(
-                f"     Timing: VPM={t_vpm:.2f}s | BC={t_donor:.2f}s | Fringe={t_fringe:.2f}s | "
+                f"     Timing: VPM={t_vpm:.2f}s | BC={t_vpm_bc:.2f}s | Blending={t_blending:.2f}s | "
                 f"FVM={t_fvm:.2f}s | Inject={t_handoff:.2f}s"
             )
             sys.stdout.flush()
@@ -1075,10 +1108,10 @@ class FVMVPMCoupler:
             flush_log()
 
     # =========================================================
-    # Donor boundary
+    # VPM boundary condition
     # =========================================================
 
-    def _donor_velocity(
+    def _vpm_bc_velocity(
         self,
         face_centers: np.ndarray,
         face_normals: np.ndarray,
@@ -1088,7 +1121,7 @@ class FVMVPMCoupler:
         """Evaluate the complete VPM field and enforce zero net boundary flux."""
         assert self.vpm is not None
         normals = np.asarray(face_normals, dtype=np.float64).reshape(-1, 3)
-        logger.info("     [Donor] particles=%d", self.vpm.particles.number_of_particles)
+        logger.info("     [VPM-BC] particles=%d", self.vpm.particles.number_of_particles)
         if evaluated_velocity is None:
             evaluated_velocity = self.vpm.compute_target_velocities(
                 face_centers,
@@ -1096,31 +1129,31 @@ class FVMVPMCoupler:
                 zone_mask=None,
                 include_body=True,
             )
-        u_donor = np.asarray(evaluated_velocity, dtype=np.float64).reshape(-1, 3)
-        if len(u_donor) != len(face_centers):
-            raise ValueError("evaluated donor velocity count does not match boundary faces")
+        u_vpm_bc = np.asarray(evaluated_velocity, dtype=np.float64).reshape(-1, 3)
+        if len(u_vpm_bc) != len(face_centers):
+            raise ValueError("evaluated VPM-BC velocity count does not match boundary faces")
 
         # A uniform normal correction removes the quadrature flux residual.
         areas = np.asarray(face_areas, dtype=np.float64).ravel()
         flux_residual_raw = 0.0
         delta_u_n = 0.0
         if len(areas) > 0:
-            u_normal = np.einsum("ij,ij->i", u_donor, normals)
+            u_normal = np.einsum("ij,ij->i", u_vpm_bc, normals)
             flux_residual_raw = float(np.dot(u_normal, areas))
             total_area = float(np.sum(areas))
 
             if total_area > 0.0:
                 delta_u_n = flux_residual_raw / total_area  # scalar [m/s]
-                u_donor = u_donor - delta_u_n * normals
+                u_vpm_bc = u_vpm_bc - delta_u_n * normals
 
-            u_normal_post = np.einsum("ij,ij->i", u_donor, normals)
+            u_normal_post = np.einsum("ij,ij->i", u_vpm_bc, normals)
             flux_residual_post = float(np.dot(u_normal_post, areas))
 
             u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
             rel_flux_raw = abs(flux_residual_raw) / (u_inf_mag * total_area + 1e-30)
             rel_flux_post = abs(flux_residual_post) / (u_inf_mag * total_area + 1e-30)
             logger.info(
-                "     [Donor] Flux residual: raw=%.3e m³/s (%.2e×U∞A)  "
+                "     [VPM-BC] Flux residual: raw=%.3e m³/s (%.2e×U∞A)  "
                 "post-projection=%.3e m³/s (%.2e×U∞A)  δu_n=%.3e m/s",
                 flux_residual_raw,
                 rel_flux_raw,
@@ -1128,7 +1161,7 @@ class FVMVPMCoupler:
                 rel_flux_post,
                 delta_u_n if total_area > 0.0 else 0.0,
             )
-            self._last_donor_flux_diagnostics = {
+            self._last_vpm_bc_flux_diagnostics = {
                 "raw_mismatch": float(abs(flux_residual_raw)),
                 "applied_correction": float(abs(delta_u_n if total_area > 0.0 else 0.0)),
                 "corrected_mismatch": float(abs(flux_residual_post)),
@@ -1136,9 +1169,9 @@ class FVMVPMCoupler:
 
         # Deficit probe on the OUTFLOW face (direction-agnostic: derived from
         # u_inf, not hard-wired to +x).
-        self._log_outflow_deficit(face_centers, u_donor)
+        self._log_outflow_deficit(face_centers, u_vpm_bc)
 
-        return u_donor
+        return u_vpm_bc
 
     def _outflow_axis_sign(self) -> tuple[int, float]:
         """(axis, sign) of the box face most aligned with the freestream.
@@ -1167,7 +1200,7 @@ class FVMVPMCoupler:
         # Streamwise component = projection of u onto the freestream direction.
         u_stream = u_field[mask] @ (np.asarray(self.u_inf) / u_mag)
         logger.info(
-            "     [Donor deficit outflow axis=%d sign=%+d] u_s/U∞ min=%.3f "
+            "     [VPM-BC deficit outflow axis=%d sign=%+d] u_s/U∞ min=%.3f "
             "mean=%.3f max=%.3f  n_face=%d",
             axis,
             int(sign),
@@ -1183,8 +1216,8 @@ class FVMVPMCoupler:
     ) -> np.ndarray:
         """Minimal-L² uniform-normal-shift projection so ∮u·n dA = 0.
 
-        The same Gresho–Sani compatibility correction the donor BC applies, but
-        reusable: the FVM sub-cycler interpolates two (already-projected) donor
+        The same Gresho–Sani compatibility correction the VPM BC applies, but
+        reusable: the FVM sub-cycler interpolates two (already-projected) VPM-BC
         states and must re-project the interpolant so *every* sub-step sees a
         discretely solenoidal Dirichlet field, not only the interpolation
         endpoints (linear-combination flux residual is tiny but not exactly 0).
@@ -1225,12 +1258,12 @@ class FVMVPMCoupler:
             "applied_correction": _finite(getattr(result, "conservation_applied_correction", None)),
             "corrected_mismatch": _finite(getattr(result, "conservation_corrected_mismatch", None)),
         }
-        donor = {
-            key: float(getattr(self, "_last_donor_flux_diagnostics", {}).get(key, 0.0))
+        vpm_bc_flux = {
+            key: float(getattr(self, "_last_vpm_bc_flux_diagnostics", {}).get(key, 0.0))
             for key in ("raw_mismatch", "applied_correction", "corrected_mismatch")
         }
-        if not all(np.isfinite(value) for value in donor.values()):
-            raise FloatingPointError("non-finite donor-flux diagnostic")
+        if not all(np.isfinite(value) for value in vpm_bc_flux.values()):
+            raise FloatingPointError("non-finite VPM-BC-flux diagnostic")
         handoff = {
             "cfl": float(getattr(result, "cfl", 0.0)),
             "n_remesh_in": int(getattr(result, "n_remesh_in", 0)),
@@ -1249,15 +1282,14 @@ class FVMVPMCoupler:
                 getattr(result, "population_pruned_velocity_bound", 0.0)
             ),
             "flux_ratio": float(getattr(result, "flux_ratio", 0.0)),
-            "transfer_in_band_residual": float(
-                getattr(result, "transfer_in_band_residual", 0.0)
+            "transfer_in_band_residual": float(getattr(result, "transfer_in_band_residual", 0.0)),
+            "transfer_pre_prune_residual": float(
+                getattr(result, "transfer_pre_prune_residual", 0.0)
             ),
             "transfer_out_of_band_fraction": float(
                 getattr(result, "transfer_out_of_band_fraction", 0.0)
             ),
-            "transfer_max_amplification": float(
-                getattr(result, "transfer_max_amplification", 0.0)
-            ),
+            "transfer_max_amplification": float(getattr(result, "transfer_max_amplification", 0.0)),
         }
         if not all(np.isfinite(value) for value in handoff.values()):
             raise FloatingPointError("non-finite handoff diagnostic")
@@ -1278,7 +1310,7 @@ class FVMVPMCoupler:
         }
         return {
             "conservation": conservation,
-            "donor_flux": donor,
+            "vpm_bc_flux": vpm_bc_flux,
             "handoff": handoff,
             "spectral_band_ratio": spectrum,
             "interface_normal_velocity": interface,
@@ -1314,10 +1346,10 @@ class FVMVPMCoupler:
         u_target: np.ndarray,
         pressure_gradient: np.ndarray | None = None,
     ) -> None:
-        """Apply the configured donor boundary trace and advance one FVM step."""
+        """Apply the configured VPM boundary condition trace and advance one FVM step."""
         assert self.fvm is not None
         u_inf_mag = float(np.linalg.norm(self.config.u_inf)) + 1e-30
-        boundary_mode = self.config.donor_boundary_mode
+        boundary_mode = self.config.vpm_bc_mode
         u_target = np.ascontiguousarray(u_target, dtype=np.float64)
         if boundary_mode == "characteristic":
             self.fvm.set_freestream_velocity_boundary_condition_vec(u_target, patch)
@@ -1331,7 +1363,7 @@ class FVMVPMCoupler:
             boundary_description = "directional-outflow mixed U/p"
         elif boundary_mode == "pressure_gradient":
             if pressure_gradient is None:
-                raise RuntimeError("pressure_gradient donor mode requires pressure-gradient data")
+                raise RuntimeError("pressure_gradient VPM-BC mode requires pressure-gradient data")
             self.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
             self.fvm.set_neumann_pressure_boundary_condition(pressure_gradient, patch)
             boundary_description = "Dirichlet U / VPM pressure gradient"
@@ -1368,7 +1400,7 @@ class FVMVPMCoupler:
         pressure_gradient_prev: np.ndarray | None = None,
         pressure_gradient_next: np.ndarray | None = None,
     ) -> None:
-        """Advance FVM substeps with interpolated donor boundary data."""
+        """Advance FVM substeps with interpolated VPM boundary condition data."""
         n_substeps = max(1, int(self.period_multiplier))
         u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
         if n_substeps > 1 and u_next.shape[0] > 0:
@@ -1376,17 +1408,17 @@ class FVMVPMCoupler:
             big = dU > 0.5
             logger.log(
                 logging.WARNING if big else logging.INFO,
-                "     [Sub-cycle] %d×dt_fvm=%.3e s  donor ΔBC max|Δu|/U∞=%.3f%s",
+                "     [Sub-cycle] %d×dt_fvm=%.3e s  VPM-BC Δ max|Δu|/U∞=%.3f%s",
                 n_substeps,
                 self.dt_fvm,
                 dU,
                 "  (large — lower dt or period_multiplier)" if big else "",
             )
 
-        assert self.fringe is not None
+        assert self.blending is not None
         for substep in range(n_substeps):
             alpha = (substep + 1) / n_substeps
-            self.fringe.push_target(alpha)
+            self.blending.push_target(alpha)
             u_bc = (1.0 - alpha) * u_prev + alpha * u_next
             u_bc = self._project_to_solenoidal(u_bc, face_normals, face_areas)
             pressure_gradient = None
@@ -1442,15 +1474,15 @@ class FVMVPMCoupler:
             verbose=False,
         )
 
-        donor_artifact = f"donor_{suffix}.npz"
-        donor_tmp = target / f".{donor_artifact}.tmp"
-        with open(donor_tmp, "wb") as stream:
+        vpm_bc_artifact = f"vpm_bc_{suffix}.npz"
+        vpm_bc_tmp = target / f".{vpm_bc_artifact}.tmp"
+        with open(vpm_bc_tmp, "wb") as stream:
             np.savez_compressed(
                 stream,
                 u_present=np.asarray(self._u_bc_prev is not None),
                 u=np.empty((0, 3)) if self._u_bc_prev is None else self._u_bc_prev,
             )
-        os.replace(donor_tmp, target / donor_artifact)
+        os.replace(vpm_bc_tmp, target / vpm_bc_artifact)
 
         manifest = {
             "format_version": CHECKPOINT_FORMAT_VERSION,
@@ -1467,7 +1499,7 @@ class FVMVPMCoupler:
             "artifacts": {
                 "fvm": fvm_artifact,
                 "vpm": f"vpm_{suffix}.h5",
-                "donor": donor_artifact,
+                "vpm_bc": vpm_bc_artifact,
             },
         }
         manifest_tmp = target / "manifest.json.tmp"
@@ -1477,7 +1509,7 @@ class FVMVPMCoupler:
         stale = {
             *target.glob("fvm_*"),
             *target.glob("vpm_*"),
-            *target.glob("donor_*"),
+            *target.glob("vpm_bc_*"),
         }
         for artifact in stale:
             if artifact.name in keep or not artifact.exists():
@@ -1505,7 +1537,7 @@ class FVMVPMCoupler:
         return lines
 
     def load_state(self, directory) -> int:
-        """Restore both solvers and donor history from a checkpoint."""
+        """Restore both solvers and VPM-BC history from a checkpoint."""
         if self.fvm is None:
             raise RuntimeError("Initialize the coupler before loading a checkpoint")
         if self._is_master and self.vpm is None:
@@ -1532,7 +1564,7 @@ class FVMVPMCoupler:
                 if error is None and (
                     missing := [
                         name
-                        for name in ("fvm", "vpm", "donor")
+                        for name in ("fvm", "vpm", "vpm_bc")
                         if not artifacts.get(name) or not (target / artifacts[name]).exists()
                     ]
                 ):
@@ -1560,13 +1592,13 @@ class FVMVPMCoupler:
                 f"expected {expected_fvm_step} from VPM={manifest['vpm_time_step']}"
             )
 
-        # ── Master-only: VPM particles and the donor trace ───────────────────
+        # ── Master-only: VPM particles and the VPM-BC trace ───────────────────
         if self._is_master:
             assert self.vpm is not None  # guarded above; narrows for the checker
             self.load_vpm_from_backup(str(target / artifacts["vpm"]))
             self.vpm.flow_time = float(manifest["flow_time"])
-            with np.load(target / artifacts["donor"], allow_pickle=False) as donor:
-                self._u_bc_prev = donor["u"].copy() if bool(donor["u_present"]) else None
+            with np.load(target / artifacts["vpm_bc"], allow_pickle=False) as vpm_bc:
+                self._u_bc_prev = vpm_bc["u"].copy() if bool(vpm_bc["u_present"]) else None
             if not np.isclose(self.fvm.flow_time, self.vpm.flow_time, rtol=0.0, atol=1e-12):
                 error = (
                     f"Coupled checkpoint time mismatch: FVM={self.fvm.flow_time}, "

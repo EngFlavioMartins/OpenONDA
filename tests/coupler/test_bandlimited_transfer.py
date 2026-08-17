@@ -11,6 +11,7 @@ from source.coupler.core.helpers.continuous_overlap import (
     DEFAULT_TRANSFER_AMPLIFICATION_CAP,
     _gaussian_mollified_circulation,
     bandlimited_transfer,
+    bounded_local_transfer,
     spectral_band_ratio,
     transfer_symbols,
 )
@@ -48,9 +49,10 @@ def test_amplification_cap_is_enforced_on_a_real_field():
         gamma, _, _ = bandlimited_transfer(
             target.reshape(-1, 3), shape, h, sigma=h, amplification_cap=cap
         )
-        ratio = np.linalg.norm(gamma, axis=1).max() / np.linalg.norm(
-            target.reshape(-1, 3), axis=1
-        ).max()
+        ratio = (
+            np.linalg.norm(gamma, axis=1).max()
+            / np.linalg.norm(target.reshape(-1, 3), axis=1).max()
+        )
         assert ratio <= cap * 1.05
 
 
@@ -113,6 +115,44 @@ def test_zero_target_transfers_to_zero():
 
 def test_default_cap_is_conservative():
     assert 1.0 < DEFAULT_TRANSFER_AMPLIFICATION_CAP <= 4.0
+
+
+def test_local_transfer_preserves_a_purely_lagrangian_field():
+    shape = (16, 16, 16)
+    rng = np.random.default_rng(17)
+    strength = rng.normal(size=(np.prod(shape), 3)) * 1.0e-4
+    result, _, residual_pre, residual_post, _ = bounded_local_transfer(
+        strength,
+        np.zeros_like(strength),
+        np.zeros(len(strength)),
+        shape,
+        0.1,
+        sigma=0.1,
+    )
+    np.testing.assert_array_equal(result, strength)
+    assert residual_pre == pytest.approx(0.0)
+    assert residual_post == pytest.approx(0.0)
+
+
+def test_local_transfer_does_not_fill_the_far_field():
+    shape = (33, 33, 33)
+    target = np.zeros((*shape, 3))
+    centre = np.asarray(shape) // 2
+    target[*centre, 2] = 1.0
+    strength, _, residual_pre, residual_post, amplification = bounded_local_transfer(
+        np.zeros((np.prod(shape), 3)),
+        target.reshape(-1, 3),
+        np.ones(np.prod(shape)),
+        shape,
+        0.1,
+        sigma=0.1,
+    )
+    strength = strength.reshape(*shape, 3)
+    coordinates = np.stack(np.meshgrid(*map(np.arange, shape), indexing="ij"), axis=-1)
+    far = np.max(np.abs(coordinates - centre), axis=-1) > 4
+    assert not np.any(strength[far])
+    assert residual_post < residual_pre
+    assert amplification <= DEFAULT_TRANSFER_AMPLIFICATION_CAP
 
 
 def test_spectral_band_ratio_is_one_for_identical_fields():

@@ -4,7 +4,7 @@ The coupler (``source/coupler/``) drives the native FVM through a fixed
 duck-typed API. These tests guard that public contract:
 every method exists with the right shapes, the driver splits into
 ``solve_pimple`` (no time advance) + ``advance_time``, the per-face Dirichlet
-donor BC applies, and the fvOptions-equivalent fringe source
+VPM BC applies, and the fvOptions-equivalent blending source
 ``S = λ(Utarget − U)`` is wired from the registered fields to the momentum
 operator.
 """
@@ -150,14 +150,14 @@ def test_scalar_param_setters():
     assert s.dt == 0.05 and s.config.transport.nu == 0.02
 
 
-def test_registered_fields_build_fringe_source():
+def test_registered_fields_build_blending_source():
     s, mesh = _make_solver()
     n = mesh["n_elements"]
     lam = np.full(n, 3.0)
     ut = np.tile([2.0, -1.0, 0.5], (n, 1))
     s.set_cell_scalar_field("lambdaRelax", lam)
     s.set_cell_vector_field("Utarget", ut[:, 0], ut[:, 1], ut[:, 2])
-    su, sp = s._fringe_source()
+    su, sp = s._blending_source()
     assert np.allclose(sp, lam)  # Sp = λ
     assert np.allclose(su, lam[:, None] * ut)  # Su = λ·Utarget
 
@@ -191,8 +191,8 @@ def test_vector_dirichlet_writes_ghosts():
     assert b["bc_type_U"] == "fixedValue"
 
 
-def test_fringe_source_relaxes_velocity_to_target():
-    """At the momentum-operator level a strong fringe drives U → Utarget
+def test_blending_source_relaxes_velocity_to_target():
+    """At the momentum-operator level a strong blending source drives U → Utarget
     (isolated from the continuity projection that suppresses net flow in a
     closed box)."""
     mesh = structured_box(6, 6, 6)
@@ -226,4 +226,4 @@ def test_fringe_source_relaxes_velocity_to_target():
         sol[:, i] = solve_linear_system(
             mom[c]["A"], mom[c]["b"], method="spsolve", equation_type="momentum"
         )
-    assert np.max(np.abs(sol - target)) < 1e-2, "strong fringe should pull U to Utarget"
+    assert np.max(np.abs(sol - target)) < 1e-2, "strong blending source should pull U to Utarget"

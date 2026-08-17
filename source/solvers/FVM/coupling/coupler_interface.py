@@ -592,9 +592,9 @@ class CouplerInterfaceMixin:
         self._write_patch_ghosts(b, field)
 
     def set_freestream_velocity_boundary_condition_vec(self, u_target, patch_name):
-        """Impose a characteristic donor BC from an ``(N, 3)`` boundary array.
+        """Impose a characteristic VPM BC from an ``(N, 3)`` boundary array.
 
-        The per-face donor values are applied on INFLOW faces only; outflow
+        The per-face VPM-BC values are applied on INFLOW faces only; outflow
         faces extrapolate the owner state (the native ``freestream`` strategy
         switches per face by the sign of the face flux, and the convection
         assembly upwinds consistently).  Pressure on the patch should use the
@@ -606,7 +606,7 @@ class CouplerInterfaceMixin:
             return
         if field.shape != (b["nFaces"], 3) or not np.all(np.isfinite(field)):
             raise ValueError(
-                f"Characteristic donor data for patch {patch_name!r} must be finite "
+                f"Characteristic VPM-BC data for patch {patch_name!r} must be finite "
                 f"with shape ({b['nFaces']}, 3)"
             )
         b["bc_type_U"] = "freestream"
@@ -624,7 +624,7 @@ class CouplerInterfaceMixin:
         fixed by the patch normals rather than recomputed from the local face
         flux.  This is useful for a merged FVM--VPM coupling patch: the
         downstream face is allowed to convect out, while inlet and lateral
-        faces retain their complete nonuniform donor trace even when local
+        faces retain their complete nonuniform VPM-BC trace even when local
         cross-flow points outward.
         """
         field = self._scatter_patch_values(patch_name, u_target, trailing_shape=(3,))
@@ -672,7 +672,7 @@ class CouplerInterfaceMixin:
         b.pop("fixed_flux_pressure_delta", None)
 
     def set_directional_freestream_pressure_boundary_condition(self, patch_name, value=0.0):
-        """Pair fixed outflow pressure with fixed-flux pressure on donor faces.
+        """Pair fixed outflow pressure with fixed-flux pressure on VPM-BC faces.
 
         The patch must first receive a directional freestream velocity mask.
         Pressure correction is Dirichlet on that geometric outflow face and
@@ -700,7 +700,7 @@ class CouplerInterfaceMixin:
         ``pressure_delta`` is the face pressure minus its owner-cell pressure.
         It is used by the interface-replay verifier, where the recorded
         monolithic pressure gradient must be retained through each PIMPLE
-        correction instead of being recomputed from a donor velocity.
+        correction instead of being recomputed from a VPM-BC velocity.
         """
         field = self._scatter_patch_values(patch_name, pressure_delta)
         b = self._optional_patch(patch_name)
@@ -762,7 +762,7 @@ class CouplerInterfaceMixin:
 
         The next pressure-correction assembly uses these values directly as
         its boundary fluxes.  This is deliberately a diagnostic/replay API:
-        normal coupled runs continue to derive their flux from the donor
+        normal coupled runs continue to derive their flux from the VPM BC
         velocity condition.  Together with ``fixedFluxPressure`` it lets a
         cropped FVM solve reproduce a monolithic cut without converting a
         discrete face flux back through an interpolated velocity.

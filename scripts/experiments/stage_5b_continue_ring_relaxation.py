@@ -20,7 +20,12 @@ def continue_run(
     time_step: float | None = None,
     output_directory: Path | None = None,
 ) -> None:
-    solver = Solver.continue_from_backup(str(backup.resolve()))
+    backup = backup.resolve()
+    # The public restart API expects the checkpoint basename, while users and
+    # manifests naturally point at the HDF5 file itself.
+    if backup.suffix == ".h5":
+        backup = backup.with_suffix("")
+    solver = Solver.continue_from_backup(str(backup))
     if solver is None:
         raise RuntimeError(f"could not restore {backup}")
     if target_time_star <= solver.flow_time:
@@ -54,7 +59,7 @@ def continue_run(
     manifest = {
         "status": "running",
         "claim_scope": "continuation of unperturbed axisymmetric relaxation only",
-        "restart": str(backup.resolve()),
+        "restart": str(backup.with_suffix(".h5")),
         "start_time_star": solver.flow_time,
         "target_time_star": target_time_star,
         "requested_additional_steps": remaining_steps,
