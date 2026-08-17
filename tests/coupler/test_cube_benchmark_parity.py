@@ -197,20 +197,27 @@ def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     assert bench.FVM_WAKE_BOX == (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
     assert pytest.approx(0.06) == bench.FVM_CELL_SIZE
     assert pytest.approx(0.03) == bench.FVM_WAKE_CELL_SIZE
-    assert pytest.approx(0.04) == bench.PARTICLE_SPACING
+    # h=0.03, not the earlier 0.04: the hand-off is band limited, and at 0.04 it
+    # carried only 53% of the amplitude over 2-4h with 30-52% of the FVM field
+    # out of band, which under-supplied the coupling boundary by ~12%.
+    assert pytest.approx(0.03) == bench.PARTICLE_SPACING
     assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
         bench.FVM_MESH.max_cell_size / 4.0
     )
     assert bench.FVM_MESH.effective_cell_size(bench.FVM_WAKE_CELL_SIZE) == pytest.approx(
         bench.FVM_MESH.max_cell_size / 2.0
     )
-    assert bench.PARTICLE_LIMIT == 1_500_000
+    assert bench.PARTICLE_LIMIT == 2_000_000
     assert vpm.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
     assert vpm.max_particles == bench.PARTICLE_LIMIT
     assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT
     assert vpm.viscous.gbd_grid_spacing == pytest.approx(bench.PARTICLE_SPACING)
     assert bench.COUPLER_SETUP.h == pytest.approx(bench.PARTICLE_SPACING)
-    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(6 * bench.PARTICLE_SPACING)
+    # Pinned in absolute length, not as a multiple of h: the buffer sets the
+    # stable coupling step (max_dt ~ L_buf/|U|), so shrinking it with h would
+    # push the hand-off past its CFL gate at DT_VPM.
+    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(0.24)
+    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(8 * bench.PARTICLE_SPACING)
     assert bench.COUPLER_SETUP.dead_zone_h == 0.0
     assert bench.COUPLER_SETUP.prune_vorticity_min == pytest.approx(0.005)
     assert bench.COUPLER_SETUP.boundary_prune_multiplier == pytest.approx(10.0)
@@ -230,10 +237,15 @@ def test_output_names_and_cadence_match_allplot_contract(bench, reference, vpm):
     assert pytest.approx(bench.DIAGNOSTIC_INTERVAL) == bench.VPM_LOG_PERIOD * bench.DT_VPM
     assert vpm.logging_frequency == bench.VPM_LOG_PERIOD
     assert bench.FVM_SETUP.time.write_interval_time == pytest.approx(bench.FVM_VOLUME_INTERVAL)
+    # The reference splits its cadences: cheap samples often, volume archive
+    # rarely.  Force histories are the quantity the two cases are compared on,
+    # so those must land on the same instants.
+    assert pytest.approx(bench.FORCE_INTERVAL) == reference.SAMPLE_INTERVAL
+    assert reference.VOLUME_INTERVAL >= reference.SLICE_INTERVAL >= reference.SAMPLE_INTERVAL
     hybrid_steps = round(bench.FORCE_INTERVAL / bench.DT_FVM)
-    reference_steps = round(reference.WRITE_INTERVAL / reference.DT_FVM)
+    reference_steps = round(reference.SAMPLE_INTERVAL / reference.DT_FVM)
     assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.FORCE_INTERVAL)
-    assert reference_steps * reference.DT_FVM == pytest.approx(reference.WRITE_INTERVAL)
+    assert reference_steps * reference.DT_FVM == pytest.approx(reference.SAMPLE_INTERVAL)
     common_time = math.lcm(hybrid_steps, reference_steps) * bench.DT_FVM
     assert common_time <= bench.T_END
 

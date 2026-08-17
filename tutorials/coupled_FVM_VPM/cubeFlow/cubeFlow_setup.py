@@ -65,19 +65,43 @@ SURFACE_CELL_SIZE = 0.015
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-PARTICLE_SPACING = 0.04
-PARTICLE_LIMIT = 1_500_000
+#
+# PARTICLE_SPACING is the binding constraint on coupling accuracy, not the FVM
+# mesh and not the boundary-condition formulation.  The hand-off is band
+# limited: at h=0.04 the coupler measured |omega_VPM|/|omega_FVM| = 0.53 over
+# 2-4h with 30-52% of the FVM field out of band entirely, and it emitted
+#   "[Handoff] post-correction representation residual 3.56e-01 exceeds 10%;
+#    refine h or move the handoff away from unresolved wall vorticity."
+# on the first hand-off.  The lost near-wall vorticity is what makes the VPM
+# under-supply the body's displacement field at the coupling faces by ~12%,
+# which in a controlled study cost +5.5% mean / +6.3% max in Cd -- the size and
+# the growth of the observed production error.  The amplification cap is not
+# the limiter (it peaked at 1.45 against 1.80); the lattice is.
+#
+# h=0.03 moves the representable floor 2h from 0.080 to 0.060 against FVM cells
+# of 0.03 in the wake and 0.015 at the wall.  It costs ~2.4x the particles, so
+# the population cap is raised to keep the hand-off from population-pruning the
+# very vorticity this change exists to retain.
+PARTICLE_SPACING = 0.03
+PARTICLE_LIMIT = 2_000_000
 OVERLAP_RADIUS_RATIO = 1.0
 PRUNE_VORTICITY_MIN = 0.005
 BOUNDARY_PRUNE_MULTIPLIER = 10.0
 GBD_THRESHOLD = 0.30
+# Held at its previous ABSOLUTE thickness rather than a fixed multiple of h.
+# The hand-off buffer sets the stable coupling step (max_dt ~ L_buf / |U|), so
+# letting it shrink with h would have pushed the hand-off CFL past its 0.7 gate
+# at DT_VPM=0.05.
+BUFFER_THICKNESS = 0.24
 
 # Coupling
 VPM_BC_MODE = "dirichlet"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
-FORCE_INTERVAL = 0.15
+# Matches referenceFlow's sampling cadence so the two force histories are
+# directly comparable without interpolation.
+FORCE_INTERVAL = 0.05
 DIAGNOSTIC_INTERVAL = 0.60
 CHECKPOINT_INTERVAL = 1.0
 FVM_VOLUME_INTERVAL = 1.0
@@ -208,7 +232,7 @@ COUPLER_SETUP = CouplerSetup(
     vpm_bc_mode=VPM_BC_MODE,
     wall_patch_name="cube",
     h=PARTICLE_SPACING,
-    buffer_thickness=6 * PARTICLE_SPACING,
+    buffer_thickness=BUFFER_THICKNESS,
     dead_zone_h=0.0,
     prune_vorticity_min=PRUNE_VORTICITY_MIN,
     boundary_prune_multiplier=BOUNDARY_PRUNE_MULTIPLIER,

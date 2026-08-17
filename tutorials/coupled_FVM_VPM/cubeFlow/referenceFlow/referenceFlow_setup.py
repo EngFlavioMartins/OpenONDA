@@ -50,7 +50,6 @@ INITIAL_U = (1.0, 0.0, 0.0)
 DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
-WRITE_INTERVAL = 0.15
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
@@ -58,7 +57,51 @@ MIN_DS = 0.015
 SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
-SAMPLE_SCHEDULE = SamplingSchedule(every_time=WRITE_INTERVAL)
+
+# Output cadence.  Cheap samples are taken often; the volume archive, which
+# dominates disk (the previous run wrote 134 snapshots for 13 GB), is taken
+# rarely.  The dense-in-time boundary data a coupling study actually needs comes
+# from the six COUPLING_BOX face planes below at a fraction of the size, so the
+# volumes no longer have to carry it.
+SAMPLE_INTERVAL = 0.05  # forces, line probes, coupling-box faces
+SLICE_INTERVAL = 0.10  # full-domain field slices
+VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
+
+# The compact FVM box of the coupled cubeFlow case.  Sampling its six faces
+# gives the exact Dirichlet trace an oracle boundary-condition study needs.
+COUPLING_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
+
+SAMPLE_SCHEDULE = SamplingSchedule(every_time=SAMPLE_INTERVAL)
+SLICE_SCHEDULE = SamplingSchedule(every_time=SLICE_INTERVAL)
+
+
+def _coupling_face_samplers(sampler_cls, schedule):
+    """One planar sampler per face of COUPLING_BOX.
+
+    ``bounds`` lists the two in-plane axes: x-plane -> (y, z),
+    y-plane -> (x, z), z-plane -> (x, y).
+    """
+    x0, x1, y0, y1, z0, z1 = COUPLING_BOX
+    faces = (
+        ("xmin", [x0, 0.0, 0.0], [1, 0, 0], [y0, y1, z0, z1]),
+        ("xmax", [x1, 0.0, 0.0], [1, 0, 0], [y0, y1, z0, z1]),
+        ("ymin", [0.0, y0, 0.0], [0, 1, 0], [x0, x1, z0, z1]),
+        ("ymax", [0.0, y1, 0.0], [0, 1, 0], [x0, x1, z0, z1]),
+        ("zmin", [0.0, 0.0, z0], [0, 0, 1], [x0, x1, y0, y1]),
+        ("zmax", [0.0, 0.0, z1], [0, 0, 1], [x0, x1, y0, y1]),
+    )
+    return tuple(
+        sampler_cls(
+            point=point,
+            normal=normal,
+            bounds=bounds,
+            spacing=SAMPLE_SPACING,
+            file_name=f"couplingFace_{name}",
+            schedule=schedule,
+        )
+        for name, point, normal, bounds in faces
+    )
+
 
 SAMPLERS = (
     ForceSampler(
@@ -88,7 +131,7 @@ SAMPLERS = (
         normal=[0, 0, 1],
         bounds=[FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[3]],
         spacing=SAMPLE_SPACING,
-        schedule=SAMPLE_SCHEDULE,
+        schedule=SLICE_SCHEDULE,
         file_name="slice_z0",
     ),
     SurfaceSampler(
@@ -96,9 +139,10 @@ SAMPLERS = (
         normal=[0, 0, 1],
         bounds=WAKE_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
-        schedule=SAMPLE_SCHEDULE,
+        schedule=SLICE_SCHEDULE,
         file_name="wake_slice_z0",
     ),
+    *_coupling_face_samplers(SurfaceSampler, SAMPLE_SCHEDULE),
 )
 
 FVM_MESH = AdaptiveCartesianMesher(
@@ -131,7 +175,7 @@ FVM_SETUP = FVMSetup(
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
-        write_interval_time=WRITE_INTERVAL,
+        write_interval_time=VOLUME_INTERVAL,
         adjust_timestep=False,
     ),
     schemes=SchemesConfig(
