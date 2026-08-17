@@ -36,22 +36,13 @@ class CouplerSetup:
     prune_vorticity_min: float = 0.005
     handoff_max_particles: int | None = None
     overlap_radius_ratio: float = 1.0
-    # Cap on the inverse-mollification gain in the band-limited FVM->VPM
-    # transfer.  The particle strengths may never exceed the raw FVM
-    # circulation by more than this factor; everything the lattice cannot carry
-    # within that bound is reported as `out_of_band_fraction` rather than
-    # amplified into grid-scale noise.
+    # Cap on the inverse-mollification gain. What the lattice cannot carry is
+    # reported, not amplified into grid-scale noise.
     transfer_amplification_cap: float = 2.0
-    # Re-evaluate the donor trace from the *corrected* particle field after the
-    # hand-off and store that as the interval endpoint.  Without it the endpoint
-    # kept for the next interval is the pre-handoff prediction, which the
-    # corrected particles no longer reproduce -- an O(dt) inconsistency injected
-    # at every step boundary.  Costs one extra donor evaluation (~0.3 s against
-    # ~46 s for the FVM sub-cycle on the production cube case).
+    # Re-evaluate the donor from the corrected particles after the hand-off.
+    # Otherwise the next interval starts from a stale prediction.
     resync_donor_after_handoff: bool = True
-    # Pin the FVM pressure datum.  The coupling patch carries a Neumann
-    # pressure condition on every face, so the discrete pressure Poisson system
-    # is singular without this.
+    # Datum the FVM pressure. Every coupling face is Neumann in pressure.
     anchor_pressure: bool = True
 
     def __post_init__(self) -> None:

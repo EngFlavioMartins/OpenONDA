@@ -1,9 +1,6 @@
 """Signed distance for immersed bodies, used by the coupled hand-off taper.
 
-The coupler multiplies the transferred circulation by a C1 wall taper built from
-this function.  A binary inside/outside mask cannot be used there: it is a step
-function of position, and multiplying a band-limited field by a step injects
-energy at wavelengths the particle lattice cannot represent.
+A binary mask would inject energy the particle lattice cannot represent.
 """
 
 import numpy as np

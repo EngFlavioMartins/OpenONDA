@@ -873,6 +873,18 @@ class _GridDiffusionMixin:
         return max(threshold, 1e-10)
 
     @staticmethod
+    def _regeneration_cap(particles, n_before: int, max_nodes: int | None) -> int:
+        """Regeneration ceiling from the container's own capacity.
+
+        The module ``MAX_PARTICLES`` default pinned cubeFlow at 490k.
+        """
+        capacity = int(getattr(particles, "capacity", 0) or MAX_PARTICLES)
+        cap = min(max(int(3.0 * n_before), n_before + 50_000), max(capacity - 10_000, 1))
+        if max_nodes is not None:
+            cap = min(cap, int(max_nodes))
+        return max(int(cap), 1)
+
+    @staticmethod
     def _cap_surviving_nodes(
         circ_mag: np.ndarray,
         ix: np.ndarray,
@@ -1372,13 +1384,7 @@ class _GridDiffusionMixin:
         )
 
         # -- Particle-count cap ------------------------------------------------
-        # Never exceed MAX_PARTICLES - 10k to avoid Taichi field resize/crash.
-        # The top surviving nodes (by |Γ|) contain essentially all circulation;
-        # the dropped tail nodes contribute little but can otherwise trigger
-        # large Taichi external-array uploads during particle replacement.
-        cap = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
-        if max_nodes is not None:
-            cap = min(cap, int(max_nodes))
+        cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
             survivor_abs = float(circ_mag[ix, iy, iz].sum())
             importance = circ_mag / threshold if isinstance(threshold, np.ndarray) else None
@@ -1712,9 +1718,7 @@ class _GridDiffusionMixin:
         )
 
         # -- Particle-count cap ------------------------------------------------
-        cap = min(max(int(3.0 * N), N + 50_000), MAX_PARTICLES - 10_000)
-        if max_nodes is not None:
-            cap = min(cap, int(max_nodes))
+        cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
             survivor_abs = float(circ_mag[ix, iy, iz].sum())
             importance = circ_mag / threshold if isinstance(threshold, np.ndarray) else None

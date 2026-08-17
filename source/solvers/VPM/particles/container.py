@@ -127,6 +127,11 @@ class Particles:
         # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
+    @property
+    def capacity(self) -> int:
+        """Allocated particle capacity, i.e. the real ceiling for regeneration."""
+        return int(self._max_particles)
+
     def _init_taichi_fields(self):
         """Initialize all Taichi fields for particle data storage with configurable dtype."""
         dtype = self._taichi_dtype

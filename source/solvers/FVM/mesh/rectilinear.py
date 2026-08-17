@@ -153,14 +153,8 @@ def box_mesh_3d(
     coupling-patch layout). If ``empty_spanwise`` is true, zmin/zmax remain
     separate ``empty`` patches and only the four in-plane sides are merged.
 
-    ``separate_outer`` names outer faces (``"inlet"``, ``"outlet"``, ``"ymin"``,
-    ``"ymax"``, ``"zmin"``, ``"zmax"``) that stay
-    out of the merge and keep their own patch, so a fully meshed reference can
-    give itself a real outlet and a Dirichlet pressure datum.  Merging *every*
-    side into one ``fixedValue`` velocity patch, as the coupling layout does,
-    clamps the outlet to the freestream: the wake cannot leave the domain and
-    the pressure has no anchor anywhere.  The merged families are emitted first
-    so each patch stays a contiguous face range.
+    ``separate_outer`` names outer faces kept out of the merge, each with its
+    own patch. Merged families come first, so every patch stays contiguous.
     """
     xs = np.asarray(xs, dtype=np.float64)
     ys = np.asarray(ys, dtype=np.float64)
@@ -297,7 +291,7 @@ def box_mesh_3d(
         return name in separate_outer or (empty_spanwise and name in {"zmin", "zmax"})
 
     if merge_outer_patch is not None:
-        # Emit the merged families first so every patch is a contiguous range.
+        # Merged families first, so every patch is a contiguous range.
         outer = [entry for entry in outer if not _is_standalone(entry[0])] + [
             entry for entry in outer if _is_standalone(entry[0])
         ]
@@ -417,12 +411,8 @@ def coupling_box_mesh(
     second boundary patch ``wall_patch_name`` of type ``wall``.  The hole faces
     must lie exactly on mesh planes.
 
-    ``separate_outer`` keeps the named outer faces out of the coupling patch,
-    each as its own patch.  A fully meshed *reference* built with this helper
-    must use it -- ``separate_outer=("outlet",)`` plus a
-    :meth:`BoundaryConfig.outlet` -- otherwise all six sides are one
-    ``fixedValue`` velocity patch, the outlet is clamped to the freestream and
-    the wake cannot leave the domain.
+    A fully meshed reference must pass ``separate_outer=("outlet",)`` plus a
+    :meth:`BoundaryConfig.outlet`, else its outlet is clamped to the freestream.
     """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
     if nodes is not None:

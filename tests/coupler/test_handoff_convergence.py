@@ -1,19 +1,6 @@
-"""Rung 0 and rung 1 of the coupling verification ladder.
+"""Rungs 0 and 1 of the coupling verification ladder.
 
-These exercise the FVM->VPM hand-off *alone*, against an analytic field, with no
-FVM solve, no VPM time integration and no chaos.  Everything downstream of them
-(the cylinder and cube benchmarks) is a physics validation and can only be
-trusted once these pass.
-
-Rung 0  uniform flow  -> the hand-off must produce no vorticity at all.
-Rung 1  Lamb-Oseen tube -> the mollified particle field must reproduce the exact
-        vorticity, and the error must fall as the core is resolved.
-
-The rung-1 sweeps double as the sizing tool for a production case: they answer
-"how many lattice cells per vortex core do I need for 1%?" and "does raising
-sigma/h help?".  Run them directly for a table::
-
-    pytest tests/coupler/test_handoff_convergence.py -s -m verification
+The hand-off alone against an analytic field. Rung 1 sizes a case.
 """
 
 from __future__ import annotations
@@ -72,12 +59,8 @@ def _transfer_error(n: int, h: float, core: float, radius_ratio: float, cap: flo
     mollified = _gaussian_mollified_circulation(gamma, shape, h, sigma=sigma).reshape(-1, 3)
     exact = lamb_oseen_vorticity(points, core) * h**3
 
-    # Compare where the structure is AND where the lattice is interior.  The
-    # Gaussian mollification uses zero padding and the transfer tapers the outer
-    # lattice layers, exactly as in production, where the hand-off lattice always
-    # carries a 2h M4' guard band plus the downstream buffer.  A z-invariant tube
-    # touches both z faces, so a comparison that includes them measures the guard
-    # band, not the transfer.
+    # Compare where the structure is AND the lattice is interior. A z-invariant
+    # tube touches both z faces, where the guard band would dominate.
     guard = 8
     half = (n - 1) / 2.0
     interior = np.all(np.abs(points) <= (half - guard) * h + 1e-12, axis=1)
@@ -186,8 +169,8 @@ def test_rung1_sweep_table(capsys):
                 f"{peak:12.3f} {out_of_band:13.3%}"
             )
 
-    # sigma/h = 1 must not be beaten by more than a factor of two by any other
-    # value at the resolution that matters; if it is, the default is wrong.
+    # If sigma/h = 1 is beaten by 2x at the resolution that matters, the
+    # default is wrong.
     best_at_four = {
         radius_ratio: error
         for radius_ratio, cells, error, _, _ in rows

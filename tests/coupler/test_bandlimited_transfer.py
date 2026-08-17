@@ -1,13 +1,7 @@
 """Verification of the band-limited FVM->VPM strength transfer.
 
-These tests pin the three properties the previous Beale/Picard deconvolution
-violated, each of which was measured on the coupled cube case:
-
-* the particle strengths never exceed the raw FVM circulation by more than the
-  configured cap (the 1-pass Picard amplified grid-scale modes by 1.6x);
-* whatever the particle lattice *can* carry, it carries exactly (the 1-pass
-  Picard left a 17-22% eta-weighted residual that never converged);
-* whatever it cannot carry is reported, not faked.
+Strengths stay under the cap, the representable band is carried exactly, and
+the rest is reported.
 """
 
 import numpy as np

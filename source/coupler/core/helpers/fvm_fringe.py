@@ -104,11 +104,7 @@ class FringeFields:
     def update_endpoint(self, active_velocity: np.ndarray | None = None) -> None:
         """Replace the interval endpoint with a post-hand-off re-evaluation.
 
-        The endpoint that :meth:`update_target` stored was predicted before the
-        hand-off corrected the particle cloud.  Overwriting it here means the
-        next interval interpolates from a target the current particles actually
-        produce, instead of from a stale prediction.  Collective-safe: worker
-        ranks call this with ``None`` and it is a no-op for them.
+        The stored endpoint predated the hand-off. Worker ranks pass ``None``.
         """
         if self._next is None or active_velocity is None:
             return

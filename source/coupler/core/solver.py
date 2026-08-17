@@ -883,17 +883,8 @@ class FVMVPMCoupler:
     ) -> None:
         """Re-evaluate the donor trace from the corrected particle field.
 
-        The endpoint stored for the next interval is otherwise the *prediction*
-        made before the hand-off, which the corrected particles no longer
-        reproduce.  Every interval therefore starts from a boundary state that
-        is inconsistent with the particle cloud driving it -- an O(dt) defect
-        injected once per step, and the most likely origin of the measured
-        ~0.15 s lag in the coupled cube drag history.
-
-        This is a defect correction, not a full Picard sweep: the FVM is not
-        re-solved (that would need a rewind of ``period_multiplier`` committed
-        sub-steps).  It costs one donor evaluation, roughly 0.3 s against ~46 s
-        for the sub-cycle on the production cube case.
+        Otherwise each interval starts from a stale prediction. Not a Picard
+        sweep: the FVM is not re-solved.
         """
         if not self.config.resync_donor_after_handoff:
             return
@@ -959,17 +950,8 @@ class FVMVPMCoupler:
     def _anchor_pressure_datum(self) -> None:
         """Re-datum the FVM pressure onto ``p = 0`` in the undisturbed stream.
 
-        The coupling patch carries a Neumann pressure condition on every face,
-        so the discrete pressure Poisson system has a constant null space and
-        the solver pins an arbitrary reference cell.  The resulting level is a
-        valid solution but an arbitrary one: measured on the coupled cube case
-        the hybrid's total head sat at 0.64 against the fully meshed 0.51 (true
-        0.50), which makes every pressure comparison meaningless even though a
-        uniform offset changes no velocity and no closed-body force.
-
-        The shift is chosen so the mean total head over the inflow cells equals
-        the freestream value, which is the same datum the fully meshed case gets
-        for free from its Dirichlet outlet.
+        Every coupling face is Neumann, so the solver otherwise pins an
+        arbitrary cell.
         """
         if not self.config.anchor_pressure or not self._pressure_anchor_available:
             return

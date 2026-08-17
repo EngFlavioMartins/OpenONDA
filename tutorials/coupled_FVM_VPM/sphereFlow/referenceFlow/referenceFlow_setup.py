@@ -1,18 +1,6 @@
 """Fully meshed reference for the Re = 300 sphere benchmark.
 
-Matched to the hybrid case by construction: same body, fluid, near-field
-spacing, IBM, scheme and time step, all imported from ``_geometry``.  Only the
-treatment outside the compact box differs -- mesh here, particles there.
-
-Two things this reference does that the coupled layout must not:
-
-* it gives itself a **real outlet**.  ``coupling_box_mesh`` merges all six sides
-  into one patch, which is right when every face is a donor boundary and wrong
-  for a reference: a ``fixedValue`` outlet clamps the exit to the freestream, so
-  the wake cannot leave and the pressure has no Dirichlet anchor anywhere;
-* it **stretches to a distant far field**, so it approximates the same unbounded
-  problem the particle method solves.  A near, clamped boundary makes the two
-  cases solve different problems, and no coupling accuracy can close that gap.
+Matched to the hybrid outside the box. Needs a real outlet and far field.
 """
 
 from __future__ import annotations

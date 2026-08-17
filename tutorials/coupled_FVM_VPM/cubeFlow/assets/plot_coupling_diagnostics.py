@@ -84,12 +84,8 @@ def plot(figure_format: str) -> None:
     population.set(ylabel="particles [million]", title="Particle population")
     population.legend(loc="upper left", fontsize=7)
 
-    # Transfer fidelity.  The in-band residual says whether the particles
-    # reproduce the band they claim to carry (a bug if it is not round-off);
-    # the out-of-band fraction says how much of the FVM's vorticity is finer
-    # than the lattice (a resolution limit -- refine h, do not deconvolve
-    # harder).  Keeping them on the same axes stops the second being mistaken
-    # for the first, which is what the single scalar residual invited.
+    # In-band residual: a bug unless it is round-off. Out-of-band fraction: a
+    # resolution limit. Same axes, so the two are not confused.
     fidelity = axes[1, 0]
     in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")
     out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")
@@ -103,7 +99,7 @@ def plot(figure_format: str) -> None:
     fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Transfer fidelity")
     fidelity.legend(loc="upper right", fontsize=7)
 
-    # Per-band |omega_VPM| / |omega_FVM|.  Every curve should sit on 1.
+    # Per-band |omega_VPM| / |omega_FVM|. Every curve should sit on 1.
     quality = axes[1, 1]
     band_names = sorted(
         {name for row in records for name in row.get("spectral_band_ratio", {})},

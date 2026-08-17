@@ -1,33 +1,7 @@
 """Conservative overlap transport from FVM cells to VPM particles.
 
-The hand-off remeshes onto a regular lattice, transfers the FVM vorticity onto
-that lattice with a *band-limited* inverse-mollification, blends FVM and VPM
-circulation with a smooth partition of unity, and recovers selected integral
-invariants after a continuous (soft) prune. The implementation is independent
-of the FVM and VPM runtimes.
-
-Design notes
-------------
-Two properties are load-bearing and were the source of the historical error
-growth in the coupled cube/cylinder cases:
-
-1. **Nothing that multiplies the circulation field may be discontinuous.**
-   A Gaussian-blob particle field of core ``sigma`` on a lattice of spacing
-   ``h`` can only represent wavelengths above roughly ``4h``.  Multiplying that
-   field by a binary mask (an "inside the mesh" test, an eroded body mask, a
-   hard magnitude clip) injects energy at *every* wavelength, including the ones
-   the particles cannot carry.  Measured on the coupled cube case, the particle
-   field carried 2.7x the FVM's vorticity energy below ``4h`` while its peaks
-   were 17% low.  Every mask in this module is therefore a C1 taper.
-
-2. **Inverse mollification must be band-limited, not iterated.**  Recovering
-   ``omega`` from ``zeta_sigma * omega`` is ill-posed: the inverse symbol
-   ``exp(+sigma^2 k^2 / 4)`` diverges.  A fixed number of Richardson/Picard
-   passes does not regularise it -- it amplifies the grid-scale modes by up to
-   1.6x while still leaving 20-40% of the physical amplitude missing.  This
-   module instead applies one exact Tikhonov-regularised inverse on the lattice
-   (an FFT), with the amplification explicitly capped.  Whatever falls outside
-   the representable band is reported, not faked.
+Nothing multiplying the circulation field is discontinuous, and inverse
+mollification is band-limited rather than iterated.
 """
 
 from __future__ import annotations
@@ -49,21 +23,19 @@ RADIUS_RATIO = 1.0
 # M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
 
-# Default cap on the inverse-mollification amplification |Gamma| / |Gamma_raw|.
-# The Tikhonov parameter is derived from it as lambda = 1 / (2 * cap), which is
-# the exact maximum of G / (G^2 + lambda^2) over G in [0, 1].
+# Cap on the inverse-mollification amplification |Gamma| / |Gamma_raw|.
 DEFAULT_TRANSFER_AMPLIFICATION_CAP = 2.0
 
-# Width, in lattice cells, of the cosine taper applied at the outer lattice
-# faces before the transfer FFT, so the periodic transform sees a field that
-# decays to zero rather than a wrap-around discontinuity.
+# Cosine taper width, in cells, at the outer lattice faces: the transform is
+# periodic, so the field must decay rather than wrap.
 _FFT_EDGE_TAPER_CELLS = 2
 
 
 def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
-    """Total circulation, linear impulse and (raw) angular impulse
-    (Winckelmans 1993).  Kernel-correction-free: the prune redistribution
-    uses the same definition on both sides, so the sigma^2 term cancels."""
+    """Circulation, linear impulse and raw angular impulse (Winckelmans 1993).
+
+    Kernel-correction-free: the sigma^2 term cancels across the prune.
+    """
     if len(pos) == 0:
         z = np.zeros(3)
         return {"circulation": z, "linear_impulse": z, "angular_impulse": z}
@@ -112,10 +84,9 @@ def circulation_from_velocity_trace(
 
 
 def smoothstep(x: np.ndarray | float, lo: float, hi: float) -> np.ndarray:
-    """C1 Hermite ramp: 0 for ``x <= lo``, 1 for ``x >= hi``, smooth between.
+    """C1 Hermite ramp, zero slope at both ends.
 
-    Zero first derivative at both ends, so multiplying a field by this taper
-    adds no grid-scale content of its own.
+    Adds no grid-scale content to whatever it multiplies.
     """
     span = float(hi) - float(lo)
     if abs(span) < 1e-300:
@@ -155,11 +126,10 @@ def cosine_eta(
     ramp_width: float,
     dead_zone: float,
 ) -> np.ndarray:
-    """C1 partition-of-unity FVM-authority weight eta(x) in [0, 1].
+    """C1 partition-of-unity FVM-authority weight in [0, 1].
 
-    Built from the minimum signed distance to any box face:
-    eta = 1 for ``dist >= ramp_width``, eta = 0 for ``dist <= dead_zone``
-    and outside the box, cosine ramp (zero slope at both ends) in between.
+    One at ``dist >= ramp_width``, zero at ``dist <= dead_zone`` and outside
+    the box, cosine ramp between.
     """
     pos = np.asarray(grid_pos, dtype=np.float64)
     b = np.asarray(box, dtype=np.float64)
@@ -206,23 +176,9 @@ def transfer_symbols(
     sigma: float,
     amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``(W, Phi)`` for the regularised inverse mollification.
+    """``(W, Phi)`` for the regularised inverse mollification.
 
-    ``W = (1 + lam^2) * G / (G^2 + lam^2)`` maps a physical vorticity spectrum
-    to the particle strengths that induce it; ``Phi = G * W`` is the resulting
-    round-trip gain, i.e. the fraction of each mode the particle field carries.
-
-    Two properties are enforced exactly and are both load-bearing:
-
-    * ``Phi(k = 0) = 1``.  The ``(1 + lam^2)`` normalisation is what makes this
-      hold; a plain Tikhonov inverse attenuates *every* mode by
-      ``1 / (1 + lam^2)``, which at a cap of 2 silently discards 6% of the
-      total circulation on every hand-off.
-    * ``max_G W = amplification_cap``, attained at ``G = lam``.  Solving
-      ``(1 + lam^2) / (2 lam) = cap`` gives ``lam = cap - sqrt(cap^2 - 1)``.
-      The particle strengths can therefore never exceed the raw FVM circulation
-      by more than the requested factor, which is what keeps the inverse from
-      injecting grid-scale noise.
+    ``Phi(0) = 1`` exactly, else hand-offs leak circulation. ``max W = cap``.
     """
     if not np.isfinite(amplification_cap) or amplification_cap < 1.0:
         raise ValueError("amplification_cap must be finite and at least one")
@@ -258,21 +214,8 @@ def bandlimited_transfer(
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Convert an FVM lattice circulation into particle strengths.
 
-    Returns ``(gamma, target_inband, out_of_band_fraction)``:
-
-    ``gamma``
-        Particle strengths whose Gaussian-mollified field reproduces
-        ``target_inband``.
-    ``target_inband``
-        The part of ``target_circ`` the particle lattice can actually carry,
-        i.e. ``Phi * target_circ``.  This is the honest reference for any
-        FVM-vs-VPM comparison: the two representations can only be expected to
-        agree on this band.
-    ``out_of_band_fraction``
-        ``||target - target_inband|| / ||target||``.  A *resolution* diagnostic:
-        it is the fraction of the FVM's vorticity content that is finer than
-        the particle lattice can represent.  Reduce ``h`` to reduce it; no
-        amount of deconvolution can.
+    ``target_inband`` is the band the lattice carries. ``out_of_band_fraction``
+    is a resolution diagnostic: reduce ``h``, not the regularisation.
     """
     grid = np.asarray(target_circ, dtype=np.float64).reshape(*shape, 3)
     taper = _edge_taper(shape)[..., None]
@@ -303,12 +246,9 @@ def spectral_band_ratio(
     h: float,
     bands: tuple[tuple[float, float], ...] = SPECTRAL_BANDS,
 ) -> dict[str, float]:
-    """Banded amplitude ratio ``|omega_VPM(k)| / |omega_FVM(k)|`` on the lattice.
+    """Banded ``|omega_VPM(k)| / |omega_FVM(k)|`` on the lattice.
 
-    A single scalar L1 ratio has been mis-read twice on this code base: it mixes
-    a factor-two grid-scale excess with a compensating large-scale deficit and
-    reports 1.0.  Per-band ratios cannot do that.  Both inputs must already be
-    band-limited to the same band, otherwise the comparison is meaningless.
+    Both inputs must already be band-limited to the same band.
     """
     left = np.asarray(particle_field, dtype=np.float64).reshape(*shape, 3)
     right = np.asarray(reference_field, dtype=np.float64).reshape(*shape, 3)
@@ -345,10 +285,8 @@ def _gaussian_mollified_circulation(
     """Return circulation represented by Gaussian particles on their lattice."""
     from scipy.ndimage import gaussian_filter
 
-    # zeta_sigma ~ e^{-r^2/sigma^2} = e^{-r^2/(2 s^2)} with s = sigma/sqrt(2);
-    # gaussian_filter takes s in grid cells and normalizes its discrete kernel
-    # to sum(w) = 1, which for s >~ 1 cell equals the sampled zeta_sigma * h^3
-    # weights to machine precision.
+    # s = sigma/sqrt(2) in cells. gaussian_filter normalises to sum(w) = 1,
+    # matching the sampled zeta_sigma * h^3 weights for s >~ 1 cell.
     s_cells = float(sigma) / (np.sqrt(2.0) * float(h))
     grid = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3)
     return np.stack(
@@ -369,15 +307,8 @@ def soft_prune(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Non-negative garrote shrinkage of weak lattice strengths.
 
-    ``Gamma' = Gamma * max(0, 1 - (threshold / |Gamma|)^2)``
-
-    Continuous in ``Gamma`` (unlike a hard clip, which is a step function of
-    position wherever the field crosses the threshold), exactly zero for
-    ``|Gamma| <= threshold`` so the node count is still bounded, and biased by
-    only ``(threshold / |Gamma|)^2`` on strong nodes -- 3e-6 at the production
-    cube settings, against the ~1 of a hard clip's discontinuity.
-
-    Returns ``(shrunk, removed)``.
+    ``Gamma * max(0, 1 - (threshold/|Gamma|)^2)``: continuous, and zero below
+    the threshold. Returns ``(shrunk, removed)``.
     """
     circ = np.asarray(circ, dtype=np.float64).reshape(-1, 3)
     if threshold <= 0.0:
@@ -395,13 +326,10 @@ def redistribute_locally(
     shrunk: np.ndarray,
     shape: tuple[int, int, int],
 ) -> np.ndarray:
-    """Return ``shrunk`` with ``removed`` pushed onto surviving face neighbours.
+    """Push ``removed`` onto surviving face neighbours.
 
-    A symmetric six-neighbour scatter with equal weights preserves both the
-    total circulation and the linear impulse *locally*: the weights sum to one
-    and their first moment about the source node is zero.  This replaces the
-    previous global least-squares closure, which conserved the integrals exactly
-    while smearing near-wake circulation over the entire cloud.
+    Equal weights sum to one with zero first moment, so circulation and
+    impulse are conserved locally.
     """
     removed = np.asarray(removed, dtype=np.float64).reshape(*shape, 3)
     if not np.any(removed):
@@ -466,13 +394,8 @@ class HandoffResult:
     # physical band.  1.0 means agreement.
     flux_ratio: float = 0.0
 
-    # Band-limited transfer diagnostics.
-    #   in_band_residual : how well the particles reproduce the band they claim
-    #                      to carry.  Should be ~1e-12; anything larger is a bug.
-    #   out_of_band_fraction : the fraction of the FVM's vorticity that is finer
-    #                      than the particle lattice.  A RESOLUTION diagnostic --
-    #                      reduce h, not the regularisation.
-    #   max_amplification : realised max |Gamma| / |Gamma_raw|.
+    # in_band_residual: ~1e-12, else a bug. out_of_band_fraction: resolution
+    # limit, reduce h. max_amplification: realised |Gamma| / |Gamma_raw|.
     transfer_in_band_residual: float = 0.0
     transfer_out_of_band_fraction: float = 0.0
     transfer_max_amplification: float = 0.0
@@ -523,37 +446,31 @@ def continuous_handoff(
     pos, circ : ndarray (N, 3)
         Current particle positions and circulations.
     box : (6,) ``[x0, x1, y0, y1, z0, z1]``
-        Hand-off domain bounds (the interface is the box surface).
+        Hand-off bounds; the interface is the box surface.
     h : float
-        Lattice spacing (= VPM particle spacing).
+        Lattice spacing, equal to the VPM particle spacing.
     circulation_at_node : callable
-        FVM circulation reconstructed from the weighted velocity trace.
+        FVM circulation from the weighted velocity trace.
     u_inf : ndarray (3,) or None
-        Freestream velocity vector, used to orient the outflow diagnostic.
-    mesh_weight_at_node : callable ``grid_pos -> float (M,) in [0, 1]`` or None
-        Smooth confidence that a node has usable FVM data.  0 means "no FVM
-        data here, stay Lagrangian".  Must be C1; a binary mask stamps
-        grid-scale steps into the particle strengths.
-    fluid_weight_at_node : callable ``positions -> float (M,) in [0, 1]`` or None
-        Smooth solid taper: 1 in the fluid, 0 inside a body, C1 across the wall.
+        Freestream, used to orient the outflow diagnostic.
+    mesh_weight_at_node : callable ``grid_pos -> (M,) in [0, 1]`` or None
+        Smooth confidence that a node has usable FVM data. Must be C1.
+    fluid_weight_at_node : callable ``positions -> (M,) in [0, 1]`` or None
+        Smooth solid taper: one in the fluid, zero inside a body.
     interior_at_node : callable ``positions -> bool (M,)`` or None
-        Exact "strictly inside a solid" test, used only as a final placement
-        guard after the field has already been tapered to zero there.
-    ramp_width : float
-        Width of the eta cosine ramp.  Defaults to ``2 * dead_zone`` or ``4h``.
-    dead_zone : float
-        Thickness of the eta = 0 band at each face.
+        Exact solid test, a placement guard only.
+    ramp_width, dead_zone : float
+        Width of the eta ramp and of the eta = 0 band at each face.
     buffer_length : float
         Outward extension of the remesh lattice beyond the box.
     threshold_abs : float
-        Soft-prune scale: nodes at or below this |Gamma| are removed, larger
-        ones are shrunk by ``(threshold/|Gamma|)^2``.
+        Soft-prune scale; see :func:`soft_prune`.
     radius_ratio : float
         Particle core radius sigma / h.
     amplification_cap : float
-        Maximum inverse-mollification gain (see :func:`transfer_symbols`).
+        See :func:`transfer_symbols`.
     u_max, dt : float
-        Used only for the CFL diagnostic.
+        CFL diagnostic only.
     max_output_particles : int or None
         Post-handoff population cap.
 
@@ -572,10 +489,8 @@ def continuous_handoff(
     lo = np.array([box[0], box[2], box[4]], dtype=np.float64)
     hi = np.array([box[1], box[3], box[5]], dtype=np.float64)
 
-    # Active region = box (+) buffer_length on every face.  Particles here are
-    # remeshed; beyond it they are purely Lagrangian "free exterior".  The
-    # lattice extends a full M4' guard band (2h) further so every remeshed
-    # particle's 4-node stencil stays inside the lattice.
+    # Active region = box (+) buffer_length. Particles here are remeshed;
+    # beyond it they are free Lagrangian. A 2h guard keeps M4' stencils inside.
     guard = _M4P_SUPPORT * h
     lo_active = lo - buffer_length
     hi_active = hi + buffer_length
@@ -588,7 +503,7 @@ def continuous_handoff(
         shift = np.floor((lo_lat - anchor) / float(h))
         lo_lat = anchor + shift * float(h)
 
-    # ---- Input particles: taper by the solid weight, drop true interior ----
+    # ---- Input particles: taper by solid weight, drop true interior ----
     if n > 0:
         input_fluid = (
             np.ones(n)
@@ -656,8 +571,7 @@ def continuous_handoff(
     excluded_target_l1 = float(
         np.linalg.norm(target_raw * (1.0 - node_fluid)[:, None], axis=1).sum()
     )
-    # Both tapers are C1, so the tapered target has no step for the transfer to
-    # ring on -- this is what the old binary `ok`/`binary_erosion` masks broke.
+    # Both tapers are C1, so the target has no step for the transfer to ring on.
     target = target_raw * (node_fluid * node_mesh)[:, None]
 
     # ---- Band-limited inverse mollification ---------------------------------
@@ -711,9 +625,7 @@ def continuous_handoff(
     corrected_mismatch = _invariant_norms(target_inv, post_correction)
     drift: dict[str, float] = {}
     if len(new_pos) > 1:
-        # Final global closure only.  After the local redistribution the residual
-        # it has to absorb is tiny; a large applied correction here means the
-        # local scatter failed and is worth a warning.
+        # Final global closure. A large correction means the local scatter failed.
         new_circ = recover_invariants(
             new_pos, new_circ, target_inv, volumes=np.full(len(new_pos), h**3)
         )
@@ -793,10 +705,7 @@ def continuous_handoff(
     # ---- Diagnostics --------------------------------------------------------
     cfl = float(abs(u_max) * abs(dt) / (buffer_length + 1e-30))
 
-    # Outflow-band content ratio, both sides band-limited.  Comparing the raw
-    # FVM trace against mollified particle strengths is meaningless: the two
-    # describe different bands.  Comparing Phi*target against the mollified
-    # particles compares like with like, so 1.0 really does mean agreement.
+    # Outflow-band content ratio, both sides band-limited so 1.0 means agreement.
     flux_ratio = 0.0
     if len(grid_pos) > 0:
         band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
@@ -882,14 +791,9 @@ class ContinuousOverlapInjector:
 
     # ---- interface placement guard -----------------------------------------
     def _build_face_cell_index(self) -> None:
-        """Cache the cells that sit within one lattice cell of each box face.
+        """Cache the cells within one lattice cell of each box face.
 
-        Used to assert that the hand-off interface is where the method assumes
-        it is: vorticity convecting *out* through the outflow face, and no
-        strong reverse flow on any face.  Every downstream sizing rule
-        (`required_buffer_length`, the CFL bound, the outflow band diagnostic)
-        is derived under that assumption, so violating it silently invalidates
-        all of them.
+        Lets the outflow assumption be checked.
         """
         self._face_cells = {}
         if self._cell_centers is None or len(self._cell_centers) == 0 or self._box is None:
@@ -943,19 +847,8 @@ class ContinuousOverlapInjector:
     def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
         """Mean ``|omega . n| / |omega|`` on each hand-off box face.
 
-        A vortex-particle method represents vorticity as a set of blobs with no
-        images and no periodicity, so it can only represent a field whose vortex
-        lines close *inside* the particle cloud.  Where vortex lines leave the
-        hand-off box through a face, the particles the coupler creates are
-        open-ended tubes, and their Biot-Savart induction is wrong by an amount
-        that grows with distance: a straight tube of span L induces only
-        ``a / sqrt(a^2 + r^2)`` of the two-dimensional value at distance ``r``
-        (``a = L/2``).  For a span of 2D that is 0.71 at r = 1D and 0.32 at
-        r = 3D.  Spanwise-uniform ("quasi-2D") set-ups violate this by
-        construction and cannot be matched to a fully meshed reference.
-
-        Values near zero mean the lines close inside the box, which is the
-        regime the method is valid in.
+        Lines leaving a face become open tubes, inducing only
+        ``a/sqrt(a^2+r^2)`` of the 2-D value.
         """
         if not self._face_cells:
             return {}
@@ -1054,10 +947,9 @@ class ContinuousOverlapInjector:
         return required_buffer_length(self.u_inf, self.dt, self.h)
 
     def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
-        """Approximate signed distance to the nearest solid surface (>0 in fluid).
+        """Signed distance to the nearest solid surface, positive in the fluid.
 
-        Only used to build a C1 taper, so a first-order estimate is enough: an
-        exact SDF is not required for the weight to be smooth.
+        Only feeds a C1 taper, so a first-order estimate suffices.
         """
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         distance = np.full(len(query), np.inf)
@@ -1162,9 +1054,8 @@ class ContinuousOverlapInjector:
             )
 
         def mesh_weight_at_node(grid_pos):
-            # C1 confidence that this node sits inside the FVM mesh: 1 within one
-            # cell of a cell centre, 0 beyond two.  The old binary d < 1.5h test
-            # was a step function multiplying the circulation field.
+            # C1 confidence the node sits inside the FVM mesh: one within a cell
+            # of a cell centre, zero beyond two.
             d, _ = tree.query(grid_pos, workers=-1)
             return 1.0 - smoothstep(d, 1.0 * h, 2.0 * h)
 

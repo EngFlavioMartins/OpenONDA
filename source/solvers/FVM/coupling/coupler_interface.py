@@ -364,17 +364,8 @@ class CouplerInterfaceMixin:
     def shift_pressure_field(self, delta):
         """Add a uniform constant to the pressure field (all ranks, local).
 
-        Only legal when the pressure has a free datum, i.e. when no boundary
-        imposes a Dirichlet pressure.  A coupling patch carries a Neumann
-        pressure condition on every face, so the solver pins an arbitrary
-        reference cell to remove the null space; the resulting level is
-        numerically valid but physically arbitrary, which makes hybrid and
-        fully-meshed pressure fields incomparable and total head meaningless.
-        The coupler uses this to re-datum the field onto ``p = 0`` in the
-        undisturbed stream.
-
-        A uniform shift changes no velocity and no closed-body force; it only
-        fixes the reporting datum.
+        Legal only without a Dirichlet pressure patch. Changes no velocity and
+        no closed-body force.
 
         Args:
             delta: Constant added to every pressure degree of freedom.

@@ -61,11 +61,8 @@ def _period(name: str, interval: float) -> int:
 FORCE_SCHEDULE = SamplingSchedule(every_n_steps=_period("force interval", FORCE_INTERVAL))
 FIELD_SCHEDULE = SamplingSchedule(every_n_steps=_period("diagnostic interval", DIAGNOSTIC_INTERVAL))
 
-# The outlet must be its own patch.  coupling_box_mesh merges all six sides
-# into one patch by default, which is right for the *coupled* case (every face
-# is a donor boundary) and wrong for a reference: it clamps x = +8 to the
-# freestream, so the wake cannot leave the domain and the pressure has no
-# Dirichlet anchor anywhere.
+# The outlet needs its own patch: merging all six sides clamps x = +8 to the
+# freestream and leaves the pressure unanchored.
 MESH = coupling_box_mesh(
     DOMAIN,
     SPACING,
@@ -129,12 +126,8 @@ SAMPLERS = (
 SETUP = FVMSetup(
     case_name="reference_cylinderFlow",
     cores=CORES,
-    # Serial by default.  `petsc_replicated` keeps the whole mesh, the IBM
-    # marker support, PETSc and the numba JIT cache on EVERY rank: measured at
-    # 1.52 GB per rank, 6.09 GB across four, for a mesh whose numerical data is
-    # ~150 MB (numpy_unique_total was 76 MB/rank).  That is what exhausted
-    # memory; the mesh is small.  Set OPENONDA_FVM_CORES > 1 only if you have
-    # the headroom.
+    # Serial by default. `petsc_replicated` held 1.52 GB per rank, 6.09 GB over
+    # four, for a mesh whose numerical data is ~150 MB. That exhausted memory.
     execution=ExecutionConfig(
         operator_backend="numba",
         linear_backend="petsc" if CORES > 1 else "scipy",
@@ -182,9 +175,8 @@ SETUP = FVMSetup(
             value_U=list(U_INF),
             type_p="fixedFluxPressure",
         ),
-        # A real outlet: zero-gradient velocity, Dirichlet pressure.  This also
-        # pins the pressure datum, which is what lets the reference and hybrid
-        # pressure fields be compared at all.
+        # A real outlet. Also pins the pressure datum, so reference and hybrid
+        # pressure fields become comparable.
         BoundaryConfig.outlet("outlet", p=0.0),
     ],
     initial_U=list(INITIAL_U),

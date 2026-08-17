@@ -1,21 +1,7 @@
-"""Repeated hand-off transport: does error accumulate cycle after cycle?
+"""Repeated hand-off transport: does error accumulate?
 
-A single hand-off is measured in ``test_handoff_convergence``.  What decides
-whether a coupled run drifts is what happens when the same operators are applied
-every coupling step for hundreds of steps.  Two regimes matter and they behave
-completely differently:
-
-* **FVM-authority zone** (``eta = 1``).  Particle strengths are overwritten from
-  the FVM every step, so the transfer error is *re-imposed*, not accumulated.
-  It must stay flat.
-* **Lagrangian zone** (``eta = 0``, inside the remesh buffer).  Particles are
-  remeshed every step but never reset, so each remesh is a fresh application of
-  a smoothing operator.  This is the numerical diffusion of the coupling, and it
-  is what turns a resolved wake into an over-damped one as it crosses the
-  overlap region.
-
-The second test measures that diffusion instead of assuming it, and pins it
-against the analytic expectation so a regression cannot creep back in.
+In the FVM-authority zone error is re-imposed. In the Lagrangian zone each
+remesh is a fresh smoothing.
 """
 
 from __future__ import annotations
@@ -33,9 +19,7 @@ U_INF = np.array([1.0, 0.0, 0.0])
 def gaussian_ring(points: np.ndarray, centre: np.ndarray, radius: float, core: float, gamma: float):
     """Circulation per cell of a Gaussian-cored vortex ring about the x axis.
 
-    Closed vortex lines, so the field is one a particle method can represent
-    exactly -- unlike a spanwise-uniform ("quasi-2D") wake, whose lines leave
-    the domain.
+    Closed vortex lines, so a particle method can represent it.
     """
     p = np.asarray(points, dtype=np.float64).reshape(-1, 3) - np.asarray(centre)
     rho = np.hypot(p[:, 1], p[:, 2])
@@ -56,9 +40,7 @@ def _invariants(pos, circ):
 def _cycle(pos, circ, target_fn, dt, mesh_weight=None):
     """Advect by a uniform stream, then hand off once.
 
-    ``mesh_weight = 0`` means "no FVM data here", which drives eta to zero and
-    leaves the particles purely Lagrangian -- the regime where remesh error
-    accumulates instead of being overwritten.
+    ``mesh_weight = 0`` drives eta to zero, leaving particles Lagrangian.
     """
     pos = pos + U_INF * dt
     result = continuous_handoff(
@@ -167,9 +149,7 @@ def test_lagrangian_zone_diffusion_is_bounded_and_measured(capsys):
         for cells, peak, per_cycle in rows:
             print(f"  {cells:5.1f} {peak:22.4f} {per_cycle:22.5f}")
 
-    # A core resolved by 4+ cells must survive 20 remeshes essentially intact;
-    # this is the bound that decides whether a wake crossing the overlap region
-    # arrives at the right strength.
+    # A core resolved by 4+ cells must survive 20 remeshes essentially intact.
     resolved = {cells: peak for cells, peak, _ in rows}
     assert resolved[4.0] > 0.90, f"4 cells/core lost {(1 - resolved[4.0]):.1%} over 20 remeshes"
     assert resolved[6.0] > 0.96

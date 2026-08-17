@@ -1,21 +1,6 @@
 """Hybrid FVM-VPM sphere at Re = 300: the unsteady coupling benchmark.
 
-Why a sphere and not a cylinder
--------------------------------
-A vortex-particle method represents vorticity as a finite set of blobs with no
-images and no periodicity, so it can only represent a field whose vortex lines
-close inside the particle cloud.  A spanwise-uniform ("quasi-2D") cylinder wake
-violates that by construction: its vortex lines run straight out through the
-spanwise faces, and a straight tube of span L induces only ``a/sqrt(a^2+r^2)``
-of the two-dimensional value at distance r (``a = L/2``).  For a 2D span that is
-0.71 at r = 1D and 0.32 at r = 3D -- the donor boundary condition is then 30-70%
-too weak wherever the wake matters, and no coupling scheme can repair it.
-
-A sphere at Re = 300 sheds a planar-symmetric train of hairpin vortices.  It is
-genuinely unsteady and periodic, so Strouhal number, mean drag and lift
-amplitude all converge and a 1% target is meaningful -- and its vortex lines
-close.  The coupler's ``vortex_line_closure`` diagnostic reports this per face
-every step; all entries should stay well below 0.25.
+Unsteady, periodic, vortex lines closing. Watch ``vortex_line_closure``.
 
 Usage:
     ./allrun.sh                 # production
@@ -174,7 +159,7 @@ FVM_SETUP = FVMSetup(
     ),
     samplers=FVM_SAMPLERS,
     transport=TransportConfig(density=G.RHO, nu=G.NU),
-    # Re = 300 is laminar: no subgrid model on either side, so the comparison is
+    # Laminar at Re = 300: no SGS model on either side, so the comparison is
     # not contaminated by two different SGS discretisations.
     turbulence=FVMTurbulenceConfig(),  # model="None": laminar
     boundaries=[

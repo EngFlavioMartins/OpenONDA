@@ -1,10 +1,6 @@
-"""``coupling_box_mesh`` must be able to keep a real outlet out of the merge.
+"""``coupling_box_mesh`` must keep a real outlet out of the merge.
 
-Merging all six sides into one ``fixedValue`` velocity patch is correct for a
-coupled case, where every face is a donor boundary.  Used unchanged for a fully
-meshed *reference* it clamps the outlet to the freestream -- the wake cannot
-leave the domain and the pressure has no Dirichlet anchor -- which silently
-invalidates the reference the hybrid is measured against.
+Merging all six sides clamps a reference's outlet to the freestream.
 """
 
 import numpy as np

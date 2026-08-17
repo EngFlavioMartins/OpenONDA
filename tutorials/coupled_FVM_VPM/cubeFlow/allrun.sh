@@ -35,6 +35,10 @@ export OPENONDA_SURFACE_CELL_SIZE=0.015
 # rule the transfer uses, so keep it downstream of the bubble.
 export OPENONDA_FVM_XMAX=3.0
 export OPENONDA_MAX_PARTICLES=1500000
+# Population control. The old 0.005 was inert (2.8% of nodes), so every lattice
+# node became a particle: 654k, of which GBD then discarded 143k every step.
+export OPENONDA_PRUNE_VORTICITY_MIN=0.05
+export OPENONDA_GBD_THRESHOLD=0.30
 
 export OPENONDA_FORCE_INTERVAL=0.15
 export OPENONDA_DIAGNOSTIC_INTERVAL=0.60

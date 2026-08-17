@@ -162,15 +162,7 @@ class ImmersedBody:
     def signed_distance(self, points) -> np.ndarray:
         """Signed distance to the solid surface: positive in the fluid.
 
-        The coupled hand-off needs this to build a C1 taper across the wall.
-        A binary inside/outside mask cannot do that job: multiplying the
-        circulation field by a step function injects energy at every
-        wavelength, including the ones the particle lattice cannot represent,
-        which shows up as a grid-scale noise floor in the transferred vorticity.
-
-        Exact for the analytic primitives; the z-extrusion is combined with the
-        planar distance by the usual box-union formula, which is exact outside
-        and a lower bound inside (adequate for a taper).
+        Feeds the C1 wall taper. Exact outside, a lower bound inside.
         """
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         if self._geometry is None:

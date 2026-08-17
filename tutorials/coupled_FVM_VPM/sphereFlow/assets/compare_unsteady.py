@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """Compare the hybrid sphere against its fully meshed reference.
 
-An unsteady periodic flow has three quantities that converge and can therefore
-carry a 1% target: mean drag, lift amplitude, and Strouhal number.  Comparing
-instantaneous fields point-by-point does not -- two runs of the same periodic
-flow drift in phase, and the pointwise difference then measures the phase, not
-the coupling.  This script reports the converged metrics, states the phase lag
-explicitly, and only then shows the phase-aligned profiles.
+Mean drag, lift amplitude and Strouhal converge; a pointwise field difference
+measures phase drift instead.
 """
 
 from __future__ import annotations
@@ -56,8 +52,7 @@ def strouhal(time: np.ndarray, signal: np.ndarray) -> float:
     spectrum[0] = 0.0
     peak = int(np.argmax(spectrum))
     if 0 < peak < len(freq) - 1:
-        # Parabolic interpolation: the FFT bin spacing alone is far coarser
-        # than the 1% target on St.
+        # Parabolic interpolation: the FFT bin spacing is coarser than 1%.
         a, b, c = spectrum[peak - 1 : peak + 2]
         offset = 0.5 * (a - c) / (a - 2.0 * b + c)
         return float((peak + offset) * (freq[1] - freq[0]))

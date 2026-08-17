@@ -99,6 +99,11 @@ SURFACE_CELL_SIZE = float(
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 PARTICLE_LIMIT = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 OVERLAP_RADIUS_RATIO = 1.0
+# Hand-off prune level, in 1/s. Wake rms |omega| is ~2.7, so 0.005 was inert.
+PRUNE_VORTICITY_MIN = float(os.environ.get("OPENONDA_PRUNE_VORTICITY_MIN", "0.05"))
+# GBD relative-local prune: a shape filter, not a population control. Measured
+# at 0.30 it removed 0.6% of nodes, so leave population control to the handoff.
+GBD_THRESHOLD = float(os.environ.get("OPENONDA_GBD_THRESHOLD", "0.30"))
 # Force history remains dense enough for Cd/Strouhal analysis. Field samples,
 # raw FVM volumes, and restart checkpoints are independent because they have
 # very different costs and are not all needed by the plotting scripts.
@@ -291,7 +296,7 @@ VPM_SETUP = VPMSetup(
         padding=3.0,
         viscosity=NU,
         threshold_mode="relative_local",
-        threshold=0.30,
+        threshold=GBD_THRESHOLD,
         max_nodes=PARTICLE_LIMIT,
         cap_abs_fraction=0.95,
         regen_radius_ratio=OVERLAP_RADIUS_RATIO,
@@ -331,9 +336,14 @@ COUPLER_SETUP = CouplerSetup(
     h=PARTICLE_SPACING,
     buffer_thickness=6 * PARTICLE_SPACING,
     dead_zone_h=0.0,
-    prune_vorticity_min=0.005,
+    # 0.005 removed 2.8% of nodes; the lattice therefore became particles almost
+    # everywhere. 0.05 removes 38% for 2% of Sum|Gamma|, redistributed locally.
+    prune_vorticity_min=PRUNE_VORTICITY_MIN,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
+    transfer_amplification_cap=2.0,
+    resync_donor_after_handoff=True,
+    anchor_pressure=True,
     log_period=VPM_LOG_PERIOD,
     backup_period=BACKUP_PERIOD,
 )
