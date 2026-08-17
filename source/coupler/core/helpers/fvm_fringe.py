@@ -101,6 +101,25 @@ class FringeFields:
         self._next = target
         self._push(target)
 
+    def update_endpoint(self, active_velocity: np.ndarray | None = None) -> None:
+        """Replace the interval endpoint with a post-hand-off re-evaluation.
+
+        The endpoint that :meth:`update_target` stored was predicted before the
+        hand-off corrected the particle cloud.  Overwriting it here means the
+        next interval interpolates from a target the current particles actually
+        produce, instead of from a stale prediction.  Collective-safe: worker
+        ranks call this with ``None`` and it is a no-op for them.
+        """
+        if self._next is None or active_velocity is None:
+            return
+        active = self.relaxation > 0.0
+        values = np.asarray(active_velocity, dtype=float).reshape(-1, 3)
+        if len(values) != int(np.count_nonzero(active)):
+            raise ValueError("resynchronised fringe velocity count does not match active cells")
+        endpoint = self._next.copy()
+        endpoint[active] = values
+        self._next = endpoint
+
     def push_target(self, alpha: float) -> None:
         if self._next is None:
             return

@@ -12,7 +12,9 @@ fi
 
 export OPENONDA_SMOKE=0
 export OPENONDA_T_END=15.0
-export OPENONDA_FVM_CORES=4
+# Serial: four replicated ranks cost 6.1 GB for an 86k-cell mesh and bought
+# nothing (linear-solver setup dominated at 1.1 s/step).
+export OPENONDA_FVM_CORES=1
 export OPENONDA_FVM_DT=0.025
 export OPENONDA_SPACING=0.125
 export OPENONDA_SAMPLE_SPACING=0.125

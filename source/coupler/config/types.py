@@ -34,9 +34,25 @@ class CouplerSetup:
     buffer_thickness: float = 0.30
     dead_zone_h: float = 3.0
     prune_vorticity_min: float = 0.005
-    overlap_shell_prune_multiplier: float = 1.0
     handoff_max_particles: int | None = None
     overlap_radius_ratio: float = 1.0
+    # Cap on the inverse-mollification gain in the band-limited FVM->VPM
+    # transfer.  The particle strengths may never exceed the raw FVM
+    # circulation by more than this factor; everything the lattice cannot carry
+    # within that bound is reported as `out_of_band_fraction` rather than
+    # amplified into grid-scale noise.
+    transfer_amplification_cap: float = 2.0
+    # Re-evaluate the donor trace from the *corrected* particle field after the
+    # hand-off and store that as the interval endpoint.  Without it the endpoint
+    # kept for the next interval is the pre-handoff prediction, which the
+    # corrected particles no longer reproduce -- an O(dt) inconsistency injected
+    # at every step boundary.  Costs one extra donor evaluation (~0.3 s against
+    # ~46 s for the FVM sub-cycle on the production cube case).
+    resync_donor_after_handoff: bool = True
+    # Pin the FVM pressure datum.  The coupling patch carries a Neumann
+    # pressure condition on every face, so the discrete pressure Poisson system
+    # is singular without this.
+    anchor_pressure: bool = True
 
     def __post_init__(self) -> None:
         u_inf = np.asarray(self.u_inf, dtype=np.float64)
@@ -83,7 +99,7 @@ class CouplerSetup:
             "h": self.h,
             "buffer_thickness": self.buffer_thickness,
             "overlap_radius_ratio": self.overlap_radius_ratio,
-            "overlap_shell_prune_multiplier": self.overlap_shell_prune_multiplier,
+            "transfer_amplification_cap": self.transfer_amplification_cap,
         }
         invalid = [
             name
@@ -96,8 +112,8 @@ class CouplerSetup:
             raise ValueError("backup_period must be non-negative and log_period positive")
         if self.dead_zone_h < 0.0 or self.prune_vorticity_min < 0.0:
             raise ValueError("dead_zone_h and prune_vorticity_min must be non-negative")
-        if self.overlap_shell_prune_multiplier < 1.0:
-            raise ValueError("overlap_shell_prune_multiplier must be at least one")
+        if self.transfer_amplification_cap < 1.0:
+            raise ValueError("transfer_amplification_cap must be at least one")
         if self.buffer_thickness <= self.dead_zone_h * self.h:
             raise ValueError("buffer_thickness must exceed dead_zone_h * h")
         if self.overlap_radius_ratio < 1.0:
@@ -165,8 +181,10 @@ class CouplerSetup:
             "coupler": {
                 "handoff_domain": handoff_domain,
                 "prune_vorticity_min": self.prune_vorticity_min,
-                "overlap_shell_prune_multiplier": self.overlap_shell_prune_multiplier,
                 "handoff_max_particles": self.handoff_max_particles,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
+                "transfer_amplification_cap": self.transfer_amplification_cap,
+                "resync_donor_after_handoff": self.resync_donor_after_handoff,
+                "anchor_pressure": self.anchor_pressure,
             },
         }

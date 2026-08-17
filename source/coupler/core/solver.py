@@ -122,6 +122,9 @@ class FVMVPMCoupler:
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
         }
+        self._last_pressure_shift = 0.0
+        self._pressure_anchor_cells: np.ndarray | None = None
+        self._pressure_anchor_available = False
         self.coupling_diagnostics: list[dict] = []
 
         # ── Multi-rate time stepping (FVM sub-cycling) ───────────────────────
@@ -510,6 +513,7 @@ class FVMVPMCoupler:
                 logger.info("[Init] VPM diffusion lattice aligned with the handoff lattice.")
 
         self.fringe = FringeFields(cfg, self.vpm, self.fvm, coupling_dt=self.dt_vpm)
+        self._prepare_pressure_anchor()
 
         if self._is_master:
             logger.info("[Init] Impulsive start: zero VPM particles.")
@@ -550,7 +554,9 @@ class FVMVPMCoupler:
             self._assert_vpm_particle_fingerprint(particle_guard, "target evaluation")
             fvm_time = self._advance_fvm(*face_geometry, *donor_state)
             self._assert_vpm_particle_fingerprint(particle_guard, "FVM subcycling")
+            self._anchor_pressure_datum()
             handoff_result, handoff_time = self._transfer_fvm_to_vpm(*face_geometry)
+            self._resync_donor(*face_geometry)
             self._last_handoff_result = handoff_result
             self._record_step(
                 step,
@@ -865,6 +871,162 @@ class FVMVPMCoupler:
             }
         return handoff_result, time.perf_counter() - t_handoff
 
+    # =========================================================
+    # Post-handoff consistency: donor resync and pressure datum
+    # =========================================================
+
+    def _resync_donor(
+        self,
+        face_centers: np.ndarray,
+        _face_normals: np.ndarray,
+        _face_areas: np.ndarray,
+    ) -> None:
+        """Re-evaluate the donor trace from the corrected particle field.
+
+        The endpoint stored for the next interval is otherwise the *prediction*
+        made before the hand-off, which the corrected particles no longer
+        reproduce.  Every interval therefore starts from a boundary state that
+        is inconsistent with the particle cloud driving it -- an O(dt) defect
+        injected once per step, and the most likely origin of the measured
+        ~0.15 s lag in the coupled cube drag history.
+
+        This is a defect correction, not a full Picard sweep: the FVM is not
+        re-solved (that would need a rewind of ``period_multiplier`` committed
+        sub-steps).  It costs one donor evaluation, roughly 0.3 s against ~46 s
+        for the sub-cycle on the production cube case.
+        """
+        if not self.config.resync_donor_after_handoff:
+            return
+        assert self.fringe is not None
+        if not self._is_master:
+            self.fringe.update_endpoint()
+            return
+
+        assert self.vpm is not None
+        fringe_points = self.fringe.active_cell_centres
+        n_fringe = len(fringe_points)
+        targets = np.concatenate((fringe_points, face_centers), axis=0)
+        corrected = np.asarray(
+            self.vpm.compute_target_velocities(
+                targets, include_freestream=True, zone_mask=None, include_body=True
+            ),
+            dtype=np.float64,
+        ).reshape(-1, 3)
+        if corrected.shape != (n_fringe + len(face_centers), 3) or not np.all(
+            np.isfinite(corrected)
+        ):
+            raise RuntimeError("donor resynchronisation returned invalid velocities")
+
+        self.fringe.update_endpoint(corrected[:n_fringe])
+        u_inf_mag = float(np.linalg.norm(self.u_inf)) + 1e-30
+        drift = (
+            float(np.max(np.linalg.norm(corrected[n_fringe:] - self._u_bc_prev, axis=1)))
+            / u_inf_mag
+            if self._u_bc_prev is not None and len(face_centers)
+            else 0.0
+        )
+        self._u_bc_prev = corrected[n_fringe:]
+        logger.info("     [Resync] donor endpoint moved max|du|/Uinf=%.3e", drift)
+
+    def _pressure_anchor_selection(self) -> np.ndarray | None:
+        """Indices of the cells used to re-datum the pressure (master only)."""
+        if self._pressure_anchor_cells is not None:
+            return self._pressure_anchor_cells
+        assert self.fvm is not None
+        centres = np.asarray(self.fvm.get_cell_center_coordinates(), dtype=np.float64).reshape(
+            -1, 3
+        )
+        if centres.shape[0] == 0 or self.config.fvm_box is None:
+            return None
+        axis, sign = self._outflow_axis_sign()
+        box = np.asarray(self.config.fvm_box, dtype=np.float64)
+        # The inflow face: the one the freestream enters through.
+        plane = box[2 * axis] if sign >= 0 else box[2 * axis + 1]
+        depth = 2.0 * float(self.config.h)
+        near = np.abs(centres[:, axis] - plane) <= depth
+        # Stay away from the lateral edges, where the body's blockage is felt.
+        span = 0.25
+        for other in range(3):
+            if other == axis:
+                continue
+            lo, hi = box[2 * other], box[2 * other + 1]
+            margin = span * (hi - lo)
+            near &= (centres[:, other] >= lo + margin) & (centres[:, other] <= hi - margin)
+        index = np.flatnonzero(near)
+        self._pressure_anchor_cells = index if index.size else None
+        return self._pressure_anchor_cells
+
+    def _anchor_pressure_datum(self) -> None:
+        """Re-datum the FVM pressure onto ``p = 0`` in the undisturbed stream.
+
+        The coupling patch carries a Neumann pressure condition on every face,
+        so the discrete pressure Poisson system has a constant null space and
+        the solver pins an arbitrary reference cell.  The resulting level is a
+        valid solution but an arbitrary one: measured on the coupled cube case
+        the hybrid's total head sat at 0.64 against the fully meshed 0.51 (true
+        0.50), which makes every pressure comparison meaningless even though a
+        uniform offset changes no velocity and no closed-body force.
+
+        The shift is chosen so the mean total head over the inflow cells equals
+        the freestream value, which is the same datum the fully meshed case gets
+        for free from its Dirichlet outlet.
+        """
+        if not self.config.anchor_pressure or not self._pressure_anchor_available:
+            return
+        assert self.fvm is not None
+        # Both getters gather to root under a partitioned backend, so every rank
+        # must call them; only the master forms the shift.
+        pressure = np.asarray(self.fvm.get_pressure_field(), dtype=np.float64).ravel()
+        velocity = self._get_velocity_field_buffer()
+
+        delta = 0.0
+        if self._is_master:
+            index = self._pressure_anchor_selection()
+            if index is not None and index.size and index.max() < len(pressure):
+                head = pressure[index] + 0.5 * np.einsum(
+                    "ij,ij->i", velocity[index], velocity[index]
+                )
+                freestream_head = 0.5 * float(np.dot(self.u_inf, self.u_inf))
+                delta = float(freestream_head - np.mean(head))
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            delta = float(_mpi4py_comm.bcast(delta if self._is_master else None, root=0))
+        if not np.isfinite(delta):
+            raise FloatingPointError("non-finite pressure datum shift")
+        self.fvm.shift_pressure_field(delta)
+        self._last_pressure_shift = delta
+
+    def _prepare_pressure_anchor(self) -> None:
+        """Decide once whether the pressure datum can and should be re-anchored."""
+        self._pressure_anchor_available = False
+        if not self.config.anchor_pressure:
+            return
+        if not callable(getattr(self.fvm, "shift_pressure_field", None)) or not callable(
+            getattr(self.fvm, "get_pressure_field", None)
+        ):
+            if self._is_master:
+                logger.warning(
+                    "[Init] Eulerian backend does not expose the pressure datum API; "
+                    "hybrid and fully meshed pressure fields will differ by an "
+                    "arbitrary constant."
+                )
+            return
+        try:
+            from source.solvers.FVM.utils.cavity_utils import needs_pressure_reference
+
+            free_datum = bool(needs_pressure_reference(self.fvm.boundaries))
+        except Exception:  # noqa: BLE001 - non-native backends need not expose this
+            free_datum = True
+        if not free_datum:
+            if self._is_master:
+                logger.info(
+                    "[Init] A Dirichlet pressure patch already fixes the datum; "
+                    "pressure re-anchoring disabled."
+                )
+            return
+        self._pressure_anchor_available = True
+        if self._is_master:
+            logger.info("[Init] Pressure datum anchored to p=0 in the undisturbed stream.")
+
     def _record_step(
         self,
         step: int,
@@ -1094,12 +1256,8 @@ class FVMVPMCoupler:
             "n_free": int(getattr(result, "n_free", 0)),
             "n_excluded": int(getattr(result, "n_excluded", 0)),
             "n_pruned": int(getattr(result, "n_pruned", 0)),
-            "n_overlap_shell_pruned": int(getattr(result, "n_overlap_shell_pruned", 0)),
             "pruned_circulation_fraction": float(
                 getattr(result, "pruned_circulation_fraction", 0.0)
-            ),
-            "overlap_shell_pruned_circulation_fraction": float(
-                getattr(result, "overlap_shell_pruned_circulation_fraction", 0.0)
             ),
             "n_population_pruned": int(getattr(result, "n_population_pruned", 0)),
             "population_pruned_circulation_fraction": float(
@@ -1109,19 +1267,41 @@ class FVMVPMCoupler:
                 getattr(result, "population_pruned_velocity_bound", 0.0)
             ),
             "flux_ratio": float(getattr(result, "flux_ratio", 0.0)),
-            "strength_correction_residual_pre": float(
-                getattr(result, "strength_corr_residual_pre", 0.0)
+            "transfer_in_band_residual": float(
+                getattr(result, "transfer_in_band_residual", 0.0)
             ),
-            "strength_correction_residual_post": float(
-                getattr(result, "strength_corr_residual_post", 0.0)
+            "transfer_out_of_band_fraction": float(
+                getattr(result, "transfer_out_of_band_fraction", 0.0)
+            ),
+            "transfer_max_amplification": float(
+                getattr(result, "transfer_max_amplification", 0.0)
             ),
         }
         if not all(np.isfinite(value) for value in handoff.values()):
             raise FloatingPointError("non-finite handoff diagnostic")
+        spectrum = {
+            str(name): float(value)
+            for name, value in (getattr(result, "spectral_band_ratio", None) or {}).items()
+        }
+        if not all(np.isfinite(value) for value in spectrum.values()):
+            raise FloatingPointError("non-finite spectral hand-off diagnostic")
+        injector = getattr(self, "injector", None)
+        interface = {
+            str(name): float(value)
+            for name, value in (getattr(injector, "last_interface_flow", None) or {}).items()
+        }
+        closure = {
+            str(name): float(value)
+            for name, value in (getattr(injector, "last_vortex_line_closure", None) or {}).items()
+        }
         return {
             "conservation": conservation,
             "donor_flux": donor,
             "handoff": handoff,
+            "spectral_band_ratio": spectrum,
+            "interface_normal_velocity": interface,
+            "vortex_line_closure": closure,
+            "pressure_datum_shift": float(getattr(self, "_last_pressure_shift", 0.0)),
             "period_multiplier": int(self.period_multiplier),
             "handoff_particle_count": int(getattr(result, "n_total", 0)),
         }

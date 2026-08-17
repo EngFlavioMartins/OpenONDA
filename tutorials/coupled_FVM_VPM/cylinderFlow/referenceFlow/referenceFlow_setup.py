@@ -40,7 +40,7 @@ NU = float(np.linalg.norm(U_INF)) * DIAMETER / REYNOLDS
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.25" if SMOKE else "0.125"))
 DT = float(os.environ.get("OPENONDA_FVM_DT", "0.025"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "15.0"))
-CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1" if SMOKE else "4"))
+CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
 DOMAIN = (-4.0, 8.0, -3.5, 3.5, -1.0, 1.0)
 SPAN = DOMAIN[5] - DOMAIN[4]
 
@@ -61,10 +61,16 @@ def _period(name: str, interval: float) -> int:
 FORCE_SCHEDULE = SamplingSchedule(every_n_steps=_period("force interval", FORCE_INTERVAL))
 FIELD_SCHEDULE = SamplingSchedule(every_n_steps=_period("diagnostic interval", DIAGNOSTIC_INTERVAL))
 
+# The outlet must be its own patch.  coupling_box_mesh merges all six sides
+# into one patch by default, which is right for the *coupled* case (every face
+# is a donor boundary) and wrong for a reference: it clamps x = +8 to the
+# freestream, so the wake cannot leave the domain and the pressure has no
+# Dirichlet anchor anywhere.
 MESH = coupling_box_mesh(
     DOMAIN,
     SPACING,
-    patch_name="numericalBoundary",
+    patch_name="farfield",
+    separate_outer=("outlet",),
 )
 CYLINDER = ImmersedBody.extruded_cylinder_z(
     centre=[0.0, 0.0, 0.0],
@@ -123,10 +129,16 @@ SAMPLERS = (
 SETUP = FVMSetup(
     case_name="reference_cylinderFlow",
     cores=CORES,
+    # Serial by default.  `petsc_replicated` keeps the whole mesh, the IBM
+    # marker support, PETSc and the numba JIT cache on EVERY rank: measured at
+    # 1.52 GB per rank, 6.09 GB across four, for a mesh whose numerical data is
+    # ~150 MB (numpy_unique_total was 76 MB/rank).  That is what exhausted
+    # memory; the mesh is small.  Set OPENONDA_FVM_CORES > 1 only if you have
+    # the headroom.
     execution=ExecutionConfig(
         operator_backend="numba",
-        linear_backend="petsc",
-        parallel_mode="petsc_replicated",
+        linear_backend="petsc" if CORES > 1 else "scipy",
+        parallel_mode="petsc_replicated" if CORES > 1 else "serial",
     ),
     output=OutputSetup(
         compression="lz4",
@@ -165,11 +177,15 @@ SETUP = FVMSetup(
     turbulence=TurbulenceConfig.smagorinsky(Cs=0.12),
     boundaries=[
         BoundaryConfig(
-            name="numericalBoundary",
+            name="farfield",
             type_U="fixedValue",
             value_U=list(U_INF),
             type_p="fixedFluxPressure",
         ),
+        # A real outlet: zero-gradient velocity, Dirichlet pressure.  This also
+        # pins the pressure datum, which is what lets the reference and hybrid
+        # pressure fields be compared at all.
+        BoundaryConfig.outlet("outlet", p=0.0),
     ],
     initial_U=list(INITIAL_U),
     initial_p=0.0,

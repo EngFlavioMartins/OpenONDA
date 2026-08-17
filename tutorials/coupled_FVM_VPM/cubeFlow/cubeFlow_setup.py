@@ -99,9 +99,6 @@ SURFACE_CELL_SIZE = float(
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
 PARTICLE_LIMIT = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 OVERLAP_RADIUS_RATIO = 1.0
-OVERLAP_SHELL_PRUNE_MULTIPLIER = float(
-    os.environ.get("OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER", "1.0")
-)
 # Force history remains dense enough for Cd/Strouhal analysis. Field samples,
 # raw FVM volumes, and restart checkpoints are independent because they have
 # very different costs and are not all needed by the plotting scripts.
@@ -335,7 +332,6 @@ COUPLER_SETUP = CouplerSetup(
     buffer_thickness=6 * PARTICLE_SPACING,
     dead_zone_h=0.0,
     prune_vorticity_min=0.005,
-    overlap_shell_prune_multiplier=OVERLAP_SHELL_PRUNE_MULTIPLIER,
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
     log_period=VPM_LOG_PERIOD,
@@ -348,7 +344,7 @@ def main() -> None:
     print(
         f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
         f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
-        f"VPM scheme={VPM_SCHEME}, shell prune×{OVERLAP_SHELL_PRUNE_MULTIPLIER:g}, "
+        f"VPM scheme={VPM_SCHEME}, "
         f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
     )
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)

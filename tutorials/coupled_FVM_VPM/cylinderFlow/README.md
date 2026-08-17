@@ -1,5 +1,27 @@
 # Matched parallel FVM-VPM cylinder LES benchmark
 
+> **This case cannot reach 1% and is kept as a regression case, not a validation
+> gate.** It is spanwise-uniform, and a vortex-particle method has no images and
+> no periodicity, so it cannot represent a two-dimensional vortex: a straight
+> tube of span `L` induces only `a/sqrt(a^2 + r^2)` of the 2-D value at distance
+> `r` (`a = L/2`). At the 2 D span used here that is **0.71 at r = 1D and 0.32
+> at r = 3D**, so the donor boundary condition is 30-70% too weak wherever the
+> wake matters. A 1% deficit at r = 3D would need a span of ~42 D. No coupling
+> scheme can repair a mismatch between the flow and what the method represents.
+>
+> For an unsteady benchmark that *can* reach 1%, use `../sphereFlow` (Re = 300,
+> periodic hairpin shedding, closed vortex lines). The coupler reports
+> `vortex_line_closure` per hand-off face every step and warns above 0.25; this
+> case will trip that warning on its spanwise faces, which is correct.
+>
+> Two setup defects found in the original reference are fixed here: the outlet
+> was merged into the `fixedValue` coupling patch (so the wake could not leave
+> the domain and the pressure had no anchor), and it ran under
+> `petsc_replicated` on four ranks, which cost 6.09 GB for an 86k-cell mesh
+> because every rank carries a full Python + numba + PETSc runtime. It now uses
+> a separate outlet patch and runs serially.
+
+
 This sibling of `cubeFlow` isolates the transition that matters: the attached
 startup flow is followed by a rapidly developing three-dimensional vortex
 street. Both solutions use the same Re=500 circular cylinder, direct-forcing
@@ -48,11 +70,11 @@ Both `allrun.sh` files intentionally accept no solver arguments. Edit their
 explicit `OPENONDA_*` blocks to create a version-controlled resolution or time
 study.
 
-Both recommended runs use four-rank replicated PETSc. Each MPI rank retains
-the complete 86,016-cell reference mesh and IBM marker support, while PETSc
-solves the momentum and pressure systems collectively. This is intentionally a
-small-memory starting case; larger non-IBM cases should continue using the
-default partitioned backend.
+Both recommended runs are serial. Four-rank `petsc_replicated` was measured at
+1.52 GB per rank (6.09 GB total) for the 86,016-cell reference, of which only
+~150 MB per rank is numerical data - the rest is a replicated Python, numba and
+PETSc runtime - and the linear-solver setup dominated at 1.1 s/step. Set
+`OPENONDA_FVM_CORES > 1` only if you have the headroom.
 
 The four-rank production-resolution timing gate on the development MacBook Pro
 measured approximately 3.2--3.6 seconds per mature reference step. The 600-step

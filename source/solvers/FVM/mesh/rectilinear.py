@@ -143,15 +143,24 @@ def box_mesh_3d(
     wall_patch_name: str = "cube",
     merge_outer_patch: str | None = None,
     empty_spanwise: bool = False,
+    separate_outer: tuple[str, ...] = (),
 ) -> dict:
     """Face-based ``mesh_data`` dict for a rectilinear grid with a box hole.
 
     Patch order: inlet (xmin), outlet (xmax), ymin, ymax, zmin, zmax, then the
     ``wall_patch_name`` hole faces (type ``wall``). With ``merge_outer_patch``
     the outer sides become one boundary patch of that name (the coupler's
-    coupling-patch layout); the face ordering is unchanged. If
-    ``empty_spanwise`` is true, zmin/zmax remain separate ``empty`` patches and
-    only the four in-plane sides are merged.
+    coupling-patch layout). If ``empty_spanwise`` is true, zmin/zmax remain
+    separate ``empty`` patches and only the four in-plane sides are merged.
+
+    ``separate_outer`` names outer faces (``"inlet"``, ``"outlet"``, ``"ymin"``,
+    ``"ymax"``, ``"zmin"``, ``"zmax"``) that stay
+    out of the merge and keep their own patch, so a fully meshed reference can
+    give itself a real outlet and a Dirichlet pressure datum.  Merging *every*
+    side into one ``fixedValue`` velocity patch, as the coupling layout does,
+    clamps the outlet to the freestream: the wake cannot leave the domain and
+    the pressure has no anchor anywhere.  The merged families are emitted first
+    so each patch stays a contiguous face range.
     """
     xs = np.asarray(xs, dtype=np.float64)
     ys = np.asarray(ys, dtype=np.float64)
@@ -277,6 +286,22 @@ def box_mesh_3d(
         # when the hole touches an outer boundary).
         outer = [(name, quads[keep[own]], own[keep[own]]) for name, quads, own in outer]
 
+    outer_names = [name for name, _, _ in outer]
+    unknown = [name for name in separate_outer if name not in outer_names]
+    if unknown:
+        raise ValueError(
+            f"separate_outer names {unknown} are not outer faces; expected any of {outer_names}"
+        )
+
+    def _is_standalone(name: str) -> bool:
+        return name in separate_outer or (empty_spanwise and name in {"zmin", "zmax"})
+
+    if merge_outer_patch is not None:
+        # Emit the merged families first so every patch is a contiguous range.
+        outer = [entry for entry in outer if not _is_standalone(entry[0])] + [
+            entry for entry in outer if _is_standalone(entry[0])
+        ]
+
     all_quads = [interior_quads] + [quads for _, quads, _ in outer] + [wall_quads]
     all_owners = [interior_owners] + [own for _, _, own in outer] + [wall_owners]
     n_interior = interior_quads.shape[0]
@@ -284,18 +309,24 @@ def box_mesh_3d(
     boundary = []
     start = n_interior
     if merge_outer_patch is not None:
-        merged_outer = outer[:4] if empty_spanwise else outer
-        n_outer = sum(quads.shape[0] for _, quads, _ in merged_outer)
-        boundary.append(
-            {"name": merge_outer_patch, "startFace": start, "nFaces": n_outer, "type": "patch"}
-        )
-        start += n_outer
-        if empty_spanwise:
-            for name, quads, _ in outer[4:]:
-                boundary.append(
-                    {"name": name, "startFace": start, "nFaces": quads.shape[0], "type": "empty"}
-                )
-                start += quads.shape[0]
+        merged = [entry for entry in outer if not _is_standalone(entry[0])]
+        standalone = [entry for entry in outer if _is_standalone(entry[0])]
+        n_outer = sum(quads.shape[0] for _, quads, _ in merged)
+        if n_outer:
+            boundary.append(
+                {"name": merge_outer_patch, "startFace": start, "nFaces": n_outer, "type": "patch"}
+            )
+            start += n_outer
+        for name, quads, _ in standalone:
+            boundary.append(
+                {
+                    "name": name,
+                    "startFace": start,
+                    "nFaces": quads.shape[0],
+                    "type": "empty" if empty_spanwise and name in {"zmin", "zmax"} else "patch",
+                }
+            )
+            start += quads.shape[0]
     else:
         for name, quads, _ in outer:
             boundary.append(
@@ -373,6 +404,7 @@ def coupling_box_mesh(
     wall_patch_name: str = "cube",
     nodes: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     empty_spanwise: bool = False,
+    separate_outer: tuple[str, ...] = (),
 ) -> dict:
     """Return a hex mesh whose six sides form one coupling patch.
 
@@ -384,6 +416,13 @@ def coupling_box_mesh(
     (body-fitted): the exposed faces become a
     second boundary patch ``wall_patch_name`` of type ``wall``.  The hole faces
     must lie exactly on mesh planes.
+
+    ``separate_outer`` keeps the named outer faces out of the coupling patch,
+    each as its own patch.  A fully meshed *reference* built with this helper
+    must use it -- ``separate_outer=("outlet",)`` plus a
+    :meth:`BoundaryConfig.outlet` -- otherwise all six sides are one
+    ``fixedValue`` velocity patch, the outlet is clamped to the freestream and
+    the wake cannot leave the domain.
     """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
     if nodes is not None:
@@ -413,6 +452,7 @@ def coupling_box_mesh(
         wall_patch_name=wall_patch_name,
         merge_outer_patch=patch_name,
         empty_spanwise=empty_spanwise,
+        separate_outer=separate_outer,
     )
 
 

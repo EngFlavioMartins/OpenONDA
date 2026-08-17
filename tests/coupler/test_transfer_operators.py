@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -113,6 +115,7 @@ def test_fringe_and_donor_share_one_target_evaluation():
     coupler.fringe = _Fringe()
     coupler._u_bc_prev = None
     coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.config = SimpleNamespace(donor_boundary_mode="dirichlet")
     coupler._log_outflow_deficit = lambda *_: None
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
@@ -254,7 +257,7 @@ def test_direct_circulation_target_bypasses_cell_remeshing():
         box,
         h,
         circulation_at_node=lambda points: np.tile(target, (len(points), 1)),
-        inside_mesh_at_node=lambda points: np.ones(len(points), dtype=bool),
+        mesh_weight_at_node=lambda points: np.ones(len(points)),
         ramp_width=h,
         buffer_length=h,
         threshold_abs=0.0,

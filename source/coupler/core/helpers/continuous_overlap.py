@@ -1,8 +1,33 @@
 """Conservative overlap transport from FVM cells to VPM particles.
 
-The hand-off remeshes onto a regular lattice, blends FVM and VPM circulation
-with a smooth partition of unity, and recovers selected integral invariants
-after pruning. The implementation is independent of the FVM and VPM runtimes.
+The hand-off remeshes onto a regular lattice, transfers the FVM vorticity onto
+that lattice with a *band-limited* inverse-mollification, blends FVM and VPM
+circulation with a smooth partition of unity, and recovers selected integral
+invariants after a continuous (soft) prune. The implementation is independent
+of the FVM and VPM runtimes.
+
+Design notes
+------------
+Two properties are load-bearing and were the source of the historical error
+growth in the coupled cube/cylinder cases:
+
+1. **Nothing that multiplies the circulation field may be discontinuous.**
+   A Gaussian-blob particle field of core ``sigma`` on a lattice of spacing
+   ``h`` can only represent wavelengths above roughly ``4h``.  Multiplying that
+   field by a binary mask (an "inside the mesh" test, an eroded body mask, a
+   hard magnitude clip) injects energy at *every* wavelength, including the ones
+   the particles cannot carry.  Measured on the coupled cube case, the particle
+   field carried 2.7x the FVM's vorticity energy below ``4h`` while its peaks
+   were 17% low.  Every mask in this module is therefore a C1 taper.
+
+2. **Inverse mollification must be band-limited, not iterated.**  Recovering
+   ``omega`` from ``zeta_sigma * omega`` is ill-posed: the inverse symbol
+   ``exp(+sigma^2 k^2 / 4)`` diverges.  A fixed number of Richardson/Picard
+   passes does not regularise it -- it amplifies the grid-scale modes by up to
+   1.6x while still leaving 20-40% of the physical amplitude missing.  This
+   module instead applies one exact Tikhonov-regularised inverse on the lattice
+   (an FFT), with the amplification explicitly capped.  Whatever falls outside
+   the representable band is reported, not faked.
 """
 
 from __future__ import annotations
@@ -24,11 +49,21 @@ RADIUS_RATIO = 1.0
 # M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
 
+# Default cap on the inverse-mollification amplification |Gamma| / |Gamma_raw|.
+# The Tikhonov parameter is derived from it as lambda = 1 / (2 * cap), which is
+# the exact maximum of G / (G^2 + lambda^2) over G in [0, 1].
+DEFAULT_TRANSFER_AMPLIFICATION_CAP = 2.0
+
+# Width, in lattice cells, of the cosine taper applied at the outer lattice
+# faces before the transfer FFT, so the periodic transform sees a field that
+# decays to zero rather than a wrap-around discontinuity.
+_FFT_EDGE_TAPER_CELLS = 2
+
 
 def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
     """Total circulation, linear impulse and (raw) angular impulse
     (Winckelmans 1993).  Kernel-correction-free: the prune redistribution
-    uses the same definition on both sides, so the σ² term cancels."""
+    uses the same definition on both sides, so the sigma^2 term cancels."""
     if len(pos) == 0:
         z = np.zeros(3)
         return {"circulation": z, "linear_impulse": z, "angular_impulse": z}
@@ -42,7 +77,7 @@ def _invariants(pos: np.ndarray, circ: np.ndarray) -> dict[str, np.ndarray]:
 
 def required_buffer_length(u_max: float, dt: float, h: float, safety: float = 1.5) -> float:
     """Minimum downstream buffer length for a dt-robust hand-off:
-    ``L_buf ≥ safety · u_max · dt + 2h`` (M4′ stencil must stay interior)."""
+    ``L_buf >= safety * u_max * dt + 2h`` (M4' stencil must stay interior)."""
     return float(safety * abs(u_max) * abs(dt) + _M4P_SUPPORT * h)
 
 
@@ -60,7 +95,7 @@ def circulation_from_velocity_trace(
     h: float,
     velocity_at,
 ) -> np.ndarray:
-    """Integrate ``n × u`` over each cubic particle control volume."""
+    """Integrate ``n x u`` over each cubic particle control volume."""
     pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
     circulation = np.zeros_like(pos)
     offset = np.zeros(3, dtype=np.float64)
@@ -74,6 +109,19 @@ def circulation_from_velocity_trace(
         normal[axis] = 1.0
         circulation += h**2 * np.cross(normal, delta_u)
     return circulation
+
+
+def smoothstep(x: np.ndarray | float, lo: float, hi: float) -> np.ndarray:
+    """C1 Hermite ramp: 0 for ``x <= lo``, 1 for ``x >= hi``, smooth between.
+
+    Zero first derivative at both ends, so multiplying a field by this taper
+    adds no grid-scale content of its own.
+    """
+    span = float(hi) - float(lo)
+    if abs(span) < 1e-300:
+        return np.where(np.asarray(x, dtype=np.float64) >= hi, 1.0, 0.0)
+    t = np.clip((np.asarray(x, dtype=np.float64) - float(lo)) / span, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
 
 def _outflow_axis_sign(u_inf=None) -> tuple[int, float]:
@@ -101,47 +149,16 @@ def _outflow_band_mask(
     return grid_pos[:, axis] <= lo[axis] + h
 
 
-def _non_outflow_overlap_shell_mask(
-    grid_pos: np.ndarray,
-    lo: np.ndarray,
-    hi: np.ndarray,
-    ramp_width: float,
-    u_inf=None,
-) -> np.ndarray:
-    """Select the inner overlap shell except nodes nearest the outflow face.
-
-    The physical wake must cross the outflow face without extra filtering.
-    Weak circulation generated by interpolation/fringe noise at inlet and
-    lateral faces can use a stronger, smoothly eta-weighted prune threshold.
-    """
-    pos = np.asarray(grid_pos, dtype=np.float64).reshape(-1, 3)
-    face_distance = np.column_stack(
-        (
-            pos[:, 0] - lo[0],
-            hi[0] - pos[:, 0],
-            pos[:, 1] - lo[1],
-            hi[1] - pos[:, 1],
-            pos[:, 2] - lo[2],
-            hi[2] - pos[:, 2],
-        )
-    )
-    inside = np.all(face_distance >= 0.0, axis=1)
-    shell = inside & (np.min(face_distance, axis=1) < float(ramp_width))
-    axis, sign = _outflow_axis_sign(u_inf)
-    outflow_face = 2 * axis + (1 if sign >= 0.0 else 0)
-    return shell & (np.argmin(face_distance, axis=1) != outflow_face)
-
-
 def cosine_eta(
     grid_pos: np.ndarray,
     box: np.ndarray,
     ramp_width: float,
     dead_zone: float,
 ) -> np.ndarray:
-    """C¹ partition-of-unity FVM-authority weight η(x) ∈ [0, 1].
+    """C1 partition-of-unity FVM-authority weight eta(x) in [0, 1].
 
     Built from the minimum signed distance to any box face:
-    η = 1 for ``dist ≥ ramp_width`` (FVM core), η = 0 for ``dist ≤ dead_zone``
+    eta = 1 for ``dist >= ramp_width``, eta = 0 for ``dist <= dead_zone``
     and outside the box, cosine ramp (zero slope at both ends) in between.
     """
     pos = np.asarray(grid_pos, dtype=np.float64)
@@ -170,30 +187,152 @@ def cosine_eta(
     return eta
 
 
-def beale_strength_correction(
-    circ_grid: np.ndarray,
+# =========================================================
+# Band-limited transfer (replaces the Beale/Picard deconvolution)
+# =========================================================
+def _wavenumber_grid(shape: tuple[int, int, int], h: float) -> np.ndarray:
+    """Squared wavenumber magnitude on the rfftn lattice of ``shape``."""
+    kx = 2.0 * np.pi * np.fft.fftfreq(shape[0], d=h)
+    ky = 2.0 * np.pi * np.fft.fftfreq(shape[1], d=h)
+    kz = 2.0 * np.pi * np.fft.rfftfreq(shape[2], d=h)
+    return (
+        kx[:, None, None] ** 2 + ky[None, :, None] ** 2 + kz[None, None, :] ** 2
+    )
+
+
+def transfer_symbols(
+    shape: tuple[int, int, int],
+    h: float,
+    sigma: float,
+    amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(W, Phi)`` for the regularised inverse mollification.
+
+    ``W = (1 + lam^2) * G / (G^2 + lam^2)`` maps a physical vorticity spectrum
+    to the particle strengths that induce it; ``Phi = G * W`` is the resulting
+    round-trip gain, i.e. the fraction of each mode the particle field carries.
+
+    Two properties are enforced exactly and are both load-bearing:
+
+    * ``Phi(k = 0) = 1``.  The ``(1 + lam^2)`` normalisation is what makes this
+      hold; a plain Tikhonov inverse attenuates *every* mode by
+      ``1 / (1 + lam^2)``, which at a cap of 2 silently discards 6% of the
+      total circulation on every hand-off.
+    * ``max_G W = amplification_cap``, attained at ``G = lam``.  Solving
+      ``(1 + lam^2) / (2 lam) = cap`` gives ``lam = cap - sqrt(cap^2 - 1)``.
+      The particle strengths can therefore never exceed the raw FVM circulation
+      by more than the requested factor, which is what keeps the inverse from
+      injecting grid-scale noise.
+    """
+    if not np.isfinite(amplification_cap) or amplification_cap < 1.0:
+        raise ValueError("amplification_cap must be finite and at least one")
+    cap = float(amplification_cap)
+    lam = cap - np.sqrt(cap * cap - 1.0)
+    k_sq = _wavenumber_grid(shape, h)
+    g = np.exp(-(float(sigma) ** 2) * k_sq / 4.0)
+    w = (1.0 + lam * lam) * g / (g * g + lam * lam)
+    return w, g * w
+
+
+def _edge_taper(shape: tuple[int, int, int], cells: int = _FFT_EDGE_TAPER_CELLS) -> np.ndarray:
+    """Separable cosine taper over the outermost ``cells`` lattice layers."""
+    axes = []
+    for n in shape:
+        w = np.ones(n, dtype=np.float64)
+        m = int(min(cells, max(n // 2, 0)))
+        if m > 0:
+            ramp = 0.5 * (1.0 - np.cos(np.pi * (np.arange(m) + 0.5) / m))
+            w[:m] = ramp
+            w[n - m :] = ramp[::-1]
+        axes.append(w)
+    return axes[0][:, None, None] * axes[1][None, :, None] * axes[2][None, None, :]
+
+
+def bandlimited_transfer(
     target_circ: np.ndarray,
-    eta: np.ndarray,
     shape: tuple[int, int, int],
     h: float,
     *,
     sigma: float,
-) -> tuple[np.ndarray, float, float]:
-    """Apply one Gaussian mollification correction in the FVM authority zone."""
-    h3 = float(h) ** 3
+    amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Convert an FVM lattice circulation into particle strengths.
 
-    g = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3).copy()
-    t_omega = np.asarray(target_circ, dtype=np.float64).reshape(*shape, 3) / h3
-    eta_g = np.asarray(eta, dtype=np.float64).reshape(*shape)[..., None]
+    Returns ``(gamma, target_inband, out_of_band_fraction)``:
 
-    denom = float(np.linalg.norm(t_omega * eta_g)) + 1e-30
-    residual = (t_omega - _gaussian_mollified_circulation(g, shape, h, sigma=sigma) / h3) * eta_g
-    res_pre = float(np.linalg.norm(residual)) / denom
-    g += residual * h3
-    residual = (t_omega - _gaussian_mollified_circulation(g, shape, h, sigma=sigma) / h3) * eta_g
-    res_post = float(np.linalg.norm(residual)) / denom
+    ``gamma``
+        Particle strengths whose Gaussian-mollified field reproduces
+        ``target_inband``.
+    ``target_inband``
+        The part of ``target_circ`` the particle lattice can actually carry,
+        i.e. ``Phi * target_circ``.  This is the honest reference for any
+        FVM-vs-VPM comparison: the two representations can only be expected to
+        agree on this band.
+    ``out_of_band_fraction``
+        ``||target - target_inband|| / ||target||``.  A *resolution* diagnostic:
+        it is the fraction of the FVM's vorticity content that is finer than
+        the particle lattice can represent.  Reduce ``h`` to reduce it; no
+        amount of deconvolution can.
+    """
+    grid = np.asarray(target_circ, dtype=np.float64).reshape(*shape, 3)
+    taper = _edge_taper(shape)[..., None]
+    tapered = grid * taper
 
-    return g.reshape(-1, 3), res_pre, res_post
+    w, phi = transfer_symbols(shape, h, sigma, amplification_cap)
+    gamma = np.empty_like(tapered)
+    inband = np.empty_like(tapered)
+    axes = (0, 1, 2)
+    for component in range(3):
+        spectrum = np.fft.rfftn(tapered[..., component], axes=axes)
+        gamma[..., component] = np.fft.irfftn(spectrum * w, s=shape, axes=axes)
+        inband[..., component] = np.fft.irfftn(spectrum * phi, s=shape, axes=axes)
+
+    denominator = float(np.linalg.norm(tapered)) + 1e-30
+    out_of_band = float(np.linalg.norm(tapered - inband)) / denominator
+    return gamma.reshape(-1, 3), inband.reshape(-1, 3), out_of_band
+
+
+#: Wavelength bands, in lattice cells, used by the spectral hand-off diagnostic.
+SPECTRAL_BANDS: tuple[tuple[float, float], ...] = ((2.0, 4.0), (4.0, 8.0), (8.0, 16.0), (16.0, 64.0))
+
+
+def spectral_band_ratio(
+    particle_field: np.ndarray,
+    reference_field: np.ndarray,
+    shape: tuple[int, int, int],
+    h: float,
+    bands: tuple[tuple[float, float], ...] = SPECTRAL_BANDS,
+) -> dict[str, float]:
+    """Banded amplitude ratio ``|omega_VPM(k)| / |omega_FVM(k)|`` on the lattice.
+
+    A single scalar L1 ratio has been mis-read twice on this code base: it mixes
+    a factor-two grid-scale excess with a compensating large-scale deficit and
+    reports 1.0.  Per-band ratios cannot do that.  Both inputs must already be
+    band-limited to the same band, otherwise the comparison is meaningless.
+    """
+    left = np.asarray(particle_field, dtype=np.float64).reshape(*shape, 3)
+    right = np.asarray(reference_field, dtype=np.float64).reshape(*shape, 3)
+    k_sq = _wavenumber_grid(shape, h)
+    k = np.sqrt(k_sq)
+
+    numerator = np.zeros(k.shape)
+    denominator = np.zeros(k.shape)
+    for component in range(3):
+        numerator += np.abs(np.fft.rfftn(left[..., component])) ** 2
+        denominator += np.abs(np.fft.rfftn(right[..., component])) ** 2
+
+    out: dict[str, float] = {}
+    for lo_cells, hi_cells in bands:
+        k_lo = 2.0 * np.pi / (hi_cells * h)
+        k_hi = 2.0 * np.pi / (lo_cells * h)
+        sel = (k >= k_lo) & (k < k_hi)
+        if not sel.any():
+            continue
+        den = float(denominator[sel].sum())
+        out[f"{lo_cells:g}-{hi_cells:g}h"] = float(
+            np.sqrt(float(numerator[sel].sum()) / den) if den > 0.0 else 0.0
+        )
+    return out
 
 
 def _gaussian_mollified_circulation(
@@ -206,9 +345,10 @@ def _gaussian_mollified_circulation(
     """Return circulation represented by Gaussian particles on their lattice."""
     from scipy.ndimage import gaussian_filter
 
-    # ζ_σ ∝ e^{-r²/σ²} = e^{-r²/(2 s²)} with s = σ/√2; gaussian_filter takes
-    # s in grid cells and normalizes its discrete kernel to Σw = 1, which for
-    # s ≳ 1 cell equals the sampled ζ_σ·h³ weights to machine precision.
+    # zeta_sigma ~ e^{-r^2/sigma^2} = e^{-r^2/(2 s^2)} with s = sigma/sqrt(2);
+    # gaussian_filter takes s in grid cells and normalizes its discrete kernel
+    # to sum(w) = 1, which for s >~ 1 cell equals the sampled zeta_sigma * h^3
+    # weights to machine precision.
     s_cells = float(sigma) / (np.sqrt(2.0) * float(h))
     grid = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3)
     return np.stack(
@@ -218,6 +358,79 @@ def _gaussian_mollified_circulation(
         ],
         axis=-1,
     )
+
+
+# =========================================================
+# Continuous (soft) prune with local moment redistribution
+# =========================================================
+def soft_prune(
+    circ: np.ndarray,
+    threshold: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Non-negative garrote shrinkage of weak lattice strengths.
+
+    ``Gamma' = Gamma * max(0, 1 - (threshold / |Gamma|)^2)``
+
+    Continuous in ``Gamma`` (unlike a hard clip, which is a step function of
+    position wherever the field crosses the threshold), exactly zero for
+    ``|Gamma| <= threshold`` so the node count is still bounded, and biased by
+    only ``(threshold / |Gamma|)^2`` on strong nodes -- 3e-6 at the production
+    cube settings, against the ~1 of a hard clip's discontinuity.
+
+    Returns ``(shrunk, removed)``.
+    """
+    circ = np.asarray(circ, dtype=np.float64).reshape(-1, 3)
+    if threshold <= 0.0:
+        return circ.copy(), np.zeros_like(circ)
+    magnitude = np.linalg.norm(circ, axis=1)
+    scale = np.zeros_like(magnitude)
+    active = magnitude > threshold
+    scale[active] = 1.0 - (threshold / magnitude[active]) ** 2
+    shrunk = circ * scale[:, None]
+    return shrunk, circ - shrunk
+
+
+def redistribute_locally(
+    removed: np.ndarray,
+    shrunk: np.ndarray,
+    shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Return ``shrunk`` with ``removed`` pushed onto surviving face neighbours.
+
+    A symmetric six-neighbour scatter with equal weights preserves both the
+    total circulation and the linear impulse *locally*: the weights sum to one
+    and their first moment about the source node is zero.  This replaces the
+    previous global least-squares closure, which conserved the integrals exactly
+    while smearing near-wake circulation over the entire cloud.
+    """
+    removed = np.asarray(removed, dtype=np.float64).reshape(*shape, 3)
+    if not np.any(removed):
+        return np.asarray(shrunk, dtype=np.float64).reshape(-1, 3)
+
+    out = np.asarray(shrunk, dtype=np.float64).reshape(*shape, 3).copy()
+    alive = np.linalg.norm(out, axis=-1) > 0.0
+
+    shifts = [(0, 1), (0, -1), (1, 1), (1, -1), (2, 1), (2, -1)]
+    neighbour_alive = [np.roll(alive, -s, axis=a) for a, s in shifts]
+    # Do not donate across the periodic seam.
+    for index, (axis, step) in enumerate(shifts):
+        sl = [slice(None)] * 3
+        sl[axis] = -1 if step == 1 else 0
+        neighbour_alive[index][tuple(sl)] = False
+
+    count = np.sum(neighbour_alive, axis=0).astype(np.float64)
+    donatable = count > 0.0
+    share = np.zeros_like(removed)
+    np.divide(removed, count[..., None], out=share, where=donatable[..., None])
+
+    for index, (axis, step) in enumerate(shifts):
+        contribution = np.where(neighbour_alive[index][..., None], share, 0.0)
+        out += np.roll(contribution, step, axis=axis)
+
+    # Nodes with no surviving neighbour keep what could not be donated; its
+    # magnitude is below the prune threshold by construction.
+    out += np.where(donatable[..., None], 0.0, removed)
+    return out.reshape(-1, 3)
 
 
 # =========================================================
@@ -237,36 +450,38 @@ class HandoffResult:
     n_free: int = 0  # untouched free-exterior particles
     n_excluded: int = 0  # input particles removed from a physical solid
     n_pruned: int = 0
-    n_overlap_shell_pruned: int = 0
     pruned_circulation_l1: float = 0.0
     pruned_circulation_fraction: float = 0.0
-    overlap_shell_pruned_circulation_fraction: float = 0.0
     n_population_pruned: int = 0
     population_pruned_circulation_fraction: float = 0.0
     population_pruned_velocity_bound: float = 0.0
-    cfl: float = 0.0  # U_max·dt / L_buf  (should stay < ~0.7)
+    cfl: float = 0.0  # U_max*dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
-    # Invariant diagnostics around the conservative prune correction.  These
-    # are deliberately separate from ``conservation_drift`` (the historical
-    # post-correction summary): validation needs to know whether a small final
-    # error came from a small raw mismatch or a large correction that happened
-    # to close it.
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_corrected_mismatch: dict[str, float] = field(default_factory=dict)
-    # Σ|Γσ|_VPM / Σ|Γ|_FVM over the outflow band (L1,
-    # well-conditioned; 1 = the mollified particle field carries the FVM's exit
-    # vorticity content). See the computation in continuous_handoff for why
-    # raw, deconvolved particle strengths cannot be compared to the FVM trace.
+
+    # Sum|Gamma_sigma|_VPM / Sum|Gamma|_FVM over the outflow band, both sides
+    # band-limited so the comparison is between representations of the same
+    # physical band.  1.0 means agreement.
     flux_ratio: float = 0.0
 
-    # Strength-correction diagnostics (η-weighted relative residual
-    # ‖ω_target − ω_σ‖/‖ω_target‖ before and after the Picard iterations)
-    strength_corr_residual_pre: float = 0.0
-    strength_corr_residual_post: float = 0.0
+    # Band-limited transfer diagnostics.
+    #   in_band_residual : how well the particles reproduce the band they claim
+    #                      to carry.  Should be ~1e-12; anything larger is a bug.
+    #   out_of_band_fraction : the fraction of the FVM's vorticity that is finer
+    #                      than the particle lattice.  A RESOLUTION diagnostic --
+    #                      reduce h, not the regularisation.
+    #   max_amplification : realised max |Gamma| / |Gamma_raw|.
+    transfer_in_band_residual: float = 0.0
+    transfer_out_of_band_fraction: float = 0.0
+    transfer_max_amplification: float = 0.0
+    #: Banded |omega_VPM(k)| / |omega_FVM(k)| on the hand-off lattice, keyed by
+    #: wavelength range in lattice cells.  All entries should be ~1.
+    spectral_band_ratio: dict[str, float] = field(default_factory=dict)
 
-    # Body-mask audit.  These are L1 sums of |Gamma| removed from actual input
-    # particles, VPM remesh support, and FVM-target remesh support.
+    # Body-mask audit.  L1 sums of |Gamma| removed from input particles, from
+    # the VPM remesh support, and from the FVM target.
     excluded_input_circulation_l1: float = 0.0
     excluded_remesh_circulation_l1: float = 0.0
     excluded_target_circulation_l1: float = 0.0
@@ -287,58 +502,61 @@ def continuous_handoff(
     *,
     circulation_at_node,
     u_inf=None,
-    inside_mesh_at_node=None,
-    excluded_at_node=None,
+    mesh_weight_at_node=None,
+    fluid_weight_at_node=None,
+    interior_at_node=None,
     ramp_width: float | None = None,
     dead_zone: float = 0.0,
     buffer_length: float = 0.0,
     threshold_abs: float = 0.0,
-    overlap_shell_prune_multiplier: float = 1.0,
     radius_ratio: float = RADIUS_RATIO,
+    amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
     u_max: float = 0.0,
     dt: float = 0.0,
     lattice_anchor=None,
     max_output_particles: int | None = None,
 ) -> HandoffResult:
-    """One continuous, conservative, dt-robust FVM→VPM hand-off.
+    """One continuous, conservative, dt-robust FVM->VPM hand-off.
 
     Parameters
     ----------
     pos, circ : ndarray (N, 3)
         Current particle positions and circulations.
     box : (6,) ``[x0, x1, y0, y1, z0, z1]``
-        FVM domain bounds (the interface Γ is the box surface).
+        Hand-off domain bounds (the interface is the box surface).
     h : float
         Lattice spacing (= VPM particle spacing).
     circulation_at_node : callable
         FVM circulation reconstructed from the weighted velocity trace.
     u_inf : ndarray (3,) or None
-        Freestream velocity vector used to orient the outflow-band diagnostic.
-    max_output_particles : int or None
-        Post-handoff population cap. Transported exterior particles are
-        retained before weak reconstructed overlap particles are discarded.
-    inside_mesh_at_node : callable ``grid_pos -> bool (M,)`` or None
-        Mask of nodes that have FVM data (inside the mesh, outside the body).
-        Nodes outside are forced η = 0 (pure Lagrangian).
-    excluded_at_node : callable ``positions -> bool (M,)`` or None
-        Exact physical-solid mask.  Unlike ``inside_mesh_at_node=False``, which
-        merely selects the Lagrangian representation, excluded positions are
-        removed from both representations and can never become particles.
+        Freestream velocity vector, used to orient the outflow diagnostic.
+    mesh_weight_at_node : callable ``grid_pos -> float (M,) in [0, 1]`` or None
+        Smooth confidence that a node has usable FVM data.  0 means "no FVM
+        data here, stay Lagrangian".  Must be C1; a binary mask stamps
+        grid-scale steps into the particle strengths.
+    fluid_weight_at_node : callable ``positions -> float (M,) in [0, 1]`` or None
+        Smooth solid taper: 1 in the fluid, 0 inside a body, C1 across the wall.
+    interior_at_node : callable ``positions -> bool (M,)`` or None
+        Exact "strictly inside a solid" test, used only as a final placement
+        guard after the field has already been tapered to zero there.
     ramp_width : float
-        Width of the η cosine ramp.  Defaults to ``2·dead_zone`` or ``4h``.
+        Width of the eta cosine ramp.  Defaults to ``2 * dead_zone`` or ``4h``.
     dead_zone : float
-        Thickness of the η = 0 band at each face.
+        Thickness of the eta = 0 band at each face.
     buffer_length : float
-        Downstream/outward extension of the remesh lattice beyond the box
-        (size with :func:`required_buffer_length`).
+        Outward extension of the remesh lattice beyond the box.
     threshold_abs : float
-        |Γ| below which a lattice node is pruned (then redistributed).
-    overlap_shell_prune_multiplier : float
-        Maximum threshold multiplier in the non-outflow overlap shell. The
-        factor varies smoothly from this value at η=0 to one at η=1. The
-        outflow face always retains the base threshold.
+        Soft-prune scale: nodes at or below this |Gamma| are removed, larger
+        ones are shrunk by ``(threshold/|Gamma|)^2``.
+    radius_ratio : float
+        Particle core radius sigma / h.
+    amplification_cap : float
+        Maximum inverse-mollification gain (see :func:`transfer_symbols`).
     u_max, dt : float
         Used only for the CFL diagnostic.
+    max_output_particles : int or None
+        Post-handoff population cap.
+
     Returns
     -------
     HandoffResult
@@ -354,13 +572,10 @@ def continuous_handoff(
     lo = np.array([box[0], box[2], box[4]], dtype=np.float64)
     hi = np.array([box[1], box[3], box[5]], dtype=np.float64)
 
-    # ── Active region = box ⊕ buffer_length on every face.  Particles here are
-    #    remeshed; beyond it they are purely Lagrangian "free exterior".
-    # The lattice extends a full M4′ guard band (2h) beyond the active region
-    # so that every remeshed particle's 4-node stencil stays inside the
-    # lattice.  If the active region reached the lattice edge, exiting
-    # particles would have truncated stencils, partition-of-unity would break,
-    # and the conservative prune would amplify the surviving boundary nodes.
+    # Active region = box (+) buffer_length on every face.  Particles here are
+    # remeshed; beyond it they are purely Lagrangian "free exterior".  The
+    # lattice extends a full M4' guard band (2h) further so every remeshed
+    # particle's 4-node stencil stays inside the lattice.
     guard = _M4P_SUPPORT * h
     lo_active = lo - buffer_length
     hi_active = hi + buffer_length
@@ -373,16 +588,30 @@ def continuous_handoff(
         shift = np.floor((lo_lat - anchor) / float(h))
         lo_lat = anchor + shift * float(h)
 
-    excluded_input = np.zeros(n, dtype=bool)
-    if excluded_at_node is not None and n > 0:
-        excluded_input = np.asarray(excluded_at_node(pos), dtype=bool).reshape(-1)
-        if excluded_input.shape != (n,):
-            raise ValueError(f"excluded_at_node returned {excluded_input.shape}, expected ({n},)")
-    valid_input = ~excluded_input
-    excluded_input_l1 = float(np.linalg.norm(circ[excluded_input], axis=1).sum())
+    # ---- Input particles: taper by the solid weight, drop true interior ----
     if n > 0:
+        input_fluid = (
+            np.ones(n)
+            if fluid_weight_at_node is None
+            else np.clip(np.asarray(fluid_weight_at_node(pos), dtype=np.float64).reshape(-1), 0.0, 1.0)
+        )
+        if input_fluid.shape != (n,):
+            raise ValueError(f"fluid_weight_at_node returned {input_fluid.shape}, expected ({n},)")
+        excluded_input_l1 = float(
+            np.linalg.norm(circ * (1.0 - input_fluid)[:, None], axis=1).sum()
+        )
+        circ = circ * input_fluid[:, None]
+        deep_solid = (
+            np.zeros(n, dtype=bool)
+            if interior_at_node is None
+            else np.asarray(interior_at_node(pos), dtype=bool).reshape(-1)
+        )
+        valid_input = ~deep_solid
         in_region = valid_input & np.all((pos >= lo_active) & (pos <= hi_active), axis=1)
     else:
+        excluded_input_l1 = 0.0
+        deep_solid = np.zeros(0, dtype=bool)
+        valid_input = np.zeros(0, dtype=bool)
         in_region = np.zeros(0, dtype=bool)
     free_mask = valid_input & ~in_region
 
@@ -392,101 +621,81 @@ def continuous_handoff(
         int(np.ceil((hi_lat[2] - lo_lat[2]) / h)) + 1,
     )
 
-    # ── P2M: conservative M4′ scatter of the in-region wake onto the lattice ──
-    grid_pos, grid_circ = remesh_to_grid(
-        pos[in_region],
-        circ[in_region],
-        lo_lat,
-        h,
-        shape,
+    # ---- P2M: conservative M4' scatter of the in-region wake onto the lattice
+    grid_pos, grid_circ = remesh_to_grid(pos[in_region], circ[in_region], lo_lat, h, shape)
+
+    # ---- Smooth weights on the lattice --------------------------------------
+    node_fluid = (
+        np.ones(len(grid_pos))
+        if fluid_weight_at_node is None
+        else np.clip(
+            np.asarray(fluid_weight_at_node(grid_pos), dtype=np.float64).reshape(-1), 0.0, 1.0
+        )
+    )
+    if node_fluid.shape != (len(grid_pos),):
+        raise ValueError(
+            f"fluid_weight_at_node returned {node_fluid.shape}, expected ({len(grid_pos)},)"
+        )
+    excluded_remesh_l1 = float(np.linalg.norm(grid_circ * (1.0 - node_fluid)[:, None], axis=1).sum())
+    grid_circ = grid_circ * node_fluid[:, None]
+
+    node_mesh = (
+        np.ones(len(grid_pos))
+        if mesh_weight_at_node is None
+        else np.clip(
+            np.asarray(mesh_weight_at_node(grid_pos), dtype=np.float64).reshape(-1), 0.0, 1.0
+        )
+    )
+    if node_mesh.shape != (len(grid_pos),):
+        raise ValueError(
+            f"mesh_weight_at_node returned {node_mesh.shape}, expected ({len(grid_pos)},)"
+        )
+
+    # ---- FVM target, tapered smoothly to zero before any spectral work ------
+    target_raw = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
+    excluded_target_l1 = float(
+        np.linalg.norm(target_raw * (1.0 - node_fluid)[:, None], axis=1).sum()
+    )
+    # Both tapers are C1, so the tapered target has no step for the transfer to
+    # ring on -- this is what the old binary `ok`/`binary_erosion` masks broke.
+    target = target_raw * (node_fluid * node_mesh)[:, None]
+
+    # ---- Band-limited inverse mollification ---------------------------------
+    sigma = float(radius_ratio) * float(h)
+    gamma_target, target_inband, out_of_band = bandlimited_transfer(
+        target, shape, h, sigma=sigma, amplification_cap=amplification_cap
+    )
+    raw_norm = float(np.linalg.norm(target, axis=1).max()) + 1e-30
+    max_amplification = float(np.linalg.norm(gamma_target, axis=1).max()) / raw_norm
+
+    # ---- eta partition of unity (FVM authority), smoothly gated -------------
+    eta = cosine_eta(grid_pos, box, ramp_width, dead_zone) * node_mesh
+    grid_blended = grid_circ + eta[:, None] * (gamma_target - grid_circ)
+    grid_blended = grid_blended * node_fluid[:, None]
+
+    # In-band residual: does the particle field reproduce the band it claims?
+    mollified = _gaussian_mollified_circulation(grid_blended, shape, h, sigma=sigma).reshape(-1, 3)
+    reference = target_inband * eta[:, None]
+    in_band_residual = float(np.linalg.norm((mollified - reference) * eta[:, None])) / (
+        float(np.linalg.norm(reference)) + 1e-30
     )
 
-    excluded_grid = np.zeros(len(grid_pos), dtype=bool)
-    if excluded_at_node is not None:
-        excluded_grid = np.asarray(excluded_at_node(grid_pos), dtype=bool).reshape(-1)
-        if excluded_grid.shape != (len(grid_pos),):
-            raise ValueError(
-                f"excluded_at_node returned {excluded_grid.shape}, expected ({len(grid_pos)},)"
-            )
-    excluded_remesh_l1 = float(np.linalg.norm(grid_circ[excluded_grid], axis=1).sum())
-    grid_circ[excluded_grid] = 0.0
-
-    # ── η partition of unity (FVM authority) ─────────────────────────────────
-    eta = cosine_eta(grid_pos, box, ramp_width, dead_zone)
-
-    # ── Build the FVM target circulation on the lattice ──────────────────────
-    target = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
-
-    excluded_target_l1 = 0.0
-    if excluded_grid.any():
-        excluded_target_l1 = float(np.linalg.norm(target[excluded_grid], axis=1).sum())
-        target[excluded_grid] = 0.0
-
-    # ── Blend toward the FVM target where η > 0 (under-relaxed by α) ──────────
-    ok = None
-    if inside_mesh_at_node is not None:
-        ok = np.asarray(inside_mesh_at_node(grid_pos), dtype=bool)
-        eta = eta * ok
-        target[~ok] = 0.0
-    grid_blended = grid_circ + eta[:, None] * (target - grid_circ)
-
-    # ── Beale/Picard strength correction (η-localized deconvolution) ─────────
-    # BODY GUARD: the target ends in a step at the body wall (no cells inside).
-    # Deconvolving across that discontinuity produces Gibbs-like ringing with
-    # up-to-(M+1)× amplification in a ±2σ shell — including nodes just inside
-    # the wall (which are `ok` because they sit within 1.5h of exterior cell
-    # centres), injecting circulation INSIDE the body.  Restrict the correction
-    # to nodes whose entire kernel support sees valid FVM data: erode the ok
-    # mask by the kernel support (≈ 2σ/h cells) before weighting.
-    corr_weight = eta
-    if ok is not None:
-        from scipy.ndimage import binary_erosion
-
-        support_cells = max(int(np.ceil(2.0 * radius_ratio)), 1)
-        ok_eroded = binary_erosion(
-            ok.reshape(shape), iterations=support_cells, border_value=0
-        ).ravel()
-        corr_weight = eta * ok_eroded
-    grid_blended, corr_pre, corr_post = beale_strength_correction(
-        grid_blended,
-        target,
-        corr_weight,
-        shape,
-        h,
-        sigma=radius_ratio * h,
-    )
-
-    # Deconvolution and remeshing have non-compact physical kernels near a
-    # wall.  Re-assert the exact solid mask after every correction so no
-    # particle centre can be regenerated inside the body.
-    grid_blended[excluded_grid] = 0.0
-
-    # ── Conservative prune: drop weak nodes, redistribute their moments ──────
+    # ---- Continuous prune with local moment redistribution ------------------
     target_inv = _invariants(grid_pos, grid_blended)
-    mag = np.linalg.norm(grid_blended, axis=1)
-    candidates = (mag > 0.0) & ~excluded_grid
-    local_threshold = np.full(len(grid_pos), float(threshold_abs), dtype=np.float64)
-    shell = np.zeros(len(grid_pos), dtype=bool)
-    if overlap_shell_prune_multiplier > 1.0 and threshold_abs > 0.0:
-        shell = _non_outflow_overlap_shell_mask(
-            grid_pos,
-            lo,
-            hi,
-            ramp_width,
-            u_inf,
-        )
-        local_threshold[shell] *= 1.0 + (float(overlap_shell_prune_multiplier) - 1.0) * (
-            1.0 - eta[shell]
-        )
-    keep = (mag >= local_threshold) & ~excluded_grid
-    pruned = candidates & ~keep
-    shell_pruned = pruned & shell
-    active_l1 = float(mag[candidates].sum())
-    pruned_l1 = float(mag[pruned].sum())
-    shell_active_l1 = float(mag[candidates & shell].sum())
-    shell_pruned_l1 = float(mag[shell_pruned].sum())
+    magnitude_before = np.linalg.norm(grid_blended, axis=1)
+    shrunk, removed = soft_prune(grid_blended, float(threshold_abs))
+    shrunk = redistribute_locally(removed, shrunk, shape)
+    if interior_at_node is not None:
+        deep_nodes = np.asarray(interior_at_node(grid_pos), dtype=bool).reshape(-1)
+        shrunk[deep_nodes] = 0.0
+
+    keep = np.linalg.norm(shrunk, axis=1) > 0.0
+    pruned = (magnitude_before > 0.0) & ~keep
+    active_l1 = float(magnitude_before[magnitude_before > 0.0].sum())
+    pruned_l1 = float(magnitude_before[pruned].sum())
+
     new_pos = grid_pos[keep]
-    new_circ = grid_blended[keep]
+    new_circ = shrunk[keep]
 
     pre_correction = _invariants(new_pos, new_circ)
     post_correction = pre_correction
@@ -501,15 +710,12 @@ def continuous_handoff(
     applied_correction = _invariant_norms(pre_correction, post_correction)
     corrected_mismatch = _invariant_norms(target_inv, post_correction)
     drift: dict[str, float] = {}
-    if len(new_pos) > 0:
-        new_vol_tmp = np.full(len(new_pos), h**3)
-        # Angular impulse is intentionally excluded because the remeshing
-        # operator does not conserve that second moment.
+    if len(new_pos) > 1:
+        # Final global closure only.  After the local redistribution the residual
+        # it has to absorb is tiny; a large applied correction here means the
+        # local scatter failed and is worth a warning.
         new_circ = recover_invariants(
-            new_pos,
-            new_circ,
-            target_inv,
-            volumes=new_vol_tmp,
+            new_pos, new_circ, target_inv, volumes=np.full(len(new_pos), h**3)
         )
         post_correction = _invariants(new_pos, new_circ)
         applied_correction = _invariant_norms(pre_correction, post_correction)
@@ -519,11 +725,19 @@ def continuous_handoff(
             **corrected_mismatch,
             "circulation_rel": float(corrected_mismatch["circulation"] / ref),
         }
+        if applied_correction["circulation"] > 1.0e-3 * ref:
+            logger.warning(
+                "[Handoff] global invariant closure had to move %.3e of circulation "
+                "(%.2f%% of the target); the local prune redistribution is not "
+                "absorbing the pruned moments.",
+                applied_correction["circulation"],
+                100.0 * applied_correction["circulation"] / ref,
+            )
 
     new_vol = np.full(len(new_pos), h**3)
     new_rad = np.full(len(new_pos), h * radius_ratio)
 
-    # ── Re-attach the free-exterior particles unchanged ──────────────────────
+    # ---- Re-attach the free-exterior particles unchanged --------------------
     if free_mask.any():
         out_pos = np.vstack([new_pos, pos[free_mask]])
         out_circ = np.vstack([new_circ, circ[free_mask]])
@@ -544,15 +758,13 @@ def continuous_handoff(
         n_free = len(out_pos) - n_remesh
         if n_free < target_count:
             remesh_budget = target_count - n_free
-            remesh_mag = combined_mag[:n_remesh]
-            remesh_keep = np.argpartition(remesh_mag, -remesh_budget)[-remesh_budget:]
+            remesh_keep = np.argpartition(combined_mag[:n_remesh], -remesh_budget)[-remesh_budget:]
             keep_indices = np.concatenate(
                 [remesh_keep, np.arange(n_remesh, len(out_pos), dtype=np.int64)]
             )
         else:
-            free_mag = combined_mag[n_remesh:]
-            free_keep = np.argpartition(free_mag, -target_count)[-target_count:] + n_remesh
-            keep_indices = free_keep
+            keep_indices = np.argpartition(combined_mag[n_remesh:], -target_count)[-target_count:]
+            keep_indices = keep_indices + n_remesh
 
         keep_mask = np.zeros(len(out_pos), dtype=bool)
         keep_mask[keep_indices] = True
@@ -576,48 +788,24 @@ def continuous_handoff(
         out_circ = out_circ[keep_indices]
         out_vol = out_vol[keep_indices]
         out_rad = out_rad[keep_indices]
-        out_circ = recover_invariants(
-            out_pos,
-            out_circ,
-            combined_target,
-            volumes=out_vol,
-        )
+        out_circ = recover_invariants(out_pos, out_circ, combined_target, volumes=out_vol)
 
-    # ── Diagnostics ──────────────────────────────────────────────────────────
-    # CFL = fraction of the active buffer a freestream particle crosses per
-    # step; < ~0.7 guarantees hand-over to the free population happens while
-    # the stencil is still interior.
+    # ---- Diagnostics --------------------------------------------------------
     cfl = float(abs(u_max) * abs(dt) / (buffer_length + 1e-30))
 
-    # Outflow-band vorticity-content ratio (downstream-most h-layer of the box).
-    # Direction-agnostic: the outflow face is the one whose outward normal is
-    # most aligned with the freestream (derived from ``u_inf``); defaults to
-    # +x only when no direction is supplied.
-    #
-    # This is an L1 ratio Σ|Γ| / Σ|Γ|, NOT |ΣΓ| / |ΣΓ|.  The vector sum of ω
-    # over a wake cross-section is ~0 (vortex lines close), so the ratio of
-    # vector sums is a quotient of two near-cancelling quantities: it swung
-    # over 0.02–29 on the cube case purely from cancellation noise, with no
-    # corresponding change in the fields, and that reading was once
-    # mis-attributed to the donor interior source. Raw ``grid_blended`` strengths
-    # are also invalid here: the Beale correction deliberately deconvolves them,
-    # whereas the FVM trace is a physical (mollified) circulation. Comparing
-    # those two made the cube diagnostic climb to 2.5 while directly sampled
-    # VPM/FVM vorticity remained near 1.0. Mollify the particle strengths first,
-    # then sum magnitudes; 1.0 means physical-field agreement.
+    # Outflow-band content ratio, both sides band-limited.  Comparing the raw
+    # FVM trace against mollified particle strengths is meaningless: the two
+    # describe different bands.  Comparing Phi*target against the mollified
+    # particles compares like with like, so 1.0 really does mean agreement.
     flux_ratio = 0.0
     if len(grid_pos) > 0:
         band = _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
         if band.any():
-            mollified = _gaussian_mollified_circulation(
-                grid_blended,
-                shape,
-                h,
-                sigma=radius_ratio * h,
-            ).reshape(-1, 3)
             g_vpm = float(np.linalg.norm(mollified[band], axis=1).sum())
-            g_fvm = float(np.linalg.norm(target[band], axis=1).sum())
+            g_fvm = float(np.linalg.norm(target_inband[band], axis=1).sum())
             flux_ratio = float(g_vpm / (g_fvm + 1e-30))
+
+    bands = spectral_band_ratio(mollified * eta[:, None], reference, shape, h)
 
     return HandoffResult(
         pos=out_pos,
@@ -627,12 +815,10 @@ def continuous_handoff(
         n_remesh_in=int(in_region.sum()),
         n_remesh_out=int(len(new_pos)),
         n_free=int(free_mask.sum()),
-        n_excluded=int(excluded_input.sum()),
+        n_excluded=int(deep_solid.sum()),
         n_pruned=int(pruned.sum()),
-        n_overlap_shell_pruned=int(shell_pruned.sum()),
         pruned_circulation_l1=pruned_l1,
         pruned_circulation_fraction=pruned_l1 / (active_l1 + 1e-30),
-        overlap_shell_pruned_circulation_fraction=shell_pruned_l1 / (shell_active_l1 + 1e-30),
         n_population_pruned=population_pruned,
         population_pruned_circulation_fraction=population_pruned_fraction,
         population_pruned_velocity_bound=population_pruned_velocity_bound,
@@ -642,8 +828,10 @@ def continuous_handoff(
         conservation_applied_correction=applied_correction,
         conservation_corrected_mismatch=corrected_mismatch,
         flux_ratio=flux_ratio,
-        strength_corr_residual_pre=corr_pre,
-        strength_corr_residual_post=corr_post,
+        transfer_in_band_residual=in_band_residual,
+        transfer_out_of_band_fraction=out_of_band,
+        transfer_max_amplification=max_amplification,
+        spectral_band_ratio=bands,
         excluded_input_circulation_l1=excluded_input_l1,
         excluded_remesh_circulation_l1=excluded_remesh_l1,
         excluded_target_circulation_l1=excluded_target_l1,
@@ -662,20 +850,20 @@ class ContinuousOverlapInjector:
         self.h = float(cfg.h)
         self.nu = float(cfg.nu)
         self.threshold_abs = float(cfg.prune_vorticity_min) * self.h**3
-        self.overlap_shell_prune_multiplier = float(
-            getattr(cfg, "overlap_shell_prune_multiplier", 1.0)
-        )
 
         self.ramp_width = float(cfg.buffer_thickness)
         self.dead_zone = float(cfg.dead_zone_h) * self.h
         self.radius_ratio = float(cfg.overlap_radius_ratio)
+        self.amplification_cap = float(
+            getattr(cfg, "transfer_amplification_cap", DEFAULT_TRANSFER_AMPLIFICATION_CAP)
+        )
         self.u_inf = float(np.linalg.norm(cfg.u_inf))
         self.dt = float(coupler.dt_vpm)
 
         kernel = getattr(getattr(coupler, "vpm", None), "config", None)
         kernel = getattr(kernel, "particles_kernel", None)
         if kernel is not None and kernel != "GAUSSIAN":
-            raise ValueError("The FVM–VPM handoff requires the GAUSSIAN particle kernel")
+            raise ValueError("The FVM-VPM handoff requires the GAUSSIAN particle kernel")
 
         self._box: np.ndarray | None = None
         self._cell_tree = None
@@ -684,9 +872,103 @@ class ContinuousOverlapInjector:
         self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
         self._velocity_trace: CachedVelocityTrace | None = None
+        self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._reversed_flow_warned = False
+        self._open_vortex_lines_warned = False
         self.step = 0
+        self.last_transfer_diagnostics: dict[str, float] = {}
+        self.last_interface_flow: dict[str, float] = {}
+        self.last_vortex_line_closure: dict[str, float] = {}
 
-    # ── setup ────────────────────────────────────────────────────────────────
+    # ---- interface placement guard -----------------------------------------
+    def _build_face_cell_index(self) -> None:
+        """Cache the cells that sit within one lattice cell of each box face.
+
+        Used to assert that the hand-off interface is where the method assumes
+        it is: vorticity convecting *out* through the outflow face, and no
+        strong reverse flow on any face.  Every downstream sizing rule
+        (`required_buffer_length`, the CFL bound, the outflow band diagnostic)
+        is derived under that assumption, so violating it silently invalidates
+        all of them.
+        """
+        self._face_cells = {}
+        if self._cell_centers is None or len(self._cell_centers) == 0 or self._box is None:
+            return
+        centres = self._cell_centers
+        box = self._box
+        for axis in range(3):
+            for side, (bound, sign) in enumerate(
+                ((box[2 * axis], -1.0), (box[2 * axis + 1], +1.0))
+            ):
+                inside_others = np.ones(len(centres), dtype=bool)
+                for other in range(3):
+                    if other == axis:
+                        continue
+                    inside_others &= (centres[:, other] >= box[2 * other]) & (
+                        centres[:, other] <= box[2 * other + 1]
+                    )
+                near = np.abs(centres[:, axis] - bound) <= self.h
+                index = np.flatnonzero(near & inside_others)
+                if index.size:
+                    normal = np.zeros(3)
+                    normal[axis] = sign
+                    name = f"{'xyz'[axis]}{'min' if side == 0 else 'max'}"
+                    self._face_cells[name] = (index, normal)
+
+    def check_interface_flow(self, velocity: np.ndarray) -> dict[str, float]:
+        """Return the mean outward normal velocity on each hand-off box face."""
+        if not self._face_cells:
+            return {}
+        u = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
+        report: dict[str, float] = {}
+        for name, (index, normal) in self._face_cells.items():
+            if index.max(initial=-1) >= len(u):
+                continue
+            report[name] = float(np.mean(u[index] @ normal))
+        return report
+
+    @staticmethod
+    def _vorticity_from_gradient(gradient: np.ndarray) -> np.ndarray:
+        """omega from the coupler's gradient layout ``G[i][j] = du_j / dx_i``."""
+        g = np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3)
+        return np.stack(
+            [
+                g[:, 1, 2] - g[:, 2, 1],
+                g[:, 2, 0] - g[:, 0, 2],
+                g[:, 0, 1] - g[:, 1, 0],
+            ],
+            axis=1,
+        )
+
+    def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
+        """Mean ``|omega . n| / |omega|`` on each hand-off box face.
+
+        A vortex-particle method represents vorticity as a set of blobs with no
+        images and no periodicity, so it can only represent a field whose vortex
+        lines close *inside* the particle cloud.  Where vortex lines leave the
+        hand-off box through a face, the particles the coupler creates are
+        open-ended tubes, and their Biot-Savart induction is wrong by an amount
+        that grows with distance: a straight tube of span L induces only
+        ``a / sqrt(a^2 + r^2)`` of the two-dimensional value at distance ``r``
+        (``a = L/2``).  For a span of 2D that is 0.71 at r = 1D and 0.32 at
+        r = 3D.  Spanwise-uniform ("quasi-2D") set-ups violate this by
+        construction and cannot be matched to a fully meshed reference.
+
+        Values near zero mean the lines close inside the box, which is the
+        regime the method is valid in.
+        """
+        if not self._face_cells:
+            return {}
+        omega = self._vorticity_from_gradient(velocity_gradient)
+        scale = float(np.linalg.norm(omega, axis=1).mean()) + 1e-30
+        report: dict[str, float] = {}
+        for name, (index, normal) in self._face_cells.items():
+            if index.max(initial=-1) >= len(omega):
+                continue
+            report[name] = float(np.mean(np.abs(omega[index] @ normal)) / scale)
+        return report
+
+    # ---- setup --------------------------------------------------------------
     def setup(self, fvm):
         transfer_box = getattr(self.config, "handoff_box", None) or self.config.fvm_box
         self._box = np.asarray(transfer_box, dtype=np.float64)
@@ -694,7 +976,6 @@ class ContinuousOverlapInjector:
 
         self._cell_centers = np.asarray(fvm.get_cell_center_coordinates(), dtype=np.float64)
         # Non-master MPI ranks receive empty arrays from the gather; skip tree.
-        # inject() is only called on master, so the None tree is never queried.
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
             self._velocity_trace = CachedVelocityTrace(
@@ -703,14 +984,6 @@ class ContinuousOverlapInjector:
                 neighbours=4,
             )
 
-        # For an axis-aligned body the same exact bounds that carve the FVM
-        # mesh also define the VPM exclusion region.  A nearest-cell query
-        # cannot serve this purpose: it deliberately marks a tolerance shell
-        # inside the hole as data-less Lagrangian space, allowing old solid
-        # particles to survive forever.  The bounds come from the injected
-        # solver's wall-patch geometry (single owner), and are used only when
-        # every wall face lies on one of the six bounding planes (i.e. the
-        # body really is an axis-aligned box).
         wall = self.config.wall_patch_name
         if wall:
             wf = np.asarray(
@@ -741,10 +1014,6 @@ class ContinuousOverlapInjector:
                         wall,
                     )
 
-        # Native immersed boundaries carry their exact interior geometry on
-        # the same objects that define the FVM marker forcing.  Reuse that
-        # single source of truth for particle exclusion instead of asking a
-        # tutorial to duplicate masks or exposing filesystem paths.
         ibm = getattr(fvm, "ibm", None)
         bodies = tuple(getattr(ibm, "bodies", ()))
         self._solid_bodies = tuple(
@@ -759,12 +1028,13 @@ class ContinuousOverlapInjector:
                 ", ".join(str(body.name) for body in self._solid_bodies),
             )
 
+        self._build_face_cell_index()
+
         l_buf = self.buffer_length
         logger.info(
-            "[Handoff] ready: box x∈[%.2f,%.2f]  h=%.3f  σ=%.2fh  ramp=%.3f  "
-            "dead_zone=%.3f  L_buf=%.3f  "
-            "(CFL max_dt=%.3e s)  prune: |ω|<%.3g 1/s  (|Γ|<%.3g m³/s)  "
-            "overlap_shell×%.2f",
+            "[Handoff] ready: box x in [%.2f,%.2f]  h=%.3f  sigma=%.2fh  ramp=%.3f  "
+            "dead_zone=%.3f  L_buf=%.3f  (CFL max_dt=%.3e s)  "
+            "soft prune |omega|<%.3g 1/s (|Gamma|<%.3g m3/s)  amplification cap=%.2f",
             self._box[0],
             self._box[1],
             self.h,
@@ -775,16 +1045,44 @@ class ContinuousOverlapInjector:
             max_stable_dt(self.u_inf, l_buf, self.h),
             self.config.prune_vorticity_min,
             self.threshold_abs,
-            self.overlap_shell_prune_multiplier,
+            self.amplification_cap,
         )
-        logger.info("[Handoff] weighted trace (k=4), aligned remesh, circulation cap")
+        logger.info("[Handoff] weighted trace (k=4), aligned remesh, band-limited transfer")
 
     @property
     def buffer_length(self) -> float:
         return required_buffer_length(self.u_inf, self.dt, self.h)
 
+    def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
+        """Approximate signed distance to the nearest solid surface (>0 in fluid).
+
+        Only used to build a C1 taper, so a first-order estimate is enough: an
+        exact SDF is not required for the weight to be smooth.
+        """
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        distance = np.full(len(query), np.inf)
+        for body in self._solid_bodies:
+            sdf = getattr(body, "signed_distance", None)
+            if callable(sdf):
+                distance = np.minimum(distance, np.asarray(sdf(query), dtype=np.float64).reshape(-1))
+            else:
+                inside = np.asarray(
+                    body.contains(query, include_boundary=False), dtype=bool
+                ).reshape(-1)
+                distance = np.minimum(distance, np.where(inside, -self.h, self.h))
+        if self._body_bounds is not None:
+            bounds = self._body_bounds
+            lo_body = bounds[[0, 2, 4]]
+            hi_body = bounds[[1, 3, 5]]
+            outward = np.maximum(lo_body - query, query - hi_body)
+            outside = np.linalg.norm(np.maximum(outward, 0.0), axis=1)
+            inside_depth = np.max(outward, axis=1)
+            box_distance = np.where(outside > 0.0, outside, inside_depth)
+            distance = np.minimum(distance, box_distance)
+        return distance
+
     def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:
-        """Union of native IBM solids and the legacy fitted-box solid."""
+        """Union of native IBM solids and the fitted-box solid (exact test)."""
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         inside = np.zeros(len(query), dtype=bool)
         for body in self._solid_bodies:
@@ -801,17 +1099,9 @@ class ContinuousOverlapInjector:
                 inside |= np.all((query > lo_body) & (query < hi_body), axis=1)
         return inside
 
-    # ── inject ────────────────────────────────────────────────────────────────
-    def inject(
-        self,
-        vpm,
-        velocity,
-        velocity_gradient,
-    ):
-        """Execute one continuous overlap hand-off and write the VPM field.
-
-        The source is the weighted, gradient-corrected FVM velocity trace.
-        """
+    # ---- inject -------------------------------------------------------------
+    def inject(self, vpm, velocity, velocity_gradient):
+        """Execute one continuous overlap hand-off and write the VPM field."""
         self.step += 1
         assert self._box is not None and self._cell_tree is not None
 
@@ -833,21 +1123,69 @@ class ContinuousOverlapInjector:
         if len(velocity_values) != len(cell_pos) or len(gradient_values) != len(cell_pos):
             raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
 
-        def inside_mesh_at_node(grid_pos):
-            d, _ = tree.query(grid_pos)
-            return d < 1.5 * h
+        has_solid = bool(self._solid_bodies) or self._body_bounds is not None
 
-        def excluded_at_node(grid_pos):
-            # The open interior is solid.  Nodes exactly on the surface may
-            # carry a boundary vortex sheet and are therefore retained.
-            return self._points_in_solid(grid_pos, include_boundary=False)
+        self.last_interface_flow = self.check_interface_flow(velocity_values)
+        self.last_vortex_line_closure = self.check_vortex_line_closure(gradient_values)
+        open_faces = {
+            name: value
+            for name, value in self.last_vortex_line_closure.items()
+            if value > 0.25
+        }
+        if open_faces and not self._open_vortex_lines_warned:
+            self._open_vortex_lines_warned = True
+            logger.warning(
+                "[Handoff] vortex lines leave the hand-off box through %s "
+                "(mean |omega.n|/|omega| = %s). The particle method has no images "
+                "and no periodicity, so those lines become open-ended tubes whose "
+                "induced velocity is too weak by a/sqrt(a^2+r^2) at distance r "
+                "(0.71 at r = half-span, 0.32 at r = 3x half-span). A "
+                "spanwise-uniform set-up violates this by construction and cannot "
+                "be matched against a fully meshed reference.",
+                ", ".join(sorted(open_faces)),
+                ", ".join(f"{k}={v:.2f}" for k, v in sorted(open_faces.items())),
+            )
+
+        outflow_axis, outflow_sign = _outflow_axis_sign(self.config.U_inf)
+        outflow_name = f"{'xyz'[outflow_axis]}{'max' if outflow_sign >= 0 else 'min'}"
+        outflow_un = self.last_interface_flow.get(outflow_name)
+        if outflow_un is not None and outflow_un <= 0.0 and not self._reversed_flow_warned:
+            self._reversed_flow_warned = True
+            logger.warning(
+                "[Handoff] mean outward normal velocity on the outflow face %r is "
+                "%.3f m/s (<= 0): the hand-off interface is inside a recirculation "
+                "region. required_buffer_length, the CFL bound and the outflow-band "
+                "diagnostic all assume vorticity convects out through this face; "
+                "move the hand-off box downstream of the separation bubble.",
+                outflow_name,
+                outflow_un,
+            )
+
+        def mesh_weight_at_node(grid_pos):
+            # C1 confidence that this node sits inside the FVM mesh: 1 within one
+            # cell of a cell centre, 0 beyond two.  The old binary d < 1.5h test
+            # was a step function multiplying the circulation field.
+            d, _ = tree.query(grid_pos, workers=-1)
+            return 1.0 - smoothstep(d, 1.0 * h, 2.0 * h)
+
+        def fluid_weight_at_node(points):
+            if not has_solid:
+                return np.ones(len(np.atleast_2d(points)))
+            # 0 at and inside the wall, 1 one cell into the fluid, C1 between.
+            return smoothstep(self._signed_solid_distance(points), 0.0, h)
+
+        def interior_at_node(points):
+            return self._points_in_solid(points, include_boundary=False)
 
         def velocity_at(points):
             points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
             assert self._velocity_trace is not None
             sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
-            on_or_inside = self._points_in_solid(points, include_boundary=True)
-            sampled[on_or_inside] = 0.0
+            if has_solid:
+                # Taper to the no-slip wall value instead of clipping to it.
+                sampled = sampled * smoothstep(
+                    self._signed_solid_distance(points), 0.0, h
+                )[:, None]
             return sampled
 
         def circulation_at_node(grid_pos):
@@ -860,14 +1198,15 @@ class ContinuousOverlapInjector:
             h,
             circulation_at_node=circulation_at_node,
             u_inf=self.config.U_inf,
-            inside_mesh_at_node=inside_mesh_at_node,
-            excluded_at_node=excluded_at_node,
+            mesh_weight_at_node=mesh_weight_at_node,
+            fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
+            interior_at_node=interior_at_node if has_solid else None,
             ramp_width=self.ramp_width,
             dead_zone=self.dead_zone,
             buffer_length=self.buffer_length,
             threshold_abs=self.threshold_abs,
-            overlap_shell_prune_multiplier=self.overlap_shell_prune_multiplier,
             radius_ratio=self.radius_ratio,
+            amplification_cap=self.amplification_cap,
             u_max=self.u_inf,
             dt=self.dt,
             lattice_anchor=self._lattice_anchor,
@@ -887,12 +1226,16 @@ class ContinuousOverlapInjector:
             zone_id=np.zeros(k, dtype=np.int32),
         )
 
+        self.last_transfer_diagnostics = {
+            "in_band_residual": res.transfer_in_band_residual,
+            "out_of_band_fraction": res.transfer_out_of_band_fraction,
+            "max_amplification": res.transfer_max_amplification,
+        }
+
         logger.info(
-            "[Handoff step=%d] in=%d → out=%d  free=%d  solid_removed=%d  "
-            "pruned=%d (%.3f%% Σ|Γ|; shell=%d, %.3f%% shell Σ|Γ|)  "
-            "cap_pruned=%d (%.3f%% Σ|Γ|, "
-            "δu_bound=%.3e m/s)  "
-            "CFL=%.2f  |ΔΓ|/|Γ|=%.2e  flux_ratio=%.3f",
+            "[Handoff step=%d] in=%d -> out=%d  free=%d  solid_removed=%d  "
+            "pruned=%d (%.3f%% Sum|Gamma|)  cap_pruned=%d (%.3f%% Sum|Gamma|, "
+            "du_bound=%.3e m/s)  CFL=%.2f  |dGamma|/|Gamma|=%.2e  flux_ratio=%.3f",
             self.step,
             res.n_remesh_in,
             res.n_remesh_out,
@@ -900,8 +1243,6 @@ class ContinuousOverlapInjector:
             res.n_excluded,
             res.n_pruned,
             100.0 * res.pruned_circulation_fraction,
-            res.n_overlap_shell_pruned,
-            100.0 * res.overlap_shell_pruned_circulation_fraction,
             res.n_population_pruned,
             100.0 * res.population_pruned_circulation_fraction,
             res.population_pruned_velocity_bound,
@@ -909,26 +1250,60 @@ class ContinuousOverlapInjector:
             res.conservation_drift.get("circulation_rel", 0.0),
             res.flux_ratio,
         )
+        logger.info(
+            "     [Transfer] in-band residual=%.2e  out-of-band=%.1f%% of |omega_FVM|  "
+            "max amplification=%.2f (cap %.2f)",
+            res.transfer_in_band_residual,
+            100.0 * res.transfer_out_of_band_fraction,
+            res.transfer_max_amplification,
+            self.amplification_cap,
+        )
+        if res.spectral_band_ratio:
+            logger.info(
+                "     [Spectrum] |omega_VPM|/|omega_FVM| by wavelength: %s",
+                "  ".join(f"{name}={value:.3f}" for name, value in res.spectral_band_ratio.items()),
+            )
+        if self.last_interface_flow:
+            logger.info(
+                "     [Interface] mean outward u.n per face: %s",
+                "  ".join(f"{name}={value:+.3f}" for name, value in self.last_interface_flow.items()),
+            )
+        if self.last_vortex_line_closure:
+            logger.info(
+                "     [Vortex lines] |omega.n|/|omega| per face: %s",
+                "  ".join(
+                    f"{name}={value:.2f}" for name, value in self.last_vortex_line_closure.items()
+                ),
+            )
+        if res.transfer_out_of_band_fraction > 0.25:
+            logger.warning(
+                "[Handoff] %.0f%% of the FVM vorticity is finer than the particle "
+                "lattice can carry (h=%.3g). This is a resolution limit, not a "
+                "coupling error: refine h to reduce it.",
+                100.0 * res.transfer_out_of_band_fraction,
+                self.h,
+            )
+        if res.transfer_in_band_residual > 1.0e-6:
+            logger.warning(
+                "[Handoff] in-band transfer residual %.2e is far above round-off; "
+                "the particle field is not reproducing the band it claims to carry.",
+                res.transfer_in_band_residual,
+            )
         if (
             res.excluded_input_circulation_l1 > 0.0
             or res.excluded_remesh_circulation_l1 > 0.0
             or res.excluded_target_circulation_l1 > 0.0
         ):
             logger.info(
-                "     [Body mask] removed Σ|Γ|: input=%.3e  remesh=%.3e  target=%.3e",
+                "     [Body taper] removed Sum|Gamma|: input=%.3e  remesh=%.3e  target=%.3e",
                 res.excluded_input_circulation_l1,
                 res.excluded_remesh_circulation_l1,
                 res.excluded_target_circulation_l1,
             )
-        logger.info(
-            "     [Beale] mollification residual: %.1f%% → %.1f%%",
-            100.0 * res.strength_corr_residual_pre,
-            100.0 * res.strength_corr_residual_post,
-        )
         if res.cfl > 0.7:
             logger.warning(
-                "[Handoff] CFL=%.2f > 0.7 — buffer too short for this dt; "
-                "reduce dt (max_dt≈%.3e s).",
+                "[Handoff] CFL=%.2f > 0.7 - buffer too short for this dt; "
+                "reduce dt (max_dt~%.3e s).",
                 res.cfl,
                 max_stable_dt(self.u_inf, self.buffer_length, self.h),
             )

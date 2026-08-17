@@ -287,7 +287,6 @@ COUPLER_SETUP = CouplerSetup(
     buffer_thickness=6 * SPACING,
     dead_zone_h=0.0,
     prune_vorticity_min=0.01,
-    overlap_shell_prune_multiplier=10.0,
     handoff_max_particles=MAX_PARTICLES,
     log_period=VPM_DIAGNOSTIC_PERIOD,
     backup_period=BACKUP_PERIOD,

@@ -356,6 +356,48 @@ class CouplerInterfaceMixin:
             np.copyto(arr, values)
         return arr
 
+    def get_pressure_field(self):
+        """Return the kinematic pressure ``p/rho`` at cell centres ``(nCells,)``."""
+        n = self.mesh_data["n_elements"]
+        return self._gather_owned_cells(np.asarray(self.p, dtype=np.float64)[:n])
+
+    def shift_pressure_field(self, delta):
+        """Add a uniform constant to the pressure field (all ranks, local).
+
+        Only legal when the pressure has a free datum, i.e. when no boundary
+        imposes a Dirichlet pressure.  A coupling patch carries a Neumann
+        pressure condition on every face, so the solver pins an arbitrary
+        reference cell to remove the null space; the resulting level is
+        numerically valid but physically arbitrary, which makes hybrid and
+        fully-meshed pressure fields incomparable and total head meaningless.
+        The coupler uses this to re-datum the field onto ``p = 0`` in the
+        undisturbed stream.
+
+        A uniform shift changes no velocity and no closed-body force; it only
+        fixes the reporting datum.
+
+        Args:
+            delta: Constant added to every pressure degree of freedom.
+
+        Raises:
+            RuntimeError: If a Dirichlet pressure patch already fixes the datum.
+        """
+        from ..utils.cavity_utils import needs_pressure_reference
+
+        if not needs_pressure_reference(self.boundaries):
+            raise RuntimeError(
+                "shift_pressure_field is only valid when the pressure datum is "
+                "free; this case already has a Dirichlet pressure patch."
+            )
+        value = float(delta)
+        if not np.isfinite(value):
+            raise ValueError("pressure shift must be finite")
+        # Shift owned cells *and* ghosts so halo exchanges stay consistent.
+        self.p = np.asarray(self.p, dtype=np.float64) + value
+        for boundary in self.boundaries:
+            if boundary.get("value_p_field") is not None:
+                boundary["value_p_field"] = np.asarray(boundary["value_p_field"]) + value
+
     def get_velocity_gradient_field(self):
         """Return ``grad(U)`` at cell centres with shape ``(nCells, 3, 3)``."""
         if not self.parallel.is_partitioned and not self.parallel.is_root:

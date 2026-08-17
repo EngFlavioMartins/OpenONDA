@@ -84,33 +84,51 @@ def plot(figure_format: str) -> None:
     population.set(ylabel="particles [million]", title="Particle population")
     population.legend(loc="upper left", fontsize=7)
 
-    pruning = axes[1, 0]
-    pruning.plot(
-        time,
-        _values(records, "handoff", "n_pruned") / 1e3,
-        color=util.COLORS["fvm"],
-        label="base prune",
+    # Transfer fidelity.  The in-band residual says whether the particles
+    # reproduce the band they claim to carry (a bug if it is not round-off);
+    # the out-of-band fraction says how much of the FVM's vorticity is finer
+    # than the lattice (a resolution limit -- refine h, do not deconvolve
+    # harder).  Keeping them on the same axes stops the second being mistaken
+    # for the first, which is what the single scalar residual invited.
+    fidelity = axes[1, 0]
+    in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")
+    out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")
+    fidelity.semilogy(
+        time, np.maximum(in_band, 1e-14), color=util.COLORS["fvm"], label="in-band residual"
     )
-    shell = _values(records, "handoff", "n_overlap_shell_pruned") / 1e3
-    if np.any(shell):
-        pruning.plot(time, shell, color=util.COLORS["vpm"], label="non-outflow shell")
-    pruning.set(xlabel="flow time [s]", ylabel="particles [thousand]", title="Handoff pruning")
-    pruning.legend(loc="upper right", fontsize=7)
+    fidelity.semilogy(
+        time, np.maximum(out_of_band, 1e-14), color=util.COLORS["vpm"], label="out-of-band (h limit)"
+    )
+    fidelity.axhline(1.0, color="0.6", lw=0.8, ls=":", label="1%")
+    fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Transfer fidelity")
+    fidelity.legend(loc="upper right", fontsize=7)
 
+    # Per-band |omega_VPM| / |omega_FVM|.  Every curve should sit on 1.
     quality = axes[1, 1]
-    base_loss = 100.0 * _values(records, "handoff", "pruned_circulation_fraction")
-    shell_loss = 100.0 * _values(records, "handoff", "overlap_shell_pruned_circulation_fraction")
-    quality.semilogy(time, np.maximum(base_loss, 1e-8), label=r"all pruned $\Sigma|\Gamma|$")
-    if np.any(shell_loss):
+    band_names = sorted(
+        {name for row in records for name in row.get("spectral_band_ratio", {})},
+        key=lambda s: float(s.split("-")[0]),
+    )
+    for name in band_names:
+        quality.plot(
+            time,
+            np.asarray(
+                [row.get("spectral_band_ratio", {}).get(name, np.nan) for row in records],
+                dtype=float,
+            ),
+            label=rf"$\lambda$ = {name}",
+        )
+    quality.axhline(1.0, color="0.6", lw=0.8, ls=":")
+    if not band_names:
         quality.semilogy(
             time,
-            np.maximum(shell_loss, 1e-8),
-            label=r"shell-pruned $\Sigma|\Gamma|$",
+            np.maximum(100.0 * _values(records, "handoff", "pruned_circulation_fraction"), 1e-8),
+            label=r"pruned $\Sigma|\Gamma|$ [%]",
         )
     quality.set(
         xlabel="flow time [s]",
-        ylabel="circulation fraction [%]",
-        title="Pruning strength",
+        ylabel=r"$|\omega_{VPM}| / |\omega_{FVM}|$",
+        title="Spectral agreement",
     )
     quality.legend(loc="upper right", fontsize=7)
 

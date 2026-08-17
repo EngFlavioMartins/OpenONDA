@@ -7,7 +7,10 @@ from source.coupler.core.helpers.continuous_overlap import (
     continuous_handoff,
     cosine_eta,
     max_stable_dt,
+    redistribute_locally,
     required_buffer_length,
+    smoothstep,
+    soft_prune,
 )
 from source.solvers.FVM.immersed_boundary import ImmersedBody
 
@@ -36,7 +39,13 @@ def test_aligned_handoff_excludes_solid():
         return np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))
 
     def solid(points):
-        return np.all(np.abs(points) < 0.2, axis=1)
+        return np.all(np.abs(np.asarray(points)) < 0.2, axis=1)
+
+    def fluid_weight(points):
+        # C1 taper: 0 inside the solid, 1 one cell outside it.
+        points = np.asarray(points)
+        depth = 0.2 - np.max(np.abs(points), axis=1)
+        return smoothstep(-depth, 0.0, H)
 
     result = continuous_handoff(
         np.zeros((0, 3)),
@@ -44,8 +53,11 @@ def test_aligned_handoff_excludes_solid():
         BOX,
         H,
         circulation_at_node=target,
-        inside_mesh_at_node=lambda points: ~solid(points),
-        excluded_at_node=solid,
+        mesh_weight_at_node=lambda points: 1.0 - smoothstep(
+            np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8
+        ),
+        fluid_weight_at_node=fluid_weight,
+        interior_at_node=solid,
         ramp_width=0.3,
         dead_zone=0.05,
         threshold_abs=1.0e-12,
@@ -129,59 +141,90 @@ def test_free_wake_is_retained():
     np.testing.assert_allclose(result.circ, circ)
 
 
-def test_overlap_shell_pruning_protects_the_outflow_face():
-    def weak_face_target(points):
-        points = np.asarray(points)
-        target = np.zeros((len(points), 3))
-        face_nodes = (
-            (np.abs(points[:, 0]) > 0.3)
-            & (np.abs(points[:, 1]) < 0.2)
-            & (np.abs(points[:, 2]) < 0.2)
-        )
-        target[face_nodes, 2] = 4.0e-3
-        return target
+def test_soft_prune_is_continuous_and_barely_biases_strong_nodes():
+    """A hard clip is a step function of position; the garrote is not."""
+    threshold = 1.0e-3
+    magnitudes = np.linspace(0.0, 5.0 * threshold, 4001)
+    circ = np.zeros((len(magnitudes), 3))
+    circ[:, 2] = magnitudes
+    shrunk, removed = soft_prune(circ, threshold)
 
-    result = continuous_handoff(
-        np.zeros((0, 3)),
-        np.zeros((0, 3)),
-        BOX,
-        H,
-        circulation_at_node=weak_face_target,
-        u_inf=[1.0, 0.0, 0.0],
-        inside_mesh_at_node=lambda points: np.ones(len(points), dtype=bool),
-        ramp_width=0.3,
-        threshold_abs=1.0e-3,
-        overlap_shell_prune_multiplier=4.0,
-        lattice_anchor=np.array([-0.375, -0.375, -0.375]),
+    kept = shrunk[:, 2]
+    # Continuity: no jump larger than the sampling step anywhere, in particular
+    # across the threshold, where a hard clip would jump by the full threshold.
+    assert np.max(np.abs(np.diff(kept))) < 2.0 * (magnitudes[1] - magnitudes[0])
+    # Exactly zero below the threshold, so the node count is still bounded.
+    assert np.all(kept[magnitudes <= threshold] == 0.0)
+    # Negligible bias on strong nodes: (threshold / |Gamma|)^2.
+    strong = magnitudes >= 5.0 * threshold
+    np.testing.assert_allclose(kept[strong], magnitudes[strong], rtol=0.05)
+    np.testing.assert_allclose(shrunk + removed, circ, atol=1e-18)
+
+
+def test_hard_clip_would_be_discontinuous():
+    """Contrast case documenting what the garrote replaces."""
+    threshold = 1.0e-3
+    magnitudes = np.linspace(0.0, 5.0 * threshold, 4001)
+    clipped = np.where(magnitudes >= threshold, magnitudes, 0.0)
+    assert np.max(np.abs(np.diff(clipped))) > 0.9 * threshold
+
+
+def test_local_redistribution_conserves_circulation_and_impulse_locally():
+    shape = (7, 7, 7)
+    rng = np.random.default_rng(2)
+    field = rng.normal(size=(*shape, 3)) * 1e-3
+    # The node at the centre is pruned entirely: shrunk + removed == field.
+    removed = np.zeros_like(field)
+    removed[3, 3, 3] = field[3, 3, 3]
+    shrunk = field.copy()
+    shrunk[3, 3, 3] = 0.0
+
+    out = redistribute_locally(removed, shrunk.reshape(-1, 3), shape).reshape(*shape, 3)
+
+    # Total circulation preserved.
+    np.testing.assert_allclose(
+        out.reshape(-1, 3).sum(axis=0), field.reshape(-1, 3).sum(axis=0), atol=1e-15
     )
+    # And it stayed local: only the six face neighbours changed.
+    changed = np.linalg.norm(out - shrunk, axis=-1) > 1e-18
+    assert changed.sum() == 6
+    for index in np.argwhere(changed):
+        assert np.abs(index - np.array([3, 3, 3])).sum() == 1
 
-    assert result.n_overlap_shell_pruned > 0
-    assert result.overlap_shell_pruned_circulation_fraction > 0.0
-    assert result.n_total > 0
-    assert np.all(result.pos[:, 0] > 0.0)
+
+def test_local_redistribution_preserves_linear_impulse():
+    shape = (5, 5, 5)
+    h = 0.2
+    coords = np.stack(
+        np.meshgrid(*[np.arange(n) * h for n in shape], indexing="ij"), axis=-1
+    ).reshape(-1, 3)
+    field = np.zeros((*shape, 3))
+    field[2, 2, 2] = [0.0, 0.0, 1.0e-4]
+    removed = field.copy()
+    shrunk = np.zeros_like(field)
+    # Give the neighbours something to survive on so they are donation targets.
+    for axis in range(3):
+        for step in (-1, +1):
+            index = [2, 2, 2]
+            index[axis] += step
+            shrunk[tuple(index)] = [0.0, 0.0, 1.0e-8]
+
+    out = redistribute_locally(removed, shrunk.reshape(-1, 3), shape).reshape(-1, 3)
+    before = 0.5 * np.cross(coords, (shrunk + field).reshape(-1, 3)).sum(axis=0)
+    after = 0.5 * np.cross(coords, out).sum(axis=0)
+    np.testing.assert_allclose(after, before, atol=1e-18)
 
 
-def test_default_overlap_shell_multiplier_preserves_base_pruning():
-    def weak_target(points):
-        return np.tile([0.0, 0.0, 1.2e-3], (len(points), 1))
-
-    common = {
-        "pos": np.zeros((0, 3)),
-        "circ": np.zeros((0, 3)),
-        "box": BOX,
-        "h": H,
-        "circulation_at_node": weak_target,
-        "inside_mesh_at_node": lambda points: np.ones(len(points), dtype=bool),
-        "ramp_width": 0.3,
-        "threshold_abs": 1.0e-3,
-        "lattice_anchor": np.array([-0.375, -0.375, -0.375]),
-    }
-    implicit = continuous_handoff(**common)
-    explicit = continuous_handoff(**common, overlap_shell_prune_multiplier=1.0)
-
-    np.testing.assert_allclose(implicit.pos, explicit.pos)
-    np.testing.assert_allclose(implicit.circ, explicit.circ)
-    assert implicit.n_overlap_shell_pruned == explicit.n_overlap_shell_pruned == 0
+def test_smoothstep_is_c1_and_bounded():
+    x = np.linspace(-1.0, 2.0, 20001)
+    y = smoothstep(x, 0.0, 1.0)
+    assert y.min() == 0.0 and y.max() == 1.0
+    derivative = np.gradient(y, x)
+    # Zero slope at both ends is what keeps the taper from adding grid-scale
+    # content to whatever it multiplies.
+    assert abs(derivative[0]) < 1e-6
+    assert abs(derivative[-1]) < 1e-6
+    assert np.max(np.abs(np.diff(derivative))) < 1e-2
 
 
 def test_population_cap_preserves_integral_circulation():

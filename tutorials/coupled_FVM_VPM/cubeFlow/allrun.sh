@@ -15,7 +15,7 @@ fi
 # Recommended compact production case.  Transfer both the VPM velocity and its
 # momentum-equation pressure gradient to the FVM numerical boundary.
 export OPENONDA_SMOKE=0
-export OPENONDA_T_END=2.4
+export OPENONDA_T_END=6.0
 export OPENONDA_FVM_CORES=4
 export OPENONDA_DT_VPM=0.05
 export OPENONDA_VPM_SCHEME=RK2
@@ -29,10 +29,13 @@ export OPENONDA_PARTICLE_SPACING=0.04
 export OPENONDA_FVM_CELL_SIZE=0.038
 export OPENONDA_SAMPLE_SPACING=0.04
 export OPENONDA_SURFACE_CELL_SIZE=0.015
-export OPENONDA_FVM_XMAX=1.5
+# The near-wake recirculation bubble reaches x = 1.5 by t ~ 2.5 and extends
+# past it by t ~ 5 (reference centreline Ux(1.5) = +0.22 at t=2.55, -0.03 at
+# t=4.95).  A hand-off interface inside reversed flow violates every sizing
+# rule the transfer uses, so keep it downstream of the bubble.
+export OPENONDA_FVM_XMAX=3.0
 export OPENONDA_MAX_PARTICLES=1500000
 
-export OPENONDA_OVERLAP_SHELL_PRUNE_MULTIPLIER=10.0
 export OPENONDA_FORCE_INTERVAL=0.15
 export OPENONDA_DIAGNOSTIC_INTERVAL=0.60
 export OPENONDA_CHECKPOINT_INTERVAL=1.0

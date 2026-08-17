@@ -129,6 +129,11 @@ class ImmersedBody:
             else:
                 z_mask = (query[:, 2] > z0) & (query[:, 2] < z1)
 
+        if geometry_type == "sphere":
+            centre = np.asarray(self._geometry["centre"], dtype=np.float64)
+            radius = float(self._geometry["radius"])
+            distance_sq = np.sum((query - centre) ** 2, axis=1)
+            return distance_sq <= radius**2 if include_boundary else distance_sq < radius**2
         if geometry_type == "cylinder_z":
             centre = np.asarray(self._geometry["centre"], dtype=np.float64)
             radius = float(self._geometry["radius"])
@@ -153,6 +158,68 @@ class ImmersedBody:
             )
             return planar & z_mask
         raise ValueError(f"Unsupported immersed-body geometry type {geometry_type!r}")
+
+    def signed_distance(self, points) -> np.ndarray:
+        """Signed distance to the solid surface: positive in the fluid.
+
+        The coupled hand-off needs this to build a C1 taper across the wall.
+        A binary inside/outside mask cannot do that job: multiplying the
+        circulation field by a step function injects energy at every
+        wavelength, including the ones the particle lattice cannot represent,
+        which shows up as a grid-scale noise floor in the transferred vorticity.
+
+        Exact for the analytic primitives; the z-extrusion is combined with the
+        planar distance by the usual box-union formula, which is exact outside
+        and a lower bound inside (adequate for a taper).
+        """
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if self._geometry is None:
+            raise ValueError(f"Immersed body {self.name!r} has no solid geometry metadata")
+
+        geometry_type = self._geometry["type"]
+        if geometry_type == "sphere":
+            centre = np.asarray(self._geometry["centre"], dtype=np.float64)
+            return np.linalg.norm(query - centre, axis=1) - float(self._geometry["radius"])
+
+        if geometry_type == "cylinder_z":
+            centre = np.asarray(self._geometry["centre"], dtype=np.float64)
+            planar = np.linalg.norm(query[:, :2] - centre[:2], axis=1) - float(
+                self._geometry["radius"]
+            )
+        elif geometry_type == "rectangle_z":
+            centre = np.asarray(self._geometry["centre"], dtype=np.float64)
+            half = 0.5 * np.asarray(self._geometry["size"], dtype=np.float64)
+            delta = np.abs(query[:, :2] - centre[:2]) - half
+            planar = np.linalg.norm(np.maximum(delta, 0.0), axis=1) + np.minimum(
+                np.max(delta, axis=1), 0.0
+            )
+        elif geometry_type == "polygon_z":
+            vertices = np.asarray(self._geometry["vertices"], dtype=np.float64)
+            edge = np.roll(vertices, -1, axis=0) - vertices
+            rel = query[:, None, :2] - vertices[None, :, :]
+            t = np.clip(
+                np.einsum("pvi,vi->pv", rel, edge)
+                / np.maximum(np.einsum("vi,vi->v", edge, edge), 1e-300),
+                0.0,
+                1.0,
+            )
+            closest = rel - t[..., None] * edge[None, :, :]
+            planar = np.min(np.linalg.norm(closest, axis=2), axis=1)
+            inside = _polygon_contains_xy(query[:, :2], vertices, False)
+            planar = np.where(inside, -planar, planar)
+        else:
+            raise ValueError(f"Unsupported immersed-body geometry type {geometry_type!r}")
+
+        z_bounds = self._geometry.get("z_bounds")
+        if z_bounds is None:
+            return planar
+        z0, z1 = (float(value) for value in z_bounds)
+        axial = np.maximum(z0 - query[:, 2], query[:, 2] - z1)
+        outside = np.linalg.norm(
+            np.stack([np.maximum(planar, 0.0), np.maximum(axial, 0.0)], axis=1), axis=1
+        )
+        inside = np.minimum(np.maximum(planar, axial), 0.0)
+        return outside + inside
 
     # ------------------------------------------------------------------ #
     # Factories
@@ -319,7 +386,21 @@ class ImmersedBody:
         X[:, 0] = centre[0] + r * np.cos(theta) * np.sin(phi)
         X[:, 1] = centre[1] + r * np.sin(theta) * np.sin(phi)
         X[:, 2] = centre[2] + r * np.cos(phi)
-        return cls(name, X)
+        geometry = {
+            "type": "sphere",
+            "centre": centre.copy(),
+            "radius": r,
+            "z_bounds": None,
+            "bounds": [
+                centre[0] - r,
+                centre[0] + r,
+                centre[1] - r,
+                centre[1] + r,
+                centre[2] - r,
+                centre[2] + r,
+            ],
+        }
+        return cls(name, X, geometry=geometry)
 
     @classmethod
     def rectangle_z(
