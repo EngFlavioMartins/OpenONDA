@@ -1,0 +1,79 @@
+{
+  "stage": "8A \u2014 particle-filter functional closure physics gate",
+  "status": "FAIL",
+  "source_field": "docs/dns/agard_hom02/CB128_9.bin",
+  "configuration": {
+    "dns_n": 128,
+    "nominal_les_n": 32,
+    "sigma_over_h": 2.5,
+    "explicit_auxiliary_filter": "none",
+    "particle_filter": "Gaussian core plus M4' P2M/M2P symbol",
+    "particle_filter_energy_equivalent_width_over_h": 7.774940403348286,
+    "paper_coefficient_for_third_order_gaussian": 0.12,
+    "appendix_A_coefficient_for_openonda_gaussian": 0.13670019848987786,
+    "dynamic_coefficient_from_equation_31": 0.04894928102449194,
+    "coefficient_skewness_assumption": -0.4
+  },
+  "exact_particle_filter_enstrophy_transfer": -0.4438956497313819,
+  "models": {
+    "openonda_current": {
+      "correlation": 0.5412548944456456,
+      "relative_l2": 0.9937054493926109,
+      "transfer_ratio": 0.017733106398181615,
+      "shell_error": 0.9830290434176931,
+      "enstrophy_transfer": -0.007871648786376553,
+      "divergence_relative": 0.5255828654384707,
+      "nu_t_mean": 0.0008395713613664849,
+      "nu_t_max": 0.0022533109477190765
+    },
+    "mansfield_paper_coefficient": {
+      "correlation": 0.5180555535567725,
+      "relative_l2": 0.8680274369245528,
+      "transfer_ratio": 0.5329366646869956,
+      "shell_error": 0.49317025225310573,
+      "enstrophy_transfer": -0.23656826703690956,
+      "divergence_relative": 4.88134100875123e-15,
+      "nu_t_mean": 0.02528811179399758,
+      "nu_t_max": 0.06787032261297588
+    },
+    "mansfield_gaussian_adjusted": {
+      "correlation": 0.5180555535567729,
+      "relative_l2": 0.8561734339526489,
+      "transfer_ratio": 0.6915942882596131,
+      "shell_error": 0.34695766379906695,
+      "enstrophy_transfer": -0.3069956959375136,
+      "divergence_relative": 4.880493038039076e-15,
+      "nu_t_mean": 0.03281649553586444,
+      "nu_t_max": 0.0880756205599767
+    },
+    "mansfield_dynamic": {
+      "correlation": 0.5180555535567716,
+      "relative_l2": 0.969519365157183,
+      "transfer_ratio": 0.08867592796433302,
+      "shell_error": 0.9150363897157533,
+      "enstrophy_transfer": -0.03936285865926082,
+      "divergence_relative": 4.862960889482905e-15,
+      "nu_t_mean": 0.004207717217421247,
+      "nu_t_max": 0.011293018922762712,
+      "dynamic_coefficient": 0.04894928102449194,
+      "dynamic_diagnostics": {
+        "coefficient_squared_raw": 0.0023960321128146866,
+        "numerator": 0.0007031469974637379,
+        "denominator": 0.2934630941309594,
+        "test_filter_ratio": 2.0,
+        "base_filter_width_over_box": 0.24296688760463395,
+        "test_filter_width_over_box": 0.4859337752092679,
+        "leonard_term_convention": "L = -T(conv) + conv(Tu) + T(stre) - stre(Tu); matches exact_sgs_for_filter and the test filter used to build M"
+      }
+    }
+  },
+  "predeclared_checks": {
+    "reference_has_forward_mean_transfer": true,
+    "mansfield_operator_is_solenoidal": true,
+    "mansfield_operator_is_mean_dissipative": true,
+    "mansfield_transfer_within_50_percent": false,
+    "mansfield_shell_transfer_error_below_50_percent": false
+  },
+  "gate_basis": "Functional closure is judged by transfer sign, magnitude, and shell distribution; pointwise correlation and L2 are reported but not gated.",
+  "implementation_warning": "OpenONDA current uses Delta=h and nu_t Laplacian(omega); Mansfield uses the particle-filter width and -curl(nu_t curl(omega))."
+}
