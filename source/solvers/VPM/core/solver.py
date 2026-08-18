@@ -903,9 +903,23 @@ class Solver:
         ``J[i,j] = d(u_i)/d(x_j)``.
         """
         points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
-        gradient = np.asarray(
-            self.compute_target_velocity_gradients(points), dtype=np.float64
-        ).reshape(-1, 3, 3)
+        # Use the same approximation as the target-velocity trace.  In a
+        # treecode run, mixing a direct Jacobian with a treecode velocity is
+        # both prohibitively expensive at coupling faces and inconsistent with
+        # the boundary trace from which the normal velocity is taken.
+        if self.physics.velocity_method == "TREECODE":
+            gradient = np.asarray(
+                self.physics.compute_target_velocity_gradients_hierarchical(
+                    self.particles,
+                    points,
+                    theta=self.physics.velocity_theta,
+                ),
+                dtype=np.float64,
+            ).reshape(-1, 3, 3)
+        else:
+            gradient = np.asarray(
+                self.compute_target_velocity_gradients(points), dtype=np.float64
+            ).reshape(-1, 3, 3)
         if (self._body_induced_fn is None and self.num_sources == 0) or len(points) == 0:
             return gradient
 

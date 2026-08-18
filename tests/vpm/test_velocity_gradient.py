@@ -14,6 +14,7 @@ from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
+    VelocityConfig,
     ViscousConfig,
 )
 
@@ -240,3 +241,85 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
 
     grad_kernel = solver.compute_target_velocity_gradients(target).reshape(3, 3)
     np.testing.assert_allclose(grad_kernel, grad_fd, rtol=1.5e-2, atol=2e-3)
+
+
+def test_complete_target_gradient_uses_treecode_velocity_operator(tmp_path, monkeypatch):
+    """The coupled Jacobian must differentiate the configured treecode trace."""
+    reset_taichi_backend()
+    theta = 0.2
+    solver = Solver(
+        VPMSetup(
+            time_step_size=0.01,
+            processing_unit="CPU",
+            particles_kernel="GAUSSIAN",
+            stretching=StretchingConfig.disabled(),
+            viscous=ViscousConfig(scheme="NONE"),
+            advection=AdvectionConfig(scheme="NONE"),
+            velocity=VelocityConfig.treecode(theta=theta, multipole_order=2),
+            backup_directory=str(tmp_path),
+            backup_frequency=0,
+            logging_frequency=0,
+        )
+    )
+    positions = np.array(
+        [
+            [-0.55, -0.30, 0.10],
+            [-0.20, 0.45, -0.35],
+            [0.30, -0.40, 0.25],
+            [0.55, 0.20, -0.15],
+            [-0.45, 0.15, 0.50],
+            [0.15, 0.55, 0.30],
+            [0.45, -0.10, -0.50],
+            [-0.10, -0.55, -0.25],
+        ]
+    )
+    solver.add_vortex_particles(
+        position=positions,
+        velocity=np.zeros_like(positions),
+        circulation=np.array(
+            [
+                [0.2, -0.1, 0.6],
+                [-0.4, 0.3, 0.1],
+                [0.1, 0.5, -0.2],
+                [0.3, -0.2, -0.4],
+                [-0.1, 0.4, 0.3],
+                [0.5, 0.1, -0.3],
+                [-0.3, -0.5, 0.2],
+                [0.2, 0.2, 0.4],
+            ]
+        ),
+        radius=np.full(len(positions), _SIGMA),
+        volume=np.full(len(positions), _VOLUME),
+        viscosity=np.zeros(len(positions)),
+    )
+
+    physics = solver.physics
+    hierarchical_gradient = physics.compute_target_velocity_gradients_hierarchical
+    calls = []
+
+    def record_hierarchical_gradient(*args, **kwargs):
+        calls.append(kwargs["theta"])
+        return hierarchical_gradient(*args, **kwargs)
+
+    def direct_gradient_must_not_run(*args, **kwargs):
+        pytest.fail("treecode complete-gradient evaluation used the direct kernel")
+
+    monkeypatch.setattr(
+        physics, "compute_target_velocity_gradients_hierarchical", record_hierarchical_gradient
+    )
+    monkeypatch.setattr(physics, "compute_target_velocity_gradients", direct_gradient_must_not_run)
+
+    target = np.array([[0.12, 0.16, -0.22]])
+    gradient = solver.compute_complete_target_velocity_gradients(target, h=0.04)[0]
+    assert calls == [theta]
+
+    step = 2.0e-4
+    finite_difference = np.zeros((3, 3))
+    for axis in range(3):
+        offset = np.zeros((1, 3))
+        offset[0, axis] = step
+        upper = solver.compute_target_velocities(target + offset, include_freestream=False)[0]
+        lower = solver.compute_target_velocities(target - offset, include_freestream=False)[0]
+        finite_difference[:, axis] = (upper - lower) / (2.0 * step)
+
+    np.testing.assert_allclose(gradient, finite_difference, rtol=5e-2, atol=3e-3)

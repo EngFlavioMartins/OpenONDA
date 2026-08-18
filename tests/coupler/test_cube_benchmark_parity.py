@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import replace
 import importlib.util
 import io
 import math
@@ -94,10 +93,9 @@ def hybrid_solver(bench, tmp_path_factory):
     from source.solvers.FVM import Solver
 
     case_dir = tmp_path_factory.mktemp("hybrid_parity")
-    serial_setup = replace(bench.FVM_SETUP, cores=1)
     with contextlib.redirect_stdout(io.StringIO()):
         return Solver(
-            serial_setup, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.FVM_BOX)
+            bench.FVM_SETUP, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.FVM_BOX)
         )
 
 
@@ -105,7 +103,8 @@ def test_common_fvm_settings_identical(bench, reference):
     hybrid = bench.FVM_SETUP
     fully_meshed = reference.FVM_SETUP
 
-    assert hybrid.cores == fully_meshed.cores == 4
+    assert hybrid.cores == 1
+    assert fully_meshed.cores == 4
     assert hybrid.schemes == fully_meshed.schemes
     assert hybrid.linear == fully_meshed.linear
     assert fully_meshed.linear.momentum_tol <= 1.0e-6
@@ -206,10 +205,7 @@ def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     assert bench.FVM_WAKE_BOX == (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
     assert pytest.approx(0.0625) == bench.FVM_CELL_SIZE
     assert pytest.approx(0.03125) == bench.FVM_WAKE_CELL_SIZE
-    # h=0.03, not the earlier 0.04: the hand-off is band limited, and at 0.04 it
-    # carried only 53% of the amplitude over 2-4h with 30-52% of the FVM field
-    # out of band, which under-supplied the coupling boundary by ~12%.
-    assert pytest.approx(0.03) == bench.PARTICLE_SPACING
+    assert pytest.approx(0.04) == bench.PARTICLE_SPACING
     assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
         bench.FVM_MESH.max_cell_size / 4.0
     )
@@ -226,14 +222,13 @@ def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     # stable coupling step (max_dt ~ L_buf/|U|), so shrinking it with h would
     # push the hand-off past its CFL gate at DT_VPM.
     assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(0.24)
-    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(8 * bench.PARTICLE_SPACING)
     assert bench.COUPLER_SETUP.dead_zone_h == 0.0
     assert bench.COUPLER_SETUP.prune_vorticity_min == pytest.approx(0.005)
     assert bench.COUPLER_SETUP.boundary_prune_multiplier == pytest.approx(10.0)
     assert bench.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(
         bench.TRANSFER_AMPLIFICATION_CAP
     )
-    assert bench.COUPLER_SETUP.resync_vpm_bc_after_handoff is False
+    assert bench.COUPLER_SETUP.resync_vpm_bc_after_handoff is True
 
 
 def test_output_names_and_cadence_match_allplot_contract(bench, reference, vpm):

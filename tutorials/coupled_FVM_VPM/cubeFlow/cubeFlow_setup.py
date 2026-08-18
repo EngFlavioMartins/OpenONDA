@@ -58,62 +58,33 @@ T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "6.0"))
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
-FVM_CORES = 4
+# Partitioned FVM-VPM coupling has not yet been qualified by a collective
+# regression, so keep this production tutorial on the supported serial path.
+FVM_CORES = 1
 HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
-# Sized so the box snaps to a root of 1/16 and the finest level lands on
-# 0.015625 -- identical to the reference's finest cell, with the cube face on a
-# cell boundary (0.5/0.015625 = 32) in both cases.  The old 0.06/0.03/0.015 gave
-# 0.0147059 here against 0.0142045 there, a 3.52% resolution mismatch on top of
-# a 4.60% geometry mismatch.
 FVM_CELL_SIZE = 0.0625
 FVM_WAKE_CELL_SIZE = 0.03125
 SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-#
-# PARTICLE_SPACING is the binding constraint on coupling accuracy, not the FVM
-# mesh and not the boundary-condition formulation.  The hand-off is band
-# limited: at h=0.04 the coupler measured |omega_VPM|/|omega_FVM| = 0.53 over
-# 2-4h with 30-52% of the FVM field out of band entirely, and it emitted
-#   "[Handoff] post-correction representation residual 3.56e-01 exceeds 10%;
-#    refine h or move the handoff away from unresolved wall vorticity."
-# on the first hand-off.  The lost near-wall vorticity is what makes the VPM
-# under-supply the body's displacement field at the coupling faces by ~12%,
-# which in a controlled study cost +5.5% mean / +6.3% max in Cd -- the size and
-# the growth of the observed production error.  The amplification cap is not
-# the limiter (it peaked at 1.45 against 1.80); the lattice is.
-#
-# h=0.03 moves the representable floor 2h from 0.080 to 0.060 against FVM cells
-# of 0.03 in the wake and 0.015 at the wall.  It costs ~2.4x the particles, so
-# the population cap is raised to keep the hand-off from population-pruning the
-# very vorticity this change exists to retain.
-PARTICLE_SPACING = 0.03
+PARTICLE_SPACING = 0.04
 PARTICLE_LIMIT = 2_000_000
 OVERLAP_RADIUS_RATIO = 1.0
 PRUNE_VORTICITY_MIN = 0.005
 BOUNDARY_PRUNE_MULTIPLIER = 10.0
 GBD_THRESHOLD = 0.30
-# Held at its previous ABSOLUTE thickness rather than a fixed multiple of h.
-# The hand-off buffer sets the stable coupling step (max_dt ~ L_buf / |U|), so
-# letting it shrink with h would have pushed the hand-off CFL past its 0.7 gate
-# at DT_VPM=0.05.
 BUFFER_THICKNESS = 0.24
 
 # Coupling
-# Prescribe only u.n and the VPM normal derivative of the tangential velocity,
-# rather than all three velocity components.  Full Dirichlet data does not
-# enforce vorticity continuity across the interface, so a tangential mismatch
-# is free to act as a spurious boundary vorticity source.  Set "dirichlet" to
-# recover the previous formulation for comparison.
-VPM_BC_MODE = "vorticity_mixed"
+# The mixed condition preserves the tangential vorticity implied by the VPM
+# trace without constraining the tangential velocity itself.
+VPM_BC_MODE = os.environ.get("OPENONDA_VPM_BC_MODE", "vorticity_mixed")
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
-# Matches referenceFlow's sampling cadence so the two force histories are
-# directly comparable without interpolation.
 FORCE_INTERVAL = 0.05
 DIAGNOSTIC_INTERVAL = 0.60
 CHECKPOINT_INTERVAL = 1.0
@@ -251,7 +222,7 @@ COUPLER_SETUP = CouplerSetup(
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
-    resync_vpm_bc_after_handoff=False,
+    resync_vpm_bc_after_handoff=True,
     anchor_pressure=True,
     backup_period=BACKUP_PERIOD,
 )

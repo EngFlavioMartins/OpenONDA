@@ -17,6 +17,6 @@ qualification, run:
 OPENONDA_SMOKE=1 ./allrun.sh
 ```
 
-`OPENONDA_T_END`, `OPENONDA_SPACING`, `OPENONDA_SURFACE_CELL_SIZE`,
-`OPENONDA_MAX_PARTICLES`, and `OPENONDA_FVM_CORES` provide explicit study and
-resource overrides. The production defaults remain the qualified configuration.
+`OPENONDA_T_END` provides an explicit run-length override. The tutorial uses
+the qualified serial FVM-VPM path; partitioned FVM-VPM coupling remains
+unqualified until it has a collective regression test.
