@@ -200,13 +200,11 @@ VPM_SETUP = VPMSetup(
 
 COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
-    wall_patch_name=None,
     h=SPACING,
     buffer_thickness=6 * SPACING,
     dead_zone_h=3.0,
     prune_vorticity_min=0.01,
     handoff_max_particles=MAX_PARTICLES,
-    log_period=VPM_LOG_PERIOD,
     backup_period=VPM_LOG_PERIOD,
 )
 

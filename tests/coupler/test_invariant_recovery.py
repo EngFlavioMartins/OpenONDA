@@ -1,6 +1,6 @@
 import numpy as np
 
-from source.coupler.diagnostics.injection_correction import recover_invariants
+from source.coupler.conservation import recover_invariants
 
 
 def test_recovery_restores_circulation_and_linear_impulse():

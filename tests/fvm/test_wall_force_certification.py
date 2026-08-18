@@ -17,7 +17,6 @@ import io
 import numpy as np
 import pytest
 
-from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
@@ -30,6 +29,7 @@ from source.solvers.FVM import (
 )
 from source.solvers.FVM.fields.diagnostics import compute_surface_forces, compute_y_plus
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 from source.solvers.FVM.sampling.base import SamplingSchedule
 from source.solvers.FVM.sampling.forces import ForceSampler
 

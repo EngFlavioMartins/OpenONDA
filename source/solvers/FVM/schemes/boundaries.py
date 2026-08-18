@@ -25,6 +25,7 @@ class BoundaryStrategy(Enum):
     FREESTREAM = auto()
     FIXED_FLUX_PRESSURE = auto()
     FIXED_GRADIENT = auto()
+    NORMAL_VALUE_TANGENTIAL_GRADIENT = auto()
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,19 @@ BOUNDARIES.register(
         frozenset({"p"}),
         _ALL_OPERATORS,
         BoundaryStrategy.FIXED_GRADIENT,
+        coupling_only=True,
+    )
+)
+
+# Coupling trace that prescribes the normal velocity and the two tangential
+# components of its face-normal derivative.  Unlike fixedValue, its tangential
+# face velocity is reconstructed from the evolving owner-cell state.
+BOUNDARIES.register(
+    BoundaryOperator(
+        "normalValueTangentialGradient",
+        frozenset({"U"}),
+        _ALL_OPERATORS,
+        BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
         coupling_only=True,
     )
 )

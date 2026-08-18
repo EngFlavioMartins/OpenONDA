@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
-from source.coupler.core.helpers.fvm_velocity_trace import CachedVelocityTrace
+from source.coupler.interpolation import FVMVelocityInterpolator
 
 
 def _affine_velocity(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -22,7 +22,7 @@ def test_weighted_trace_is_affine_exact_and_reuses_stencil():
     velocity, gradient = _affine_velocity(centres)
     targets = np.array([[-0.73, 0.18, 0.44], [0.02, -0.31, 0.11], [0.81, 0.62, -0.58]])
 
-    sampler = CachedVelocityTrace(centres, cKDTree(centres), neighbours=8)
+    sampler = FVMVelocityInterpolator(centres, cKDTree(centres), neighbours=8)
     first = sampler.sample(targets, velocity, gradient)
     second = sampler.sample(targets.copy(), velocity, gradient)
     expected, _ = _affine_velocity(targets)
@@ -46,7 +46,7 @@ def test_weighted_trace_smooths_cellwise_velocity_noise():
         "ni,nij->nj", targets - centres[index], gradient[index]
     )
 
-    sampler = CachedVelocityTrace(centres, tree, neighbours=4)
+    sampler = FVMVelocityInterpolator(centres, tree, neighbours=4)
     weighted = sampler.sample(targets, velocity, gradient)
 
     assert np.max(np.abs(np.diff(weighted[:, 0]))) < 0.1 * np.max(np.abs(np.diff(nearest[:, 0])))

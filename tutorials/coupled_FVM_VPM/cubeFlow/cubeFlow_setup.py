@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -48,10 +49,12 @@ SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
 
-# Time integration
+# Time integration.  OPENONDA_SMOKE=1 shortens the run to a couple of coupling
+# steps so the configuration can be exercised without committing hours to it.
+SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 DT_FVM = 0.01
 DT_VPM = 0.05
-T_END = 6.0
+T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "6.0"))
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
@@ -59,9 +62,14 @@ FVM_CORES = 4
 HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
-FVM_CELL_SIZE = 0.06
-FVM_WAKE_CELL_SIZE = 0.03
-SURFACE_CELL_SIZE = 0.015
+# Sized so the box snaps to a root of 1/16 and the finest level lands on
+# 0.015625 -- identical to the reference's finest cell, with the cube face on a
+# cell boundary (0.5/0.015625 = 32) in both cases.  The old 0.06/0.03/0.015 gave
+# 0.0147059 here against 0.0142045 there, a 3.52% resolution mismatch on top of
+# a 4.60% geometry mismatch.
+FVM_CELL_SIZE = 0.0625
+FVM_WAKE_CELL_SIZE = 0.03125
+SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
@@ -230,7 +238,6 @@ COUPLER_SETUP = CouplerSetup(
     u_inf=list(U_INF),
     handoff_box=HANDOFF_BOX,
     vpm_bc_mode=VPM_BC_MODE,
-    wall_patch_name="cube",
     h=PARTICLE_SPACING,
     buffer_thickness=BUFFER_THICKNESS,
     dead_zone_h=0.0,
@@ -241,7 +248,6 @@ COUPLER_SETUP = CouplerSetup(
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     resync_vpm_bc_after_handoff=False,
     anchor_pressure=True,
-    log_period=VPM_LOG_PERIOD,
     backup_period=BACKUP_PERIOD,
 )
 

@@ -53,7 +53,12 @@ FVM_CORES = 4
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
-MIN_DS = 0.015
+# 0.015625 = 0.5/32, not 0.015: the cube half-width must land on a finest-level
+# cell boundary or the mesher snaps the surface outward (0.015 gave a body of
+# side 1.02273, inflating frontal area -- and every Cd -- by 4.60%).  This also
+# makes max_cell_size exactly 0.5, which divides the 15x10x10 domain, so the
+# delivered sizes match the coupled case level for level.
+MIN_DS = 0.015625
 SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
@@ -63,7 +68,10 @@ WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 # rarely.  The dense-in-time boundary data a coupling study actually needs comes
 # from the six COUPLING_BOX face planes below at a fraction of the size, so the
 # volumes no longer have to carry it.
-SAMPLE_INTERVAL = 0.05  # forces, line probes, coupling-box faces
+SAMPLE_INTERVAL = 0.05  # forces, line probes
+# The coupling faces are sampled every step so an oracle replay needs no
+# interpolation in time between them and the solver's own time levels.
+FACE_INTERVAL = DT_FVM
 SLICE_INTERVAL = 0.10  # full-domain field slices
 VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
 
@@ -73,6 +81,7 @@ COUPLING_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 
 SAMPLE_SCHEDULE = SamplingSchedule(every_time=SAMPLE_INTERVAL)
 SLICE_SCHEDULE = SamplingSchedule(every_time=SLICE_INTERVAL)
+FACE_SCHEDULE = SamplingSchedule(every_time=FACE_INTERVAL)
 
 
 def _coupling_face_samplers(sampler_cls, schedule):
@@ -142,7 +151,7 @@ SAMPLERS = (
         schedule=SLICE_SCHEDULE,
         file_name="wake_slice_z0",
     ),
-    *_coupling_face_samplers(SurfaceSampler, SAMPLE_SCHEDULE),
+    *_coupling_face_samplers(SurfaceSampler, FACE_SCHEDULE),
 )
 
 FVM_MESH = AdaptiveCartesianMesher(

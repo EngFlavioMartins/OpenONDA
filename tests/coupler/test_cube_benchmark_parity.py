@@ -154,9 +154,18 @@ def test_legitimate_differences_are_the_only_differences(bench, reference):
 
 def test_coupler_setup_owns_no_solver_physics(bench):
     setup = bench.COUPLER_SETUP
-    for name in ("nu", "rho", "dt", "t_end", "fvm_box", "grid_spacing", "initial_U"):
-        assert getattr(setup, name) is None
-    assert not setup.surface
+    for name in (
+        "nu",
+        "rho",
+        "dt",
+        "t_end",
+        "fvm_box",
+        "grid_spacing",
+        "initial_U",
+        "surface",
+        "wall_patch_name",
+    ):
+        assert not hasattr(setup, name)
     assert setup.dead_zone_h == 0.0
 
 
@@ -184,7 +193,7 @@ def test_mesh_domain_uses_case_setting(bench, vpm):
     assert bench.FVM_MESH.domain == bench.FVM_BOX
     assert bench.FVM_MESH.requested_max_cell_size == pytest.approx(bench.FVM_CELL_SIZE)
     assert bench.FVM_MESH.max_cell_size <= bench.FVM_CELL_SIZE
-    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.015)
+    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.015625)
     assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -195,8 +204,8 @@ def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     assert bench.HANDOFF_BOX == (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
     assert bench.FVM_BOX == (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
     assert bench.FVM_WAKE_BOX == (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
-    assert pytest.approx(0.06) == bench.FVM_CELL_SIZE
-    assert pytest.approx(0.03) == bench.FVM_WAKE_CELL_SIZE
+    assert pytest.approx(0.0625) == bench.FVM_CELL_SIZE
+    assert pytest.approx(0.03125) == bench.FVM_WAKE_CELL_SIZE
     # h=0.03, not the earlier 0.04: the hand-off is band limited, and at 0.04 it
     # carried only 53% of the amplitude over 2-4h with 30-52% of the FVM field
     # out of band, which under-supplied the coupling boundary by ~12%.
@@ -281,28 +290,18 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
 def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_path):
     from source.coupler import FVMVPMCoupler
 
-    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
+    setup = bench.COUPLER_SETUP
     coupler = FVMVPMCoupler(object(), hybrid_solver, setup)
     coupler.fvm = hybrid_solver
-    coupler._resolve_eulerian_ownership()
+    coupler._read_fvm_state()
     assert coupler.dt_fvm == pytest.approx(bench.DT_FVM)
     assert coupler.t_end == pytest.approx(bench.T_END)
-    assert setup.nu == pytest.approx(bench.NU)
-    assert np.allclose(setup.fvm_box, bench.FVM_BOX, atol=1e-12)
-
-    bad = replace(
-        bench.COUPLER_SETUP,
-        case_dir=str(tmp_path),
-        nu=2 * bench.NU,
-    )
-    coupler_bad = FVMVPMCoupler(object(), hybrid_solver, bad)
-    coupler_bad.fvm = hybrid_solver
-    with pytest.raises(ValueError, match="owns this value"):
-        coupler_bad._resolve_eulerian_ownership()
+    assert coupler.nu == pytest.approx(bench.NU)
+    assert np.allclose(coupler.fvm_box, bench.FVM_BOX, atol=1e-12)
 
 
 def test_pressure_anchor_selection_caches_nonmaster_empty_view():
-    from source.coupler import FVMVPMCoupler
+    from source.coupler.pressure_reference import PressureReference
 
     class FakeFVM:
         def __init__(self):
@@ -312,16 +311,20 @@ def test_pressure_anchor_selection_caches_nonmaster_empty_view():
             self.calls += 1
             return np.empty((0, 3))
 
-    coupler = object.__new__(FVMVPMCoupler)
-    coupler._pressure_anchor_cells = None
-    coupler.fvm = FakeFVM()
-    coupler.config = type("Config", (), {"fvm_box": (-1, 1, -1, 1, -1, 1)})()
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
-
-    assert coupler._pressure_anchor_selection() is None
-    assert coupler._pressure_anchor_cells is not None
-    assert coupler._pressure_anchor_selection() is None
-    assert coupler.fvm.calls == 1
+    fvm = FakeFVM()
+    pressure = PressureReference(
+        fvm,
+        fvm_box=np.array([-1, 1, -1, 1, -1, 1]),
+        u_inf=np.array([1.0, 0.0, 0.0]),
+        h=0.1,
+        boundary_mode="dirichlet",
+        enabled=True,
+        is_master=False,
+    )
+    assert pressure._selection() is None
+    assert pressure.cell_indices is not None
+    assert pressure._selection() is None
+    assert fvm.calls == 1
 
 
 def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
@@ -329,6 +332,8 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
 
     class _FakeViscous:
         viscosity = 10 * bench.NU
+        scheme = "CS"
+        regen_radius_ratio = 1.0
 
     class _FakeVPMConfig:
         viscous = _FakeViscous()
@@ -337,10 +342,12 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
     class _FakeVPM:
         config = _FakeVPMConfig()
         time_step_size = bench.DT_VPM
+        background_velocity = bench.U_INF
 
-    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="viscosity"):
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
+        FVMVPMCoupler._validate_vpm(
+            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+        )
 
 
 def test_incompatible_vpm_freestream_raises(bench, tmp_path):
@@ -349,10 +356,23 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
     class _FakeVPM:
         background_velocity = [0.5, 0.0, 0.0]
         time_step_size = bench.DT_VPM
+        config = type(
+            "Config",
+            (),
+            {
+                "vpm_domain_bounds": None,
+                "viscous": type(
+                    "Viscous",
+                    (),
+                    {"scheme": "CS", "viscosity": bench.NU, "regen_radius_ratio": 1.0},
+                )(),
+            },
+        )()
 
-    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     with pytest.raises(ValueError, match="freestream"):
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
+        FVMVPMCoupler._validate_vpm(
+            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+        )
 
 
 @pytest.mark.parametrize(
@@ -380,13 +400,17 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
     class _FakeVPM:
         config = _FakeVPMConfig()
         time_step_size = bench.DT_VPM
+        background_velocity = bench.U_INF
 
     _FakeViscous.scheme = scheme
     setattr(_FakeViscous, attr, mode)
 
-    setup = replace(bench.COUPLER_SETUP, case_dir=str(tmp_path))
     if rejected:
         with pytest.raises(ValueError, match="relative_local"):
-            FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
+            FVMVPMCoupler._validate_vpm(
+                _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+            )
     else:
-        FVMVPMCoupler._validate_injected_vpm(_FakeVPM(), setup, bench.FVM_BOX, bench.NU)
+        FVMVPMCoupler._validate_vpm(
+            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+        )

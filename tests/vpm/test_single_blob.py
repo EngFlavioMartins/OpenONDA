@@ -110,6 +110,29 @@ def test_vorticity_at_origin(kernel_name, backend, solver_for_backend):
     )
 
 
+def test_target_gradient_layout_matches_velocity_finite_difference(backend, solver_for_backend):
+    """Certify ``J[i,j]=du_i/dx_j`` before using it in coupling.
+
+    A single regularized blob's reported ``zeta*Gamma`` field is not globally
+    divergence-free, whereas Biot--Savart returns its solenoidal projection,
+    so that separate field is not a valid pointwise curl oracle.  Differencing
+    the actual target-velocity API certifies all nine entries without that
+    assumption.
+    """
+    solver = _single_blob_solver(solver_for_backend, "GAUSSIAN")
+    probes = np.array([[0.11, 0.07, 0.0], [0.23, -0.05, 0.0], [-0.16, 0.12, 0.0]])
+    jacobian = solver.compute_target_velocity_gradients(probes).reshape(-1, 3, 3)
+    step = 2.0e-4
+    finite_difference = np.empty_like(jacobian)
+    for axis in range(3):
+        offset = np.zeros(3)
+        offset[axis] = step
+        u_plus = solver.compute_target_velocities(probes + offset, include_freestream=False)
+        u_minus = solver.compute_target_velocities(probes - offset, include_freestream=False)
+        finite_difference[:, :, axis] = (u_plus - u_minus) / (2.0 * step)
+    np.testing.assert_allclose(jacobian, finite_difference, rtol=2.0e-3, atol=2.0e-3)
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )

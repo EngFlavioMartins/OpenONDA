@@ -51,8 +51,10 @@ CONTRACT_METHODS = [
     "set_dirichlet_velocity_boundary_condition_vec",
     "set_freestream_velocity_boundary_condition_vec",
     "set_directional_freestream_velocity_boundary_condition_vec",
+    "set_normal_velocity_tangential_gradient_boundary_condition",
     "set_freestream_pressure_boundary_condition",
     "set_directional_freestream_pressure_boundary_condition",
+    "set_flux_consistent_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]

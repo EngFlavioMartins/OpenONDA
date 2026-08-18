@@ -64,9 +64,9 @@ SMAGORINSKY_CE = 1.048
 DT_FVM = 0.01
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
-FVM_CELL_SIZE = 0.06
-FVM_WAKE_CELL_SIZE = 0.03
-SURFACE_CELL_SIZE = 0.015
+FVM_CELL_SIZE = 0.0625
+FVM_WAKE_CELL_SIZE = 0.03125
+SURFACE_CELL_SIZE = 0.015625
 SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 
@@ -209,7 +209,7 @@ def project_to_solenoidal(u, normals, areas):
     return u - (eps / total) * normals
 
 
-def build_setup(case_dir: Path, t_end: float, cores: int):
+def build_setup(case_dir: Path, t_end: float, cores: int, cell_size: float):
     from openonda.fvm import (
         AdaptiveCartesianMesher,
         BoundaryConfig,
@@ -255,11 +255,11 @@ def build_setup(case_dir: Path, t_end: float, cores: int):
     )
     mesh = AdaptiveCartesianMesher(
         domain=FVM_BOX,
-        max_cell_size=FVM_CELL_SIZE,
+        max_cell_size=cell_size,
         surface_file=CUBE / "assets" / "cube.stl",
         wall_patch_name="cube",
-        surface_cell_size=SURFACE_CELL_SIZE,
-        refinements=(BoxRefinement(FVM_WAKE_BOX, FVM_WAKE_CELL_SIZE, "wakeBox"),),
+        surface_cell_size=cell_size / 4.0,
+        refinements=(BoxRefinement(FVM_WAKE_BOX, cell_size / 2.0, "wakeBox"),),
         merge_outer_patch=PATCH,
     )
     setup = FVMSetup(
@@ -348,6 +348,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--t-end", type=float, default=2.5)
     ap.add_argument("--cores", type=int, default=4)
+    # The mesher snaps the root to a size dividing all three box extents, which
+    # for 5x3x3 means exactly 1/k.  The reference box (15x10x10) snaps to 5/88,
+    # which is not of that form, so no cell size here reproduces the reference
+    # mesh: 0.06 -> 1/17 (+3.5%), 0.0556 -> 1/18 (-2.2%).  Run both to bracket
+    # it and interpolate the mesh contribution out of the comparison.
+    ap.add_argument("--cell-size", type=float, default=FVM_CELL_SIZE)
     ap.add_argument("--flux-authority", action="store_true")
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--case-dir", type=Path, default=CUBE / "oracleFlow")
@@ -368,7 +374,7 @@ def main() -> None:
         )
 
     args.case_dir.mkdir(parents=True, exist_ok=True)
-    setup, mesh = build_setup(args.case_dir, args.t_end, args.cores)
+    setup, mesh = build_setup(args.case_dir, args.t_end, args.cores, args.cell_size)
     solver = setup_fvm_solver(setup, case_dir=args.case_dir, mesh=mesh)
 
     centres = solver.get_boundary_face_center_coordinates(PATCH)

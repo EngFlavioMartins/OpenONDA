@@ -13,7 +13,9 @@ Setters
     ``set_cell_scalar_field``, ``set_cell_vector_field``, ``set_time_step``,
     ``set_kinematic_viscosity``, ``set_dirichlet_velocity_boundary_condition_vec``,
     ``set_freestream_velocity_boundary_condition_vec``,
-    ``set_freestream_pressure_boundary_condition``.
+    ``set_normal_velocity_tangential_gradient_boundary_condition``,
+    ``set_freestream_pressure_boundary_condition``,
+    ``set_flux_consistent_pressure_boundary_condition``.
 Driver
     ``solve_pimple`` / ``advance_time`` live on the ``Solver`` itself.
 
@@ -29,6 +31,10 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+
+from ..fields.mixed_velocity_boundary import (
+    update_normal_velocity_tangential_gradient_boundary,
+)
 
 
 class CouplerInterfaceMixin:
@@ -591,6 +597,52 @@ class CouplerInterfaceMixin:
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
 
+    def set_normal_velocity_tangential_gradient_boundary_condition(
+        self, normal_velocity, tangential_gradient, patch_name
+    ):
+        """Prescribe ``U.n`` and the tangential part of ``dU/dn`` per face."""
+        normal_field = self._scatter_patch_values(patch_name, normal_velocity)
+        gradient_field = self._scatter_patch_values(
+            patch_name, tangential_gradient, trailing_shape=(3,)
+        )
+        b = self._optional_patch(patch_name)
+        if b is None:
+            return
+        n_faces = b["nFaces"]
+        if normal_field.shape != (n_faces,) or not np.all(np.isfinite(normal_field)):
+            raise ValueError(
+                f"Normal velocity for patch {patch_name!r} must be finite with shape ({n_faces},)"
+            )
+        if gradient_field.shape != (n_faces, 3) or not np.all(np.isfinite(gradient_field)):
+            raise ValueError(
+                f"Tangential gradient for patch {patch_name!r} must be finite with shape "
+                f"({n_faces}, 3)"
+            )
+
+        start = b["startFace"]
+        surface_vectors = np.asarray(
+            self.geo_data["face_sf"][start : start + n_faces], dtype=np.float64
+        )
+        areas = np.linalg.norm(surface_vectors, axis=1)
+        if np.any(areas <= 1.0e-14):
+            raise ValueError(f"Patch {patch_name!r} contains a degenerate face")
+        normals = surface_vectors / areas[:, np.newaxis]
+        removed_normal = np.einsum("ij,ij->i", gradient_field, normals)
+        gradient_field = gradient_field - removed_normal[:, np.newaxis] * normals
+
+        b["bc_type_U"] = "normalValueTangentialGradient"
+        b["normal_velocity_field"] = normal_field
+        b["tangential_gradient_field"] = gradient_field
+        b["tangential_gradient_removed_normal_max"] = (
+            float(np.max(np.abs(removed_normal))) if n_faces else 0.0
+        )
+        b.pop("value_U_field", None)
+        b.pop("_fixed_freestream_outflow", None)
+        b.pop("_freestream_outflow", None)
+        update_normal_velocity_tangential_gradient_boundary(
+            self.U, b, self.mesh_data, self.geo_data
+        )
+
     def set_freestream_velocity_boundary_condition_vec(self, u_target, patch_name):
         """Impose a characteristic VPM BC from an ``(N, 3)`` boundary array.
 
@@ -720,6 +772,16 @@ class CouplerInterfaceMixin:
         owners = self.mesh_data["owners"][start : start + nf]
         ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
         self.p[ghosts] = self.p[owners] + field
+
+    def set_flux_consistent_pressure_boundary_condition(self, patch_name):
+        """Pair a prescribed velocity flux with native ``fixedFluxPressure``."""
+        b = self._optional_patch(patch_name)
+        if b is None:
+            return
+        b["bc_type_p"] = "fixedFluxPressure"
+        b.pop("fixed_flux_pressure_external", None)
+        b.pop("fixed_flux_pressure_delta", None)
+        b.pop("fixed_gradient_delta", None)
 
     def set_neumann_pressure_boundary_condition(self, pressure_gradient, patch_name):
         """Impose a vector pressure gradient on a coupling patch."""

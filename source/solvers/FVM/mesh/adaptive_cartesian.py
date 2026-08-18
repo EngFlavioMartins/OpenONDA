@@ -30,6 +30,7 @@ import math
 from math import gcd, lcm
 from pathlib import Path
 from typing import cast
+import warnings
 
 import numpy as np
 
@@ -256,6 +257,42 @@ class AdaptiveCartesianMesher:
                     index = math.ceil(value)
                 indices.append(index)
         return _IntegerBox(*indices)
+
+    def _warn_if_body_inflated(self, solid: _IntegerBox, h_min: float) -> None:
+        """Warn when snapping the STL outward resizes the body.
+
+        ``_integer_box`` floors the lower bound and ceils the upper one, so a
+        surface that does not land on a finest-level cell boundary is absorbed
+        outward.  The solver then sees a body larger than the STL while force
+        coefficients are still divided by the nominal reference area, which
+        biases every reported Cd.  Choose sizes that put the surface on a cell
+        boundary instead.
+        """
+        bounds = self.surface_bounds
+        if bounds is None:
+            return
+        corners = ((solid.x0, solid.x1), (solid.y0, solid.y1), (solid.z0, solid.z1))
+        exact = [bounds[2 * a + 1] - bounds[2 * a] for a in range(3)]
+        snapped = [(hi - lo) * h_min for lo, hi in corners]
+        if any(span <= 0.0 for span in exact):
+            return
+        # Frontal area sets the pressure-drag scale, so report the worst of the
+        # three projections rather than the volume.
+        frontal = max(
+            (snapped[(a + 1) % 3] * snapped[(a + 2) % 3])
+            / (exact[(a + 1) % 3] * exact[(a + 2) % 3])
+            for a in range(3)
+        )
+        if frontal - 1.0 <= 0.01:
+            return
+        warnings.warn(
+            f"STL snapped outward to the finest cell ({h_min:.6g}): body spans "
+            f"{snapped[0]:.6g} x {snapped[1]:.6g} x {snapped[2]:.6g} instead of "
+            f"{exact[0]:.6g} x {exact[1]:.6g} x {exact[2]:.6g}, inflating frontal "
+            f"area by {100.0 * (frontal - 1.0):.2f}%. Force coefficients divided by "
+            f"the nominal area are biased by the same factor.",
+            stacklevel=2,
+        )
 
     def _refinement_regions(
         self,
@@ -642,6 +679,8 @@ class AdaptiveCartesianMesher:
             if self.surface_bounds is not None
             else None
         )
+        if solid is not None:
+            self._warn_if_body_inflated(solid, h_min)
         regions = self._refinement_regions(h_min, max_level, limits, solid)
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(

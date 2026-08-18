@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+
 import numpy as np
 import pytest
 
+from source.coupler.boundary import apply_fvm_boundary
 from source.coupler.config.types import CouplerSetup
+from source.solvers.FVM import (
+    BoundaryConfig,
+    ExecutionConfig,
+    FVMSetup,
+    LinearSolverConfig,
+    PimpleControl,
+    SchemesConfig,
+    Solver,
+    TimeConfig,
+    TransportConfig,
+)
+from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
+from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.FVM.sampling.forces import ForceSampler
 
 CONTRACT_METHODS = [
     "get_cell_center_coordinates",
@@ -27,8 +45,10 @@ CONTRACT_METHODS = [
     "set_dirichlet_velocity_boundary_condition_vec",
     "set_freestream_velocity_boundary_condition_vec",
     "set_directional_freestream_velocity_boundary_condition_vec",
+    "set_normal_velocity_tangential_gradient_boundary_condition",
     "set_freestream_pressure_boundary_condition",
     "set_directional_freestream_pressure_boundary_condition",
+    "set_flux_consistent_pressure_boundary_condition",
     "solve_pimple",
     "advance_time",
 ]
@@ -43,8 +63,6 @@ def _fvm_setup(tmp_path, **overrides):
         "h": 0.25,
         "buffer_thickness": 0.25,
         "dead_zone_h": 0.5,
-        "wall_patch_name": None,
-        "case_dir": str(tmp_path),
     }
     kwargs.update(overrides)
     return CouplerSetup(**kwargs)
@@ -52,11 +70,13 @@ def _fvm_setup(tmp_path, **overrides):
 
 def test_coupler_setup_validates_and_serializes_vpm_bc_mode(tmp_path):
     setup = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
-    assert setup.to_dict()["fvm_solver"]["vpm_bc_mode"] == "characteristic"
+    assert setup.to_dict()["coupler"]["vpm_bc_mode"] == "characteristic"
     directional = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
-    assert directional.to_dict()["fvm_solver"]["vpm_bc_mode"] == "directional_outflow"
+    assert directional.to_dict()["coupler"]["vpm_bc_mode"] == "directional_outflow"
     pressure = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
-    assert pressure.to_dict()["fvm_solver"]["vpm_bc_mode"] == "pressure_gradient"
+    assert pressure.to_dict()["coupler"]["vpm_bc_mode"] == "pressure_gradient"
+    mixed = _fvm_setup(tmp_path, vpm_bc_mode="vorticity_mixed")
+    assert mixed.to_dict()["coupler"]["vpm_bc_mode"] == "vorticity_mixed"
     with pytest.raises(ValueError, match="vpm_bc_mode"):
         _fvm_setup(tmp_path, vpm_bc_mode="unsupported")
 
@@ -64,51 +84,68 @@ def test_coupler_setup_validates_and_serializes_vpm_bc_mode(tmp_path):
 def test_coupler_setup_validates_separate_handoff_box(tmp_path):
     outer = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
     inner = (-1.2, 1.2, -1.2, 1.2, -1.2, 1.2)
-    setup = _fvm_setup(tmp_path, fvm_box=outer, handoff_box=inner)
+    setup = _fvm_setup(tmp_path, handoff_box=inner)
     assert setup.to_dict()["coupler"]["handoff_domain"]["xmax"] == 1.2
-    with pytest.raises(ValueError, match="contained within fvm_box"):
-        _fvm_setup(tmp_path, fvm_box=outer, handoff_box=(-1.6, 1.2, *inner[2:]))
+    setup.validate_handoff_box(outer)
+    invalid = _fvm_setup(tmp_path, handoff_box=(-1.6, 1.2, *inner[2:]))
+    with pytest.raises(ValueError, match="contained within the FVM domain"):
+        invalid.validate_handoff_box(outer)
 
 
 def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_name=None):
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
-
-    return build_fvm_backend(
-        mesh_data=coupling_box_mesh(
-            box, spacing, hole_box=hole_box, wall_patch_name=wall_patch_name or "cube"
-        ),
-        case_dir=str(tmp_path),
-        dt=0.05,
-        t_end=0.3,
-        nu=0.01,
-        u_inf=[1.0, 0.0, 0.0],
-        wall_patch_name=wall_patch_name,
-        quiet=True,
+    mesh = coupling_box_mesh(
+        box, spacing, hole_box=hole_box, wall_patch_name=wall_patch_name or "cube"
     )
-
-
-def test_prepare_case_fvm_needs_no_external_case(tmp_path):
-    from source.coupler.core.solver import FVMVPMCoupler
-
-    setup = _fvm_setup(tmp_path)
-    FVMVPMCoupler.prepare_case(setup)  # no external case tree
-    assert (tmp_path / "solution").is_dir()
-    # No case-dictionary artifacts were created.
-    assert not (tmp_path / "system").exists()
-    assert not (tmp_path / "0").exists()
-
-
-def test_prepare_case_fvm_restart_requires_complete_checkpoint(tmp_path):
-    from source.coupler.core.solver import FVMVPMCoupler
-
-    setup = _fvm_setup(tmp_path)
-    with pytest.raises(FileNotFoundError, match="coupled checkpoint"):
-        FVMVPMCoupler.prepare_case(setup, restart=True)
+    boundaries = [
+        BoundaryConfig(
+            name="numericalBoundary",
+            type_U="fixedValue",
+            value_U=[1.0, 0.0, 0.0],
+            type_p="fixedFluxPressure",
+        )
+    ]
+    samplers = []
+    if wall_patch_name is not None:
+        boundaries.append(BoundaryConfig.wall(wall_patch_name))
+        body = np.asarray(hole_box, dtype=float)
+        samplers.append(
+            ForceSampler(
+                patch_names=[wall_patch_name],
+                ref_velocity=1.0,
+                ref_area=float((body[3] - body[2]) * (body[5] - body[4])),
+                ref_length=float(body[1] - body[0]),
+                schedule=SamplingSchedule(every_n_steps=1),
+            )
+        )
+    config = FVMSetup(
+        case_name="coupled_test",
+        execution=ExecutionConfig(),
+        time=TimeConfig(delta_t=0.05, end_time=0.3, write_interval=10**9),
+        schemes=SchemesConfig(
+            convection_scheme="LUST", gradient_scheme="lsq", time_scheme="backward"
+        ),
+        linear=LinearSolverConfig(
+            linear_solver="bicgstab",
+            pressure_solver="amg",
+            pressure_tol=1e-8,
+            momentum_maxiter=2000,
+            ilu_drop_tol=1e-4,
+            ilu_fill_factor=10.0,
+            ilu_reuse_tol=0.05,
+        ),
+        pimple=PimpleControl(n_correctors=2, n_outer_correctors=2),
+        samplers=tuple(samplers),
+        transport=TransportConfig(density=1.0, nu=0.01),
+        boundaries=boundaries,
+        initial_U=[1.0, 0.0, 0.0],
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+    solver.auto_write = False
+    return solver
 
 
 def test_coupling_box_mesh_single_merged_patch():
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
-
     mesh = coupling_box_mesh(BOX, 0.25, patch_name="numericalBoundary")
     assert mesh["n_elements"] == 4**3
     assert len(mesh["boundary"]) == 1
@@ -123,8 +160,6 @@ def test_coupling_box_mesh_single_merged_patch():
 
 
 def test_coupling_box_mesh_can_keep_spanwise_faces_empty():
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
-
     mesh = coupling_box_mesh(
         BOX,
         0.25,
@@ -148,8 +183,6 @@ def test_coupling_box_mesh_can_keep_spanwise_faces_empty():
 
 
 def test_coupling_box_mesh_rejects_non_conforming_spacing():
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
-
     with pytest.raises(ValueError, match="integer"):
         coupling_box_mesh(BOX, 0.3)
 
@@ -161,34 +194,20 @@ def built_backend(tmp_path_factory):
     return setup, _build_backend(tmp)
 
 
-def test_fvm_setup_rejects_contradicting_physics(tmp_path):
-    """A CouplerSetup value that contradicts the injected FVM solver's own
-    configuration raises instead of being silently reconciled."""
-    from source.coupler.core.solver import FVMVPMCoupler
-
-    fvm = _build_backend(tmp_path)  # dt=0.05, nu=0.01
-    setup = _fvm_setup(tmp_path, dt=0.99)
-    coupler = FVMVPMCoupler(object(), fvm, setup)
-    coupler.fvm = fvm
-    with pytest.raises(ValueError, match="owns this value"):
-        coupler._resolve_eulerian_ownership()
-
-
 def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
-    """With coupling-only CouplerSetup the coupler adopts dt/t_end/nu from the
-    injected solver and derives fvm_box from the coupling-patch geometry."""
-    from source.coupler.core.solver import FVMVPMCoupler
+    """The coupler reads FVM-owned values without mutating CouplerSetup."""
+    from source.coupler.solver import FVMVPMCoupler
 
     fvm = _build_backend(tmp_path)
     setup = _fvm_setup(tmp_path)
-    assert setup.dt is None and setup.nu is None and setup.fvm_box is None
     coupler = FVMVPMCoupler(object(), fvm, setup)
     coupler.fvm = fvm
-    coupler._resolve_eulerian_ownership()
+    coupler._read_fvm_state()
     assert coupler.dt_fvm == 0.05
     assert coupler.t_end == 0.3
-    assert setup.nu == 0.01
-    assert np.allclose(setup.fvm_box, BOX, atol=1e-12)
+    assert coupler.nu == 0.01
+    assert np.allclose(coupler.fvm_box, BOX, atol=1e-12)
+    assert "nu" not in setup.to_dict()["coupler"]
 
 
 def test_contract_methods_present(built_backend):
@@ -236,6 +255,31 @@ def test_dirichlet_bc_and_driver_split_produce_finite_flow(built_backend):
     assert np.isfinite(U).all()
     # Uniform inflow through an empty box stays uniform.
     assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-8)
+
+
+def test_mixed_bc_preserves_prescribed_normal_flux_through_pimple(built_backend):
+    import contextlib
+    import io
+
+    setup, fvm = built_backend
+    normals = np.asarray(fvm.get_boundary_face_normals(setup.patch_name))
+    areas = np.asarray(fvm.get_boundary_face_areas(setup.patch_name))
+    normal_velocity = normals @ setup.U_inf
+    tangential_gradient = np.zeros_like(normals)
+    fvm.set_normal_velocity_tangential_gradient_boundary_condition(
+        normal_velocity, tangential_gradient, setup.patch_name
+    )
+    fvm.set_flux_consistent_pressure_boundary_condition(setup.patch_name)
+    with contextlib.redirect_stdout(io.StringIO()):
+        fvm.solve_pimple()
+
+    patch = next(b for b in fvm.boundaries if b["name"] == setup.patch_name)
+    start = patch["startFace"]
+    actual_flux = fvm.phi[start : start + patch["nFaces"]]
+    np.testing.assert_allclose(actual_flux, normal_velocity * areas, atol=1.0e-11)
+    assert patch["bc_type_U"] == "normalValueTangentialGradient"
+    assert patch["bc_type_p"] == "fixedFluxPressure"
+    assert "value_U_field" not in patch
 
 
 def test_characteristic_vpm_bc_sets_matching_velocity_and_pressure(built_backend):
@@ -286,7 +330,7 @@ def test_directional_outflow_vpm_bc_fixes_only_downstream_switch(tmp_path):
 
 
 def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path):
-    from source.coupler.core.solver import FVMVPMCoupler
+    from source.coupler.solver import FVMVPMCoupler
 
     class FakeFVM:
         last_yplus = None
@@ -310,7 +354,7 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
     coupler.fvm = FakeFVM()
     coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
-    coupler._fvm_step("numericalBoundary", target)
+    apply_fvm_boundary(coupler, "numericalBoundary", target)
 
     assert [call[0] for call in coupler.fvm.calls] == [
         "velocity",
@@ -322,7 +366,7 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
 
 def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
-    from source.coupler.core.solver import FVMVPMCoupler
+    from source.coupler.solver import FVMVPMCoupler
 
     class FakeFVM:
         last_yplus = None
@@ -350,7 +394,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
     coupler.fvm = FakeFVM()
     coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
-    coupler._fvm_step("numericalBoundary", target)
+    apply_fvm_boundary(coupler, "numericalBoundary", target)
 
     assert [call[0] for call in coupler.fvm.calls] == [
         "velocity",
@@ -363,7 +407,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
 
 def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
-    from source.coupler.core.solver import FVMVPMCoupler
+    from source.coupler.solver import FVMVPMCoupler
 
     class FakeFVM:
         last_yplus = None
@@ -388,7 +432,7 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
     coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     gradient = np.array([[0.2, 0.0, 0.0], [-0.1, 0.3, 0.0]])
-    coupler._fvm_step("numericalBoundary", target, gradient)
+    apply_fvm_boundary(coupler, "numericalBoundary", target, gradient)
 
     assert [call[0] for call in coupler.fvm.calls] == [
         "velocity",
@@ -398,6 +442,61 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
     ]
     np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
     np.testing.assert_array_equal(coupler.fvm.calls[1][2], gradient)
+
+
+def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_path):
+    from source.coupler.solver import FVMVPMCoupler
+
+    class FakeFVM:
+        last_yplus = None
+
+        def __init__(self):
+            self.calls = []
+
+        def set_normal_velocity_tangential_gradient_boundary_condition(
+            self, normal_velocity, tangential_gradient, patch
+        ):
+            self.calls.append(
+                (
+                    "velocity",
+                    patch,
+                    np.asarray(normal_velocity).copy(),
+                    np.asarray(tangential_gradient).copy(),
+                )
+            )
+
+        def set_flux_consistent_pressure_boundary_condition(self, patch):
+            self.calls.append(("pressure", patch))
+
+        def solve_pimple(self):
+            self.calls.append(("solve",))
+
+        def advance_time(self):
+            self.calls.append(("advance",))
+
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.fvm = FakeFVM()
+    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="vorticity_mixed")
+    target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
+    normal_velocity = np.array([-1.0, 0.8])
+    tangential_gradient = np.array([[0.0, 0.2, 0.3], [0.0, -0.1, 0.4]])
+
+    apply_fvm_boundary(
+        coupler,
+        "numericalBoundary",
+        target,
+        normal_velocity=normal_velocity,
+        tangential_gradient=tangential_gradient,
+    )
+
+    assert [call[0] for call in coupler.fvm.calls] == [
+        "velocity",
+        "pressure",
+        "solve",
+        "advance",
+    ]
+    np.testing.assert_array_equal(coupler.fvm.calls[0][2], normal_velocity)
+    np.testing.assert_array_equal(coupler.fvm.calls[0][3], tangential_gradient)
 
 
 def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):
@@ -423,13 +522,15 @@ def test_coupler_runtime_setters_apply(built_backend):
 
 
 def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):
-    import source.coupler.core.solver as coupler_mod
+    import source.coupler.solver as coupler_mod
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(coupler_mod, "_mpi4py_comm", None)
     monkeypatch.setenv("OMPI_COMM_WORLD_SIZE", "2")
 
     class _SerialBackend:
+        case_dir = str(tmp_path)
+
         def n_procs(self):
             return 1
 
@@ -447,7 +548,7 @@ HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 
 
 def test_carved_mesh_hole_and_wall_patch():
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 
     mesh = coupling_box_mesh(
         (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5), 0.125, hole_box=HOLE, wall_patch_name="cube"
@@ -480,7 +581,7 @@ def test_carved_mesh_hole_and_wall_patch():
 
 
 def test_carved_mesh_misaligned_hole_raises():
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
+    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 
     with pytest.raises(ValueError, match="mesh plane"):
         coupling_box_mesh((-1.5, 1.5, -1.5, 1.5, -1.5, 1.5), 0.075, hole_box=HOLE)
@@ -493,7 +594,6 @@ def test_builder_body_fitted_cube(tmp_path):
     setup = _fvm_setup(
         tmp_path,
         h=0.125,
-        wall_patch_name="cube",
         buffer_thickness=0.375,
     )
     fvm = _build_backend(

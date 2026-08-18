@@ -65,6 +65,11 @@ class Solver:
         """
         reset_taichi_backend()
 
+    @staticmethod
+    def synchronize() -> None:
+        """Wait until all queued VPM backend work has completed."""
+        ti.sync()
+
     def _init_config(self, setup: VPMSetup | None) -> VPMSetup:
         """Validate the setup and initialize scalar solver state."""
         final_config = setup if setup is not None else VPMSetup.dns_simulation()
@@ -878,9 +883,72 @@ class Solver:
     def compute_target_velocity_gradients(self, grid_positions: np.ndarray) -> np.ndarray:
         """Evaluate ``∇u`` at arbitrary target points.
 
-        Returns an ``(N, 9)`` array in row-major tensor order.
+        Returns an ``(N, 9)`` array in row-major Jacobian order,
+        ``J[i, j] = d(u_i)/d(x_j)``.  This kernel differentiates the vortex
+        particle velocity; the uniform freestream has zero gradient and the
+        optional regularized sources and body-potential callback are not
+        differentiated here.
         """
         return self.physics.compute_target_velocity_gradients(self.particles, grid_positions)
+
+    def compute_complete_target_velocity_gradients(
+        self, grid_positions: np.ndarray, *, h: float
+    ) -> np.ndarray:
+        """Evaluate the Jacobian of the body-complete velocity field.
+
+        Vortex-particle induction is differentiated analytically. Regularized
+        source and body-callback contributions are differentiated by centred
+        differences with a step scaled by the coupling lattice spacing ``h``.
+        The result has shape ``(N, 3, 3)`` and convention
+        ``J[i,j] = d(u_i)/d(x_j)``.
+        """
+        points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+        gradient = np.asarray(
+            self.compute_target_velocity_gradients(points), dtype=np.float64
+        ).reshape(-1, 3, 3)
+        if (self._body_induced_fn is None and self.num_sources == 0) or len(points) == 0:
+            return gradient
+
+        def nonparticle_velocity(sample_points: np.ndarray) -> np.ndarray:
+            correction = np.zeros_like(sample_points)
+            if self.num_sources > 0:
+                complete_without_body = np.asarray(
+                    self.compute_target_velocities(
+                        sample_points,
+                        include_freestream=False,
+                        zone_mask=None,
+                        include_body=False,
+                    ),
+                    dtype=np.float64,
+                ).reshape(-1, 3)
+                particle_only = np.asarray(
+                    self.physics.compute_target_velocities(
+                        self.particles,
+                        sample_points,
+                        include_freestream=False,
+                        zone_mask=None,
+                    ),
+                    dtype=np.float64,
+                ).reshape(-1, 3)
+                correction += complete_without_body - particle_only
+            if self._body_induced_fn is not None:
+                correction += np.asarray(
+                    self._body_induced_fn(sample_points), dtype=np.float64
+                ).reshape(-1, 3)
+            return correction
+
+        step = max(1.0e-6, 1.0e-3 * float(h))
+        for axis in range(3):
+            offset = np.zeros(3, dtype=np.float64)
+            offset[axis] = step
+            plus = nonparticle_velocity(points + offset)
+            minus = nonparticle_velocity(points - offset)
+            if plus.shape != points.shape or minus.shape != points.shape:
+                raise RuntimeError("VPM body-velocity callback returned an invalid shape")
+            gradient[:, :, axis] += (plus - minus) / (2.0 * step)
+        if not np.all(np.isfinite(gradient)):
+            raise RuntimeError("Complete VPM target-gradient evaluation returned non-finite data")
+        return gradient
 
     def compute_target_pressure_gradients(
         self,
@@ -1238,6 +1306,16 @@ class Solver:
         Logging.message(f"       - {filename}.h5 (numerical data)")
         Logging.message(f"       - {filename}.xdmf (ParaView visualization)")
         Logging.message(f"       - {config_file} (configuration)")
+
+    def save_numerical_state(self, filename: str) -> None:
+        """Save numerical state for a caller that already owns configuration."""
+        self._refresh_backup_particle_fields()
+        BackupSystem.backup_solver(self, filename, append_step=False, verbose=False)
+
+    def load_numerical_state(self, filename: str) -> None:
+        """Restore numerical state into this configured VPM solver."""
+        path = filename if filename.endswith(".h5") else f"{filename}.h5"
+        BackupSystem.load_numerical_state(self, path)
 
     def backup_solution(self, backup_file_name: str = "backup") -> None:
         """Back up the solver state to a specified file."""

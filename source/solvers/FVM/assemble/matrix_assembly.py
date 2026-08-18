@@ -542,7 +542,9 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
     if backend != "numpy":
         raise ValueError(f"Unknown operator backend {backend!r}")
 
-    b = np.bincount(owners, weights=-flux_vf, minlength=n_elements)
+    # ``np.bincount`` returns an integer array when the interior-face slice is
+    # empty, even though boundary contributions below are floating point.
+    b = np.bincount(owners, weights=-flux_vf, minlength=n_elements).astype(np.float64, copy=False)
     b += np.bincount(neighbours, weights=flux_vf, minlength=n_elements)
 
     # Boundary faces

@@ -300,7 +300,6 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
 @pytest.mark.slow
 @pytest.mark.parametrize("h", (0.25, 0.125))
 def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
-    from source.coupler.core.helpers.fvm_backend import coupling_box_mesh
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMSetup,
@@ -311,6 +310,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         TimeConfig,
         TransportConfig,
     )
+    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 
     domain = (0.0, 6.0, 0.0, 4.0, 0.0, h)
 

@@ -10,17 +10,25 @@ import pytest
 taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
 
 DT_FVM = 0.05
-DT_VPM = 0.15  # period_multiplier = 3
+DT_VPM = 0.15
 H = 0.125
 
 
 @pytest.mark.slow
 def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
-    # The coupler roots itself at the CWD (case_dir = Path(".").absolute()).
     monkeypatch.chdir(tmp_path)
 
     from source.coupler import CouplerSetup, FVMVPMCoupler
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend, coupling_box_mesh
+    from source.solvers.FVM import (
+        BoundaryConfig,
+        FVMSetup,
+        TimeConfig,
+        TransportConfig,
+    )
+    from source.solvers.FVM import (
+        Solver as FVM_Solver,
+    )
+    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
     from source.solvers.VPM import Solver as VPM_Solver
     from source.solvers.VPM import VPMSetup
 
@@ -30,8 +38,6 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         h=H,
         buffer_thickness=2 * H,
         dead_zone_h=1.0,
-        wall_patch_name=None,
-        case_dir=".",
     )
 
     vpm = VPM_Solver(
@@ -45,24 +51,33 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     )
 
     def make_fvm():
-        return build_fvm_backend(
-            mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
+        config = FVMSetup(
+            case_name="coupled_smoke",
+            time=TimeConfig(delta_t=DT_FVM, end_time=2 * DT_VPM),
+            transport=TransportConfig(nu=0.01),
+            boundaries=[
+                BoundaryConfig(
+                    name="numericalBoundary",
+                    type_U="fixedValue",
+                    value_U=setup.u_inf,
+                    type_p="fixedFluxPressure",
+                )
+            ],
+            initial_U=setup.u_inf,
+        )
+        return FVM_Solver(
+            config,
             case_dir=".",
-            dt=DT_FVM,
-            t_end=2 * DT_VPM,  # two coupling steps
-            nu=0.01,
-            u_inf=setup.u_inf,
-            quiet=True,
+            mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
         )
 
-    FVMVPMCoupler.prepare_case(setup, vpm_solver=vpm)
     fvm = make_fvm()
     coupler = FVMVPMCoupler(vpm, fvm, setup)
     coupler.run()
 
     # Sub-cycling derived from the two native solver time steps.
-    assert coupler.period_multiplier == 3
-    assert coupler.dt == pytest.approx(DT_VPM)
+    assert coupler.n_fvm_substeps == 3
+    assert coupler.dt_vpm == pytest.approx(DT_VPM)
 
     # Uniform inflow, no body → the FVM field stays finite and uniform.
     U = np.asarray(fvm.get_velocity_field())
@@ -80,8 +95,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert (sol / "fvm.log").exists()
     coupler_log = (sol / "coupler.log").read_text()
     assert "FVM-VPM COUPLED SOLVER" in coupler_log
-    assert coupler_log.count("[Inject]") == 2
-    assert "period_multiplier=3" in coupler_log
+    assert coupler_log.count("[Handoff]") >= 2
+    assert "n_fvm_substeps=3" in coupler_log
     checkpoint = sol / "checkpoint"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
     assert manifest["format_version"] == 4

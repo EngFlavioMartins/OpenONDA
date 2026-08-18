@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.coupler.core.helpers.continuous_overlap import (
-    ContinuousOverlapInjector,
+from source.coupler.vorticity_handoff import (
+    VorticityHandoff,
     continuous_handoff,
     cosine_eta,
     max_stable_dt,
@@ -69,30 +69,37 @@ def test_aligned_handoff_excludes_solid():
     assert np.isfinite(result.circ).all()
 
 
-def test_injector_reuses_native_ibm_solid_geometry():
+def test_handoff_reuses_native_ibm_solid_geometry():
     config = SimpleNamespace(
         h=0.1,
-        nu=0.01,
         buffer_thickness=0.3,
         dead_zone_h=1.0,
         overlap_radius_ratio=1.0,
         u_inf=[1.0, 0.0, 0.0],
         prune_vorticity_min=0.01,
-        fvm_box=(-1.0, 1.0, -1.0, 1.0, -0.1, 0.1),
-        wall_patch_name=None,
+        handoff_box=None,
+        transfer_amplification_cap=2.0,
+        boundary_prune_multiplier=1.0,
     )
     body = ImmersedBody.cylinder_z([0.0, 0.0, 0.0], diameter=1.0, h=0.1)
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[body]),
+        config=SimpleNamespace(boundaries=[]),
         get_cell_center_coordinates=lambda: np.array([[-0.95, -0.95, -0.05], [0.95, 0.95, 0.05]]),
     )
-    coupler = SimpleNamespace(config=config, dt_vpm=0.1, vpm=None)
-    injector = ContinuousOverlapInjector(coupler)
-    injector.setup(fvm)
+    coupler = SimpleNamespace(
+        config=config,
+        dt_vpm=0.1,
+        nu=0.01,
+        fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -0.1, 0.1]),
+        vpm=None,
+    )
+    handoff = VorticityHandoff(coupler)
+    handoff.setup(fvm)
 
-    assert injector._solid_bodies == (body,)
+    assert handoff._solid_bodies == (body,)
     np.testing.assert_array_equal(
-        injector._points_in_solid(
+        handoff._points_in_solid(
             [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.6, 0.0, 0.0]],
             include_boundary=False,
         ),
@@ -100,28 +107,36 @@ def test_injector_reuses_native_ibm_solid_geometry():
     )
 
 
-def test_injector_uses_separate_handoff_box():
+def test_handoff_uses_separate_handoff_box():
     config = SimpleNamespace(
         h=0.1,
-        nu=0.01,
         buffer_thickness=0.3,
         dead_zone_h=1.0,
         overlap_radius_ratio=1.0,
         u_inf=[1.0, 0.0, 0.0],
         prune_vorticity_min=0.01,
-        fvm_box=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
         handoff_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
-        wall_patch_name=None,
+        transfer_amplification_cap=2.0,
+        boundary_prune_multiplier=1.0,
     )
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[]),
+        config=SimpleNamespace(boundaries=[]),
         get_cell_center_coordinates=lambda: np.array([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
     )
-    injector = ContinuousOverlapInjector(SimpleNamespace(config=config, dt_vpm=0.1, vpm=None))
+    handoff = VorticityHandoff(
+        SimpleNamespace(
+            config=config,
+            dt_vpm=0.1,
+            nu=0.01,
+            fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]),
+            vpm=None,
+        )
+    )
 
-    injector.setup(fvm)
+    handoff.setup(fvm)
 
-    np.testing.assert_array_equal(injector._box, config.handoff_box)
+    np.testing.assert_array_equal(handoff._box, config.handoff_box)
 
 
 def test_free_wake_is_retained():

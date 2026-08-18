@@ -24,12 +24,15 @@ import io
 import numpy as np
 import pytest
 
-from source.coupler.core.helpers.fvm_backend import (
+from source.solvers.FVM import BoundaryConfig, FVMSetup, Solver, TimeConfig, TransportConfig
+from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.FVM.mesh.rectilinear import (
     coupling_box_mesh,
     wall_refined_axis,
 )
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.mesh.validation import validate_mesh
+from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.FVM.sampling.forces import ForceSampler
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -162,20 +165,35 @@ def test_face_count_conservation():
 
 
 def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
-    """The tutorial builds its FVM through ``build_fvm_backend``; certify that
-    the resulting solver has no IBM attached (spec: no IBM on this benchmark)."""
-    from source.coupler.core.helpers.fvm_backend import build_fvm_backend
+    """The body-fitted native solver has no immersed-boundary forcing."""
 
+    mesh = coupling_box_mesh(BOX, 0.25, hole_box=HOLE, wall_patch_name="cube")
+    config = FVMSetup(
+        case_name="body_fitted",
+        time=TimeConfig(delta_t=0.05, end_time=0.1),
+        transport=TransportConfig(nu=1e-3),
+        boundaries=[
+            BoundaryConfig(
+                name="numericalBoundary",
+                type_U="fixedValue",
+                value_U=[1.0, 0.0, 0.0],
+                type_p="fixedFluxPressure",
+            ),
+            BoundaryConfig.wall("cube"),
+        ],
+        samplers=(
+            ForceSampler(
+                patch_names=["cube"],
+                ref_velocity=1.0,
+                ref_area=1.0,
+                ref_length=1.0,
+                schedule=SamplingSchedule(every_n_steps=1),
+            ),
+        ),
+        initial_U=[1.0, 0.0, 0.0],
+    )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = build_fvm_backend(
-            mesh_data=coupling_box_mesh(BOX, 0.25, hole_box=HOLE, wall_patch_name="cube"),
-            case_dir=str(tmp_path),
-            dt=0.05,
-            t_end=0.1,
-            nu=1e-3,
-            u_inf=[1.0, 0.0, 0.0],
-            wall_patch_name="cube",
-        )
+        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
     assert solver.ibm is None
     assert getattr(solver.algorithm, "ibm", None) is None
     # Force integration is configured as an explicit sampler from the body's

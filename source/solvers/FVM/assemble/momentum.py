@@ -6,6 +6,9 @@ from typing import Any
 import numpy as np
 
 from ..fields import gradients
+from ..fields.mixed_velocity_boundary import (
+    update_normal_velocity_tangential_gradient_boundary,
+)
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..solve.linear_interface import normalized_residual, solve_linear_system
 from . import convection, diffusion, matrix_assembly
@@ -224,6 +227,8 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
             )
+    elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+        update_normal_velocity_tangential_gradient_boundary(U_star, boundary, mesh_data, geo_data)
     elif strategy in (
         BoundaryStrategy.EMPTY,
         BoundaryStrategy.SLIP,
@@ -326,6 +331,11 @@ def assemble_momentum_equation(
     common_matrix = None
     common_diagonal = None
     vol = geo_data["element_volumes"]
+    has_directional_mixed_bc = any(
+        BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "diffusion")
+        is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT
+        for boundary in boundaries
+    )
 
     # Split the viscous stress into an implicit
     # laplacian(nuEff, U) and this explicit transpose-stress correction.  It is
@@ -353,6 +363,8 @@ def assemble_momentum_equation(
             geo_data,
             momentum_boundaries,
             face_flux=phi,
+            vector_field=U,
+            component=i_comp,
             include_total_flux=False,
         )
         # The total face flux is a diagnostic output of the generic assembly
@@ -381,26 +393,41 @@ def assemble_momentum_equation(
         combined_flux = diff_flux
         del conv_flux
 
-        # 4. Assemble the common implicit matrix once.  Convection,
-        # diffusion, transient, and implicit-source coefficients are identical
-        # for x/y/z; only explicit corrections and boundary values differ.
-        if common_matrix is None:
-            common_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+        # 4. Assemble one shared matrix in the standard path.  The directional
+        # mixed BC contributes D*n_i**2 at the boundary and therefore needs a
+        # distinct scalar matrix for each Cartesian component.
+        if common_matrix is None or has_directional_mixed_bc:
+            assembled_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
                 combined_flux,
                 mesh_data,
                 workspace=matrix_workspace,
                 backend=operator_backend,
             )
+            # A reusable workspace owns one mutable CSR object.  Preserve each
+            # component before the next workspace update overwrites its data.
+            if has_directional_mixed_bc and matrix_workspace is not None:
+                assembled_matrix = assembled_matrix.copy()
             if dt is not None:
                 use_bdf2 = ddt_scheme == "backward" and U_old is not None and U_old_old is not None
                 transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / dt
-                common_matrix.setdiag(common_matrix.diagonal() + transient_diagonal)
+                assembled_matrix.setdiag(assembled_matrix.diagonal() + transient_diagonal)
             if source_implicit is not None:
-                common_matrix.setdiag(common_matrix.diagonal() + source_implicit[:n_elements] * vol)
-            common_diagonal = common_matrix.diagonal()
-        assert common_matrix is not None
-        assert common_diagonal is not None
-        A = common_matrix
+                assembled_matrix.setdiag(
+                    assembled_matrix.diagonal() + source_implicit[:n_elements] * vol
+                )
+            if has_directional_mixed_bc:
+                A = assembled_matrix
+                equation_diagonal = A.diagonal()
+            else:
+                common_matrix = assembled_matrix
+                common_diagonal = common_matrix.diagonal()
+                A = common_matrix
+                equation_diagonal = common_diagonal
+        else:
+            assert common_matrix is not None
+            assert common_diagonal is not None
+            A = common_matrix
+            equation_diagonal = common_diagonal
         b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
             combined_flux, mesh_data, backend=operator_backend
         )
@@ -432,9 +459,7 @@ def assemble_momentum_equation(
         results[comp_name] = {
             "A": A,
             "b": b,
-            # The scalar operator is common to x/y/z, so its physical
-            # diagonal is one shared array as well.
-            "H": common_diagonal,
+            "H": equation_diagonal,
         }
         # Without an explicit drop, the previous component's combined face
         # arrays survive while Python evaluates the next diffusion/convection
@@ -500,16 +525,17 @@ def solve_momentum_predictor(
 
     # Solve for each component
     U_star = np.zeros((n_elements + n_boundary, 3))
-    # All three segregated velocity equations have exactly the same scalar
-    # coefficients. Store one vector-matrix diagonal/rAU field;
-    # retaining three copies here only tripled matrix and diagonal storage.
-    A_U = np.empty(n_elements, dtype=np.float64)
+    matrices_are_shared = all(mom_eqs[name]["A"] is mom_eqs["x"]["A"] for name in ("y", "z"))
+    # Standard boundaries retain the compact shared diagonal.  The
+    # directional mixed condition returns component diagonals for the
+    # pressure/Rhie-Chow vector path that already supports them.
+    A_U = np.empty(n_elements if matrices_are_shared else (n_elements, 3), dtype=np.float64)
     solve_diagnostics = {}
     linear_backend = solver_kwargs.pop("linear_backend", "scipy")
     parallel_context = solver_kwargs.pop("parallel_context", None)
     partitioned_workspace = solver_kwargs.pop("partitioned_workspace", None)
 
-    if solver == "spsolve" and linear_backend == "scipy":
+    if solver == "spsolve" and linear_backend == "scipy" and matrices_are_shared:
         # All three components share one matrix.  Solve a three-column RHS so
         # SuperLU performs one factorization instead of three.
         A_shared = mom_eqs["x"]["A"]
@@ -558,13 +584,21 @@ def solve_momentum_predictor(
         # allowing x/y/z to reuse one ILU factorisation.
         shared_ilu_key = ("momentum", matrix_workspace.cache_namespace)
 
-    A = mom_eqs["x"]["A"]
-    diag_new = A.diagonal() / under_relaxation
-    A.setdiag(diag_new)
-    A_relaxed = A
-    A_U[:] = diag_new
-
+    shared_relaxed_diagonal = None
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
+        A_relaxed = mom_eqs[comp_name]["A"]
+        if matrices_are_shared:
+            if shared_relaxed_diagonal is None:
+                shared_relaxed_diagonal = A_relaxed.diagonal() / under_relaxation
+                A_relaxed.setdiag(shared_relaxed_diagonal)
+            diag_new = shared_relaxed_diagonal
+            A_U[:] = diag_new
+            component_ilu_key = shared_ilu_key
+        else:
+            diag_new = A_relaxed.diagonal() / under_relaxation
+            A_relaxed.setdiag(diag_new)
+            A_U[:, i_comp] = diag_new
+            component_ilu_key = (shared_ilu_key, comp_name) if shared_ilu_key is not None else None
         b = mom_eqs[comp_name]["b"]
 
         # Add source term to RHS to ensure consistency at convergence
@@ -590,7 +624,7 @@ def solve_momentum_predictor(
             tol=momentum_tol,
             rel_tol=momentum_rel_tol,
             x0=x0_vec,
-            ilu_key=shared_ilu_key,
+            ilu_key=component_ilu_key,
             backend=linear_backend,
             parallel_context=parallel_context,
             partitioned_workspace=partitioned_workspace,

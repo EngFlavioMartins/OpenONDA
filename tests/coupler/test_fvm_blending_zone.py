@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from source.coupler.core.helpers.continuous_overlap import cosine_eta
-from source.coupler.core.helpers.fvm_blending_zone import build_lambda
+from source.coupler.blending import build_lambda
+from source.coupler.vorticity_handoff import cosine_eta
 
 
 def test_blending_zone_is_exact_complement_of_particle_authority():

@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler.core.helpers.continuous_overlap import continuous_handoff
+from source.coupler.vorticity_handoff import continuous_handoff
 
 H = 0.05
 BOX = np.array([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6])
@@ -91,9 +91,7 @@ def test_fvm_authority_zone_does_not_accumulate_error():
         pos = pos - U_INF * dt
         inner = np.all(np.abs(pos) < 0.4, axis=1)
         exact = target(pos[inner])
-        errors.append(
-            float(np.linalg.norm(circ[inner] - exact) / (np.linalg.norm(exact) + 1e-30))
-        )
+        errors.append(float(np.linalg.norm(circ[inner] - exact) / (np.linalg.norm(exact) + 1e-30)))
 
     errors = np.asarray(errors)
     assert np.all(np.isfinite(errors))

@@ -331,6 +331,7 @@ def assemble_convection_term_boundary(
     if strategy in (
         BoundaryStrategy.FIXED_VALUE,
         BoundaryStrategy.NO_SLIP,
+        BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
     ):
         # A Dirichlet face value is authoritative for either flow direction.
         flux_cf = np.zeros_like(mdot_b)

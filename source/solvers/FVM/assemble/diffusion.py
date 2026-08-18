@@ -185,6 +185,8 @@ def assemble_diffusion_term(
     geo_data,
     boundaries,
     face_flux=None,
+    vector_field=None,
+    component=None,
     *,
     include_total_flux=True,
 ):
@@ -201,6 +203,9 @@ def assemble_diffusion_term(
         face_flux: Optional signed face flux.  Required to distinguish the
             inflow (Dirichlet) and outflow (zero-gradient) portions of an
             ``inletOutlet`` patch.
+        vector_field: Full vector velocity field, required by the directional
+            mixed velocity condition.
+        component: Component assembled from ``vector_field`` (0, 1, or 2).
 
     Returns:
         dict: Complete flux data for all faces
@@ -331,6 +336,55 @@ def assemble_diffusion_term(
             flux_vf[indices] = np.where(inflow, b_fluxes["flux_vf"], 0.0)
             if flux_tf is not None:
                 flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
+
+        elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+            if vector_field is None or component not in (0, 1, 2):
+                raise ValueError(
+                    "normalValueTangentialGradient diffusion requires the full velocity "
+                    "field and a component index"
+                )
+            start = int(boundary["startFace"])
+            n_patch_faces = int(boundary["nFaces"])
+            indices = np.arange(start, start + n_patch_faces)
+            owners_b = mesh_data["owners"][indices]
+            sf = np.asarray(geo_data["face_sf"], dtype=np.float64)[indices]
+            area = np.linalg.norm(sf, axis=1)
+            if np.any(area <= 1.0e-14):
+                raise ValueError("Mixed diffusion boundary contains a degenerate face")
+            normals = sf / area[:, np.newaxis]
+            owner_to_face = np.asarray(geo_data["face_cf_vector"], dtype=np.float64)[indices]
+            distance = np.einsum("ij,ij->i", owner_to_face, normals)
+            if np.any(distance <= 1.0e-14):
+                raise ValueError("Mixed diffusion boundary requires positive normal distance")
+
+            gamma_b = (
+                float(np.asarray(gamma).item())
+                if np.isscalar(gamma)
+                else np.asarray(gamma, dtype=np.float64)[owners_b]
+            )
+            diffusivity_area = gamma_b * area
+            coefficient = diffusivity_area / distance
+            n_i = normals[:, component]
+            owner_velocity = np.asarray(vector_field, dtype=np.float64)[owners_b]
+            owner_normal = np.einsum("ij,ij->i", owner_velocity, normals)
+            cross_normal = owner_normal - n_i * owner_velocity[:, component]
+            prescribed_normal = np.asarray(boundary["normal_velocity_field"], dtype=np.float64)
+            prescribed_gradient = np.asarray(
+                boundary["tangential_gradient_field"], dtype=np.float64
+            )[:, component]
+
+            # F_i = D n_i (n.U_P - u_n) - nu A g_t,i.  The owner-component
+            # part is implicit; cross-components remain explicit and converge
+            # through the existing PIMPLE outer iterations on non-axis-aligned
+            # interfaces.
+            flux_cf[indices] = coefficient * n_i * n_i
+            flux_ff[indices] = 0.0
+            flux_vf[indices] = (
+                coefficient * n_i * (cross_normal - prescribed_normal)
+                - diffusivity_area * prescribed_gradient
+            )
+            if flux_tf is not None:
+                flux_tf[indices] = flux_cf[indices] * phi[owners_b] + flux_vf[indices]
 
         elif strategy is BoundaryStrategy.ZERO_GRADIENT:
             # Zero gradient: no flux contribution

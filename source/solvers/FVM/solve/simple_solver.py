@@ -9,6 +9,9 @@ import numpy as np
 from ..assemble import matrix_assembly, momentum
 from ..fields import diagnostics as field_diagnostics
 from ..fields import gradients
+from ..fields.mixed_velocity_boundary import (
+    update_normal_velocity_tangential_gradient_boundary,
+)
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from .contracts import OuterCorrectorDiagnostics
@@ -196,7 +199,11 @@ def compute_ddt_flux_correction(
 
     for boundary in boundaries:
         strategy = BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "ghost")
-        if strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
+        if strategy in (
+            BoundaryStrategy.FIXED_VALUE,
+            BoundaryStrategy.NO_SLIP,
+            BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
+        ):
             start = boundary["startFace"]
             correction[start : start + boundary["nFaces"]] = 0.0
 
@@ -1373,6 +1380,10 @@ def _update_velocity_bcs(
             _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
             _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy)
+        elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+            if mesh_data is None:
+                raise ValueError("Mixed velocity boundary update requires mesh_data")
+            update_normal_velocity_tangential_gradient_boundary(U, boundary, mesh_data, geo_data)
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
