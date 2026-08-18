@@ -159,6 +159,7 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
             for name in ("raw_mismatch", "applied_correction", "corrected_mismatch")
         }
         transfer = {
+            "diagnostics_evaluated": False,
             "cfl": 0.0,
             "n_remesh_in": 0,
             "n_remesh_out": 0,
@@ -169,13 +170,13 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
             "n_population_pruned": 0,
             "population_pruned_circulation_fraction": 0.0,
             "population_pruned_velocity_bound": 0.0,
-            "flux_ratio": 0.0,
-            "transfer_in_band_residual": 0.0,
-            "transfer_pre_prune_residual": 0.0,
-            "transfer_out_of_band_fraction": 0.0,
-            "transfer_max_amplification": 0.0,
+            "flux_ratio": None,
+            "transfer_in_band_residual": None,
+            "transfer_pre_prune_residual": None,
+            "transfer_out_of_band_fraction": None,
+            "transfer_max_amplification": None,
         }
-        spectrum = {}
+        spectrum = None
         particle_count = 0
     else:
         conservation = {
@@ -184,6 +185,7 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
             "corrected_mismatch": finite_invariants(result.conservation_corrected_mismatch),
         }
         transfer = {
+            "diagnostics_evaluated": bool(result.diagnostics_evaluated),
             "cfl": float(result.cfl),
             "n_remesh_in": int(result.n_remesh_in),
             "n_remesh_out": int(result.n_remesh_out),
@@ -196,17 +198,35 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
                 result.population_pruned_circulation_fraction
             ),
             "population_pruned_velocity_bound": float(result.population_pruned_velocity_bound),
-            "flux_ratio": float(result.flux_ratio),
-            "transfer_in_band_residual": float(result.transfer_in_band_residual),
-            "transfer_pre_prune_residual": float(result.transfer_pre_prune_residual),
-            "transfer_out_of_band_fraction": float(result.transfer_out_of_band_fraction),
-            "transfer_max_amplification": float(result.transfer_max_amplification),
+            "flux_ratio": float(result.flux_ratio) if result.diagnostics_evaluated else None,
+            "transfer_in_band_residual": (
+                float(result.transfer_in_band_residual) if result.diagnostics_evaluated else None
+            ),
+            "transfer_pre_prune_residual": (
+                float(result.transfer_pre_prune_residual) if result.diagnostics_evaluated else None
+            ),
+            "transfer_out_of_band_fraction": (
+                float(result.transfer_out_of_band_fraction)
+                if result.diagnostics_evaluated
+                else None
+            ),
+            "transfer_max_amplification": (
+                float(result.transfer_max_amplification) if result.diagnostics_evaluated else None
+            ),
         }
-        spectrum = {str(name): float(value) for name, value in result.spectral_band_ratio.items()}
+        spectrum = (
+            {str(name): float(value) for name, value in result.spectral_band_ratio.items()}
+            if result.diagnostics_evaluated
+            else None
+        )
         particle_count = result.n_total
-    if not all(np.isfinite(value) for value in transfer.values()):
+    if not all(
+        np.isfinite(value)
+        for value in transfer.values()
+        if value is not None and not isinstance(value, bool)
+    ):
         raise FloatingPointError("non-finite handoff diagnostic")
-    if not all(np.isfinite(value) for value in spectrum.values()):
+    if spectrum is not None and not all(np.isfinite(value) for value in spectrum.values()):
         raise FloatingPointError("non-finite spectral handoff diagnostic")
 
     boundary_flux = {

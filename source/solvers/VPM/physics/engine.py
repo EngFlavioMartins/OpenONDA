@@ -495,6 +495,7 @@ class _CoupledAdvectionStretchingHandler:
                 theta = min(p.velocity_theta, p._stretching._treecode_theta)
                 tree = p._get_or_create_treecode(N, theta)
                 tree.build(position, strength, particles.radius, N)
+                p._target_tree_key = None
                 background = particles.velocity_background
                 background_np = np.array(
                     [background[None][0], background[None][1], background[None][2]],
@@ -676,6 +677,7 @@ class _StretchingHandler:
                 tree.refit_circulation(strg, N)
             else:
                 tree.build(pos, strg, rad, N)
+            p._target_tree_key = None
             tree.compute_velocity_gradients_gpu()
             p.gradient_contraction_rate_kernel(tree.velocity_gradients, strg, out, mode_int, N)
         else:

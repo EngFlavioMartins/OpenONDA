@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+import source.coupler.vorticity_handoff as handoff_module
 from source.coupler.vorticity_handoff import (
     VorticityHandoff,
     build_handoff_lattice,
@@ -37,9 +38,10 @@ def test_buffer_dt_inverse():
 
 def test_static_handoff_lattice_preserves_the_dynamic_transfer():
     """Static mesh/solid masks must not change the active hand-off operator."""
-    mesh_weight = lambda points: 1.0 - smoothstep(  # noqa: E731
-        np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8
-    )
+
+    def mesh_weight(points):
+        return 1.0 - smoothstep(np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8)
+
     lattice = build_handoff_lattice(
         BOX,
         H,
@@ -102,6 +104,31 @@ def test_handoff_diagnostics_can_be_deferred_without_changing_particles():
     np.testing.assert_allclose(deferred.circ, full.circ)
     assert deferred.diagnostics_evaluated is False
     assert deferred.spectral_band_ratio == {}
+
+
+def test_deferred_handoff_skips_final_gaussian_representation(monkeypatch):
+    target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
+    gaussian = handoff_module._gaussian_mollified_circulation
+    calls = []
+
+    def record_gaussian(*args, **kwargs):
+        calls.append(1)
+        return gaussian(*args, **kwargs)
+
+    monkeypatch.setattr(handoff_module, "_gaussian_mollified_circulation", record_gaussian)
+    continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=target,
+        threshold_abs=1.0e-12,
+        compute_diagnostics=False,
+    )
+
+    # One filter constructs the physical VPM field and the second supplies the
+    # bounded residual correction.  The post-correction representation is audit-only.
+    assert len(calls) == 2
 
 
 def test_aligned_handoff_excludes_solid():

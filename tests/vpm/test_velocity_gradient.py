@@ -340,13 +340,27 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     # state, hence share the already-built tree.
     assert len(tree_builds) == 1
 
+    # A self evaluation can build the same tree from an intermediate RK state.
+    # It must invalidate the target key so the next public target query cannot
+    # accept that internal tree on the basis of a stale source revision.
+    physics.velocity_self(
+        solver.particles.position,
+        solver.particles.circulation,
+        solver.particles.radius,
+        solver.particles.velocity,
+        solver.particles.velocity_background,
+        len(positions),
+    )
+    solver.compute_target_velocities(target)
+    assert len(tree_builds) == 3
+
     # Mutating a Biot--Savart source publishes a new particle revision and must
     # rebuild before the next target query; the cache may never serve this stale.
     updated_circulation = solver.particles_circulation.copy()
     updated_circulation[0, 2] *= 1.1
     solver.particles.set_field("circulation", updated_circulation)
     solver.compute_target_velocities(target)
-    assert len(tree_builds) == 2
+    assert len(tree_builds) == 4
 
 
 def test_mixed_target_trace_uses_only_two_nonparticle_samples():

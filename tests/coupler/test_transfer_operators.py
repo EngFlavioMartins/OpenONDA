@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -609,6 +610,41 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     assert np.isfinite(list(diagnostics["handoff"].values())).all()
     assert diagnostics["handoff"]["n_pruned"] == result.n_pruned
     assert diagnostics["handoff"]["cfl"] == result.cfl
+
+
+def test_deferred_handoff_diagnostics_are_marked_unmeasured():
+    result = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
+        0.1,
+        circulation_at_node=lambda points: np.zeros((len(points), 3)),
+        compute_diagnostics=False,
+    )
+    coupler = object.__new__(FVMVPMCoupler)
+    coupler.n_fvm_substeps = 1
+    coupler.handoff = None
+    coupler.pressure_reference = None
+    coupler._last_handoff_result = result
+    coupler._last_vpm_bc_flux_diagnostics = {
+        "raw_mismatch": 0.0,
+        "applied_correction": 0.0,
+        "corrected_mismatch": 0.0,
+    }
+
+    diagnostics = compute_diagnostics(coupler)
+    handoff = diagnostics["handoff"]
+    assert handoff["diagnostics_evaluated"] is False
+    for name in (
+        "flux_ratio",
+        "transfer_in_band_residual",
+        "transfer_pre_prune_residual",
+        "transfer_out_of_band_fraction",
+        "transfer_max_amplification",
+    ):
+        assert handoff[name] is None
+    assert diagnostics["spectral_band_ratio"] is None
+    assert "null" in json.dumps(diagnostics)
 
 
 def test_restart_api_remains_available_for_transfer_round_trips():

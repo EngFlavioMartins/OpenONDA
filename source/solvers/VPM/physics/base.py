@@ -889,6 +889,10 @@ class PhysicsBase:
                     tree.build(pos, strg, rad, N)
             else:
                 tree.build(pos, strg, rad, N)
+            # The shared tree now represents a possibly intermediate RK state.
+            # A target caller must rebuild from the published particle state
+            # instead of trusting a pre-existing revision key.
+            self._target_tree_key = None
             # On-device traversal + field-to-field copy.  The freestream is passed
             # as a field so nothing crosses to the host inside an RK stage.
             tree.compute_velocities_gpu(background_field=bg)
@@ -1355,6 +1359,7 @@ class PhysicsBase:
         tree = self._get_or_create_treecode(N, theta)
         # Build from GPU fields directly
         tree.build(particles.position, particles.circulation, particles.radius, N)
+        self._target_tree_key = None
         bg = particles.velocity_background
         bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
         velocities = tree.compute_velocities(bg_arr)
@@ -1473,6 +1478,7 @@ class PhysicsBase:
 
         tree = self._get_or_create_treecode(N, theta)
         tree.build(particles.position, particles.circulation, particles.radius, N)
+        self._target_tree_key = None
 
         # On-device traversal + field-to-field copy: ∇u and S
         tree.compute_velocity_gradients_gpu()
@@ -1490,6 +1496,7 @@ class PhysicsBase:
             return
         tree = self._get_or_create_treecode(N, theta)
         tree.build(particles.position, particles.circulation, particles.radius, N)
+        self._target_tree_key = None
         bg = particles.velocity_background
         bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
         tree.compute_velocity_and_gradient_gpu(bg_arr)
