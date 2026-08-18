@@ -15,6 +15,7 @@ import taichi as ti
 # Import VPM constants
 from ..config.constants import MAX_PARTICLES
 from ..config.types import CachedParticleProperty
+from ..io.logging import Logging
 
 
 def _validate_finite_array(arr, name: str) -> None:
@@ -1012,6 +1013,23 @@ class Particles:
             "zone_id": self.zone_id_cpu()[index],
         }
 
+    def _log_population(self, change: str, source: str) -> None:
+        """Report the population left behind by an operation that changed it."""
+        total = int(self.number_of_particles)
+        capacity = self.capacity
+        fraction = 100.0 * total / capacity if capacity else 0.0
+        Logging.message(
+            f"   [Particles] {change} ({source}) -> {total} total, {fraction:.1f}% of {capacity} capacity"
+        )
+
+    def _log_particles_added(self, count: int, source: str) -> None:
+        """Report the population after particles were appended."""
+        self._log_population(f"+{int(count)}", source)
+
+    def _log_particles_replaced(self, previous: int, source: str) -> None:
+        """Report the population after the whole cloud was replaced."""
+        self._log_population(f"replaced {int(previous)}", source)
+
     def add_vortex_particle(
         self,
         position: np.ndarray = np.zeros(3),
@@ -1066,6 +1084,7 @@ class Particles:
         # Increment particle count
         self.number_of_particles += 1
         self.touch_state()
+        self._log_particles_added(1, "single")
 
     def add_vortex_particles(
         self,
@@ -1201,6 +1220,7 @@ class Particles:
         self.number_of_particles = total_particles
 
         self.touch_state()
+        self._log_particles_added(N, "numpy arrays")
 
     def replace_from_numpy(
         self,
@@ -1217,6 +1237,7 @@ class Particles:
         strain_rate: np.ndarray = None,
     ) -> None:
         """Replace the active particle cloud with NumPy arrays."""
+        previous = int(self.number_of_particles)
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
         _validate_finite_array(circulation, "circulation")
@@ -1244,6 +1265,7 @@ class Particles:
             self.number_of_particles = 0
             self.sync_device_counter()
             self.touch_state()
+            self._log_particles_replaced(previous, "numpy arrays, emptied")
             return
         if position.shape != (N, 3) or velocity.shape != (N, 3) or circulation.shape != (N, 3):
             raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
@@ -1294,6 +1316,7 @@ class Particles:
         )
         self.sync_device_counter()
         self.touch_state()
+        self._log_particles_replaced(previous, "numpy arrays")
 
     # ---- GPU-TO-GPU DATA TRANSFER ----
 
@@ -1384,6 +1407,7 @@ class Particles:
         self.number_of_particles += count
         self.sync_device_counter()
         self.touch_state()
+        self._log_particles_added(count, "VLM wake buffer")
 
         return True
 
@@ -1451,10 +1475,7 @@ class Particles:
         self.number_of_particles = total_particles
 
         self.touch_state()
-
-        print(
-            f"   [INFO] Added {count} particles via GPU transfer. Particle system with {total_particles} particles."
-        )
+        self._log_particles_added(count, "GPU transfer")
 
     @ti.kernel
     def _copy_from_vlm_wake(
@@ -1526,6 +1547,26 @@ class Particles:
                     dst_gradU[dst_idx][row, col] = 0.0
                     dst_Sij[dst_idx][row, col] = 0.0
 
+    def save_vortex_particles(self, particle_file_name: str) -> None:
+        """Export the particle cloud to a VTP point cloud (field names match ``load_vortex_particles``)."""
+        if not HAS_PYVISTA:
+            Logging.message(f"   [Particles] skipped {particle_file_name}: pyvista not available")
+            return
+
+        n = int(self.number_of_particles)
+        point_cloud = pv.PolyData(self.position_cpu())
+        point_cloud.point_data["Velocity"] = self.velocity_cpu()
+        point_cloud.point_data["Strength"] = self.circulation_cpu()
+        point_cloud.point_data["Radius"] = self.radius_cpu()
+        point_cloud.point_data["Volumes"] = self.volume_cpu()
+        point_cloud.point_data["Viscosity"] = self.viscosity_cpu()
+        point_cloud.point_data["Viscosity_t"] = self.viscosity_turbulent_cpu()
+        point_cloud.point_data["Group_ID"] = self.group_id_cpu()
+        point_cloud.point_data["Grad_U"] = self.velocity_gradient_cpu().reshape(n, 9)
+        point_cloud.save(particle_file_name)
+
+        Logging.message(f"   [Particles] wrote {n} to {particle_file_name}")
+
     def load_vortex_particles(self, particle_file_name: str, remove_current_particles: bool = True):
         """
         Import particle data from a VTP file and repopulate the particle list.
@@ -1551,15 +1592,15 @@ class Particles:
 
         # Use the class's add_particle_field method for consistency
         self.add_vortex_particles(
-            positions=positions,
-            velocities=velocities,
-            strengths=strengths,
-            radii=radii,
-            volumes=volumes,
-            viscosities=viscosities,
-            viscosities_t=viscosities_t,
+            position=positions,
+            velocity=velocities,
+            circulation=strengths,
+            radius=radii,
+            volume=volumes,
+            viscosity=viscosities,
+            viscosity_turbulent=viscosities_t,
             group_id=group_id,
-            grad_u=grad_u,
+            velocity_gradient=grad_u,
         )
 
         print(f"Loaded {len(self)} particles from {particle_file_name}")
@@ -2127,4 +2168,5 @@ class Particles:
         self.number_of_particles += count
         self.sync_device_counter()
         self.touch_state()
+        self._log_particles_added(count, "VLM wake buffer, grouped")
         return True

@@ -490,8 +490,21 @@ def apply_fvm_boundary(
         coupler.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
         boundary_description = "Dirichlet U / fixedFluxPressure"
 
+    step_dt = coupler.fvm.dt
+    step_t0 = time.perf_counter()
+    coupler.fvm.logger.step_begin(
+        coupler.fvm.time_step + 1, coupler.fvm.flow_time + step_dt, step_dt
+    )
+
     coupler.fvm.solve_pimple()
+
+    cfg_time = coupler.fvm.config.time
+    coupler.fvm.logger.courant_info(
+        coupler.fvm.cfl_max, cfg_time.max_cfl if cfg_time.adjust_timestep else None
+    )
+
     coupler.fvm.advance_time()
+    coupler.fvm.logger.step_end(time.perf_counter() - step_t0)
 
     if u_target.shape[0] > 0:
         logger.info(

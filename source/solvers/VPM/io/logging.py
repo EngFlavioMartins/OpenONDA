@@ -221,8 +221,8 @@ class Logging:
         else:
             title = " FLOW DIAGNOSTICS"
 
-        bar = "=" * max(len(title), 62)
-        sep = "-" * len(bar)
+        bar = "=" * 80
+        sep = "-" * 60
 
         lines.append("")
         lines.append(bar)

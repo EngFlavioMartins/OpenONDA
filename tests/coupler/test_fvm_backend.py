@@ -68,6 +68,26 @@ def _fvm_setup(tmp_path, **overrides):
     return CouplerSetup(**kwargs)
 
 
+class _FakeStepLogger:
+    def step_begin(self, step, flow_time, dt):
+        pass
+
+    def courant_info(self, maximum, target=None):
+        pass
+
+    def step_end(self, elapsed):
+        pass
+
+
+class _FakeFVMTimeConfig:
+    adjust_timestep = False
+    max_cfl = None
+
+
+class _FakeFVMConfig:
+    time = _FakeFVMTimeConfig()
+
+
 def test_coupler_setup_validates_and_serializes_vpm_bc_mode(tmp_path):
     setup = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
     assert setup.to_dict()["coupler"]["vpm_bc_mode"] == "characteristic"
@@ -334,6 +354,12 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
     class FakeFVM:
         last_yplus = None
+        dt = 0.01
+        time_step = 0
+        flow_time = 0.0
+        cfl_max = 0.0
+        logger = _FakeStepLogger()
+        config = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -370,6 +396,12 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     class FakeFVM:
         last_yplus = None
+        dt = 0.01
+        time_step = 0
+        flow_time = 0.0
+        cfl_max = 0.0
+        logger = _FakeStepLogger()
+        config = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -411,6 +443,12 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
 
     class FakeFVM:
         last_yplus = None
+        dt = 0.01
+        time_step = 0
+        flow_time = 0.0
+        cfl_max = 0.0
+        logger = _FakeStepLogger()
+        config = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -449,6 +487,12 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
 
     class FakeFVM:
         last_yplus = None
+        dt = 0.01
+        time_step = 0
+        flow_time = 0.0
+        cfl_max = 0.0
+        logger = _FakeStepLogger()
+        config = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []

@@ -180,7 +180,7 @@ class RuntimeProfiler:
             else None
         )
         if not self._cumulative:
-            bar = "=" * max(len(title), 40)
+            bar = "=" * 80
             lines = ["", bar, title, bar]
             if particle_line is not None:
                 lines.append(particle_line)

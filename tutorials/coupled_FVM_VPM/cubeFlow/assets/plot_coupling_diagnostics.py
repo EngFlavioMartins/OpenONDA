@@ -34,7 +34,23 @@ def _records() -> list[dict]:
 
 
 def _values(records: list[dict], section: str, key: str) -> np.ndarray:
-    return np.asarray([row.get(section, {}).get(key, 0.0) for row in records], dtype=float)
+    # Unevaluated diagnostics are null, not zero; NaN keeps them off the plot.
+    return np.asarray(
+        [
+            np.nan
+            if row.get(section, {}).get(key, 0.0) is None
+            else row.get(section, {}).get(key, 0.0)
+            for row in records
+        ],
+        dtype=float,
+    )
+
+
+def _evaluated(records: list[dict]) -> np.ndarray:
+    """Steps on which the on-cadence handoff diagnostics were actually computed."""
+    return np.asarray(
+        [bool(row.get("handoff", {}).get("diagnostics_evaluated", True)) for row in records]
+    )
 
 
 def plot(figure_format: str) -> None:
@@ -87,18 +103,26 @@ def plot(figure_format: str) -> None:
     # In-band residual: a bug unless it is round-off. Out-of-band fraction: a
     # resolution limit. Same axes, so the two are not confused.
     fidelity = axes[1, 0]
-    in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")
-    out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")
+    # Evaluated on a cadence: restrict to sampled steps or the lines never connect.
+    sampled = _evaluated(records)
+    t_sampled = time[sampled]
+    in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")[sampled]
+    out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")[sampled]
+    marker = "o" if t_sampled.size < 60 else None
     fidelity.semilogy(
-        time,
+        t_sampled,
         np.maximum(in_band, 1e-14),
         color=util.COLORS["fvm"],
+        marker=marker,
+        markersize=3,
         label="represented-field residual",
     )
     fidelity.semilogy(
-        time,
+        t_sampled,
         np.maximum(out_of_band, 1e-14),
         color=util.COLORS["vpm"],
+        marker=marker,
+        markersize=3,
         label="raw-blend residual",
     )
     fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Local transfer residual")
@@ -107,16 +131,22 @@ def plot(figure_format: str) -> None:
     # Per-band |omega_VPM| / |omega_FVM|. Every curve should sit on 1.
     quality = axes[1, 1]
     band_names = sorted(
-        {name for row in records for name in row.get("spectral_band_ratio", {})},
+        {name for row in records for name in (row.get("spectral_band_ratio") or {})},
         key=lambda s: float(s.split("-")[0]),
     )
     for name in band_names:
         quality.plot(
-            time,
+            t_sampled,
             np.asarray(
-                [row.get("spectral_band_ratio", {}).get(name, np.nan) for row in records],
+                [
+                    (row.get("spectral_band_ratio") or {}).get(name, np.nan)
+                    for row, keep in zip(records, sampled)
+                    if keep
+                ],
                 dtype=float,
             ),
+            marker=marker,
+            markersize=3,
             label=rf"$\lambda$ = {name}",
         )
     quality.axhline(1.0, color="0.6", lw=0.8, ls=":")

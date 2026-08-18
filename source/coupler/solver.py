@@ -483,7 +483,7 @@ class FVMVPMCoupler:
             with self.vpm_redirector:
                 self.vpm.set_background_velocity(self.config.u_inf)
             print()
-            print("─" * 60)
+            print("-" * 60)
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
 
             with self.vpm_redirector:

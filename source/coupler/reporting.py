@@ -11,6 +11,8 @@ import numpy as np
 
 from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
 
+_REAL_STDOUT = sys.stdout
+
 
 class OutputRedirector:
     """Capture Python and native output by temporarily replacing file descriptors."""
@@ -79,7 +81,7 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> None:
     file_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
     logger.addHandler(file_handler)
     if not has_external_handlers:
-        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler = logging.StreamHandler(_REAL_STDOUT)
         console_handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(console_handler)
 

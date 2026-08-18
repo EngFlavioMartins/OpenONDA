@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -48,44 +47,26 @@ NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_U = (1.0, 0.0, 0.0)
-
-# Time integration.  OPENONDA_SMOKE=1 shortens the run to a couple of coupling
-# steps so the configuration can be exercised without committing hours to it.
-SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 DT_FVM = 0.01
 DT_VPM = 0.05
-T_END = float(os.environ.get("OPENONDA_T_END", "0.10" if SMOKE else "6.0"))
+T_END = 20
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
-# Partitioned FVM-VPM coupling has not yet been qualified by a collective
-# regression, so keep this production tutorial on the supported serial path.
-FVM_CORES = 1
-HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
-FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
-# Resolve the body, separation region, and near wake; VPM transports the
-# downstream wake after the handoff instead of duplicating that cost in FVM.
-FVM_WAKE_BOX = (-0.75, 2.0, -0.9, 0.9, -0.9, 0.9)
+FVM_CORES = 4
+HANDOFF_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+PIMPLE_CORRECTORS = 2
+
+FVM_WAKE_BOX = (-0.75, 1.5, -0.9, 0.9, -0.9, 0.9)
 FVM_CELL_SIZE = 0.0625
 FVM_WAKE_CELL_SIZE = 0.03125
 SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
-# Memory: GBD pre-allocates a fixed diffusion grid over the WHOLE VPM domain
-# at spacing h, so its cost scales with domain volume and h^-3 -- 686 MB at the
-# defaults below, on top of particle arrays sized by PARTICLE_LIMIT.  On a
-# memory-constrained machine that allocation dominates start-up: the FVM
-# initialises in ~3 s while the VPM can take tens of minutes paging.
-# OPENONDA_VPM_COMPACT=1 trims the domain to what the cube wake actually needs
-# (256 MB); it still contains the FVM box with 2x margin in y and z.
-_VPM_COMPACT = os.environ.get("OPENONDA_VPM_COMPACT", "0") == "1"
-VPM_DOMAIN = (
-    (-4.5, 8.0, -3.0, 3.0, -3.0, 3.0) if _VPM_COMPACT else (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
-)
+VPM_DOMAIN = (-4.5, 8.0, -3.0, 3.0, -3.0, 3.0)
 PARTICLE_SPACING = 0.04
-PARTICLE_LIMIT = int(
-    os.environ.get("OPENONDA_MAX_PARTICLES", "1200000" if _VPM_COMPACT else "2000000")
-)
+PARTICLE_LIMIT = 1200000
 OVERLAP_RADIUS_RATIO = 1.0
 PRUNE_VORTICITY_MIN = 0.005
 BOUNDARY_PRUNE_MULTIPLIER = 10.0
@@ -93,9 +74,7 @@ GBD_THRESHOLD = 0.30
 BUFFER_THICKNESS = 0.24
 
 # Coupling
-# The mixed condition preserves the tangential vorticity implied by the VPM
-# trace without constraining the tangential velocity itself.
-VPM_BC_MODE = os.environ.get("OPENONDA_VPM_BC_MODE", "vorticity_mixed")
+VPM_BC_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
@@ -200,7 +179,7 @@ FVM_SETUP = FVMSetup(
         ilu_reuse_tol=0.05,
     ),
     pimple=PimpleControl(
-        n_correctors=2,
+        n_correctors=PIMPLE_CORRECTORS,
         n_outer_correctors=1,
         n_orthogonal_correctors=0,
         alpha_u=0.7,
@@ -239,8 +218,6 @@ COUPLER_SETUP = CouplerSetup(
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     handoff_diagnostic_interval=HANDOFF_DIAGNOSTIC_INTERVAL,
     resync_vpm_bc_after_handoff=True,
-    # A pressure gauge shift is reporting-only and is intentionally kept out
-    # of the coupled numerical hot path.
     anchor_pressure=False,
     backup_period=BACKUP_PERIOD,
 )
@@ -330,7 +307,7 @@ def make_vpm_setup():
         log_mode="file",
         logging_frequency=VPM_LOG_PERIOD,
         timing_frequency=VPM_LOG_PERIOD,
-        backup_frequency=0,
+        backup_frequency=int(CHECKPOINT_INTERVAL / DT_VPM),
         backup_directory=str(CASE_DIR / "solution"),
         export_flow_integrals=False,
         samplers=samplers,

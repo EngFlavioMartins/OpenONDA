@@ -108,7 +108,7 @@ class SolverIO:
 
         # 2. VTK Visualization Export
         vtk_base = f"{self.export_dir}/{self.vpm_prefix}_{self.time_step:06d}"
-        self.export_state(vtk_base, include_particles=False)
+        self.export_state(vtk_base)
 
         # 3. Panel Solver Aerodynamic Loads (CSV)
         self._export_panel_loads(time_val)
@@ -251,7 +251,6 @@ class SolverIO:
         filename: str,
         include_panels: bool = True,
         include_particles: bool = True,
-        include_fields: bool = False,
         format: str = "vtp",
         compression: bool = True,
     ):
@@ -267,10 +266,10 @@ class SolverIO:
             panel_file = f"{filename}_panels.{format}"
             export_panels_vtk(self.solver, panel_file, compression)
 
-        # Particle and field export are delegated to BackupSystem (XDMF/HDF5).
-        # Standalone VTK export of particles and fields is not yet implemented.
-        if include_particles or include_fields:
-            pass  # Stub: handled by BackupSystem.backup_solver.
+        if include_particles and self.solver.particles.number_of_particles > 0:
+            self.solver.particles.save_vortex_particles(f"{filename}_particles.vtp")
+
+        # Field export is not yet implemented; particles are handled above.
 
     def _export_panel_loads(self, time_val: float):
         """Export panel solver aerodynamic loads to CSV."""
