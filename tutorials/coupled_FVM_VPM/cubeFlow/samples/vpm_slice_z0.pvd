@@ -11,5 +11,15 @@
     <DataSet timestep="4.8" file="vpm_slice_z0_000096.vts"/>
     <DataSet timestep="5.4" file="vpm_slice_z0_000108.vts"/>
     <DataSet timestep="6.0" file="vpm_slice_z0_000120.vts"/>
+    <DataSet timestep="6.6" file="vpm_slice_z0_000132.vts"/>
+    <DataSet timestep="7.2" file="vpm_slice_z0_000144.vts"/>
+    <DataSet timestep="7.8" file="vpm_slice_z0_000156.vts"/>
+    <DataSet timestep="8.4" file="vpm_slice_z0_000168.vts"/>
+    <DataSet timestep="9.0" file="vpm_slice_z0_000180.vts"/>
+    <DataSet timestep="9.6" file="vpm_slice_z0_000192.vts"/>
+    <DataSet timestep="10.2" file="vpm_slice_z0_000204.vts"/>
+    <DataSet timestep="10.8" file="vpm_slice_z0_000216.vts"/>
+    <DataSet timestep="11.4" file="vpm_slice_z0_000228.vts"/>
+    <DataSet timestep="12.0" file="vpm_slice_z0_000240.vts"/>
   </Collection>
 </VTKFile>
