@@ -154,13 +154,22 @@ class FVMVPMCoupler:
             raise ValueError(
                 "VPM regen core_radius_ratio must match the coupler vpm_core_radius_ratio"
             )
-        mode = None
-        if scheme == "DVH":
-            mode = vsc.dvh_threshold_mode
-        elif scheme == "GBD":
-            mode = vsc.gbd_threshold_mode
-        if mode in ("relative_max", "budget", "absolute"):
-            raise ValueError(f"{scheme} coupling requires threshold_mode='relative_local'")
+        mode_attr = {"DVH": "dvh_threshold_mode", "GBD": "gbd_threshold_mode"}.get(scheme)
+        if mode_attr is not None:
+            mode = getattr(vsc, mode_attr, None)
+            if mode in ("relative_max", "budget", "absolute"):
+                logger.warning(
+                    "[Init] Injected VPM uses %s='%s', which thresholds particle "
+                    "regeneration against a GLOBAL |Gamma| reference. In a coupled run "
+                    "the global maximum is the body's wall vortex sheet, so the far "
+                    "wake is pruned along an iso-|Gamma| surface - real vortical "
+                    "structures are cut into fragments and cannot be passed outward. "
+                    "Use ViscousConfig.%s(threshold_mode='relative_local') so each "
+                    "node is referenced to its own neighbourhood.",
+                    mode_attr,
+                    mode,
+                    scheme.lower(),
+                )
         dom = vpm.config.vpm_domain_bounds
         if dom is not None:
             contains = (
