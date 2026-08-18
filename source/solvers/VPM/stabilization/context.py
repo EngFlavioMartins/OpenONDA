@@ -56,6 +56,9 @@ class StabilizationContext:
         set_particles_removed: Write the step's removed-particle counter.
         circulation_removed: Read the step's removed-circulation vector.
         set_circulation_removed: Write the step's removed-circulation vector.
+        domain_bounds_enforced: Whether the current regeneration already
+            guaranteed the configured retention box.
+        set_domain_bounds_enforced: Update that per-step guarantee.
     """
 
     particles: Any
@@ -75,3 +78,5 @@ class StabilizationContext:
     set_particles_removed: Callable[[int], None]
     circulation_removed: Callable[[], np.ndarray]
     set_circulation_removed: Callable[[np.ndarray], None]
+    domain_bounds_enforced: Callable[[], bool]
+    set_domain_bounds_enforced: Callable[[bool], None]

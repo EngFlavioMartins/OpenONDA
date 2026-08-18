@@ -109,6 +109,10 @@ class Particles:
         self.number_of_particles = 0
         self.time_step = 0  # For cache invalidation
         self._cached_step = -1  # Track when cache was last updated
+        # Monotone source-state version for consumers that cache spatial
+        # acceleration structures.  Velocity/diagnostic writes do not affect
+        # Biot-Savart sources; positions, circulation, radii, and population do.
+        self._state_revision = 0
         # NumPy dtype matching Taichi float precision (avoids repeated branching)
         self._np_float_dtype = np.float32 if self.float_dtype == "f32" else np.float64
         # External ndarray bindings are cached by Taichi's Vulkan/Metal
@@ -131,6 +135,16 @@ class Particles:
     def capacity(self) -> int:
         """Allocated particle capacity, i.e. the real ceiling for regeneration."""
         return int(self._max_particles)
+
+    @property
+    def state_revision(self) -> int:
+        """Version of the particle fields that define induced velocity."""
+        return self._state_revision
+
+    def touch_state(self) -> None:
+        """Invalidate acceleration structures after a source-state mutation."""
+        self._state_revision += 1
+        self._cached_step = -1
 
     def _init_taichi_fields(self):
         """Initialize all Taichi fields for particle data storage with configurable dtype."""
@@ -1051,6 +1065,7 @@ class Particles:
 
         # Increment particle count
         self.number_of_particles += 1
+        self.touch_state()
 
     def add_vortex_particles(
         self,
@@ -1185,8 +1200,7 @@ class Particles:
         # Update particle count
         self.number_of_particles = total_particles
 
-        # Invalidate cache since particle data has changed
-        self._cached_step = -1
+        self.touch_state()
 
     def replace_from_numpy(
         self,
@@ -1229,7 +1243,7 @@ class Particles:
         if N == 0:
             self.number_of_particles = 0
             self.sync_device_counter()
-            self._cached_step = -1
+            self.touch_state()
             return
         if position.shape != (N, 3) or velocity.shape != (N, 3) or circulation.shape != (N, 3):
             raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
@@ -1279,7 +1293,7 @@ class Particles:
             zone_id,
         )
         self.sync_device_counter()
-        self._cached_step = -1
+        self.touch_state()
 
     # ---- GPU-TO-GPU DATA TRANSFER ----
 
@@ -1369,6 +1383,7 @@ class Particles:
         # Update counter
         self.number_of_particles += count
         self.sync_device_counter()
+        self.touch_state()
 
         return True
 
@@ -1435,8 +1450,7 @@ class Particles:
         # Update particle count
         self.number_of_particles = total_particles
 
-        # Invalidate cache since particle data has changed
-        self._cached_step = -1
+        self.touch_state()
 
         print(
             f"   [INFO] Added {count} particles via GPU transfer. Particle system with {total_particles} particles."
@@ -1640,7 +1654,7 @@ class Particles:
         circ = self._extract_vector(self.circulation, N)
         circ[mask] += delta_circ.astype(circ.dtype)
         self._copy_vectors_chunked(circ, self.circulation, 0, N)
-        self._cached_step = -1
+        self.touch_state()
 
     def remove_vortex_particles(self, indices, remove_all: bool = False):
         if remove_all:
@@ -1674,6 +1688,7 @@ class Particles:
             self.number_of_particles = 0  # Reset count
             if filtered_data["position"].shape[0] > 0:
                 self._populate_from_numpy(**filtered_data)
+        self.touch_state()
 
     def set_field(self, field_name: str, values: np.ndarray):
         """
@@ -1717,6 +1732,8 @@ class Particles:
             self._copy_matrices_chunked(values, field, 0, count)
         else:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
+        if field_name in {"position", "circulation", "radius"}:
+            self.touch_state()
 
     # ---- Backup methods ----
     def backup_solution(self, backup_file_name, time_step):
@@ -2109,5 +2126,5 @@ class Particles:
 
         self.number_of_particles += count
         self.sync_device_counter()
-        self._cached_step = -1
+        self.touch_state()
         return True

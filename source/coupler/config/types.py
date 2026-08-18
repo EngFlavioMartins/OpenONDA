@@ -34,6 +34,7 @@ class CouplerSetup:
     handoff_max_particles: int | None = None
     overlap_radius_ratio: float = 1.0
     transfer_amplification_cap: float = 2.0
+    handoff_diagnostic_interval: int = 1
     resync_vpm_bc_after_handoff: bool = True
     anchor_pressure: bool = True
 
@@ -81,6 +82,8 @@ class CouplerSetup:
             raise ValueError("transfer_amplification_cap must be at least one")
         if self.boundary_prune_multiplier < 1.0:
             raise ValueError("boundary_prune_multiplier must be at least one")
+        if self.handoff_diagnostic_interval < 1:
+            raise ValueError("handoff_diagnostic_interval must be at least one")
         if self.buffer_thickness <= self.dead_zone_h * self.h:
             raise ValueError("buffer_thickness must exceed dead_zone_h * h")
         if self.overlap_radius_ratio < 1.0:
@@ -126,6 +129,7 @@ class CouplerSetup:
                 "handoff_max_particles": self.handoff_max_particles,
                 "overlap_radius_ratio": self.overlap_radius_ratio,
                 "transfer_amplification_cap": self.transfer_amplification_cap,
+                "handoff_diagnostic_interval": self.handoff_diagnostic_interval,
                 "resync_vpm_bc_after_handoff": self.resync_vpm_bc_after_handoff,
                 "anchor_pressure": self.anchor_pressure,
             }

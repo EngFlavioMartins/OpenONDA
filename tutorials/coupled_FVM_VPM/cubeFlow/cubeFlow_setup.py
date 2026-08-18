@@ -63,15 +63,29 @@ VPM_SCHEME = "RK2"
 FVM_CORES = 1
 HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
-FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
+# Resolve the body, separation region, and near wake; VPM transports the
+# downstream wake after the handoff instead of duplicating that cost in FVM.
+FVM_WAKE_BOX = (-0.75, 2.0, -0.9, 0.9, -0.9, 0.9)
 FVM_CELL_SIZE = 0.0625
 FVM_WAKE_CELL_SIZE = 0.03125
 SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
-VPM_DOMAIN = (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
+# Memory: GBD pre-allocates a fixed diffusion grid over the WHOLE VPM domain
+# at spacing h, so its cost scales with domain volume and h^-3 -- 686 MB at the
+# defaults below, on top of particle arrays sized by PARTICLE_LIMIT.  On a
+# memory-constrained machine that allocation dominates start-up: the FVM
+# initialises in ~3 s while the VPM can take tens of minutes paging.
+# OPENONDA_VPM_COMPACT=1 trims the domain to what the cube wake actually needs
+# (256 MB); it still contains the FVM box with 2x margin in y and z.
+_VPM_COMPACT = os.environ.get("OPENONDA_VPM_COMPACT", "0") == "1"
+VPM_DOMAIN = (
+    (-4.5, 8.0, -3.0, 3.0, -3.0, 3.0) if _VPM_COMPACT else (-4.5, 11.0, -4.5, 4.5, -4.5, 4.5)
+)
 PARTICLE_SPACING = 0.04
-PARTICLE_LIMIT = 2_000_000
+PARTICLE_LIMIT = int(
+    os.environ.get("OPENONDA_MAX_PARTICLES", "1200000" if _VPM_COMPACT else "2000000")
+)
 OVERLAP_RADIUS_RATIO = 1.0
 PRUNE_VORTICITY_MIN = 0.005
 BOUNDARY_PRUNE_MULTIPLIER = 10.0
@@ -92,6 +106,7 @@ FVM_VOLUME_INTERVAL = 1.0
 VPM_LOG_PERIOD = 12
 BACKUP_PERIOD = 20
 SAMPLE_SPACING = 0.04
+HANDOFF_DIAGNOSTIC_INTERVAL = 12
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -186,8 +201,8 @@ FVM_SETUP = FVMSetup(
     ),
     pimple=PimpleControl(
         n_correctors=2,
-        n_outer_correctors=2,
-        n_orthogonal_correctors=1,
+        n_outer_correctors=1,
+        n_orthogonal_correctors=0,
         alpha_u=0.7,
         alpha_p=0.3,
     ),
@@ -222,8 +237,11 @@ COUPLER_SETUP = CouplerSetup(
     handoff_max_particles=PARTICLE_LIMIT,
     overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
+    handoff_diagnostic_interval=HANDOFF_DIAGNOSTIC_INTERVAL,
     resync_vpm_bc_after_handoff=True,
-    anchor_pressure=True,
+    # A pressure gauge shift is reporting-only and is intentionally kept out
+    # of the coupled numerical hot path.
+    anchor_pressure=False,
     backup_period=BACKUP_PERIOD,
 )
 

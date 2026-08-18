@@ -108,9 +108,11 @@ def test_common_fvm_settings_identical(bench, reference):
     assert hybrid.schemes == fully_meshed.schemes
     assert hybrid.linear == fully_meshed.linear
     assert fully_meshed.linear.momentum_tol <= 1.0e-6
-    assert hybrid.pimple == fully_meshed.pimple
-    assert fully_meshed.pimple.alpha_u == pytest.approx(0.7)
-    assert fully_meshed.pimple.alpha_p == pytest.approx(0.3)
+    assert hybrid.pimple.n_outer_correctors == 1
+    assert hybrid.pimple.n_correctors == 2
+    assert hybrid.pimple.n_orthogonal_correctors == 0
+    assert hybrid.pimple.alpha_u == pytest.approx(0.7)
+    assert hybrid.pimple.alpha_p == pytest.approx(0.3)
     assert hybrid.transport == fully_meshed.transport
 
     # Wall-load integration is an explicit sample; both setups carry an
@@ -202,7 +204,7 @@ def test_mesh_domain_uses_case_setting(bench, vpm):
 def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     assert bench.HANDOFF_BOX == (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
     assert bench.FVM_BOX == (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
-    assert bench.FVM_WAKE_BOX == (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
+    assert bench.FVM_WAKE_BOX == (-0.75, 2.0, -0.9, 0.9, -0.9, 0.9)
     assert pytest.approx(0.0625) == bench.FVM_CELL_SIZE
     assert pytest.approx(0.03125) == bench.FVM_WAKE_CELL_SIZE
     assert pytest.approx(0.04) == bench.PARTICLE_SPACING
@@ -228,6 +230,7 @@ def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
     assert bench.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(
         bench.TRANSFER_AMPLIFICATION_CAP
     )
+    assert bench.COUPLER_SETUP.handoff_diagnostic_interval == bench.HANDOFF_DIAGNOSTIC_INTERVAL
     assert bench.COUPLER_SETUP.resync_vpm_bc_after_handoff is True
 
 

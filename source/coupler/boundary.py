@@ -170,20 +170,43 @@ def evaluate_vpm_boundary(
     assert coupler.blending is not None
     t_blending = time.perf_counter()
     vpm_bc_velocity = None
+    tangential_normal_gradient: np.ndarray | None = None
     if coupler._is_master:
         assert coupler.vpm is not None
         blend_cell_centres = coupler.blending.active_cell_centres
         n_blend_cells = len(blend_cell_centres)
-        target_points = np.concatenate((blend_cell_centres, face_centers), axis=0)
-        target_velocity = np.asarray(
-            coupler.vpm.compute_target_velocities(
-                target_points,
-                include_freestream=True,
-                zone_mask=None,
-                include_body=True,
-            ),
-            dtype=np.float64,
-        ).reshape(-1, 3)
+        if coupler.config.vpm_bc_mode == "vorticity_mixed":
+            # The blending field needs velocity only, whereas the boundary
+            # faces need both velocity and du/dn.  Keeping these target sets
+            # separate avoids gradients over every blending cell while the
+            # face query shares one VPM tree traversal.
+            blend_velocity = np.asarray(
+                coupler.vpm.compute_target_velocities(
+                    blend_cell_centres,
+                    include_freestream=True,
+                    zone_mask=None,
+                    include_body=True,
+                ),
+                dtype=np.float64,
+            ).reshape(-1, 3)
+            vpm_bc_velocity, tangential_normal_gradient = (
+                coupler.vpm.compute_complete_target_velocity_and_tangential_normal_gradient(
+                    face_centers, face_normals, h=coupler.config.h
+                )
+            )
+            vpm_bc_velocity = np.asarray(vpm_bc_velocity, dtype=np.float64).reshape(-1, 3)
+            target_velocity = np.concatenate((blend_velocity, vpm_bc_velocity), axis=0)
+        else:
+            target_points = np.concatenate((blend_cell_centres, face_centers), axis=0)
+            target_velocity = np.asarray(
+                coupler.vpm.compute_target_velocities(
+                    target_points,
+                    include_freestream=True,
+                    zone_mask=None,
+                    include_body=True,
+                ),
+                dtype=np.float64,
+            ).reshape(-1, 3)
         expected_targets = n_blend_cells + len(face_centers)
         if target_velocity.shape != (expected_targets, 3):
             raise RuntimeError(
@@ -210,7 +233,6 @@ def evaluate_vpm_boundary(
 
     t_vpm_bc = time.perf_counter()
     if coupler._is_master:
-        target_velocity_gradient = None
         if coupler.config.vpm_bc_mode == "pressure_gradient":
             assert coupler.vpm is not None
             assert coupler.rho is not None
@@ -257,11 +279,6 @@ def evaluate_vpm_boundary(
             coupler._pressure_gradient_bc_next = pressure_gradient
             if coupler._pressure_gradient_bc_prev is None:
                 coupler._pressure_gradient_bc_prev = pressure_gradient.copy()
-        elif coupler.config.vpm_bc_mode == "vorticity_mixed":
-            assert coupler.vpm is not None
-            target_velocity_gradient = coupler.vpm.compute_complete_target_velocity_gradients(
-                face_centers, h=coupler.config.h
-            )
         assert coupler.fvm_box is not None
         u_bc_next, coupler._last_vpm_bc_flux_diagnostics = evaluate_vpm_velocity(
             coupler.vpm,
@@ -275,13 +292,11 @@ def evaluate_vpm_boundary(
         if coupler._u_bc_prev is None:
             coupler._u_bc_prev = u_bc_next.copy()
         if coupler.config.vpm_bc_mode == "vorticity_mixed":
-            assert target_velocity_gradient is not None
+            assert tangential_normal_gradient is not None
             normal_next = project_normal_velocity(
                 np.einsum("ij,ij->i", u_bc_next, face_normals), face_areas
             )
-            tangential_next = tangential_normal_velocity_gradient(
-                target_velocity_gradient, face_normals
-            )
+            tangential_next = tangential_normal_gradient
             coupler._normal_velocity_bc_next = normal_next
             coupler._tangential_gradient_bc_next = tangential_next
             if coupler._normal_velocity_bc_prev is None:
@@ -369,13 +384,34 @@ def resynchronize_vpm_boundary(
     assert coupler.vpm is not None
     blend_cell_centres = coupler.blending.active_cell_centres
     n_blend_cells = len(blend_cell_centres)
-    targets = np.concatenate((blend_cell_centres, face_centers), axis=0)
-    corrected = np.asarray(
-        coupler.vpm.compute_target_velocities(
-            targets, include_freestream=True, zone_mask=None, include_body=True
-        ),
-        dtype=np.float64,
-    ).reshape(-1, 3)
+    tangential_normal_gradient: np.ndarray | None = None
+    if coupler.config.vpm_bc_mode == "vorticity_mixed":
+        blend_velocity = np.asarray(
+            coupler.vpm.compute_target_velocities(
+                blend_cell_centres,
+                include_freestream=True,
+                zone_mask=None,
+                include_body=True,
+            ),
+            dtype=np.float64,
+        ).reshape(-1, 3)
+        corrected_boundary, tangential_normal_gradient = (
+            coupler.vpm.compute_complete_target_velocity_and_tangential_normal_gradient(
+                face_centers, face_normals, h=coupler.config.h
+            )
+        )
+        corrected = np.concatenate(
+            (blend_velocity, np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)),
+            axis=0,
+        )
+    else:
+        targets = np.concatenate((blend_cell_centres, face_centers), axis=0)
+        corrected = np.asarray(
+            coupler.vpm.compute_target_velocities(
+                targets, include_freestream=True, zone_mask=None, include_body=True
+            ),
+            dtype=np.float64,
+        ).reshape(-1, 3)
     if corrected.shape != (n_blend_cells + len(face_centers), 3) or not np.all(
         np.isfinite(corrected)
     ):
@@ -401,15 +437,11 @@ def resynchronize_vpm_boundary(
         # representation jump as a physical temporal acceleration.
         coupler._pressure_velocity_snapshot = corrected_boundary.copy()
     elif coupler.config.vpm_bc_mode == "vorticity_mixed":
-        target_velocity_gradient = coupler.vpm.compute_complete_target_velocity_gradients(
-            face_centers, h=coupler.config.h
-        )
+        assert tangential_normal_gradient is not None
         coupler._normal_velocity_bc_prev = project_normal_velocity(
             np.einsum("ij,ij->i", corrected_boundary, face_normals), face_areas
         )
-        coupler._tangential_gradient_bc_prev = tangential_normal_velocity_gradient(
-            target_velocity_gradient, face_normals
-        )
+        coupler._tangential_gradient_bc_prev = tangential_normal_gradient
     logger.info("     [Resync] VPM-BC endpoint moved max|du|/Uinf=%.3e", drift)
 
 

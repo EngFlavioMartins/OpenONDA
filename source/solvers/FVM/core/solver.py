@@ -1211,10 +1211,12 @@ class Solver(CouplerInterfaceMixin):
                     self.write_vtk()
         logging.Timer.log("Visualization output", sink=self.logger)
 
-        # Courant/gradient/vorticity caches describe only this accepted state.
-        # Output and force consumers above have finished with them; releasing
-        # the references here gives the next solve the lowest stable footprint.
-        self._invalidate_derived_fields()
+        # Courant/gradient/vorticity caches describe this accepted state and
+        # remain valid until ``solve_pimple`` starts the next mutation.  In a
+        # coupled step the endpoint gradient is consumed immediately by the
+        # vorticity handoff; dropping it here forced an identical full-mesh
+        # reconstruction and global gather.  ``solve_pimple`` clears the cache
+        # before its next assembly, retaining the former peak-memory behaviour.
 
     def save_state(self, path) -> str:
         """Atomically save a versioned restart containing the complete time state."""

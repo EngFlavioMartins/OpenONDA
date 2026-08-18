@@ -223,6 +223,21 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
         def compute_complete_target_velocity_gradients(points, *, h):
             return np.tile(total_jacobian, (len(points), 1, 1))
 
+        @staticmethod
+        def compute_complete_target_velocity_and_gradients(points, *, h):
+            return (
+                _VPM.compute_target_velocities(points),
+                _VPM.compute_complete_target_velocity_gradients(points, h=h),
+            )
+
+        @staticmethod
+        def compute_complete_target_velocity_and_tangential_normal_gradient(points, normals, *, h):
+            gradient = _VPM.compute_complete_target_velocity_gradients(points, h=h)
+            return (
+                _VPM.compute_target_velocities(points),
+                tangential_normal_velocity_gradient(gradient, normals),
+            )
+
     class _BlendingZone:
         active_cell_centres = np.empty((0, 3))
 
@@ -312,6 +327,21 @@ def test_post_handoff_resync_refreshes_both_mixed_trace_fields():
         def compute_complete_target_velocity_gradients(points, *, h):
             return np.tile(jacobian, (len(points), 1, 1))
 
+        @staticmethod
+        def compute_complete_target_velocity_and_gradients(points, *, h):
+            return (
+                _VPM.compute_target_velocities(points),
+                _VPM.compute_complete_target_velocity_gradients(points, h=h),
+            )
+
+        @staticmethod
+        def compute_complete_target_velocity_and_tangential_normal_gradient(points, normals, *, h):
+            gradient = _VPM.compute_complete_target_velocity_gradients(points, h=h)
+            return (
+                _VPM.compute_target_velocities(points),
+                tangential_normal_velocity_gradient(gradient, normals),
+            )
+
     class _BlendingZone:
         active_cell_centres = np.empty((0, 3))
 
@@ -374,6 +404,7 @@ def test_zero_target_evaluation_fails_before_blending_zone_mutation():
     coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
     coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
 
     centres, normals, areas = _cube_face_quadrature(nside=2)
     with pytest.raises(RuntimeError, match="identically zero field"):

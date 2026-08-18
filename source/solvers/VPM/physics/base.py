@@ -92,6 +92,10 @@ class PhysicsBase:
         # Cached treecode instance (to avoid memory leak from repeated allocations)
         self._treecode = None
         self._treecode_max_particles = 0
+        # A target-query phase often asks for panel, blending, and coupling-face
+        # fields from one immutable particle state.  Keep one source-tree key so
+        # those traversals share the LBVH instead of rebuilding it per caller.
+        self._target_tree_key = None
 
         # Velocity-evaluation method — the single source of truth for how the
         # self-induced velocity is computed (see velocity_self()).  Set once by
@@ -892,6 +896,23 @@ class PhysicsBase:
         else:
             self.compute_velocities_kernel(pos, strg, rad, out, bg, N)
 
+    def _ensure_target_tree_current(self, particles, capacity: int, theta: float):
+        """Return a tree built for the current particle source revision.
+
+        ``Particles.state_revision`` changes only when a Biot--Savart source
+        field (position, circulation, radius, or population) changes.  A
+        missing revision deliberately disables reuse so lightweight external
+        particle adapters cannot accidentally observe a stale hierarchy.
+        """
+        N = len(particles)
+        tree = self._get_or_create_treecode(capacity, theta)
+        revision = getattr(particles, "state_revision", None)
+        key = None if revision is None else (id(tree), id(particles), int(revision), int(N))
+        if key is None or self._target_tree_key != key:
+            tree.build(particles.position, particles.circulation, particles.radius, N)
+            self._target_tree_key = key
+        return tree
+
     # FIELD EVALUATION METHODS
 
     def compute_velocities(self, particles):
@@ -1366,9 +1387,7 @@ class PhysicsBase:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
         max_size = max(N, M)
-        tree = self._get_or_create_treecode(max_size, theta)
-        # Build from GPU fields directly.
-        tree.build(particles.position, particles.circulation, particles.radius, N)
+        tree = self._ensure_target_tree_current(particles, max_size, theta)
 
         background_vel = None
         if include_freestream:
@@ -1398,11 +1417,46 @@ class PhysicsBase:
             return np.zeros((M, 9), dtype=self.np_dtype)
 
         max_size = max(N, M)
-        tree = self._get_or_create_treecode(max_size, theta)
-        tree.build(particles.position, particles.circulation, particles.radius, N)
+        tree = self._ensure_target_tree_current(particles, max_size, theta)
 
         grads = tree.compute_target_velocity_gradients(target_positions)
         return grads.reshape(M, 9)
+
+    def compute_target_velocity_and_gradients_hierarchical(
+        self,
+        particles,
+        target_positions: np.ndarray,
+        theta: float = 0.5,
+        include_freestream: bool = True,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate target velocity and Jacobian from one Barnes-Hut tree build.
+
+        The returned Jacobian has shape ``(M, 9)`` in row-major order,
+        ``J[i, j] = d(u_i)/d(x_j)``.
+        """
+        N = len(particles)
+        M = len(target_positions)
+        if M == 0:
+            return (
+                np.zeros((0, 3), dtype=self.np_dtype),
+                np.zeros((0, 9), dtype=self.np_dtype),
+            )
+        if N == 0:
+            velocity = np.zeros((M, 3), dtype=self.np_dtype)
+            if include_freestream:
+                velocity += particles.velocity_background_cpu()
+            return velocity, np.zeros((M, 9), dtype=self.np_dtype)
+
+        max_size = max(N, M)
+        tree = self._ensure_target_tree_current(particles, max_size, theta)
+        background = None
+        if include_freestream:
+            bg = particles.velocity_background
+            background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+        velocity, gradient = tree.compute_target_velocity_and_gradients(
+            target_positions, background
+        )
+        return velocity, gradient.reshape(M, 9)
 
     def compute_velocity_gradients_hierarchical(self, particles, theta: float = 0.5):
         """

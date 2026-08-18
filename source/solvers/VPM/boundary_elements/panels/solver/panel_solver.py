@@ -597,31 +597,39 @@ class PanelSolver:
         # 3. Compute VPM-induced velocity at collocation points (if coupled)
         V_wake = V_wake_field
         if particles is not None and physics is not None:
-            # Use physics to compute induced velocity from particles at panel centers
-            physics.compute_target_velocities(
+            # NumPy targets follow PhysicsBase's configured TREECODE route.
+            # Passing the Taichi field directly bypassed that branch and launched
+            # a direct M-by-N target kernel at every panel centre.
+            n_panels = self.lattice.num_panels
+            centres = self.lattice.centers.to_numpy()[:n_panels]
+            induced = physics.compute_target_velocities(
                 particles,
-                self.lattice.centers,
-                self.lattice.velocities,  # Use as temporary storage for external velocity
+                centres,
                 include_freestream=False,  # Freestream added separately
             )
+            lattice_velocity = self.lattice.velocities.to_numpy()
+            lattice_velocity[:n_panels] = np.asarray(induced, dtype=lattice_velocity.dtype)
+            self.lattice.velocities.from_numpy(lattice_velocity)
             V_wake = self.lattice.velocities
 
         # 4. Solve potential flow
         self.solve(V_inf, V_wake, t)
 
-        # 5. Compute post-process (forces, Cp)
-        self.compute_postprocess(V_inf, V_inf, self.density, dt=dt, coupled=(particles is not None))
-
-        # 6. Compute loads and store them in the results.
-        self.compute_loads(V_inf, V_wake, dt, self.density)
-
-        # 7. Log forces if requested
-        log_freq = self.logging_frequency
-        if log_freq > 0 and self.step % log_freq == 0:
-            try:
-                self.log_forces_table(self.density, V_inf)
-            except Exception as e:
-                print(f"   (Warning) Could not compute panel forces: {e}")
+        # cubeFlow's vpm_bc-only panel supplies the irrotational boundary
+        # correction, while the FVM owns force/Cp reporting.  Avoid a second
+        # surface-velocity/force pass unless this panel is authoritative for
+        # particle dynamics or post-processing.
+        if self.coupling_scope != "vpm_bc":
+            self.compute_postprocess(
+                V_inf, V_inf, self.density, dt=dt, coupled=(particles is not None)
+            )
+            self.compute_loads(V_inf, V_wake, dt, self.density)
+            log_freq = self.logging_frequency
+            if log_freq > 0 and self.step % log_freq == 0:
+                try:
+                    self.log_forces_table(self.density, V_inf)
+                except Exception as e:
+                    print(f"   (Warning) Could not compute panel forces: {e}")
 
         self.results["times"].append(float(t))
         self._current_time = float(t)

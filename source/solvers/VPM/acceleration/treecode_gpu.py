@@ -1743,6 +1743,48 @@ class TaichiTreecode:
             i = start_target + local_target
             self.target_velocity_gradients[i] = self._traverse_target_grad(i, theta_sq, n_nodes)
 
+    @ti.kernel
+    def compute_target_velocity_and_gradients_kernel(
+        self,
+        theta_sq: ti.f32,
+        avg_radius: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
+        """Evaluate target velocity and Jacobian in one tree traversal."""
+        n_nodes = self.n_nodes[None]
+        root = self._root[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_target in range(count):
+            i = start_target + local_target
+            target_pos = self.target_positions[i]
+            velocity = ti.Vector([0.0, 0.0, 0.0])
+            gradient = ti.Matrix.zero(ti.f32, 3, 3)
+            self.target_traversal_stack[i, 0] = root
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.target_traversal_stack[i, stack_ptr]
+                if node < 0 or node >= n_nodes:
+                    continue
+                com = self.node_com[node]
+                r_vec = target_pos - com
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                node_size = 2.0 * self.node_half_size[node]
+                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                    sigma = self.node_avg_radius[node]
+                    velocity += self._far_velocity_node(node, r_vec, r_mag, sigma)
+                    gradient += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                elif self.node_is_leaf[node] == 1:
+                    velocity += self._target_leaf_velocity_sum(node, target_pos)
+                    gradient += self._target_leaf_gradient_sum(node, target_pos)
+                else:
+                    stack_ptr = self._push_children_target(i, node, stack_ptr)
+            self.target_velocities[i] = velocity + self.u_inf[None]
+            self.target_velocity_gradients[i] = gradient
+
     def compute_target_velocities(
         self, target_positions: np.ndarray, background_velocity: np.ndarray | None = None
     ) -> np.ndarray:
@@ -1778,6 +1820,34 @@ class TaichiTreecode:
             self.compute_target_velocity_gradients_kernel(theta_sq, 0.0, start, count)
             ti.sync()
         return self._download_matrix_field(self.target_velocity_gradients, M)
+
+    def compute_target_velocity_and_gradients(
+        self, target_positions: np.ndarray, background_velocity: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return target velocity and Jacobian after one tree traversal per target."""
+        M = len(target_positions)
+        if M == 0:
+            return (
+                np.zeros((0, 3), dtype=np.float32),
+                np.zeros((0, 3, 3), dtype=np.float32),
+            )
+        if self.max_targets < M:
+            raise ValueError(f"Too many targets: {M} > {self.max_targets}")
+        self.n_targets[None] = M
+        self._upload_vector_array(target_positions, self.target_positions, M)
+        if background_velocity is not None:
+            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+        else:
+            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+        theta_sq = self.theta * self.theta
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocity_and_gradients_kernel(theta_sq, 0.0, start, count)
+            ti.sync()
+        return (
+            self._download_vector_field(self.target_velocities, M),
+            self._download_matrix_field(self.target_velocity_gradients, M),
+        )
 
     # INFO
 

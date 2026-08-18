@@ -4,6 +4,7 @@ import numpy as np
 
 from source.coupler.vorticity_handoff import (
     VorticityHandoff,
+    build_handoff_lattice,
     continuous_handoff,
     cosine_eta,
     max_stable_dt,
@@ -32,6 +33,75 @@ def test_cosine_authority_partition():
 def test_buffer_dt_inverse():
     length = required_buffer_length(1.2, 0.05, H)
     assert np.isclose(max_stable_dt(1.2, length, H), 0.05)
+
+
+def test_static_handoff_lattice_preserves_the_dynamic_transfer():
+    """Static mesh/solid masks must not change the active hand-off operator."""
+    mesh_weight = lambda points: 1.0 - smoothstep(  # noqa: E731
+        np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8
+    )
+    lattice = build_handoff_lattice(
+        BOX,
+        H,
+        buffer_length=0.0,
+        mesh_weight_at_node=mesh_weight,
+        ramp_width=0.3,
+        dead_zone=0.05,
+        u_inf=[1.0, 0.0, 0.0],
+    )
+    target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
+    dynamic = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=target,
+        mesh_weight_at_node=mesh_weight,
+        ramp_width=0.3,
+        dead_zone=0.05,
+        threshold_abs=1.0e-12,
+    )
+    cached = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=target,
+        ramp_width=0.3,
+        dead_zone=0.05,
+        threshold_abs=1.0e-12,
+        lattice=lattice,
+    )
+
+    np.testing.assert_allclose(cached.pos, dynamic.pos)
+    np.testing.assert_allclose(cached.circ, dynamic.circ)
+    assert cached.spectral_band_ratio == dynamic.spectral_band_ratio
+
+
+def test_handoff_diagnostics_can_be_deferred_without_changing_particles():
+    target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
+    full = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=target,
+        threshold_abs=1.0e-12,
+    )
+    deferred = continuous_handoff(
+        np.zeros((0, 3)),
+        np.zeros((0, 3)),
+        BOX,
+        H,
+        circulation_at_node=target,
+        threshold_abs=1.0e-12,
+        compute_diagnostics=False,
+    )
+
+    np.testing.assert_allclose(deferred.pos, full.pos)
+    np.testing.assert_allclose(deferred.circ, full.circ)
+    assert deferred.diagnostics_evaluated is False
+    assert deferred.spectral_band_ratio == {}
 
 
 def test_aligned_handoff_excludes_solid():

@@ -505,6 +505,9 @@ class StabilizationManager:
         outcome = regularize(self.ctx, cfg)
         if outcome is None:
             return
+        # Conservative regularization rebuilds a cloud on its own lattice, so
+        # it invalidates any prior grid-regeneration bounds guarantee.
+        self.ctx.set_domain_bounds_enforced(False)
         # This worker rebuilds the cloud on its own grid, so total variation and
         # peak vorticity are measured against a different discretization; its
         # energy and enstrophy limits are the physics gate, enforced inside it.
@@ -522,6 +525,8 @@ class StabilizationManager:
             return
         bounds = self.config.remove_particles_by_bounds
         if bounds is not None:
+            if self.ctx.domain_bounds_enforced():
+                return
             # Removal compacts the stored vorticity field; no O(N²) rebuild is needed.
             ctx.remove_particles_by_bounds(bounds, invert_selection=True)
 

@@ -64,13 +64,18 @@ class _Step:
 
     def __enter__(self) -> "_Step":
         self._profiler._last.clear()  # per-step breakdown is for this step only
-        self._profiler._synchronize()
+        # In production the whole-step number is deliberately a cheap host-side
+        # wall-clock metric.  Do not serialize asynchronous GPU work unless the
+        # user explicitly requested a physically accurate detailed profile.
+        if self._profiler.enabled:
+            self._profiler._synchronize()
         self._t0 = time.perf_counter()
         return self
 
     def __exit__(self, *exc) -> bool:
-        self._profiler._synchronize()
         p = self._profiler
+        if p.enabled:
+            p._synchronize()
         p.step_time = time.perf_counter() - self._t0
         p.wall_time += p.step_time
         p.n_steps += 1
@@ -83,8 +88,9 @@ class RuntimeProfiler:
     Parameters
     ----------
     enabled : bool
-        When ``False``, :meth:`section` is a zero-overhead no-op (full-step
-        timing via :meth:`step` still runs, as the per-step line is always shown).
+        When ``False``, :meth:`section` is a zero-overhead no-op.  The
+        whole-step timer remains as a cheap host-side measurement and performs
+        no device synchronization.
     sync : Callable[[], None] | None
         Backend synchronisation hook called before and after each timed region.
         Pass ``taichi.sync`` for correct GPU timing; ``None`` disables syncing

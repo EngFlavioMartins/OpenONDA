@@ -12,6 +12,7 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+from dataclasses import dataclass
 import logging
 
 from numba import njit
@@ -35,6 +36,40 @@ _M4_SCATTER_BATCH_SIZE = 4096
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * h
 _REGEN_RADIUS_RATIO = 2.5
 _LOCAL_THRESHOLD_FLOOR = 1e-6
+
+
+@dataclass(frozen=True)
+class _NearestNodeMapping:
+    """One nearest-grid-node classification shared by regenerated fields."""
+
+    valid: np.ndarray
+    linear_index: np.ndarray
+    circulation_weight: np.ndarray
+
+
+def _nearest_node_mapping(
+    pos_np: np.ndarray,
+    circ_np: np.ndarray,
+    grid_min_np: np.ndarray,
+    h: float,
+    nx: int,
+    ny: int,
+    nz: int,
+) -> _NearestNodeMapping:
+    """Map particles to valid nearest nodes once for every scalar/ID scatter."""
+    indices = np.rint((np.asarray(pos_np) - np.asarray(grid_min_np)) / float(h)).astype(np.intp)
+    valid = (
+        (indices[:, 0] >= 0)
+        & (indices[:, 0] < nx)
+        & (indices[:, 1] >= 0)
+        & (indices[:, 1] < ny)
+        & (indices[:, 2] >= 0)
+        & (indices[:, 2] < nz)
+    )
+    selected = indices[valid]
+    linear_index = selected[:, 0] * (ny * nz) + selected[:, 1] * nz + selected[:, 2]
+    circulation_weight = np.abs(np.asarray(circ_np)[valid]).sum(axis=1)
+    return _NearestNodeMapping(valid, linear_index, circulation_weight)
 
 
 def _threshold_scalar(threshold: float | np.ndarray) -> float:
@@ -652,6 +687,7 @@ class _GridDiffusionMixin:
         nz: int,
         default_id: int = 0,
         propagate_to: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+        mapping: _NearestNodeMapping | None = None,
     ) -> np.ndarray:
         """Scatter an integer ID field to grid nodes (|Γ|-weighted nearest-node).
 
@@ -666,32 +702,31 @@ class _GridDiffusionMixin:
         if ids_np is None:
             return winner_grid
 
-        fx = (pos_np[:, 0] - grid_min_np[0]) / h
-        fy = (pos_np[:, 1] - grid_min_np[1]) / h
-        fz = (pos_np[:, 2] - grid_min_np[2]) / h
-        ix_arr = np.round(fx).astype(np.intp)
-        iy_arr = np.round(fy).astype(np.intp)
-        iz_arr = np.round(fz).astype(np.intp)
-        valid = (
-            (ix_arr >= 0)
-            & (ix_arr < nx)
-            & (iy_arr >= 0)
-            & (iy_arr < ny)
-            & (iz_arr >= 0)
-            & (iz_arr < nz)
-        )
-        w = np.abs(circ_np[valid]).sum(axis=1)
-        lin = ix_arr[valid] * (ny * nz) + iy_arr[valid] * nz + iz_arr[valid]
-        ids = ids_np[valid]
+        if mapping is None:
+            mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+        w = mapping.circulation_weight
+        lin = mapping.linear_index
+        ids = ids_np[mapping.valid]
+        if len(ids) == 0:
+            return winner_grid
         weight_flat = np.zeros(nx * ny * nz, dtype=np.float64)
         winner_flat = winner_grid.ravel()
-        for id_val in np.unique(ids):
-            mask_val = ids == id_val
-            temp = np.zeros(nx * ny * nz, dtype=np.float64)
-            np.add.at(temp, lin[mask_val], w[mask_val])
-            better = temp > weight_flat
-            winner_flat[better] = id_val
-            weight_flat[better] = temp[better]
+        if np.all(ids == ids[0]):
+            populated = np.unique(lin)
+            winner_flat[populated] = ids[0]
+            weight_flat[populated] = 1.0
+            if propagate_to is not None:
+                query = np.column_stack(propagate_to)
+                winner_grid[tuple(query.T)] = ids[0]
+                return winner_grid
+        else:
+            for id_val in np.unique(ids):
+                mask_val = ids == id_val
+                temp = np.zeros(nx * ny * nz, dtype=np.float64)
+                np.add.at(temp, lin[mask_val], w[mask_val])
+                better = temp > weight_flat
+                winner_flat[better] = id_val
+                weight_flat[better] = temp[better]
 
         if propagate_to is not None and np.any(weight_flat > 0.0):
             from scipy.spatial import cKDTree
@@ -717,10 +752,20 @@ class _GridDiffusionMixin:
         nx: int,
         ny: int,
         nz: int,
+        mapping: _NearestNodeMapping | None = None,
     ) -> np.ndarray:
         """Scatter zone IDs — thin wrapper around _scatter_id_field (default_id=3)."""
         return self._scatter_id_field(
-            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz, default_id=3
+            pos_np,
+            circ_np,
+            zone_id_np,
+            grid_min_np,
+            h,
+            nx,
+            ny,
+            nz,
+            default_id=3,
+            mapping=mapping,
         )
 
     def _scatter_scalar_weighted(
@@ -733,6 +778,7 @@ class _GridDiffusionMixin:
         nx: int,
         ny: int,
         nz: int,
+        mapping: _NearestNodeMapping | None = None,
     ) -> np.ndarray:
         """Scatter a per-particle scalar to grid nodes (|Γ|-weighted average).
 
@@ -750,23 +796,11 @@ class _GridDiffusionMixin:
         if scalar_np is None:
             return out
 
-        fx = (pos_np[:, 0] - grid_min_np[0]) / h
-        fy = (pos_np[:, 1] - grid_min_np[1]) / h
-        fz = (pos_np[:, 2] - grid_min_np[2]) / h
-        ix_arr = np.round(fx).astype(np.intp)
-        iy_arr = np.round(fy).astype(np.intp)
-        iz_arr = np.round(fz).astype(np.intp)
-        valid = (
-            (ix_arr >= 0)
-            & (ix_arr < nx)
-            & (iy_arr >= 0)
-            & (iy_arr < ny)
-            & (iz_arr >= 0)
-            & (iz_arr < nz)
-        )
-        w = np.abs(circ_np[valid]).sum(axis=1)
-        lin = ix_arr[valid] * (ny * nz) + iy_arr[valid] * nz + iz_arr[valid]
-        s = np.ascontiguousarray(scalar_np[valid], dtype=np.float64)
+        if mapping is None:
+            mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+        w = mapping.circulation_weight
+        lin = mapping.linear_index
+        s = np.ascontiguousarray(scalar_np[mapping.valid], dtype=np.float64)
 
         weight_flat = np.zeros(nx * ny * nz, dtype=np.float64)
         accum_flat = np.zeros(nx * ny * nz, dtype=np.float64)
@@ -1253,6 +1287,7 @@ class _GridDiffusionMixin:
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+        node_mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
 
         # -- M4' scatter (GPU) -------------------------------------------------
         self._zero_grid_kernel(self._current_grid, nx, ny, nz)
@@ -1288,7 +1323,7 @@ class _GridDiffusionMixin:
             # grid scatter can introduce tiny excursions via round-off).
             np.clip(nu_eff_np, 0.0, None, out=nu_eff_np)
             nu_eff_grid_np = self._scatter_scalar_weighted(
-                pos_np, circ_np, nu_eff_np, grid_min_np, h, nx, ny, nz
+                pos_np, circ_np, nu_eff_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
             )
             alpha_max = float(nu_eff_grid_np.max()) * dt / (h * h) if nu_eff_grid_np.size else 0.0
             if alpha_max > 1.0 / 6.0:
@@ -1329,12 +1364,12 @@ class _GridDiffusionMixin:
 
         # -- ID-field scatters (CPU, small cost) -------------------------------
         zone_winner_grid = self._scatter_zone_ids(
-            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
+            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
         )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
-            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz
+            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
         )
 
         # -- Threshold pruning (CPU — read diffused grid back once) ------------
@@ -1376,6 +1411,7 @@ class _GridDiffusionMixin:
             nz,
             default_id=0,
             propagate_to=np.where(circ_mag > 0.0),
+            mapping=node_mapping,
         )
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
         Logging.message(
@@ -1660,6 +1696,7 @@ class _GridDiffusionMixin:
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+        node_mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
 
         # -- DVH heat-kernel scatter (Durante 2024, Eqs. 17-19) ---------------
         # (the scatter zeroes the grid internally before depositing)
@@ -1671,12 +1708,12 @@ class _GridDiffusionMixin:
 
         # -- ID-field scatters (nearest-node, |Γ|-weighted) -------------------
         zone_winner_grid = self._scatter_zone_ids(
-            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz
+            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
         )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
-            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz
+            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
         )
 
         # -- Threshold pruning -------------------------------------------------
@@ -1715,6 +1752,7 @@ class _GridDiffusionMixin:
             nz,
             default_id=0,
             propagate_to=np.where(circ_mag > 0.0),
+            mapping=node_mapping,
         )
 
         # -- Particle-count cap ------------------------------------------------

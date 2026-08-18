@@ -425,8 +425,10 @@ class FVMVPMCoupler:
                 self, *face_geometry
             )
             fvm_time = advance_fvm(self, *face_geometry, u_previous, u_next)
-            assert self.pressure_reference is not None
-            self.pressure_reference.correct(self._get_velocity_field_buffer())
+            # A pressure datum shift changes neither the incompressible
+            # solution nor closed-body pressure forces.  Keep the solver's
+            # native null-space datum in the numerical loop; presentation code
+            # can apply a reported offset to an output copy when needed.
             handoff_result, handoff_time = self._transfer_vorticity_to_vpm(*face_geometry)
             resynchronize_vpm_boundary(self, *face_geometry)
             self._last_handoff_result = handoff_result

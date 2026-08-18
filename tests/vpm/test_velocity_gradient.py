@@ -6,6 +6,8 @@ stretching (ω·∇u) and strain-rate computation.  All properties tested here a
 exact consequences of the Biot-Savart law and incompressibility.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -243,8 +245,8 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
     np.testing.assert_allclose(grad_kernel, grad_fd, rtol=1.5e-2, atol=2e-3)
 
 
-def test_complete_target_gradient_uses_treecode_velocity_operator(tmp_path, monkeypatch):
-    """The coupled Jacobian must differentiate the configured treecode trace."""
+def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch):
+    """The coupled velocity and Jacobian must share the configured treecode trace."""
     reset_taichi_backend()
     theta = 0.2
     solver = Solver(
@@ -294,23 +296,33 @@ def test_complete_target_gradient_uses_treecode_velocity_operator(tmp_path, monk
     )
 
     physics = solver.physics
-    hierarchical_gradient = physics.compute_target_velocity_gradients_hierarchical
+    hierarchical_fields = physics.compute_target_velocity_and_gradients_hierarchical
     calls = []
 
-    def record_hierarchical_gradient(*args, **kwargs):
+    def record_hierarchical_fields(*args, **kwargs):
         calls.append(kwargs["theta"])
-        return hierarchical_gradient(*args, **kwargs)
+        return hierarchical_fields(*args, **kwargs)
 
     def direct_gradient_must_not_run(*args, **kwargs):
         pytest.fail("treecode complete-gradient evaluation used the direct kernel")
 
     monkeypatch.setattr(
-        physics, "compute_target_velocity_gradients_hierarchical", record_hierarchical_gradient
+        physics, "compute_target_velocity_and_gradients_hierarchical", record_hierarchical_fields
     )
     monkeypatch.setattr(physics, "compute_target_velocity_gradients", direct_gradient_must_not_run)
+    tree = physics._get_or_create_treecode(len(positions), theta)
+    tree_build = tree.build
+    tree_builds = []
+
+    def record_tree_build(*args, **kwargs):
+        tree_builds.append(1)
+        return tree_build(*args, **kwargs)
+
+    monkeypatch.setattr(tree, "build", record_tree_build)
 
     target = np.array([[0.12, 0.16, -0.22]])
-    gradient = solver.compute_complete_target_velocity_gradients(target, h=0.04)[0]
+    velocity, gradient = solver.compute_complete_target_velocity_and_gradients(target, h=0.04)
+    gradient = gradient[0]
     assert calls == [theta]
 
     step = 2.0e-4
@@ -322,4 +334,48 @@ def test_complete_target_gradient_uses_treecode_velocity_operator(tmp_path, monk
         lower = solver.compute_target_velocities(target - offset, include_freestream=False)[0]
         finite_difference[:, axis] = (upper - lower) / (2.0 * step)
 
+    np.testing.assert_allclose(velocity, solver.compute_target_velocities(target))
     np.testing.assert_allclose(gradient, finite_difference, rtol=5e-2, atol=3e-3)
+    # The face trace and neighbouring target probes see one unchanged particle
+    # state, hence share the already-built tree.
+    assert len(tree_builds) == 1
+
+    # Mutating a Biot--Savart source publishes a new particle revision and must
+    # rebuild before the next target query; the cache may never serve this stale.
+    updated_circulation = solver.particles_circulation.copy()
+    updated_circulation[0, 2] *= 1.1
+    solver.particles.set_field("circulation", updated_circulation)
+    solver.compute_target_velocities(target)
+    assert len(tree_builds) == 2
+
+
+def test_mixed_target_trace_uses_only_two_nonparticle_samples():
+    matrix = np.array([[0.2, -0.1, 0.3], [0.4, 0.05, -0.2], [-0.1, 0.3, -0.25]])
+    solver = Solver.__new__(Solver)
+    solver.physics = SimpleNamespace(
+        velocity_method="DIRECT",
+        compute_target_velocities=lambda *_args, **_kwargs: np.zeros((2, 3)),
+        compute_target_velocity_gradients=lambda *_args, **_kwargs: np.zeros((2, 9)),
+    )
+    solver.particles = object()
+    solver._body_induced_fn = lambda points: np.asarray(points) @ matrix.T
+    solver.num_sources = 0
+    solver._add_target_velocity_corrections = lambda points, velocity, include_body: (
+        np.asarray(velocity) + solver._body_induced_fn(points)
+    )
+    solver._nonparticle_target_velocity = solver._body_induced_fn
+
+    points = np.array([[0.2, -0.1, 0.3], [-0.4, 0.5, -0.2]])
+    normals = np.array([[1.0, 0.0, 0.0], [0.0, 3.0, 4.0]])
+    velocity, tangential = solver.compute_complete_target_velocity_and_tangential_normal_gradient(
+        points, normals, h=0.04
+    )
+
+    unit_normals = normals / np.linalg.norm(normals, axis=1)[:, None]
+    expected_velocity = points @ matrix.T
+    derivative = np.einsum("ij,fj->fi", matrix, unit_normals)
+    expected_tangential = (
+        derivative - np.einsum("fi,fi->f", derivative, unit_normals)[:, None] * unit_normals
+    )
+    np.testing.assert_allclose(velocity, expected_velocity)
+    np.testing.assert_allclose(tangential, expected_tangential)

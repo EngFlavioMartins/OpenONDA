@@ -38,7 +38,8 @@ def m4p(q: np.ndarray | float) -> np.ndarray:
     return w
 
 
-def _grid_positions(origin: np.ndarray, h: float, shape: tuple[int, int, int]) -> np.ndarray:
+def grid_positions(origin: np.ndarray, h: float, shape: tuple[int, int, int]) -> np.ndarray:
+    """Return regular-lattice node coordinates in remesh storage order."""
     gx, gy, gz = np.meshgrid(
         *[origin[d] + h * np.arange(shape[d]) for d in range(3)],
         indexing="ij",
@@ -101,6 +102,7 @@ def remesh_to_grid(
     origin: np.ndarray,
     h: float,
     shape: tuple[int, int, int],
+    grid_positions_cache: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Tensor-product M4' P2M scatter onto a regular lattice.
 
@@ -121,8 +123,17 @@ def remesh_to_grid(
     grid_pos  : (Nx*Ny*Nz, 3)  node positions
     grid_circ : (Nx*Ny*Nz, 3)  accumulated circulations Σ W_ip Γ_p
     """
+    grid_pos = (
+        grid_positions(np.asarray(origin, dtype=float), h, shape)
+        if grid_positions_cache is None
+        else np.asarray(grid_positions_cache, dtype=np.float64).reshape(-1, 3)
+    )
+    expected_nodes = int(np.prod(shape))
+    if len(grid_pos) != expected_nodes:
+        raise ValueError(
+            f"grid_positions_cache has {len(grid_pos)} nodes, expected {expected_nodes}"
+        )
     if len(pos) == 0:
-        grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
         return grid_pos, np.zeros((len(grid_pos), 3))
 
     rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(h)
@@ -139,5 +150,4 @@ def remesh_to_grid(
         rel_free = rel[~aligned]
         base_free = np.floor(rel_free).astype(int) - 1
         G += _scatter_m4p(rel_free, base_free, circ_f[~aligned], shape)
-    grid_pos = _grid_positions(np.asarray(origin, dtype=float), h, shape)
     return grid_pos, G.reshape(-1, 3)

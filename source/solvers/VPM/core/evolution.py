@@ -55,6 +55,7 @@ class EvolutionStepper:
         spreading uses symmetric Strang splitting in the coupled integrator.
         """
 
+        self.solver._domain_bounds_enforced_this_step = False
         self.stabilization.run_phase("pre_evolution")
 
         self._advance_time_step()
@@ -94,12 +95,16 @@ class EvolutionStepper:
                 and self.num_sources == 0
                 and getattr(self.physics, "velocity_override", None) is None
             )
+            panel_affects_particle_velocity = (
+                self.panel_solver is not None
+                and getattr(self.panel_solver, "coupling_scope", "full") == "full"
+            )
             _fuse_vel_grad = (
                 self.flow_model != "POTENTIAL"
                 and _adv != "NONE"
                 and _gradients_required
                 and self.num_sources == 0
-                and self.panel_solver is None
+                and not panel_affects_particle_velocity
                 and getattr(self.physics, "velocity_override", None) is None
             )
             if _fuse_vel_grad:
@@ -112,7 +117,7 @@ class EvolutionStepper:
                     _adv == "NONE"
                     or not _gradients_required
                     or self.num_sources > 0
-                    or self.panel_solver is not None
+                    or panel_affects_particle_velocity
                 ):
                     with self.profiler.section("Velocity"):
                         self._update_velocities()
@@ -178,6 +183,11 @@ class EvolutionStepper:
             with self.profiler.section("Backup / IO"):
                 self._backup_solution()
 
+        # The evolution kernels mutate particle source fields directly on the
+        # device.  Publish one new source revision after the complete physical
+        # state (including any topology-changing stabilization) is committed so
+        # post-step boundary/panel queries cannot reuse the previous tree.
+        self.particles.touch_state()
         self.profiler.report_step()
         self.solver.simulation_time = self.profiler.wall_time
 
@@ -781,6 +791,10 @@ class EvolutionStepper:
                             f"y=[{lo[1]:.6g}, {hi[1]:.6g}], "
                             f"z=[{lo[2]:.6g}, {hi[2]:.6g}]."
                         )
+                    # Regeneration occurred on the configured fixed lattice and
+                    # already left every new particle inside the same retention
+                    # domain.  The post-step O(N) retention scan would be a no-op.
+                    self.solver._domain_bounds_enforced_this_step = bool(np.all(inside))
                 self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),

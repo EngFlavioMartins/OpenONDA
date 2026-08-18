@@ -113,16 +113,32 @@ def _tiny_solver(tmp_path, timing_frequency=0):
     return solver
 
 
-def test_solver_exposes_profiler_and_records_steps(tmp_path):
+def test_solver_uses_lightweight_timing_by_default(tmp_path):
     solver = _tiny_solver(tmp_path)
     assert isinstance(solver.profiler, RuntimeProfiler)
+    assert not solver.profiler.enabled
 
     n_steps = 4
     for _ in range(n_steps):
         solver.update_state()
 
     assert solver.profiler.n_steps == n_steps
-    # Core stages must have been timed.
+    assert solver.profiler._cumulative == {}
+    # The public mirror still tracks total solver wall time.
+    assert solver.simulation_time == pytest.approx(solver.profiler.wall_time)
+
+
+def test_solver_records_stage_timings_when_explicitly_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("VPM_DETAILED_TIMING", "1")
+    solver = _tiny_solver(tmp_path)
+    assert solver.profiler.enabled
+
+    n_steps = 4
+    for _ in range(n_steps):
+        solver.update_state()
+
+    assert solver.profiler.n_steps == n_steps
+    # Core stages are synchronised and sampled only in this diagnostic mode.
     assert "Advection" in solver.profiler._cumulative
     assert "Viscous diffusion" in solver.profiler._cumulative
     assert "Stretching" in solver.profiler._cumulative

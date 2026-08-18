@@ -358,14 +358,24 @@ class Solver:
                 set_circulation_removed=lambda value: setattr(
                     self, "_circulation_removed_this_step", value
                 ),
+                domain_bounds_enforced=lambda: self._domain_bounds_enforced_this_step,
+                set_domain_bounds_enforced=lambda value: setattr(
+                    self, "_domain_bounds_enforced_this_step", bool(value)
+                ),
             )
         )
         active = self.stabilization.active_mechanisms()
         if active:
             Logging.message("Stabilization: " + ", ".join(active))
         self._init_optional_solvers(final_config)
-        # Synchronize asynchronous kernels at profiler boundaries.
-        self.profiler = RuntimeProfiler(sync=ti.sync)
+        # Detailed section timing forces a device barrier around every phase.
+        # Make that diagnostic opt-in; the whole-step timer remains available in
+        # normal production runs without serialising every kernel launch.
+        self.profiler = RuntimeProfiler(
+            enabled=os.environ.get("VPM_DETAILED_TIMING", "0") == "1",
+            sync=ti.sync,
+        )
+        self._domain_bounds_enforced_this_step = False
         self.simulation_time = 0.0
         # The step algorithm lives in the stepper; this facade drives it.
         self.stepper = EvolutionStepper(self)
@@ -820,15 +830,31 @@ class Solver:
             include_freestream=include_freestream,
             zone_mask=zone_mask,
         )
+        return self._add_target_velocity_corrections(
+            grid_positions, velocities, include_body=include_body
+        )
+
+    def _add_target_velocity_corrections(
+        self,
+        grid_positions: np.ndarray,
+        particle_velocity: np.ndarray,
+        *,
+        include_body: bool,
+    ) -> np.ndarray:
+        """Add source-particle and body-potential terms to particle induction."""
+        points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+        velocities = np.asarray(particle_velocity, dtype=self.np_dtype).reshape(-1, 3)
+        if len(velocities) != len(points):
+            raise ValueError("target velocity and position counts must match")
 
         if self.num_sources > 0:
-            n_targets = len(grid_positions)
+            n_targets = len(points)
             self.physics._resize_target_fields(n_targets)
             target_pos_ti = self.physics.target_positions
             target_vel_ti = self.physics.target_velocities
 
             # Fixed-shape buffers avoid persistent staging allocations.
-            self.physics._upload_vector_array(grid_positions, target_pos_ti, n_targets)
+            self.physics._upload_vector_array(points, target_pos_ti, n_targets)
             self.physics._upload_vector_array(velocities, target_vel_ti, n_targets)
 
             self.physics.kernels["compute_target_source_velocity_kernel"](
@@ -844,11 +870,20 @@ class Solver:
 
         body_fn = self._body_induced_fn
         if include_body and body_fn is not None:
-            velocities = velocities + np.asarray(
-                body_fn(grid_positions), dtype=velocities.dtype
-            ).reshape(velocities.shape)
+            velocities = velocities + np.asarray(body_fn(points), dtype=velocities.dtype).reshape(
+                velocities.shape
+            )
 
         return velocities
+
+    def _nonparticle_target_velocity(self, grid_positions: np.ndarray) -> np.ndarray:
+        """Return only regularized-source and body-potential target velocity."""
+        points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+        return self._add_target_velocity_corrections(
+            points,
+            np.zeros((len(points), 3), dtype=self.np_dtype),
+            include_body=True,
+        )
 
     def set_body_induced_velocity(self, fn) -> None:
         """Set the optional boundary-element velocity callback.
@@ -920,49 +955,115 @@ class Solver:
             gradient = np.asarray(
                 self.compute_target_velocity_gradients(points), dtype=np.float64
             ).reshape(-1, 3, 3)
+        return self._add_nonparticle_target_gradient(points, gradient, h=h)
+
+    def _add_nonparticle_target_gradient(
+        self, points: np.ndarray, particle_gradient: np.ndarray, *, h: float
+    ) -> np.ndarray:
+        """Differentiate only the source and body corrections by centred differences."""
+        gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
         if (self._body_induced_fn is None and self.num_sources == 0) or len(points) == 0:
             return gradient
-
-        def nonparticle_velocity(sample_points: np.ndarray) -> np.ndarray:
-            correction = np.zeros_like(sample_points)
-            if self.num_sources > 0:
-                complete_without_body = np.asarray(
-                    self.compute_target_velocities(
-                        sample_points,
-                        include_freestream=False,
-                        zone_mask=None,
-                        include_body=False,
-                    ),
-                    dtype=np.float64,
-                ).reshape(-1, 3)
-                particle_only = np.asarray(
-                    self.physics.compute_target_velocities(
-                        self.particles,
-                        sample_points,
-                        include_freestream=False,
-                        zone_mask=None,
-                    ),
-                    dtype=np.float64,
-                ).reshape(-1, 3)
-                correction += complete_without_body - particle_only
-            if self._body_induced_fn is not None:
-                correction += np.asarray(
-                    self._body_induced_fn(sample_points), dtype=np.float64
-                ).reshape(-1, 3)
-            return correction
 
         step = max(1.0e-6, 1.0e-3 * float(h))
         for axis in range(3):
             offset = np.zeros(3, dtype=np.float64)
             offset[axis] = step
-            plus = nonparticle_velocity(points + offset)
-            minus = nonparticle_velocity(points - offset)
+            plus = self._nonparticle_target_velocity(points + offset)
+            minus = self._nonparticle_target_velocity(points - offset)
             if plus.shape != points.shape or minus.shape != points.shape:
                 raise RuntimeError("VPM body-velocity callback returned an invalid shape")
             gradient[:, :, axis] += (plus - minus) / (2.0 * step)
         if not np.all(np.isfinite(gradient)):
             raise RuntimeError("Complete VPM target-gradient evaluation returned non-finite data")
         return gradient
+
+    def compute_complete_target_velocity_and_gradients(
+        self, grid_positions: np.ndarray, *, h: float
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate body-complete target velocity and Jacobian together.
+
+        Treecode runs build and traverse the particle hierarchy once, then add
+        the regularized-source and body-potential velocity and Jacobian terms.
+        """
+        points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+        if self.physics.velocity_method == "TREECODE":
+            velocity, gradient = self.physics.compute_target_velocity_and_gradients_hierarchical(
+                self.particles,
+                points,
+                theta=self.physics.velocity_theta,
+                include_freestream=True,
+            )
+        else:
+            velocity = self.physics.compute_target_velocities(
+                self.particles,
+                points,
+                include_freestream=True,
+                zone_mask=None,
+            )
+            gradient = self.physics.compute_target_velocity_gradients(self.particles, points)
+        complete_velocity = self._add_target_velocity_corrections(
+            points, velocity, include_body=True
+        )
+        complete_gradient = self._add_nonparticle_target_gradient(points, gradient, h=h)
+        return complete_velocity, complete_gradient
+
+    def compute_complete_target_velocity_and_tangential_normal_gradient(
+        self,
+        grid_positions: np.ndarray,
+        normals: np.ndarray,
+        *,
+        h: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return the body-complete velocity and tangential ``du/dn`` trace.
+
+        The mixed FVM boundary condition does not consume the full nine-component
+        Jacobian.  Particle induction is still evaluated by the configured fused
+        target operation, while source/body terms use only the two centred samples
+        along each face normal instead of three coordinate-direction pairs.
+        """
+        points = np.asarray(grid_positions, dtype=np.float64).reshape(-1, 3)
+        face_normals = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
+        if face_normals.shape != points.shape:
+            raise ValueError("normal count does not match target positions")
+        normal_magnitude = np.linalg.norm(face_normals, axis=1)
+        if np.any(~np.isfinite(face_normals)) or np.any(normal_magnitude <= 0.0):
+            raise ValueError("target normals must be finite and non-zero")
+        unit_normals = face_normals / normal_magnitude[:, None]
+
+        if self.physics.velocity_method == "TREECODE":
+            velocity, gradient = self.physics.compute_target_velocity_and_gradients_hierarchical(
+                self.particles,
+                points,
+                theta=self.physics.velocity_theta,
+                include_freestream=True,
+            )
+        else:
+            velocity = self.physics.compute_target_velocities(
+                self.particles,
+                points,
+                include_freestream=True,
+                zone_mask=None,
+            )
+            gradient = self.physics.compute_target_velocity_gradients(self.particles, points)
+
+        complete_velocity = self._add_target_velocity_corrections(
+            points, velocity, include_body=True
+        )
+        d_u_dn = np.einsum(
+            "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
+        )
+        if self._body_induced_fn is not None or self.num_sources > 0:
+            step = max(1.0e-6, 1.0e-3 * float(h))
+            plus = self._nonparticle_target_velocity(points + step * unit_normals)
+            minus = self._nonparticle_target_velocity(points - step * unit_normals)
+            if plus.shape != points.shape or minus.shape != points.shape:
+                raise RuntimeError("VPM body-velocity callback returned an invalid shape")
+            d_u_dn += (plus - minus) / (2.0 * step)
+        tangential = d_u_dn - np.einsum("fi,fi->f", d_u_dn, unit_normals)[:, None] * unit_normals
+        if not np.all(np.isfinite(complete_velocity)) or not np.all(np.isfinite(tangential)):
+            raise RuntimeError("Mixed VPM target evaluation returned non-finite data")
+        return np.asarray(complete_velocity, dtype=np.float64), tangential
 
     def compute_target_pressure_gradients(
         self,
