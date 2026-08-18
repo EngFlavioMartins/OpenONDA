@@ -103,7 +103,12 @@ GBD_THRESHOLD = 0.30
 BUFFER_THICKNESS = 0.24
 
 # Coupling
-VPM_BC_MODE = "dirichlet"
+# Prescribe only u.n and the VPM normal derivative of the tangential velocity,
+# rather than all three velocity components.  Full Dirichlet data does not
+# enforce vorticity continuity across the interface, so a tangential mismatch
+# is free to act as a spurious boundary vorticity source.  Set "dirichlet" to
+# recover the previous formulation for comparison.
+VPM_BC_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
