@@ -108,13 +108,13 @@ class Solver:
             if self.time_step_size > dt_max_rwm * (1.0 + 1e-6):
                 Logging.message(
                     f"[RWM] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> accuracy limit h²/(4nu) = {dt_max_rwm:.4e} s — "
-                    f"random displacement √(2nuΔt) exceeds inter-particle spacing h; "
+                    f"> accuracy limit particle_spacing²/(4nu) = {dt_max_rwm:.4e} s — "
+                    f"random displacement √(2nuΔt) exceeds inter-particle spacing particle_spacing; "
                     f"vorticity gradients will be artificially smoothed."
                 )
             self._rwm_dt_info = (
-                f"RWM accuracy limit h²/(4nu) = {dt_max_rwm:.4e} s "
-                f"(h = {vc.characteristic_distance:.3e} m, "
+                f"RWM accuracy limit particle_spacing²/(4nu) = {dt_max_rwm:.4e} s "
+                f"(particle_spacing = {vc.characteristic_distance:.3e} m, "
                 f"nu = {vc.viscosity:.3e} m²/s)."
             )
 
@@ -124,7 +124,7 @@ class Solver:
             if self.time_step_size > dt_max * (1.0 + 1e-6):
                 Logging.message(
                     f"[GBD] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> CFL limit h²/(6nu) = {dt_max:.4e} s — "
+                    f"> CFL limit particle_spacing²/(6nu) = {dt_max:.4e} s — "
                     f"explicit Laplacian may be UNSTABLE."
                 )
             self._gbd_dt_info = (
@@ -151,7 +151,7 @@ class Solver:
                     f"[DVH] INFO: time step adjusted — "
                     f"user dt = {user_dt:.4e} s → dt = Δt_d/{n_sub} = {dt_sub:.4e} s "
                     f"(Δt_d = β·R_d²/(4nu) = {dt_d:.4e} s, β={_DVH_BETA}, "
-                    f"R_d = {vc.dvh_rd_ratio}·h = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m; "
+                    f"R_d = {vc.dvh_rd_ratio}·particle_spacing = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m; "
                     f"DVH fires every {n_sub} step(s))."
                 )
                 self.time_step_size = dt_sub
@@ -236,8 +236,8 @@ class Solver:
         )
 
         _visc_cfg = getattr(final_config, "viscous", None)
-        if _visc_cfg is not None and hasattr(self.physics, "regen_radius_ratio"):
-            self.physics.regen_radius_ratio = float(getattr(_visc_cfg, "regen_radius_ratio", 2.5))
+        if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
+            self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
         if hasattr(self.physics, "configure_body_mask"):
             try:
                 self.physics.configure_body_mask(getattr(final_config, "body_stl", None))
@@ -278,8 +278,8 @@ class Solver:
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_radii = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.num_sources = 0
-        if hasattr(self.config, "background_velocity"):
-            self.particles.set_background_velocity(np.array(self.config.background_velocity))
+        if hasattr(self.config, "freestream_velocity"):
+            self.particles.set_freestream_velocity(np.array(self.config.freestream_velocity))
 
     def _init_turbulence_and_adaptation(self, final_config: VPMSetup) -> None:
         """Initialize LES turbulence, stretching settings, and diagnostics."""
@@ -388,7 +388,7 @@ class Solver:
         if getattr(self.vlm_solver, "lattice", None) is not None:
             Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
             self.vlm_solver.check_coupling_stability(
-                self.time_step_size, getattr(self.config, "background_velocity", None)
+                self.time_step_size, getattr(self.config, "freestream_velocity", None)
             )
 
     def _init_optional_solvers(self, final_config) -> None:
@@ -605,7 +605,7 @@ class Solver:
         return self._get_particle_field("strain_rate")
 
     @property
-    def background_velocity(self) -> np.ndarray:
+    def freestream_velocity(self) -> np.ndarray:
         """Uniform background velocity [m/s]."""
         return self.particles.velocity_background_cpu()
 
@@ -778,7 +778,7 @@ class Solver:
     ) -> dict[str, np.ndarray | float]:
         """Compute forces via the Kutta-Joukowski theorem. Delegates to VLMForceEvaluator."""
         return VLMForceEvaluator.compute_kutta_joukowski(
-            self.vlm_solver, self.background_velocity, density, V_ref_mag
+            self.vlm_solver, self.freestream_velocity, density, V_ref_mag
         )
 
     # Per-particle diagnostics
@@ -927,13 +927,13 @@ class Solver:
         return self.physics.compute_target_velocity_gradients(self.particles, grid_positions)
 
     def compute_complete_target_velocity_gradients(
-        self, grid_positions: np.ndarray, *, h: float
+        self, grid_positions: np.ndarray, *, particle_spacing: float
     ) -> np.ndarray:
         """Evaluate the Jacobian of the body-complete velocity field.
 
         Vortex-particle induction is differentiated analytically. Regularized
         source and body-callback contributions are differentiated by centred
-        differences with a step scaled by the coupling lattice spacing ``h``.
+        differences with a step scaled by the coupling lattice spacing ``particle_spacing``.
         The result has shape ``(N, 3, 3)`` and convention
         ``J[i,j] = d(u_i)/d(x_j)``.
         """
@@ -955,17 +955,19 @@ class Solver:
             gradient = np.asarray(
                 self.compute_target_velocity_gradients(points), dtype=np.float64
             ).reshape(-1, 3, 3)
-        return self._add_nonparticle_target_gradient(points, gradient, h=h)
+        return self._add_nonparticle_target_gradient(
+            points, gradient, particle_spacing=particle_spacing
+        )
 
     def _add_nonparticle_target_gradient(
-        self, points: np.ndarray, particle_gradient: np.ndarray, *, h: float
+        self, points: np.ndarray, particle_gradient: np.ndarray, *, particle_spacing: float
     ) -> np.ndarray:
         """Differentiate only the source and body corrections by centred differences."""
         gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
         if (self._body_induced_fn is None and self.num_sources == 0) or len(points) == 0:
             return gradient
 
-        step = max(1.0e-6, 1.0e-3 * float(h))
+        step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
         for axis in range(3):
             offset = np.zeros(3, dtype=np.float64)
             offset[axis] = step
@@ -979,7 +981,7 @@ class Solver:
         return gradient
 
     def compute_complete_target_velocity_and_gradients(
-        self, grid_positions: np.ndarray, *, h: float
+        self, grid_positions: np.ndarray, *, particle_spacing: float
     ) -> tuple[np.ndarray, np.ndarray]:
         """Evaluate body-complete target velocity and Jacobian together.
 
@@ -1005,7 +1007,9 @@ class Solver:
         complete_velocity = self._add_target_velocity_corrections(
             points, velocity, include_body=True
         )
-        complete_gradient = self._add_nonparticle_target_gradient(points, gradient, h=h)
+        complete_gradient = self._add_nonparticle_target_gradient(
+            points, gradient, particle_spacing=particle_spacing
+        )
         return complete_velocity, complete_gradient
 
     def compute_complete_target_velocity_and_tangential_normal_gradient(
@@ -1013,7 +1017,7 @@ class Solver:
         grid_positions: np.ndarray,
         normals: np.ndarray,
         *,
-        h: float,
+        particle_spacing: float,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return the body-complete velocity and tangential ``du/dn`` trace.
 
@@ -1054,7 +1058,7 @@ class Solver:
             "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
         )
         if self._body_induced_fn is not None or self.num_sources > 0:
-            step = max(1.0e-6, 1.0e-3 * float(h))
+            step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
             plus = self._nonparticle_target_velocity(points + step * unit_normals)
             minus = self._nonparticle_target_velocity(points - step * unit_normals)
             if plus.shape != points.shape or minus.shape != points.shape:
@@ -1073,7 +1077,7 @@ class Solver:
         include_viscous: bool = True,
         include_temporal: bool = True,
         include_freestream: bool = True,
-        h: float | None = None,
+        particle_spacing: float | None = None,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
         dt: float | None = None,
@@ -1123,10 +1127,10 @@ class Solver:
                 temporal_method=temporal_method,
                 velocity_previous=velocity_previous,
                 dt=dt,
-                h=h,
+                particle_spacing=particle_spacing,
                 return_velocity=return_velocity,
                 theta=treecode_theta,
-                background_velocity=self.background_velocity,
+                freestream_velocity=self.freestream_velocity,
                 body_fn=body_fn,
             )
 
@@ -1139,7 +1143,7 @@ class Solver:
             nu=nu,
             include_viscous=include_viscous,
             include_temporal=include_temporal,
-            h_laplacian=h,
+            laplacian_spacing=particle_spacing,
             include_freestream=include_freestream,
             temporal_method=temporal_method,
             velocity_previous=velocity_previous,
@@ -1511,7 +1515,7 @@ class Solver:
 
     # Particle updates
 
-    def set_background_velocity(self, velocity: list[float] | np.ndarray) -> None:
+    def set_freestream_velocity(self, velocity: list[float] | np.ndarray) -> None:
         """Set the uniform background velocity vector [m/s]."""
         dtype = np.float64 if self.precision == "f64" else np.float32
         velocity_arr = np.array(velocity, dtype=dtype)
@@ -1524,7 +1528,7 @@ class Solver:
                     f"Background velocity must be a 3D vector, got shape {velocity_arr.shape}"
                 )
 
-        self.particles.set_background_velocity(velocity_arr)
+        self.particles.set_freestream_velocity(velocity_arr)
 
     def set_velocity_override(self, fn) -> None:
         """Set an optional advection-velocity callback evaluated at each RK stage.

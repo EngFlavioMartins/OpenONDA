@@ -239,8 +239,8 @@ def assemble_diffusion_term(
     # Assemble boundary faces
     for boundary in boundaries:
         bc_type = boundary.get("bc_type")
-        if boundary.get("bc_type_U") is not None:
-            strategy = BOUNDARIES.strategy(boundary["bc_type_U"], "U", "diffusion")
+        if boundary.get("bc_type_velocity") is not None:
+            strategy = BOUNDARIES.strategy(boundary["bc_type_velocity"], "U", "diffusion")
         else:
             strategy = BOUNDARIES.strategy(bc_type, "scalar", "diffusion")
         if strategy in (

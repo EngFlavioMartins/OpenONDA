@@ -16,7 +16,7 @@ from ._structured_mesh import structured_box
 def _case():
     mesh = structured_box(2, 2, 2)
     for boundary in mesh["boundary"]:
-        boundary["bc_type_U"] = "zeroGradient"
+        boundary["bc_type_velocity"] = "zeroGradient"
         boundary["bc_type_p"] = "zeroGradient"
     geometry = compute_mesh_geometry(mesh)
     n_cells = mesh["n_elements"]

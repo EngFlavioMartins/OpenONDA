@@ -141,7 +141,7 @@ def run_case(
     name: str, kinematics: str, frame: str, angle_of_attack: float, sample_planes: bool
 ) -> None:
     number_of_steps, ramp_time = time_parameters(kinematics)
-    motion, background_velocity = plate_kinematics(
+    motion, freestream_velocity = plate_kinematics(
         kinematics,
         frame,
         angle_of_attack,
@@ -203,7 +203,7 @@ def run_case(
             processing_unit="AUTO",
             advection=AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
-            background_velocity=background_velocity,
+            freestream_velocity=freestream_velocity,
             velocity=VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,

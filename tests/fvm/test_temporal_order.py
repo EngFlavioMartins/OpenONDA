@@ -63,8 +63,8 @@ def _set_ghosts(U, mesh, geo, t):
     g = np.exp(-t)
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_U"] = "fixedValue"
-        b["value_U"] = [0.0, 0.0, 0.0]
+        b["bc_type_velocity"] = "fixedValue"
+        b["value_velocity"] = [0.0, 0.0, 0.0]
         for j in range(b["nFaces"]):
             fi = b["startFace"] + j
             gi = n_elem + (fi - n_int)

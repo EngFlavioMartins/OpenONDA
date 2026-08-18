@@ -20,21 +20,21 @@ def _periodic_x_mesh(hand_built_3d_mesh):
         if patch["name"] == "xmin":
             patch.update(
                 bc_type="cyclic",
-                bc_type_U="cyclic",
+                bc_type_velocity="cyclic",
                 bc_type_p="cyclic",
                 neighbourPatch="xmax",
             )
         elif patch["name"] == "xmax":
             patch.update(
                 bc_type="cyclic",
-                bc_type_U="cyclic",
+                bc_type_velocity="cyclic",
                 bc_type_p="cyclic",
                 neighbourPatch="xmin",
             )
         else:
             patch.update(
                 bc_type="zeroGradient",
-                bc_type_U="zeroGradient",
+                bc_type_velocity="zeroGradient",
                 bc_type_p="zeroGradient",
             )
     geo = geometry.compute_mesh_geometry(mesh, gradient_scheme="lsq")
@@ -124,8 +124,8 @@ def test_cyclic_pressure_operator_retains_only_constant_nullspace(hand_built_3d_
 def test_cyclic_pair_must_be_reciprocal(hand_built_3d_mesh):
     mesh = copy.deepcopy(hand_built_3d_mesh)
     for patch in mesh["boundary"]:
-        patch.update(bc_type_U="zeroGradient", bc_type_p="zeroGradient")
-    mesh["boundary"][0].update(bc_type_U="cyclic", bc_type_p="cyclic", neighbourPatch="xmax")
+        patch.update(bc_type_velocity="zeroGradient", bc_type_p="zeroGradient")
+    mesh["boundary"][0].update(bc_type_velocity="cyclic", bc_type_p="cyclic", neighbourPatch="xmax")
     geo = geometry.compute_mesh_geometry(mesh)
 
     with pytest.raises(MeshValidationError, match="must use cyclic"):

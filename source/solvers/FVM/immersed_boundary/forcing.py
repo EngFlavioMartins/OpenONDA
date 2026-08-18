@@ -52,7 +52,7 @@ def _detect_empty_axis(mesh_data, geo_data) -> int | None:
     the extruded (non-solved) direction.
     """
     for b in mesh_data["boundary"]:
-        if b.get("bc_type_U") == "empty":
+        if b.get("bc_type_velocity") == "empty":
             sf = geo_data["face_sf"][b["startFace"] : b["startFace"] + b["nFaces"]]
             n = np.abs(sf).sum(axis=0)
             return int(np.argmax(n))

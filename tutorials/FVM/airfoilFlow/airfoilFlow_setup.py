@@ -98,7 +98,7 @@ def build_config(reynolds: float, end_time: float, u_vec: list[float]) -> FVMSet
             BoundaryConfig.wall("airfoil"),
             BoundaryConfig.empty("frontAndBack"),
         ],
-        initial_U=u_vec,
+        initial_velocity=u_vec,
         initial_p=0.0,
     )
 

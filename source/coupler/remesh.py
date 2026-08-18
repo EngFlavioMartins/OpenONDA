@@ -23,7 +23,7 @@ def m4p(q: np.ndarray | float) -> np.ndarray:
 
     Parameters
     ----------
-    q : normalized distance |x - x_node| / h  (scalar or array)
+    q : normalized distance |x - x_node| / particle_spacing  (scalar or array)
 
     Returns
     -------
@@ -38,10 +38,12 @@ def m4p(q: np.ndarray | float) -> np.ndarray:
     return w
 
 
-def grid_positions(origin: np.ndarray, h: float, shape: tuple[int, int, int]) -> np.ndarray:
+def grid_positions(
+    origin: np.ndarray, particle_spacing: float, shape: tuple[int, int, int]
+) -> np.ndarray:
     """Return regular-lattice node coordinates in remesh storage order."""
     gx, gy, gz = np.meshgrid(
-        *[origin[d] + h * np.arange(shape[d]) for d in range(3)],
+        *[origin[d] + particle_spacing * np.arange(shape[d]) for d in range(3)],
         indexing="ij",
     )
     return np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
@@ -100,7 +102,7 @@ def remesh_to_grid(
     pos: np.ndarray,
     circ: np.ndarray,
     origin: np.ndarray,
-    h: float,
+    particle_spacing: float,
     shape: tuple[int, int, int],
     grid_positions_cache: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -115,7 +117,7 @@ def remesh_to_grid(
     pos    : (N, 3) particle positions
     circ   : (N, 3) particle circulations Γ_i
     origin : (3,)   position of grid node [0, 0, 0]
-    h      : scalar uniform grid spacing
+    particle_spacing      : scalar uniform grid spacing
     shape  : (Nx, Ny, Nz) grid dimensions (number of nodes per axis)
 
     Returns
@@ -124,7 +126,7 @@ def remesh_to_grid(
     grid_circ : (Nx*Ny*Nz, 3)  accumulated circulations Σ W_ip Γ_p
     """
     grid_pos = (
-        grid_positions(np.asarray(origin, dtype=float), h, shape)
+        grid_positions(np.asarray(origin, dtype=float), particle_spacing, shape)
         if grid_positions_cache is None
         else np.asarray(grid_positions_cache, dtype=np.float64).reshape(-1, 3)
     )
@@ -136,7 +138,7 @@ def remesh_to_grid(
     if len(pos) == 0:
         return grid_pos, np.zeros((len(grid_pos), 3))
 
-    rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(h)
+    rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(particle_spacing)
     circ_f = np.asarray(circ, dtype=float)
 
     nearest = np.rint(rel).astype(np.int64)

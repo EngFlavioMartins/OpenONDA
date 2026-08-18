@@ -2,7 +2,7 @@
 
 Replaces the old patch-name backflow heuristic.  This checks the per-face
 switching directly: ghost cells of outgoing faces copy the owner; ghost cells of
-incoming (reverse-flow) faces take the boundary ``value_U`` (inletValue).
+incoming (reverse-flow) faces take the boundary ``value_velocity`` (inletValue).
 """
 
 import numpy as np
@@ -21,8 +21,8 @@ def test_inlet_outlet_switches_on_flux_sign():
     owners = mesh["owners"]
 
     patch = next(b for b in mesh["boundary"] if b["name"] == "xmax")
-    patch["bc_type_U"] = "inletOutlet"
-    patch["value_U"] = [5.0, 0.0, 0.0]
+    patch["bc_type_velocity"] = "inletOutlet"
+    patch["value_velocity"] = [5.0, 0.0, 0.0]
     start, nf = patch["startFace"], patch["nFaces"]
 
     n_bnd = mesh["n_faces"] - n_int

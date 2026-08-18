@@ -40,7 +40,7 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 

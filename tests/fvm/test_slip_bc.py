@@ -45,12 +45,12 @@ def _slip_channel_solver(tmp_path):
         boundaries=[
             BoundaryConfig.inlet("xmin", [U_INF, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", p=0.0),
-            BoundaryConfig(name="ymin", type_U="slip", type_p="zeroGradient"),
-            BoundaryConfig(name="ymax", type_U="slip", type_p="zeroGradient"),
+            BoundaryConfig(name="ymin", type_velocity="slip", type_p="zeroGradient"),
+            BoundaryConfig(name="ymax", type_velocity="slip", type_p="zeroGradient"),
             BoundaryConfig.empty("zmin"),
             BoundaryConfig.empty("zmax"),
         ],
-        initial_U=[U_INF, 0.0, 0.0],
+        initial_velocity=[U_INF, 0.0, 0.0],
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):

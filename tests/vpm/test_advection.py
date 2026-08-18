@@ -68,7 +68,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
         advection=AdvectionConfig(scheme=scheme),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
-        background_velocity=background if background is not None else [0.0, 0.0, 0.0],
+        freestream_velocity=background if background is not None else [0.0, 0.0, 0.0],
         backup_frequency=0,
         logging_frequency=0,
         backup_directory=str(tmp_path),

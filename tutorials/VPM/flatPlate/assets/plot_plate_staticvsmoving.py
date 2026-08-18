@@ -57,7 +57,7 @@ C_THEORY = _c("ref")
 # -- Physical constants --------------------------------------------------------
 AR = 10.0
 CHORD = 1.0
-U_INF = 10.0
+FREESTREAM_SPEED = 10.0
 a_3D = prandtl_a3D(AR)
 
 cm = m.CM

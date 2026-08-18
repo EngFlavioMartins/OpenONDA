@@ -33,7 +33,7 @@ from ._structured_mesh import structured_box
 def _field_on_mesh(mesh, geo, fn):
     """Velocity array (interior + boundary ghosts) sampled from analytic fn(x,y,z)."""
     for patch in mesh["boundary"]:
-        patch["bc_type_U"] = "fixedValue"
+        patch["bc_type_velocity"] = "fixedValue"
     n_elem = mesh["n_elements"]
     n_int = mesh["n_interior_faces"]
     cc, fc = geo["element_centroids"], geo["face_centroids"]

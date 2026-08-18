@@ -83,7 +83,7 @@ def _run_steps(tmp_path, backend, steps=1):
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):

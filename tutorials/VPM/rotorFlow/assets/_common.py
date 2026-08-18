@@ -87,7 +87,7 @@ def read_operating_point(
     samples_dir: Path | str,
     *,
     rho: float = DENSITY,
-    u_inf: float = FREESTREAM_VELOCITY,
+    freestream_speed: float = FREESTREAM_VELOCITY,
     rotor_radius: float = ROTOR_RADIUS,
     tip_speed_ratio: float = TIP_SPEED_RATIO,
     tail_fraction: float = 0.2,
@@ -108,10 +108,10 @@ def read_operating_point(
     if df.empty:
         return None
 
-    omega = tip_speed_ratio * u_inf / rotor_radius
-    q_a = 0.5 * rho * u_inf**2 * math.pi * rotor_radius**2
+    omega = tip_speed_ratio * freestream_speed / rotor_radius
+    q_a = 0.5 * rho * freestream_speed**2 * math.pi * rotor_radius**2
     ct = df["Fx"].to_numpy() / q_a
-    cp = (-df["Mx"].to_numpy() * omega) / (q_a * u_inf)
+    cp = (-df["Mx"].to_numpy() * omega) / (q_a * freestream_speed)
 
     tail = slice(max(0, int((1.0 - tail_fraction) * len(df))), None)
     return float(np.mean(ct[tail])), float(np.mean(cp[tail]))

@@ -95,7 +95,7 @@ def build_solver_config(
         coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
         advection=AdvectionConfig(scheme="RK2"),
         vlm=vlm_setup,
-        background_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
+        freestream_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
         turbulence=TurbulenceConfig.les_smagorinsky(),
         stretching=StretchingConfig.transposed(
             scheme="RK2",

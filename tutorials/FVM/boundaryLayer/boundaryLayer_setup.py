@@ -106,13 +106,13 @@ def build_config(reynolds: float, end_time: float, nu: float) -> FVMSetup:
         boundaries=[
             BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             BoundaryConfig.outlet("outlet", p=0.0),
-            BoundaryConfig(name="floor", type_U="slip", type_p="zeroGradient"),
+            BoundaryConfig(name="floor", type_velocity="slip", type_p="zeroGradient"),
             BoundaryConfig.wall("plate"),
-            BoundaryConfig(name="top", type_U="slip", type_p="zeroGradient"),
+            BoundaryConfig(name="top", type_velocity="slip", type_p="zeroGradient"),
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        initial_U=[FREESTREAM_VELOCITY, 0.0, 0.0],
+        initial_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
         initial_p=0.0,
     )
 

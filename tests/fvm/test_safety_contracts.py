@@ -32,7 +32,7 @@ def test_turbulence_failure_does_not_switch_to_laminar():
 
 
 def test_fixed_value_inlet_is_not_auto_selected_as_wall():
-    inlet = {"name": "inlet", "type": "patch", "bc_type_U": "fixedValue"}
-    wall = {"name": "body", "type": "wall", "bc_type_U": "fixedValue"}
+    inlet = {"name": "inlet", "type": "patch", "bc_type_velocity": "fixedValue"}
+    wall = {"name": "body", "type": "wall", "bc_type_velocity": "fixedValue"}
     assert not _should_compute_yplus(inlet, None)
     assert _should_compute_yplus(wall, None)

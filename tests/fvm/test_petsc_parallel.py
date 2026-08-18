@@ -226,7 +226,7 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, str(tmp_path), mesh_data=mesh)
@@ -262,7 +262,7 @@ def _pimple_config(execution, case_name):
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 
@@ -519,7 +519,7 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     )
     expected_local = actual.parallel.comm.scatter(expected_patch_values, root=0)
     if boundary is not None:
-        np.testing.assert_allclose(boundary["value_U_field"], expected_local)
+        np.testing.assert_allclose(boundary["value_velocity_field"], expected_local)
     else:
         assert expected_local.shape == (0, 3)
 

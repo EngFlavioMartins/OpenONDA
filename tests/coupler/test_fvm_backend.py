@@ -59,10 +59,10 @@ BOX = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 def _fvm_setup(tmp_path, **overrides):
     """Coupling-only setup: physics/time/mesh live on the injected solvers."""
     kwargs = {
-        "u_inf": [1.0, 0.0, 0.0],
-        "h": 0.25,
-        "buffer_thickness": 0.25,
-        "dead_zone_h": 0.5,
+        "freestream_velocity": [1.0, 0.0, 0.0],
+        "vpm_particle_spacing": 0.25,
+        "overlap_zone_ramp_width": 0.25,
+        "overlap_zone_dead_zone_width": 0.125,
     }
     kwargs.update(overrides)
     return CouplerSetup(**kwargs)
@@ -101,15 +101,15 @@ def test_coupler_setup_validates_and_serializes_vpm_bc_mode(tmp_path):
         _fvm_setup(tmp_path, vpm_bc_mode="unsupported")
 
 
-def test_coupler_setup_validates_separate_handoff_box(tmp_path):
+def test_coupler_setup_validates_separate_transfer_region_box(tmp_path):
     outer = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
     inner = (-1.2, 1.2, -1.2, 1.2, -1.2, 1.2)
-    setup = _fvm_setup(tmp_path, handoff_box=inner)
-    assert setup.to_dict()["coupler"]["handoff_domain"]["xmax"] == 1.2
-    setup.validate_handoff_box(outer)
-    invalid = _fvm_setup(tmp_path, handoff_box=(-1.6, 1.2, *inner[2:]))
+    setup = _fvm_setup(tmp_path, transfer_region_box=inner)
+    assert setup.to_dict()["coupler"]["transfer_region_box"]["xmax"] == 1.2
+    setup.validate_transfer_region_box(outer)
+    invalid = _fvm_setup(tmp_path, transfer_region_box=(-1.6, 1.2, *inner[2:]))
     with pytest.raises(ValueError, match="contained within the FVM domain"):
-        invalid.validate_handoff_box(outer)
+        invalid.validate_transfer_region_box(outer)
 
 
 def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_name=None):
@@ -119,8 +119,8 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
     boundaries = [
         BoundaryConfig(
             name="numericalBoundary",
-            type_U="fixedValue",
-            value_U=[1.0, 0.0, 0.0],
+            type_velocity="fixedValue",
+            value_velocity=[1.0, 0.0, 0.0],
             type_p="fixedFluxPressure",
         )
     ]
@@ -157,7 +157,7 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
         samplers=tuple(samplers),
         transport=TransportConfig(density=1.0, nu=0.01),
         boundaries=boundaries,
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
@@ -238,9 +238,9 @@ def test_contract_methods_present(built_backend):
 
 def test_boundary_geometry_matches_coupler_expectations(built_backend):
     setup, fvm = built_backend
-    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
-    fn = np.asarray(fvm.get_boundary_face_normals(setup.patch_name))
-    fa = np.asarray(fvm.get_boundary_face_areas(setup.patch_name))
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
+    fn = np.asarray(fvm.get_boundary_face_normals(setup.bc_patch_name))
+    fa = np.asarray(fvm.get_boundary_face_areas(setup.bc_patch_name))
 
     n_faces = 6 * 4 * 4
     assert fc.shape == (n_faces, 3)
@@ -265,16 +265,16 @@ def test_dirichlet_bc_and_driver_split_produce_finite_flow(built_backend):
     import io
 
     setup, fvm = built_backend
-    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
-    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
-    fvm.set_dirichlet_velocity_boundary_condition_vec(u_bc, setup.patch_name)
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
+    u_bc = np.tile(setup.freestream_velocity_vector, (fc.shape[0], 1))
+    fvm.set_dirichlet_velocity_boundary_condition_vec(u_bc, setup.bc_patch_name)
     with contextlib.redirect_stdout(io.StringIO()):
         fvm.solve_pimple()
         fvm.advance_time()
     U = np.asarray(fvm.get_velocity_field())
     assert np.isfinite(U).all()
     # Uniform inflow through an empty box stays uniform.
-    assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-8)
+    assert np.allclose(U.mean(axis=0), setup.freestream_velocity_vector, atol=1e-8)
 
 
 def test_mixed_bc_preserves_prescribed_normal_flux_through_pimple(built_backend):
@@ -282,34 +282,34 @@ def test_mixed_bc_preserves_prescribed_normal_flux_through_pimple(built_backend)
     import io
 
     setup, fvm = built_backend
-    normals = np.asarray(fvm.get_boundary_face_normals(setup.patch_name))
-    areas = np.asarray(fvm.get_boundary_face_areas(setup.patch_name))
-    normal_velocity = normals @ setup.U_inf
+    normals = np.asarray(fvm.get_boundary_face_normals(setup.bc_patch_name))
+    areas = np.asarray(fvm.get_boundary_face_areas(setup.bc_patch_name))
+    normal_velocity = normals @ setup.freestream_velocity_vector
     tangential_gradient = np.zeros_like(normals)
     fvm.set_normal_velocity_tangential_gradient_boundary_condition(
-        normal_velocity, tangential_gradient, setup.patch_name
+        normal_velocity, tangential_gradient, setup.bc_patch_name
     )
-    fvm.set_flux_consistent_pressure_boundary_condition(setup.patch_name)
+    fvm.set_flux_consistent_pressure_boundary_condition(setup.bc_patch_name)
     with contextlib.redirect_stdout(io.StringIO()):
         fvm.solve_pimple()
 
-    patch = next(b for b in fvm.boundaries if b["name"] == setup.patch_name)
+    patch = next(b for b in fvm.boundaries if b["name"] == setup.bc_patch_name)
     start = patch["startFace"]
     actual_flux = fvm.phi[start : start + patch["nFaces"]]
     np.testing.assert_allclose(actual_flux, normal_velocity * areas, atol=1.0e-11)
-    assert patch["bc_type_U"] == "normalValueTangentialGradient"
+    assert patch["bc_type_velocity"] == "normalValueTangentialGradient"
     assert patch["bc_type_p"] == "fixedFluxPressure"
-    assert "value_U_field" not in patch
+    assert "value_velocity_field" not in patch
 
 
 def test_characteristic_vpm_bc_sets_matching_velocity_and_pressure(built_backend):
     setup, fvm = built_backend
-    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
-    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
-    fvm.set_freestream_velocity_boundary_condition_vec(u_bc, setup.patch_name)
-    fvm.set_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
-    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
-    assert patch["bc_type_U"] == "freestream"
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
+    u_bc = np.tile(setup.freestream_velocity_vector, (fc.shape[0], 1))
+    fvm.set_freestream_velocity_boundary_condition_vec(u_bc, setup.bc_patch_name)
+    fvm.set_freestream_pressure_boundary_condition(setup.bc_patch_name, value=0.0)
+    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.bc_patch_name)
+    assert patch["bc_type_velocity"] == "freestream"
     assert patch["bc_type_p"] == "freestream"
     assert patch["value_p"] == 0.0
 
@@ -320,17 +320,17 @@ def test_directional_outflow_vpm_bc_fixes_only_downstream_switch(tmp_path):
 
     setup = _fvm_setup(tmp_path)
     fvm = _build_backend(tmp_path)
-    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
-    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
+    u_bc = np.tile(setup.freestream_velocity_vector, (fc.shape[0], 1))
     fvm.set_directional_freestream_velocity_boundary_condition_vec(
-        u_bc, setup.patch_name, setup.U_inf
+        u_bc, setup.bc_patch_name, setup.freestream_velocity_vector
     )
-    fvm.set_directional_freestream_pressure_boundary_condition(setup.patch_name, value=0.0)
-    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.patch_name)
+    fvm.set_directional_freestream_pressure_boundary_condition(setup.bc_patch_name, value=0.0)
+    patch = next(b for b in fvm.mesh_data["boundary"] if b["name"] == setup.bc_patch_name)
     outflow = patch["_freestream_outflow"]
-    local_centres = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
+    local_centres = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
 
-    assert patch["bc_type_U"] == "freestream"
+    assert patch["bc_type_velocity"] == "freestream"
     assert patch["bc_type_p"] == "freestream"
     assert patch["_directional_fixed_flux_pressure"] is True
     assert np.count_nonzero(outflow) == 4 * 4
@@ -435,7 +435,9 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
         "advance",
     ]
     np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
-    np.testing.assert_array_equal(coupler.fvm.calls[0][3], coupler.config.U_inf)
+    np.testing.assert_array_equal(
+        coupler.fvm.calls[0][3], coupler.config.freestream_velocity_vector
+    )
 
 
 def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
@@ -637,8 +639,8 @@ def test_builder_body_fitted_cube(tmp_path):
 
     setup = _fvm_setup(
         tmp_path,
-        h=0.125,
-        buffer_thickness=0.375,
+        vpm_particle_spacing=0.125,
+        overlap_zone_ramp_width=0.375,
     )
     fvm = _build_backend(
         tmp_path,
@@ -660,12 +662,12 @@ def test_builder_body_fitted_cube(tmp_path):
     force_sampler = next(s for s in fvm.config.samplers if s.name == "forces_history")
     assert force_sampler.patch_names == ["cube"]
     wall_cfg = next(b for b in fvm.config.boundaries if b.name == "cube")
-    assert wall_cfg.type_U == "fixedValue" and wall_cfg.value_U == [0.0, 0.0, 0.0]
+    assert wall_cfg.type_velocity == "fixedValue" and wall_cfg.value_velocity == [0.0, 0.0, 0.0]
 
     # One PIMPLE step stays finite and generates wall vorticity.
-    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.patch_name))
-    u_bc = np.tile(setup.U_inf, (fc.shape[0], 1))
-    fvm.set_dirichlet_velocity_boundary_condition_vec(u_bc, setup.patch_name)
+    fc = np.asarray(fvm.get_boundary_face_center_coordinates(setup.bc_patch_name))
+    u_bc = np.tile(setup.freestream_velocity_vector, (fc.shape[0], 1))
+    fvm.set_dirichlet_velocity_boundary_condition_vec(u_bc, setup.bc_patch_name)
     with contextlib.redirect_stdout(io.StringIO()):
         fvm.solve_pimple()
         fvm.advance_time()

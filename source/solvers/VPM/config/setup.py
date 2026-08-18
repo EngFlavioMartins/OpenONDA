@@ -257,8 +257,8 @@ class VPMSetup:
     debug_mode: bool = False
     """Enable Taichi debug checks. This must be selected before solver construction."""
 
-    background_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    """Free-stream background velocity vector [ux, uy, uz] in m/s."""
+    freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Free-stream velocity vector [ux, uy, uz] in m/s."""
 
     verbose: bool = True
     """Enable verbose output (print particle shedding info, etc.)."""
@@ -292,12 +292,12 @@ class VPMSetup:
     def __post_init__(self):
         """Post-initialization validation and setup."""
 
-        if len(self.background_velocity) != 3:
-            raise ValueError("background_velocity must contain three coordinates")
+        if len(self.freestream_velocity) != 3:
+            raise ValueError("freestream_velocity must contain three coordinates")
         object.__setattr__(
             self,
-            "background_velocity",
-            tuple(float(value) for value in self.background_velocity),
+            "freestream_velocity",
+            tuple(float(value) for value in self.freestream_velocity),
         )
         if self.samplers is not None:
             object.__setattr__(self, "samplers", tuple(self.samplers))
@@ -549,8 +549,8 @@ class VPMSetup:
             "processing_unit": self.processing_unit,
             "debug_mode": self.debug_mode,
             "clean": self.clean,
-            "background_velocity": list(self.background_velocity)
-            if self.background_velocity
+            "freestream_velocity": list(self.freestream_velocity)
+            if self.freestream_velocity
             else [0.0, 0.0, 0.0],
             "verbose": self.verbose,
             "velocity": _as_dict(self.velocity) if self.velocity else None,
@@ -615,7 +615,7 @@ class VPMSetup:
     @staticmethod
     def viscous_flow_simulation(
         time_step_size: float = 0.01,
-        background_velocity: Any = (0.0, 0.0, 0.0),
+        freestream_velocity: Any = (0.0, 0.0, 0.0),
         viscous: Optional["ViscousConfig"] = None,
         **kwargs,
     ) -> "VPMSetup":
@@ -631,7 +631,7 @@ class VPMSetup:
 
         Args:
               time_step_size: Simulation time step [s]
-              background_velocity: Free-stream velocity [m/s]
+              freestream_velocity: Free-stream velocity [m/s]
               viscous: Viscous scheme configuration (None = CS)
               **kwargs: Additional parameters to override defaults
 
@@ -645,7 +645,7 @@ class VPMSetup:
               0.01
 
               >>> config = VPMSetup.viscous_flow_simulation(
-              ...     time_step_size=0.005, background_velocity=(10.0, 0.0, 0.0)
+              ...     time_step_size=0.005, freestream_velocity=(10.0, 0.0, 0.0)
               ... )
               >>> config.time_step_size
               0.005
@@ -659,7 +659,7 @@ class VPMSetup:
             time_step_size=time_step_size,
             stretching=stretching,
             viscous=viscous,
-            background_velocity=list(background_velocity),
+            freestream_velocity=list(freestream_velocity),
             **kwargs,
         )
 
@@ -794,7 +794,7 @@ class VPMSetup:
         lines.append(f"  Cutoff Factor: {self.cutoff_radius_factor}")
         lines.append(f"  Logging Frequency: {self.logging_frequency} steps")
         lines.append(f"  Backup Frequency: {self.backup_frequency} steps")
-        lines.append(f"  Background Velocity: {self.background_velocity} m/s")
+        lines.append(f"  Freestream Velocity: {self.freestream_velocity} m/s")
         return "\n".join(lines)
 
 

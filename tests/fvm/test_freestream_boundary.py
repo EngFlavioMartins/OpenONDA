@@ -29,9 +29,9 @@ def _freestream_patch(hand_built_3d_mesh):
     mesh = copy.deepcopy(hand_built_3d_mesh)
     patch = mesh["boundary"][0]
     patch.update(
-        bc_type_U="freestream",
+        bc_type_velocity="freestream",
         bc_type_p="freestream",
-        value_U=np.array([4.0, 0.0, 0.0]),
+        value_velocity=np.array([4.0, 0.0, 0.0]),
         value_p=2.5,
     )
     return mesh, patch, geometry.compute_mesh_geometry(mesh)
@@ -39,7 +39,7 @@ def _freestream_patch(hand_built_3d_mesh):
 
 def test_freestream_factory_exposes_switching_contract():
     boundary = BoundaryConfig.freestream("farfield", [1.0, 0.0, 0.0], p=3.0)
-    assert boundary.type_U == "freestream"
+    assert boundary.type_velocity == "freestream"
     assert boundary.type_p == "freestream"
     assert boundary.value_p == 3.0
 
@@ -68,7 +68,7 @@ def test_freestream_switches_velocity_and_pressure_per_face(hand_built_3d_mesh):
     )
 
     inflow = face_flux[faces] < 0.0
-    assert np.allclose(velocity[ghosts[inflow]], patch["value_U"])
+    assert np.allclose(velocity[ghosts[inflow]], patch["value_velocity"])
     assert np.allclose(velocity[ghosts[~inflow]], velocity[owners[faces[~inflow]]])
 
     pressure = np.arange(n_total, dtype=float)
@@ -86,7 +86,7 @@ def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
     owners = mesh["owners"]
     faces = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
     ghosts = n_cells + faces - n_interior
-    patch["value_U_field"] = np.column_stack(
+    patch["value_velocity_field"] = np.column_stack(
         [
             np.linspace(0.6, 0.9, len(faces)),
             np.linspace(-0.2, 0.2, len(faces)),
@@ -111,7 +111,7 @@ def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
     inflow = face_flux[faces] < 0.0
     np.testing.assert_allclose(
         velocity[ghosts[inflow]],
-        patch["value_U_field"][inflow],
+        patch["value_velocity_field"][inflow],
     )
     np.testing.assert_allclose(
         velocity[ghosts[~inflow]],

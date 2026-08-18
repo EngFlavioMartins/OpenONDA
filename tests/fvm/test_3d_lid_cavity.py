@@ -58,14 +58,14 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
             BoundaryConfig.wall("ymin"),
             BoundaryConfig(
                 "ymax",
-                type_U="fixedValue",
-                value_U=[1.0, 0.0, 0.0],
+                type_velocity="fixedValue",
+                value_velocity=[1.0, 0.0, 0.0],
                 type_p="zeroGradient",
             ),
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[0.0, 0.0, 0.0],
+        initial_velocity=[0.0, 0.0, 0.0],
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):

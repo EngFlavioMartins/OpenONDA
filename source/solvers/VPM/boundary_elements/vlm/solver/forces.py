@@ -36,7 +36,7 @@ class VLMForceEvaluator:
     @staticmethod
     def compute_kutta_joukowski(
         vlm_solver: VLMSolver | None,
-        background_velocity: np.ndarray,
+        freestream_velocity: np.ndarray,
         density: float,
         V_ref_mag: float | None,
     ) -> dict[str, np.ndarray | float | str]:
@@ -54,7 +54,7 @@ class VLMForceEvaluator:
                 "error": "No VLM solver or not solved",
             }
         if V_ref_mag is None:
-            V_ref_mag = float(np.linalg.norm(background_velocity))
+            V_ref_mag = float(np.linalg.norm(freestream_velocity))
         try:
             forces_dict = vlm_solver.compute_forces(density, V_ref_mag)
             force_vector = np.array([forces_dict["Fx"], forces_dict["Fy"], forces_dict["Fz"]])

@@ -149,7 +149,7 @@ def run() -> None:
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
-            background_velocity=[-FREESTREAM_VELOCITY, 0, 0],
+            freestream_velocity=[-FREESTREAM_VELOCITY, 0, 0],
             stabilization=StabilizationConfig(
                 remove_particles_by_bounds=[
                     -8.0,

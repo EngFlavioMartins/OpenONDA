@@ -108,22 +108,22 @@ def write_run_metadata(coupler) -> None:
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
-            "u_inf": coupler.config.u_inf,
+            "freestream_velocity": coupler.config.freestream_velocity,
             "nu": coupler.nu,
             "rho": coupler.rho,
             "dt": coupler.dt_fvm,
             "t_end": coupler.t_end,
-            "backup_period": coupler.config.backup_period,
+            "coupler_backup_period": coupler.config.coupler_backup_period,
         },
         "fvm_solver": {
-            "patch_name": coupler.config.patch_name,
+            "bc_patch_name": coupler.config.bc_patch_name,
             "vpm_bc_mode": coupler.config.vpm_bc_mode,
             "fvm_domain": _domain_dict(coupler.fvm_box),
         },
         "vpm_solver": {
-            "particle_spacing": coupler.config.h,
-            "buffer_thickness": coupler.config.buffer_thickness,
-            "dead_zone_h": coupler.config.dead_zone_h,
+            "vpm_particle_spacing": coupler.config.vpm_particle_spacing,
+            "overlap_zone_ramp_width": coupler.config.overlap_zone_ramp_width,
+            "overlap_zone_dead_zone_width": coupler.config.overlap_zone_dead_zone_width,
         },
         **coupler.config.to_dict(),
         "dt_fvm": coupler.dt_fvm,
@@ -135,11 +135,11 @@ def write_run_metadata(coupler) -> None:
     )
 
 
-def compute_diagnostics(coupler, handoff_result=None) -> dict:
+def compute_diagnostics(coupler, transfer_result=None) -> dict:
     """Return finite transfer, boundary-flux, and conservation diagnostics."""
-    result = handoff_result
+    result = transfer_result
     if result is None:
-        result = coupler._last_handoff_result
+        result = coupler._last_transfer_result
 
     zero_invariants = {
         "circulation": 0.0,
@@ -227,9 +227,9 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
         for value in transfer.values()
         if value is not None and not isinstance(value, bool)
     ):
-        raise FloatingPointError("non-finite handoff diagnostic")
+        raise FloatingPointError("non-finite transfer diagnostic")
     if spectrum is not None and not all(np.isfinite(value) for value in spectrum.values()):
-        raise FloatingPointError("non-finite spectral handoff diagnostic")
+        raise FloatingPointError("non-finite spectral transfer diagnostic")
 
     boundary_flux = {
         name: float(coupler._last_vpm_bc_flux_diagnostics[name])
@@ -240,13 +240,13 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
 
     interface = {}
     closure = {}
-    if coupler.handoff is not None:
+    if coupler.transfer is not None:
         interface = {
-            str(name): float(value) for name, value in coupler.handoff.last_interface_flow.items()
+            str(name): float(value) for name, value in coupler.transfer.last_interface_flow.items()
         }
         closure = {
             str(name): float(value)
-            for name, value in coupler.handoff.last_vortex_line_closure.items()
+            for name, value in coupler.transfer.last_vortex_line_closure.items()
         }
     pressure_shift = (
         0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
@@ -254,13 +254,13 @@ def compute_diagnostics(coupler, handoff_result=None) -> dict:
     return {
         "conservation": conservation,
         "vpm_bc_flux": boundary_flux,
-        "handoff": transfer,
+        "transfer": transfer,
         "spectral_band_ratio": spectrum,
         "interface_normal_velocity": interface,
         "vortex_line_closure": closure,
         "pressure_datum_shift": float(pressure_shift),
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
-        "handoff_particle_count": int(particle_count),
+        "transfer_particle_count": int(particle_count),
     }
 
 
@@ -269,20 +269,20 @@ def record_step(
     step: int,
     time_end: float,
     timing: tuple[float, float, float, float, float],
-    handoff_result,
+    transfer_result,
     *,
     logger: logging.Logger,
     comm=None,
 ) -> None:
     """Persist diagnostics and synchronize a completed coupling step."""
-    t_vpm, t_blending, t_vpm_bc, t_fvm, t_handoff = timing
-    diagnostics = compute_diagnostics(coupler, handoff_result)
+    t_vpm, t_blending, t_vpm_bc, t_fvm, t_transfer = timing
+    diagnostics = compute_diagnostics(coupler, transfer_result)
     timing_data = {
         "vpm": float(t_vpm),
         "vpm_bc": float(t_vpm_bc),
         "blending": float(t_blending),
         "fvm": float(t_fvm),
-        "handoff": float(t_handoff),
+        "transfer": float(t_transfer),
         "total": float(sum(timing)),
     }
     if coupler._is_master:
@@ -297,7 +297,7 @@ def record_step(
 
         stats = coupler._step_transfer_stats or {}
         logger.info(
-            "     [Handoff] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
+            "     [Transfer] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
             int(stats.get("n_before", 0)),
             int(stats.get("n_after", 0)),
             float(stats.get("sum_before", 0.0)),
@@ -305,27 +305,30 @@ def record_step(
         )
         logger.info(
             "[Timing step=%d] VPM=%.3fs vpm_bc=%.3fs blending=%.3fs "
-            "FVM=%.3fs handoff=%.3fs total=%.3fs",
+            "FVM=%.3fs transfer=%.3fs total=%.3fs",
             step,
             timing_data["vpm"],
             timing_data["vpm_bc"],
             timing_data["blending"],
             timing_data["fvm"],
-            timing_data["handoff"],
+            timing_data["transfer"],
             timing_data["total"],
         )
         print()
         print(f"[Step {step:4d}] t={time_end:.3f}s | Particles: {int(stats.get('n_after', 0))}")
         print(
             f"     Timing: VPM={t_vpm:.2f}s | BC={t_vpm_bc:.2f}s | "
-            f"Blending={t_blending:.2f}s | FVM={t_fvm:.2f}s | Handoff={t_handoff:.2f}s"
+            f"Blending={t_blending:.2f}s | FVM={t_fvm:.2f}s | Transfer={t_transfer:.2f}s"
         )
         sys.stdout.flush()
         flush_log(logger)
 
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
-    if coupler.config.backup_period > 0 and step % coupler.config.backup_period == 0:
+    if (
+        coupler.config.coupler_backup_period > 0
+        and step % coupler.config.coupler_backup_period == 0
+    ):
         coupler.save_state(coupler.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
 

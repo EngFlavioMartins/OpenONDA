@@ -74,10 +74,10 @@ class ViscousConfig:
         visc = ViscousConfig.rwm(viscosity=1e-5, characteristic_distance=0.01)
 
         # DVH with default threshold
-        visc = ViscousConfig.dvh(h=0.01, viscosity=1e-5, dvh_rd_ratio=4)
+        visc = ViscousConfig.dvh(particle_spacing=0.01, viscosity=1e-5, dvh_rd_ratio=4)
 
         # GBD
-        visc = ViscousConfig.gbd(h=0.01, viscosity=1e-5)
+        visc = ViscousConfig.gbd(particle_spacing=0.01, viscosity=1e-5)
 
         # Inviscid
         visc = ViscousConfig.inviscid()
@@ -131,11 +131,11 @@ class ViscousConfig:
     rwm_noise_amplitude: float = 1.0
     """Scaling factor for Random Walk noise."""
 
-    regen_radius_ratio: float = 2.5
+    core_radius_ratio: float = 2.5
     """Core radius σ assigned to regenerated particles, in units of the regen
     grid spacing h (DVH and GBD schemes).  This SILENTLY OVERRIDES whatever
     radius the particles carried before the regen — in coupled FVM-VPM runs it
-    MUST match the hand-off's ``overlap_radius_ratio``, otherwise the Beale
+    MUST match the coupler's ``vpm_core_radius_ratio``, otherwise the Beale
     strength correction deconvolves with the wrong kernel width and the
     reconstructed velocity field is over-smoothed (measured: σ=2.5h vs the
     corrected-for 1.5h costs ~4× in-box velocity error).  The coupler syncs
@@ -300,15 +300,15 @@ class ViscousConfig:
         ------
         ValueError  If ``characteristic_distance`` or ``viscosity`` is not set.
         """
-        h = self.characteristic_distance
-        if h is None or h <= 0:
+        particle_spacing = self.characteristic_distance
+        if particle_spacing is None or particle_spacing <= 0:
             raise ValueError(
                 "characteristic_distance must be set to a positive value for RWM accuracy check."
             )
         nu = self.viscosity
         if nu is None or nu <= 0:
             raise ValueError("viscosity must be set to a positive value for RWM accuracy check.")
-        return h * h / (4.0 * nu)
+        return particle_spacing * particle_spacing / (4.0 * nu)
 
     def dvh_required_dt(self) -> float:
         """Compute the DVH-required time-step size Δt_d = β·R_d²/(4nu).
@@ -327,13 +327,13 @@ class ViscousConfig:
         """
         from .constants import _DVH_BETA
 
-        h = self.dvh_grid_spacing
-        if h is None or h <= 0:
+        particle_spacing = self.dvh_grid_spacing
+        if particle_spacing is None or particle_spacing <= 0:
             raise ValueError("dvh_grid_spacing must be set to a positive value.")
         nu = self.viscosity
         if nu is None or nu <= 0:
             raise ValueError("viscosity must be set to a positive value for DVH.")
-        R_d = self.dvh_rd_ratio * h
+        R_d = self.dvh_rd_ratio * particle_spacing
         return _DVH_BETA * R_d * R_d / (4.0 * nu)
 
     def gbd_max_dt(self) -> float:
@@ -343,13 +343,13 @@ class ViscousConfig:
         -------
         float  Maximum stable time-step [s].
         """
-        h = self.gbd_grid_spacing
-        if h is None or h <= 0:
+        particle_spacing = self.gbd_grid_spacing
+        if particle_spacing is None or particle_spacing <= 0:
             raise ValueError("gbd_grid_spacing must be set to a positive value.")
         nu = self.viscosity
         if nu is None or nu <= 0:
             raise ValueError("viscosity must be set to a positive value for GBD.")
-        return h * h / (6.0 * nu)
+        return particle_spacing * particle_spacing / (6.0 * nu)
 
     @staticmethod
     def cs(
@@ -392,7 +392,7 @@ class ViscousConfig:
 
     @staticmethod
     def dvh(
-        h: float | None = None,
+        particle_spacing: float | None = None,
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
@@ -401,63 +401,63 @@ class ViscousConfig:
         viscosity: float | None = None,
         max_nodes: int | None = None,
         cap_abs_fraction: float = 0.99,
-        regen_radius_ratio: float = 2.5,
+        core_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """DVH (Diffused Vortex Hydrodynamics) with particle regeneration.
 
-        Implements Durante et al. (2024) DVH algorithm: each particle's
-        circulation is spread to nearby grid nodes using the exact heat-kernel
-        Gaussian w = exp(-r²/(4nuΔt)).  Shepard normalization enforces exact
-        per-particle Γ conservation.  The particle set is then replaced by
-        surviving grid nodes (diffusion + regularisation in one step).  No
-        finite-difference solve or CFL constraint is involved.
+              Implements Durante et al. (2024) DVH algorithm: each particle's
+              circulation is spread to nearby grid nodes using the exact heat-kernel
+              Gaussian w = exp(-r²/(4nuΔt)).  Shepard normalization enforces exact
+              per-particle Γ conservation.  The particle set is then replaced by
+              surviving grid nodes (diffusion + regularisation in one step).  No
+              finite-difference solve or CFL constraint is involved.
 
-        The DVH Gaussian width is β·R_d² = 4nu·Δt_d, which constrains the
-        simulation time-step to Δt = Δt_d.  If the user-supplied Δt differs,
-        the solver will override it and print a warning.
+              The DVH Gaussian width is β·R_d² = 4nu·Δt_d, which constrains the
+              simulation time-step to Δt = Δt_d.  If the user-supplied Δt differs,
+              the solver will override it and print a warning.
 
-        Args:
-            h: Grid spacing [m].  Should match the desired inter-particle
-                spacing after regeneration.  If None, falls back to
-                characteristic_distance.
-            padding: Cell-widths of padding beyond the bounding box.
-                Default 20.0 — ensures vorticity at the boundary is
-                negligible as the particle cloud evolves.
-            threshold: Circulation threshold for pruning (see threshold_mode).
-                Default 1e-5 — calibrated on the Lamb-Oseen analytic benchmark
-                (tutorials/VPM/lambOseenVortex/assets/sweep_viscous.py):
-                budget 1e-5 gives <0.001% circulation drift and <0.5% effective
-                diffusion-rate error; budget 1e-3 loses ~5% of Σ|Γ| and 13% of
-                the diffusion rate over ~150 firings.
-            threshold_mode: How ``threshold`` is applied.
-                ``'budget'`` (default) — keep the minimal set of nodes whose
-                  collective |Γ| sum ≥ (1 − threshold) of total.  The loss per
-                  firing is bounded by construction.
-                ``'relative_max'`` — discard nodes below threshold × max|Γ|.
-                ``'absolute'`` — discard nodes below threshold [m³/s].
-                  WARNING: unbounded loss per firing — measured to destroy
-                  ~1.2%/firing of the vortex-ring tutorial's circulation
-                  (total evaporation) and −26% on the Lamb-Oseen benchmark.
-                  Only justified where the far field must be truncated
-                  aggressively (e.g. coupled FVM-VPM with a small VPM box)
-                  and the loss is monitored.
-                ``'relative_local'`` — discard nodes below threshold × the mean
-                  |Γ| over a (2w+1)³ window.  Recommended for coupled
-                  FVM-VPM runs; see ``regen_threshold_window``.
-            threshold_window: Half-width w in cells of the ``'relative_local'``
-                reference window (ignored by the other modes).
-            dvh_rd_ratio: R_d/h compact-support radius ratio for the DVH
-                heat-kernel.  Integer in [3, 5].  Default 4
-                (optimal, Durante 2024 Sec. 4.2).
-            viscosity: Molecular kinematic viscosity nu [m²/s].  Required
-                for DVH — automatically assigned to every new particle and
-                determines the DVH time-step Δt_d = β·R_d²/(4nu).
-            max_nodes: Hard cap on surviving regen nodes (budget-by-count) —
-                bounds the budget-mode halo growth.  None = built-in cap only.
-            cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
-            regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
-                particles.  Default 2.5. Lower toward 1.5 to avoid
-                over-smearing the reconstructed field (see the field docstring).
+              Args:
+        particle_spacing: Grid spacing [m].  Should match the desired inter-particle
+                      spacing after regeneration.  If None, falls back to
+                      characteristic_distance.
+                  padding: Cell-widths of padding beyond the bounding box.
+                      Default 20.0 — ensures vorticity at the boundary is
+                      negligible as the particle cloud evolves.
+                  threshold: Circulation threshold for pruning (see threshold_mode).
+                      Default 1e-5 — calibrated on the Lamb-Oseen analytic benchmark
+                      (tutorials/VPM/lambOseenVortex/assets/sweep_viscous.py):
+                      budget 1e-5 gives <0.001% circulation drift and <0.5% effective
+                      diffusion-rate error; budget 1e-3 loses ~5% of Σ|Γ| and 13% of
+                      the diffusion rate over ~150 firings.
+                  threshold_mode: How ``threshold`` is applied.
+                      ``'budget'`` (default) — keep the minimal set of nodes whose
+                        collective |Γ| sum ≥ (1 − threshold) of total.  The loss per
+                        firing is bounded by construction.
+                      ``'relative_max'`` — discard nodes below threshold × max|Γ|.
+                      ``'absolute'`` — discard nodes below threshold [m³/s].
+                        WARNING: unbounded loss per firing — measured to destroy
+                        ~1.2%/firing of the vortex-ring tutorial's circulation
+                        (total evaporation) and −26% on the Lamb-Oseen benchmark.
+                        Only justified where the far field must be truncated
+                        aggressively (e.g. coupled FVM-VPM with a small VPM box)
+                        and the loss is monitored.
+                      ``'relative_local'`` — discard nodes below threshold × the mean
+                        |Γ| over a (2w+1)³ window.  Recommended for coupled
+                        FVM-VPM runs; see ``regen_threshold_window``.
+                  threshold_window: Half-width w in cells of the ``'relative_local'``
+                      reference window (ignored by the other modes).
+                  dvh_rd_ratio: R_d/h compact-support radius ratio for the DVH
+                      heat-kernel.  Integer in [3, 5].  Default 4
+                      (optimal, Durante 2024 Sec. 4.2).
+                  viscosity: Molecular kinematic viscosity nu [m²/s].  Required
+                      for DVH — automatically assigned to every new particle and
+                      determines the DVH time-step Δt_d = β·R_d²/(4nu).
+                  max_nodes: Hard cap on surviving regen nodes (budget-by-count) —
+                      bounds the budget-mode halo growth.  None = built-in cap only.
+                  cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
+                  core_radius_ratio: Core radius σ = ratio·h assigned to regenerated
+                      particles.  Default 2.5. Lower toward 1.5 to avoid
+                      over-smearing the reconstructed field (see the field docstring).
         """
         if not isinstance(dvh_rd_ratio, int) or dvh_rd_ratio not in (3, 4, 5):
             raise ValueError(
@@ -465,7 +465,7 @@ class ViscousConfig:
             )
         return ViscousConfig(
             scheme="DVH",
-            dvh_grid_spacing=h,
+            dvh_grid_spacing=particle_spacing,
             dvh_domain_padding=padding,
             dvh_threshold=threshold,
             dvh_threshold_mode=threshold_mode,
@@ -474,12 +474,12 @@ class ViscousConfig:
             viscosity=viscosity,
             dvh_max_nodes=max_nodes,
             regen_cap_abs_fraction=cap_abs_fraction,
-            regen_radius_ratio=regen_radius_ratio,
+            core_radius_ratio=core_radius_ratio,
         )
 
     @staticmethod
     def gbd(
-        h: float | None = None,
+        particle_spacing: float | None = None,
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
@@ -487,48 +487,48 @@ class ViscousConfig:
         viscosity: float | None = None,
         max_nodes: int | None = None,
         cap_abs_fraction: float = 0.99,
-        regen_radius_ratio: float = 2.5,
+        core_radius_ratio: float = 2.5,
     ) -> "ViscousConfig":
         """Grid-Based Diffusion (Cottet & Koumoutsakos 2000).
 
-        M4' (Monaghan 1985) remeshing scatter → explicit 7-point Laplacian →
-        threshold pruning with Γ-conservation → particle regeneration.
-        No inherent lower bound on Δt; only an upper CFL bound dt ≤ h²/(6nu).
+              M4' (Monaghan 1985) remeshing scatter → explicit 7-point Laplacian →
+              threshold pruning with Γ-conservation → particle regeneration.
+              No inherent lower bound on Δt; only an upper CFL bound dt ≤ h²/(6nu).
 
-        Threshold default 1e-5 (budget) calibrated on the Lamb-Oseen analytic
-        benchmark: −0.18% circulation drift, −0.33% diffusion-rate error; the
-        previous 1e-4 lost ~1% of Σ|Γ| and 4% of the diffusion rate
-        (assets/sweep_viscous.py, tutorials/VPM/lambOseenVortex).
+              Threshold default 1e-5 (budget) calibrated on the Lamb-Oseen analytic
+              benchmark: −0.18% circulation drift, −0.33% diffusion-rate error; the
+              previous 1e-4 lost ~1% of Σ|Γ| and 4% of the diffusion rate
+              (assets/sweep_viscous.py, tutorials/VPM/lambOseenVortex).
 
-        Because GBD fires every step (unlike DVH which uses a large Δt_d),
-        the budget threshold must be much tighter (default 0.0001 = 0.01%)
-        to avoid compound circulation loss over hundreds of steps.
+              Because GBD fires every step (unlike DVH which uses a large Δt_d),
+              the budget threshold must be much tighter (default 0.0001 = 0.01%)
+              to avoid compound circulation loss over hundreds of steps.
 
-        Args:
-            h: Grid spacing [m].
-            padding: Cell-widths of padding beyond the bounding box.
-            threshold: Circulation threshold for pruning (default 0.0001).
-            threshold_mode: ``'budget'``, ``'relative_max'``, ``'absolute'``, or
-                ``'relative_local'``.
-                ``'absolute'`` uses ``threshold`` as a raw circulation magnitude
-                in [m³/s] and is the preferred mode for controlling particle
-                count in simulations with large dynamic range.
-                ``'relative_local'`` thresholds against the local (not global)
-                |Γ| level and is the recommended mode for coupled FVM-VPM runs,
-                where a global reference deletes the far wake to keep the wall
-                vortex sheet.
-            threshold_window: Half-width w in cells of the ``'relative_local'``
-                reference window (ignored by the other modes).
-            viscosity: Molecular kinematic viscosity nu [m²/s].
-            max_nodes: Hard cap on surviving regen nodes (budget-by-count).
-            cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
-            regen_radius_ratio: Core radius σ = ratio·h assigned to regenerated
-                particles.  Default 2.5. Lower toward 1.5 to avoid
-                over-smearing the reconstructed field (see the field docstring).
+              Args:
+        particle_spacing: Grid spacing [m].
+                  padding: Cell-widths of padding beyond the bounding box.
+                  threshold: Circulation threshold for pruning (default 0.0001).
+                  threshold_mode: ``'budget'``, ``'relative_max'``, ``'absolute'``, or
+                      ``'relative_local'``.
+                      ``'absolute'`` uses ``threshold`` as a raw circulation magnitude
+                      in [m³/s] and is the preferred mode for controlling particle
+                      count in simulations with large dynamic range.
+                      ``'relative_local'`` thresholds against the local (not global)
+                      |Γ| level and is the recommended mode for coupled FVM-VPM runs,
+                      where a global reference deletes the far wake to keep the wall
+                      vortex sheet.
+                  threshold_window: Half-width w in cells of the ``'relative_local'``
+                      reference window (ignored by the other modes).
+                  viscosity: Molecular kinematic viscosity nu [m²/s].
+                  max_nodes: Hard cap on surviving regen nodes (budget-by-count).
+                  cap_abs_fraction: Minimum surviving Σ|Γ| protected by the cap.
+                  core_radius_ratio: Core radius σ = ratio·h assigned to regenerated
+                      particles.  Default 2.5. Lower toward 1.5 to avoid
+                      over-smearing the reconstructed field (see the field docstring).
         """
         return ViscousConfig(
             scheme="GBD",
-            gbd_grid_spacing=h,
+            gbd_grid_spacing=particle_spacing,
             gbd_domain_padding=padding,
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,
@@ -536,5 +536,5 @@ class ViscousConfig:
             viscosity=viscosity,
             gbd_max_nodes=max_nodes,
             regen_cap_abs_fraction=cap_abs_fraction,
-            regen_radius_ratio=regen_radius_ratio,
+            core_radius_ratio=core_radius_ratio,
         )

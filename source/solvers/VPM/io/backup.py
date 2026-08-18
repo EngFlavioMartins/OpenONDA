@@ -175,9 +175,9 @@ class BackupSystem:
             print(f"(Info) Warning: strain_rate tensor field not available for backup: {e}")
 
         try:
-            bg_vel = solver.background_velocity
+            bg_vel = solver.freestream_velocity
             particles_group.create_dataset(
-                "background_velocity", data=np.tile(bg_vel, (n_particles, 1))
+                "freestream_velocity", data=np.tile(bg_vel, (n_particles, 1))
             )
         except Exception as e:
             print(f"(Info) Warning: Could not save background velocity: {e}")
@@ -342,7 +342,7 @@ class BackupSystem:
 
       <Attribute Name="BackgroundVelocity" AttributeType="Vector" Center="Node">
         <DataItem Dimensions="{n_particles} 3" NumberType="Float" Precision="4" Format="HDF">
-          {h5_basename}:/particles/background_velocity
+          {h5_basename}:/particles/freestream_velocity
         </DataItem>
       </Attribute>
 
@@ -489,7 +489,7 @@ class BackupSystem:
 
         <Attribute Name="BackgroundVelocity" AttributeType="Vector" Center="Node">
           <DataItem Dimensions="{n_particles} 3" NumberType="Float" Precision="4" Format="HDF">
-            {h5_basename}:/particles/background_velocity
+            {h5_basename}:/particles/freestream_velocity
           </DataItem>
         </Attribute>
 

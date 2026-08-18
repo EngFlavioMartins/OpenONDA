@@ -331,7 +331,7 @@ def production_case(
     return {
         "n": n,
         "dtype": np.dtype(dtype).name,
-        "h": h,
+        "particle_spacing": h,
         "sigma_over_h": SIGMA_OVER_H,
         "delta_over_h": DELTA_OVER_H,
         "metrics": metrics(circulation_rate, exact_rate),
@@ -371,10 +371,14 @@ def evaluate(resolutions: tuple[int, ...]) -> dict[str, object]:
     f32_error = [case["metrics"]["relative_l2"] for case in f32_cases]
     convergence_orders = {
         "float64": float(
-            np.polyfit(np.log([case["h"] for case in f64_cases]), np.log(f64_error), 1)[0]
+            np.polyfit(
+                np.log([case["particle_spacing"] for case in f64_cases]), np.log(f64_error), 1
+            )[0]
         ),
         "float32": float(
-            np.polyfit(np.log([case["h"] for case in f32_cases]), np.log(f32_error), 1)[0]
+            np.polyfit(
+                np.log([case["particle_spacing"] for case in f32_cases]), np.log(f32_error), 1
+            )[0]
         ),
     }
     finest = max(resolutions)
@@ -427,7 +431,7 @@ def plot(result: dict[str, object], output: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(12.8, 4.1), constrained_layout=True)
     for dtype, color, marker in (("float64", BLUE, "o"), ("float32", GOLD, "s")):
         selected = [case for case in cases if case["dtype"] == dtype]
-        h = np.asarray([case["h"] for case in selected])
+        h = np.asarray([case["particle_spacing"] for case in selected])
         error = np.asarray([case["metrics"]["relative_l2"] for case in selected])
         order = result["convergence_orders"][dtype]
         axes[0].loglog(h, error, color=color, marker=marker, label=f"{dtype}, slope {order:.2f}")

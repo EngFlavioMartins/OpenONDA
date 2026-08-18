@@ -19,7 +19,7 @@ class TestRhieChowConsistency:
         geo = compute_mesh_geometry(mesh)
         for b in mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
-            b["bc_type_U"] = "zeroGradient"
+            b["bc_type_velocity"] = "zeroGradient"
             b["bc_type_p"] = "zeroGradient"
 
         n_elem = mesh["n_elements"]
@@ -89,7 +89,7 @@ class TestRhieChowConsistency:
         geo = compute_mesh_geometry(mesh)
 
         for patch in mesh["boundary"]:
-            patch["bc_type_U"] = "zeroGradient"
+            patch["bc_type_velocity"] = "zeroGradient"
             patch["bc_type_p"] = "fixedValue" if patch["name"] == "xmax" else "zeroGradient"
             patch["value_p"] = 0.0
 
@@ -134,7 +134,7 @@ class TestRhieChowConsistency:
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
         for boundary in mesh["boundary"]:
-            boundary["bc_type_U"] = "zeroGradient"
+            boundary["bc_type_velocity"] = "zeroGradient"
             boundary["bc_type_p"] = "zeroGradient"
         n = mesh["n_elements"]
         nb = mesh["n_faces"] - mesh["n_interior_faces"]

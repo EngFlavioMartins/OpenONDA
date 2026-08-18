@@ -264,7 +264,7 @@ def test_coupled_dvh_runs_after_the_inviscid_update(tmp_path, monkeypatch):
             time_integration="COUPLED",
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.mixed(scheme="RK2"),
-            viscous=ViscousConfig.dvh(h=0.05, viscosity=1.0e-3),
+            viscous=ViscousConfig.dvh(particle_spacing=0.05, viscosity=1.0e-3),
             processing_unit="CPU",
             backup_directory=str(tmp_path),
             backup_frequency=0,

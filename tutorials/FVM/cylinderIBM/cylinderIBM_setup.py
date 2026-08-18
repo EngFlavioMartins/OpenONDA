@@ -99,7 +99,7 @@ def build_config(
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        initial_U=[FREESTREAM_VELOCITY, 0.0, 0.0],
+        initial_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
         initial_p=0.0,
     )
 

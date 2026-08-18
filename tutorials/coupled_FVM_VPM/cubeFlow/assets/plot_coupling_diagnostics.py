@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot coupled-run timing, particle population, and handoff diagnostics."""
+"""Plot coupled-run timing, particle population, and transfer diagnostics."""
 
 from pathlib import Path
 import argparse
@@ -47,9 +47,9 @@ def _values(records: list[dict], section: str, key: str) -> np.ndarray:
 
 
 def _evaluated(records: list[dict]) -> np.ndarray:
-    """Steps on which the on-cadence handoff diagnostics were actually computed."""
+    """Steps on which the on-cadence transfer diagnostics were actually computed."""
     return np.asarray(
-        [bool(row.get("handoff", {}).get("diagnostics_evaluated", True)) for row in records]
+        [bool(row.get("transfer", {}).get("diagnostics_evaluated", True)) for row in records]
     )
 
 
@@ -65,7 +65,7 @@ def plot(figure_format: str) -> None:
     vpm = _values(records, "timing_seconds", "vpm")
     fvm = _values(records, "timing_seconds", "fvm")
     transfer = sum(
-        (_values(records, "timing_seconds", name) for name in ("vpm_bc", "blending", "handoff")),
+        (_values(records, "timing_seconds", name) for name in ("vpm_bc", "blending", "transfer")),
         start=np.zeros_like(time),
     )
     timing.stackplot(
@@ -83,7 +83,7 @@ def plot(figure_format: str) -> None:
     population = axes[0, 1]
     population.plot(
         time,
-        np.asarray([row.get("handoff_particle_count", 0) for row in records]) / 1e6,
+        np.asarray([row.get("transfer_particle_count", 0) for row in records]) / 1e6,
         color=util.COLORS["vpm"],
         label="total",
     )
@@ -93,7 +93,7 @@ def plot(figure_format: str) -> None:
     ):
         population.plot(
             time,
-            _values(records, "handoff", key) / 1e6,
+            _values(records, "transfer", key) / 1e6,
             linestyle=style,
             label=label,
         )
@@ -106,8 +106,8 @@ def plot(figure_format: str) -> None:
     # Evaluated on a cadence: restrict to sampled steps or the lines never connect.
     sampled = _evaluated(records)
     t_sampled = time[sampled]
-    in_band = 100.0 * _values(records, "handoff", "transfer_in_band_residual")[sampled]
-    out_of_band = 100.0 * _values(records, "handoff", "transfer_out_of_band_fraction")[sampled]
+    in_band = 100.0 * _values(records, "transfer", "transfer_in_band_residual")[sampled]
+    out_of_band = 100.0 * _values(records, "transfer", "transfer_out_of_band_fraction")[sampled]
     marker = "o" if t_sampled.size < 60 else None
     fidelity.semilogy(
         t_sampled,
@@ -153,7 +153,7 @@ def plot(figure_format: str) -> None:
     if not band_names:
         quality.semilogy(
             time,
-            np.maximum(100.0 * _values(records, "handoff", "pruned_circulation_fraction"), 1e-8),
+            np.maximum(100.0 * _values(records, "transfer", "pruned_circulation_fraction"), 1e-8),
             label=r"pruned $\Sigma|\Gamma|$ [%]",
         )
     quality.set(

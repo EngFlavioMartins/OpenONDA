@@ -31,7 +31,7 @@ def _force_series(source: str) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[float, float]):
-    U_inf, D = consts["U_inf"], consts["D"]
+    U_inf, D = consts["freestream_speed"], consts["D"]
     box = consts["box"]
 
     ax.axvspan(box["xmin"] / D, box["xmax"] / D, color=util.COLORS["background_light"])
@@ -59,7 +59,7 @@ def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[f
 
 
 def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) -> None:
-    U_inf, D = consts["U_inf"], consts["D"]
+    U_inf, D = consts["freestream_speed"], consts["D"]
     fig = plt.figure(figsize=(FIGURE_WIDTH, 2 * FIGURE_HEIGHT), dpi=FIGURE_DPI)
     grid = GridSpec(2, 2, figure=fig)
     ax_center = fig.add_subplot(grid[0, 0])

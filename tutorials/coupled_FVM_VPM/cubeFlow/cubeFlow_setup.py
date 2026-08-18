@@ -40,13 +40,13 @@ from openonda.fvm import SamplingSchedule
 
 # Physical problem
 CUBE_SIDE = 1.0
-U_INF = (1.0, 0.0, 0.0)
+FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
-NU = np.linalg.norm(U_INF) * CUBE_SIDE / REYNOLDS
+NU = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
-INITIAL_U = (1.0, 0.0, 0.0)
+INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 DT_FVM = 0.01
 DT_VPM = 0.05
 T_END = 20
@@ -54,7 +54,7 @@ VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
 FVM_CORES = 4
-HANDOFF_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+TRANSFER_REGION_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 PIMPLE_CORRECTORS = 2
 
@@ -65,13 +65,13 @@ SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 8.0, -3.0, 3.0, -3.0, 3.0)
-PARTICLE_SPACING = 0.04
+VPM_PARTICLE_SPACING = 0.04
 PARTICLE_LIMIT = 1200000
-OVERLAP_RADIUS_RATIO = 1.0
-PRUNE_VORTICITY_MIN = 0.005
-BOUNDARY_PRUNE_MULTIPLIER = 10.0
-GBD_THRESHOLD = 0.30
-BUFFER_THICKNESS = 0.24
+VPM_CORE_RADIUS_RATIO = 1.0
+TRANSFER_PRUNE_VORTICITY_MIN = 0.05
+TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
+GBD_VORTICITY_FLOOR = 0.05
+OVERLAP_ZONE_RAMP_WIDTH = 0.24
 
 # Coupling
 VPM_BC_MODE = "vorticity_mixed"
@@ -83,9 +83,9 @@ DIAGNOSTIC_INTERVAL = 0.60
 CHECKPOINT_INTERVAL = 1.0
 FVM_VOLUME_INTERVAL = 1.0
 VPM_LOG_PERIOD = 12
-BACKUP_PERIOD = 20
+COUPLER_BACKUP_PERIOD = 20
 SAMPLE_SPACING = 0.04
-HANDOFF_DIAGNOSTIC_INTERVAL = 12
+TRANSFER_DIAGNOSTIC_INTERVAL = 12
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -98,7 +98,7 @@ WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 FVM_SAMPLERS = (
     ForceSampler(
         patch_names=["cube"],
-        ref_velocity=np.linalg.norm(U_INF),
+        ref_velocity=np.linalg.norm(FREESTREAM_VELOCITY),
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
@@ -194,32 +194,32 @@ FVM_SETUP = FVMSetup(
     boundaries=[
         BoundaryConfig(
             name="numericalBoundary",
-            type_U="fixedValue",
-            value_U=list(U_INF),
+            type_velocity="fixedValue",
+            value_velocity=list(FREESTREAM_VELOCITY),
             type_p="fixedFluxPressure",
         ),
         BoundaryConfig.wall("cube"),
     ],
-    initial_U=list(INITIAL_U),
+    initial_velocity=list(INITIAL_VELOCITY),
     initial_p=0.0,
 )
 
 COUPLER_SETUP = CouplerSetup(
-    u_inf=list(U_INF),
-    handoff_box=HANDOFF_BOX,
+    freestream_velocity=list(FREESTREAM_VELOCITY),
+    transfer_region_box=TRANSFER_REGION_BOX,
+    bc_resync_after_transfer=True,
+    pressure_anchor_to_freestream=False,
+    coupler_backup_period=COUPLER_BACKUP_PERIOD,
     vpm_bc_mode=VPM_BC_MODE,
-    h=PARTICLE_SPACING,
-    buffer_thickness=BUFFER_THICKNESS,
-    dead_zone_h=0.0,
-    prune_vorticity_min=PRUNE_VORTICITY_MIN,
-    boundary_prune_multiplier=BOUNDARY_PRUNE_MULTIPLIER,
-    handoff_max_particles=PARTICLE_LIMIT,
-    overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
+    vpm_particle_spacing=VPM_PARTICLE_SPACING,
+    vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
+    overlap_zone_ramp_width=OVERLAP_ZONE_RAMP_WIDTH,
+    overlap_zone_dead_zone_width=0.0,
+    transfer_prune_vorticity_min=TRANSFER_PRUNE_VORTICITY_MIN,
+    transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
+    transfer_max_particles=PARTICLE_LIMIT,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
-    handoff_diagnostic_interval=HANDOFF_DIAGNOSTIC_INTERVAL,
-    resync_vpm_bc_after_handoff=True,
-    anchor_pressure=False,
-    backup_period=BACKUP_PERIOD,
+    transfer_diagnostic_interval=TRANSFER_DIAGNOSTIC_INTERVAL,
 )
 
 
@@ -274,21 +274,21 @@ def make_vpm_setup():
         linear_solver="BICGSTAB_GPU",
         bc_type="NEUMANN",
         density=RHO,
-        U_inf=np.asarray(U_INF),
+        freestream_velocity=np.asarray(FREESTREAM_VELOCITY),
         coupling_scope="vpm_bc",
     )
     return VPMSetup(
         time_step_size=DT_VPM,
-        background_velocity=list(U_INF),
+        freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=ViscousConfig.gbd(
-            h=PARTICLE_SPACING,
+            particle_spacing=VPM_PARTICLE_SPACING,
             padding=3.0,
             viscosity=NU,
-            threshold_mode="relative_local",
-            threshold=GBD_THRESHOLD,
+            threshold_mode="absolute",
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=PARTICLE_LIMIT,
             cap_abs_fraction=0.95,
-            regen_radius_ratio=OVERLAP_RADIUS_RATIO,
+            core_radius_ratio=VPM_CORE_RADIUS_RATIO,
         ),
         stretching=StretchingConfig.transposed(scheme=VPM_SCHEME),
         advection=AdvectionConfig(scheme=VPM_SCHEME),
@@ -326,13 +326,6 @@ def main() -> None:
         from openonda.vpm import setup_vpm_solver
 
         vpm_solver = setup_vpm_solver(make_vpm_setup())
-        print("\n===== SIMULATION =====")
-        print(
-            f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
-            f"FVM cell={FVM_CELL_SIZE}, particle h={PARTICLE_SPACING}, "
-            f"VPM scheme={VPM_SCHEME}, "
-            f"sample spacing={SAMPLE_SPACING}, particles<={PARTICLE_LIMIT}"
-        )
 
     coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
 

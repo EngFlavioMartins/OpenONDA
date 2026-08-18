@@ -15,7 +15,7 @@ def _mesh_2d(nx=48, ny=48, lx=3.0, ly=3.0, lz=0.1):
     for b in m["boundary"]:
         if b["name"] in ("zmin", "zmax"):
             b["type"] = "empty"
-            b["bc_type_U"] = "empty"
+            b["bc_type_velocity"] = "empty"
     geo = geometry.compute_mesh_geometry(m, gradient_scheme="gauss")
     return m, geo
 
@@ -234,7 +234,7 @@ def test_cylinder_step_integration():
             BoundaryConfig.empty("zmin"),
             BoundaryConfig.empty("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
     import tempfile
@@ -353,7 +353,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
             samplers=samplers,
             transport=TransportConfig(density=1.0, nu=0.05),
             boundaries=boundaries(with_square),
-            initial_U=[1.0, 0.0, 0.0],
+            initial_velocity=[1.0, 0.0, 0.0],
             initial_p=0.0,
         )
 

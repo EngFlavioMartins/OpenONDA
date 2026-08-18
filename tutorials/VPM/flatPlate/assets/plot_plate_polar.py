@@ -56,7 +56,7 @@ C_THEORY = _c("ref")
 # -- Physical constants --------------------------------------------------------
 AR = 10.0
 CHORD = 1.0
-U_INF = 10.0
+FREESTREAM_SPEED = 10.0
 
 cm = 1 / 2.54
 

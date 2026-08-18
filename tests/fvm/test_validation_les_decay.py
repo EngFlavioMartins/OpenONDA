@@ -56,7 +56,7 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         transport=TransportConfig(density=1.0, nu=1.0 / 1600.0),
         turbulence=TurbulenceConfig.wale(),
         boundaries=boundaries,
-        initial_U=[0.0, 0.0, 0.0],
+        initial_velocity=[0.0, 0.0, 0.0],
     )
 
     with tempfile.TemporaryDirectory() as case_dir, contextlib.redirect_stdout(io.StringIO()):

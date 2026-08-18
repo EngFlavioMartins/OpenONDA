@@ -59,7 +59,7 @@ def _carved(spacing: float):
     mesh = coupling_box_mesh(BOX, spacing, hole_box=HOLE, wall_patch_name="cube")
     for b in mesh["boundary"]:  # gradient reconstruction needs BC types
         b["bc_type"] = "zeroGradient"
-        b["bc_type_U"] = "zeroGradient"
+        b["bc_type_velocity"] = "zeroGradient"
     return mesh, compute_mesh_geometry(mesh)
 
 
@@ -281,7 +281,7 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.
             BoundaryConfig.slip("zmax"),
             BoundaryConfig.wall("cube"),
         ],
-        initial_U=[1.0, 0.0, 0.0],  # symmetric start: no perturbation
+        initial_velocity=[1.0, 0.0, 0.0],  # symmetric start: no perturbation
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)

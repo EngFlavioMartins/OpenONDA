@@ -219,7 +219,7 @@ class TaichiTreecode:
         self.max_tree_depth_guard = 96
 
         # Background velocity
-        self.u_inf = ti.Vector.field(3, dtype=ti.f32, shape=())
+        self.freestream_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
 
         # Statistics
         self.build_time = 0.0
@@ -1543,7 +1543,7 @@ class TaichiTreecode:
             if self.sort_particle_targets[None] != 0:
                 i = self.sorted_indices[slot]
             self.velocities[i] = (
-                self._traverse_particle_vel(i, theta_sq, n_nodes) + self.u_inf[None]
+                self._traverse_particle_vel(i, theta_sq, n_nodes) + self.freestream_velocity[None]
             )
 
     @ti.kernel
@@ -1582,7 +1582,7 @@ class TaichiTreecode:
         """
         n_nodes = self.n_nodes[None]
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
-        u_inf = self.u_inf[None]
+        freestream_velocity = self.freestream_velocity[None]
         root = self._root[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
@@ -1619,7 +1619,7 @@ class TaichiTreecode:
                     gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i, MAX_R_SIGMA)
                 else:
                     stack_ptr = self._push_children_particle(i, node, stack_ptr)
-            self.velocities[i] = vel + u_inf
+            self.velocities[i] = vel + freestream_velocity
             self.velocity_gradients[i] = gradu
             strain = ti.Matrix.zero(ti.f32, 3, 3)
             for p in ti.static(range(3)):
@@ -1628,13 +1628,13 @@ class TaichiTreecode:
             self.strain_rates[i] = strain
 
     @ti.kernel
-    def _copy_u_inf_from_field(self, src: ti.template()):
+    def _copy_freestream_from_field(self, src: ti.template()):
         """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
-        self.u_inf[None] = src[None]
+        self.freestream_velocity[None] = src[None]
 
     def compute_velocities_gpu(
         self,
-        background_velocity: np.ndarray | None = None,
+        freestream_velocity: np.ndarray | None = None,
         background_field=None,
     ) -> None:
         """Run the velocity traversal on-device; the result stays in
@@ -1643,16 +1643,18 @@ class TaichiTreecode:
         field-to-field copy) use this to avoid a per-step N×3 round-trip.
 
         Pass ``background_field`` (a 0-d vec3 field) rather than
-        ``background_velocity`` to keep the freestream on device too; reading it
+        ``freestream_velocity`` to keep the freestream on device too; reading it
         back as a numpy array forces a sync at every RK stage.
         """
         t_start = time.perf_counter()
         if background_field is not None:
-            self._copy_u_inf_from_field(background_field)
-        elif background_velocity is not None:
-            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+            self._copy_freestream_from_field(background_field)
+        elif freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
         else:
-            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         N = int(self.n_particles[None])
         for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, N - start)
@@ -1660,8 +1662,8 @@ class TaichiTreecode:
             ti.sync()
         self.eval_time = time.perf_counter() - t_start
 
-    def compute_velocities(self, background_velocity: np.ndarray | None = None) -> np.ndarray:
-        self.compute_velocities_gpu(background_velocity)
+    def compute_velocities(self, freestream_velocity: np.ndarray | None = None) -> np.ndarray:
+        self.compute_velocities_gpu(freestream_velocity)
         N = self.n_particles[None]
         return self._download_vector_field(self.velocities, N)
 
@@ -1684,15 +1686,17 @@ class TaichiTreecode:
         return grads, strains
 
     def compute_velocity_and_gradient_gpu(
-        self, background_velocity: np.ndarray | None = None
+        self, freestream_velocity: np.ndarray | None = None
     ) -> None:
         """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
         Results stay in ``self.velocities`` / ``self.velocity_gradients``"""
         t_start = time.perf_counter()
-        if background_velocity is not None:
-            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
         else:
-            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         N = int(self.n_particles[None])
         for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, N - start)
@@ -1700,8 +1704,8 @@ class TaichiTreecode:
             ti.sync()
         self.eval_time = time.perf_counter() - t_start
 
-    def compute_velocity_and_gradient(self, background_velocity: np.ndarray | None = None) -> tuple:
-        self.compute_velocity_and_gradient_gpu(background_velocity)
+    def compute_velocity_and_gradient(self, freestream_velocity: np.ndarray | None = None) -> tuple:
+        self.compute_velocity_and_gradient_gpu(freestream_velocity)
         N = self.n_particles[None]
         return (
             self._download_vector_field(self.velocities, N),
@@ -1725,7 +1729,7 @@ class TaichiTreecode:
         for local_target in range(count):
             i = start_target + local_target
             self.target_velocities[i] = (
-                self._traverse_target_vel(i, theta_sq, n_nodes) + self.u_inf[None]
+                self._traverse_target_vel(i, theta_sq, n_nodes) + self.freestream_velocity[None]
             )
 
     @ti.kernel
@@ -1782,11 +1786,11 @@ class TaichiTreecode:
                     gradient += self._target_leaf_gradient_sum(node, target_pos)
                 else:
                     stack_ptr = self._push_children_target(i, node, stack_ptr)
-            self.target_velocities[i] = velocity + self.u_inf[None]
+            self.target_velocities[i] = velocity + self.freestream_velocity[None]
             self.target_velocity_gradients[i] = gradient
 
     def compute_target_velocities(
-        self, target_positions: np.ndarray, background_velocity: np.ndarray | None = None
+        self, target_positions: np.ndarray, freestream_velocity: np.ndarray | None = None
     ) -> np.ndarray:
         M = len(target_positions)
         if M == 0:
@@ -1795,10 +1799,12 @@ class TaichiTreecode:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
-        if background_velocity is not None:
-            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
         else:
-            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
@@ -1822,7 +1828,7 @@ class TaichiTreecode:
         return self._download_matrix_field(self.target_velocity_gradients, M)
 
     def compute_target_velocity_and_gradients(
-        self, target_positions: np.ndarray, background_velocity: np.ndarray | None = None
+        self, target_positions: np.ndarray, freestream_velocity: np.ndarray | None = None
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return target velocity and Jacobian after one tree traversal per target."""
         M = len(target_positions)
@@ -1835,10 +1841,12 @@ class TaichiTreecode:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
-        if background_velocity is not None:
-            self.u_inf[None] = ti.Vector(background_velocity.astype(np.float32).tolist())
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
         else:
-            self.u_inf[None] = ti.Vector([0.0, 0.0, 0.0])
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
@@ -1873,9 +1881,9 @@ def compute_velocities_treecode_gpu(
     circulations: np.ndarray,
     radii: np.ndarray,
     theta: float = 0.5,
-    background_velocity: np.ndarray | None = None,
+    freestream_velocity: np.ndarray | None = None,
 ) -> np.ndarray:
     N = len(positions)
     tree = TaichiTreecode(max_particles=N, max_nodes=2 * N, theta=theta)
     tree.build(positions, circulations, radii)
-    return tree.compute_velocities(background_velocity)
+    return tree.compute_velocities(freestream_velocity)

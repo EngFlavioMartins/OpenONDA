@@ -34,10 +34,10 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
-        u_inf=[1.0, 0.0, 0.0],
-        h=H,
-        buffer_thickness=2 * H,
-        dead_zone_h=1.0,
+        freestream_velocity=[1.0, 0.0, 0.0],
+        vpm_particle_spacing=H,
+        overlap_zone_ramp_width=2 * H,
+        overlap_zone_dead_zone_width=H,
     )
 
     vpm = VPM_Solver(
@@ -46,7 +46,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             processing_unit="CPU",
             max_particles=50_000,
             vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            background_velocity=[1.0, 0.0, 0.0],
+            freestream_velocity=[1.0, 0.0, 0.0],
         )
     )
 
@@ -58,12 +58,12 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             boundaries=[
                 BoundaryConfig(
                     name="numericalBoundary",
-                    type_U="fixedValue",
-                    value_U=setup.u_inf,
+                    type_velocity="fixedValue",
+                    value_velocity=setup.freestream_velocity,
                     type_p="fixedFluxPressure",
                 )
             ],
-            initial_U=setup.u_inf,
+            initial_velocity=setup.freestream_velocity,
         )
         return FVM_Solver(
             config,
@@ -82,7 +82,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     # Uniform inflow, no body → the FVM field stays finite and uniform.
     U = np.asarray(fvm.get_velocity_field())
     assert np.isfinite(U).all()
-    assert np.allclose(U.mean(axis=0), setup.U_inf, atol=1e-6)
+    assert np.allclose(U.mean(axis=0), setup.freestream_velocity_vector, atol=1e-6)
     # Two coupling steps × 3 sub-steps were committed.
     assert fvm.time_step == 6
     assert fvm.flow_time == pytest.approx(2 * DT_VPM)
@@ -95,7 +95,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert (sol / "fvm.log").exists()
     coupler_log = (sol / "coupler.log").read_text()
     assert "FVM-VPM COUPLED SOLVER" in coupler_log
-    assert coupler_log.count("[Handoff]") >= 2
+    assert coupler_log.count("[Transfer]") >= 2
     assert "n_fvm_substeps=3" in coupler_log
     checkpoint = sol / "checkpoint"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
@@ -118,7 +118,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             processing_unit="CPU",
             max_particles=50_000,
             vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            background_velocity=[1.0, 0.0, 0.0],
+            freestream_velocity=[1.0, 0.0, 0.0],
         )
     )
     restored_fvm = make_fvm()

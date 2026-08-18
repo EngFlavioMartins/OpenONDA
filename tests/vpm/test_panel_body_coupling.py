@@ -117,7 +117,7 @@ def test_panel_field_contributes_to_pressure_gradient():
         @staticmethod
         def compute_target_pressure_gradients_hierarchical(_particles, points, **kwargs):
             body_velocity = kwargs["body_fn"](points)
-            velocity = kwargs["background_velocity"] + body_velocity
+            velocity = kwargs["freestream_velocity"] + body_velocity
             return {"grad_p": -np.einsum("mb,ab->ma", velocity, matrix)}
 
     solver = Solver.__new__(Solver)

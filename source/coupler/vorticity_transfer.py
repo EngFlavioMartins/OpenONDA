@@ -14,7 +14,7 @@ from source.coupler.remesh import grid_positions, remesh_to_grid
 logger = logging.getLogger("coupler")
 
 # Particle core radius relative to the regular overlap lattice spacing.
-RADIUS_RATIO = 1.0
+CORE_RADIUS_RATIO = 1.0
 
 # M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
@@ -23,24 +23,28 @@ _M4P_SUPPORT = 2.0
 DEFAULT_TRANSFER_AMPLIFICATION_CAP = 2.0
 
 
-def required_buffer_length(u_max: float, dt: float, h: float, safety: float = 1.5) -> float:
+def required_buffer_length(
+    freestream_speed: float, dt: float, particle_spacing: float, safety: float = 1.5
+) -> float:
     """Minimum downstream buffer length for a dt-robust hand-off:
-    ``L_buf >= safety * u_max * dt + 2h`` (M4' stencil must stay interior)."""
-    return float(safety * abs(u_max) * abs(dt) + _M4P_SUPPORT * h)
+    ``L_buf >= safety * freestream_speed * dt + 2h`` (M4' stencil must stay interior)."""
+    return float(safety * abs(freestream_speed) * abs(dt) + _M4P_SUPPORT * particle_spacing)
 
 
-def max_stable_dt(u_max: float, l_buf: float, h: float, safety: float = 1.5) -> float:
+def max_stable_dt(
+    freestream_speed: float, l_buf: float, particle_spacing: float, safety: float = 1.5
+) -> float:
     """Largest ``dt`` for which the given buffer keeps the hand-off exact
     (inverse of :func:`required_buffer_length`)."""
-    u = abs(u_max)
+    u = abs(freestream_speed)
     if u < 1e-30:
         return float("inf")
-    return float(max(l_buf - _M4P_SUPPORT * h, 0.0) / (safety * u))
+    return float(max(l_buf - _M4P_SUPPORT * particle_spacing, 0.0) / (safety * u))
 
 
 def circulation_from_velocity_trace(
     positions: np.ndarray,
-    h: float,
+    particle_spacing: float,
     velocity_at,
 ) -> np.ndarray:
     """Integrate ``n x u`` over each cubic particle control volume."""
@@ -49,13 +53,13 @@ def circulation_from_velocity_trace(
     offset = np.zeros(3, dtype=np.float64)
     for axis in range(3):
         offset.fill(0.0)
-        offset[axis] = 0.5 * h
+        offset[axis] = 0.5 * particle_spacing
         delta_u = np.asarray(velocity_at(pos + offset), dtype=np.float64) - np.asarray(
             velocity_at(pos - offset), dtype=np.float64
         )
         normal = np.zeros(3, dtype=np.float64)
         normal[axis] = 1.0
-        circulation += h**2 * np.cross(normal, delta_u)
+        circulation += particle_spacing**2 * np.cross(normal, delta_u)
     return circulation
 
 
@@ -71,11 +75,11 @@ def smoothstep(x: np.ndarray | float, lo: float, hi: float) -> np.ndarray:
     return t * t * (3.0 - 2.0 * t)
 
 
-def _outflow_axis_sign(u_inf=None) -> tuple[int, float]:
+def _outflow_axis_sign(freestream_velocity=None) -> tuple[int, float]:
     """Return the box axis/sign most aligned with the freestream."""
     axis, sign = 0, +1.0
-    if u_inf is not None:
-        u = np.asarray(u_inf, dtype=np.float64).reshape(-1)
+    if freestream_velocity is not None:
+        u = np.asarray(freestream_velocity, dtype=np.float64).reshape(-1)
         if u.size == 3 and np.any(u != 0.0):
             axis = int(np.argmax(np.abs(u)))
             sign = float(np.sign(u[axis]))
@@ -86,25 +90,25 @@ def _outflow_band_mask(
     grid_pos: np.ndarray,
     lo: np.ndarray,
     hi: np.ndarray,
-    h: float,
-    u_inf=None,
+    particle_spacing: float,
+    freestream_velocity=None,
 ) -> np.ndarray:
-    """Boolean mask of the downstream-most h-layer of the box."""
-    axis, sign = _outflow_axis_sign(u_inf)
+    """Boolean mask of the downstream-most particle_spacing-layer of the box."""
+    axis, sign = _outflow_axis_sign(freestream_velocity)
     if sign >= 0:
-        return grid_pos[:, axis] >= hi[axis] - h
-    return grid_pos[:, axis] <= lo[axis] + h
+        return grid_pos[:, axis] >= hi[axis] - particle_spacing
+    return grid_pos[:, axis] <= lo[axis] + particle_spacing
 
 
 def cosine_eta(
     grid_pos: np.ndarray,
     box: np.ndarray,
-    ramp_width: float,
-    dead_zone: float,
+    overlap_zone_ramp_width: float,
+    overlap_zone_dead_zone: float,
 ) -> np.ndarray:
     """C1 partition-of-unity FVM-authority weight in [0, 1].
 
-    One at ``dist >= ramp_width``, zero at ``dist <= dead_zone`` and outside
+    One at ``dist >= overlap_zone_ramp_width``, zero at ``dist <= overlap_zone_dead_zone`` and outside
     the box, cosine ramp between.
     """
     pos = np.asarray(grid_pos, dtype=np.float64)
@@ -120,24 +124,24 @@ def cosine_eta(
         ]
     )
     eta = np.zeros(len(pos), dtype=np.float64)
-    if ramp_width <= 0.0:
+    if overlap_zone_ramp_width <= 0.0:
         eta[dist > 0.0] = 1.0
         return eta
 
-    eta[dist >= ramp_width] = 1.0
-    lo = max(dead_zone, 0.0)
-    width = max(ramp_width - lo, 1e-30)
-    ramp = (dist > lo) & (dist < ramp_width)
+    eta[dist >= overlap_zone_ramp_width] = 1.0
+    lo = max(overlap_zone_dead_zone, 0.0)
+    width = max(overlap_zone_ramp_width - lo, 1e-30)
+    ramp = (dist > lo) & (dist < overlap_zone_ramp_width)
     if ramp.any():
         eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * (dist[ramp] - lo) / width))
     return eta
 
 
-def _wavenumber_grid(shape: tuple[int, int, int], h: float) -> np.ndarray:
+def _wavenumber_grid(shape: tuple[int, int, int], particle_spacing: float) -> np.ndarray:
     """Squared wavenumber magnitude on the rfftn lattice of ``shape``."""
-    kx = 2.0 * np.pi * np.fft.fftfreq(shape[0], d=h)
-    ky = 2.0 * np.pi * np.fft.fftfreq(shape[1], d=h)
-    kz = 2.0 * np.pi * np.fft.rfftfreq(shape[2], d=h)
+    kx = 2.0 * np.pi * np.fft.fftfreq(shape[0], d=particle_spacing)
+    ky = 2.0 * np.pi * np.fft.fftfreq(shape[1], d=particle_spacing)
+    kz = 2.0 * np.pi * np.fft.rfftfreq(shape[2], d=particle_spacing)
     return kx[:, None, None] ** 2 + ky[None, :, None] ** 2 + kz[None, None, :] ** 2
 
 
@@ -154,7 +158,7 @@ def spectral_band_ratio(
     particle_field: np.ndarray,
     reference_field: np.ndarray,
     shape: tuple[int, int, int],
-    h: float,
+    particle_spacing: float,
     bands: tuple[tuple[float, float], ...] = SPECTRAL_BANDS,
     masks: dict[str, np.ndarray] | None = None,
 ) -> dict[str, float]:
@@ -173,7 +177,7 @@ def spectral_band_ratio(
 
     out: dict[str, float] = {}
     if masks is None:
-        masks = _spectral_band_masks(shape, h, bands)
+        masks = _spectral_band_masks(shape, particle_spacing, bands)
     for lo_cells, hi_cells in bands:
         sel = masks.get(f"{lo_cells:g}-{hi_cells:g}h")
         if sel is None:
@@ -188,14 +192,16 @@ def spectral_band_ratio(
 
 
 def _spectral_band_masks(
-    shape: tuple[int, int, int], h: float, bands: tuple[tuple[float, float], ...] = SPECTRAL_BANDS
+    shape: tuple[int, int, int],
+    particle_spacing: float,
+    bands: tuple[tuple[float, float], ...] = SPECTRAL_BANDS,
 ) -> dict[str, np.ndarray]:
     """Precompute rFFT selectors for the fixed hand-off lattice."""
-    k = np.sqrt(_wavenumber_grid(shape, h))
+    k = np.sqrt(_wavenumber_grid(shape, particle_spacing))
     masks: dict[str, np.ndarray] = {}
     for lo_cells, hi_cells in bands:
-        k_lo = 2.0 * np.pi / (hi_cells * h)
-        k_hi = 2.0 * np.pi / (lo_cells * h)
+        k_lo = 2.0 * np.pi / (hi_cells * particle_spacing)
+        k_hi = 2.0 * np.pi / (lo_cells * particle_spacing)
         masks[f"{lo_cells:g}-{hi_cells:g}h"] = (k >= k_lo) & (k < k_hi)
     return masks
 
@@ -203,7 +209,7 @@ def _spectral_band_masks(
 def _gaussian_mollified_circulation(
     circ_grid: np.ndarray,
     shape: tuple[int, int, int],
-    h: float,
+    particle_spacing: float,
     *,
     sigma: float,
 ) -> np.ndarray:
@@ -211,8 +217,8 @@ def _gaussian_mollified_circulation(
     from scipy.ndimage import gaussian_filter
 
     # s = sigma/sqrt(2) in cells. gaussian_filter normalises to sum(w) = 1,
-    # matching the sampled zeta_sigma * h^3 weights for s >~ 1 cell.
-    s_cells = float(sigma) / (np.sqrt(2.0) * float(h))
+    # matching the sampled zeta_sigma * particle_spacing^3 weights for s >~ 1 cell.
+    s_cells = float(sigma) / (np.sqrt(2.0) * float(particle_spacing))
     grid = np.asarray(circ_grid, dtype=np.float64).reshape(*shape, 3)
     return np.stack(
         [
@@ -228,10 +234,10 @@ def bounded_local_transfer(
     fvm_target: np.ndarray,
     authority: np.ndarray,
     shape: tuple[int, int, int],
-    h: float,
+    particle_spacing: float,
     *,
     sigma: float,
-    amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
+    transfer_amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
     output_weight: np.ndarray | None = None,
     compute_final_representation: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float, float | None, float]:
@@ -242,8 +248,8 @@ def bounded_local_transfer(
     Its gain is at most two for the production cap, while an exactly zero far
     field remains exactly zero outside the Gaussian stencil.
     """
-    if not np.isfinite(amplification_cap) or amplification_cap < 1.0:
-        raise ValueError("amplification_cap must be finite and at least one")
+    if not np.isfinite(transfer_amplification_cap) or transfer_amplification_cap < 1.0:
+        raise ValueError("transfer_amplification_cap must be finite and at least one")
 
     particle_strength = np.asarray(particle_strength, dtype=np.float64).reshape(-1, 3)
     fvm_target = np.asarray(fvm_target, dtype=np.float64).reshape(-1, 3)
@@ -256,17 +262,19 @@ def bounded_local_transfer(
             raise ValueError("output_weight does not share the transfer lattice shape")
 
     particle_field = _gaussian_mollified_circulation(
-        particle_strength, shape, h, sigma=sigma
+        particle_strength, shape, particle_spacing, sigma=sigma
     ).reshape(-1, 3)
     physical_target = particle_field + authority[:, None] * (fvm_target - particle_field)
 
     strength = particle_strength + authority[:, None] * (fvm_target - particle_strength)
-    represented = _gaussian_mollified_circulation(strength, shape, h, sigma=sigma).reshape(-1, 3)
+    represented = _gaussian_mollified_circulation(
+        strength, shape, particle_spacing, sigma=sigma
+    ).reshape(-1, 3)
     residual = physical_target - represented
     denominator = float(np.linalg.norm(physical_target)) + 1.0e-30
     residual_pre = float(np.linalg.norm(residual)) / denominator
 
-    correction_gain = min(float(amplification_cap) - 1.0, 1.0)
+    correction_gain = min(float(transfer_amplification_cap) - 1.0, 1.0)
     strength = strength + correction_gain * residual
     # The solid taper is part of the final represented particle field.  Apply
     # it before the final mollification so the representation returned here is
@@ -281,9 +289,9 @@ def bounded_local_transfer(
         # Keep the representation produced by the correction pass.  The caller
         # uses it for the pre-prune audit; recomputing the same three Gaussian
         # filters there used to be an exact duplicate of this final convolution.
-        represented = _gaussian_mollified_circulation(strength, shape, h, sigma=sigma).reshape(
-            -1, 3
-        )
+        represented = _gaussian_mollified_circulation(
+            strength, shape, particle_spacing, sigma=sigma
+        ).reshape(-1, 3)
         residual_post = float(np.linalg.norm(physical_target - represented)) / denominator
     return (
         strength,
@@ -359,7 +367,7 @@ def redistribute_locally(
 
 
 @dataclass
-class HandoffResult:
+class TransferResult:
     """New particle field + per-step diagnostics from one hand-off."""
 
     pos: np.ndarray
@@ -409,7 +417,7 @@ class HandoffResult:
 
 
 @dataclass(frozen=True)
-class HandoffLattice:
+class TransferLattice:
     """Static geometry and masks for one fixed FVM--VPM transfer lattice."""
 
     origin: np.ndarray
@@ -425,54 +433,58 @@ class HandoffLattice:
 
 def _lattice_origin_shape(
     box: np.ndarray,
-    h: float,
-    buffer_length: float,
+    particle_spacing: float,
+    transfer_buffer_length: float,
     lattice_anchor: np.ndarray | None,
 ) -> tuple[np.ndarray, tuple[int, int, int]]:
     """Return the fixed remesh-lattice origin and shape."""
     lo = np.asarray(box, dtype=np.float64)[[0, 2, 4]]
     hi = np.asarray(box, dtype=np.float64)[[1, 3, 5]]
-    guard = _M4P_SUPPORT * h
-    lo_lat = lo - buffer_length - guard
-    hi_lat = hi + buffer_length + guard
+    guard = _M4P_SUPPORT * particle_spacing
+    lo_lat = lo - transfer_buffer_length - guard
+    hi_lat = hi + transfer_buffer_length + guard
     if lattice_anchor is not None:
         anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
-        lo_lat = anchor + np.floor((lo_lat - anchor) / h) * h
+        lo_lat = anchor + np.floor((lo_lat - anchor) / particle_spacing) * particle_spacing
     shape = (
-        int(np.ceil((hi_lat[0] - lo_lat[0]) / h)) + 1,
-        int(np.ceil((hi_lat[1] - lo_lat[1]) / h)) + 1,
-        int(np.ceil((hi_lat[2] - lo_lat[2]) / h)) + 1,
+        int(np.ceil((hi_lat[0] - lo_lat[0]) / particle_spacing)) + 1,
+        int(np.ceil((hi_lat[1] - lo_lat[1]) / particle_spacing)) + 1,
+        int(np.ceil((hi_lat[2] - lo_lat[2]) / particle_spacing)) + 1,
     )
     return lo_lat, shape
 
 
 def _lattice_geometry(
     box: np.ndarray,
-    h: float,
-    buffer_length: float,
+    particle_spacing: float,
+    transfer_buffer_length: float,
     lattice_anchor: np.ndarray | None,
 ) -> tuple[np.ndarray, tuple[int, int, int], np.ndarray]:
     """Return the fixed remesh-lattice origin, shape, and positions."""
-    origin, shape = _lattice_origin_shape(box, h, buffer_length, lattice_anchor)
-    return origin, shape, grid_positions(origin, h, shape)
+    origin, shape = _lattice_origin_shape(
+        box, particle_spacing, transfer_buffer_length, lattice_anchor
+    )
+    return origin, shape, grid_positions(origin, particle_spacing, shape)
 
 
-def build_handoff_lattice(
+def build_transfer_lattice(
     box: np.ndarray | list[float],
-    h: float,
+    particle_spacing: float,
     *,
-    buffer_length: float,
+    transfer_buffer_length: float,
     lattice_anchor: np.ndarray | None = None,
     mesh_weight_at_node=None,
     fluid_weight_at_node=None,
     interior_at_node=None,
-    ramp_width: float,
-    dead_zone: float,
-    u_inf=None,
-) -> HandoffLattice:
+    overlap_zone_ramp_width: float,
+    overlap_zone_dead_zone: float,
+    freestream_velocity=None,
+) -> TransferLattice:
     """Precompute static lattice geometry, authority, and diagnostic masks."""
     box_array = np.asarray(box, dtype=np.float64).reshape(6)
-    origin, shape, positions = _lattice_geometry(box_array, float(h), buffer_length, lattice_anchor)
+    origin, shape, positions = _lattice_geometry(
+        box_array, float(particle_spacing), transfer_buffer_length, lattice_anchor
+    )
     n_nodes = len(positions)
     node_mesh = (
         np.ones(n_nodes, dtype=np.float64)
@@ -500,50 +512,51 @@ def build_handoff_lattice(
     }.items():
         if values.shape != (n_nodes,):
             raise ValueError(f"{name} returned {values.shape}, expected ({n_nodes},)")
-    return HandoffLattice(
+    return TransferLattice(
         origin=origin,
         shape=shape,
         positions=positions,
         node_mesh=node_mesh,
         node_fluid=node_fluid,
         interior_nodes=interior,
-        authority=cosine_eta(positions, box_array, ramp_width, dead_zone) * node_mesh,
+        authority=cosine_eta(positions, box_array, overlap_zone_ramp_width, overlap_zone_dead_zone)
+        * node_mesh,
         outflow_band=_outflow_band_mask(
             positions,
             box_array[[0, 2, 4]],
             box_array[[1, 3, 5]],
-            h,
-            u_inf,
+            particle_spacing,
+            freestream_velocity,
         ),
-        spectral_masks=_spectral_band_masks(shape, h),
+        spectral_masks=_spectral_band_masks(shape, particle_spacing),
     )
 
 
-def continuous_handoff(
+def continuous_transfer(
     pos: np.ndarray,
     circ: np.ndarray,
     box: np.ndarray | list[float],
-    h: float,
+    particle_spacing: float,
     *,
     circulation_at_node,
-    u_inf=None,
+    freestream_velocity=None,
     mesh_weight_at_node=None,
     fluid_weight_at_node=None,
     interior_at_node=None,
-    ramp_width: float | None = None,
-    dead_zone: float = 0.0,
-    buffer_length: float = 0.0,
-    threshold_abs: float = 0.0,
-    radius_ratio: float = RADIUS_RATIO,
-    amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
-    boundary_prune_multiplier: float = 1.0,
-    u_max: float = 0.0,
+    overlap_zone_ramp_width: float | None = None,
+    overlap_zone_dead_zone: float = 0.0,
+    transfer_buffer_length: float = 0.0,
+    transfer_prune_threshold_abs: float = 0.0,
+    core_radius_ratio: float = CORE_RADIUS_RATIO,
+    transfer_amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
+    transfer_boundary_prune_multiplier: float = 1.0,
+    freestream_speed: float = 0.0,
     dt: float = 0.0,
     lattice_anchor=None,
     max_output_particles: int | None = None,
-    lattice: HandoffLattice | None = None,
+    lattice: TransferLattice | None = None,
     compute_diagnostics: bool = True,
-) -> HandoffResult:
+) -> TransferResult:
     """One continuous, conservative, dt-robust FVM->VPM hand-off.
 
     Parameters
@@ -552,11 +565,11 @@ def continuous_handoff(
         Current particle positions and circulations.
     box : (6,) ``[x0, x1, y0, y1, z0, z1]``
         Hand-off bounds; the interface is the box surface.
-    h : float
+    particle_spacing : float
         Lattice spacing, equal to the VPM particle spacing.
     circulation_at_node : callable
         FVM circulation from the weighted velocity trace.
-    u_inf : ndarray (3,) or None
+    freestream_velocity : ndarray (3,) or None
         Freestream, used to orient the outflow diagnostic.
     mesh_weight_at_node : callable ``grid_pos -> (M,) in [0, 1]`` or None
         Smooth confidence that a node has usable FVM data. Must be C1.
@@ -564,46 +577,50 @@ def continuous_handoff(
         Smooth solid taper: one in the fluid, zero inside a body.
     interior_at_node : callable ``positions -> bool (M,)`` or None
         Exact solid test, a placement guard only.
-    ramp_width, dead_zone : float
+    overlap_zone_ramp_width, overlap_zone_dead_zone : float
         Width of the eta ramp and of the eta = 0 band at each face.
-    buffer_length : float
+    transfer_buffer_length : float
         Outward extension of the remesh lattice beyond the box.
-    threshold_abs : float
+    transfer_prune_threshold_abs : float
         Soft-prune scale; see :func:`soft_prune`.
-    radius_ratio : float
-        Particle core radius sigma / h.
-    amplification_cap : float
+    core_radius_ratio : float
+        Particle core radius sigma / particle_spacing.
+    transfer_amplification_cap : float
         Maximum gain used by the bounded local correction.
-    boundary_prune_multiplier : float
+    transfer_boundary_prune_multiplier : float
         Smooth multiplier on the prune scale where FVM authority approaches
-        zero at the handoff boundary.
-    u_max, dt : float
+        zero at the transfer boundary.
+    freestream_speed, dt : float
         CFL diagnostic only.
     max_output_particles : int or None
-        Post-handoff population cap.
+        Post-transfer population cap.
 
     Returns
     -------
-    HandoffResult
+    TransferResult
     """
     box = np.asarray(box, dtype=np.float64)
     pos = np.asarray(pos, dtype=np.float64).reshape(-1, 3)
     circ = np.asarray(circ, dtype=np.float64).reshape(-1, 3)
     n = len(pos)
 
-    if ramp_width is None:
-        ramp_width = max(2.0 * dead_zone, 4.0 * h)
+    if overlap_zone_ramp_width is None:
+        overlap_zone_ramp_width = max(2.0 * overlap_zone_dead_zone, 4.0 * particle_spacing)
 
     lo = np.array([box[0], box[2], box[4]], dtype=np.float64)
     hi = np.array([box[1], box[3], box[5]], dtype=np.float64)
 
-    # Active region = box (+) buffer_length. Particles here are remeshed;
+    # Active region = box (+) transfer_buffer_length. Particles here are remeshed;
     # beyond it they are free Lagrangian.
-    lo_active = lo - buffer_length
-    hi_active = hi + buffer_length
-    expected_origin, expected_shape = _lattice_origin_shape(box, h, buffer_length, lattice_anchor)
+    lo_active = lo - transfer_buffer_length
+    hi_active = hi + transfer_buffer_length
+    expected_origin, expected_shape = _lattice_origin_shape(
+        box, particle_spacing, transfer_buffer_length, lattice_anchor
+    )
     if lattice is None:
-        lo_lat, shape, grid_pos_cache = _lattice_geometry(box, h, buffer_length, lattice_anchor)
+        lo_lat, shape, grid_pos_cache = _lattice_geometry(
+            box, particle_spacing, transfer_buffer_length, lattice_anchor
+        )
     else:
         if lattice.shape != expected_shape or not np.allclose(lattice.origin, expected_origin):
             raise ValueError("cached hand-off lattice does not match the transfer geometry")
@@ -641,7 +658,7 @@ def continuous_handoff(
         pos[in_region],
         circ[in_region],
         lo_lat,
-        h,
+        particle_spacing,
         shape,
         grid_positions_cache=grid_pos_cache,
     )
@@ -694,11 +711,11 @@ def continuous_handoff(
     eta = (
         lattice.authority
         if lattice is not None
-        else cosine_eta(grid_pos, box, ramp_width, dead_zone) * node_mesh
+        else cosine_eta(grid_pos, box, overlap_zone_ramp_width, overlap_zone_dead_zone) * node_mesh
     )
 
     # Apply one bounded local inverse-mollification correction to the blended field.
-    sigma = float(radius_ratio) * float(h)
+    sigma = float(core_radius_ratio) * float(particle_spacing)
     (
         grid_blended,
         physical_target,
@@ -711,9 +728,9 @@ def continuous_handoff(
         target,
         eta,
         shape,
-        h,
+        particle_spacing,
         sigma=sigma,
-        amplification_cap=amplification_cap,
+        transfer_amplification_cap=transfer_amplification_cap,
         output_weight=node_fluid,
         compute_final_representation=compute_diagnostics,
     )
@@ -732,8 +749,8 @@ def continuous_handoff(
     # Prune weak circulation with local moment redistribution.
     target_inv = invariants(grid_pos, grid_blended)
     magnitude_before = np.linalg.norm(grid_blended, axis=1)
-    local_threshold = float(threshold_abs) * (
-        1.0 + (float(boundary_prune_multiplier) - 1.0) * (1.0 - eta)
+    local_threshold = float(transfer_prune_threshold_abs) * (
+        1.0 + (float(transfer_boundary_prune_multiplier) - 1.0) * (1.0 - eta)
     )
     shrunk, removed = soft_prune(grid_blended, local_threshold)
     shrunk = redistribute_locally(removed, shrunk, shape)
@@ -770,7 +787,7 @@ def continuous_handoff(
     if len(new_pos) > 1:
         # Final global closure. A large correction means the local scatter failed.
         new_circ = recover_invariants(
-            new_pos, new_circ, target_inv, volumes=np.full(len(new_pos), h**3)
+            new_pos, new_circ, target_inv, volumes=np.full(len(new_pos), particle_spacing**3)
         )
         post_correction = invariants(new_pos, new_circ)
         applied_correction = _invariant_norms(pre_correction, post_correction)
@@ -783,7 +800,7 @@ def continuous_handoff(
         }
         if applied_correction["circulation"] > 1.0e-2 * correction_scale:
             logger.warning(
-                "[Handoff] global invariant closure had to move %.3e of circulation "
+                "[Transfer] global invariant closure had to move %.3e of circulation "
                 "(%.2f%% of Sum|Gamma|); the local prune redistribution is not "
                 "absorbing the pruned moments.",
                 applied_correction["circulation"],
@@ -796,16 +813,16 @@ def continuous_handoff(
     if compute_diagnostics:
         final_strength = np.zeros_like(grid_blended)
         final_strength[keep] = new_circ
-        mollified = _gaussian_mollified_circulation(final_strength, shape, h, sigma=sigma).reshape(
-            -1, 3
-        )
+        mollified = _gaussian_mollified_circulation(
+            final_strength, shape, particle_spacing, sigma=sigma
+        ).reshape(-1, 3)
         in_band_residual = float(
             np.linalg.norm((mollified - reference) * comparison_weight[:, None])
         ) / (float(np.linalg.norm(reference * comparison_weight[:, None])) + 1e-30)
         band = (
             lattice.outflow_band
             if lattice is not None
-            else _outflow_band_mask(grid_pos, lo, hi, h, u_inf)
+            else _outflow_band_mask(grid_pos, lo, hi, particle_spacing, freestream_velocity)
         )
         if band.any():
             g_vpm = float(np.linalg.norm(mollified[band], axis=1).sum())
@@ -815,19 +832,21 @@ def continuous_handoff(
             mollified,
             reference,
             shape,
-            h,
+            particle_spacing,
             masks=None if lattice is None else lattice.spectral_masks,
         )
 
-    new_vol = np.full(len(new_pos), h**3)
-    new_rad = np.full(len(new_pos), h * radius_ratio)
+    new_vol = np.full(len(new_pos), particle_spacing**3)
+    new_rad = np.full(len(new_pos), particle_spacing * core_radius_ratio)
 
-    # Preserve particles outside the handoff region.
+    # Preserve particles outside the transfer region.
     if free_mask.any():
         out_pos = np.vstack([new_pos, pos[free_mask]])
         out_circ = np.vstack([new_circ, circ[free_mask]])
-        out_vol = np.concatenate([new_vol, np.full(int(free_mask.sum()), h**3)])
-        out_rad = np.concatenate([new_rad, np.full(int(free_mask.sum()), h * radius_ratio)])
+        out_vol = np.concatenate([new_vol, np.full(int(free_mask.sum()), particle_spacing**3)])
+        out_rad = np.concatenate(
+            [new_rad, np.full(int(free_mask.sum()), particle_spacing * core_radius_ratio)]
+        )
     else:
         out_pos, out_circ, out_vol, out_rad = new_pos, new_circ, new_vol, new_rad
 
@@ -875,9 +894,9 @@ def continuous_handoff(
         out_rad = out_rad[keep_indices]
         out_circ = recover_invariants(out_pos, out_circ, combined_target, volumes=out_vol)
 
-    cfl = float(abs(u_max) * abs(dt) / (buffer_length + 1e-30))
+    cfl = float(abs(freestream_speed) * abs(dt) / (transfer_buffer_length + 1e-30))
 
-    return HandoffResult(
+    return TransferResult(
         pos=out_pos,
         circ=out_circ,
         vol=out_vol,
@@ -910,30 +929,32 @@ def continuous_handoff(
     )
 
 
-class VorticityHandoff:
+class VorticityTransfer:
     """Transfer resolved FVM vorticity to the overlapping particle lattice."""
 
     def __init__(self, coupler):
         cfg = coupler.config
         if coupler.nu is None or coupler.dt_vpm is None or coupler.fvm_box is None:
-            raise RuntimeError("VorticityHandoff requires initialized FVM and VPM time state")
+            raise RuntimeError("VorticityTransfer requires initialized FVM and VPM time state")
         self.config = cfg
-        self.h = float(cfg.h)
+        self.particle_spacing = float(cfg.vpm_particle_spacing)
         self.nu = float(coupler.nu)
-        self.threshold_abs = float(cfg.prune_vorticity_min) * self.h**3
+        self.transfer_prune_threshold_abs = (
+            float(cfg.transfer_prune_vorticity_min) * self.particle_spacing**3
+        )
 
-        self.ramp_width = float(cfg.buffer_thickness)
-        self.dead_zone = float(cfg.dead_zone_h) * self.h
-        self.radius_ratio = float(cfg.overlap_radius_ratio)
-        self.amplification_cap = float(cfg.transfer_amplification_cap)
-        self.boundary_prune_multiplier = float(cfg.boundary_prune_multiplier)
-        self.diagnostic_interval = int(getattr(cfg, "handoff_diagnostic_interval", 1))
-        self.u_inf = float(np.linalg.norm(cfg.u_inf))
+        self.overlap_zone_ramp_width = float(cfg.overlap_zone_ramp_width)
+        self.overlap_zone_dead_zone = float(cfg.overlap_zone_dead_zone_width)
+        self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
+        self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
+        self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
+        self.diagnostic_interval = int(getattr(cfg, "transfer_diagnostic_interval", 1))
+        self.freestream_speed = float(np.linalg.norm(cfg.freestream_velocity))
         self.dt = float(coupler.dt_vpm)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
 
         if coupler.vpm is not None and coupler.vpm.config.particles_kernel != "GAUSSIAN":
-            raise ValueError("The FVM-VPM handoff requires the GAUSSIAN particle kernel")
+            raise ValueError("The FVM-VPM transfer requires the GAUSSIAN particle kernel")
 
         self._box: np.ndarray | None = None
         self._cell_tree = None
@@ -942,7 +963,7 @@ class VorticityHandoff:
         self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
         self._velocity_trace: FVMVelocityInterpolator | None = None
-        self._lattice: HandoffLattice | None = None
+        self._lattice: TransferLattice | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._reversed_flow_warned = False
         self._open_vortex_lines_warned = False
@@ -973,7 +994,7 @@ class VorticityHandoff:
                     inside_others &= (centres[:, other] >= box[2 * other]) & (
                         centres[:, other] <= box[2 * other + 1]
                     )
-                near = np.abs(centres[:, axis] - bound) <= self.h
+                near = np.abs(centres[:, axis] - bound) <= self.particle_spacing
                 index = np.flatnonzero(near & inside_others)
                 if index.size:
                     normal = np.zeros(3)
@@ -1024,7 +1045,7 @@ class VorticityHandoff:
         return report
 
     def setup(self, fvm):
-        transfer_box = self.config.handoff_box or self._fvm_box
+        transfer_box = self.config.transfer_region_box or self._fvm_box
         self._box = np.asarray(transfer_box, dtype=np.float64)
         from scipy.spatial import cKDTree
 
@@ -1060,10 +1081,10 @@ class VorticityHandoff:
                     on_planes |= np.isclose(wf[:, ax], bounds[2 * ax + 1], atol=1e-9)
                 if on_planes.all():
                     self._body_bounds = bounds
-                    self._lattice_anchor = bounds[[0, 2, 4]] - 0.5 * self.h
+                    self._lattice_anchor = bounds[[0, 2, 4]] - 0.5 * self.particle_spacing
                 else:
                     logger.warning(
-                        "[Handoff] wall patch %r is not an axis-aligned box; no "
+                        "[Transfer] wall patch %r is not an axis-aligned box; no "
                         "exact particle exclusion mask is available",
                         wall,
                     )
@@ -1075,7 +1096,7 @@ class VorticityHandoff:
             if self._cell_centers is not None and len(self._cell_centers):
                 self._lattice_anchor = self._cell_centers[0].copy()
             logger.info(
-                "[Handoff] exact immersed-solid exclusion enabled for: %s",
+                "[Transfer] exact immersed-solid exclusion enabled for: %s",
                 ", ".join(str(body.name) for body in self._solid_bodies),
             )
 
@@ -1088,58 +1109,58 @@ class VorticityHandoff:
 
         def mesh_weight_at_node(points):
             distance, _ = self._cell_tree.query(points, workers=-1)
-            return 1.0 - smoothstep(distance, self.h, 2.0 * self.h)
+            return 1.0 - smoothstep(distance, self.particle_spacing, 2.0 * self.particle_spacing)
 
         has_solid = bool(self._solid_bodies) or self._body_bounds is not None
 
         def fluid_weight_at_node(points):
-            return smoothstep(self._signed_solid_distance(points), -self.h, 0.0)
+            return smoothstep(self._signed_solid_distance(points), -self.particle_spacing, 0.0)
 
         def interior_at_node(points):
             return self._points_in_solid(points, include_boundary=False)
 
-        self._lattice = build_handoff_lattice(
+        self._lattice = build_transfer_lattice(
             self._box,
-            self.h,
-            buffer_length=self.buffer_length,
+            self.particle_spacing,
+            transfer_buffer_length=self.transfer_buffer_length,
             lattice_anchor=self._lattice_anchor,
             mesh_weight_at_node=mesh_weight_at_node,
             fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
             interior_at_node=interior_at_node if has_solid else None,
-            ramp_width=self.ramp_width,
-            dead_zone=self.dead_zone,
-            u_inf=np.asarray(self.config.u_inf, dtype=np.float64),
+            overlap_zone_ramp_width=self.overlap_zone_ramp_width,
+            overlap_zone_dead_zone=self.overlap_zone_dead_zone,
+            freestream_velocity=np.asarray(self.config.freestream_velocity, dtype=np.float64),
         )
         self._build_face_cell_index()
 
-        l_buf = self.buffer_length
+        l_buf = self.transfer_buffer_length
         logger.info(
-            "[Handoff] ready: box x in [%.2f,%.2f]  h=%.3f  sigma=%.2fh  ramp=%.3f  "
-            "dead_zone=%.3f  L_buf=%.3f  (CFL max_dt=%.3e s)  "
+            "[Transfer] ready: box x in [%.2f,%.2f]  particle_spacing=%.3f  sigma=%.2fh  ramp=%.3f  "
+            "overlap_zone_dead_zone=%.3f  L_buf=%.3f  (CFL max_dt=%.3e s)  "
             "soft prune |omega|<%.3g 1/s (|Gamma|<%.3g m3/s)  amplification cap=%.2f  "
             "boundary prune=%.1fx",
             self._box[0],
             self._box[1],
-            self.h,
-            self.radius_ratio,
-            self.ramp_width,
-            self.dead_zone,
+            self.particle_spacing,
+            self.core_radius_ratio,
+            self.overlap_zone_ramp_width,
+            self.overlap_zone_dead_zone,
             l_buf,
-            max_stable_dt(self.u_inf, l_buf, self.h),
-            self.config.prune_vorticity_min,
-            self.threshold_abs,
-            self.amplification_cap,
-            self.boundary_prune_multiplier,
+            max_stable_dt(self.freestream_speed, l_buf, self.particle_spacing),
+            self.config.transfer_prune_vorticity_min,
+            self.transfer_prune_threshold_abs,
+            self.transfer_amplification_cap,
+            self.transfer_boundary_prune_multiplier,
         )
         logger.info(
-            "[Handoff] weighted trace (k=4), aligned remesh, bounded local transfer; "
-            "diagnostics every %d handoff(s)",
+            "[Transfer] weighted trace (k=4), aligned remesh, bounded local transfer; "
+            "diagnostics every %d transfer(s)",
             self.diagnostic_interval,
         )
 
     @property
-    def buffer_length(self) -> float:
-        return required_buffer_length(self.u_inf, self.dt, self.h)
+    def transfer_buffer_length(self) -> float:
+        return required_buffer_length(self.freestream_speed, self.dt, self.particle_spacing)
 
     def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
         """Signed distance to the nearest solid surface, positive in the fluid.
@@ -1195,7 +1216,7 @@ class VorticityHandoff:
             pos = np.zeros((0, 3))
             circ = np.zeros((0, 3))
 
-        h = self.h
+        particle_spacing = self.particle_spacing
         cell_pos = self._cell_centers
         assert cell_pos is not None
 
@@ -1214,7 +1235,7 @@ class VorticityHandoff:
         if open_faces and not self._open_vortex_lines_warned:
             self._open_vortex_lines_warned = True
             logger.warning(
-                "[Handoff] vortex lines leave the hand-off box through %s "
+                "[Transfer] vortex lines leave the hand-off box through %s "
                 "(mean |omega.n|/|omega| = %s). The particle method has no images "
                 "and no periodicity, so those lines become open-ended tubes whose "
                 "induced velocity is too weak by a/sqrt(a^2+r^2) at distance r "
@@ -1225,13 +1246,13 @@ class VorticityHandoff:
                 ", ".join(f"{k}={v:.2f}" for k, v in sorted(open_faces.items())),
             )
 
-        outflow_axis, outflow_sign = _outflow_axis_sign(self.config.U_inf)
+        outflow_axis, outflow_sign = _outflow_axis_sign(self.config.freestream_velocity_vector)
         outflow_name = f"{'xyz'[outflow_axis]}{'max' if outflow_sign >= 0 else 'min'}"
         outflow_un = self.last_interface_flow.get(outflow_name)
         if outflow_un is not None and outflow_un <= 0.0 and not self._reversed_flow_warned:
             self._reversed_flow_warned = True
             logger.warning(
-                "[Handoff] mean outward normal velocity on the outflow face %r is "
+                "[Transfer] mean outward normal velocity on the outflow face %r is "
                 "%.3f m/s (<= 0): the hand-off interface is inside a recirculation "
                 "region. required_buffer_length, the CFL bound and the outflow-band "
                 "diagnostic all assume vorticity convects out through this face; "
@@ -1246,7 +1267,7 @@ class VorticityHandoff:
             # Preserve the exterior boundary-layer vorticity. Smooth only
             # inside the solid, where particle centres are subsequently
             # excluded exactly.
-            return smoothstep(self._signed_solid_distance(points), -h, 0.0)
+            return smoothstep(self._signed_solid_distance(points), -particle_spacing, 0.0)
 
         def interior_at_node(points):
             return self._points_in_solid(points, include_boundary=False)
@@ -1257,32 +1278,37 @@ class VorticityHandoff:
             sampled = self._velocity_trace.sample(points, velocity_values, gradient_values)
             if has_solid:
                 # Taper to the no-slip wall value instead of clipping to it.
-                sampled = sampled * smoothstep(self._signed_solid_distance(points), 0.0, h)[:, None]
+                sampled = (
+                    sampled
+                    * smoothstep(self._signed_solid_distance(points), 0.0, particle_spacing)[
+                        :, None
+                    ]
+                )
             return sampled
 
         def circulation_at_node(grid_pos):
-            return circulation_from_velocity_trace(grid_pos, h, velocity_at)
+            return circulation_from_velocity_trace(grid_pos, particle_spacing, velocity_at)
 
-        res = continuous_handoff(
+        res = continuous_transfer(
             pos,
             circ,
             self._box,
-            h,
+            particle_spacing,
             circulation_at_node=circulation_at_node,
-            u_inf=np.asarray(self.config.u_inf, dtype=np.float64),
+            freestream_velocity=np.asarray(self.config.freestream_velocity, dtype=np.float64),
             fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
             interior_at_node=interior_at_node if has_solid else None,
-            ramp_width=self.ramp_width,
-            dead_zone=self.dead_zone,
-            buffer_length=self.buffer_length,
-            threshold_abs=self.threshold_abs,
-            radius_ratio=self.radius_ratio,
-            amplification_cap=self.amplification_cap,
-            boundary_prune_multiplier=self.boundary_prune_multiplier,
-            u_max=self.u_inf,
+            overlap_zone_ramp_width=self.overlap_zone_ramp_width,
+            overlap_zone_dead_zone=self.overlap_zone_dead_zone,
+            transfer_buffer_length=self.transfer_buffer_length,
+            transfer_prune_threshold_abs=self.transfer_prune_threshold_abs,
+            core_radius_ratio=self.core_radius_ratio,
+            transfer_amplification_cap=self.transfer_amplification_cap,
+            transfer_boundary_prune_multiplier=self.transfer_boundary_prune_multiplier,
+            freestream_speed=self.freestream_speed,
             dt=self.dt,
             lattice_anchor=self._lattice_anchor,
-            max_output_particles=self.config.handoff_max_particles,
+            max_output_particles=self.config.transfer_max_particles,
             lattice=self._lattice,
             compute_diagnostics=self.step % self.diagnostic_interval == 0,
         )
@@ -1308,7 +1334,7 @@ class VorticityHandoff:
             }
 
         logger.info(
-            "[Handoff step=%d] in=%d -> out=%d  free=%d  solid_removed=%d  "
+            "[Transfer step=%d] in=%d -> out=%d  free=%d  solid_removed=%d  "
             "pruned=%d (%.3f%% Sum|Gamma|)  cap_pruned=%d (%.3f%% Sum|Gamma|, "
             "du_bound=%.3e m/s)  CFL=%.2f  |dGamma|/|Gamma|=%.2e  flux_ratio=%.3f",
             self.step,
@@ -1333,7 +1359,7 @@ class VorticityHandoff:
                 res.transfer_pre_prune_residual,
                 100.0 * res.transfer_out_of_band_fraction,
                 res.transfer_max_amplification,
-                self.amplification_cap,
+                self.transfer_amplification_cap,
             )
             if res.spectral_band_ratio:
                 logger.info(
@@ -1363,8 +1389,8 @@ class VorticityHandoff:
         ):
             self._transfer_resolution_warned = True
             logger.warning(
-                "[Handoff] post-correction representation residual %.2e exceeds 10%%; "
-                "refine h or move the handoff away from unresolved wall vorticity.",
+                "[Transfer] post-correction representation residual %.2e exceeds 10%%; "
+                "refine particle_spacing or move the transfer away from unresolved wall vorticity.",
                 res.transfer_in_band_residual,
             )
         if (
@@ -1380,10 +1406,12 @@ class VorticityHandoff:
             )
         if res.cfl > 0.7:
             logger.warning(
-                "[Handoff] CFL=%.2f > 0.7 - buffer too short for this dt; "
+                "[Transfer] CFL=%.2f > 0.7 - buffer too short for this dt; "
                 "reduce dt (max_dt~%.3e s).",
                 res.cfl,
-                max_stable_dt(self.u_inf, self.buffer_length, self.h),
+                max_stable_dt(
+                    self.freestream_speed, self.transfer_buffer_length, self.particle_spacing
+                ),
             )
 
         return res

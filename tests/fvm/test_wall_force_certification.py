@@ -148,7 +148,7 @@ def test_viscous_force_matches_boundary_diffusion_flux(cube_mesh):
     mesh, geo = cube_mesh
     for b in mesh["boundary"]:  # gradient reconstruction needs BC types
         b["bc_type"] = "zeroGradient"
-        b["bc_type_U"] = "zeroGradient"
+        b["bc_type_velocity"] = "zeroGradient"
     U, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
     fc = geo["face_centroids"][faces]
@@ -170,7 +170,7 @@ def test_yplus_on_couette_field_matches_analytic(cube_mesh):
     velocity, equals the closed form u_tau·d/ν with u_tau = sqrt(ν·Ut/d)."""
     mesh, geo = cube_mesh
     for b in mesh["boundary"]:
-        b.setdefault("bc_type_U", "noSlip" if b["name"] == "cube" else "zeroGradient")
+        b.setdefault("bc_type_velocity", "noSlip" if b["name"] == "cube" else "zeroGradient")
     U, _ = _blank_fields(mesh)
     faces, _ = _wall_face_slice(mesh)
     fc = geo["face_centroids"][faces]
@@ -275,7 +275,7 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
             BoundaryConfig.slip("zmax"),
             BoundaryConfig.wall("cube"),
         ],
-        initial_U=[1.0, 0.02, 0.0],
+        initial_velocity=[1.0, 0.02, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)

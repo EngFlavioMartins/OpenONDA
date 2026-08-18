@@ -59,7 +59,7 @@ def _run(tmp_path, alpha_u, alpha_p, n_outer):
             BoundaryConfig.slip("zmin"),
             BoundaryConfig.slip("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 
@@ -154,7 +154,7 @@ def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monke
             BoundaryConfig.slip("zmin"),
             BoundaryConfig.slip("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, str(tmp_path), mesh_data=mesh)

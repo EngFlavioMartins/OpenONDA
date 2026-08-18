@@ -20,7 +20,7 @@ class TestSurfaceForces:
     def _add_bc_types(self):
         for b in self.mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
-            b["bc_type_U"] = "zeroGradient"
+            b["bc_type_velocity"] = "zeroGradient"
 
     def _build_full_field(self, interior, n_components=1):
         n_elem = self.mesh["n_elements"]

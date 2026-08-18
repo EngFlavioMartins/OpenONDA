@@ -80,8 +80,8 @@ def _setup_dirichlet_bcs(mesh, geo):
     )
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_U"] = "fixedValue"
-        b["value_U"] = [1.0, 1.0, 1.0]
+        b["bc_type_velocity"] = "fixedValue"
+        b["value_velocity"] = [1.0, 1.0, 1.0]
         start, nf = b["startFace"], b["nFaces"]
         for j in range(nf):
             fi = start + j

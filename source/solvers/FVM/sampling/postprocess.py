@@ -181,10 +181,10 @@ class PostProcess:
         for b_cfg in self.config.boundaries:
             for b_mesh in boundaries:
                 if b_mesh["name"] == b_cfg.name:
-                    velocity = np.asarray(b_cfg.value_U, dtype=np.float64)
+                    velocity = np.asarray(b_cfg.value_velocity, dtype=np.float64)
                     b_mesh.update(
                         {
-                            "bc_type_U": b_cfg.type_U,
+                            "bc_type_velocity": b_cfg.type_velocity,
                             "bc_type_p": b_cfg.type_p,
                             "value_p": b_cfg.value_p,
                             "bc_type_nut": b_cfg.type_nut,
@@ -198,10 +198,10 @@ class PostProcess:
                     if b_cfg.neighbour_patch is not None:
                         b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
-                        b_mesh["value_U"] = velocity
-                        b_mesh.pop("value_U_field", None)
+                        b_mesh["value_velocity"] = velocity
+                        b_mesh.pop("value_velocity_field", None)
                     else:
-                        b_mesh["value_U_field"] = velocity
+                        b_mesh["value_velocity_field"] = velocity
                     break
         return boundaries
 

@@ -20,9 +20,9 @@ def test_no_slip_diffusion_does_not_trust_stale_ghost_value():
     geo = compute_mesh_geometry(mesh)
     field = _scalar_field(mesh, value=3.0)  # deliberately non-zero ghosts
     for patch in mesh["boundary"]:
-        patch["bc_type_U"] = "zeroGradient"
+        patch["bc_type_velocity"] = "zeroGradient"
     wall = mesh["boundary"][0]
-    wall["bc_type_U"] = "noSlip"
+    wall["bc_type_velocity"] = "noSlip"
 
     grad = compute_gauss_gradient(field, mesh, geo)
     flux = assemble_diffusion_term(
@@ -38,9 +38,9 @@ def test_inlet_outlet_diffusion_acts_only_on_inflow_faces():
     geo = compute_mesh_geometry(mesh)
     field = _scalar_field(mesh, value=2.0)
     for patch in mesh["boundary"]:
-        patch["bc_type_U"] = "zeroGradient"
+        patch["bc_type_velocity"] = "zeroGradient"
     patch = mesh["boundary"][0]
-    patch["bc_type_U"] = "inletOutlet"
+    patch["bc_type_velocity"] = "inletOutlet"
     face_flux = np.zeros(mesh["n_faces"])
     indices = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
     face_flux[indices] = -1.0

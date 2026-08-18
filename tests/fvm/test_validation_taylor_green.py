@@ -67,7 +67,7 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         pimple=sp_pimple,
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=bnds,
-        initial_U=[0, 0, 0],
+        initial_velocity=[0, 0, 0],
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
         s = Solver(cfg, case_dir=d, mesh_data=mesh)

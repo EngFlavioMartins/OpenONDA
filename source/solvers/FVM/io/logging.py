@@ -585,7 +585,7 @@ class Logging:
         boundary_items = [
             (
                 boundary.name,
-                f"U={boundary.type_U}, p={boundary.type_p}, value={boundary.value_U}",
+                f"U={boundary.type_velocity}, p={boundary.type_p}, value={boundary.value_velocity}",
             )
             for boundary in config.boundaries
         ]

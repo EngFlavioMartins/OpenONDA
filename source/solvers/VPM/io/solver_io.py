@@ -283,7 +283,7 @@ class SolverIO:
         # Compute forces using the cached panel_forces field
         forces = panel_solver.compute_forces_coefficients(
             density=panel_solver.density,
-            U_ref=panel_solver.U_inf,
+            U_ref=panel_solver.freestream_velocity,
         )
 
         import pandas as pd
@@ -431,7 +431,7 @@ class SolverIO:
                     f.write(
                         f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
                     )
-                    f.write(f"            {h5_filename}:/particles/background_velocity\n")
+                    f.write(f"            {h5_filename}:/particles/freestream_velocity\n")
                     f.write("          </DataItem>\n")
                     f.write("        </Attribute>\n")
                     f.write(

@@ -175,8 +175,8 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
         boundaries=[
             BoundaryConfig(
                 name="numericalBoundary",
-                type_U="fixedValue",
-                value_U=[1.0, 0.0, 0.0],
+                type_velocity="fixedValue",
+                value_velocity=[1.0, 0.0, 0.0],
                 type_p="fixedFluxPressure",
             ),
             BoundaryConfig.wall("cube"),
@@ -190,7 +190,7 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
                 schedule=SamplingSchedule(every_n_steps=1),
             ),
         ),
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)

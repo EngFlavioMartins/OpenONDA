@@ -26,30 +26,30 @@ class _FakeVPM:
         self,
         time_step_size,
         vpm_domain_bounds=None,
-        background_velocity=(1.0, 0.0, 0.0),
+        freestream_velocity=(1.0, 0.0, 0.0),
     ):
         self.time_step_size = float(time_step_size)
         self.particles = _FakeParticles()
         self._bg = None
         self._override = None
-        self._background_velocity = np.asarray(background_velocity, dtype=float)
+        self._freestream_velocity = np.asarray(freestream_velocity, dtype=float)
         self.config = SimpleNamespace(
             particles_kernel="GAUSSIAN",
             vpm_domain_bounds=vpm_domain_bounds,
             viscous=SimpleNamespace(
                 scheme="CS",
                 viscosity=1e-3,
-                regen_radius_ratio=1.0,
+                core_radius_ratio=1.0,
                 dvh_threshold_mode="relative_local",
                 gbd_threshold_mode="relative_local",
             ),
         )
 
     @property
-    def background_velocity(self):
-        return self._background_velocity
+    def freestream_velocity(self):
+        return self._freestream_velocity
 
-    def set_background_velocity(self, u):
+    def set_freestream_velocity(self, u):
         self._bg = u
 
     def set_velocity_override(self, fn):
@@ -126,11 +126,11 @@ def _stub_solver_info(monkeypatch):
 
 def _make_config(**over):
     base = {
-        "u_inf": [1.0, 0.0, 0.0],
-        "h": 0.05,
-        "buffer_thickness": 0.3,
-        "dead_zone_h": 4.0,
-        "anchor_pressure": False,
+        "freestream_velocity": [1.0, 0.0, 0.0],
+        "vpm_particle_spacing": 0.05,
+        "overlap_zone_ramp_width": 0.3,
+        "overlap_zone_dead_zone_width": 0.2,
+        "pressure_anchor_to_freestream": False,
     }
     base.update(over)
     return CouplerSetup(**base)
@@ -236,11 +236,11 @@ def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
     setup = CouplerSetup(
-        u_inf=[1.0, 0.0, 0.0],
-        h=0.05,
-        buffer_thickness=0.3,
-        dead_zone_h=4.0,
-        anchor_pressure=False,
+        freestream_velocity=[1.0, 0.0, 0.0],
+        vpm_particle_spacing=0.05,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone_width=0.2,
+        pressure_anchor_to_freestream=False,
     )
     vpm = _FakeVPM(time_step_size=0.1)
     fvm = _FakeFVM()
@@ -262,9 +262,9 @@ def test_initialize_is_idempotent_and_solve_guard(monkeypatch, tmp_path):
         c.solve()
 
     c.initialize()
-    handoff = c.handoff
+    transfer = c.transfer
     c.initialize()  # second call: no-op
-    assert c.handoff is handoff
+    assert c.transfer is transfer
 
 
 def test_injected_vpm_domain_must_contain_box(monkeypatch, tmp_path):
@@ -286,7 +286,7 @@ def test_injected_vpm_domain_must_contain_box(monkeypatch, tmp_path):
 
 
 def test_outflow_axis_sign_direction_agnostic(monkeypatch, tmp_path):
-    """The outflow-face diagnostic follows u_inf, not a hard-wired +x."""
+    """The outflow-face diagnostic follows freestream_velocity, not a hard-wired +x."""
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
     for u, expect in [

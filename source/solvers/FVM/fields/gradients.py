@@ -8,7 +8,7 @@ _LSQ_QR_CONDITION_LIMIT = 1.0e8
 
 
 def _is_empty_boundary(boundary, *, allow_source_type: bool = False) -> bool:
-    type_u = boundary.get("bc_type_U")
+    type_u = boundary.get("bc_type_velocity")
     if type_u is not None:
         strategy = BOUNDARIES.strategy(type_u, "U", "gradient")
     elif boundary.get("bc_type") is None and allow_source_type:

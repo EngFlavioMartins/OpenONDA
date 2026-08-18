@@ -42,7 +42,9 @@ def _detect_2d_mesh(mesh_data: dict) -> bool:
     Returns:
         ``True`` if any boundary patch has type ``"empty"``.
     """
-    return any(boundary.get("bc_type_U") == "empty" for boundary in mesh_data.get("boundary", []))
+    return any(
+        boundary.get("bc_type_velocity") == "empty" for boundary in mesh_data.get("boundary", [])
+    )
 
 
 def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
@@ -60,7 +62,7 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
         Mesh thickness (float); ``1.0`` if no empty patch found.
     """
     for boundary in mesh_data.get("boundary", []):
-        if boundary.get("bc_type_U") == "empty":
+        if boundary.get("bc_type_velocity") == "empty":
             start = boundary["startFace"]
             own = mesh_data["owners"][start]
             face_c = geo_data["face_centroids"][start]

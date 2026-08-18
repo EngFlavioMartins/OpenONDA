@@ -195,7 +195,7 @@ def validate_boundary_conditions(boundaries) -> None:
     errors = []
     for patch in boundaries:
         name = patch.get("name", "<unnamed>")
-        type_u = patch.get("bc_type_U")
+        type_u = patch.get("bc_type_velocity")
         type_p = patch.get("bc_type_p")
         if type_u not in VELOCITY_BOUNDARY_TYPES:
             errors.append(

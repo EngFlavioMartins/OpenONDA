@@ -33,7 +33,7 @@ _GRID_TRANSFER_CHUNK = 65536
 # Vulkan fence-watchdog limit observed in the production coupled-cube case.
 _M4_SCATTER_BATCH_SIZE = 4096
 
-# Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * h
+# Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
 _REGEN_RADIUS_RATIO = 2.5
 _LOCAL_THRESHOLD_FLOOR = 1e-6
 
@@ -51,13 +51,15 @@ def _nearest_node_mapping(
     pos_np: np.ndarray,
     circ_np: np.ndarray,
     grid_min_np: np.ndarray,
-    h: float,
+    particle_spacing: float,
     nx: int,
     ny: int,
     nz: int,
 ) -> _NearestNodeMapping:
     """Map particles to valid nearest nodes once for every scalar/ID scatter."""
-    indices = np.rint((np.asarray(pos_np) - np.asarray(grid_min_np)) / float(h)).astype(np.intp)
+    indices = np.rint(
+        (np.asarray(pos_np) - np.asarray(grid_min_np)) / float(particle_spacing)
+    ).astype(np.intp)
     valid = (
         (indices[:, 0] >= 0)
         & (indices[:, 0] < nx)
@@ -81,8 +83,8 @@ def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
 
     Support: [-2, 2].  Satisfies partition of unity and reproduces
-    quadratic polynomials exactly → O(h⁴) remeshing error (3rd-order
-    convergence), compared to CIC's O(h²).
+    quadratic polynomials exactly → O(particle_spacing⁴) remeshing error (3rd-order
+    convergence), compared to CIC's O(particle_spacing²).
 
     The kernel has negative lobes in (1, 2), which is essential for
     anti-aliasing and high-order accuracy.
@@ -103,7 +105,7 @@ def _dvh_scatter_numba(
     widths: np.ndarray,
     grid_out: np.ndarray,
     gmin: np.ndarray,
-    h: float,
+    particle_spacing: float,
     R_d: float,
     R_d_sq: float,
     nx: int,
@@ -132,12 +134,12 @@ def _dvh_scatter_numba(
         width = widths[p]
 
         # Index bounds of the bounding box within R_d of particle p.
-        i_lo = max(0, int(np.floor((px - R_d - gmin[0]) / h)))
-        i_hi = min(nx - 1, int(np.ceil((px + R_d - gmin[0]) / h)))
-        j_lo = max(0, int(np.floor((py - R_d - gmin[1]) / h)))
-        j_hi = min(ny - 1, int(np.ceil((py + R_d - gmin[1]) / h)))
-        k_lo = max(0, int(np.floor((pz - R_d - gmin[2]) / h)))
-        k_hi = min(nz - 1, int(np.ceil((pz + R_d - gmin[2]) / h)))
+        i_lo = max(0, int(np.floor((px - R_d - gmin[0]) / particle_spacing)))
+        i_hi = min(nx - 1, int(np.ceil((px + R_d - gmin[0]) / particle_spacing)))
+        j_lo = max(0, int(np.floor((py - R_d - gmin[1]) / particle_spacing)))
+        j_hi = min(ny - 1, int(np.ceil((py + R_d - gmin[1]) / particle_spacing)))
+        k_lo = max(0, int(np.floor((pz - R_d - gmin[2]) / particle_spacing)))
+        k_hi = min(nz - 1, int(np.ceil((pz + R_d - gmin[2]) / particle_spacing)))
 
         if i_lo > i_hi or j_lo > j_hi or k_lo > k_hi:
             continue
@@ -145,13 +147,13 @@ def _dvh_scatter_numba(
         # Pass 1 — Shepard denominator over support nodes within R_d.
         w_sum = 0.0
         for ii in range(i_lo, i_hi + 1):
-            dx = (gmin[0] + ii * h) - px
+            dx = (gmin[0] + ii * particle_spacing) - px
             dx2 = dx * dx
             for jj in range(j_lo, j_hi + 1):
-                dy = (gmin[1] + jj * h) - py
+                dy = (gmin[1] + jj * particle_spacing) - py
                 dxy2 = dx2 + dy * dy
                 for kk in range(k_lo, k_hi + 1):
-                    dz = (gmin[2] + kk * h) - pz
+                    dz = (gmin[2] + kk * particle_spacing) - pz
                     r2 = dxy2 + dz * dz
                     if r2 <= R_d_sq:
                         w_sum += np.exp(-r2 / width)
@@ -164,13 +166,13 @@ def _dvh_scatter_numba(
         cy = circ[p, 1] / w_sum
         cz = circ[p, 2] / w_sum
         for ii in range(i_lo, i_hi + 1):
-            dx = (gmin[0] + ii * h) - px
+            dx = (gmin[0] + ii * particle_spacing) - px
             dx2 = dx * dx
             for jj in range(j_lo, j_hi + 1):
-                dy = (gmin[1] + jj * h) - py
+                dy = (gmin[1] + jj * particle_spacing) - py
                 dxy2 = dx2 + dy * dy
                 for kk in range(k_lo, k_hi + 1):
-                    dz = (gmin[2] + kk * h) - pz
+                    dz = (gmin[2] + kk * particle_spacing) - pz
                     r2 = dxy2 + dz * dz
                     if r2 <= R_d_sq:
                         w = np.exp(-r2 / width)
@@ -231,8 +233,8 @@ class _GridDiffusionMixin:
         """Initialize grid-based diffusion state."""
         self._grid_realloc_count: int = 0
 
-        # Core radius assigned to regenerated particles (σ = ratio·h).
-        self.regen_radius_ratio: float = _REGEN_RADIUS_RATIO
+        # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).
+        self.core_radius_ratio: float = _REGEN_RADIUS_RATIO
 
         # Maximum grid dimensions from VPM domain (set by configure_max_grid_extent).
         self._max_grid_dims: tuple[int, int, int] | None = None
@@ -282,7 +284,7 @@ class _GridDiffusionMixin:
     def _compute_grid_bounds(
         self,
         pos: np.ndarray,
-        h: float,
+        particle_spacing: float,
         padding: float,
         half_cell_offset: bool = True,
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
@@ -312,12 +314,12 @@ class _GridDiffusionMixin:
                 lo = np.zeros(3, dtype=np.float32)
                 return lo, (5, 5, 5)
 
-        margin = padding * h
+        margin = padding * particle_spacing
         lo = pos.min(axis=0) - margin
         hi = pos.max(axis=0) + margin
 
         # -- Cap maximum grid extent per axis -----------------------------
-        max_extent = self._MAX_CELLS_PER_DIM * h
+        max_extent = self._MAX_CELLS_PER_DIM * particle_spacing
         for d in range(3):
             span = hi[d] - lo[d]
             if span > max_extent:
@@ -333,18 +335,18 @@ class _GridDiffusionMixin:
                     self._MAX_CELLS_PER_DIM,
                 )
 
-        nx = max(5, int(np.ceil((hi[0] - lo[0]) / h)) + 1)
-        ny = max(5, int(np.ceil((hi[1] - lo[1]) / h)) + 1)
-        nz = max(5, int(np.ceil((hi[2] - lo[2]) / h)) + 1)
+        nx = max(5, int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1)
+        ny = max(5, int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1)
+        nz = max(5, int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1)
 
         # Half-cell offset to avoid particle-on-node coincidence (M4 aliasing).
         if half_cell_offset:
-            lo = lo - 0.5 * h
+            lo = lo - 0.5 * particle_spacing
 
         return lo.astype(np.float32), (nx, ny, nz)
 
     def _lattice_aligned_bounds(
-        self, pos: np.ndarray, h: float, padding: float
+        self, pos: np.ndarray, particle_spacing: float, padding: float
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
         """Active sub-box covering the cloud, with the origin on the fixed lattice.
 
@@ -370,15 +372,15 @@ class _GridDiffusionMixin:
         if len(pts) == 0:
             return anchor.astype(np.float32), (5, 5, 5)
 
-        margin = float(padding) * float(h)
+        margin = float(padding) * float(particle_spacing)
         lo = pts.min(axis=0) - margin
         hi = pts.max(axis=0) + margin
 
-        first = np.floor((lo - anchor) / h).astype(np.int64)
-        last = np.ceil((hi - anchor) / h).astype(np.int64)
+        first = np.floor((lo - anchor) / particle_spacing).astype(np.int64)
+        last = np.ceil((hi - anchor) / particle_spacing).astype(np.int64)
         first = np.clip(first, 0, np.maximum(cap - 5, 0))
         last = np.clip(last, first + 4, cap - 1)
-        grid_min = anchor + first * h
+        grid_min = anchor + first * particle_spacing
         ext = last - first + 1
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
@@ -400,7 +402,7 @@ class _GridDiffusionMixin:
         _logger.warning(
             "Diffusion grid %dx%dx%d uses %.0f MB, %.0f%% of the %.0f MB device pool; "
             "particles, treecode and staging buffers share what is left. "
-            "Reduce vpm_domain_bounds or coarsen the diffusion h if allocation fails.",
+            "Reduce vpm_domain_bounds or coarsen the diffusion particle_spacing if allocation fails.",
             nx,
             ny,
             nz,
@@ -510,7 +512,7 @@ class _GridDiffusionMixin:
     def configure_max_grid_extent(
         self,
         domain_bounds: list[float],
-        h: float,
+        particle_spacing: float,
         padding: float = 3.0,
     ) -> None:
         """Set the maximum DVH grid dimensions from VPM domain bounds.
@@ -528,17 +530,23 @@ class _GridDiffusionMixin:
         ----------
         domain_bounds : list[float]
             ``[xmin, xmax, ymin, ymax, zmin, zmax]`` of the VPM domain.
-        h : float
+        particle_spacing : float
             Particle / grid spacing [m].
         padding : float
-            Margin in multiples of *h* added to each side.  Default 3.0.
+            Margin in multiples of *particle_spacing* added to each side.  Default 3.0.
         """
         import math
 
-        margin = padding * h
-        nx = max(5, math.ceil((domain_bounds[1] - domain_bounds[0] + 2 * margin) / h) + 1)
-        ny = max(5, math.ceil((domain_bounds[3] - domain_bounds[2] + 2 * margin) / h) + 1)
-        nz = max(5, math.ceil((domain_bounds[5] - domain_bounds[4] + 2 * margin) / h) + 1)
+        margin = padding * particle_spacing
+        nx = max(
+            5, math.ceil((domain_bounds[1] - domain_bounds[0] + 2 * margin) / particle_spacing) + 1
+        )
+        ny = max(
+            5, math.ceil((domain_bounds[3] - domain_bounds[2] + 2 * margin) / particle_spacing) + 1
+        )
+        nz = max(
+            5, math.ceil((domain_bounds[5] - domain_bounds[4] + 2 * margin) / particle_spacing) + 1
+        )
         self._max_grid_dims = (nx, ny, nz)
         self._grid_domain_bounds = np.asarray(domain_bounds, dtype=np.float64)
 
@@ -582,7 +590,7 @@ class _GridDiffusionMixin:
                     f"({bytes_per_node} B/node)\n"
                     f"  budget         : {budget / (1 << 20):.0f} MB "
                     f"({self._GRID_POOL_SHARE:.0%} of {pool_txt})\n"
-                    "Reduce vpm_domain_bounds, coarsen the diffusion h, or use CUDA/CPU."
+                    "Reduce vpm_domain_bounds, coarsen the diffusion particle_spacing, or use CUDA/CPU."
                 )
             _logger.info(
                 "DVH: VPM domain grid (%d×%d×%d) = %.0f MB — %s. "
@@ -594,7 +602,7 @@ class _GridDiffusionMixin:
                 "already allocated" if self._grid_a is not None else "exceeds pre-alloc budget",
             )
 
-    def configure_grid_lattice_anchor(self, anchor, h: float) -> None:
+    def configure_grid_lattice_anchor(self, anchor, particle_spacing: float) -> None:
         """Align the fixed diffusion-grid phase with a coupled FVM lattice.
 
         Only the origin phase changes; the pre-allocated dimensions remain
@@ -604,11 +612,15 @@ class _GridDiffusionMixin:
         if self._fixed_grid_min is None:
             return
         a = np.asarray(anchor, dtype=np.float64).reshape(3)
-        h = float(h)
-        if not np.all(np.isfinite(a)) or not np.isfinite(h) or h <= 0.0:
+        particle_spacing = float(particle_spacing)
+        if (
+            not np.all(np.isfinite(a))
+            or not np.isfinite(particle_spacing)
+            or particle_spacing <= 0.0
+        ):
             raise ValueError("grid lattice anchor and spacing must be finite")
         origin = np.asarray(self._fixed_grid_min, dtype=np.float64)
-        origin = a + np.floor((origin - a) / h) * h
+        origin = a + np.floor((origin - a) / particle_spacing) * particle_spacing
         self._fixed_grid_min = origin.astype(np.float32)
 
     def configure_body_mask(self, body_stl: str | None) -> None:
@@ -639,7 +651,7 @@ class _GridDiffusionMixin:
         self._body_mask_active = True
 
     def _prepare_body_mask_current_grid(
-        self, grid_min: np.ndarray, h: float, nx: int, ny: int, nz: int
+        self, grid_min: np.ndarray, particle_spacing: float, nx: int, ny: int, nz: int
     ) -> None:
         """Populate the active grid's solid-node mask."""
         if (
@@ -655,7 +667,7 @@ class _GridDiffusionMixin:
             float(g[0]),
             float(g[1]),
             float(g[2]),
-            float(h),
+            float(particle_spacing),
             float(b[0]),
             float(b[1]),
             float(b[2]),
@@ -681,7 +693,7 @@ class _GridDiffusionMixin:
         circ_np: np.ndarray,
         ids_np,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         nx: int,
         ny: int,
         nz: int,
@@ -703,7 +715,9 @@ class _GridDiffusionMixin:
             return winner_grid
 
         if mapping is None:
-            mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+            mapping = _nearest_node_mapping(
+                pos_np, circ_np, grid_min_np, particle_spacing, nx, ny, nz
+            )
         w = mapping.circulation_weight
         lin = mapping.linear_index
         ids = ids_np[mapping.valid]
@@ -748,7 +762,7 @@ class _GridDiffusionMixin:
         circ_np: np.ndarray,
         zone_id_np,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         nx: int,
         ny: int,
         nz: int,
@@ -760,7 +774,7 @@ class _GridDiffusionMixin:
             circ_np,
             zone_id_np,
             grid_min_np,
-            h,
+            particle_spacing,
             nx,
             ny,
             nz,
@@ -774,7 +788,7 @@ class _GridDiffusionMixin:
         circ_np: np.ndarray,
         scalar_np: np.ndarray,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         nx: int,
         ny: int,
         nz: int,
@@ -797,7 +811,9 @@ class _GridDiffusionMixin:
             return out
 
         if mapping is None:
-            mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+            mapping = _nearest_node_mapping(
+                pos_np, circ_np, grid_min_np, particle_spacing, nx, ny, nz
+            )
         w = mapping.circulation_weight
         lin = mapping.linear_index
         s = np.ascontiguousarray(scalar_np[mapping.valid], dtype=np.float64)
@@ -1063,7 +1079,7 @@ class _GridDiffusionMixin:
         iy: np.ndarray,
         iz: np.ndarray,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         labels: np.ndarray | None = None,
     ) -> np.ndarray:
         """Redistribute pruned circulation without suppressing diffusion.
@@ -1080,13 +1096,21 @@ class _GridDiffusionMixin:
         """
         Gk = grid_np[ix, iy, iz].astype(np.float64)  # (Mk, 3) survivor circ
         Xk = np.stack(
-            [grid_min_np[0] + ix * h, grid_min_np[1] + iy * h, grid_min_np[2] + iz * h],
+            [
+                grid_min_np[0] + ix * particle_spacing,
+                grid_min_np[1] + iy * particle_spacing,
+                grid_min_np[2] + iz * particle_spacing,
+            ],
             axis=1,
         ).astype(np.float64)
         nzi, nzj, nzk = np.where(circ_mag > 0.0)
         Gall = grid_np[nzi, nzj, nzk].astype(np.float64)
         Xall = np.stack(
-            [grid_min_np[0] + nzi * h, grid_min_np[1] + nzj * h, grid_min_np[2] + nzk * h],
+            [
+                grid_min_np[0] + nzi * particle_spacing,
+                grid_min_np[1] + nzj * particle_spacing,
+                grid_min_np[2] + nzk * particle_spacing,
+            ],
             axis=1,
         ).astype(np.float64)
 
@@ -1132,7 +1156,7 @@ class _GridDiffusionMixin:
                         )
                     )
                 ),
-                float(h),
+                float(particle_spacing),
             )
             scaled_x = survivor_positions / length_scale
             scaled_q = np.einsum("ij,ij->i", scaled_x, scaled_x)
@@ -1180,7 +1204,7 @@ class _GridDiffusionMixin:
         iz: np.ndarray,
         grid_np: np.ndarray,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         nu: float,
         dt: float,
         particles,
@@ -1191,14 +1215,14 @@ class _GridDiffusionMixin:
     ) -> dict:
         """Assemble the new-particle dict from the diffused grid (3-D)."""
         M = len(ix)
-        # 3-D cell volume: h³
-        vol = float(h) ** 3
-        r = float(self.regen_radius_ratio) * float(h)
+        # 3-D cell volume: particle_spacing³
+        vol = float(particle_spacing) ** 3
+        r = float(self.core_radius_ratio) * float(particle_spacing)
         new_pos = np.stack(
             [
-                grid_min_np[0] + ix * h,
-                grid_min_np[1] + iy * h,
-                grid_min_np[2] + iz * h,
+                grid_min_np[0] + ix * particle_spacing,
+                grid_min_np[1] + iy * particle_spacing,
+                grid_min_np[2] + iz * particle_spacing,
             ],
             axis=1,
         ).astype(np.float32)
@@ -1223,7 +1247,7 @@ class _GridDiffusionMixin:
         self,
         particles,
         dt: float,
-        h: float,
+        particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
@@ -1240,8 +1264,8 @@ class _GridDiffusionMixin:
         1. M4' scatter: particle circulation → grid  (GPU Taichi kernel).
         2. Explicit Laplacian: forward-Euler nu∇²ω    (GPU Taichi kernel).
            When ``nu_eff`` (per-particle ν+ν_t) is given, the Laplacian uses a
-           per-node coefficient α_node = ν_eff·dt/h² (Bug A) instead of the
-           scalar molecular α = ν·dt/h² — so the Smagorinsky SGS model acts in
+           per-node coefficient α_node = ν_eff·dt/particle_spacing² (Bug A) instead of the
+           scalar molecular α = ν·dt/particle_spacing² — so the Smagorinsky SGS model acts in
            GBD runs just as it does in DVH/CS/RWM.
         3. Threshold pruning: discard weak grid nodes  (CPU NumPy — small).
         4. Spawn new particles at surviving nodes       (CPU NumPy).
@@ -1250,7 +1274,7 @@ class _GridDiffusionMixin:
         transfers.  Only positions are read to CPU for grid-bounds computation
         (cached), and the diffused grid is read back once for pruning.
 
-        The CFL stability condition dt ≤ h²/(6·ν_eff_max) must be satisfied
+        The CFL stability condition dt ≤ particle_spacing²/(6·ν_eff_max) must be satisfied
         externally; a warning is logged if α_node exceeds 1/6.
         """
         N = particles.number_of_particles
@@ -1277,17 +1301,21 @@ class _GridDiffusionMixin:
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(pos_np, h, domain_padding)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
+                pos_np, particle_spacing, domain_padding
+            )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
-                h,
+                particle_spacing,
                 domain_padding,
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
-        node_mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+        node_mapping = _nearest_node_mapping(
+            pos_np, circ_np, grid_min_np, particle_spacing, nx, ny, nz
+        )
 
         # -- M4' scatter (GPU) -------------------------------------------------
         self._zero_grid_kernel(self._current_grid, nx, ny, nz)
@@ -1301,7 +1329,7 @@ class _GridDiffusionMixin:
                 gmin[0],
                 gmin[1],
                 gmin[2],
-                float(h),
+                float(particle_spacing),
                 nx,
                 ny,
                 nz,
@@ -1309,13 +1337,13 @@ class _GridDiffusionMixin:
                 count,
             )
             ti.sync()
-        self._prepare_body_mask_current_grid(grid_min_np, h, nx, ny, nz)
+        self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
         self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- Explicit Laplacian diffusion (GPU) --------------------------------
         # Bug A: when ν_eff (ν+ν_t) is supplied, use a per-node coefficient
-        # α_node = ν_eff·dt/h² so the SGS eddy viscosity acts in GBD runs.
-        # Otherwise fall back to the scalar molecular α = ν·dt/h².
+        # α_node = ν_eff·dt/particle_spacing² so the SGS eddy viscosity acts in GBD runs.
+        # Otherwise fall back to the scalar molecular α = ν·dt/particle_spacing².
         self._zero_grid_kernel(self._other_grid, nx, ny, nz)
         if nu_eff is not None:
             nu_eff_np = np.ascontiguousarray(nu_eff[:N], dtype=np.float32)
@@ -1323,16 +1351,28 @@ class _GridDiffusionMixin:
             # grid scatter can introduce tiny excursions via round-off).
             np.clip(nu_eff_np, 0.0, None, out=nu_eff_np)
             nu_eff_grid_np = self._scatter_scalar_weighted(
-                pos_np, circ_np, nu_eff_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
+                pos_np,
+                circ_np,
+                nu_eff_np,
+                grid_min_np,
+                particle_spacing,
+                nx,
+                ny,
+                nz,
+                mapping=node_mapping,
             )
-            alpha_max = float(nu_eff_grid_np.max()) * dt / (h * h) if nu_eff_grid_np.size else 0.0
+            alpha_max = (
+                float(nu_eff_grid_np.max()) * dt / (particle_spacing * particle_spacing)
+                if nu_eff_grid_np.size
+                else 0.0
+            )
             if alpha_max > 1.0 / 6.0:
                 _logger.warning(
-                    "[GBD] LES α_node_max=%.3f > 1/6 (ν_eff_max/ν=%.1f, dt/h²=%.3e) — "
+                    "[GBD] LES α_node_max=%.3f > 1/6 (ν_eff_max/ν=%.1f, dt/particle_spacing²=%.3e) — "
                     "explicit Laplacian may go unstable; reduce dt.",
                     alpha_max,
                     float(nu_eff_grid_np.max()) / nu if nu > 0 else 0.0,
-                    dt / (h * h),
+                    dt / (particle_spacing * particle_spacing),
                 )
             self._upload_active_scalar_grid(self._nu_eff_grid, nu_eff_grid_np, nx, ny, nz)
             self._laplacian_step_variable_gpu_kernel(
@@ -1341,13 +1381,13 @@ class _GridDiffusionMixin:
                 self._nu_eff_grid,
                 self._body_mask_grid,
                 float(dt),
-                float(h),
+                float(particle_spacing),
                 nx,
                 ny,
                 nz,
             )
         else:
-            alpha = float(nu * dt / (h * h))
+            alpha = float(nu * dt / (particle_spacing * particle_spacing))
             self._laplacian_step_gpu_kernel(
                 self._current_grid,
                 self._other_grid,
@@ -1364,12 +1404,28 @@ class _GridDiffusionMixin:
 
         # -- ID-field scatters (CPU, small cost) -------------------------------
         zone_winner_grid = self._scatter_zone_ids(
-            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
+            pos_np,
+            circ_np,
+            zone_id_np,
+            grid_min_np,
+            particle_spacing,
+            nx,
+            ny,
+            nz,
+            mapping=node_mapping,
         )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
-            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
+            pos_np,
+            circ_np,
+            nu_t_np,
+            grid_min_np,
+            particle_spacing,
+            nx,
+            ny,
+            nz,
+            mapping=node_mapping,
         )
 
         # -- Threshold pruning (CPU — read diffused grid back once) ------------
@@ -1405,7 +1461,7 @@ class _GridDiffusionMixin:
             circ_np,
             group_id_np,
             grid_min_np,
-            h,
+            particle_spacing,
             nx,
             ny,
             nz,
@@ -1444,10 +1500,10 @@ class _GridDiffusionMixin:
             )
 
         _logger.info(
-            "[GBD] %d particles → %d grid nodes (h=%.3e, threshold=%.2e).",
+            "[GBD] %d particles → %d grid nodes (particle_spacing=%.3e, threshold=%.2e).",
             N,
             len(ix),
-            h,
+            particle_spacing,
             _threshold_scalar(threshold),
         )
 
@@ -1462,7 +1518,7 @@ class _GridDiffusionMixin:
                 iy,
                 iz,
                 grid_min_np,
-                h,
+                particle_spacing,
                 labels=group_winner_grid,
             )
             corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
@@ -1477,7 +1533,7 @@ class _GridDiffusionMixin:
             iz,
             grid_np,
             grid_min_np,
-            h,
+            particle_spacing,
             nu,
             dt,
             particles,
@@ -1493,7 +1549,7 @@ class _GridDiffusionMixin:
         self,
         particles,
         dt: float,
-        h: float,
+        particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
@@ -1515,7 +1571,7 @@ class _GridDiffusionMixin:
         return self._gbd_diffusion_impl(
             particles,
             dt,
-            h,
+            particle_spacing,
             nu,
             domain_padding,
             regen_threshold,
@@ -1531,7 +1587,7 @@ class _GridDiffusionMixin:
         pos_np: np.ndarray,
         circ_np: np.ndarray,
         grid_min_np: np.ndarray,
-        h: float,
+        particle_spacing: float,
         nu: float,
         dt: float,
         nx: int,
@@ -1544,7 +1600,7 @@ class _GridDiffusionMixin:
         """DVH heat-kernel scatter (Durante et al. 2024, Section 2.3, Eqs. 17-19).
 
         For each particle j at y_j with circulation α_j, spread its circulation
-        to grid nodes x_i within the diffusive radius R_d = rd_ratio * h using
+        to grid nodes x_i within the diffusive radius R_d = rd_ratio * particle_spacing using
         the exact Green's function of the heat equation:
 
             w_ij = exp(-|x_i - y_j|² / (4 nu Δt))
@@ -1563,11 +1619,11 @@ class _GridDiffusionMixin:
         pos_np : (N, 3) float array   Particle positions.
         circ_np : (N, 3) float array  Particle circulations [m²/s = vol × ω].
         grid_min_np : (3,) float      Grid origin (minimum corner position).
-        h : float                     Grid spacing [m].
+        particle_spacing : float                     Grid spacing [m].
         nu : float                    Kinematic viscosity [m²/s].
         dt : float                    Time step [s] (unused — diffusive width set by R_d and β).
         nx, ny, nz : int              Active grid extents.
-        rd_ratio : float              R_d / h compact-support radius ratio.
+        rd_ratio : float              R_d / particle_spacing compact-support radius ratio.
                                       Default 4.0 (optimal, Durante 2024 Sec. 4.2).
         nu_eff_np : (N,) float array or None
                                       Per-particle effective viscosity (e.g.
@@ -1583,12 +1639,12 @@ class _GridDiffusionMixin:
                                       keeps Γ conserved, but the *shape* error
                                       grows with q — hence the cap.
         """
-        R_d = rd_ratio * h
+        R_d = rd_ratio * particle_spacing
         # Durante 2024, Eq. 15: β = 4nu·Δt_d / R_d² ≈ 0.077.
         # The diffusive timestep Δt_d is NOT the advection step; it is derived
         # from β so that the Gaussian is calibrated to spread meaningfully
         # across all ~270 nodes within R_d.  Using the advection Δt_a here
-        # would make 4nu·Δt_a << h² → exp(-h²/(4nu·Δt_a)) ≈ 0 → no diffusion.
+        # would make 4nu·Δt_a << particle_spacing² → exp(-particle_spacing²/(4nu·Δt_a)) ≈ 0 → no diffusion.
         four_nu_dt = _DVH_BETA * R_d * R_d  # = β·R_d² (≡ 4nu·Δt_d)
         R_d_sq = R_d * R_d
         N = len(pos_np)
@@ -1628,7 +1684,7 @@ class _GridDiffusionMixin:
             widths,
             grid_out,
             np.ascontiguousarray(grid_min_np, dtype=np.float64),
-            float(h),
+            float(particle_spacing),
             float(R_d),
             float(R_d_sq),
             int(nx),
@@ -1644,7 +1700,7 @@ class _GridDiffusionMixin:
         self,
         particles,
         dt: float,
-        h: float,
+        particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
@@ -1660,7 +1716,7 @@ class _GridDiffusionMixin:
         Algorithm
         ---------
         1. DVH scatter: each particle's circulation is spread to grid nodes
-           within R_d = rd_ratio * h using the exact heat-kernel Gaussian.
+           within R_d = rd_ratio * particle_spacing using the exact heat-kernel Gaussian.
            Shepard normalization ensures exact per-particle Γ conservation.
         2. Threshold pruning: discard nodes whose |Γ| is below the threshold.
         3. Spawn new particles at surviving grid nodes.
@@ -1686,34 +1742,64 @@ class _GridDiffusionMixin:
 
         # -- Grid setup --------------------------------------------------------
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
-            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(pos_np, h, domain_padding)
+            grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
+                pos_np, particle_spacing, domain_padding
+            )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
-                h,
+                particle_spacing,
                 domain_padding,
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
-        node_mapping = _nearest_node_mapping(pos_np, circ_np, grid_min_np, h, nx, ny, nz)
+        node_mapping = _nearest_node_mapping(
+            pos_np, circ_np, grid_min_np, particle_spacing, nx, ny, nz
+        )
 
         # -- DVH heat-kernel scatter (Durante 2024, Eqs. 17-19) ---------------
         # (the scatter zeroes the grid internally before depositing)
         self._dvh_scatter_circ(
-            pos_np, circ_np, grid_min_np, h, nu, dt, nx, ny, nz, rd_ratio, nu_eff_np=nu_eff
+            pos_np,
+            circ_np,
+            grid_min_np,
+            particle_spacing,
+            nu,
+            dt,
+            nx,
+            ny,
+            nz,
+            rd_ratio,
+            nu_eff_np=nu_eff,
         )
-        self._prepare_body_mask_current_grid(grid_min_np, h, nx, ny, nz)
+        self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
         self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- ID-field scatters (nearest-node, |Γ|-weighted) -------------------
         zone_winner_grid = self._scatter_zone_ids(
-            pos_np, circ_np, zone_id_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
+            pos_np,
+            circ_np,
+            zone_id_np,
+            grid_min_np,
+            particle_spacing,
+            nx,
+            ny,
+            nz,
+            mapping=node_mapping,
         )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
-            pos_np, circ_np, nu_t_np, grid_min_np, h, nx, ny, nz, mapping=node_mapping
+            pos_np,
+            circ_np,
+            nu_t_np,
+            grid_min_np,
+            particle_spacing,
+            nx,
+            ny,
+            nz,
+            mapping=node_mapping,
         )
 
         # -- Threshold pruning -------------------------------------------------
@@ -1746,7 +1832,7 @@ class _GridDiffusionMixin:
             circ_np,
             group_id_np,
             grid_min_np,
-            h,
+            particle_spacing,
             nx,
             ny,
             nz,
@@ -1778,7 +1864,7 @@ class _GridDiffusionMixin:
             )
 
         _logger.info(
-            "[DVH] %d particles → %d grid nodes (R_d/h=%.1f, threshold=%.2e).",
+            "[DVH] %d particles → %d grid nodes (R_d/particle_spacing=%.1f, threshold=%.2e).",
             N,
             len(ix),
             rd_ratio,
@@ -1794,7 +1880,7 @@ class _GridDiffusionMixin:
                 iy,
                 iz,
                 grid_min_np,
-                h,
+                particle_spacing,
                 labels=group_winner_grid,
             )
 
@@ -1804,7 +1890,7 @@ class _GridDiffusionMixin:
             iz,
             grid_np,
             grid_min_np,
-            h,
+            particle_spacing,
             nu,
             dt,
             particles,
@@ -1818,7 +1904,7 @@ class _GridDiffusionMixin:
         self,
         particles,
         dt: float,
-        h: float,
+        particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
@@ -1842,7 +1928,7 @@ class _GridDiffusionMixin:
         return self._grid_based_diffusion_impl(
             particles,
             dt,
-            h,
+            particle_spacing,
             nu,
             domain_padding,
             regen_threshold,
@@ -1865,7 +1951,7 @@ class _GridDiffusionMixin:
         gmin_x: ti.f32,
         gmin_y: ti.f32,
         gmin_z: ti.f32,
-        h: ti.f32,
+        particle_spacing: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -1878,7 +1964,7 @@ class _GridDiffusionMixin:
         data transfer for the scatter itself.  Atomic adds ensure correctness
         when multiple particles contribute to the same grid node.
 
-        Accuracy: same O(h⁴) remeshing error as the CPU M4' scatter.
+        Accuracy: same O(particle_spacing⁴) remeshing error as the CPU M4' scatter.
         """
         for local_particle in range(count):
             p = start_particle + local_particle
@@ -1886,9 +1972,9 @@ class _GridDiffusionMixin:
             circ = circulations[p]
 
             # Fractional grid coordinates
-            fx = (pos[0] - gmin_x) / h
-            fy = (pos[1] - gmin_y) / h
-            fz = (pos[2] - gmin_z) / h
+            fx = (pos[0] - gmin_x) / particle_spacing
+            fy = (pos[1] - gmin_y) / particle_spacing
+            fz = (pos[2] - gmin_z) / particle_spacing
 
             # Base index (floor)
             ix0 = int(ti.floor(fx))
@@ -1929,7 +2015,7 @@ class _GridDiffusionMixin:
     ):
         """GPU 7-point explicit Laplacian diffusion step with Neumann BC.
 
-        Computes dst = src + α·∇²src where α = nu·dt/h².  Boundary nodes use
+        Computes dst = src + α·∇²src where α = nu·dt/particle_spacing².  Boundary nodes use
         index clamping (Neumann / zero-gradient), which is equivalent to the
         ``np.pad(mode='edge')`` used in the CPU path.
 
@@ -1966,7 +2052,7 @@ class _GridDiffusionMixin:
         nu_eff_grid: ti.template(),
         body_mask: ti.template(),
         dt: ti.f32,
-        h: ti.f32,
+        particle_spacing: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -1974,13 +2060,13 @@ class _GridDiffusionMixin:
         """GPU 7-point explicit Laplacian with a per-node ν_eff (Bug A).
 
         Computes dst = src + α_node·∇²src where
-        α_node = ν_eff_grid[i,j,k]·dt/h²  (ν + ν_t from the SGS model).
+        α_node = ν_eff_grid[i,j,k]·dt/particle_spacing²  (ν + ν_t from the SGS model).
 
         The ∇ν·∇ω cross-term of the full ∇·(ν_eff∇ω) operator is neglected
         (standard approximation for explicit grid VPM+LES).  Neumann BC and
         active-sub-volume behaviour match ``_laplacian_step_gpu_kernel``.
         """
-        h_sq = h * h
+        h_sq = particle_spacing * particle_spacing
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
                 dst[i, j, k] = ti.Vector.zero(ti.f32, 3)
@@ -2010,7 +2096,7 @@ class _GridDiffusionMixin:
         gmin_x: ti.f32,
         gmin_y: ti.f32,
         gmin_z: ti.f32,
-        h: ti.f32,
+        particle_spacing: ti.f32,
         xmin: ti.f32,
         xmax: ti.f32,
         ymin: ti.f32,
@@ -2023,9 +2109,9 @@ class _GridDiffusionMixin:
     ):
         """Mark open-interior box nodes as solid; surface nodes stay fluid."""
         for i, j, k in ti.ndrange(nx, ny, nz):
-            x = gmin_x + ti.cast(i, ti.f32) * h
-            y = gmin_y + ti.cast(j, ti.f32) * h
-            z = gmin_z + ti.cast(k, ti.f32) * h
+            x = gmin_x + ti.cast(i, ti.f32) * particle_spacing
+            y = gmin_y + ti.cast(j, ti.f32) * particle_spacing
+            z = gmin_z + ti.cast(k, ti.f32) * particle_spacing
             inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
             body_mask[i, j, k] = 1 if inside else 0
 

@@ -101,7 +101,7 @@ def build_solver() -> Solver:
             cs=0.30,
             time_step_size=TIME_STEP,
             vlm=vlm,
-            background_velocity=[0.0, 0.0, 0.0],
+            freestream_velocity=[0.0, 0.0, 0.0],
             backup_directory=str(SOLUTION_DIR),
         )
     )

@@ -71,21 +71,23 @@ cm_inch = m.CM
 AR = 10.0
 CHORD = 1.0
 SPAN = AR * CHORD
-U_INF = 10.0
+FREESTREAM_SPEED = 10.0
 ANGLE_OF_ATTACK = 5.0
 alpha_rad = np.radians(ANGLE_OF_ATTACK)
 
 # -- Theory curves --------------------------------------------------------------
 y_theory = np.linspace(-SPAN / 2, SPAN / 2, 400)
 
-df_ll = spanwise_reference("liftingline", y_theory, SPAN, CHORD, alpha_rad, U_INF, n_terms=120)
+df_ll = spanwise_reference(
+    "liftingline", y_theory, SPAN, CHORD, alpha_rad, FREESTREAM_SPEED, n_terms=120
+)
 cl_ll = df_ll["cl"].to_numpy()
 y_ll_over_b = df_ll["y_over_b"].to_numpy()
 
 CL_ll = float(np.trapezoid(cl_ll * CHORD, y_theory) / (SPAN * CHORD))
 
 df_ell = spanwise_reference(
-    "elliptic", y_theory, SPAN, CHORD, alpha_rad, U_INF, CL_total=CL_ll, AR=AR
+    "elliptic", y_theory, SPAN, CHORD, alpha_rad, FREESTREAM_SPEED, CL_total=CL_ll, AR=AR
 )
 cl_ell = df_ell["cl"].to_numpy()
 

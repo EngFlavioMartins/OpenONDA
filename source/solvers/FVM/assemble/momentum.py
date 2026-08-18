@@ -108,8 +108,8 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
     """Create per-component momentum boundary dict from velocity boundary.
 
     Args:
-        b: Velocity boundary dictionary containing keys like ``bc_type_U``
-            and ``value_U``.
+        b: Velocity boundary dictionary containing keys like ``bc_type_velocity``
+            and ``value_velocity``.
         i_comp: Component index (0, 1, 2 for x, y, z).
 
     Returns:
@@ -117,10 +117,10 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
             keys extracted for the specified component.
     """
     b_mom = b.copy()
-    if "bc_type_U" in b:
-        b_mom["bc_type"] = b["bc_type_U"]
-    if "value_U" in b:
-        val = b["value_U"]
+    if "bc_type_velocity" in b:
+        b_mom["bc_type"] = b["bc_type_velocity"]
+    if "value_velocity" in b:
+        val = b["value_velocity"]
         b_mom["value"] = val[i_comp] if (np.ndim(val) == 1 and len(val) == 3) else val
     return b_mom
 
@@ -190,7 +190,7 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
         U_star: Predicted velocity field (n_elements + n_boundary, 3),
             modified in-place.
         boundary: Boundary dictionary with keys ``startFace``, ``nFaces``,
-            ``bc_type_U``, and optionally ``value_U`` / ``value_U_field``.
+            ``bc_type_velocity``, and optionally ``value_velocity`` / ``value_velocity_field``.
         mesh_data: Mesh connectivity containing ``owners`` and
             ``n_interior_faces``.
         geo_data: Geometric data containing ``face_sf``.
@@ -200,7 +200,7 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     n_faces = boundary["nFaces"]
     b_elem_start = start_face - mesh_data["n_interior_faces"]
     b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
-    bc_type = boundary.get("bc_type_U")
+    bc_type = boundary.get("bc_type_velocity")
     strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
 
     if strategy in (
@@ -219,10 +219,10 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
         if strategy is BoundaryStrategy.NO_SLIP:
             U_star[b_elem_indices] = [0.0, 0.0, 0.0]
-        elif boundary.get("value_U_field") is not None:
-            U_star[b_elem_indices] = boundary["value_U_field"]
-        elif "value_U" in boundary:
-            U_star[b_elem_indices] = np.array(boundary["value_U"])
+        elif boundary.get("value_velocity_field") is not None:
+            U_star[b_elem_indices] = boundary["value_velocity_field"]
+        elif "value_velocity" in boundary:
+            U_star[b_elem_indices] = np.array(boundary["value_velocity"])
         else:
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
@@ -332,7 +332,7 @@ def assemble_momentum_equation(
     common_diagonal = None
     vol = geo_data["element_volumes"]
     has_directional_mixed_bc = any(
-        BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "diffusion")
+        BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "diffusion")
         is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT
         for boundary in boundaries
     )

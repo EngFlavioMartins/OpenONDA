@@ -76,7 +76,7 @@ def main() -> None:
         # A zero field with a nonzero inlet gives the pressure and momentum
         # solvers meaningful work; the previous uniform stream was an exact
         # state and mostly measured launcher overhead.
-        initial_U=[0.0, 0.0, 0.0],
+        initial_velocity=[0.0, 0.0, 0.0],
         initial_p=0.0,
     )
     with tempfile.TemporaryDirectory(prefix=f"openonda-mpi-r{rank}-") as case_dir:

@@ -908,7 +908,7 @@ class Particles:
         v = self.velocity_background[None]
         return np.array([v[0], v[1], v[2]], dtype=np.float32)
 
-    def set_background_velocity(self, velocity: np.ndarray) -> None:
+    def set_freestream_velocity(self, velocity: np.ndarray) -> None:
         """
         Set the global background velocity for all particles.
 

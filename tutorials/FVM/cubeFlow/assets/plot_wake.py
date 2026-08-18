@@ -17,7 +17,7 @@ import numpy as np
 import pyvista as pv
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORS, U_INF, build_arg_parser, figure_size, latest_vtu, save_fig  # noqa: E402
+from _common import COLORS, FREESTREAM_SPEED, build_arg_parser, figure_size, latest_vtu, save_fig  # noqa: E402
 
 
 def main():
@@ -47,7 +47,7 @@ def main():
 
     order = np.argsort(pts[sel, 0])
     x = pts[sel, 0][order]
-    ux = u[sel, 0][order] / U_INF
+    ux = u[sel, 0][order] / FREESTREAM_SPEED
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
     ax.plot(x, ux, color=COLORS["TUDdark"], linewidth=1.1)

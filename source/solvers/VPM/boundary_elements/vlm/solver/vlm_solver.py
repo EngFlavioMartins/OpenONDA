@@ -82,7 +82,7 @@ class VLMSolver:
         self._current_time = None  # Temporary: set during advance operations from parent solver
 
         # Flight condition / Fluid properties
-        self.U_inf = (
+        self.freestream_velocity = (
             None
             if setup.freestream_velocity is None
             else np.array(setup.freestream_velocity, dtype=np.float64)
@@ -134,7 +134,7 @@ class VLMSolver:
             f"dtype={self.dtype}, solver={self.linear_solver})"
         )
 
-    # V_inf removed: use U_inf directly
+    # V_inf removed: use freestream_velocity directly
 
     def _ensure_lattice_initialized(self) -> None:
         """Ensure lattice is created (lazy initialization after Taichi init).
@@ -718,7 +718,7 @@ class VLMSolver:
         return min(panel_chords)
 
     def check_coupling_stability(
-        self, dt: float, background_velocity: ArrayLike | None = None
+        self, dt: float, freestream_velocity: ArrayLike | None = None
     ) -> dict[str, float | bool]:
         """
         Check the convective time-step resolution of VLM-VPM coupling.
@@ -733,7 +733,7 @@ class VLMSolver:
 
         Args:
             dt: Time step size [s]
-            background_velocity: Background flow velocity [vx, vy, vz] [m/s].
+            freestream_velocity: Background flow velocity [vx, vy, vz] [m/s].
                 When omitted, the solver freestream is used.
 
         Returns:
@@ -746,12 +746,14 @@ class VLMSolver:
         if not np.isfinite(dt) or dt <= 0:
             raise ValueError(f"dt must be finite and positive, got {dt}")
 
-        if background_velocity is None:
-            background = self.U_inf if self.U_inf is not None else np.zeros(3)
+        if freestream_velocity is None:
+            background = (
+                self.freestream_velocity if self.freestream_velocity is not None else np.zeros(3)
+            )
         else:
-            background = np.asarray(background_velocity, dtype=float)
+            background = np.asarray(freestream_velocity, dtype=float)
         if np.shape(background) != (3,) or not np.all(np.isfinite(background)):
-            raise ValueError("background_velocity must contain three finite components")
+            raise ValueError("freestream_velocity must contain three finite components")
 
         minimum_panel_chord = self._minimum_panel_chord()
         characteristic_speed = float(np.linalg.norm(background)) + self._get_max_kinematic_speed()
@@ -1027,8 +1029,11 @@ class VLMSolver:
         """Return a valid reference velocity, auto-computed if not provided."""
         if U_ref is not None:
             return np.asarray(U_ref, dtype=float)
-        if self.U_inf is not None and np.linalg.norm(self.U_inf) > 1e-10:
-            return self.U_inf
+        if (
+            self.freestream_velocity is not None
+            and np.linalg.norm(self.freestream_velocity) > 1e-10
+        ):
+            return self.freestream_velocity
         V_kinematic = self._get_active_kinematic_velocity()
         V_bg = (
             np.mean(self.lattice.external_velocity.to_numpy()[:n_panels], axis=0)
@@ -1167,7 +1172,7 @@ class VLMSolver:
         Args:
            density: Fluid density (kg/m³)
            U_ref: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
-                  If None, auto-computed from U_inf or kinematics.
+                  If None, auto-computed from freestream_velocity or kinematics.
            S_ref: Reference area (m²). If None, uses aircraft defaults.
            c_ref: Reference chord (m). If None, uses aircraft defaults.
            b_ref: Reference span (m). If None, uses aircraft defaults.
@@ -2011,10 +2016,14 @@ class VLMSolver:
 
     def _resolve_coupling_uref(self, config) -> np.ndarray:
         """Resolve the reference velocity used by coupled advance."""
-        if hasattr(self, "U_inf") and self.U_inf is not None and np.linalg.norm(self.U_inf) > 1e-10:
-            return self.U_inf
-        if hasattr(config, "background_velocity") and config.background_velocity is not None:
-            V_bg = np.array(config.background_velocity)
+        if (
+            hasattr(self, "freestream_velocity")
+            and self.freestream_velocity is not None
+            and np.linalg.norm(self.freestream_velocity) > 1e-10
+        ):
+            return self.freestream_velocity
+        if hasattr(config, "freestream_velocity") and config.freestream_velocity is not None:
+            V_bg = np.array(config.freestream_velocity)
             if np.linalg.norm(V_bg) > 1e-10:
                 return V_bg
         V_kinematic = self._get_active_kinematic_velocity()
@@ -2026,7 +2035,7 @@ class VLMSolver:
         try:
             active_kin = self._get_active_kinematics()
             if active_kin is not None:
-                V_bg = getattr(config, "background_velocity", np.zeros(3))
+                V_bg = getattr(config, "freestream_velocity", np.zeros(3))
                 if np.linalg.norm(V_bg) < 1e-10:
                     return False
         except Exception:

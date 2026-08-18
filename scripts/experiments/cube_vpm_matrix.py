@@ -10,10 +10,10 @@ component back at a time.
 The baseline is deliberately crude: particles are injected and *all* of them are
 used to compute the boundary condition by direct O(N^2) summation, with no
 treecode approximation, no particle regeneration or thresholding, no stretching,
-no subgrid model, and f64 arithmetic.  At h=0.15 that is only ~12k particles, so
+no subgrid model, and f64 arithmetic.  At particle_spacing=0.15 that is only ~12k particles, so
 the exact sum is affordable and the VPM cost is negligible next to the FVM.
 
-Variants are compared **against each other at fixed h**, never against the
+Variants are compared **against each other at fixed particle_spacing**, never against the
 reference in absolute terms: a coarse lattice cannot resolve the wake no matter
 which modules are on, and that resolution floor cancels in a variant-to-variant
 comparison.  Phase C measures the floor separately.
@@ -40,15 +40,15 @@ CUBE = ROOT / "tutorials/coupled_FVM_VPM/cubeFlow"
 
 # --- restated from cubeFlow_setup.py -----------------------------------------
 CUBE_SIDE = 1.0
-U_INF = (1.0, 0.0, 0.0)
+FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 RHO = 1.0
 NU = 1.0e-3
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
-INITIAL_U = (1.0, 0.0, 0.0)
+INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 DT_FVM = 0.01
 DT_VPM = 0.05
-HANDOFF_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
+TRANSFER_REGION_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
 FVM_CELL_SIZE = 0.0625
@@ -60,7 +60,7 @@ OFFAXIS_Y = 0.75 * CUBE_SIDE
 FORCE_INTERVAL = 0.05
 
 # Production values, reproduced only by the D-phase variants.
-PROD_H = 0.03
+PROD_PARTICLE_SPACING = 0.03
 PROD_CAP = 1.8
 PROD_BUFFER = 0.24
 PROD_PRUNE_MIN = 0.005
@@ -73,7 +73,7 @@ class Variant:
     """One point of the matrix.  Defaults are the stripped-down baseline."""
 
     label: str = ""
-    h: float = 0.15
+    particle_spacing: float = 0.15
     velocity: str = "direct"  # direct | treecode
     viscous: str = "cs"  # cs | gbd | inviscid
     stretching: str = "off"  # off | transposed
@@ -94,11 +94,11 @@ class Variant:
     @property
     def particles(self) -> int:
         vol = (
-            (HANDOFF_BOX[1] - HANDOFF_BOX[0])
-            * (HANDOFF_BOX[3] - HANDOFF_BOX[2])
-            * (HANDOFF_BOX[5] - HANDOFF_BOX[4])
+            (TRANSFER_REGION_BOX[1] - TRANSFER_REGION_BOX[0])
+            * (TRANSFER_REGION_BOX[3] - TRANSFER_REGION_BOX[2])
+            * (TRANSFER_REGION_BOX[5] - TRANSFER_REGION_BOX[4])
         )
-        return int(vol / self.h**3)
+        return int(vol / self.particle_spacing**3)
 
 
 _BARE = Variant(label="stripped baseline: inject, advect, all particles, exact sum")
@@ -116,19 +116,33 @@ VARIANTS: dict[str, Variant] = {
     ),
     "B6_prune": replace(_BARE, prune=True, label="boundary particle pruning"),
     "B7_cap": replace(_BARE, cap=PROD_CAP, label="transfer amplification cap"),
-    # buffer_thickness must be positive, so the blending zone is bracketed
+    # overlap_zone_ramp_width must be positive, so the blending zone is bracketed
     # rather than switched off: one FVM cell against production against double.
     "B8_thinbuf": replace(_BARE, buffer=0.0625, label="blending buffer 1 FVM cell"),
     "B8b_thickbuf": replace(_BARE, buffer=0.48, label="blending buffer doubled"),
     "B9_nopanel": replace(_BARE, panel=False, label="body panels off"),
     "B10_resync": replace(_BARE, resync=True, label="BC resync after hand-off"),
     # -- Phase C: resolution floor, bare stack.  Direct summation stops being
-    #    affordable below h=0.10, so the finer points use the treecode; B1
-    #    prices that substitution at fixed h.
-    "C1_h020": replace(_BARE, h=0.20, label="resolution floor h=0.20"),
-    "C2_h010": replace(_BARE, h=0.10, label="resolution floor h=0.10"),
-    "C3_h006": replace(_BARE, h=0.06, velocity="treecode", label="resolution floor h=0.06"),
-    "C4_h003": replace(_BARE, h=PROD_H, velocity="treecode", label="resolution floor h=0.03"),
+    #    affordable below particle_spacing=0.10, so the finer points use the treecode; B1
+    #    prices that substitution at fixed particle_spacing.
+    "C1_h020": replace(
+        _BARE, particle_spacing=0.20, label="resolution floor particle_spacing=0.20"
+    ),
+    "C2_h010": replace(
+        _BARE, particle_spacing=0.10, label="resolution floor particle_spacing=0.10"
+    ),
+    "C3_h006": replace(
+        _BARE,
+        particle_spacing=0.06,
+        velocity="treecode",
+        label="resolution floor particle_spacing=0.06",
+    ),
+    "C4_h003": replace(
+        _BARE,
+        particle_spacing=PROD_PARTICLE_SPACING,
+        velocity="treecode",
+        label="resolution floor particle_spacing=0.03",
+    ),
     # -- Phase D: everything on, to confirm the toggles compose to production.
     "D1_full_h015": replace(
         _BARE,
@@ -138,18 +152,18 @@ VARIANTS: dict[str, Variant] = {
         turbulence="les",
         prune=True,
         cap=PROD_CAP,
-        label="production stack at h=0.15",
+        label="production stack at particle_spacing=0.15",
     ),
     "D2_production": replace(
         _BARE,
-        h=PROD_H,
+        particle_spacing=PROD_PARTICLE_SPACING,
         velocity="treecode",
         viscous="gbd",
         stretching="transposed",
         turbulence="les",
         prune=True,
         cap=PROD_CAP,
-        label="production stack at production h",
+        label="production stack at production particle_spacing",
     ),
 }
 
@@ -262,13 +276,13 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
         boundaries=[
             BoundaryConfig(
                 name="numericalBoundary",
-                type_U="fixedValue",
-                value_U=list(U_INF),
+                type_velocity="fixedValue",
+                value_velocity=list(FREESTREAM_VELOCITY),
                 type_p="fixedFluxPressure",
             ),
             BoundaryConfig.wall("cube"),
         ],
-        initial_U=list(INITIAL_U),
+        initial_velocity=list(INITIAL_VELOCITY),
         initial_p=0.0,
     )
     return setup, mesh
@@ -290,19 +304,19 @@ def build_vpm(v: Variant, case_dir: Path):
 
     if v.viscous == "gbd":
         viscous = ViscousConfig.gbd(
-            h=v.h,
+            particle_spacing=v.particle_spacing,
             padding=3.0,
             viscosity=NU,
             threshold_mode="relative_local",
             threshold=PROD_GBD_THRESHOLD,
             max_nodes=limit,
             cap_abs_fraction=0.95,
-            regen_radius_ratio=1.0,
+            core_radius_ratio=1.0,
         )
     elif v.viscous == "cs":
         # Core spreading: deterministic diffusion, no regeneration and no
         # thresholding, so no particle is ever discarded.
-        viscous = ViscousConfig.cs(viscosity=NU, characteristic_distance=v.h)
+        viscous = ViscousConfig.cs(viscosity=NU, characteristic_distance=v.particle_spacing)
     else:
         viscous = ViscousConfig.inviscid()
 
@@ -330,13 +344,13 @@ def build_vpm(v: Variant, case_dir: Path):
             linear_solver="BICGSTAB_GPU",
             bc_type="NEUMANN",
             density=RHO,
-            U_inf=np.asarray(U_INF),
+            freestream_velocity=np.asarray(FREESTREAM_VELOCITY),
             coupling_scope="vpm_bc",
         )
 
     return VPMSetup(
         time_step_size=DT_VPM,
-        background_velocity=list(U_INF),
+        freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=viscous,
         stretching=stretching,
         advection=AdvectionConfig(scheme="RK2"),
@@ -365,20 +379,20 @@ def build_coupler(v: Variant):
     from openonda.coupler import CouplerSetup
 
     return CouplerSetup(
-        u_inf=list(U_INF),
-        handoff_box=HANDOFF_BOX,
+        freestream_velocity=list(FREESTREAM_VELOCITY),
+        transfer_region_box=TRANSFER_REGION_BOX,
         vpm_bc_mode="dirichlet",
-        h=v.h,
-        buffer_thickness=v.buffer,
-        dead_zone_h=0.0,
-        prune_vorticity_min=PROD_PRUNE_MIN if v.prune else 0.0,
-        boundary_prune_multiplier=PROD_PRUNE_MULT if v.prune else 1.0,
-        handoff_max_particles=max(200_000, 8 * v.particles),
-        overlap_radius_ratio=1.0,
+        vpm_particle_spacing=v.particle_spacing,
+        overlap_zone_ramp_width=v.buffer,
+        overlap_zone_dead_zone_width=0.0,
+        transfer_prune_vorticity_min=PROD_PRUNE_MIN if v.prune else 0.0,
+        transfer_boundary_prune_multiplier=PROD_PRUNE_MULT if v.prune else 1.0,
+        transfer_max_particles=max(200_000, 8 * v.particles),
+        vpm_core_radius_ratio=1.0,
         transfer_amplification_cap=v.cap,
-        resync_vpm_bc_after_handoff=v.resync,
-        anchor_pressure=True,
-        backup_period=10**9,
+        bc_resync_after_transfer=v.resync,
+        pressure_anchor_to_freestream=True,
+        coupler_backup_period=10**9,
     )
 
 
@@ -393,9 +407,9 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.list:
-        print(f"{'variant':16s} {'h':>6s} {'N':>9s}  description")
+        print(f"{'variant':16s} {'particle_spacing':>6s} {'N':>9s}  description")
         for name, v in VARIANTS.items():
-            print(f"{name:16s} {v.h:6.3f} {v.particles:9,d}  {v.label}")
+            print(f"{name:16s} {v.particle_spacing:6.3f} {v.particles:9,d}  {v.label}")
         return
 
     if args.check:
@@ -404,7 +418,9 @@ def main() -> None:
             try:
                 build_vpm(v, args.out / name)
                 build_coupler(v)
-                print(f"  ok    {name:16s} h={v.h:.3f} N~{v.particles:,d}")
+                print(
+                    f"  ok    {name:16s} particle_spacing={v.particle_spacing:.3f} N~{v.particles:,d}"
+                )
             except Exception as exc:  # noqa: BLE001 - report, do not abort the sweep
                 bad += 1
                 print(f"  FAIL  {name:16s} {type(exc).__name__}: {exc}")
@@ -432,7 +448,7 @@ def main() -> None:
 
         print(f"[matrix] {args.variant}: {v.label}", flush=True)
         print(
-            f"[matrix] h={v.h} N~{v.particles:,d} velocity={v.velocity} viscous={v.viscous} "
+            f"[matrix] particle_spacing={v.particle_spacing} N~{v.particles:,d} velocity={v.velocity} viscous={v.viscous} "
             f"stretch={v.stretching} turb={v.turbulence} prec={v.precision}/{v.device} "
             f"prune={v.prune} cap={v.cap:g} buffer={v.buffer} panel={v.panel}",
             flush=True,

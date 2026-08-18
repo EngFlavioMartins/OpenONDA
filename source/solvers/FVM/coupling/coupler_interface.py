@@ -591,8 +591,8 @@ class CouplerInterfaceMixin:
                 f"Dirichlet data for patch {patch_name!r} must be finite with shape "
                 f"({b['nFaces']}, 3)"
             )
-        b["bc_type_U"] = "fixedValue"
-        b["value_U_field"] = field
+        b["bc_type_velocity"] = "fixedValue"
+        b["value_velocity_field"] = field
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
@@ -630,13 +630,13 @@ class CouplerInterfaceMixin:
         removed_normal = np.einsum("ij,ij->i", gradient_field, normals)
         gradient_field = gradient_field - removed_normal[:, np.newaxis] * normals
 
-        b["bc_type_U"] = "normalValueTangentialGradient"
+        b["bc_type_velocity"] = "normalValueTangentialGradient"
         b["normal_velocity_field"] = normal_field
         b["tangential_gradient_field"] = gradient_field
         b["tangential_gradient_removed_normal_max"] = (
             float(np.max(np.abs(removed_normal))) if n_faces else 0.0
         )
-        b.pop("value_U_field", None)
+        b.pop("value_velocity_field", None)
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         update_normal_velocity_tangential_gradient_boundary(
@@ -661,8 +661,8 @@ class CouplerInterfaceMixin:
                 f"Characteristic VPM-BC data for patch {patch_name!r} must be finite "
                 f"with shape ({b['nFaces']}, 3)"
             )
-        b["bc_type_U"] = "freestream"
-        b["value_U_field"] = field
+        b["bc_type_velocity"] = "freestream"
+        b["value_velocity_field"] = field
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
@@ -703,8 +703,8 @@ class CouplerInterfaceMixin:
         if not np.any(outflow):
             raise ValueError(f"Patch {patch_name!r} has no face aligned with outflow_direction")
 
-        b["bc_type_U"] = "freestream"
-        b["value_U_field"] = field
+        b["bc_type_velocity"] = "freestream"
+        b["value_velocity_field"] = field
         b["_fixed_freestream_outflow"] = outflow
         b["_freestream_outflow"] = outflow
         self._write_patch_ghosts(b, field)

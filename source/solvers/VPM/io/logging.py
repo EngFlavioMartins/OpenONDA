@@ -414,20 +414,20 @@ class Logging:
                 return lines
 
             scheme = getattr(system, "viscous_scheme", None) or getattr(visc_cfg, "scheme", None)
-            h = getattr(visc_cfg, "characteristic_distance", None)
+            particle_spacing = getattr(visc_cfg, "characteristic_distance", None)
             nu = getattr(visc_cfg, "viscosity", None)
 
             # Derive limit and label from the ViscousConfig stability methods.
             limit: float | None = None
             limit_label: str = ""
 
-            if scheme == "RWM" and h and h > 0 and nu and nu > 0:
+            if scheme == "RWM" and particle_spacing and particle_spacing > 0 and nu and nu > 0:
                 limit = visc_cfg.rwm_accuracy_dt()
-                limit_label = "h²/(4nu)"
+                limit_label = "particle_spacing²/(4nu)"
             elif scheme == "GBD" and nu and nu > 0:
                 try:
                     limit = visc_cfg.gbd_max_dt()
-                    limit_label = "h²/(6nu)"
+                    limit_label = "particle_spacing²/(6nu)"
                 except Exception:
                     pass
             elif scheme == "DVH" and nu and nu > 0:

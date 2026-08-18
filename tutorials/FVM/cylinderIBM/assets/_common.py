@@ -26,7 +26,7 @@ COLORS = THEME.COLORS
 COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
-U_INF = 1.0
+FREESTREAM_SPEED = 1.0
 D_REF = 1.0
 
 # Reference values from Constant et al. 2017 (docs/literature/Constant2016.pdf),

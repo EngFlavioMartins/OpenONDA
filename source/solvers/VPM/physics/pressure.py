@@ -172,7 +172,7 @@ class PressurePhysics(PhysicsBase):
         nu: float = 1e-5,
         include_viscous: bool = True,
         include_temporal: bool = True,
-        h_laplacian: float = None,
+        laplacian_spacing: float = None,
         include_freestream: bool = True,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
@@ -192,7 +192,7 @@ class PressurePhysics(PhysicsBase):
             nu: Kinematic viscosity [m²/s]
             include_viscous: Include viscous term (default True)
             include_temporal: Include temporal term (default True)
-            h_laplacian: Step size for Laplacian. If None, uses average particle radius.
+            laplacian_spacing: Step size for Laplacian. If None, uses average particle radius.
             include_freestream: Include background velocity in computations
             temporal_method: 'lagrangian' (default, particle-based with motion term) or
                            'eulerian' (fixed-point backward differences)
@@ -221,8 +221,8 @@ class PressurePhysics(PhysicsBase):
         target_positions = np.asarray(target_positions, dtype=np.float64).reshape(-1, 3)
 
         # Default step size
-        if h_laplacian is None:
-            h_laplacian = float(np.mean(particles.radius_cpu()))
+        if laplacian_spacing is None:
+            laplacian_spacing = float(np.mean(particles.radius_cpu()))
 
         # STEP 1: Compute velocity at target points
         u_target = self.compute_target_velocities(
@@ -254,7 +254,7 @@ class PressurePhysics(PhysicsBase):
         # STEP 5: Compute viscous term nu∇²u (finite differences)
         if include_viscous and nu > 0:
             viscous = self._compute_viscous_term(
-                particles, target_positions, nu, h_laplacian, include_freestream
+                particles, target_positions, nu, laplacian_spacing, include_freestream
             )
         else:
             viscous = np.zeros((M, 3), dtype=np.float64)
@@ -274,7 +274,7 @@ class PressurePhysics(PhysicsBase):
         nu: float = 1e-5,
         include_viscous: bool = True,
         include_temporal: bool = True,
-        h_laplacian: float = None,
+        laplacian_spacing: float = None,
         include_freestream: bool = True,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
@@ -294,7 +294,7 @@ class PressurePhysics(PhysicsBase):
             nu: Kinematic viscosity [m²/s]
             include_viscous: Include viscous term (default True)
             include_temporal: Include temporal term (default True)
-            h_laplacian: Step size for Laplacian. If None, uses average particle radius.
+            laplacian_spacing: Step size for Laplacian. If None, uses average particle radius.
             include_freestream: Include background velocity in computations
             temporal_method: 'lagrangian' (default) or 'eulerian'
             velocity_previous: Previous velocity field for Eulerian method (M, 3)
@@ -322,8 +322,8 @@ class PressurePhysics(PhysicsBase):
 
         target_positions = np.asarray(target_positions, dtype=np.float64).reshape(-1, 3)
 
-        if h_laplacian is None:
-            h_laplacian = float(np.mean(particles.radius_cpu()))
+        if laplacian_spacing is None:
+            laplacian_spacing = float(np.mean(particles.radius_cpu()))
 
         # Velocity at targets
         u_target = self.compute_target_velocities(
@@ -354,7 +354,7 @@ class PressurePhysics(PhysicsBase):
         # Viscous term
         if include_viscous and nu > 0:
             viscous = self._compute_viscous_term(
-                particles, target_positions, nu, h_laplacian, include_freestream
+                particles, target_positions, nu, laplacian_spacing, include_freestream
             )
         else:
             viscous = np.zeros((M, 3), dtype=np.float64)
@@ -381,7 +381,7 @@ class PressurePhysics(PhysicsBase):
         nu: float = 1e-5,
         include_viscous: bool = True,
         include_temporal: bool = True,
-        h_laplacian: float = None,
+        laplacian_spacing: float = None,
     ) -> np.ndarray:
         """
         Compute pressure gradient at all particle positions.
@@ -395,7 +395,7 @@ class PressurePhysics(PhysicsBase):
             nu: Kinematic viscosity [m²/s]
             include_viscous: Include viscous term nu∇²u (default True)
             include_temporal: Include temporal term ∂u/∂t (default True)
-            h_laplacian: Step size for Laplacian finite difference.
+            laplacian_spacing: Step size for Laplacian finite difference.
                         If None, uses average particle radius.
 
         Returns:
@@ -414,7 +414,7 @@ class PressurePhysics(PhysicsBase):
             nu=nu,
             include_viscous=include_viscous,
             include_temporal=include_temporal,
-            h_laplacian=h_laplacian,
+            laplacian_spacing=laplacian_spacing,
             include_freestream=True,
         )
 
@@ -430,10 +430,10 @@ class PressurePhysics(PhysicsBase):
         temporal_method: str = "eulerian",
         velocity_previous: np.ndarray | None = None,
         dt: float | None = None,
-        h: float | None = None,
+        particle_spacing: float | None = None,
         return_velocity: bool = False,
         theta: float = 0.5,
-        background_velocity: np.ndarray | None = None,
+        freestream_velocity: np.ndarray | None = None,
         body_fn=None,
     ) -> dict | tuple[dict, np.ndarray]:
         """
@@ -457,11 +457,11 @@ class PressurePhysics(PhysicsBase):
             velocity_previous: Previous velocity field [M, 3]. Required if
                 temporal_method='eulerian'
             dt: Time step for Eulerian method. Required if temporal_method='eulerian'
-            h: Step size for the Laplacian finite difference. If None, uses average
+            particle_spacing: Step size for the Laplacian finite difference. If None, uses average
                 particle radius
             return_velocity: If True, also return the internally computed velocity
             theta: Opening angle parameter for the treecode (smaller = more accurate)
-            background_velocity: Freestream velocity [3] used when there are no
+            freestream_velocity: Freestream velocity [3] used when there are no
                 particles
             body_fn: Callable(position) -> velocity for body-induced velocity
 
@@ -476,9 +476,9 @@ class PressurePhysics(PhysicsBase):
         count = len(points)
         targets = points
         if include_viscous:
-            if h is None:
-                h = float(np.mean(particles.radius_cpu())) if N > 0 else 1.0
-            offsets = np.eye(3, dtype=np.float64) * float(h)
+            if particle_spacing is None:
+                particle_spacing = float(np.mean(particles.radius_cpu())) if N > 0 else 1.0
+            offsets = np.eye(3, dtype=np.float64) * float(particle_spacing)
             targets = np.concatenate(
                 [
                     points,
@@ -493,7 +493,7 @@ class PressurePhysics(PhysicsBase):
             include_freestream=include_freestream,
         ).astype(np.float64)
         if N == 0 and include_freestream:
-            velocity_samples[:] = background_velocity
+            velocity_samples[:] = freestream_velocity
         velocity = velocity_samples[:count]
         gradient = self.compute_target_velocity_gradients_hierarchical(
             particles, points, theta=float(theta)
@@ -504,8 +504,8 @@ class PressurePhysics(PhysicsBase):
             )
             velocity = velocity_samples[:count]
             gradient_h = (
-                float(h)
-                if h is not None
+                float(particle_spacing)
+                if particle_spacing is not None
                 else (float(np.mean(particles.radius_cpu())) if N > 0 else 0.05)
             )
             for axis in range(3):
@@ -527,7 +527,7 @@ class PressurePhysics(PhysicsBase):
             viscous = (
                 float(nu)
                 * np.sum(plus + minus - 2.0 * velocity[None, :, :], axis=0)
-                / float(h) ** 2
+                / float(particle_spacing) ** 2
             )
         result = {
             "grad_p": density * (-temporal - advective + viscous),
@@ -771,7 +771,7 @@ class PressurePhysics(PhysicsBase):
         particles,
         target_positions: np.ndarray,
         nu: float,
-        h: float,
+        particle_spacing: float,
         include_freestream: bool = True,
     ) -> np.ndarray:
         """
@@ -784,7 +784,7 @@ class PressurePhysics(PhysicsBase):
             particles: Particle container
             target_positions: Evaluation points [M, 3]
             nu: Kinematic viscosity [m²/s]
-            h: Finite difference step size [m]
+            particle_spacing: Finite difference step size [m]
             include_freestream: Include background velocity
 
         Returns:
@@ -795,7 +795,7 @@ class PressurePhysics(PhysicsBase):
             return np.zeros((0, 3), dtype=np.float64)
 
         target_positions = np.asarray(target_positions, dtype=np.float64)
-        h2 = h * h
+        particle_spacing_sq = particle_spacing * particle_spacing
 
         # Central velocity
         u_center = self.compute_target_velocities(
@@ -806,41 +806,41 @@ class PressurePhysics(PhysicsBase):
 
         # X-direction
         pts_xp = target_positions.copy()
-        pts_xp[:, 0] += h
+        pts_xp[:, 0] += particle_spacing
         pts_xm = target_positions.copy()
-        pts_xm[:, 0] -= h
+        pts_xm[:, 0] -= particle_spacing
         u_xp = self.compute_target_velocities(
             particles, pts_xp, include_freestream=include_freestream
         )
         u_xm = self.compute_target_velocities(
             particles, pts_xm, include_freestream=include_freestream
         )
-        laplacian += (u_xp - 2 * u_center + u_xm) / h2
+        laplacian += (u_xp - 2 * u_center + u_xm) / particle_spacing_sq
 
         # Y-direction
         pts_yp = target_positions.copy()
-        pts_yp[:, 1] += h
+        pts_yp[:, 1] += particle_spacing
         pts_ym = target_positions.copy()
-        pts_ym[:, 1] -= h
+        pts_ym[:, 1] -= particle_spacing
         u_yp = self.compute_target_velocities(
             particles, pts_yp, include_freestream=include_freestream
         )
         u_ym = self.compute_target_velocities(
             particles, pts_ym, include_freestream=include_freestream
         )
-        laplacian += (u_yp - 2 * u_center + u_ym) / h2
+        laplacian += (u_yp - 2 * u_center + u_ym) / particle_spacing_sq
 
         # Z-direction
         pts_zp = target_positions.copy()
-        pts_zp[:, 2] += h
+        pts_zp[:, 2] += particle_spacing
         pts_zm = target_positions.copy()
-        pts_zm[:, 2] -= h
+        pts_zm[:, 2] -= particle_spacing
         u_zp = self.compute_target_velocities(
             particles, pts_zp, include_freestream=include_freestream
         )
         u_zm = self.compute_target_velocities(
             particles, pts_zm, include_freestream=include_freestream
         )
-        laplacian += (u_zp - 2 * u_center + u_zm) / h2
+        laplacian += (u_zp - 2 * u_center + u_zm) / particle_spacing_sq
 
         return nu * laplacian

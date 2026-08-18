@@ -350,7 +350,7 @@ def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _A
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
         advection=AdvectionConfig(scheme="NONE"),
-        background_velocity=[0.0, 0.0, 0.0],
+        freestream_velocity=[0.0, 0.0, 0.0],
         backup_frequency=0,
         logging_frequency=0,
         backup_directory=str(tmp_path),
@@ -617,7 +617,7 @@ def test_viscous_term_small_at_high_reynolds(tmp_path):
         include_viscous=True,
         include_temporal=False,
         include_freestream=False,
-        h=_SIGMA_A,
+        particle_spacing=_SIGMA_A,
     )
 
     conv_mag = np.linalg.norm(components["convective"], axis=1)

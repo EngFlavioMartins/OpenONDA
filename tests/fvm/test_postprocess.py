@@ -41,7 +41,7 @@ def _config(samplers):
             BoundaryConfig.wall("zmax"),
         ],
         samplers=samplers,
-        initial_U=[0.2, 0.0, 0.0],
+        initial_velocity=[0.2, 0.0, 0.0],
     )
 
 

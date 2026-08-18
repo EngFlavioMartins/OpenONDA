@@ -8,5 +8,8 @@
     <DataSet timestep="3.0" file="vpm_slice_z0_000060.vts"/>
     <DataSet timestep="3.6" file="vpm_slice_z0_000072.vts"/>
     <DataSet timestep="4.2" file="vpm_slice_z0_000084.vts"/>
+    <DataSet timestep="4.8" file="vpm_slice_z0_000096.vts"/>
+    <DataSet timestep="5.4" file="vpm_slice_z0_000108.vts"/>
+    <DataSet timestep="6.0" file="vpm_slice_z0_000120.vts"/>
   </Collection>
 </VTKFile>

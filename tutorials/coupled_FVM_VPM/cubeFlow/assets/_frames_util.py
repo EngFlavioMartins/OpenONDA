@@ -14,7 +14,7 @@ try:
 except ImportError:
     _HAVE_NUMBA = False
 
-U_INF = 1.0
+FREESTREAM_SPEED = 1.0
 D = 1.0
 EPS = 0.026
 CM = 1.0 / 2.54
@@ -56,7 +56,7 @@ def vpm_velocity(particles, pts):
     circulation = np.asarray(particles["circulation"], np.float32)
     radius = np.asarray(particles["radius"], np.float32)
     if not len(position):
-        return np.tile([U_INF, 0.0, 0.0], (len(targets), 1))
+        return np.tile([FREESTREAM_SPEED, 0.0, 0.0], (len(targets), 1))
     capacity = max(len(position), len(targets))
     tree = TaichiTreecode(
         max_particles=capacity,
@@ -68,7 +68,7 @@ def vpm_velocity(particles, pts):
     tree.build(position, circulation, radius)
     return tree.compute_target_velocities(
         targets,
-        background_velocity=np.array([U_INF, 0.0, 0.0], dtype=np.float32),
+        freestream_velocity=np.array([FREESTREAM_SPEED, 0.0, 0.0], dtype=np.float32),
     )
 
 

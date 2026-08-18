@@ -10,9 +10,9 @@ import numpy as np
 logger = logging.getLogger("coupler")
 
 
-def outflow_axis_sign(u_inf: np.ndarray) -> tuple[int, float]:
+def outflow_axis_sign(freestream_velocity: np.ndarray) -> tuple[int, float]:
     """Return the box axis and sign most closely aligned with the freestream."""
-    velocity = np.asarray(u_inf, dtype=np.float64).reshape(-1)
+    velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(-1)
     if velocity.size != 3 or not np.any(velocity != 0.0):
         return 0, 1.0
     axis = int(np.argmax(np.abs(velocity)))
@@ -23,12 +23,12 @@ def _log_outflow_deficit(
     face_centers: np.ndarray,
     velocity: np.ndarray,
     *,
-    u_inf: np.ndarray,
+    freestream_velocity: np.ndarray,
     fvm_box: np.ndarray,
 ) -> None:
     """Log the streamwise velocity on the downstream face of the FVM box."""
-    axis, sign = outflow_axis_sign(u_inf)
-    u_mag = float(np.linalg.norm(u_inf)) + 1.0e-30
+    axis, sign = outflow_axis_sign(freestream_velocity)
+    u_mag = float(np.linalg.norm(freestream_velocity)) + 1.0e-30
     face_lo, face_hi = fvm_box[2 * axis], fvm_box[2 * axis + 1]
     if sign >= 0.0:
         mask = face_centers[:, axis] >= face_hi - 1.0e-6
@@ -36,7 +36,7 @@ def _log_outflow_deficit(
         mask = face_centers[:, axis] <= face_lo + 1.0e-6
     if not mask.any():
         return
-    u_stream = velocity[mask] @ (np.asarray(u_inf) / u_mag)
+    u_stream = velocity[mask] @ (np.asarray(freestream_velocity) / u_mag)
     logger.info(
         "     [VPM-BC deficit outflow axis=%d sign=%+d] u_s/U∞ min=%.3f "
         "mean=%.3f max=%.3f  n_face=%d",
@@ -102,7 +102,7 @@ def evaluate_vpm_velocity(
     face_normals: np.ndarray,
     face_areas: np.ndarray,
     *,
-    u_inf: np.ndarray,
+    freestream_velocity: np.ndarray,
     fvm_box: np.ndarray,
     evaluated_velocity: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, float]]:
@@ -135,21 +135,21 @@ def evaluate_vpm_velocity(
             correction = raw_flux / total_area
             velocity = velocity - correction * normals
         corrected_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normals), areas))
-        u_inf_mag = float(np.linalg.norm(u_inf)) + 1.0e-30
+        freestream_velocity_mag = float(np.linalg.norm(freestream_velocity)) + 1.0e-30
         logger.info(
             "     [VPM-BC] Flux residual: raw=%.3e m³/s (%.2e×U∞A)  "
             "post-projection=%.3e m³/s (%.2e×U∞A)  δu_n=%.3e m/s",
             raw_flux,
-            abs(raw_flux) / (u_inf_mag * total_area + 1.0e-30),
+            abs(raw_flux) / (freestream_velocity_mag * total_area + 1.0e-30),
             corrected_flux,
-            abs(corrected_flux) / (u_inf_mag * total_area + 1.0e-30),
+            abs(corrected_flux) / (freestream_velocity_mag * total_area + 1.0e-30),
             correction,
         )
 
     _log_outflow_deficit(
         face_centers,
         velocity,
-        u_inf=np.asarray(u_inf, dtype=np.float64),
+        freestream_velocity=np.asarray(freestream_velocity, dtype=np.float64),
         fvm_box=np.asarray(fvm_box, dtype=np.float64),
     )
     diagnostics = {
@@ -191,7 +191,7 @@ def evaluate_vpm_boundary(
             ).reshape(-1, 3)
             vpm_bc_velocity, tangential_normal_gradient = (
                 coupler.vpm.compute_complete_target_velocity_and_tangential_normal_gradient(
-                    face_centers, face_normals, h=coupler.config.h
+                    face_centers, face_normals, particle_spacing=coupler.config.vpm_particle_spacing
                 )
             )
             vpm_bc_velocity = np.asarray(vpm_bc_velocity, dtype=np.float64).reshape(-1, 3)
@@ -215,7 +215,7 @@ def evaluate_vpm_boundary(
             )
         if not np.all(np.isfinite(target_velocity)):
             raise RuntimeError("VPM target evaluation returned non-finite velocities")
-        freestream_speed = float(np.linalg.norm(coupler.u_inf))
+        freestream_speed = float(np.linalg.norm(coupler.freestream_velocity))
         if (
             expected_targets > 0
             and freestream_speed > 0.0
@@ -246,7 +246,7 @@ def evaluate_vpm_boundary(
                 include_temporal=coupler._pressure_velocity_snapshot is not None,
                 include_freestream=True,
                 include_body=True,
-                h=coupler.config.h,
+                particle_spacing=coupler.config.vpm_particle_spacing,
                 temporal_method="eulerian",
                 velocity_previous=coupler._pressure_velocity_snapshot,
                 dt=coupler.dt_vpm,
@@ -285,7 +285,7 @@ def evaluate_vpm_boundary(
             face_centers,
             face_normals,
             face_areas,
-            u_inf=coupler.u_inf,
+            freestream_velocity=coupler.freestream_velocity,
             fvm_box=coupler.fvm_box,
             evaluated_velocity=vpm_bc_velocity,
         )
@@ -339,7 +339,7 @@ def advance_fvm(
     t_fvm = time.perf_counter()
     advance_fvm_substeps(
         coupler,
-        coupler.config.patch_name,
+        coupler.config.bc_patch_name,
         face_centers,
         face_normals,
         face_areas,
@@ -374,7 +374,7 @@ def resynchronize_vpm_boundary(
     Otherwise each interval starts from a stale prediction. Not a Picard
     sweep: the FVM is not re-solved.
     """
-    if not coupler.config.resync_vpm_bc_after_handoff:
+    if not coupler.config.bc_resync_after_transfer:
         return
     assert coupler.blending is not None
     if not coupler._is_master:
@@ -397,7 +397,7 @@ def resynchronize_vpm_boundary(
         ).reshape(-1, 3)
         corrected_boundary, tangential_normal_gradient = (
             coupler.vpm.compute_complete_target_velocity_and_tangential_normal_gradient(
-                face_centers, face_normals, h=coupler.config.h
+                face_centers, face_normals, particle_spacing=coupler.config.vpm_particle_spacing
             )
         )
         corrected = np.concatenate(
@@ -423,15 +423,16 @@ def resynchronize_vpm_boundary(
         corrected_boundary = project_solenoidal_velocity(
             corrected_boundary, face_normals, face_areas
         )
-    u_inf_mag = float(np.linalg.norm(coupler.u_inf)) + 1e-30
+    freestream_velocity_mag = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
     drift = (
-        float(np.max(np.linalg.norm(corrected_boundary - coupler._u_bc_prev, axis=1))) / u_inf_mag
+        float(np.max(np.linalg.norm(corrected_boundary - coupler._u_bc_prev, axis=1)))
+        / freestream_velocity_mag
         if coupler._u_bc_prev is not None and len(face_centers)
         else 0.0
     )
     coupler._u_bc_prev = corrected_boundary
     if coupler.config.vpm_bc_mode == "pressure_gradient":
-        # The FVM-to-VPM handoff replaces the particle representation at
+        # The FVM-to-VPM transfer replaces the particle representation at
         # fixed physical time. Refresh the Eulerian pressure history so
         # that the next backward difference does not interpret that
         # representation jump as a physical temporal acceleration.
@@ -455,7 +456,7 @@ def apply_fvm_boundary(
 ) -> None:
     """Apply the configured VPM boundary condition trace and advance one FVM step."""
     assert coupler.fvm is not None
-    u_inf_mag = float(np.linalg.norm(coupler.config.u_inf)) + 1e-30
+    freestream_velocity_mag = float(np.linalg.norm(coupler.config.freestream_velocity)) + 1e-30
     boundary_mode = coupler.config.vpm_bc_mode
     u_target = np.ascontiguousarray(u_target, dtype=np.float64)
     if boundary_mode == "vorticity_mixed":
@@ -476,7 +477,7 @@ def apply_fvm_boundary(
         boundary_description = "characteristic U/p"
     elif boundary_mode == "directional_outflow":
         coupler.fvm.set_directional_freestream_velocity_boundary_condition_vec(
-            u_target, patch, coupler.config.u_inf
+            u_target, patch, coupler.config.freestream_velocity
         )
         coupler.fvm.set_directional_freestream_pressure_boundary_condition(patch, value=0.0)
         boundary_description = "directional-outflow mixed U/p"
@@ -510,8 +511,8 @@ def apply_fvm_boundary(
         logger.info(
             "     [FVM] solved with %s  u_x/U∞ face[min=%.2f max=%.2f]",
             boundary_description,
-            u_target[:, 0].min() / u_inf_mag,
-            u_target[:, 0].max() / u_inf_mag,
+            u_target[:, 0].min() / freestream_velocity_mag,
+            u_target[:, 0].max() / freestream_velocity_mag,
         )
     yplus = coupler.fvm.last_yplus
     if yplus:
@@ -539,9 +540,9 @@ def advance_fvm_substeps(
 ) -> None:
     """Advance FVM substeps with interpolated VPM boundary condition data."""
     n_substeps = coupler.n_fvm_substeps
-    u_inf_mag = float(np.linalg.norm(coupler.u_inf)) + 1e-30
+    freestream_velocity_mag = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
     if n_substeps > 1 and u_next.shape[0] > 0:
-        dU = float(np.max(np.linalg.norm(u_next - u_prev, axis=1))) / u_inf_mag
+        dU = float(np.max(np.linalg.norm(u_next - u_prev, axis=1))) / freestream_velocity_mag
         big = dU > 0.5
         logger.log(
             logging.WARNING if big else logging.INFO,

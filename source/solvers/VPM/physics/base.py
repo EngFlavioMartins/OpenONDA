@@ -1041,7 +1041,7 @@ class PhysicsBase:
         M = target_positions.shape[0]
         if N == 0:
             if include_freestream:
-                U_inf = np.array(
+                freestream_velocity = np.array(
                     [
                         particles.velocity_background[None][0],
                         particles.velocity_background[None][1],
@@ -1050,12 +1050,12 @@ class PhysicsBase:
                     dtype=self.np_dtype,
                 )
             else:
-                U_inf = np.zeros(3, dtype=self.np_dtype)
+                freestream_velocity = np.zeros(3, dtype=self.np_dtype)
             if target_velocities is not None:
                 for i in range(M):
-                    target_velocities[i] = U_inf
+                    target_velocities[i] = freestream_velocity
                 return None
-            return np.tile(U_inf, (M, 1))
+            return np.tile(freestream_velocity, (M, 1))
 
         out_field = target_velocities if target_velocities is not None else self.target_velocities
         if target_velocities is None:

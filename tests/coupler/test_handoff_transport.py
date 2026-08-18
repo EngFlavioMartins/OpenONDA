@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.coupler.vorticity_handoff import continuous_handoff
+from source.coupler.vorticity_transfer import continuous_transfer
 
 H = 0.05
 BOX = np.array([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6])
@@ -43,20 +43,20 @@ def _cycle(pos, circ, target_fn, dt, mesh_weight=None):
     ``mesh_weight = 0`` drives eta to zero, leaving particles Lagrangian.
     """
     pos = pos + U_INF * dt
-    result = continuous_handoff(
+    result = continuous_transfer(
         pos,
         circ,
         BOX,
         H,
         circulation_at_node=target_fn,
         mesh_weight_at_node=mesh_weight,
-        u_inf=U_INF,
-        ramp_width=4 * H,
-        buffer_length=4 * H,
-        threshold_abs=0.0,
-        radius_ratio=1.0,
-        amplification_cap=2.0,
-        u_max=1.0,
+        freestream_velocity=U_INF,
+        overlap_zone_ramp_width=4 * H,
+        transfer_buffer_length=4 * H,
+        transfer_prune_threshold_abs=0.0,
+        core_radius_ratio=1.0,
+        transfer_amplification_cap=2.0,
+        freestream_speed=1.0,
         dt=dt,
         lattice_anchor=np.array([-0.625, -0.625, -0.625]),
     )

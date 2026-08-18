@@ -72,17 +72,21 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
     C_diff = 1.0  # RWM accuracy coefficient
     C_stretching = 1.0
 
-    h = stats["h_mean"] if use_mean_spacing else stats["h_min"]
+    particle_spacing = stats["h_mean"] if use_mean_spacing else stats["h_min"]
 
     # Advection limit
-    dt_adv = CFL_advection * h / stats["u_max"] if stats["u_max"] > EPSILON else 1.0
+    dt_adv = CFL_advection * particle_spacing / stats["u_max"] if stats["u_max"] > EPSILON else 1.0
 
     # Diffusion limit (NONE and CS don't have an explicit diffusion step: CS
     # spreads cores analytically, so there is no parabolic-CFL stability bound).
     if scheme_name in ("NONE", "CS"):
         dt_diff = float("inf")
     else:
-        dt_diff = C_diff * h**2 / stats["nu_eff_max"] if stats["nu_eff_max"] > EPSILON else 1.0
+        dt_diff = (
+            C_diff * particle_spacing**2 / stats["nu_eff_max"]
+            if stats["nu_eff_max"] > EPSILON
+            else 1.0
+        )
 
     # Stretching limit
     dt_stretch = C_stretching / stats["grad_u_max"] if stats["grad_u_max"] > EPSILON else 1.0
@@ -121,9 +125,9 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     Check and recommend time-step sizing constraints for all viscous schemes.
 
     This method computes the maximum stable time step for each viscous scheme based on:
-    - Advection CFL constraint: Δt_adv ≤ CFL * h / |u_max|
-    - Viscous diffusion constraint: Δt_visc ≤ C_visc * h² / nu
-    - RWM stochastic stability: Δt_rwm ≤ h² / (C_rwm * nu)
+    - Advection CFL constraint: Δt_adv ≤ CFL * particle_spacing / |u_max|
+    - Viscous diffusion constraint: Δt_visc ≤ C_visc * particle_spacing² / nu
+    - RWM stochastic stability: Δt_rwm ≤ particle_spacing² / (C_rwm * nu)
     - Stretching term constraint: Δt_stretch ≤ min(Δt / |∇u_max|)
 
     Must be called AFTER add_vortex_particles() to have particle data available.

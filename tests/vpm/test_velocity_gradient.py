@@ -321,7 +321,9 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     monkeypatch.setattr(tree, "build", record_tree_build)
 
     target = np.array([[0.12, 0.16, -0.22]])
-    velocity, gradient = solver.compute_complete_target_velocity_and_gradients(target, h=0.04)
+    velocity, gradient = solver.compute_complete_target_velocity_and_gradients(
+        target, particle_spacing=0.04
+    )
     gradient = gradient[0]
     assert calls == [theta]
 
@@ -382,7 +384,7 @@ def test_mixed_target_trace_uses_only_two_nonparticle_samples():
     points = np.array([[0.2, -0.1, 0.3], [-0.4, 0.5, -0.2]])
     normals = np.array([[1.0, 0.0, 0.0], [0.0, 3.0, 4.0]])
     velocity, tangential = solver.compute_complete_target_velocity_and_tangential_normal_gradient(
-        points, normals, h=0.04
+        points, normals, particle_spacing=0.04
     )
 
     unit_normals = normals / np.linalg.norm(normals, axis=1)[:, None]

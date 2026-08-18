@@ -68,8 +68,8 @@ def _setup_exact_field(mesh, geo):
     U[:n_elem] = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_U"] = "fixedValue"
-        b["value_U"] = [0.0, 0.0, 0.0]  # unused: ghosts below carry the exact value
+        b["bc_type_velocity"] = "fixedValue"
+        b["value_velocity"] = [0.0, 0.0, 0.0]  # unused: ghosts below carry the exact value
         start, nf = b["startFace"], b["nFaces"]
         for j in range(nf):
             fi = start + j

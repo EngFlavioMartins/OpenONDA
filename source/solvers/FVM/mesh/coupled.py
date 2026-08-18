@@ -28,11 +28,11 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
     cyclic = {
         name: patch
         for name, patch in patches.items()
-        if patch.get("bc_type_U") == "cyclic" or patch.get("bc_type_p") == "cyclic"
+        if patch.get("bc_type_velocity") == "cyclic" or patch.get("bc_type_p") == "cyclic"
     }
 
     for name, patch in cyclic.items():
-        if patch.get("bc_type_U") != "cyclic" or patch.get("bc_type_p") != "cyclic":
+        if patch.get("bc_type_velocity") != "cyclic" or patch.get("bc_type_p") != "cyclic":
             raise MeshValidationError(
                 f"Cyclic patch {name!r} must use cyclic for both velocity and pressure"
             )
@@ -50,7 +50,7 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
             raise MeshValidationError(
                 f"Cyclic patch {name!r} references unknown neighbourPatch {neighbour_name!r}"
             )
-        if neighbour.get("bc_type_U") != "cyclic" or neighbour.get("bc_type_p") != "cyclic":
+        if neighbour.get("bc_type_velocity") != "cyclic" or neighbour.get("bc_type_p") != "cyclic":
             raise MeshValidationError(
                 f"Cyclic neighbour {neighbour_name!r} must use cyclic for velocity and pressure"
             )

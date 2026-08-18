@@ -127,7 +127,7 @@ def run() -> None:
             ),
             turbulence=TurbulenceConfig.dns(),
             particles_kernel="WINCKELMANS",
-            background_velocity=[0.0, 0.0, -CLIMB_SPEED],
+            freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=StabilizationConfig(
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),

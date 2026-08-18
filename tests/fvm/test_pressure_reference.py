@@ -60,7 +60,7 @@ def test_nullspace_pressure_assembly_remains_singular_and_compatible(
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
     for boundary in mesh["boundary"]:
-        boundary["bc_type_U"] = "zeroGradient"
+        boundary["bc_type_velocity"] = "zeroGradient"
         boundary["bc_type_p"] = "zeroGradient"
     n = mesh["n_elements"]
     n_total = n + mesh["n_faces"] - mesh["n_interior_faces"]

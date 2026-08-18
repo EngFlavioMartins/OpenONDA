@@ -35,7 +35,7 @@ def _run(scheme, n_steps=4):
     pimple = PimpleControl(n_correctors=2)
     walls = [BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "zmin")]
     lid = BoundaryConfig(
-        name="ymax", type_U="fixedValue", value_U=[1.0, 0, 0], type_p="zeroGradient"
+        name="ymax", type_velocity="fixedValue", value_velocity=[1.0, 0, 0], type_p="zeroGradient"
     )
     cfg = FVMSetup(
         case_name="bdf2",
@@ -45,7 +45,7 @@ def _run(scheme, n_steps=4):
         pimple=pimple,
         transport=TransportConfig(density=1.0, nu=0.05),
         boundaries=walls + [lid, BoundaryConfig.empty("zmax")],
-        initial_U=[0, 0, 0],
+        initial_velocity=[0, 0, 0],
         initial_p=0.0,
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):

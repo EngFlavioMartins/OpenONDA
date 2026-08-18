@@ -37,7 +37,7 @@ from source.coupler.reporting import (
     record_step,
     write_run_metadata,
 )
-from source.coupler.vorticity_handoff import VorticityHandoff
+from source.coupler.vorticity_transfer import VorticityTransfer
 
 if TYPE_CHECKING:
     from source.solvers.FVM import Solver as FVM_Solver
@@ -110,7 +110,7 @@ class FVMVPMCoupler:
 
         self.vpm: VPM_Solver | None = None
         self.fvm: FVM_Solver | None = None
-        self.handoff: VorticityHandoff | None = None
+        self.transfer: VorticityTransfer | None = None
         self.blending = None
         self._u_bc_prev: np.ndarray | None = None
         self._normal_velocity_bc_prev: np.ndarray | None = None
@@ -129,7 +129,7 @@ class FVMVPMCoupler:
         }
         self.pressure_reference: PressureReference | None = None
         self.coupling_diagnostics: list[dict] = []
-        self._last_handoff_result = None
+        self._last_transfer_result = None
 
         self.dt_fvm: float | None = None
         self.dt_vpm: float | None = None
@@ -138,20 +138,22 @@ class FVMVPMCoupler:
         self.rho: float | None = None
         self.fvm_box: np.ndarray | None = None
         self.n_fvm_substeps = 1
-        self.u_inf = np.array(coupler_setup.u_inf, dtype=np.float64)
+        self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
 
     @staticmethod
     def _validate_vpm(vpm, cfg: CouplerSetup, box: np.ndarray, nu: float) -> None:
         """Validate the injected VPM against the coupling discretization."""
         vsc = vpm.config.viscous
         scheme = vsc.scheme.upper()
-        regen = vsc.regen_radius_ratio
+        regen = vsc.core_radius_ratio
         if (
             scheme in {"DVH", "GBD"}
             and regen is not None
-            and abs(float(regen) - float(cfg.overlap_radius_ratio)) > 1e-9
+            and abs(float(regen) - float(cfg.vpm_core_radius_ratio)) > 1e-9
         ):
-            raise ValueError("VPM regen_radius_ratio must match the coupler overlap_radius_ratio")
+            raise ValueError(
+                "VPM regen core_radius_ratio must match the coupler vpm_core_radius_ratio"
+            )
         mode = None
         if scheme == "DVH":
             mode = vsc.dvh_threshold_mode
@@ -184,11 +186,12 @@ class FVMVPMCoupler:
                 f"{float(vpm_nu):g} but the Eulerian solver uses nu={float(nu):g}. "
                 "The two solvers must model the same fluid."
             )
-        bg = np.asarray(vpm.background_velocity, dtype=np.float64)
-        if not np.allclose(bg, np.asarray(cfg.u_inf), atol=1e-9):
+        bg = np.asarray(vpm.freestream_velocity, dtype=np.float64)
+        if not np.allclose(bg, np.asarray(cfg.freestream_velocity), atol=1e-9):
             raise ValueError(
-                f"Incompatible freestream: VPM background_velocity {tuple(bg)} "
-                f"!= coupling u_inf {tuple(cfg.u_inf)}. The VPM far-field and "
+                f"Incompatible freestream: VPM freestream_velocity {tuple(bg)} "
+                f"!= coupling freestream_velocity {tuple(cfg.freestream_velocity)}. "
+                "The VPM far-field and "
                 "the VPM advection frame must agree."
             )
 
@@ -247,7 +250,7 @@ class FVMVPMCoupler:
         """
         assert self.fvm is not None
         fc = np.asarray(
-            self.fvm.get_boundary_face_center_coordinates(self.config.patch_name),
+            self.fvm.get_boundary_face_center_coordinates(self.config.bc_patch_name),
             dtype=np.float64,
         ).reshape(-1, 3)
         box = None
@@ -256,7 +259,7 @@ class FVMVPMCoupler:
         if self._is_master or not collective:
             if fc.shape[0] == 0:
                 error = (
-                    f"Coupling patch {self.config.patch_name!r} has no faces on the "
+                    f"Coupling patch {self.config.bc_patch_name!r} has no faces on the "
                     "injected Eulerian solver."
                 )
             else:
@@ -285,7 +288,7 @@ class FVMVPMCoupler:
         self.nu = float(fvm_cfg.transport.nu)
         self.rho = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
-        self.config.validate_handoff_box(self.fvm_box)
+        self.config.validate_transfer_region_box(self.fvm_box)
 
     def initialize(self) -> None:
         """Adopt the injected solvers, derive sub-cycling, and build coupling
@@ -299,7 +302,7 @@ class FVMVPMCoupler:
         Idempotent: a second call is a no-op (the coupling components are built
         exactly once), so ``initialize`` then ``run``/``solve`` is safe.
         """
-        if self.handoff is not None:
+        if self.transfer is not None:
             return  # already initialized
         cfg = self.config
 
@@ -348,27 +351,29 @@ class FVMVPMCoupler:
                 self.n_fvm_substeps,
             )
 
-        self.handoff = VorticityHandoff(self)
-        self.handoff.setup(self.fvm)
-        if self._is_master and self.handoff._body_bounds is not None:
+        self.transfer = VorticityTransfer(self)
+        self.transfer.setup(self.fvm)
+        if self._is_master and self.transfer._body_bounds is not None:
             assert self.vpm is not None
-            self.vpm.physics.configure_body_box(self.handoff._body_bounds)
+            self.vpm.physics.configure_body_box(self.transfer._body_bounds)
             logger.info(
                 "[Init] VPM grid diffusion body mask enabled for box %s.",
-                self.handoff._body_bounds.tolist(),
+                self.transfer._body_bounds.tolist(),
             )
         if self._is_master:
-            anchor = self.handoff._lattice_anchor
+            anchor = self.transfer._lattice_anchor
             if (
                 anchor is None
-                and self.handoff._cell_centers is not None
-                and len(self.handoff._cell_centers) > 0
+                and self.transfer._cell_centers is not None
+                and len(self.transfer._cell_centers) > 0
             ):
-                anchor = self.handoff._cell_centers[0]
+                anchor = self.transfer._cell_centers[0]
             if anchor is not None:
                 assert self.vpm is not None
-                self.vpm.physics.configure_grid_lattice_anchor(anchor, self.config.h)
-                logger.info("[Init] VPM diffusion lattice aligned with the handoff lattice.")
+                self.vpm.physics.configure_grid_lattice_anchor(
+                    anchor, self.config.vpm_particle_spacing
+                )
+                logger.info("[Init] VPM diffusion lattice aligned with the transfer lattice.")
 
         assert self.fvm_box is not None
         self.blending = BlendingZone(
@@ -381,10 +386,10 @@ class FVMVPMCoupler:
         self.pressure_reference = PressureReference(
             self.fvm,
             fvm_box=self.fvm_box,
-            u_inf=self.u_inf,
-            h=self.config.h,
+            freestream_velocity=self.freestream_velocity,
+            particle_spacing=self.config.vpm_particle_spacing,
             boundary_mode=self.config.vpm_bc_mode,
-            enabled=self.config.anchor_pressure,
+            enabled=self.config.pressure_anchor_to_freestream,
             is_master=self._is_master,
             comm=_mpi4py_comm,
         )
@@ -406,7 +411,7 @@ class FVMVPMCoupler:
         restart_from=None,
     ) -> None:
         """Initialize and run the coupling loop."""
-        if self.handoff is None:
+        if self.transfer is None:
             self.initialize()
         if restart_from is not None:
             if start_step:
@@ -429,15 +434,15 @@ class FVMVPMCoupler:
             # solution nor closed-body pressure forces.  Keep the solver's
             # native null-space datum in the numerical loop; presentation code
             # can apply a reported offset to an output copy when needed.
-            handoff_result, handoff_time = self._transfer_vorticity_to_vpm(*face_geometry)
+            transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
             resynchronize_vpm_boundary(self, *face_geometry)
-            self._last_handoff_result = handoff_result
+            self._last_transfer_result = transfer_result
             record_step(
                 self,
                 step,
                 time_end,
-                (vpm_time, blending_time, boundary_time, fvm_time, handoff_time),
-                handoff_result,
+                (vpm_time, blending_time, boundary_time, fvm_time, transfer_time),
+                transfer_result,
                 logger=logger,
                 comm=_mpi4py_comm,
             )
@@ -450,7 +455,7 @@ class FVMVPMCoupler:
 
     def _prepare_run(self):
         """Validate a run and collect the immutable interface geometry."""
-        if self.handoff is None:
+        if self.transfer is None:
             raise RuntimeError(
                 "solve() called before initialize(); call coupler.initialize() "
                 "first, or use coupler.run() which does both."
@@ -460,7 +465,7 @@ class FVMVPMCoupler:
 
         assert self.t_end is not None and self.dt_vpm is not None
         n_steps = self._derive_coupling_step_count(self.t_end, self.dt_vpm)
-        patch = self.config.patch_name
+        patch = self.config.bc_patch_name
         if self._is_master:
             logger.info("=" * 60)
             logger.info("FVM-VPM COUPLED SOLVER")
@@ -481,7 +486,7 @@ class FVMVPMCoupler:
         if self._is_master:
             assert self.vpm is not None
             with self.vpm_redirector:
-                self.vpm.set_background_velocity(self.config.u_inf)
+                self.vpm.set_freestream_velocity(self.config.freestream_velocity)
             print()
             print("-" * 60)
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
@@ -498,22 +503,22 @@ class FVMVPMCoupler:
         _face_areas: np.ndarray,
     ):
         """Fetch the FVM velocity trace and transfer it to the particle lattice."""
-        t_handoff = time.perf_counter()
+        t_transfer = time.perf_counter()
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()
-        handoff_result = None
+        transfer_result = None
         if self._is_master:
             assert self.vpm is not None
-            assert self.handoff is not None
+            assert self.transfer is not None
             vpm = self.vpm
-            handoff = self.handoff
+            transfer = self.transfer
             n_before = vpm.particles.number_of_particles
             sum_before = (
                 float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
                 if n_before > 0
                 else 0.0
             )
-            handoff_result = handoff.transfer(
+            transfer_result = transfer.transfer(
                 vpm,
                 velocity=velocity_global,
                 velocity_gradient=gradient_global,
@@ -531,7 +536,7 @@ class FVMVPMCoupler:
                 "sum_after": sum_after,
                 "face_count": len(face_centers),
             }
-        return handoff_result, time.perf_counter() - t_handoff
+        return transfer_result, time.perf_counter() - t_transfer
 
     def _get_velocity_field_buffer(self) -> np.ndarray:
         assert self.fvm is not None

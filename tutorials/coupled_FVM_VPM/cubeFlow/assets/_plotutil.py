@@ -95,7 +95,7 @@ def run_constants() -> dict:
     """Return plot scales, falling back to the tutorial defaults."""
     meta = metadata()
     phys = meta.get("physics", {})
-    u_inf = np.asarray(phys.get("u_inf", [1.0, 0.0, 0.0]), dtype=float)
+    freestream_velocity = np.asarray(phys.get("freestream_velocity", [1.0, 0.0, 0.0]), dtype=float)
     box = meta.get("fvm_solver", {}).get("fvm_domain", {})
     frames = slice_frames("fvm")
     if frames:
@@ -111,8 +111,8 @@ def run_constants() -> dict:
             "zmax": box.get("zmax", 1.5),
         }
     return {
-        "U_inf": float(np.linalg.norm(u_inf)) or 1.0,
-        "u_inf_vec": u_inf,
+        "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
+        "freestream_velocity": freestream_velocity,
         "D": 1.0,  # cube side length (CUBE_SIDE in cubeFlow_setup.py)
         "nu": float(phys.get("nu", 1e-3)),
         "box": box

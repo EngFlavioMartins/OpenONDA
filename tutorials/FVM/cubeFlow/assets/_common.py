@@ -27,7 +27,7 @@ COLORS = THEME.COLORS
 COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
-U_INF = 1.0
+FREESTREAM_SPEED = 1.0
 D_REF = 1.0
 
 # Square cylinder, Re = 100, blockage 5%.

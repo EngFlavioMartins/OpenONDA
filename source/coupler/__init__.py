@@ -7,7 +7,7 @@ particle field; the near-field vorticity is conservatively handed back to the
 particles every step.
 
 The public driver follows the physical coupling sequence. Boundary sampling,
-blending, vorticity handoff, conservation, checkpointing, and reporting live
+blending, vorticity transfer, conservation, checkpointing, and reporting live
 in physically named modules beside it.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team

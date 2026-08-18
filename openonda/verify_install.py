@@ -85,7 +85,7 @@ def _verify_native_fvm() -> dict[str, float | int]:
             BoundaryConfig.inlet("numericalBoundary", [1.0, 0.0, 0.0]),
             BoundaryConfig.wall("body"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 

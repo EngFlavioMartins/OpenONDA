@@ -74,7 +74,7 @@ def _make_solver(init=(0.0, 0.0, 0.0)):
         pimple=sp_pimple,
         transport=TransportConfig(density=1.0, nu=0.05),
         boundaries=bnds,
-        initial_U=list(init),
+        initial_velocity=list(init),
     )
     with contextlib.redirect_stdout(io.StringIO()):
         s = Solver(cfg, case_dir="/tmp/openonda-coupler-contract", mesh_data=mesh)
@@ -190,7 +190,7 @@ def test_vector_dirichlet_writes_ghosts():
     s.set_dirichlet_velocity_boundary_condition_vec(values, "xmin")
     idx = mesh["n_elements"] + (b["startFace"] - mesh["n_interior_faces"])
     assert np.allclose(s.U[idx : idx + nf], values)
-    assert b["bc_type_U"] == "fixedValue"
+    assert b["bc_type_velocity"] == "fixedValue"
 
 
 def test_blending_source_relaxes_velocity_to_target():
@@ -202,7 +202,7 @@ def test_blending_source_relaxes_velocity_to_target():
     n = mesh["n_elements"]
     nb = mesh["n_faces"] - mesh["n_interior_faces"]
     for b in mesh["boundary"]:
-        b["bc_type_U"] = "zeroGradient"
+        b["bc_type_velocity"] = "zeroGradient"
     U = np.zeros((n + nb, 3))
     p = np.zeros(n + nb)
     phi = compute_volumetric_face_flux(U, mesh, geo)

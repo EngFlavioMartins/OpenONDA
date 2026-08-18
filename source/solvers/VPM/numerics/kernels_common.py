@@ -25,12 +25,12 @@ def _make_compute_velocities_kernel(q_):
         strengths: ti.template(),
         radii: ti.template(),
         velocities: ti.template(),
-        background_velocity: ti.template(),
+        freestream_velocity: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Compute self-induced velocity + background velocity for all particles."""
         N = num_particles
-        U_inf = background_velocity[None]
+        freestream_vec = freestream_velocity[None]
         for i in range(N):
             vel = positions[i] * 0.0
             pos_i = positions[i]
@@ -48,7 +48,7 @@ def _make_compute_velocities_kernel(q_):
                     r_sigma = r_mag / sigma
                     vel += q_(r_sigma) * (r_ij.cross(strength_j)) / (r_sq * r_mag)
 
-            velocities[i] = -vel + U_inf
+            velocities[i] = -vel + freestream_vec
 
     return compute_velocities_kernel
 
@@ -177,14 +177,14 @@ def _make_target_velocity_kernel(q_):
         strengths: ti.template(),
         radii: ti.template(),
         target_velocities: ti.template(),
-        background_velocity: ti.template(),
+        freestream_velocity: ti.template(),
         num_targets: ti.i32,
         num_particles: ti.i32,
     ):  # type: ignore
         """Compute self-induced velocity + background velocity at target positions."""
         M = num_targets
         N = num_particles
-        U_inf = background_velocity[None]
+        freestream_vec = freestream_velocity[None]
         for i in range(M):
             target_pos = target_positions[i]
             vel = target_pos * 0.0
@@ -198,7 +198,7 @@ def _make_target_velocity_kernel(q_):
                     sigma = radii[j]
                     r_sigma = r_mag / sigma
                     vel += q_(r_sigma) * (r_ij.cross(strength_j)) / (r_sq * r_mag)
-            target_velocities[i] = -vel + U_inf
+            target_velocities[i] = -vel + freestream_vec
 
     return compute_target_velocity_kernel
 
@@ -465,18 +465,18 @@ def _create_basic_kernels(kernel_functions):
     zeta_ = kernel_functions["zeta_"]
 
     @ti.kernel
-    def add_background_velocity_kernel(
-        velocities: ti.template(), background_velocity: ti.template(), num_particles: int
+    def add_freestream_velocity_kernel(
+        velocities: ti.template(), freestream_velocity: ti.template(), num_particles: int
     ):  # type: ignore
         """Add background velocity to all active particles."""
         for i in range(num_particles):
-            velocities[i][0] += background_velocity[0]
-            velocities[i][1] += background_velocity[1]
-            velocities[i][2] += background_velocity[2]
+            velocities[i][0] += freestream_velocity[0]
+            velocities[i][1] += freestream_velocity[1]
+            velocities[i][2] += freestream_velocity[2]
 
     return {
         "compute_velocities_kernel": _make_compute_velocities_kernel(q_),
-        "add_background_velocity_kernel": add_background_velocity_kernel,
+        "add_freestream_velocity_kernel": add_freestream_velocity_kernel,
         "compute_vorticities_kernel": _make_compute_vorticities_kernel(zeta_),
     }
 
@@ -541,7 +541,7 @@ def _create_gradient_kernels(kernel_functions):
         velocities: ti.template(),
         gradU: ti.template(),
         Sij: ti.template(),
-        background_velocity: ti.template(),
+        freestream_velocity: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Fused direct evaluation: u, ∇u and S in a single j-loop.
@@ -552,7 +552,7 @@ def _create_gradient_kernels(kernel_functions):
         gradient evaluation both use the regularized kernel directly, while
         the far gradient cutoff matches the separate gradient kernel."""
         N = num_particles
-        U_inf = background_velocity[None]
+        freestream_vec = freestream_velocity[None]
         for i in range(N):
             pos_i = positions[i]
             vel = pos_i * 0.0
@@ -576,7 +576,7 @@ def _create_gradient_kernels(kernel_functions):
                         gradu += term1 * skew(str_j) + term2 * (
                             (r_ij.cross(str_j)).outer_product(r_ij)
                         )
-            velocities[i] = -vel + U_inf
+            velocities[i] = -vel + freestream_vec
             gradU[i] = gradu
             Sij[i] = 0.5 * (gradu + gradu.transpose())
 

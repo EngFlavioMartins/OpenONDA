@@ -61,8 +61,8 @@ SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 DIAMETER = 1.0
 RHO = 1.0
 REYNOLDS = 200.0
-U_INF = (1.0, 0.0, 0.0)
-NU = np.linalg.norm(U_INF) * DIAMETER / REYNOLDS
+FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
+NU = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.05"))
 DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
 DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.05"))
@@ -81,14 +81,14 @@ CYLINDER = ImmersedBody.extruded_cylinder_z(
     centre=[0.0, 0.0, 0.0],
     diameter=DIAMETER,
     z_bounds=[FVM_BOX[4], FVM_BOX[5]],
-    h=SPACING,
+    particle_spacing=SPACING,
     name="cylinder",
     caps=False,
 )
 
 FVM_SAMPLERS = (
     IBMForceSampler(
-        ref_velocity=float(np.linalg.norm(U_INF)),
+        ref_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         ref_area=DIAMETER * SPAN,
         schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
@@ -167,18 +167,18 @@ FVM_SETUP = FVMSetup(
     boundaries=[
         BoundaryConfig(
             name="numericalBoundary",
-            type_U="fixedValue",
-            value_U=list(U_INF),
+            type_velocity="fixedValue",
+            value_velocity=list(FREESTREAM_VELOCITY),
             type_p="fixedFluxPressure",
         )
     ],
-    initial_U=list(U_INF),
+    initial_velocity=list(FREESTREAM_VELOCITY),
     initial_p=0.0,
 )
 
 VPM_SETUP = VPMSetup(
     time_step_size=DT_VPM,
-    background_velocity=list(U_INF),
+    freestream_velocity=list(FREESTREAM_VELOCITY),
     viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
@@ -199,13 +199,13 @@ VPM_SETUP = VPMSetup(
 )
 
 COUPLER_SETUP = CouplerSetup(
-    u_inf=list(U_INF),
-    h=SPACING,
-    buffer_thickness=6 * SPACING,
-    dead_zone_h=3.0,
-    prune_vorticity_min=0.01,
-    handoff_max_particles=MAX_PARTICLES,
-    backup_period=VPM_LOG_PERIOD,
+    freestream_velocity=list(FREESTREAM_VELOCITY),
+    vpm_particle_spacing=SPACING,
+    overlap_zone_ramp_width=6 * SPACING,
+    overlap_zone_dead_zone_width=3.0 * SPACING,
+    transfer_prune_vorticity_min=0.01,
+    transfer_max_particles=MAX_PARTICLES,
+    coupler_backup_period=VPM_LOG_PERIOD,
 )
 
 
@@ -261,7 +261,7 @@ def main() -> None:
     print("\n===== SIMULATION =====")
     print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={MAX_PARTICLES}")
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.set_immersed_bodies(CYLINDER, h=SPACING)
+    fvm_solver.set_immersed_bodies(CYLINDER, particle_spacing=SPACING)
     fvm_solver.write_vtk()
 
     vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None

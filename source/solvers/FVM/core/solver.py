@@ -20,7 +20,7 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
     """Initialise the velocity field from the Python configuration.
 
     Args:
-        config:   FVMSetup (may have ``initial_U``).
+        config:   FVMSetup (may have ``initial_velocity``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -29,11 +29,11 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
         Velocity array ``(n_total, 3)``.
     """
     del case_dir, mesh_data
-    if config.initial_U is None:
-        raise ValueError("initial_U must be provided in FVMSetup")
-    initial = np.asarray(config.initial_U, dtype=np.float64)
+    if config.initial_velocity is None:
+        raise ValueError("initial_velocity must be provided in FVMSetup")
+    initial = np.asarray(config.initial_velocity, dtype=np.float64)
     if initial.shape != (3,) or not np.all(np.isfinite(initial)):
-        raise ValueError("initial_U must be a finite three-component vector")
+        raise ValueError("initial_velocity must be a finite three-component vector")
     return np.tile(initial, (n_total, 1))
 
 
@@ -77,7 +77,7 @@ def _enforce_u_boundary_constraints(
     from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type_U")
+        bc_type = boundary.get("bc_type_velocity")
         strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
         start = n_elements + (boundary["startFace"] - mesh_data["n_interior_faces"])
         end = start + boundary["nFaces"]
@@ -85,13 +85,13 @@ def _enforce_u_boundary_constraints(
             U[start:end] = 0.0
         elif (
             strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM)
-            and boundary.get("value_U_field") is not None
+            and boundary.get("value_velocity_field") is not None
         ):
-            U[start:end] = boundary["value_U_field"]
+            U[start:end] = boundary["value_velocity_field"]
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM) and (
-            "value_U" in boundary
+            "value_velocity" in boundary
         ):
-            U[start:end] = boundary["value_U"]
+            U[start:end] = boundary["value_velocity"]
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.INLET_OUTLET,
@@ -333,13 +333,13 @@ class Solver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             comm = self.parallel.comm
             assert comm is not None
-            if any(boundary.type_U == "cyclic" for boundary in self.config.boundaries):
+            if any(boundary.type_velocity == "cyclic" for boundary in self.config.boundaries):
                 raise NotImplementedError(
                     "Partitioned cyclic patches require periodic partition adjacency, which is "
                     "not yet implemented"
                 )
-            if self.config.initial_U is None or self.config.initial_p is None:
-                raise ValueError("initial_U and initial_p must be provided in FVMSetup")
+            if self.config.initial_velocity is None or self.config.initial_p is None:
+                raise ValueError("initial_velocity and initial_p must be provided in FVMSetup")
             quality = None
             preparation_error = None
             global_mesh = None
@@ -581,7 +581,7 @@ class Solver(CouplerInterfaceMixin):
             found = False
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
-                    velocity = np.asarray(b_cfg.value_U, dtype=np.float64)
+                    velocity = np.asarray(b_cfg.value_velocity, dtype=np.float64)
                     if velocity.shape not in {(3,), (b_mesh["nFaces"], 3)}:
                         raise ValueError(
                             f"Velocity value for patch {b_cfg.name!r} has shape {velocity.shape}; "
@@ -589,7 +589,7 @@ class Solver(CouplerInterfaceMixin):
                         )
                     b_mesh.update(
                         {
-                            "bc_type_U": b_cfg.type_U,
+                            "bc_type_velocity": b_cfg.type_velocity,
                             "bc_type_p": b_cfg.type_p,
                             "value_p": b_cfg.value_p,
                             "bc_type_nut": b_cfg.type_nut,
@@ -603,10 +603,10 @@ class Solver(CouplerInterfaceMixin):
                     if b_cfg.neighbour_patch is not None:
                         b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
-                        b_mesh["value_U"] = velocity
-                        b_mesh.pop("value_U_field", None)
+                        b_mesh["value_velocity"] = velocity
+                        b_mesh.pop("value_velocity_field", None)
                     else:
-                        b_mesh["value_U_field"] = velocity
+                        b_mesh["value_velocity_field"] = velocity
                     found = True
                     break
             if not found:

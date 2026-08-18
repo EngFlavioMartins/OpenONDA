@@ -40,82 +40,39 @@ CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 
 # Physical problem
 CUBE_SIDE = 1.0
-U_INF = (1.0, 0.0, 0.0)
+FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 RHO = 1.0
 REYNOLDS = 1000.0
-NU = float(np.linalg.norm(U_INF)) * CUBE_SIDE / REYNOLDS
+NU = float(np.linalg.norm(FREESTREAM_VELOCITY)) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
-INITIAL_U = (1.0, 0.0, 0.0)
+INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 DT_FVM = 0.01
 T_END = 20.0
 FVM_CORES = 4
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
-# 0.015625 = 0.5/32, not 0.015: the cube half-width must land on a finest-level
-# cell boundary or the mesher snaps the surface outward (0.015 gave a body of
-# side 1.02273, inflating frontal area -- and every Cd -- by 4.60%).  This also
-# makes max_cell_size exactly 0.5, which divides the 15x10x10 domain, so the
-# delivered sizes match the coupled case level for level.
-MIN_DS = 0.015625
+SURFACE_CELL_SIZE = 0.015625
 SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
-# Output cadence.  Cheap samples are taken often; the volume archive, which
-# dominates disk (the previous run wrote 134 snapshots for 13 GB), is taken
-# rarely.  The dense-in-time boundary data a coupling study actually needs comes
-# from the six COUPLING_BOX face planes below at a fraction of the size, so the
-# volumes no longer have to carry it.
 SAMPLE_INTERVAL = 0.05  # forces, line probes
-# The coupling faces are sampled every step so an oracle replay needs no
-# interpolation in time between them and the solver's own time levels.
 FACE_INTERVAL = DT_FVM
 SLICE_INTERVAL = 0.10  # full-domain field slices
 VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
 
-# The compact FVM box of the coupled cubeFlow case.  Sampling its six faces
-# gives the exact Dirichlet trace an oracle boundary-condition study needs.
 COUPLING_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 
 SAMPLE_SCHEDULE = SamplingSchedule(every_time=SAMPLE_INTERVAL)
 SLICE_SCHEDULE = SamplingSchedule(every_time=SLICE_INTERVAL)
 FACE_SCHEDULE = SamplingSchedule(every_time=FACE_INTERVAL)
 
-
-def _coupling_face_samplers(sampler_cls, schedule):
-    """One planar sampler per face of COUPLING_BOX.
-
-    ``bounds`` lists the two in-plane axes: x-plane -> (y, z),
-    y-plane -> (x, z), z-plane -> (x, y).
-    """
-    x0, x1, y0, y1, z0, z1 = COUPLING_BOX
-    faces = (
-        ("xmin", [x0, 0.0, 0.0], [1, 0, 0], [y0, y1, z0, z1]),
-        ("xmax", [x1, 0.0, 0.0], [1, 0, 0], [y0, y1, z0, z1]),
-        ("ymin", [0.0, y0, 0.0], [0, 1, 0], [x0, x1, z0, z1]),
-        ("ymax", [0.0, y1, 0.0], [0, 1, 0], [x0, x1, z0, z1]),
-        ("zmin", [0.0, 0.0, z0], [0, 0, 1], [x0, x1, y0, y1]),
-        ("zmax", [0.0, 0.0, z1], [0, 0, 1], [x0, x1, y0, y1]),
-    )
-    return tuple(
-        sampler_cls(
-            point=point,
-            normal=normal,
-            bounds=bounds,
-            spacing=SAMPLE_SPACING,
-            file_name=f"couplingFace_{name}",
-            schedule=schedule,
-        )
-        for name, point, normal, bounds in faces
-    )
-
-
 SAMPLERS = (
     ForceSampler(
         patch_names=["cube"],
-        ref_velocity=float(np.linalg.norm(U_INF)),
+        ref_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
@@ -151,18 +108,17 @@ SAMPLERS = (
         schedule=SLICE_SCHEDULE,
         file_name="wake_slice_z0",
     ),
-    *_coupling_face_samplers(SurfaceSampler, FACE_SCHEDULE),
 )
 
 FVM_MESH = AdaptiveCartesianMesher(
     domain=FVM_DOMAIN,
-    max_cell_size=MIN_DS * 32,
+    max_cell_size=SURFACE_CELL_SIZE * 32,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
-    surface_cell_size=MIN_DS,
+    surface_cell_size=SURFACE_CELL_SIZE,
     refinements=(
-        BoxRefinement(WAKE_BOX, MIN_DS * 2, "wakeBox"),
-        BoxRefinement(DOWNSTREAM_WAKE_BOX, MIN_DS * 4, "downstreamWakeBox"),
+        BoxRefinement(WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),
+        BoxRefinement(DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4, "downstreamWakeBox"),
     ),
 )
 
@@ -221,7 +177,7 @@ FVM_SETUP = FVMSetup(
         Ce=SMAGORINSKY_CE,
     ),
     boundaries=[
-        BoundaryConfig.inlet("inlet", list(U_INF)),
+        BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
         BoundaryConfig.outlet("outlet", p=0.0),
         BoundaryConfig.slip("ymin"),
         BoundaryConfig.slip("ymax"),
@@ -229,7 +185,7 @@ FVM_SETUP = FVMSetup(
         BoundaryConfig.slip("zmax"),
         BoundaryConfig.wall("cube"),
     ],
-    initial_U=list(INITIAL_U),
+    initial_velocity=list(INITIAL_VELOCITY),
     initial_p=0.0,
 )
 

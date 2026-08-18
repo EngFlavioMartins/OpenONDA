@@ -2,11 +2,11 @@ from types import SimpleNamespace
 
 import numpy as np
 
-import source.coupler.vorticity_handoff as handoff_module
-from source.coupler.vorticity_handoff import (
-    VorticityHandoff,
-    build_handoff_lattice,
-    continuous_handoff,
+import source.coupler.vorticity_transfer as transfer_module
+from source.coupler.vorticity_transfer import (
+    VorticityTransfer,
+    build_transfer_lattice,
+    continuous_transfer,
     cosine_eta,
     max_stable_dt,
     redistribute_locally,
@@ -26,7 +26,7 @@ def _zero_target(points):
 
 def test_cosine_authority_partition():
     points = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.5, 0.0, 0.0]])
-    eta = cosine_eta(points, BOX, ramp_width=0.3, dead_zone=0.05)
+    eta = cosine_eta(points, BOX, overlap_zone_ramp_width=0.3, overlap_zone_dead_zone=0.05)
     np.testing.assert_allclose(eta[[0, 2]], [1.0, 0.0])
     assert 0.0 < eta[1] < 1.0
 
@@ -36,42 +36,42 @@ def test_buffer_dt_inverse():
     assert np.isclose(max_stable_dt(1.2, length, H), 0.05)
 
 
-def test_static_handoff_lattice_preserves_the_dynamic_transfer():
+def test_static_transfer_lattice_preserves_the_dynamic_transfer():
     """Static mesh/solid masks must not change the active hand-off operator."""
 
     def mesh_weight(points):
         return 1.0 - smoothstep(np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8)
 
-    lattice = build_handoff_lattice(
+    lattice = build_transfer_lattice(
         BOX,
         H,
-        buffer_length=0.0,
+        transfer_buffer_length=0.0,
         mesh_weight_at_node=mesh_weight,
-        ramp_width=0.3,
-        dead_zone=0.05,
-        u_inf=[1.0, 0.0, 0.0],
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone=0.05,
+        freestream_velocity=[1.0, 0.0, 0.0],
     )
     target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
-    dynamic = continuous_handoff(
+    dynamic = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
         circulation_at_node=target,
         mesh_weight_at_node=mesh_weight,
-        ramp_width=0.3,
-        dead_zone=0.05,
-        threshold_abs=1.0e-12,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone=0.05,
+        transfer_prune_threshold_abs=1.0e-12,
     )
-    cached = continuous_handoff(
+    cached = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
         circulation_at_node=target,
-        ramp_width=0.3,
-        dead_zone=0.05,
-        threshold_abs=1.0e-12,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone=0.05,
+        transfer_prune_threshold_abs=1.0e-12,
         lattice=lattice,
     )
 
@@ -80,23 +80,23 @@ def test_static_handoff_lattice_preserves_the_dynamic_transfer():
     assert cached.spectral_band_ratio == dynamic.spectral_band_ratio
 
 
-def test_handoff_diagnostics_can_be_deferred_without_changing_particles():
+def test_transfer_diagnostics_can_be_deferred_without_changing_particles():
     target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
-    full = continuous_handoff(
+    full = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
         circulation_at_node=target,
-        threshold_abs=1.0e-12,
+        transfer_prune_threshold_abs=1.0e-12,
     )
-    deferred = continuous_handoff(
+    deferred = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
         circulation_at_node=target,
-        threshold_abs=1.0e-12,
+        transfer_prune_threshold_abs=1.0e-12,
         compute_diagnostics=False,
     )
 
@@ -106,23 +106,23 @@ def test_handoff_diagnostics_can_be_deferred_without_changing_particles():
     assert deferred.spectral_band_ratio == {}
 
 
-def test_deferred_handoff_skips_final_gaussian_representation(monkeypatch):
+def test_deferred_transfer_skips_final_gaussian_representation(monkeypatch):
     target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
-    gaussian = handoff_module._gaussian_mollified_circulation
+    gaussian = transfer_module._gaussian_mollified_circulation
     calls = []
 
     def record_gaussian(*args, **kwargs):
         calls.append(1)
         return gaussian(*args, **kwargs)
 
-    monkeypatch.setattr(handoff_module, "_gaussian_mollified_circulation", record_gaussian)
-    continuous_handoff(
+    monkeypatch.setattr(transfer_module, "_gaussian_mollified_circulation", record_gaussian)
+    continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
         circulation_at_node=target,
-        threshold_abs=1.0e-12,
+        transfer_prune_threshold_abs=1.0e-12,
         compute_diagnostics=False,
     )
 
@@ -131,7 +131,7 @@ def test_deferred_handoff_skips_final_gaussian_representation(monkeypatch):
     assert len(calls) == 2
 
 
-def test_aligned_handoff_excludes_solid():
+def test_aligned_transfer_excludes_solid():
     def target(points):
         return np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))
 
@@ -144,7 +144,7 @@ def test_aligned_handoff_excludes_solid():
         depth = 0.2 - np.max(np.abs(points), axis=1)
         return smoothstep(-depth, 0.0, H)
 
-    result = continuous_handoff(
+    result = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
@@ -155,9 +155,9 @@ def test_aligned_handoff_excludes_solid():
         ),
         fluid_weight_at_node=fluid_weight,
         interior_at_node=solid,
-        ramp_width=0.3,
-        dead_zone=0.05,
-        threshold_abs=1.0e-12,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone=0.05,
+        transfer_prune_threshold_abs=1.0e-12,
         lattice_anchor=np.array([-0.375, -0.375, -0.375]),
     )
 
@@ -166,17 +166,17 @@ def test_aligned_handoff_excludes_solid():
     assert np.isfinite(result.circ).all()
 
 
-def test_handoff_reuses_native_ibm_solid_geometry():
+def test_transfer_reuses_native_ibm_solid_geometry():
     config = SimpleNamespace(
-        h=0.1,
-        buffer_thickness=0.3,
-        dead_zone_h=1.0,
-        overlap_radius_ratio=1.0,
-        u_inf=[1.0, 0.0, 0.0],
-        prune_vorticity_min=0.01,
-        handoff_box=None,
+        vpm_particle_spacing=0.1,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone_width=0.1,
+        vpm_core_radius_ratio=1.0,
+        freestream_velocity=[1.0, 0.0, 0.0],
+        transfer_prune_vorticity_min=0.01,
+        transfer_region_box=None,
         transfer_amplification_cap=2.0,
-        boundary_prune_multiplier=1.0,
+        transfer_boundary_prune_multiplier=1.0,
     )
     body = ImmersedBody.cylinder_z([0.0, 0.0, 0.0], diameter=1.0, h=0.1)
     fvm = SimpleNamespace(
@@ -191,12 +191,12 @@ def test_handoff_reuses_native_ibm_solid_geometry():
         fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -0.1, 0.1]),
         vpm=None,
     )
-    handoff = VorticityHandoff(coupler)
-    handoff.setup(fvm)
+    transfer = VorticityTransfer(coupler)
+    transfer.setup(fvm)
 
-    assert handoff._solid_bodies == (body,)
+    assert transfer._solid_bodies == (body,)
     np.testing.assert_array_equal(
-        handoff._points_in_solid(
+        transfer._points_in_solid(
             [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.6, 0.0, 0.0]],
             include_boundary=False,
         ),
@@ -204,24 +204,24 @@ def test_handoff_reuses_native_ibm_solid_geometry():
     )
 
 
-def test_handoff_uses_separate_handoff_box():
+def test_transfer_uses_separate_transfer_region_box():
     config = SimpleNamespace(
-        h=0.1,
-        buffer_thickness=0.3,
-        dead_zone_h=1.0,
-        overlap_radius_ratio=1.0,
-        u_inf=[1.0, 0.0, 0.0],
-        prune_vorticity_min=0.01,
-        handoff_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
+        vpm_particle_spacing=0.1,
+        overlap_zone_ramp_width=0.3,
+        overlap_zone_dead_zone_width=0.1,
+        vpm_core_radius_ratio=1.0,
+        freestream_velocity=[1.0, 0.0, 0.0],
+        transfer_prune_vorticity_min=0.01,
+        transfer_region_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
         transfer_amplification_cap=2.0,
-        boundary_prune_multiplier=1.0,
+        transfer_boundary_prune_multiplier=1.0,
     )
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[]),
         config=SimpleNamespace(boundaries=[]),
         get_cell_center_coordinates=lambda: np.array([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
     )
-    handoff = VorticityHandoff(
+    transfer = VorticityTransfer(
         SimpleNamespace(
             config=config,
             dt_vpm=0.1,
@@ -231,22 +231,22 @@ def test_handoff_uses_separate_handoff_box():
         )
     )
 
-    handoff.setup(fvm)
+    transfer.setup(fvm)
 
-    np.testing.assert_array_equal(handoff._box, config.handoff_box)
+    np.testing.assert_array_equal(transfer._box, config.transfer_region_box)
 
 
 def test_free_wake_is_retained():
     pos = np.array([[1.0, 0.0, 0.0], [1.2, 0.1, 0.0]])
     circ = np.array([[0.0, 0.0, 0.2], [0.0, 0.1, 0.0]])
-    result = continuous_handoff(
+    result = continuous_transfer(
         pos,
         circ,
         BOX,
         H,
         circulation_at_node=_zero_target,
-        buffer_length=0.1,
-        threshold_abs=1.0e-12,
+        transfer_buffer_length=0.1,
+        transfer_prune_threshold_abs=1.0e-12,
     )
 
     np.testing.assert_allclose(result.pos, pos)
@@ -350,14 +350,14 @@ def test_population_cap_preserves_integral_circulation():
     rng = np.random.default_rng(3)
     pos = rng.uniform([1.0, -0.5, -0.5], [2.0, 0.5, 0.5], (8, 3))
     circ = rng.normal(size=(8, 3)) * 0.05
-    result = continuous_handoff(
+    result = continuous_transfer(
         pos,
         circ,
         BOX,
         H,
         circulation_at_node=_zero_target,
         max_output_particles=4,
-        threshold_abs=1.0e-12,
+        transfer_prune_threshold_abs=1.0e-12,
     )
 
     assert result.n_total == 4

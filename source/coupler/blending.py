@@ -13,33 +13,33 @@ BLEND_STRENGTH = 4.0
 def build_lambda(
     cell_centres: np.ndarray,
     fvm_box: tuple[float, float, float, float, float, float],
-    buffer_thickness: float,
+    overlap_zone_ramp_width: float,
     lambda_max: float,
-    dead_zone: float = 0.0,
+    overlap_zone_dead_zone: float = 0.0,
 ) -> np.ndarray:
     """Return the C1 relaxation profile complementary to VPM authority."""
     points = np.atleast_2d(cell_centres)
     lo = np.asarray(fvm_box)[[0, 2, 4]]
     hi = np.asarray(fvm_box)[[1, 3, 5]]
     distance = np.minimum(points - lo, hi - points).min(axis=1)
-    dead_zone = max(dead_zone, 0.0)
-    width = max(buffer_thickness - dead_zone, 1.0e-30)
+    overlap_zone_dead_zone = max(overlap_zone_dead_zone, 0.0)
+    width = max(overlap_zone_ramp_width - overlap_zone_dead_zone, 1.0e-30)
     relaxation = np.zeros(len(points))
-    relaxation[distance <= dead_zone] = lambda_max
-    active = (distance > dead_zone) & (distance < buffer_thickness)
-    phase = (distance[active] - dead_zone) / width
+    relaxation[distance <= overlap_zone_dead_zone] = lambda_max
+    active = (distance > overlap_zone_dead_zone) & (distance < overlap_zone_ramp_width)
+    phase = (distance[active] - overlap_zone_dead_zone) / width
     relaxation[active] = 0.5 * lambda_max * (1.0 + np.cos(np.pi * phase))
     return relaxation
 
 
 def lambda_max_from_scales(
     u_char: float,
-    buffer_thickness: float,
+    overlap_zone_ramp_width: float,
     dt: float,
 ) -> float:
     return float(
         min(
-            BLEND_STRENGTH * u_char / max(buffer_thickness, 1.0e-12),
+            BLEND_STRENGTH * u_char / max(overlap_zone_ramp_width, 1.0e-12),
             1.0 / max(dt, 1.0e-12),
         )
     )
@@ -51,15 +51,15 @@ class BlendingZone:
         self.vpm = vpm
         self.fvm = fvm
         self.cell_centres = np.asarray(fvm.get_cell_center_coordinates()).reshape(-1, 3)
-        u_char = float(np.linalg.norm(cfg.U_inf))
-        lambda_max = lambda_max_from_scales(u_char, cfg.buffer_thickness, coupling_dt)
-        dead_zone = float(cfg.dead_zone_h) * float(cfg.h)
+        u_char = float(np.linalg.norm(cfg.freestream_velocity_vector))
+        lambda_max = lambda_max_from_scales(u_char, cfg.overlap_zone_ramp_width, coupling_dt)
+        overlap_zone_dead_zone = float(cfg.overlap_zone_dead_zone_width)
         self.relaxation = build_lambda(
             self.cell_centres,
             fvm_box,
-            cfg.buffer_thickness,
+            cfg.overlap_zone_ramp_width,
             lambda_max,
-            dead_zone,
+            overlap_zone_dead_zone,
         )
         self.fvm.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.relaxation))
         self._previous: np.ndarray | None = None
@@ -79,7 +79,9 @@ class BlendingZone:
     def update_target(self, active_velocity: np.ndarray | None = None) -> None:
         """Refresh the blending target from the shared VPM field evaluation."""
         active = self.relaxation > 0.0
-        target = np.tile(self.cfg.U_inf, (len(self.cell_centres), 1)).astype(float)
+        target = np.tile(self.cfg.freestream_velocity_vector, (len(self.cell_centres), 1)).astype(
+            float
+        )
         if active.any():
             if active_velocity is None:
                 raise ValueError(
@@ -94,7 +96,7 @@ class BlendingZone:
         self._push(target)
 
     def update_endpoint(self, active_velocity: np.ndarray | None = None) -> None:
-        """Replace the interval endpoint after the vorticity handoff."""
+        """Replace the interval endpoint after the vorticity transfer."""
         if self._next is None or active_velocity is None:
             return
         active = self.relaxation > 0.0

@@ -19,8 +19,8 @@ class PressureReference:
         fvm,
         *,
         fvm_box: np.ndarray,
-        u_inf: np.ndarray,
-        h: float,
+        freestream_velocity: np.ndarray,
+        particle_spacing: float,
         boundary_mode: str,
         enabled: bool,
         is_master: bool,
@@ -28,8 +28,8 @@ class PressureReference:
     ) -> None:
         self.fvm = fvm
         self.fvm_box = np.asarray(fvm_box, dtype=np.float64)
-        self.u_inf = np.asarray(u_inf, dtype=np.float64)
-        self.h = float(h)
+        self.freestream_velocity = np.asarray(freestream_velocity, dtype=np.float64)
+        self.particle_spacing = float(particle_spacing)
         self.boundary_mode = boundary_mode
         self.enabled = bool(enabled)
         self.is_master = bool(is_master)
@@ -66,10 +66,18 @@ class PressureReference:
             self.cell_indices = np.empty(0, dtype=np.int64)
             return None
 
-        axis = int(np.argmax(np.abs(self.u_inf))) if np.any(self.u_inf != 0.0) else 0
-        sign = float(np.sign(self.u_inf[axis])) if self.u_inf[axis] != 0.0 else 1.0
+        axis = (
+            int(np.argmax(np.abs(self.freestream_velocity)))
+            if np.any(self.freestream_velocity != 0.0)
+            else 0
+        )
+        sign = (
+            float(np.sign(self.freestream_velocity[axis]))
+            if self.freestream_velocity[axis] != 0.0
+            else 1.0
+        )
         plane = self.fvm_box[2 * axis] if sign >= 0 else self.fvm_box[2 * axis + 1]
-        near = np.abs(centres[:, axis] - plane) <= 2.0 * self.h
+        near = np.abs(centres[:, axis] - plane) <= 2.0 * self.particle_spacing
         for other in range(3):
             if other == axis:
                 continue
@@ -90,7 +98,9 @@ class PressureReference:
         delta = 0.0
         if self.is_master and index is not None and index.size and index.max() < len(pressure):
             head = pressure[index] + 0.5 * np.einsum("ij,ij->i", velocity[index], velocity[index])
-            freestream_head = 0.5 * float(np.dot(self.u_inf, self.u_inf))
+            freestream_head = 0.5 * float(
+                np.dot(self.freestream_velocity, self.freestream_velocity)
+            )
             delta = float(freestream_head - np.mean(head))
         if self.comm is not None and self.comm.Get_size() > 1:
             delta = float(self.comm.bcast(delta if self.is_master else None, root=0))

@@ -49,14 +49,16 @@ def _check_coupling_history(coupling: list[dict]) -> None:
         abs(float(record["vpm_bc_flux"]["corrected_mismatch"])) for record in coupling
     )
     if circulation_error > 1e-8:
-        raise SystemExit(f"FAIL: corrected handoff circulation mismatch is {circulation_error:.3g}")
+        raise SystemExit(
+            f"FAIL: corrected transfer circulation mismatch is {circulation_error:.3g}"
+        )
     if vpm_bc_error > 1e-8:
         raise SystemExit(f"FAIL: corrected VPM-BC-flux mismatch is {vpm_bc_error:.3g}")
-    handoff_cfl = max(float(record.get("handoff", {}).get("cfl", 0.0)) for record in coupling)
-    if handoff_cfl > 1.0:
-        raise SystemExit(f"FAIL: peak handoff CFL is excessive ({handoff_cfl:.3g})")
+    transfer_cfl = max(float(record.get("transfer", {}).get("cfl", 0.0)) for record in coupling)
+    if transfer_cfl > 1.0:
+        raise SystemExit(f"FAIL: peak transfer CFL is excessive ({transfer_cfl:.3g})")
     cap_loss = max(
-        float(record.get("handoff", {}).get("population_pruned_circulation_fraction", 0.0))
+        float(record.get("transfer", {}).get("population_pruned_circulation_fraction", 0.0))
         for record in coupling
     )
     if cap_loss > 0.02:
@@ -124,7 +126,7 @@ def main() -> None:
     print(
         "PASS: native cube run completed with converged FVM solves, "
         f"peak CFL={max_cfl:.3g}, peak continuity={max_continuity:.3g}, "
-        f"and conservative handoff through t={forces[-1, 0]:g}.{physics_summary}"
+        f"and conservative transfer through t={forces[-1, 0]:g}.{physics_summary}"
     )
 
 

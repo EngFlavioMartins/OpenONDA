@@ -70,12 +70,12 @@ DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
 DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
 ANGLE = math.radians(ALPHA_DEG)
-U_INF = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
-NU = np.linalg.norm(U_INF) * CHORD / REYNOLDS
+FREESTREAM_VELOCITY = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
+NU = np.linalg.norm(FREESTREAM_VELOCITY) * CHORD / REYNOLDS
 FVM_BOX = (-1.2, 1.4, -0.8, 0.8, -3.3, 3.3)
 VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
-OVERLAP_RADIUS_RATIO = 1.5
+VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = float(os.environ.get("OPENONDA_IBM_MARKER_RATIO", "2.5"))
 WRITE_INTERVAL = DT_VPM if SMOKE else 0.8
 SAMPLE_INTERVAL = min(WRITE_INTERVAL, T_END)
@@ -121,7 +121,7 @@ FVM_MESH = coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
 AIRFOIL = ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],
-    h=SPACING,
+    particle_spacing=SPACING,
     alpha=IBM_MARKER_RATIO,
     name="airfoil",
     caps=True,
@@ -129,7 +129,7 @@ AIRFOIL = ImmersedBody.extruded_polygon_z(
 
 FVM_SAMPLERS = (
     IBMForceSampler(
-        ref_velocity=float(np.linalg.norm(U_INF)),
+        ref_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         ref_area=CHORD * SPAN,
         schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
@@ -208,18 +208,18 @@ FVM_SETUP = FVMSetup(
     boundaries=[
         BoundaryConfig(
             name="numericalBoundary",
-            type_U="fixedValue",
-            value_U=list(U_INF),
+            type_velocity="fixedValue",
+            value_velocity=list(FREESTREAM_VELOCITY),
             type_p="fixedFluxPressure",
         )
     ],
-    initial_U=list(U_INF),
+    initial_velocity=list(FREESTREAM_VELOCITY),
     initial_p=0.0,
 )
 
 VPM_SETUP = VPMSetup(
     time_step_size=DT_VPM,
-    background_velocity=list(U_INF),
+    freestream_velocity=list(FREESTREAM_VELOCITY),
     viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
@@ -240,14 +240,14 @@ VPM_SETUP = VPMSetup(
 )
 
 COUPLER_SETUP = CouplerSetup(
-    u_inf=list(U_INF),
-    h=SPACING,
-    buffer_thickness=6 * SPACING,
-    dead_zone_h=3.0,
-    prune_vorticity_min=0.01,
-    handoff_max_particles=MAX_PARTICLES,
-    overlap_radius_ratio=OVERLAP_RADIUS_RATIO,
-    backup_period=VPM_LOG_PERIOD,
+    freestream_velocity=list(FREESTREAM_VELOCITY),
+    vpm_particle_spacing=SPACING,
+    overlap_zone_ramp_width=6 * SPACING,
+    overlap_zone_dead_zone_width=3.0 * SPACING,
+    transfer_prune_vorticity_min=0.01,
+    transfer_max_particles=MAX_PARTICLES,
+    vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
+    coupler_backup_period=VPM_LOG_PERIOD,
 )
 
 
@@ -305,7 +305,7 @@ def main() -> None:
     print("\n===== SIMULATION =====")
     print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={MAX_PARTICLES}")
     fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.set_immersed_bodies(AIRFOIL, h=SPACING)
+    fvm_solver.set_immersed_bodies(AIRFOIL, particle_spacing=SPACING)
     fvm_solver.write_vtk()
 
     vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None

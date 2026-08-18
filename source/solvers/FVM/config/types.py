@@ -21,16 +21,27 @@ class BoundaryConfig:
     """
 
     name: str
-    type_U: str = "fixedValue"
-    value_U: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Patch name, matched to the mesh patch surface."""
+    type_velocity: str = "fixedValue"
+    """Velocity boundary-condition type (OpenFOAM-style)."""
+    value_velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Velocity value ``[u, v, w]`` applied by fixed-value velocity BCs."""
     type_p: str = "zeroGradient"
+    """Pressure boundary-condition type (OpenFOAM-style)."""
     value_p: float = 0.0
+    """Kinematic pressure ``p/ρ`` [m²/s²] applied by fixed-value pressure BCs."""
     type_phi: str = "zeroGradient"
+    """Face-flux boundary-condition type (OpenFOAM-style)."""
     value_phi: float = 0.0
+    """Face-flux value applied by fixed-value flux BCs."""
     type_nut: str = "calculated"
+    """Turbulent-viscosity boundary-condition type (OpenFOAM-style)."""
     value_nut: float = 0.0
+    """Turbulent-viscosity value applied by fixed-value BCs."""
     neighbour_patch: str | None = None
+    """Name of the paired patch for cyclic boundaries."""
     mesh_type: Literal["patch", "wall", "empty", "cyclic"] | None = None
+    """Mesh-topology hint: patch, wall, empty, or cyclic."""
 
     @staticmethod
     def inlet(name: str, velocity: list[float]) -> "BoundaryConfig":
@@ -44,7 +55,7 @@ class BoundaryConfig:
             A new :class:`BoundaryConfig` suitable for inflow boundaries.
         """
         return BoundaryConfig(
-            name=name, type_U="fixedValue", value_U=velocity, type_p="zeroGradient"
+            name=name, type_velocity="fixedValue", value_velocity=velocity, type_p="zeroGradient"
         )
 
     @staticmethod
@@ -63,7 +74,9 @@ class BoundaryConfig:
         Returns:
             A new :class:`BoundaryConfig` suitable for outflow boundaries.
         """
-        return BoundaryConfig(name=name, type_U="inletOutlet", type_p="fixedValue", value_p=p)
+        return BoundaryConfig(
+            name=name, type_velocity="inletOutlet", type_p="fixedValue", value_p=p
+        )
 
     @staticmethod
     def freestream(name: str, velocity: list[float], p: float = 0.0) -> "BoundaryConfig":
@@ -80,7 +93,11 @@ class BoundaryConfig:
             A new :class:`BoundaryConfig` for external-flow farfield boundaries.
         """
         return BoundaryConfig(
-            name=name, type_U="freestream", value_U=velocity, type_p="freestream", value_p=p
+            name=name,
+            type_velocity="freestream",
+            value_velocity=velocity,
+            type_p="freestream",
+            value_p=p,
         )
 
     @staticmethod
@@ -88,7 +105,7 @@ class BoundaryConfig:
         """Create one side of a translational periodic patch pair."""
         return BoundaryConfig(
             name=name,
-            type_U="cyclic",
+            type_velocity="cyclic",
             type_p="cyclic",
             neighbour_patch=neighbour_patch,
             mesh_type="cyclic",
@@ -109,8 +126,8 @@ class BoundaryConfig:
         """
         return BoundaryConfig(
             name=name,
-            type_U="fixedValue",
-            value_U=[0.0, 0.0, 0.0],
+            type_velocity="fixedValue",
+            value_velocity=[0.0, 0.0, 0.0],
             type_p="zeroGradient",
             type_nut="calculated",
             mesh_type="wall",
@@ -121,7 +138,7 @@ class BoundaryConfig:
         """Create an impermeable, zero-shear boundary."""
         return BoundaryConfig(
             name=name,
-            type_U="slip",
+            type_velocity="slip",
             type_p="zeroGradient",
             type_nut="zeroGradient",
             mesh_type="patch",
@@ -138,8 +155,8 @@ class BoundaryConfig:
         """
         return BoundaryConfig(
             name=name,
-            type_U="empty",
-            value_U=[0.0, 0.0, 0.0],
+            type_velocity="empty",
+            value_velocity=[0.0, 0.0, 0.0],
             type_p="empty",
             type_nut="zeroGradient",
             mesh_type="empty",
@@ -156,9 +173,13 @@ class MeshConfig:
     """
 
     max_non_orthogonality_deg: float | None = None
+    """Reject meshes with face non-orthogonality above this angle (degrees); None disables."""
     max_skewness: float | None = None
+    """Reject meshes with cell skewness above this value; None disables."""
     max_aspect_ratio: float | None = None
+    """Reject meshes with cell aspect ratio above this value; None disables."""
     max_lsq_condition: float | None = None
+    """Reject meshes whose least-squares gradient stencil condition exceeds this; None disables."""
 
 
 @dataclass
@@ -176,15 +197,25 @@ class TimeConfig:
     """
 
     delta_t: float = 0.01
+    """Time-step size (seconds)."""
     start_time: float = 0.0
+    """Simulation start time (seconds)."""
     end_time: float = 1.0
+    """Simulation end time (seconds); ``end_time - start_time`` gives the step count."""
     write_interval: int = 10
+    """Write output every *N*-th solver step."""
     write_interval_time: float | None = None
+    """Physical-time output interval (seconds); overrides ``write_interval`` when set."""
     adjust_timestep: bool = False
+    """Dynamically adapt ``delta_t`` to respect ``max_cfl``."""
     max_cfl: float = 1.0
+    """Target maximum CFL number when ``adjust_timestep`` is enabled."""
     max_delta_t: float = 0.1
+    """Upper bound on the adaptive time step (seconds)."""
     min_delta_t: float = 1e-4
+    """Lower bound on the adaptive time step (seconds)."""
     dt_adjust_coeff: float = 1.2
+    """Multiplicative factor used when adapting the time step."""
 
     @staticmethod
     def steady(max_iter: int = 1000, write_interval: int = 100) -> "TimeConfig":
@@ -243,8 +274,12 @@ class SchemesConfig:
         "minmod",
         "superbee",
     ] = "limitedLinear"
+    """Convection discretization: upwind, central, limitedLinear, LUST, linearUpwind,
+    vanLeer, MUSCL, minmod, or superbee."""
     gradient_scheme: Literal["gauss", "lsq"] = "lsq"
+    """Gradient discretization: ``gauss`` or ``lsq``."""
     time_scheme: Literal["euler_implicit", "backward"] = "euler_implicit"
+    """Temporal discretization: ``euler_implicit`` or ``backward``."""
 
 
 @dataclass
@@ -265,25 +300,45 @@ class LinearSolverConfig:
     """
 
     linear_solver: Literal["bicgstab", "gmres", "cg", "amg", "spsolve"] = "bicgstab"
+    """Default linear solver for all components: bicgstab, gmres, cg, amg, or spsolve."""
     momentum_solver: Literal["bicgstab", "gmres", "cg", "spsolve"] | None = None
+    """Solver override for the momentum equations; None uses ``linear_solver``."""
     pressure_solver: Literal["amg", "bicgstab", "gmres", "cg", "spsolve"] | None = None
+    """Solver override for the pressure correction; None uses ``linear_solver``."""
     pressure_nullspace_policy: Literal["auto", "reference", "petsc"] = "auto"
+    """How the singular pressure nullspace is treated: auto, reference, or petsc."""
     linear_failure_policy: Literal["raise", "direct_fallback"] = "raise"
+    """Behavior when a linear solve fails to converge: raise or direct_fallback."""
     reuse_ilu: bool = True
+    """Reuse the ILU preconditioner factorization across solves."""
     momentum_tol: float = 1e-4
+    """Absolute normalized residual target for momentum solves."""
     momentum_rel_tol: float = 0.0
+    """Stop momentum solves once the initial residual drops by this factor; 0 requests the absolute target."""
     momentum_final_rel_tol: float | None = 0.0
+    """Relative residual target for the final momentum stage; 0 requests the absolute target."""
     momentum_maxiter: int = 1000
+    """Iteration limit per momentum solve."""
     pressure_tol: float = 1e-8
+    """Absolute normalized residual target for pressure-correction solves."""
     pressure_rel_tol: float = 0.0
+    """Stop pressure solves once the initial residual drops by this factor; 0 requests the absolute target."""
     pressure_final_rel_tol: float | None = 0.0
+    """Relative residual target for the final pressure stage; 0 requests the absolute target."""
     pressure_maxiter: int = 500
+    """Iteration limit per pressure-correction solve."""
     amg_tol: float | None = None
+    """AMG solver tolerance; None uses the component tolerance."""
     amg_maxiter: int | None = None
+    """AMG iteration limit; None uses the component limit."""
     amg_reuse_tol: float = 0.05
+    """Reuse the AMG hierarchy while the residual stays below this tolerance."""
     ilu_drop_tol: float = 1e-4
+    """ILU drop tolerance for the preconditioner."""
     ilu_fill_factor: float = 10.0
+    """ILU fill factor for the preconditioner."""
     ilu_reuse_tol: float | None = None
+    """Reuse the ILU factorization while the residual stays below this tolerance."""
 
 
 @dataclass
@@ -303,18 +358,31 @@ class PimpleControl:
     """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
+    """Pressure-velocity coupling algorithm: SIMPLE, PIMPLE, or PISO."""
     n_correctors: int = 2
+    """Number of pressure-correction loops per step (PISO/PIMPLE)."""
     n_outer_correctors: int = 1
+    """Number of outer corrector loops (PIMPLE)."""
     n_orthogonal_correctors: int = 0
+    """Number of non-orthogonality correctors per pressure solve."""
     min_outer_correctors: int = 1
+    """Minimum number of outer correctors always run."""
     outer_residual_tolerance: float | None = None
+    """Stop the outer loop once residuals fall below this; None disables."""
     outer_continuity_tolerance: float | None = None
+    """Stop the outer loop once the continuity error falls below this; None disables."""
     max_iter: int = 20
+    """Hard iteration limit for the pressure solve."""
     tolerance: float = 1e-6
+    """Absolute normalized residual target for pressure solves."""
     alpha_u: float = 1.0
+    """Velocity under-relaxation factor in (0, 1]."""
     alpha_p: float = 1.0
+    """Pressure under-relaxation factor in (0, 1]."""
     ibm_forcing_loops: int = 2
+    """Number of immersed-boundary forcing sweeps per step."""
     ibm_second_solve: bool = True
+    """Run a second pressure solve after immersed-boundary forcing."""
 
 
 @dataclass
@@ -340,7 +408,9 @@ class TransportConfig:
     """
 
     density: float = 1.225
+    """Fluid density (kg/m³)."""
     nu: float = 1.5e-5
+    """Kinematic viscosity (m²/s)."""
 
     @staticmethod
     def air() -> "TransportConfig":
@@ -378,10 +448,15 @@ class DynamicMeshConfig:
     """
 
     method: Literal["static", "rigidMotion"] = "static"
+    """Mesh-motion mode: ``static`` or ``rigidMotion``."""
     velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Rigid-body translation velocity ``[vx, vy, vz]`` (m/s)."""
     omega: float = 0.0
+    """Angular velocity about the axis (rad/s)."""
     axis: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
+    """Rotation axis direction ``[ax, ay, az]``."""
     origin: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Rotation centre ``[ox, oy, oz]``."""
 
     @staticmethod
     def static() -> "DynamicMeshConfig":
@@ -444,10 +519,16 @@ class TurbulenceConfig:
     # (Smagorinsky Cs, WALE Cw, sigma Cσ) — use the factories below to get the
     # right default for each model.
     model: str = "None"
+    """SGS model name: "None"/"ILES", "Smagorinsky", "WALE", "sigma", or
+    "dynamicSmagorinsky"."""
     Cs: float = 0.17  # model coefficient (meaning depends on model)
+    """Model coefficient: Smagorinsky Cs, WALE Cw, or sigma Cσ."""
     dynamic: bool = False  # Smagorinsky only: use the Germano/Lilly dynamic procedure
+    """Smagorinsky only: use the Germano-Lilly dynamic procedure."""
     Ck: float = 0.094  # algebraic-equilibrium SGS energy coefficient
+    """Algebraic-equilibrium SGS kinetic-energy coefficient."""
     Ce: float = 1.048  # base LES dissipation coefficient
+    """Base LES dissipation coefficient."""
 
     @staticmethod
     def smagorinsky(Cs: float = 0.17, dynamic: bool = False) -> "TurbulenceConfig":
@@ -562,9 +643,13 @@ class ExecutionConfig:
     """
 
     operator_backend: Literal["numpy", "numba", "taichi"] = "numpy"
+    """Sparse-assembly backend: numpy, numba, or taichi."""
     linear_backend: Literal["scipy", "petsc"] = "scipy"
+    """Linear-algebra backend: scipy or petsc."""
     parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
+    """Parallel execution mode: serial, petsc_replicated, or petsc_partitioned."""
     output_mode: Literal["synchronous", "threaded"] = "synchronous"
+    """Visualization-output execution: synchronous or threaded."""
 
     @staticmethod
     def petsc_replicated() -> "ExecutionConfig":
@@ -594,13 +679,21 @@ class OutputSetup:
     """
 
     format: Literal["vtk_xml"] = "vtk_xml"
+    """Visualization file format; only ``vtk_xml`` is supported."""
     data_location: Literal["cell"] = "cell"
+    """Where fields are stored; must remain cell-centred."""
     encoding: Literal["appended"] = "appended"
+    """VTK binary encoding; only ``appended`` is supported."""
     compression: Literal["lz4", "none", "zlib"] = "lz4"
+    """VTK compression: lz4, none, or zlib."""
     precision: Literal["float32", "float64"] = "float64"
+    """Field storage precision: float32 or float64."""
     asynchronous: bool = True
+    """Write output on a background thread."""
     ghost_layers: Literal[0, 1] = 1
+    """Number of ghost-cell layers written (0 or 1)."""
     point_interpolation: Literal["none", "boundary_weighted"] = "none"
+    """Add interpolated point data: ``none`` or ``boundary_weighted``."""
 
     def __post_init__(self) -> None:
         if self.format != "vtk_xml":
@@ -631,14 +724,23 @@ class RunAcceptancePolicy:
     """
 
     sustained_steps: int = 1
+    """Consecutive steps an abort threshold must be exceeded before aborting."""
     continuity_warning: float | None = None
+    """Warn when continuity error exceeds this; None disables."""
     continuity_abort: float | None = None
+    """Abort when continuity error exceeds this; None disables."""
     residual_warning: float | None = None
+    """Warn when the normalized residual exceeds this; None disables."""
     residual_abort: float | None = None
+    """Abort when the normalized residual exceeds this; None disables."""
     cfl_warning: float | None = None
+    """Warn when the CFL number exceeds this; None disables."""
     cfl_abort: float | None = None
+    """Abort when the CFL number exceeds this; None disables."""
     velocity_warning: float | None = None
+    """Warn when the maximum velocity exceeds this; None disables."""
     velocity_abort: float | None = None
+    """Abort when the maximum velocity exceeds this; None disables."""
 
 
 @dataclass
@@ -652,9 +754,13 @@ class LogConfig:
     """
 
     mode: Literal["simple", "debug"] = "simple"
+    """Output verbosity: ``simple`` or ``debug``."""
     interval: int = 1
+    """Log every *N*-th step."""
     console: bool = True
+    """Also print diagnostics to the console."""
     filename: str = "fvm.log"
+    """Log-file name."""
 
     def __post_init__(self) -> None:
         if self.mode not in {"simple", "debug"}:
@@ -693,23 +799,41 @@ class FVMSetup:
     """
 
     case_name: str
+    """Name of the case directory, written into the run folder."""
     cores: int = 1
+    """Number of MPI ranks used for the run."""
     mesh: MeshConfig = field(default_factory=MeshConfig)
+    """Mesh quality limits applied to the solver-native or Gmsh mesh."""
     execution: "ExecutionConfig" = field(default_factory=ExecutionConfig)
+    """Sparse-assembly, linear algebra, and output execution backends."""
     output: "OutputSetup" = field(default_factory=OutputSetup)
+    """ParaView visualization output policy."""
     acceptance: "RunAcceptancePolicy" = field(default_factory=RunAcceptancePolicy)
+    """Warning and abort thresholds applied to step diagnostics."""
     logging: "LogConfig" = field(default_factory=LogConfig)
+    """Console and log-file verbosity."""
     time: TimeConfig = field(default_factory=TimeConfig)
+    """Time integration and output cadence."""
     schemes: SchemesConfig = field(default_factory=SchemesConfig)
+    """Spatial and temporal discretisation schemes."""
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
+    """Momentum and pressure linear-solver settings."""
     pimple: PimpleControl = field(default_factory=PimpleControl)
+    """PIMPLE, PISO, or SIMPLE pressure-velocity coupling control."""
     transport: TransportConfig = field(default_factory=TransportConfig)
+    """Fluid properties (density and viscosity)."""
     dynamic_mesh: DynamicMeshConfig = field(default_factory=DynamicMeshConfig.static)
+    """Mesh motion (rigid-body or static)."""
     boundaries: list[BoundaryConfig] = field(default_factory=list)
+    """Boundary-condition specifications for the mesh patches."""
     samplers: tuple = ()
+    """Field samplers evaluated at the write interval."""
     turbulence: TurbulenceConfig | None = None
-    initial_U: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Turbulence/LES model configuration."""
+    initial_velocity: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """Initial velocity field ``[u, v, w]`` (m/s)."""
     initial_p: float | None = 0.0
+    """Initial kinematic pressure field ``p/ρ`` [m²/s²]."""
 
     def __post_init__(self) -> None:
         """Validate user-facing process settings.
@@ -811,6 +935,6 @@ class FVMSetup:
             dynamic_mesh=dynamic_mesh,
             boundaries=boundaries,
             turbulence=turbulence,
-            initial_U=data.get("initial_U", [0.0, 0.0, 0.0]),
+            initial_velocity=data.get("initial_velocity", [0.0, 0.0, 0.0]),
             initial_p=data.get("initial_p", 0.0),
         )

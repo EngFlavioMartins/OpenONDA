@@ -80,7 +80,7 @@ class BarnesHutTreecode:
     Example:
         >>> tree = BarnesHutTreecode(theta=0.5)
         >>> tree.build(positions, circulations, radii)
-        >>> velocities = tree.compute_velocities(positions, radii, u_inf)
+        >>> velocities = tree.compute_velocities(positions, radii, freestream_velocity)
 
     Parameters:
         theta: Opening angle for MAC (default 0.5). Lower = more accurate.
@@ -272,7 +272,7 @@ class BarnesHutTreecode:
         self,
         target_positions: np.ndarray,
         target_radii: np.ndarray,
-        background_velocity: np.ndarray | None = None,
+        freestream_velocity: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute velocities at target positions using treecode.
@@ -280,7 +280,7 @@ class BarnesHutTreecode:
         Args:
             target_positions: Target positions [M, 3]
             target_radii: Target radii for kernel smoothing [M]
-            background_velocity: Freestream velocity [3] (optional)
+            freestream_velocity: Freestream velocity [3] (optional)
 
         Returns:
             Velocities at targets [M, 3]
@@ -291,8 +291,8 @@ class BarnesHutTreecode:
         for i in range(M):
             velocities[i] = self._traverse(self.root, target_positions[i], target_radii[i])
 
-        if background_velocity is not None:
-            velocities += background_velocity
+        if freestream_velocity is not None:
+            velocities += freestream_velocity
 
         return velocities
 
@@ -386,7 +386,7 @@ def compute_velocities_treecode(
     circulations: np.ndarray,
     radii: np.ndarray,
     theta: float = 0.5,
-    background_velocity: np.ndarray | None = None,
+    freestream_velocity: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Compute velocities using Barnes-Hut treecode (convenience function).
@@ -396,14 +396,14 @@ def compute_velocities_treecode(
         circulations: Particle circulations [N, 3]
         radii: Particle core radii [N]
         theta: Opening angle (default 0.5)
-        background_velocity: Freestream velocity [3] (optional)
+        freestream_velocity: Freestream velocity [3] (optional)
 
     Returns:
         Velocities [N, 3]
     """
     tree = BarnesHutTreecode(theta=theta)
     tree.build(positions, circulations, radii)
-    return tree.compute_velocities(positions, radii, background_velocity)
+    return tree.compute_velocities(positions, radii, freestream_velocity)
 
 
 def benchmark_treecode(

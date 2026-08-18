@@ -105,10 +105,10 @@ def build_config(reynolds: float, end_time: float, depth: float) -> FVMSetup:
             BoundaryConfig.outlet("outlet", p=0.0),
             # Slip lateral boundaries: 20 D apart (5% blockage), no wall BL.
             BoundaryConfig(
-                name="bottom", type_U="slip", type_p="zeroGradient", type_nut="zeroGradient"
+                name="bottom", type_velocity="slip", type_p="zeroGradient", type_nut="zeroGradient"
             ),
             BoundaryConfig(
-                name="top", type_U="slip", type_p="zeroGradient", type_nut="zeroGradient"
+                name="top", type_velocity="slip", type_p="zeroGradient", type_nut="zeroGradient"
             ),
             BoundaryConfig.wall("cube"),
             BoundaryConfig.empty("front"),
@@ -116,7 +116,7 @@ def build_config(reynolds: float, end_time: float, depth: float) -> FVMSetup:
         ],
         # A tiny cross-stream component lets the vortex street start right
         # away instead of waiting for numerical round-off to break symmetry.
-        initial_U=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
+        initial_velocity=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
         initial_p=0.0,
     )
 

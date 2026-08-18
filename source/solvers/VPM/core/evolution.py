@@ -870,7 +870,7 @@ class EvolutionStepper:
                     nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming DVH particle regeneration "
-                f"(h={vc.dvh_grid_spacing:.3e}, nu={nu:.3e}, "
+                f"(particle_spacing={vc.dvh_grid_spacing:.3e}, nu={nu:.3e}, "
                 f"threshold={vc.dvh_threshold:.2e}"
                 + (
                     f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
@@ -882,7 +882,7 @@ class EvolutionStepper:
             return self.physics.grid_based_diffusion(
                 self.particles,
                 dt=dt,
-                h=vc.dvh_grid_spacing,
+                particle_spacing=vc.dvh_grid_spacing,
                 nu=nu,
                 domain_padding=vc.dvh_domain_padding,
                 regen_threshold=vc.dvh_threshold,
@@ -902,7 +902,7 @@ class EvolutionStepper:
                     nu_eff = self.particles.viscosity_effective_cpu()
             Logging.message(
                 f"\tPerforming GBD diffusion"
-                f"(h={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "
+                f"(particle_spacing={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "
                 f"threshold={vc.gbd_threshold:.2e}"
                 + (
                     f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
@@ -914,7 +914,7 @@ class EvolutionStepper:
             return self.physics.gbd_diffusion(
                 self.particles,
                 dt=dt,
-                h=vc.gbd_grid_spacing,
+                particle_spacing=vc.gbd_grid_spacing,
                 nu=nu,
                 domain_padding=vc.gbd_domain_padding,
                 regen_threshold=vc.gbd_threshold,

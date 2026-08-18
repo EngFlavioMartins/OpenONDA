@@ -15,7 +15,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
-    U_INF,
+    FREESTREAM_SPEED,
     blasius_solution,
     build_arg_parser,
     figure_size,
@@ -28,7 +28,7 @@ STATION_MARKERS = {0.25: "o", 0.5: "s", 0.75: "^"}
 
 def main():
     args = build_arg_parser().parse_args()
-    nu = U_INF * 1.0 / args.Re
+    nu = FREESTREAM_SPEED * 1.0 / args.Re
     data = load_csv_columns(Path(args.solution_dir) / "profiles.csv")
     if not data:
         return
@@ -44,8 +44,8 @@ def main():
     for station in sorted(set(data["station"])):
         sel = data["station"] == station
         y, u = data["y"][sel], data["u"][sel]
-        eta = y * np.sqrt(U_INF / (nu * station))
-        u_norm = u / U_INF
+        eta = y * np.sqrt(FREESTREAM_SPEED / (nu * station))
+        u_norm = u / FREESTREAM_SPEED
         marker = STATION_MARKERS.get(station, "d")
         ax.plot(
             eta, u_norm, marker, markersize=3.5, linestyle="none", label=f"FVM $x/L$ = {station:g}"

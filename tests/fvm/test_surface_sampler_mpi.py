@@ -70,7 +70,7 @@ def _config():
                 schedule=SamplingSchedule(every_n_steps=1),
             )
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 

@@ -75,7 +75,7 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
         time_step=7,
         time_step_size=0.05,
         particles=_BackupParticles(),
-        background_velocity=np.zeros(3),
+        freestream_velocity=np.zeros(3),
     )
 
     BackupSystem.backup_solver(solver, str(tmp_path / "vpm"))

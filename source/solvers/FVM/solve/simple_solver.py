@@ -198,7 +198,7 @@ def compute_ddt_flux_correction(
         correction[start:stop] = coupling * phi_corr / float(dt)
 
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "ghost")
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "ghost")
         if strategy in (
             BoundaryStrategy.FIXED_VALUE,
             BoundaryStrategy.NO_SLIP,
@@ -679,7 +679,7 @@ def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interi
         if np.any(boundary_neighbours[start : start + nf] >= 0):
             continue
         net_local += float(np.sum(patch_flux))
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_U"), "U", "flux")
+        strategy = BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "flux")
         if strategy in floating:
             # Scale exactly the faces the pressure matrix treats as
             # adjustable: the assembly's own classification when present.
@@ -1237,8 +1237,8 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     """inletOutlet velocity BC: zeroGradient on outflow, fixed value on inflow.
 
     Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
-    (zeroGradient); incoming flux (φ < 0) → impose ``value_U_field`` when
-    present, otherwise the uniform ``value_U`` (the inletValue, default 0).
+    (zeroGradient); incoming flux (φ < 0) → impose ``value_velocity_field`` when
+    present, otherwise the uniform ``value_velocity`` (the inletValue, default 0).
     The per-face path is required by the FVM--VPM characteristic VPM BC:
     pressure-correction refreshes must not replace its non-uniform VPM-BC trace
     with the uniform freestream.
@@ -1247,15 +1247,15 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
     own = owners[start : start + nf]
-    if boundary.get("value_U_field") is not None:
-        inlet_val = np.asarray(boundary["value_U_field"], dtype=float)
+    if boundary.get("value_velocity_field") is not None:
+        inlet_val = np.asarray(boundary["value_velocity_field"], dtype=float)
         if inlet_val.shape != (nf, 3):
             raise ValueError(
                 f"Per-face inlet velocity for patch {boundary.get('name')!r} "
                 f"must have shape ({nf}, 3), got {inlet_val.shape}"
             )
     else:
-        inlet_val = np.asarray(boundary.get("value_U", [0.0, 0.0, 0.0]), dtype=float)
+        inlet_val = np.asarray(boundary.get("value_velocity", [0.0, 0.0, 0.0]), dtype=float)
         if inlet_val.shape != (3,):
             raise ValueError(
                 f"Uniform inlet velocity for patch {boundary.get('name')!r} "
@@ -1302,18 +1302,18 @@ def _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior):
 def _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy):
     """Apply fixedValue or noSlip velocity BC.
 
-    Honours a per-face ``value_U_field`` (n_faces_patch, 3) when present (e.g. a
-    non-uniform coupler VPM BC), otherwise the uniform ``value_U``.
+    Honours a per-face ``value_velocity_field`` (n_faces_patch, 3) when present (e.g. a
+    non-uniform coupler VPM BC), otherwise the uniform ``value_velocity``.
     """
     start = boundary["startFace"]
     nf = boundary["nFaces"]
     idx = n_elements + (start - n_interior)
     if strategy is BoundaryStrategy.NO_SLIP:
         U[idx : idx + nf] = [0.0, 0.0, 0.0]
-    elif boundary.get("value_U_field") is not None:
-        U[idx : idx + nf] = boundary["value_U_field"]
-    elif "value_U" in boundary:
-        U[idx : idx + nf] = np.array(boundary["value_U"])
+    elif boundary.get("value_velocity_field") is not None:
+        U[idx : idx + nf] = boundary["value_velocity_field"]
+    elif "value_velocity" in boundary:
+        U[idx : idx + nf] = np.array(boundary["value_velocity"])
 
 
 def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
@@ -1355,7 +1355,7 @@ def _update_velocity_bcs(
     """Update all velocity boundary conditions after a pressure-correction step.
 
     Dispatches to individual BC handlers based on each patch's
-    ``bc_type_U``:
+    ``bc_type_velocity``:
 
     - ``zeroGradient`` → :func:`_apply_zero_gradient_bc`
     - ``inletOutlet``  → :func:`_apply_inlet_outlet_bc`
@@ -1372,7 +1372,7 @@ def _update_velocity_bcs(
         n_interior:  Number of interior faces.
     """
     for boundary in boundaries:
-        bc_type_u = boundary.get("bc_type_U") or boundary.get("bc_type")
+        bc_type_u = boundary.get("bc_type_velocity") or boundary.get("bc_type")
         strategy = BOUNDARIES.strategy(bc_type_u, "U", "ghost")
         if strategy is BoundaryStrategy.ZERO_GRADIENT:
             _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)

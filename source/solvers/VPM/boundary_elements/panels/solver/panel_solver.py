@@ -105,7 +105,7 @@ class PanelSolver:
         force_config: ForceConfig | None = None,
         bc_type: Literal["DIRICHLET", "NEUMANN"] = "DIRICHLET",
         density: float = 1.225,
-        U_inf: np.ndarray | None = None,
+        freestream_velocity: np.ndarray | None = None,
         logging_frequency: int = 1,
         coupling_scope: Literal["full", "vpm_bc", "normal", "pressure"] = "full",
     ):
@@ -115,7 +115,9 @@ class PanelSolver:
         self.force_config = force_config or ForceConfig.bernoulli()
         self.bc_type = bc_type
         self.density = density
-        self.U_inf = None if U_inf is None else np.array(U_inf, dtype=np.float64)
+        self.freestream_velocity = (
+            None if freestream_velocity is None else np.array(freestream_velocity, dtype=np.float64)
+        )
         self.logging_frequency = max(1, int(logging_frequency))
         if coupling_scope not in ("full", "vpm_bc", "normal", "pressure"):
             raise ValueError("coupling_scope must be 'full', 'vpm_bc', 'normal', or 'pressure'")
@@ -565,9 +567,13 @@ class PanelSolver:
         """
         # Resolve arguments from either calling convention
         if V_inf is None and config is not None:
-            V_inf = np.array(getattr(config, "background_velocity", [1.0, 0.0, 0.0]))
+            V_inf = np.array(getattr(config, "freestream_velocity", [1.0, 0.0, 0.0]))
         if V_inf is None:
-            V_inf = self.U_inf if self.U_inf is not None else np.array([1.0, 0.0, 0.0])
+            V_inf = (
+                self.freestream_velocity
+                if self.freestream_velocity is not None
+                else np.array([1.0, 0.0, 0.0])
+            )
         if dt is None:
             dt = 0.01
         if t is None and time is not None:
@@ -879,7 +885,7 @@ class PanelSolver:
         Args:
             density: Fluid density (kg/m³)
             U_ref: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
-                   If None, uses self.U_inf or auto-computed.
+                   If None, uses self.freestream_velocity or auto-computed.
             S_ref: Reference area (m²). If None, uses sum of panel areas.
             c_ref: Reference chord (m). If None, uses sqrt(S_ref).
             b_ref: Reference span (m). If None, uses sqrt(S_ref).
@@ -895,7 +901,11 @@ class PanelSolver:
 
         # Resolve reference values
         if U_ref is None:
-            U_ref = self.U_inf if self.U_inf is not None else np.array([1.0, 0.0, 0.0])
+            U_ref = (
+                self.freestream_velocity
+                if self.freestream_velocity is not None
+                else np.array([1.0, 0.0, 0.0])
+            )
         U_ref_mag = np.linalg.norm(U_ref)
         if U_ref_mag < 1e-10:
             U_ref_mag = 1.0
@@ -1069,7 +1079,11 @@ class PanelSolver:
 
         # Resolve reference values
         if U_ref is None:
-            U_ref = self.U_inf if self.U_inf is not None else np.array([1.0, 0.0, 0.0])
+            U_ref = (
+                self.freestream_velocity
+                if self.freestream_velocity is not None
+                else np.array([1.0, 0.0, 0.0])
+            )
         U_ref_mag = np.linalg.norm(U_ref)
         if U_ref_mag < 1e-10:
             U_ref_mag = 1.0

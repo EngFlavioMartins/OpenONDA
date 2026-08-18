@@ -174,7 +174,7 @@ def build_config(reynolds: float, end_time: float, inlet_values: np.ndarray, nu:
             BoundaryConfig.empty("front"),
             BoundaryConfig.empty("back"),
         ],
-        initial_U=[0.0, 0.0, 0.0],
+        initial_velocity=[0.0, 0.0, 0.0],
         initial_p=0.0,
     )
 

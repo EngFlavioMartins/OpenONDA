@@ -18,7 +18,7 @@ from _common import (  # noqa: E402
     COLORS,
     D_REF,
     REFERENCES,
-    U_INF,
+    FREESTREAM_SPEED,
     build_arg_parser,
     figure_size,
     save_fig,
@@ -77,7 +77,7 @@ def main():
     L = recirculation_length(x_cl, u_cl)
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
-    ax.plot(x_cl / D_REF, u_cl / U_INF, color=COLORS["TUDdark"], linewidth=1.0)
+    ax.plot(x_cl / D_REF, u_cl / FREESTREAM_SPEED, color=COLORS["TUDdark"], linewidth=1.0)
     ax.axhline(0.0, color=COLORS["AxisBlack"], linewidth=0.5)
     ax.axvspan(-0.5, 0.5, color=COLORS["MaskGray"], label="cylinder")
     if L is not None and "L_over_D" in ref:

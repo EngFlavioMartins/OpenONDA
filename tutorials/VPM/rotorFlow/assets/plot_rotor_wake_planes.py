@@ -104,12 +104,12 @@ def _select_time_window(
 # ==============================================================================
 
 
-def _plane_statistics(grid, U_inf: float, rotor_radius: float, radial_edges: np.ndarray):
+def _plane_statistics(grid, freestream_speed: float, rotor_radius: float, radial_edges: np.ndarray):
     """Return (radial profile of u_x/U∞, disc-averaged u_x/U∞) for one snapshot."""
     pts = np.asarray(grid.points)
     vel = np.asarray(grid.point_data["Velocity"])
     r_over_R = np.sqrt(pts[:, 1] ** 2 + pts[:, 2] ** 2) / rotor_radius
-    ux_over_U = vel[:, 0] / U_inf
+    ux_over_U = vel[:, 0] / freestream_speed
 
     bin_idx = np.digitize(r_over_R, radial_edges) - 1
     valid = (bin_idx >= 0) & (bin_idx < len(radial_edges) - 1) & np.isfinite(ux_over_U)
@@ -174,7 +174,7 @@ def plot_wake_planes(args) -> int:
     operating_point = read_operating_point(
         samples,
         rho=DENSITY,
-        u_inf=U,
+        freestream_speed=U,
         rotor_radius=R,
         tip_speed_ratio=TIP_SPEED_RATIO,
     )

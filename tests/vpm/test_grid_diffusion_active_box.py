@@ -250,7 +250,7 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
             tuple(d._max_grid_dims),
         )
     try:
-        d.gbd_diffusion(particles, dt=1.0e-3, h=H, nu=1.0e-3, domain_padding=3.0)
+        d.gbd_diffusion(particles, dt=1.0e-3, particle_spacing=H, nu=1.0e-3, domain_padding=3.0)
     finally:
         if force_full_domain:
             d._lattice_aligned_bounds = original

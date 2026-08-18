@@ -56,7 +56,7 @@ PATCH = "numericalBoundary"
 # MPI; these few constants are cheaper to restate than that risk.  They are
 # asserted against the tutorial in tests/coupler/test_cube_benchmark_parity.py.
 CUBE_SIDE = 1.0
-U_INF = (1.0, 0.0, 0.0)
+FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 RHO = 1.0
 NU = 1.0e-3
 SMAGORINSKY_CK = 0.094
@@ -315,13 +315,13 @@ def build_setup(case_dir: Path, t_end: float, cores: int, cell_size: float):
         boundaries=[
             BoundaryConfig(
                 name=PATCH,
-                type_U="fixedValue",
-                value_U=list(U_INF),
+                type_velocity="fixedValue",
+                value_velocity=list(FREESTREAM_VELOCITY),
                 type_p="fixedFluxPressure",
             ),
             BoundaryConfig.wall("cube"),
         ],
-        initial_U=list(U_INF),
+        initial_velocity=list(FREESTREAM_VELOCITY),
         initial_p=0.0,
     )
     return setup, mesh

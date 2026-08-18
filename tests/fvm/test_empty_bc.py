@@ -119,7 +119,7 @@ class TestEmptyBCQuasi3D:
                 BoundaryConfig.wall("walls"),
                 BoundaryConfig.empty("empty"),
             ],
-            initial_U=[0.0, 0.0, 0.0],
+            initial_velocity=[0.0, 0.0, 0.0],
             initial_p=0.0,
         )
 

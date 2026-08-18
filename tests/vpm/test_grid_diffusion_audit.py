@@ -166,7 +166,7 @@ def test_gbd_stability_bound_alpha_one_sixth(physics):
 
 
 def test_gbd_max_dt_formula():
-    vc = ViscousConfig.gbd(h=0.05, viscosity=0.001)
+    vc = ViscousConfig.gbd(particle_spacing=0.05, viscosity=0.001)
     assert np.isclose(vc.gbd_max_dt(), 0.05**2 / (6 * 0.001))
 
 
@@ -252,7 +252,7 @@ def test_regenerated_group_ids_fill_empty_diffusion_nodes(physics):
 
 def test_viscous_config_carries_particle_cap():
     vc = ViscousConfig.gbd(
-        h=0.05,
+        particle_spacing=0.05,
         viscosity=0.001,
         max_nodes=350_000,
         cap_abs_fraction=0.99,
@@ -319,7 +319,7 @@ def test_dvh_diffusive_width_is_fixed_at_dt_d(physics, rd_ratio):
 
 
 def test_dvh_required_dt_formula():
-    vc = ViscousConfig.dvh(h=0.05, viscosity=0.001, dvh_rd_ratio=3)
+    vc = ViscousConfig.dvh(particle_spacing=0.05, viscosity=0.001, dvh_rd_ratio=3)
     expected = _DVH_BETA * (3 * 0.05) ** 2 / (4 * 0.001)
     assert np.isclose(vc.dvh_required_dt(), expected)
     # cubeFlow numbers: this is ≈ 0.433 s — far above the convective dt,
@@ -412,10 +412,10 @@ def test_dvh_nu_eff_conserves_circulation(physics):
 # Regenerated-particle core radius (radius consistency for coupled runs)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_regen_radius_respects_configured_ratio(physics):
-    """DVH/GBD regen assigns σ = regen_radius_ratio·h to every rebuilt particle.
+    """DVH/GBD regen assigns σ = core_radius_ratio·h to every rebuilt particle.
 
     Regression: the ratio was a hardcoded 2.5, silently overriding the
-    coupler hand-off radii (overlap_radius_ratio·h) every step — the Beale
+    coupler hand-off radii (vpm_core_radius_ratio·h) every step — the Beale
     strength correction then deconvolved with the wrong kernel width
     (measured ~4× in-box velocity error at 2.5h vs the corrected-for 1.5h).
     """
@@ -427,24 +427,24 @@ def test_regen_radius_respects_configured_ratio(physics):
     zone = np.zeros((8, 8, 8), dtype=np.int32)
     group = np.zeros((8, 8, 8), dtype=np.int32)
 
-    default_ratio = physics.regen_radius_ratio
+    default_ratio = physics.core_radius_ratio
     try:
         for ratio in (2.5, 1.5, 1.2):
-            physics.regen_radius_ratio = ratio
+            physics.core_radius_ratio = ratio
             out = physics._build_diffusion_particle_arrays(
                 ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 3, zone, group
             )
             np.testing.assert_allclose(out["radius"], ratio * H, rtol=1e-6)
     finally:
-        physics.regen_radius_ratio = default_ratio
+        physics.core_radius_ratio = default_ratio
 
 
-def test_viscous_config_carries_regen_radius_ratio():
-    """ViscousConfig exposes the standard regen_radius_ratio default of 2.5."""
-    vc = ViscousConfig.gbd(h=0.05, viscosity=1e-3)
-    assert vc.regen_radius_ratio == 2.5
-    tuned = ViscousConfig.gbd(h=0.05, viscosity=1e-3, regen_radius_ratio=1.5)
-    assert tuned.regen_radius_ratio == 1.5
+def test_viscous_config_carries_core_radius_ratio():
+    """ViscousConfig exposes the standard core_radius_ratio default of 2.5."""
+    vc = ViscousConfig.gbd(particle_spacing=0.05, viscosity=1e-3)
+    assert vc.core_radius_ratio == 2.5
+    tuned = ViscousConfig.gbd(particle_spacing=0.05, viscosity=1e-3, core_radius_ratio=1.5)
+    assert tuned.core_radius_ratio == 1.5
 
 
 # ─────────────────────────────────────────────────────────────────────────────

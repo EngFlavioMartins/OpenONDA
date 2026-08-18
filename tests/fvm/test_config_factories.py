@@ -21,8 +21,8 @@ class TestConfigFactories:
     def test_boundary_config_inlet(self):
         bc = BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0])
         assert bc.name == "inlet"
-        assert bc.type_U == "fixedValue"
-        assert bc.value_U == [1.0, 0.0, 0.0]
+        assert bc.type_velocity == "fixedValue"
+        assert bc.value_velocity == [1.0, 0.0, 0.0]
         assert bc.type_p == "zeroGradient"
 
     def test_boundary_config_outlet(self):
@@ -33,14 +33,14 @@ class TestConfigFactories:
 
     def test_boundary_config_wall(self):
         bc = BoundaryConfig.wall("wall")
-        assert bc.type_U == "fixedValue"
-        assert bc.value_U == [0.0, 0.0, 0.0]
+        assert bc.type_velocity == "fixedValue"
+        assert bc.value_velocity == [0.0, 0.0, 0.0]
         assert bc.type_p == "zeroGradient"
         assert bc.mesh_type == "wall"
 
     def test_boundary_config_empty(self):
         bc = BoundaryConfig.empty("empty")
-        assert bc.type_U == "empty"
+        assert bc.type_velocity == "empty"
         assert bc.type_p == "empty"
         assert bc.mesh_type == "empty"
 

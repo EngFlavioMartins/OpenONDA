@@ -19,9 +19,9 @@ from source.coupler.boundary import (
 )
 from source.coupler.reporting import compute_diagnostics
 from source.coupler.solver import FVMVPMCoupler
-from source.coupler.vorticity_handoff import (
+from source.coupler.vorticity_transfer import (
     circulation_from_velocity_trace,
-    continuous_handoff,
+    continuous_transfer,
 )
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
 from source.solvers.FVM.mesh.cartesian import structured_box
@@ -58,12 +58,17 @@ def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
         def compute_target_velocities(points, **kwargs):
             return np.tile([1.0, -0.25, 0.5], (len(points), 1))
 
-    u_inf = np.array([1.0, -0.25, 0.5])
+    freestream_velocity = np.array([1.0, -0.25, 0.5])
     centres, normals, areas = _cube_face_quadrature()
     u_bc, diagnostics = evaluate_vpm_velocity(
-        _VPM(), centres, normals, areas, u_inf=u_inf, fvm_box=np.full(6, 10.0)
+        _VPM(),
+        centres,
+        normals,
+        areas,
+        freestream_velocity=freestream_velocity,
+        fvm_box=np.full(6, 10.0),
     )
-    np.testing.assert_allclose(u_bc, np.tile(u_inf, (len(centres), 1)), atol=1e-15)
+    np.testing.assert_allclose(u_bc, np.tile(freestream_velocity, (len(centres), 1)), atol=1e-15)
     assert max(diagnostics.values()) < 1.0e-14
 
 
@@ -84,7 +89,7 @@ def test_body_potential_is_retained_before_particle_injection():
         centres,
         normals,
         areas,
-        u_inf=np.array([1.0, 0.0, 0.0]),
+        freestream_velocity=np.array([1.0, 0.0, 0.0]),
         fvm_box=np.full(6, 10.0),
     )
 
@@ -123,7 +128,7 @@ def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
     coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
 
@@ -177,14 +182,14 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
     coupler._pressure_gradient_bc_prev = None
     coupler._pressure_gradient_bc_next = None
     coupler._pressure_velocity_snapshot = None
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
     coupler.dt_vpm = 0.05
     coupler.rho = 1.0
     coupler.nu = 1.0e-3
     coupler.config = SimpleNamespace(
         vpm_bc_mode="pressure_gradient",
-        h=0.04,
+        vpm_particle_spacing=0.04,
     )
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
@@ -221,19 +226,23 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
             return np.asarray(points) @ total_jacobian.T + offset
 
         @staticmethod
-        def compute_complete_target_velocity_gradients(points, *, h):
+        def compute_complete_target_velocity_gradients(points, *, particle_spacing):
             return np.tile(total_jacobian, (len(points), 1, 1))
 
         @staticmethod
-        def compute_complete_target_velocity_and_gradients(points, *, h):
+        def compute_complete_target_velocity_and_gradients(points, *, particle_spacing):
             return (
                 _VPM.compute_target_velocities(points),
-                _VPM.compute_complete_target_velocity_gradients(points, h=h),
+                _VPM.compute_complete_target_velocity_gradients(points, particle_spacing=0.04),
             )
 
         @staticmethod
-        def compute_complete_target_velocity_and_tangential_normal_gradient(points, normals, *, h):
-            gradient = _VPM.compute_complete_target_velocity_gradients(points, h=h)
+        def compute_complete_target_velocity_and_tangential_normal_gradient(
+            points, normals, *, particle_spacing
+        ):
+            gradient = _VPM.compute_complete_target_velocity_gradients(
+                points, particle_spacing=0.04
+            )
             return (
                 _VPM.compute_target_velocities(points),
                 tangential_normal_velocity_gradient(gradient, normals),
@@ -257,9 +266,9 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
     coupler._tangential_gradient_bc_next = None
     coupler._pressure_gradient_bc_prev = None
     coupler._pressure_gradient_bc_next = None
-    coupler.u_inf = offset
+    coupler.freestream_velocity = offset
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed", h=0.04)
+    coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed", vpm_particle_spacing=0.04)
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
     evaluate_vpm_boundary(coupler, centres, normals, areas)
@@ -278,7 +287,7 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
     )
 
 
-def test_post_handoff_resync_refreshes_velocity_and_pressure_snapshots_together():
+def test_post_transfer_resync_refreshes_velocity_and_pressure_snapshots_together():
     class _VPM:
         @staticmethod
         def compute_target_velocities(points, **kwargs):
@@ -300,10 +309,10 @@ def test_post_handoff_resync_refreshes_velocity_and_pressure_snapshots_together(
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
     coupler.config = SimpleNamespace(
-        resync_vpm_bc_after_handoff=True,
+        bc_resync_after_transfer=True,
         vpm_bc_mode="pressure_gradient",
     )
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     centres, normals, areas = _cube_face_quadrature(nside=2)
     coupler._u_bc_prev = np.zeros_like(centres)
     coupler._pressure_velocity_snapshot = np.zeros_like(centres)
@@ -316,7 +325,7 @@ def test_post_handoff_resync_refreshes_velocity_and_pressure_snapshots_together(
     np.testing.assert_allclose(coupler.blending.endpoint, [[1.0, 0.0, 0.0]])
 
 
-def test_post_handoff_resync_refreshes_both_mixed_trace_fields():
+def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
     jacobian = np.array([[0.1, -0.2, 0.3], [0.4, -0.05, 0.2], [-0.1, 0.5, -0.05]])
 
     class _VPM:
@@ -325,19 +334,23 @@ def test_post_handoff_resync_refreshes_both_mixed_trace_fields():
             return np.asarray(points) @ jacobian.T + np.array([1.0, 0.0, 0.0])
 
         @staticmethod
-        def compute_complete_target_velocity_gradients(points, *, h):
+        def compute_complete_target_velocity_gradients(points, *, particle_spacing):
             return np.tile(jacobian, (len(points), 1, 1))
 
         @staticmethod
-        def compute_complete_target_velocity_and_gradients(points, *, h):
+        def compute_complete_target_velocity_and_gradients(points, *, particle_spacing):
             return (
                 _VPM.compute_target_velocities(points),
-                _VPM.compute_complete_target_velocity_gradients(points, h=h),
+                _VPM.compute_complete_target_velocity_gradients(points, particle_spacing=0.04),
             )
 
         @staticmethod
-        def compute_complete_target_velocity_and_tangential_normal_gradient(points, normals, *, h):
-            gradient = _VPM.compute_complete_target_velocity_gradients(points, h=h)
+        def compute_complete_target_velocity_and_tangential_normal_gradient(
+            points, normals, *, particle_spacing
+        ):
+            gradient = _VPM.compute_complete_target_velocity_gradients(
+                points, particle_spacing=0.04
+            )
             return (
                 _VPM.compute_target_velocities(points),
                 tangential_normal_velocity_gradient(gradient, normals),
@@ -355,11 +368,11 @@ def test_post_handoff_resync_refreshes_both_mixed_trace_fields():
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
     coupler.config = SimpleNamespace(
-        resync_vpm_bc_after_handoff=True,
+        bc_resync_after_transfer=True,
         vpm_bc_mode="vorticity_mixed",
-        h=0.04,
+        vpm_particle_spacing=0.04,
     )
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     centres, normals, areas = _cube_face_quadrature(nside=2)
     coupler._u_bc_prev = np.zeros_like(centres)
     coupler._normal_velocity_bc_prev = np.zeros(len(centres))
@@ -372,7 +385,7 @@ def test_post_handoff_resync_refreshes_both_mixed_trace_fields():
     )
     expected_normal = np.einsum("ij,ij->i", expected_velocity, normals)
     expected_tangent = tangential_normal_velocity_gradient(
-        _VPM.compute_complete_target_velocity_gradients(centres, h=0.04), normals
+        _VPM.compute_complete_target_velocity_gradients(centres, particle_spacing=0.04), normals
     )
     np.testing.assert_allclose(coupler._u_bc_prev, expected_velocity)
     np.testing.assert_allclose(coupler._normal_velocity_bc_prev, expected_normal)
@@ -404,7 +417,7 @@ def test_zero_target_evaluation_fails_before_blending_zone_mutation():
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
 
     centres, normals, areas = _cube_face_quadrature(nside=2)
@@ -458,16 +471,16 @@ def test_direct_circulation_target_bypasses_cell_remeshing():
     box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
     h = 0.1
     target = np.array([0.0, 0.0, 2.0 * h**3])
-    result = continuous_handoff(
+    result = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         box,
         h,
         circulation_at_node=lambda points: np.tile(target, (len(points), 1)),
         mesh_weight_at_node=lambda points: np.ones(len(points)),
-        ramp_width=h,
-        buffer_length=h,
-        threshold_abs=0.0,
+        overlap_zone_ramp_width=h,
+        transfer_buffer_length=h,
+        transfer_prune_threshold_abs=0.0,
         lattice_anchor=np.array([-0.45, -0.45, -0.45]),
     )
     core = np.all(np.abs(result.pos) < 0.3, axis=1)
@@ -492,7 +505,7 @@ def test_vorticity_sign_matches_the_fvm_curl_convention():
             ghost = n_cells + face - mesh["n_interior_faces"]
             point = geometry["face_centroids"][face]
             U[ghost, :2] = (-point[1], point[0])
-            patch["bc_type_U"] = "zeroGradient"
+            patch["bc_type_velocity"] = "zeroGradient"
 
     vorticity = compute_vorticity(U, mesh, geometry)[:n_cells]
     np.testing.assert_allclose(vorticity, np.tile([0.0, 0.0, 2.0], (n_cells, 1)), atol=1e-12)
@@ -524,7 +537,7 @@ def test_vorticity_mixed_subcycling_interpolates_and_reprojects_both_fields(
     coupler = object.__new__(FVMVPMCoupler)
     coupler.n_fvm_substeps = 2
     coupler.dt_fvm = 0.05
-    coupler.u_inf = np.array([1.0, 0.0, 0.0])
+    coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed")
     coupler.blending = _Blending()
     recorded = []
@@ -579,20 +592,20 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     positions = rng.uniform(-0.2, 0.2, size=(20, 3))
     circulation = np.zeros((20, 3))
     circulation[:, 2] = np.linspace(1.0e-4, 2.0e-3, 20)
-    result = continuous_handoff(
+    result = continuous_transfer(
         positions,
         circulation,
         box,
         h,
         circulation_at_node=lambda points: np.zeros((len(points), 3)),
-        buffer_length=0.1,
-        threshold_abs=5.0e-4,
+        transfer_buffer_length=0.1,
+        transfer_prune_threshold_abs=5.0e-4,
     )
     coupler = object.__new__(FVMVPMCoupler)
     coupler.n_fvm_substeps = 3
-    coupler.handoff = None
+    coupler.transfer = None
     coupler.pressure_reference = None
-    coupler._last_handoff_result = result
+    coupler._last_transfer_result = result
     coupler._last_vpm_bc_flux_diagnostics = {
         "raw_mismatch": 0.2,
         "applied_correction": 0.05,
@@ -601,19 +614,19 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     diagnostics = compute_diagnostics(coupler)
 
     assert diagnostics["n_fvm_substeps"] == 3
-    for section in ("conservation", "vpm_bc_flux", "handoff"):
+    for section in ("conservation", "vpm_bc_flux", "transfer"):
         assert section in diagnostics
     for values in diagnostics["conservation"].values():
         assert set(values) == {"circulation", "linear_impulse", "angular_impulse"}
         assert np.isfinite(list(values.values())).all()
     assert np.isfinite(list(diagnostics["vpm_bc_flux"].values())).all()
-    assert np.isfinite(list(diagnostics["handoff"].values())).all()
-    assert diagnostics["handoff"]["n_pruned"] == result.n_pruned
-    assert diagnostics["handoff"]["cfl"] == result.cfl
+    assert np.isfinite(list(diagnostics["transfer"].values())).all()
+    assert diagnostics["transfer"]["n_pruned"] == result.n_pruned
+    assert diagnostics["transfer"]["cfl"] == result.cfl
 
 
-def test_deferred_handoff_diagnostics_are_marked_unmeasured():
-    result = continuous_handoff(
+def test_deferred_transfer_diagnostics_are_marked_unmeasured():
+    result = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
@@ -623,9 +636,9 @@ def test_deferred_handoff_diagnostics_are_marked_unmeasured():
     )
     coupler = object.__new__(FVMVPMCoupler)
     coupler.n_fvm_substeps = 1
-    coupler.handoff = None
+    coupler.transfer = None
     coupler.pressure_reference = None
-    coupler._last_handoff_result = result
+    coupler._last_transfer_result = result
     coupler._last_vpm_bc_flux_diagnostics = {
         "raw_mismatch": 0.0,
         "applied_correction": 0.0,
@@ -633,8 +646,8 @@ def test_deferred_handoff_diagnostics_are_marked_unmeasured():
     }
 
     diagnostics = compute_diagnostics(coupler)
-    handoff = diagnostics["handoff"]
-    assert handoff["diagnostics_evaluated"] is False
+    transfer = diagnostics["transfer"]
+    assert transfer["diagnostics_evaluated"] is False
     for name in (
         "flux_ratio",
         "transfer_in_band_residual",
@@ -642,7 +655,7 @@ def test_deferred_handoff_diagnostics_are_marked_unmeasured():
         "transfer_out_of_band_fraction",
         "transfer_max_amplification",
     ):
-        assert handoff[name] is None
+        assert transfer[name] is None
     assert diagnostics["spectral_band_ratio"] is None
     assert "null" in json.dumps(diagnostics)
 

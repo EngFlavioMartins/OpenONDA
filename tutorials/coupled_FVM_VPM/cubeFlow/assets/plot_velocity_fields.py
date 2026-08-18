@@ -141,7 +141,7 @@ def plot_frame(time: float, consts: dict, figure_format: str = FIGURE_FORMAT) ->
     if fvm is None or vpm is None or reference is None:
         return
 
-    U_inf, D = consts["U_inf"], consts["D"]
+    U_inf, D = consts["freestream_speed"], consts["D"]
     x, y = fvm["x"] / D, fvm["y"] / D
     ux_fvm = fvm["Ux"] / U_inf
     ux_vpm = _on_grid(vpm, fvm, "Ux") / U_inf

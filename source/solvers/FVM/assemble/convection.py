@@ -18,7 +18,7 @@ from ..schemes.limiters import apply_limiter, is_limited_scheme
 
 def _convection_boundary_strategy(boundary_patch):
     """Resolve velocity/scalar boundary behavior without an implicit fallback."""
-    type_u = boundary_patch.get("bc_type_U")
+    type_u = boundary_patch.get("bc_type_velocity")
     if type_u is not None:
         return BOUNDARIES.strategy(type_u, "U", "convection")
     bc_type = boundary_patch.get("bc_type")

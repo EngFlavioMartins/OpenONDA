@@ -3,7 +3,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 1.239614073665826e-15,
-      "h": 0.09090909090909091,
+      "particle_spacing": 0.09090909090909091,
       "impulse_rate_z": 0.05276681601051893,
       "impulse_relative_error": 0.0006151776809515068,
       "jitter_over_h": 0.0,
@@ -16,7 +16,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 0.14116195622144337,
-      "h": 0.09090909090909091,
+      "particle_spacing": 0.09090909090909091,
       "impulse_rate_z": 0.052920391806736494,
       "impulse_relative_error": 0.007226455183061557,
       "jitter_over_h": 0.15,
@@ -29,7 +29,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 5.536455535280099e-16,
-      "h": 0.06666666666666667,
+      "particle_spacing": 0.06666666666666667,
       "impulse_rate_z": 0.052743586291405735,
       "impulse_relative_error": 0.00017467337776800996,
       "jitter_over_h": 0.0,
@@ -42,7 +42,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 0.12801647749435738,
-      "h": 0.06666666666666667,
+      "particle_spacing": 0.06666666666666667,
       "impulse_rate_z": 0.0525822474567869,
       "impulse_relative_error": 0.005935614831206108,
       "jitter_over_h": 0.15,
@@ -55,7 +55,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 1.5512985990314275e-15,
-      "h": 0.043478260869565216,
+      "particle_spacing": 0.043478260869565216,
       "impulse_rate_z": 0.05273602126976635,
       "impulse_relative_error": 3.121815260632422e-05,
       "jitter_over_h": 0.0,
@@ -68,7 +68,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 0.1224098506818537,
-      "h": 0.043478260869565216,
+      "particle_spacing": 0.043478260869565216,
       "impulse_rate_z": 0.05268082586399772,
       "impulse_relative_error": 0.0016259712565624518,
       "jitter_over_h": 0.15,
@@ -81,7 +81,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 2.399447283550049e-15,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.05273487184612947,
       "impulse_relative_error": 9.421674751387678e-06,
       "jitter_over_h": 0.0,
@@ -94,7 +94,7 @@
     {
       "dtype": "float64",
       "field_relative_l2": 0.12015651055916399,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.05270066472831143,
       "impulse_relative_error": 0.001070642795442236,
       "jitter_over_h": 0.15,
@@ -107,7 +107,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 2.7555475587398638e-08,
-      "h": 0.09090909090909091,
+      "particle_spacing": 0.09090909090909091,
       "impulse_rate_z": 0.0527668155701166,
       "impulse_relative_error": 0.0006151693296185154,
       "jitter_over_h": 0.0,
@@ -120,7 +120,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.14116195949939248,
-      "h": 0.09090909090909091,
+      "particle_spacing": 0.09090909090909091,
       "impulse_rate_z": 0.052920392931228966,
       "impulse_relative_error": 0.00722647964147198,
       "jitter_over_h": 0.15,
@@ -133,7 +133,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 1.8715738007090747e-08,
-      "h": 0.06666666666666667,
+      "particle_spacing": 0.06666666666666667,
       "impulse_rate_z": 0.05274358641850035,
       "impulse_relative_error": 0.0001746757878584417,
       "jitter_over_h": 0.0,
@@ -146,7 +146,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.128016481052599,
-      "h": 0.06666666666666667,
+      "particle_spacing": 0.06666666666666667,
       "impulse_rate_z": 0.05258224739240688,
       "impulse_relative_error": 0.005935622855940206,
       "jitter_over_h": 0.15,
@@ -159,7 +159,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 2.6601300336836827e-08,
-      "h": 0.043478260869565216,
+      "particle_spacing": 0.043478260869565216,
       "impulse_rate_z": 0.05273602134652731,
       "impulse_relative_error": 3.121960822154106e-05,
       "jitter_over_h": 0.0,
@@ -172,7 +172,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.12240984858619651,
-      "h": 0.043478260869565216,
+      "particle_spacing": 0.043478260869565216,
       "impulse_rate_z": 0.05268082634483757,
       "impulse_relative_error": 0.0016259580724970065,
       "jitter_over_h": 0.15,
@@ -185,7 +185,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 2.3507049797707968e-08,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.052734871809243425,
       "impulse_relative_error": 9.420975282723618e-06,
       "jitter_over_h": 0.0,
@@ -198,7 +198,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.12015651089313414,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.05270066444666332,
       "impulse_relative_error": 0.0010706507734632702,
       "jitter_over_h": 0.15,
@@ -229,7 +229,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 2.3507049797707968e-08,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.052734871809243425,
       "impulse_relative_error": 9.420975282723618e-06,
       "jitter_over_h": 0.0,
@@ -242,7 +242,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.03757620374881866,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.052723722217606996,
       "impulse_relative_error": 0.0003477537151784661,
       "jitter_over_h": 0.05,
@@ -255,7 +255,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.07777895003578023,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.0527123182832717,
       "impulse_relative_error": 0.0007064844507851018,
       "jitter_over_h": 0.1,
@@ -268,7 +268,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.12015651089313414,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.05270066444666332,
       "impulse_relative_error": 0.0010706507734632702,
       "jitter_over_h": 0.15,
@@ -281,7 +281,7 @@
     {
       "dtype": "float32",
       "field_relative_l2": 0.1639244818057249,
-      "h": 0.03225806451612903,
+      "particle_spacing": 0.03225806451612903,
       "impulse_rate_z": 0.05268876650840677,
       "impulse_relative_error": 0.00144010557263794,
       "jitter_over_h": 0.2,

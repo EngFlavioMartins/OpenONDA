@@ -298,7 +298,7 @@ def test_order2_improves_far_target_velocity_and_gradient():
     assert g_err2 < 0.35 * g_err1
 
 
-def test_background_velocity_is_added():
+def test_freestream_velocity_is_added():
     N = 200
     pos, circ, rad = _cloud(N, seed=2)
     bg = np.array([1.0, -2.0, 0.5], dtype=np.float32)

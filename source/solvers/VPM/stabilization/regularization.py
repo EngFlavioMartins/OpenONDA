@@ -136,7 +136,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         proposal = ctx.physics.grid_based_diffusion(
             particles,
             dt=ctx.time_step_size(),
-            h=spacing,
+            particle_spacing=spacing,
             nu=molecular_viscosity,
             domain_padding=4.0,
             regen_threshold=cfg.regularization_tail_budget,

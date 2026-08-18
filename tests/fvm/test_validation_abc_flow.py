@@ -56,7 +56,7 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         pimple=params_pimple,
         transport=TransportConfig(density=1.0, nu=nu),
         boundaries=boundaries,
-        initial_U=[0.0, 0.0, 0.0],
+        initial_velocity=[0.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = Solver(config, mesh_data=mesh)

@@ -26,7 +26,7 @@ def _one_cell_fixed_flux_case():
                 "name": "cut",
                 "startFace": 0,
                 "nFaces": 6,
-                "bc_type_U": "fixedValue",
+                "bc_type_velocity": "fixedValue",
                 "bc_type_p": "fixedFluxPressure",
             }
         ],

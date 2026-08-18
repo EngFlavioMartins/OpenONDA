@@ -3,7 +3,7 @@
 import numpy as np
 
 from source.coupler.blending import build_lambda
-from source.coupler.vorticity_handoff import cosine_eta
+from source.coupler.vorticity_transfer import cosine_eta
 
 
 def test_blending_zone_is_exact_complement_of_particle_authority():
@@ -24,5 +24,5 @@ def test_blending_zone_is_exact_complement_of_particle_authority():
 
 def test_blending_zone_has_no_unowned_dead_zone():
     points = np.array([[-1.01, 0.0, 0.0], [-1.0, 0.0, 0.0], [-0.95, 0.0, 0.0]])
-    lam = build_lambda(points, (-1, 1, -1, 1, -1, 1), 0.3, 4.0, dead_zone=0.1)
+    lam = build_lambda(points, (-1, 1, -1, 1, -1, 1), 0.3, 4.0, overlap_zone_dead_zone=0.1)
     np.testing.assert_allclose(lam, 4.0)

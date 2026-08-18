@@ -46,7 +46,7 @@ def plot_frame(
     consts: dict,
     figure_format: str = FIGURE_FORMAT,
 ) -> None:
-    U_inf, D = consts["U_inf"], consts["D"]
+    U_inf, D = consts["freestream_speed"], consts["D"]
     x, y = vpm["x"] / D, vpm["y"] / D
     ux_vpm = vpm["Ux"] / U_inf
     omega_vpm = vpm["omega_z"] * D / U_inf

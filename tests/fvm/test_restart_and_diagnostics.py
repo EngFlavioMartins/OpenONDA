@@ -56,7 +56,7 @@ def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[0.2, 0.0, 0.0],
+        initial_velocity=[0.2, 0.0, 0.0],
         samplers=samplers,
     )
 

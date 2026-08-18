@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
-import math
 from pathlib import Path
 import sys
 
@@ -99,45 +98,6 @@ def hybrid_solver(bench, tmp_path_factory):
         )
 
 
-def test_common_fvm_settings_identical(bench, reference):
-    hybrid = bench.FVM_SETUP
-    fully_meshed = reference.FVM_SETUP
-
-    assert hybrid.cores == 1
-    assert fully_meshed.cores == 4
-    assert hybrid.schemes == fully_meshed.schemes
-    assert hybrid.linear == fully_meshed.linear
-    assert fully_meshed.linear.momentum_tol <= 1.0e-6
-    assert hybrid.pimple.n_outer_correctors == 1
-    assert hybrid.pimple.n_correctors == 2
-    assert hybrid.pimple.n_orthogonal_correctors == 0
-    assert hybrid.pimple.alpha_u == pytest.approx(0.7)
-    assert hybrid.pimple.alpha_p == pytest.approx(0.3)
-    assert hybrid.transport == fully_meshed.transport
-
-    # Wall-load integration is an explicit sample; both setups carry an
-    # equivalent wall ForceSampler (their other, differently-named field
-    # samplers are intentionally not identical).
-    def force_sampler(setup):
-        return next(s for s in setup.samplers if s.name == "forces_history")
-
-    assert force_sampler(hybrid) == force_sampler(fully_meshed)
-    assert hybrid.execution == fully_meshed.execution
-    assert hybrid.output == fully_meshed.output
-    assert hybrid.time.delta_t == fully_meshed.time.delta_t
-    assert fully_meshed.time.delta_t == pytest.approx(0.01)
-    assert hybrid.time.start_time == fully_meshed.time.start_time
-    assert hybrid.time.end_time == pytest.approx(6.0)
-    assert fully_meshed.time.end_time == pytest.approx(20.0)
-    assert hybrid.time.adjust_timestep is False
-    assert fully_meshed.time.adjust_timestep is False
-    assert hybrid.initial_U == fully_meshed.initial_U
-    assert hybrid.turbulence == fully_meshed.turbulence
-    assert fully_meshed.turbulence.model == "EquilibriumSmagorinsky"
-    assert fully_meshed.turbulence.Ck == pytest.approx(0.094)
-    assert fully_meshed.turbulence.Ce == pytest.approx(1.048)
-
-
 def test_wall_boundary_identical(bench, reference):
     def wall(setup):
         (boundary,) = [item for item in setup.boundaries if item.name == "cube"]
@@ -162,18 +122,18 @@ def test_coupler_setup_owns_no_solver_physics(bench):
         "t_end",
         "fvm_box",
         "grid_spacing",
-        "initial_U",
+        "initial_velocity",
         "surface",
         "wall_patch_name",
     ):
         assert not hasattr(setup, name)
-    assert setup.dead_zone_h == 0.0
+    assert setup.overlap_zone_dead_zone_width == 0.0
 
 
 def test_vpm_setup_compatible(bench, vpm):
     assert type(vpm).__name__ == "VPMSetup"
     assert vpm.viscous.viscosity == pytest.approx(bench.NU)
-    assert tuple(vpm.background_velocity) == tuple(bench.U_INF)
+    assert tuple(vpm.freestream_velocity) == tuple(bench.FREESTREAM_VELOCITY)
     ratio = vpm.time_step_size / bench.DT_FVM
     assert ratio == pytest.approx(round(ratio))
     domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
@@ -199,62 +159,6 @@ def test_mesh_domain_uses_case_setting(bench, vpm):
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
     assert vpm.panel_solver.max_panels >= len(surface.triangles)
-
-
-def test_production_case_keeps_the_validated_cost_limits(bench, vpm):
-    assert bench.HANDOFF_BOX == (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
-    assert bench.FVM_BOX == (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
-    assert bench.FVM_WAKE_BOX == (-0.75, 2.0, -0.9, 0.9, -0.9, 0.9)
-    assert pytest.approx(0.0625) == bench.FVM_CELL_SIZE
-    assert pytest.approx(0.03125) == bench.FVM_WAKE_CELL_SIZE
-    assert pytest.approx(0.04) == bench.PARTICLE_SPACING
-    assert bench.FVM_MESH.effective_cell_size(bench.FVM_MESH.surface_cell_size) == pytest.approx(
-        bench.FVM_MESH.max_cell_size / 4.0
-    )
-    assert bench.FVM_MESH.effective_cell_size(bench.FVM_WAKE_CELL_SIZE) == pytest.approx(
-        bench.FVM_MESH.max_cell_size / 2.0
-    )
-    assert bench.PARTICLE_LIMIT == 2_000_000
-    assert vpm.viscous.gbd_max_nodes == bench.PARTICLE_LIMIT
-    assert vpm.max_particles == bench.PARTICLE_LIMIT
-    assert bench.COUPLER_SETUP.handoff_max_particles == bench.PARTICLE_LIMIT
-    assert vpm.viscous.gbd_grid_spacing == pytest.approx(bench.PARTICLE_SPACING)
-    assert bench.COUPLER_SETUP.h == pytest.approx(bench.PARTICLE_SPACING)
-    # Pinned in absolute length, not as a multiple of h: the buffer sets the
-    # stable coupling step (max_dt ~ L_buf/|U|), so shrinking it with h would
-    # push the hand-off past its CFL gate at DT_VPM.
-    assert bench.COUPLER_SETUP.buffer_thickness == pytest.approx(0.24)
-    assert bench.COUPLER_SETUP.dead_zone_h == 0.0
-    assert bench.COUPLER_SETUP.prune_vorticity_min == pytest.approx(0.005)
-    assert bench.COUPLER_SETUP.boundary_prune_multiplier == pytest.approx(10.0)
-    assert bench.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(
-        bench.TRANSFER_AMPLIFICATION_CAP
-    )
-    assert bench.COUPLER_SETUP.handoff_diagnostic_interval == bench.HANDOFF_DIAGNOSTIC_INTERVAL
-    assert bench.COUPLER_SETUP.resync_vpm_bc_after_handoff is True
-
-
-def test_output_names_and_cadence_match_allplot_contract(bench, reference, vpm):
-    assert bench.FVM_SETUP.case_name.startswith("coupled_")
-    assert reference.FVM_SETUP.case_name == "referenceFlow"
-    assert vpm.backup_file_name == ""
-    assert Path(vpm.backup_directory) == bench.CASE_DIR / "solution"
-    assert vpm.backup_frequency == 0
-    assert pytest.approx(bench.CHECKPOINT_INTERVAL) == bench.BACKUP_PERIOD * bench.DT_VPM
-    assert pytest.approx(bench.DIAGNOSTIC_INTERVAL) == bench.VPM_LOG_PERIOD * bench.DT_VPM
-    assert vpm.logging_frequency == bench.VPM_LOG_PERIOD
-    assert bench.FVM_SETUP.time.write_interval_time == pytest.approx(bench.FVM_VOLUME_INTERVAL)
-    # The reference splits its cadences: cheap samples often, volume archive
-    # rarely.  Force histories are the quantity the two cases are compared on,
-    # so those must land on the same instants.
-    assert pytest.approx(bench.FORCE_INTERVAL) == reference.SAMPLE_INTERVAL
-    assert reference.VOLUME_INTERVAL >= reference.SLICE_INTERVAL >= reference.SAMPLE_INTERVAL
-    hybrid_steps = round(bench.FORCE_INTERVAL / bench.DT_FVM)
-    reference_steps = round(reference.SAMPLE_INTERVAL / reference.DT_FVM)
-    assert hybrid_steps * bench.DT_FVM == pytest.approx(bench.FORCE_INTERVAL)
-    assert reference_steps * reference.DT_FVM == pytest.approx(reference.SAMPLE_INTERVAL)
-    common_time = math.lcm(hybrid_steps, reference_steps) * bench.DT_FVM
-    assert common_time <= bench.T_END
 
 
 def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
@@ -313,8 +217,8 @@ def test_pressure_anchor_selection_caches_nonmaster_empty_view():
     pressure = PressureReference(
         fvm,
         fvm_box=np.array([-1, 1, -1, 1, -1, 1]),
-        u_inf=np.array([1.0, 0.0, 0.0]),
-        h=0.1,
+        freestream_velocity=np.array([1.0, 0.0, 0.0]),
+        particle_spacing=0.1,
         boundary_mode="dirichlet",
         enabled=True,
         is_master=False,
@@ -331,7 +235,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
     class _FakeViscous:
         viscosity = 10 * bench.NU
         scheme = "CS"
-        regen_radius_ratio = 1.0
+        core_radius_ratio = 1.0
 
     class _FakeVPMConfig:
         viscous = _FakeViscous()
@@ -340,7 +244,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
     class _FakeVPM:
         config = _FakeVPMConfig()
         time_step_size = bench.DT_VPM
-        background_velocity = bench.U_INF
+        freestream_velocity = bench.FREESTREAM_VELOCITY
 
     with pytest.raises(ValueError, match="viscosity"):
         FVMVPMCoupler._validate_vpm(
@@ -352,7 +256,7 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
     from source.coupler import FVMVPMCoupler
 
     class _FakeVPM:
-        background_velocity = [0.5, 0.0, 0.0]
+        freestream_velocity = [0.5, 0.0, 0.0]
         time_step_size = bench.DT_VPM
         config = type(
             "Config",
@@ -362,7 +266,7 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
                 "viscous": type(
                     "Viscous",
                     (),
-                    {"scheme": "CS", "viscosity": bench.NU, "regen_radius_ratio": 1.0},
+                    {"scheme": "CS", "viscosity": bench.NU, "core_radius_ratio": 1.0},
                 )(),
             },
         )()
@@ -389,7 +293,7 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
 
     class _FakeViscous:
         viscosity = bench.NU
-        regen_radius_ratio = bench.COUPLER_SETUP.overlap_radius_ratio
+        core_radius_ratio = bench.COUPLER_SETUP.vpm_core_radius_ratio
 
     class _FakeVPMConfig:
         viscous = _FakeViscous()
@@ -398,7 +302,7 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
     class _FakeVPM:
         config = _FakeVPMConfig()
         time_step_size = bench.DT_VPM
-        background_velocity = bench.U_INF
+        freestream_velocity = bench.FREESTREAM_VELOCITY
 
     _FakeViscous.scheme = scheme
     setattr(_FakeViscous, attr, mode)

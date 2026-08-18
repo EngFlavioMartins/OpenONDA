@@ -190,7 +190,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
 
     Args:
         boundary: Boundary dictionary.  Must contain key ``"name"``, and
-            may contain ``"bc_type_U"`` and ``"type"``.
+            may contain ``"bc_type_velocity"`` and ``"type"``.
         patch_names: Explicit list of patch names to select, or ``None``
             for auto-detection.
 

@@ -63,7 +63,7 @@ DVH_PADDING = 5.0
 DVH_THRESHOLD = 1.0e-4
 DVH_MAX_NODES = 300_000
 GBD_MAX_NODES = 300_000
-REGEN_RADIUS_RATIO = 1.50
+CORE_RADIUS_RATIO = 1.50
 VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 
 
@@ -81,7 +81,7 @@ def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConf
         )
     if scheme == "dvh":
         return ViscousConfig.dvh(
-            h=spacing,
+            particle_spacing=spacing,
             padding=DVH_PADDING,
             viscosity=viscosity,
             dvh_rd_ratio=DVH_RD_RATIO,
@@ -89,14 +89,14 @@ def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConf
             threshold_mode="budget",
             max_nodes=DVH_MAX_NODES,
             cap_abs_fraction=0.99,
-            regen_radius_ratio=REGEN_RADIUS_RATIO,
+            core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return ViscousConfig.gbd(
-        h=spacing,
+        particle_spacing=spacing,
         viscosity=viscosity,
         max_nodes=GBD_MAX_NODES,
         cap_abs_fraction=0.99,
-        regen_radius_ratio=REGEN_RADIUS_RATIO,
+        core_radius_ratio=CORE_RADIUS_RATIO,
     )
 
 

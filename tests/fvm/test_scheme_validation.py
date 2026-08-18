@@ -105,8 +105,8 @@ def test_invalid_pressure_nullspace_policy_rejected():
 
 def test_unsupported_boundary_condition_rejected():
     boundaries = [
-        {"name": "inlet", "bc_type_U": "fixedValue", "bc_type_p": "zeroGradient"},
-        {"name": "outlet", "bc_type_U": "zeroGradient", "bc_type_p": "waveTransmissive"},
+        {"name": "inlet", "bc_type_velocity": "fixedValue", "bc_type_p": "zeroGradient"},
+        {"name": "outlet", "bc_type_velocity": "zeroGradient", "bc_type_p": "waveTransmissive"},
     ]
     with pytest.raises(ValueError, match="waveTransmissive"):
         validate_boundary_conditions(boundaries)

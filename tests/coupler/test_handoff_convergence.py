@@ -1,13 +1,13 @@
-"""Analytic sanity checks for the active local vorticity handoff."""
+"""Analytic sanity checks for the active local vorticity transfer."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from source.coupler.vorticity_handoff import (
+from source.coupler.vorticity_transfer import (
     circulation_from_velocity_trace,
-    continuous_handoff,
+    continuous_transfer,
 )
 
 
@@ -27,10 +27,10 @@ def test_rung0_uniform_flow_produces_no_vorticity():
     assert np.abs(circulation).max() < 1e-15
 
 
-def test_rung0_uniform_flow_handoff_creates_no_particles():
+def test_rung0_uniform_flow_transfer_creates_no_particles():
     box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
     h = 0.1
-    result = continuous_handoff(
+    result = continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         box,
@@ -38,10 +38,10 @@ def test_rung0_uniform_flow_handoff_creates_no_particles():
         circulation_at_node=lambda q: circulation_from_velocity_trace(
             q, h, lambda p: np.tile([1.0, 0.0, 0.0], (len(np.atleast_2d(p)), 1))
         ),
-        ramp_width=4 * h,
-        buffer_length=2 * h,
-        threshold_abs=1e-18,
-        u_inf=[1.0, 0.0, 0.0],
+        overlap_zone_ramp_width=4 * h,
+        transfer_buffer_length=2 * h,
+        transfer_prune_threshold_abs=1e-18,
+        freestream_velocity=[1.0, 0.0, 0.0],
     )
     assert result.n_total == 0
     assert result.transfer_out_of_band_fraction == pytest.approx(0.0, abs=1e-12)

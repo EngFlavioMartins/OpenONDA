@@ -171,7 +171,7 @@ def run_case(
     )
     return {
         "n": n,
-        "h": h,
+        "particle_spacing": h,
         "particles": len(position),
         "jitter_over_h": jitter,
         "disorder": disorder,
@@ -186,7 +186,7 @@ def run_case(
 
 
 def convergence_order(cases: list[dict[str, float | int | str]]) -> float:
-    h = np.asarray([case["h"] for case in cases], dtype=float)
+    h = np.asarray([case["particle_spacing"] for case in cases], dtype=float)
     error = np.asarray([case["field_relative_l2"] for case in cases], dtype=float)
     return float(np.polyfit(np.log(h), np.log(error), 1)[0])
 
@@ -260,7 +260,7 @@ def plot(result: dict[str, object], output: Path) -> None:
         selected = [
             case for case in cases if case["dtype"] == dtype and case["jitter_over_h"] == 0.15
         ]
-        h = np.asarray([case["h"] for case in selected])
+        h = np.asarray([case["particle_spacing"] for case in selected])
         error = np.asarray([case["field_relative_l2"] for case in selected])
         order = result["convergence_orders"][dtype]
         axis.loglog(h, error, color=color, marker=marker, label=f"{dtype}, slope {order:.2f}")

@@ -71,7 +71,7 @@ def test_linear_manufactured_field_has_exact_mixed_diffusive_flux():
         "name": "cut",
         "startFace": 0,
         "nFaces": 6,
-        "bc_type_U": "normalValueTangentialGradient",
+        "bc_type_velocity": "normalValueTangentialGradient",
         "normal_velocity_field": normal_velocity,
         "tangential_gradient_field": tangential_gradient,
     }
@@ -100,7 +100,7 @@ def test_mixed_boundary_activates_component_momentum_diagonals():
         "name": "xcut",
         "startFace": 0,
         "nFaces": 2,
-        "bc_type_U": "normalValueTangentialGradient",
+        "bc_type_velocity": "normalValueTangentialGradient",
         "normal_velocity_field": np.zeros(2),
         "tangential_gradient_field": np.zeros((2, 3)),
     }
@@ -108,7 +108,7 @@ def test_mixed_boundary_activates_component_momentum_diagonals():
         "name": "other",
         "startFace": 2,
         "nFaces": 4,
-        "bc_type_U": "zeroGradient",
+        "bc_type_velocity": "zeroGradient",
     }
     boundaries = [mixed, floating]
     mesh["boundary"] = boundaries

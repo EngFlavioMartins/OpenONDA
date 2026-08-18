@@ -47,7 +47,7 @@ def _logging_config(log: LogConfig | None = None, steps: int = 1) -> FVMSetup:
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
-        initial_U=[1.0, 0.0, 0.0],
+        initial_velocity=[1.0, 0.0, 0.0],
         initial_p=0.0,
     )
 
