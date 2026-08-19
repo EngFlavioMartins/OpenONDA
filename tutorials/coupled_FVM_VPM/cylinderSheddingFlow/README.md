@@ -1,29 +1,104 @@
-# Native FVM–VPM cylinder shedding
+# Native FVM–VPM cylinder shedding (Re = 150) — controlled validation experiment
 
-This Re=200 case uses OpenONDA's internal Cartesian mesher and immersed-
-boundary FVM solver. It does not require an external mesher or a repository path
-on `PYTHONPATH`.
+This case is a controlled validation experiment, not a benchmark.  It tests the
+**seed-amplitude hypothesis** of the coupled FVM–VPM solver: a coupled hybrid
+calculation and an FVM-only reference share the same linear growth rate
+σ and saturated shedding frequency St of the laminar Von-Karman instability,
+but the coupling injects a larger initial antisymmetric disturbance A₀.  The
+consequence predicted by linear theory is that the hybrid reaches the same
+nonlinear onset amplitude earlier, by exactly
 
-After installing OpenONDA, run:
-
-```sh
-./allrun.sh
-./allplot.sh
+```
+Δt = (1/σ) · ln(A₀,hyb / A₀,ref).
 ```
 
-The production horizon is 60 convective time units. Each 0.05 s VPM coupling
-window contains five native-FVM substeps of 0.01 s, keeping the immersed-
-boundary solve within its CFL limit. A short installation and coupling check
-is available as:
+Everything is generated as solver-native data by OpenONDA's internal adaptive
+Cartesian mesher and immersed-boundary (IBM) FVM solver — no external mesher,
+no STL, no repository path on `PYTHONPATH`.  The single validation-only control
+is the deterministic, divergence-free initial perturbation in
+`seed_perturbation.py` (switched on with `OPENONDA_SEED_AMPLITUDE`).
+
+## Cases
+
+| directory        | contents |
+|------------------|----------|
+| `.`              | coupled hybrid FVM–VPM (`cylinderSheddingFlow_setup.py`) |
+| `referenceFlow/` | fully meshed FVM reference, same IBM cylinder and numerics on a six-patch domain |
+| `assets/`        | integrity gate, instability analysis, and figure scripts |
+| `seed_perturbation.py` | the shared analytic streamfunction perturbation |
+
+Physical problem: infinite cylinder (spanwise invariant, passes through the FVM
+domain), D = 1, Re = 150, U∞ = 1, ρ = 1, ν = 1/150, laminar (SGS disabled in both
+solvers).  Local resolution: body 0.0625 D (16 cells/D), wake 0.125 D, background
+0.25 D — both cases share these spacings, so every comparative metric stays
+consistent.  FVM dt = 0.02 (backward 2nd-order, CFL ≈ 0.32 in the body region),
+VPM dt = 0.10, VPM particle spacing 0.125 D with a 1M particle cap, T_END = 100
+D/U∞ (a long horizon so the slow-growing unseeded reference, whose onset sits
+near t ≈ 65, still has a robust ~30-unit saturated window for the frequency
+estimate).  The mesh and execution are sized for the available RAM: at this
+resolution the reference is ~366k cells and the hybrid FVM slab ~157k cells.
+Both cases run serial by default (scipy linear solves): on this 17 GB machine
+the PETSc-replicated path (FVM_CORES > 1) holds a full copy of the mesh plus
+ILU factors on every rank and exhausts RAM even at ~366k cells.  The hybrid's
+VPM still uses the GPU-accelerated Taichi backend.  Users with more RAM can
+override with `OPENONDA_FVM_CORES` (1 serial, >1 PETSc-replicated).
+
+## Run the full validation
 
 ```sh
-OPENONDA_SMOKE=1 ./allrun.sh
+./allvalidate.sh                    # unseeded
+OPENONDA_SEED_AMPLITUDE=1e-4 ./allvalidate.sh
 ```
 
-`OPENONDA_PROCESSING_UNIT=CPU` explicitly selects the CPU when no supported
-GPU is available. Generated fields are written below `solution/`, sampling
-histories below `samples/`, and plots below `figures/`.
+This cleans both cases, runs the reference and the hybrid to saturation, runs
+the numerical-integrity gate (non-finite fields, unconverged solves, CFL,
+continuity, transfer/VPM-BC conservation, open-vortex-line leakage through the
+slip z-faces, fine-lattice coincidence), computes the instability report
+(σ, A₀, St, A*, t*, Δt_pred vs Δt_meas, verdict), makes all figures, and
+archives the run under `runs/<seed>_<tag>_<timestamp>/`.
 
-`OPENONDA_FVM_DT`, `OPENONDA_VPM_DT`, `OPENONDA_T_END`, `OPENONDA_SPACING`,
-and `OPENONDA_MAX_PARTICLES` provide explicit resolution/study overrides. The
-FVM time step must divide the VPM coupling window exactly.
+Exit code 0 means every objective acceptance criterion passed; the verdict is
+printed in the report and stored in `solution/analysis_summary.json`.
+
+## Simple interface
+
+```sh
+./allrun.sh                         # run the hybrid (clean + simulate)
+OPENONDA_SEED_AMPLITUDE=1e-4 ./allrun.sh
+./allplot.sh                        # png (or ./allplot.sh pdf)
+./allclean.sh                       # remove all generated output + runs/
+```
+
+## Smoke test
+
+```sh
+OPENONDA_SMOKE=1 ./allvalidate.sh   # coarse, short; pipeline check only
+```
+
+## Objectives and acceptance criteria
+
+The seed-amplitude hypothesis is **supported** only when, between the hybrid and
+the reference:
+
+- relative growth-rate difference |Δσ|/σ < 15 %
+- relative saturated-frequency difference |ΔSt|/St < 5 %
+- A₀,hyb > A₀,ref
+- the measured onset shift (t*_ref − t*_hyb) matches (1/σ)·ln(A₀,hyb/A₀,ref)
+  within ~0.25 shedding periods
+- with equal nonzero seeds, the onset offset collapses (both cases carry the
+  same initial disturbance)
+
+It is **falsified** if σ or St differ materially, the hybrid does not carry a
+larger A₀, equal seeds do not remove the onset offset, the hybrid envelope shows
+amplitude jumps at coupling events, or the spatial mode differs from the
+reference.
+
+## Outputs
+
+- `solution/` — run metadata, solver and coupler diagnostics, VTK volumes
+- `samples/` — force histories, probe/lines/slices (reference names unprefixed,
+  hybrid prefixed `fvm_*`, VPM prefixed `vpm_*`)
+- `figures/` — `lift_history`, `midspan_probe_growth`, `linear_growth_fit`,
+  `onset_alignment`, `shedding_spectrum`, `spanwise_coherence`,
+  `vorticity_midspan_tXX` (identical levels across reference/hybrid FVM/VPM)
+- `runs/` — one archived copy per validation run

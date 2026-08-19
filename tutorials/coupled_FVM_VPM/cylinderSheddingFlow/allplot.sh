@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Make the cylinder-shedding force figure from the sampled results.
+# Make every cylinder-shedding figure (lift history, probe growth, growth fit,
+# onset alignment, spectrum, spanwise coherence, midspan vorticity).
 #
 # Usage:
 #   ./allplot.sh        PNG figures (default)
@@ -14,14 +15,16 @@ case "$format" in
     *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
 esac
 
+export MPLCONFIGDIR="$PWD/.matplotlib"
+mkdir -p "$MPLCONFIGDIR"
 mkdir -p figures
 
 echo
 echo "===== FIGURES ($format) ====="
 echo
 
-python assets/plot_forces.py --format "$format"
+python assets/plot_von_karman.py --format "$format"
 
 echo
 echo "===== DONE ====="
-echo "Figure saved to: figures/"
+echo "Figures saved to: figures/"
