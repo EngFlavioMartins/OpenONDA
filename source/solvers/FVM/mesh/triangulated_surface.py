@@ -94,13 +94,22 @@ def _validate_triangles(triangles: np.ndarray, path: Path) -> None:
         raise ValueError(f"STL surface is not watertight: {path}")
 
 
-def _axis_aligned_box_bounds(triangles: np.ndarray, path: Path) -> SurfaceBounds:
+def _surface_extent(triangles: np.ndarray, path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     lower = triangles.min(axis=(0, 1))
     upper = triangles.max(axis=(0, 1))
     extent = upper - lower
     if np.any(extent <= 0.0):
         raise ValueError(f"STL surface has zero extent: {path}")
+    return lower, upper, extent
 
+
+class _NotAxisAlignedBoxError(ValueError):
+    """Raised internally when a surface is not a closed axis-aligned box."""
+
+
+def _axis_aligned_box_bounds(
+    triangles: np.ndarray, path: Path, lower: np.ndarray, upper: np.ndarray, extent: np.ndarray
+) -> SurfaceBounds:
     tolerance = max(float(extent.max()), 1.0) * 1.0e-8
     covered_planes: set[tuple[int, int]] = set()
     for triangle in triangles:
@@ -114,7 +123,7 @@ def _axis_aligned_box_bounds(triangles: np.ndarray, path: Path) -> SurfaceBounds
             elif _coordinates_close(coordinate, float(upper[axis]), tolerance):
                 plane = (axis, 1)
         if plane is None:
-            raise ValueError(
+            raise _NotAxisAlignedBoxError(
                 "The native Cartesian mesher currently requires every STL triangle "
                 f"to lie on an axis-aligned bounding-box plane: {path}"
             )
@@ -122,7 +131,9 @@ def _axis_aligned_box_bounds(triangles: np.ndarray, path: Path) -> SurfaceBounds
 
     expected_planes = {(axis, side) for axis in range(3) for side in range(2)}
     if covered_planes != expected_planes:
-        raise ValueError(f"STL surface does not cover all six sides of a closed box: {path}")
+        raise _NotAxisAlignedBoxError(
+            f"STL surface does not cover all six sides of a closed box: {path}"
+        )
 
     doubled_areas = np.linalg.norm(
         np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]),
@@ -130,7 +141,9 @@ def _axis_aligned_box_bounds(triangles: np.ndarray, path: Path) -> SurfaceBounds
     )
     expected_area = 2.0 * (extent[0] * extent[1] + extent[1] * extent[2] + extent[0] * extent[2])
     if not np.isclose(0.5 * doubled_areas.sum(), expected_area, rtol=1.0e-8, atol=tolerance**2):
-        raise ValueError(f"STL triangles do not tessellate the complete box surface: {path}")
+        raise _NotAxisAlignedBoxError(
+            f"STL triangles do not tessellate the complete box surface: {path}"
+        )
 
     return cast(
         SurfaceBounds,
@@ -145,26 +158,48 @@ def _coordinates_close(left: float, right: float, tolerance: float) -> bool:
 
 @dataclass(frozen=True)
 class TriangulatedSurface:
-    """Validated STL surface and the Cartesian solid bounds it defines."""
+    """Validated STL surface and the Cartesian solid bounds it defines.
+
+    ``kind`` is ``"box"`` for a closed axis-aligned solid (every triangle lies
+    on a bounding-box plane; the exact-preservation lattice resolver applies)
+    or ``"general"`` for any other closed, watertight, manifold surface (the
+    conformal lattice resolver applies).
+    """
 
     path: Path
     triangles: np.ndarray
     bounds: SurfaceBounds
     sha256: str
+    kind: str
 
     @classmethod
     def from_stl(cls, surface_file: str | Path) -> TriangulatedSurface:
-        """Load a watertight, axis-aligned STL surface from ``surface_file``."""
+        """Load a watertight STL surface from ``surface_file``.
+
+        A closed axis-aligned solid is loaded on the exact-preservation path
+        (``kind="box"``); any other closed, watertight, manifold surface
+        falls back to the general conformal path (``kind="general"``).
+        """
         path = Path(surface_file).expanduser().resolve()
         triangles, data = _read_stl(path)
         _validate_triangles(triangles, path)
-        bounds = _axis_aligned_box_bounds(triangles, path)
+        lower, upper, extent = _surface_extent(triangles, path)
+        try:
+            bounds = _axis_aligned_box_bounds(triangles, path, lower, upper, extent)
+            kind = "box"
+        except _NotAxisAlignedBoxError:
+            bounds = cast(
+                SurfaceBounds,
+                tuple(float(value) for axis in range(3) for value in (lower[axis], upper[axis])),
+            )
+            kind = "general"
         triangles.setflags(write=False)
         return cls(
             path=path,
             triangles=triangles,
             bounds=bounds,
             sha256=hashlib.sha256(data).hexdigest(),
+            kind=kind,
         )
 
 

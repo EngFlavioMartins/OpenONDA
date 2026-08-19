@@ -33,9 +33,13 @@ from typing import cast
 
 import numpy as np
 
+from .surface_classification import SurfaceIndex
 from .triangulated_surface import SurfaceBounds as Bounds
 from .triangulated_surface import TriangulatedSurface
-from .validation import validate_no_fluid_solid_overlap
+from .validation import (
+    validate_curved_wall_conformance,
+    validate_no_fluid_solid_overlap,
+)
 
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
@@ -92,6 +96,38 @@ class _IntegerBox:
             and z0 >= self.z0
             and z1 <= self.z1
         )
+
+
+class _SurfaceSolid:
+    """Real curved-surface classifier, duck-typed to ``_IntegerBox``'s
+    ``contains``/``overlaps`` interface so the octree traversal in
+    ``_build_leaves`` needs no branching between the box and general paths.
+    """
+
+    def __init__(
+        self, index: SurfaceIndex, h_min: float, origin: tuple[float, float, float]
+    ) -> None:
+        self.index = index
+        self.h_min = h_min
+        self.origin = np.asarray(origin, dtype=np.float64)
+
+    def _world_bounds(
+        self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        lo = self.origin + np.array([x0, y0, z0], dtype=np.float64) * self.h_min
+        hi = self.origin + np.array([x1, y1, z1], dtype=np.float64) * self.h_min
+        return lo, hi
+
+    def contains(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
+        lo, hi = self._world_bounds(x0, x1, y0, y1, z0, z1)
+        if self.index.box_intersects_surface(lo, hi):
+            return False
+        centre = 0.5 * (lo + hi)
+        return bool(self.index.is_inside(centre[None, :])[0])
+
+    def overlaps(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
+        lo, hi = self._world_bounds(x0, x1, y0, y1, z0, z1)
+        return self.index.box_intersects_surface(lo, hi)
 
 
 def _validate_bounds(bounds: Bounds, name: str) -> None:
@@ -303,6 +339,87 @@ def _validate_wall_on_surface(
         )
 
 
+# Outward-oriented quad faces of a hexahedron in this codebase's fixed
+# corner order: 0..3 the z0 face (x0y0,x1y0,x1y1,x0y1), 4..7 the z1 face.
+_HEX_FACES = (
+    (0, 3, 2, 1),
+    (4, 5, 6, 7),
+    (0, 1, 5, 4),
+    (3, 7, 6, 2),
+    (0, 4, 7, 3),
+    (1, 2, 6, 5),
+)
+
+
+def _hex_volume(corners: np.ndarray) -> float:
+    """Divergence-theorem volume of one hexahedron, matching ``geometry.py``'s
+    fan-triangulated face formula so a positive result here means the solver's
+    own volume computation will also be positive."""
+    centre = corners.mean(axis=0)
+    volume = 0.0
+    for face in _HEX_FACES:
+        pts = corners[list(face)]
+        face_centre = pts.mean(axis=0)
+        sf = np.zeros(3)
+        for i in range(4):
+            a, b = pts[i], pts[(i + 1) % 4]
+            sf += 0.5 * np.cross(a - face_centre, b - face_centre)
+        volume += float(np.dot(sf, face_centre - centre)) / 3.0
+    return volume
+
+
+def _conform_wall_to_surface(
+    mesh_data: dict,
+    surface_index: SurfaceIndex,
+    wall_patch_name: str,
+    *,
+    min_volume_ratio: float = 0.15,
+) -> None:
+    """Snap wall-patch corner points onto the true curved surface.
+
+    Every wall-adjacent point that is still (numerically) inside the solid is
+    projected onto the nearest point of the triangulated surface.  A snap is
+    rejected, leaving the point on its original Cartesian lattice position,
+    if it would drive any cell referencing that point to a non-positive
+    volume or shrink it by more than ``min_volume_ratio`` of its original
+    volume -- cfMesh's real robustness fallback: partial conformance (a small
+    stairstep at that one corner) beats an invalid mesh.
+    """
+    points = mesh_data["points"]
+    cell_vertices = mesh_data.get("cell_vertices")
+    if cell_vertices is None:
+        return
+    (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
+    faces = np.asarray(mesh_data["faces"])
+    first, count = int(wall["startFace"]), int(wall["nFaces"])
+    wall_point_ids = np.unique(faces[first : first + count])
+
+    point_cells: dict[int, list[int]] = {}
+    for cell_id, corners in enumerate(cell_vertices):
+        for corner in corners:
+            point_cells.setdefault(int(corner), []).append(cell_id)
+
+    inside = surface_index.is_inside(points[wall_point_ids])
+    for point_id, is_inside_solid in zip(wall_point_ids, inside, strict=True):
+        if not is_inside_solid:
+            continue
+        affected = point_cells.get(int(point_id), [])
+        if not affected:
+            continue
+        before = [_hex_volume(points[cell_vertices[c]]) for c in affected]
+        if min(before) <= 0.0:
+            continue
+        target, _distance = surface_index.nearest_point(points[point_id])
+        original = points[point_id].copy()
+        points[point_id] = target
+        after = [_hex_volume(points[cell_vertices[c]]) for c in affected]
+        if (
+            min(after) <= 0.0
+            or min(a / b for a, b in zip(after, before, strict=True)) < min_volume_ratio
+        ):
+            points[point_id] = original
+
+
 class AdaptiveCartesianMesher:
     """Build an adaptive, body-fitted Cartesian mesh directly in memory.
 
@@ -412,15 +529,28 @@ class AdaptiveCartesianMesher:
                     "body-snapping path was removed and the input body is always "
                     "preserved exactly."
                 )
-            resolved = _resolve_preserved_lattice(
-                requested_domain, fitted_max_cell_size, requested_level, surface.bounds
-            )
-            self._resolved_lattice = resolved
-            self.domain: Bounds = resolved.effective_domain
+            if surface.kind == "box":
+                resolved = _resolve_preserved_lattice(
+                    requested_domain, fitted_max_cell_size, requested_level, surface.bounds
+                )
+                self._resolved_lattice = resolved
+                self.domain: Bounds = resolved.effective_domain
+                self._surface_index = None
+            else:
+                # A general (curved) surface imposes no lattice-plane-alignment
+                # constraint: the background/finest spacing is fitted exactly as
+                # in the no-surface case, and the boundary is conformed to the
+                # true triangulated surface after the Cartesian lattice is built
+                # (see ``_conform_wall_to_surface``), not by choosing spacing.
+                resolved = None
+                self._resolved_lattice = None
+                self.domain = requested_domain
+                self._surface_index = SurfaceIndex.build(surface.triangles)
         else:
             self._resolved_lattice = None
             resolved = None
             self.domain = requested_domain
+            self._surface_index = None
 
         self._requested_domain = requested_domain
         self._effective_domain = (
@@ -507,7 +637,7 @@ class AdaptiveCartesianMesher:
         h_min: float,
         max_level: int,
         limits: tuple[int, int, int],
-        solid: _IntegerBox | None,
+        body_region: _IntegerBox | None,
     ) -> tuple[tuple[_IntegerBox, int], ...]:
         regions: list[tuple[_IntegerBox, int]] = []
 
@@ -520,12 +650,13 @@ class AdaptiveCartesianMesher:
                 current = current.expanded(2 ** (max_level - level), limits)
                 regions.append((current, level))
 
-        if solid is not None:
-            # The preserved body needs a one-fine-cell shell around it so that
-            # every body plane is a lattice plane of the leaves themselves;
-            # coarse leaves whose width straddles a body face would otherwise
-            # have positive-volume overlap with the solid.
-            add_balanced(solid, max_level, first_padding=1)
+        if body_region is not None:
+            # The body needs a one-fine-cell shell around it so the leaf grid
+            # is fully refined wherever the true surface can be: for a
+            # preserved box, ``body_region`` is the exact body; for a general
+            # curved surface, it is the body's AABB, which over-refines a
+            # little near its corners but never under-refines near the body.
+            add_balanced(body_region, max_level, first_padding=1)
 
         for refinement in self.refinements:
             level = _dyadic_level(self.max_cell_size, refinement.cell_size)
@@ -584,7 +715,11 @@ class AdaptiveCartesianMesher:
                             visit(x0 + dx, y0 + dy, z0 + dz, child, level + 1)
                 return
 
-            if solid is not None and solid.overlaps(x0, x1, y0, y1, z0, z1):
+            if (
+                solid is not None
+                and isinstance(solid, _IntegerBox)
+                and solid.overlaps(x0, x1, y0, y1, z0, z1)
+            ):
                 # Exact interval/AABB classification: a leaf may touch the body
                 # with zero volume (wall-adjacent fluid) but must never overlap
                 # it with positive volume.  Wholly-inside cells are removed
@@ -603,6 +738,9 @@ class AdaptiveCartesianMesher:
                         "surface_cell_size (or a body position) that aligns the surface "
                         "with the finest level must be used"
                     )
+            # A general curved-surface leaf flagged boundary by ``solid.overlaps``
+            # above (the ``_SurfaceSolid`` branch) is kept and conformed to the
+            # true surface afterwards by ``_conform_wall_to_surface``.
             append_leaf(x0, y0, z0, width, level)
 
         nx, ny, nz = base_counts
@@ -895,14 +1033,24 @@ class AdaptiveCartesianMesher:
         h_min = self.max_cell_size / (2**max_level)
         base_width = 2**max_level
         limits = tuple(count * base_width for count in base_counts)
-        if self.surface_bounds is not None:
+        body_region: _IntegerBox | None
+        if (
+            self.surface_bounds is not None
+            and self.surface is not None
+            and self.surface.kind == "box"
+        ):
             if self._body_lattice_indices is None:
                 raise RuntimeError("Internal lattice resolution missing for preserved body")
             scale = 2 ** (max_level - self._resolved_max_level)
             solid = _IntegerBox(*(index * scale for index in self._body_lattice_indices))
+            body_region = solid
+        elif self._surface_index is not None:
+            solid = _SurfaceSolid(self._surface_index, h_min, self.domain[::2])
+            body_region = self._integer_box(self.surface_bounds, h_min)
         else:
             solid = None
-        regions = self._refinement_regions(h_min, max_level, limits, solid)
+            body_region = None
+        regions = self._refinement_regions(h_min, max_level, limits, body_region)
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(
             leaves, max_level, limits
@@ -997,9 +1145,14 @@ class AdaptiveCartesianMesher:
             mesh_data["cell_vertices"] = cell_vertices
             mesh_data["cell_type_codes"] = np.full(len(leaves), 5, dtype=np.int32)
 
-        if self.surface_bounds is not None:
+        if self.surface_bounds is not None and self.surface.kind == "box":
             validate_no_fluid_solid_overlap(mesh_data, self.surface_bounds)
             _validate_wall_on_surface(mesh_data, self.surface_bounds, self.wall_patch_name)
+        elif self._surface_index is not None:
+            _conform_wall_to_surface(mesh_data, self._surface_index, self.wall_patch_name)
+            validate_curved_wall_conformance(
+                mesh_data, self.surface.triangles, self.wall_patch_name
+            )
 
         return mesh_data
 

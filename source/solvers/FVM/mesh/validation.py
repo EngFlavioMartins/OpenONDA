@@ -368,3 +368,63 @@ def validate_no_fluid_solid_overlap(mesh_data, solid_bounds, *, tolerance: float
             "Body preservation requires every body plane to be an exact Cartesian "
             "lattice plane."
         )
+
+
+def _polygon_area(vertices: np.ndarray) -> float:
+    centre = vertices.mean(axis=0)
+    area = 0.0
+    n = len(vertices)
+    for i in range(n):
+        a = vertices[i] - centre
+        b = vertices[(i + 1) % n] - centre
+        area += 0.5 * float(np.linalg.norm(np.cross(a, b)))
+    return area
+
+
+def validate_curved_wall_conformance(
+    mesh_data, surface_triangles, wall_patch_name: str, *, area_tolerance: float = 0.35
+) -> None:
+    """Sanity gate for a general (curved) conformal mesh.
+
+    Rejects any cell whose volume is non-positive after surface conformance,
+    and rejects a wall patch whose total area deviates from the input STL's
+    own surface area by more than ``area_tolerance`` -- a coarse but
+    shape-agnostic conformance check (unlike the exact box path, a curved
+    wall cannot be checked against an analytic bound).
+    """
+    points = np.asarray(mesh_data["points"], dtype=np.float64)
+    cell_vertices = mesh_data.get("cell_vertices")
+    if cell_vertices is not None:
+        from .adaptive_cartesian import _hex_volume
+
+        vertices = points[np.asarray(cell_vertices, dtype=np.int64)]
+        bad = [i for i in range(len(vertices)) if _hex_volume(vertices[i]) <= 0.0]
+        if bad:
+            raise MeshValidationError(
+                f"{len(bad)} cells have non-positive volume after curved-surface "
+                f"conformance; first ids {bad[:10]}"
+            )
+
+    faces = np.asarray(mesh_data["faces"])
+    (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
+    first, count = int(wall["startFace"]), int(wall["nFaces"])
+    mesh_area = sum(_polygon_area(points[face]) for face in faces[first : first + count])
+
+    surface_triangles = np.asarray(surface_triangles, dtype=np.float64)
+    stl_area = 0.5 * float(
+        np.sum(
+            np.linalg.norm(
+                np.cross(
+                    surface_triangles[:, 1] - surface_triangles[:, 0],
+                    surface_triangles[:, 2] - surface_triangles[:, 0],
+                ),
+                axis=1,
+            )
+        )
+    )
+    relative_error = abs(mesh_area - stl_area) / stl_area if stl_area > 0.0 else float("inf")
+    if relative_error > area_tolerance:
+        raise MeshValidationError(
+            f"Conformal wall area {mesh_area:.6g} deviates from the STL surface area "
+            f"{stl_area:.6g} by {relative_error:.1%}, exceeding the {area_tolerance:.0%} tolerance"
+        )
