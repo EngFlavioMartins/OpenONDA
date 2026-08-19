@@ -241,6 +241,7 @@ class SurfaceSampler(_PointProbe):
         p: float = 2.0,
         file_name: str | None = None,
         schedule=None,
+        body_bounds=None,
     ):
         """Initialize the surface sampler.
 
@@ -255,6 +256,11 @@ class SurfaceSampler(_PointProbe):
             p: Power parameter for inverse distance weighting.
             file_name: Base name for the output files.
             schedule: Optional :class:`~.base.SamplingSchedule`.
+            body_bounds: Optional axis-aligned solid bounds ``(xmin, xmax,
+                ymin, ymax, zmin, zmax)``.  Probe points geometrically inside
+                the body are masked in the output (``vtkValidPointMask`` zero,
+                NaN field values) so the slice never shows a flow field inside
+                the solid.
         """
         point = np.asarray(point, dtype=float)
         normal = np.asarray(normal, dtype=float)
@@ -282,6 +288,23 @@ class SurfaceSampler(_PointProbe):
         self.spacing = float(spacing)
         self.grid_shape = C1.shape
         self._pvd_entries: list[tuple[float, str]] = []
+        if body_bounds is not None:
+            body_bounds = np.asarray(body_bounds, dtype=float)
+            if body_bounds.shape != (6,):
+                raise ValueError("body_bounds must contain six coordinates")
+            inside = (
+                (points[:, 0] > body_bounds[0])
+                & (points[:, 0] < body_bounds[1])
+                & (points[:, 1] > body_bounds[2])
+                & (points[:, 1] < body_bounds[3])
+                & (points[:, 2] > body_bounds[4])
+                & (points[:, 2] < body_bounds[5])
+            )
+            self._body_bounds = body_bounds
+            self._inside_mask = inside
+        else:
+            self._body_bounds = None
+            self._inside_mask = None
 
     def config_dict(self) -> dict:
         spec = super().config_dict()
@@ -293,6 +316,9 @@ class SurfaceSampler(_PointProbe):
                 "spacing": self.spacing,
                 "k": self.k,
                 "p": self.p,
+                "body_bounds": self._body_bounds.tolist()
+                if self._body_bounds is not None
+                else None,
             }
         )
         return spec
@@ -318,11 +344,23 @@ class SurfaceSampler(_PointProbe):
         vorticity = np.column_stack(
             [_field(data["omega_x"]), _field(data["omega_y"]), _field(data["omega_z"])]
         )
+        pressure = _field(data["p"])
+        valid_mask = np.ones(len(self.points), dtype=np.uint8)
+        if self._inside_mask is not None:
+            # Probe points inside the body have no physical fluid value; mark
+            # them invalid and blank their fields so the slice never appears to
+            # contain a flow inside the solid.
+            inside = self._inside_mask
+            valid_mask[inside] = 0
+            velocity[inside] = np.nan
+            vorticity[inside] = np.nan
+            pressure[inside] = np.nan
         grid.point_data["Velocity"] = velocity
         grid.point_data["VelocityMagnitude"] = np.linalg.norm(velocity, axis=1)
         grid.point_data["Vorticity"] = vorticity
         grid.point_data["VorticityMagnitude"] = np.linalg.norm(vorticity, axis=1)
-        grid.point_data["Pressure"] = _field(data["p"])
+        grid.point_data["Pressure"] = pressure
+        grid.point_data["vtkValidPointMask"] = valid_mask
         grid.field_data["OpenONDASurfaceOrdering"] = np.asarray([1], dtype=np.uint8)
         grid.save(str(filepath), binary=True)
         return data

@@ -30,12 +30,12 @@ import math
 from math import gcd, lcm
 from pathlib import Path
 from typing import cast
-import warnings
 
 import numpy as np
 
 from .triangulated_surface import SurfaceBounds as Bounds
 from .triangulated_surface import TriangulatedSurface
+from .validation import validate_no_fluid_solid_overlap
 
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
@@ -129,6 +129,180 @@ def _fitted_background_size(domain: Bounds, requested: float) -> float:
     return float(common_extent / max(1, count))
 
 
+@dataclass(frozen=True)
+class _ResolvedCartesianLattice:
+    """Geometry-first lattice resolution for a preserved axis-aligned body.
+
+    The input body coordinates are immutable.  The finest Cartesian spacing is
+    chosen so that every body plane is an exact lattice plane, and the outer
+    domain is padded outward (never inward, never onto the body) until the
+    resulting lattice tiles it.
+    """
+
+    requested_domain: Bounds
+    effective_domain: Bounds
+    padding_per_face: tuple[float, float, float, float, float, float]
+    background_cell_size: float
+    finest_cell_size: float
+    maximum_level: int
+    body_bounds: Bounds
+    body_lattice_indices: tuple[int, int, int, int, int, int]
+
+
+def _integer_quotient(value: Fraction) -> int | None:
+    """Return the integer value of an exact rational, or ``None`` if not integral."""
+    return value.numerator if value.denominator == 1 else None
+
+
+def _as_fraction(value: float) -> Fraction:
+    # No denominator limiting: the body coordinates are geometry authority and
+    # must round-trip exactly.  ``str`` on a float yields the shortest decimal
+    # that reproduces it, so the fraction is exact by construction.
+    return Fraction(str(value))
+
+
+def _resolve_preserved_lattice(
+    requested_domain: Bounds,
+    background: float,
+    requested_level: int,
+    body_bounds: Bounds,
+    *,
+    max_extra_levels: int = 12,
+) -> _ResolvedCartesianLattice:
+    """Resolve a Cartesian lattice that preserves the body exactly.
+
+    The body is the authority: its six faces become exact lattice planes at
+    the finest spacing ``h``.  ``h`` is never coarser than the requested finest
+    spacing.  If the requested dyadic spacing already divides every body
+    extent, it is kept unchanged.  Otherwise a body-determined common spacing
+    ``h = D[a0]/n`` (with ``n`` a common multiple of the per-axis extent
+    ratios) is chosen, and the background cell size is derived from it so the
+    requested refinement levels are preserved.  The outer domain is then padded
+    outward until the background lattice tiles it.
+
+    Raises
+    ------
+    ValueError
+        If no compatible isotropic spacing at or finer than the requested one
+        can represent the body exactly (the body is never modified).
+    """
+    background_fraction = _as_fraction(background)
+    h_requested = background_fraction / (2**requested_level)
+    bounds_min = [_as_fraction(body_bounds[2 * axis]) for axis in range(3)]
+    bounds_max = [_as_fraction(body_bounds[2 * axis + 1]) for axis in range(3)]
+    extents = [bounds_max[axis] - bounds_min[axis] for axis in range(3)]
+
+    if all(_integer_quotient(extent / h_requested) is not None for extent in extents):
+        finest = h_requested
+        level = requested_level
+        background_final = background_fraction
+    else:
+        # Choose the coarsest common spacing h = D[a0]/n <= h_requested.  For a
+        # single isotropic spacing to divide every axis, ``n`` must be a
+        # common multiple of the denominators of every D[a]/D[a0] ratio.
+        best: Fraction | None = None
+        for reference in range(3):
+            denominator_lcm = 1
+            valid = True
+            for axis in range(3):
+                if axis == reference:
+                    continue
+                ratio = extents[axis] / extents[reference]
+                if ratio.denominator > 1_000_000:
+                    valid = False
+                    break
+                denominator_lcm = lcm(denominator_lcm, ratio.denominator)
+            if not valid:
+                continue
+            minimum_n = math.ceil(extents[reference] / h_requested)
+            n = int(math.ceil(minimum_n / denominator_lcm)) * denominator_lcm
+            candidate = extents[reference] / n
+            if candidate < h_requested / (2**max_extra_levels):
+                continue
+            if best is None or candidate > best:
+                best = candidate
+        if best is None:
+            counts = ", ".join(f"{float(extent / h_requested):.9g}" for extent in extents)
+            raise ValueError(
+                "The body width cannot be represented exactly at any compatible "
+                f"Cartesian spacing. Requested finest spacing {float(h_requested):.9g} m "
+                f"gives non-integer cell counts per axis: [{counts}]. The body was NOT "
+                "modified. Choose a spacing that divides the body extents, or use a "
+                "body whose extents are commensurable."
+            )
+        finest = best
+        level = requested_level
+        background_final = finest * (2**level)
+
+    base_width = 2**level
+    effective: list[float] = []
+    padding: list[float] = []
+    indices: list[int] = []
+    for axis in range(3):
+        body_min = bounds_min[axis]
+        body_max = bounds_max[axis]
+        requested_min = _as_fraction(requested_domain[2 * axis])
+        requested_max = _as_fraction(requested_domain[2 * axis + 1])
+
+        # Anchor the lattice on the body: body_min maps to fine index zero.
+        low = math.floor((requested_min - body_min) / finest)
+        high = math.ceil((requested_max - body_min) / finest)
+        remainder = low % base_width
+        if remainder:
+            low -= remainder
+        count = high - low
+        remainder = count % base_width
+        if remainder:
+            high += base_width - remainder
+
+        effective_min = body_min + low * finest
+        effective_max = body_min + high * finest
+        effective.extend((float(effective_min), float(effective_max)))
+        padding.extend((float(requested_min - effective_min), float(effective_max - requested_max)))
+
+        cell_count = _integer_quotient((body_max - body_min) / finest)
+        if cell_count is None:
+            raise RuntimeError("Resolved lattice does not divide the body extent")
+        indices.extend((-low, -low + cell_count))
+
+    return _ResolvedCartesianLattice(
+        requested_domain=cast(Bounds, tuple(float(value) for value in requested_domain)),
+        effective_domain=cast(Bounds, tuple(effective)),
+        padding_per_face=cast(Bounds, tuple(padding)),
+        background_cell_size=float(background_final),
+        finest_cell_size=float(finest),
+        maximum_level=level,
+        body_bounds=cast(Bounds, tuple(float(value) for value in body_bounds)),
+        body_lattice_indices=cast(tuple[int, int, int, int, int, int], tuple(indices)),
+    )
+
+
+def _validate_wall_on_surface(
+    mesh_data: dict, surface_bounds: Bounds, wall_patch_name: str
+) -> None:
+    """Raise unless the wall patch vertex bounds coincide with the STL bounds."""
+    (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
+    first = int(wall["startFace"])
+    faces = np.asarray(mesh_data["faces"])[first : first + int(wall["nFaces"])]
+    vertices = np.asarray(mesh_data["points"])[np.unique(faces)]
+    lower = vertices.min(axis=0)
+    upper = vertices.max(axis=0)
+    expected_lower = np.asarray(surface_bounds[::2])
+    expected_upper = np.asarray(surface_bounds[1::2])
+    scale = float(np.abs(expected_upper).max())
+    # STL stores coordinates as float32, so the triangle bounds and the double
+    # lattice may differ by ~1e-7 even when the wall is exactly conformal.
+    tolerance = 1.0e-6 * max(1.0, scale)
+    if not np.allclose(lower, expected_lower, rtol=0.0, atol=tolerance) or not np.allclose(
+        upper, expected_upper, rtol=0.0, atol=tolerance
+    ):
+        raise ValueError(
+            "Wall patch does not lie exactly on the STL surface: wall bounds "
+            f"{lower.tolist()} .. {upper.tolist()} vs STL "
+            f"{expected_lower.tolist()} .. {expected_upper.tolist()}"
+        )
+
+
 class AdaptiveCartesianMesher:
     """Build an adaptive, body-fitted Cartesian mesh directly in memory.
 
@@ -154,6 +328,12 @@ class AdaptiveCartesianMesher:
     merge_outer_patch:
         Merge the six outer sides into one patch (the coupled FVM--VPM case),
         or leave the conventional inlet/outlet/ymin/ymax/zmin/zmax patches.
+    preserve_body_geometry:
+        Guarantee that the input body coordinates are immutable.  The body
+        faces become exact Cartesian lattice planes, the outer domain is padded
+        outward as needed, and no ordinary fluid cell may overlap the solid
+        with positive volume.  This is the only supported mode; the legacy
+        body-snapping path was removed.
 
     Notes
     -----
@@ -161,6 +341,11 @@ class AdaptiveCartesianMesher:
     multiple coplanar subfaces.  Geometrically all cells remain cuboids.  This
     is the same useful finite-volume topology as the nine-face transition
     body-fitted polyhedra, without an external intermediary.
+
+    ``effective_domain`` exposes the resolved outer domain; it equals
+    ``requested_domain`` when no outer padding was required.  Any coupling
+    region or sampler derived from the outer boundary must use the effective
+    domain.
     """
 
     def __init__(
@@ -174,11 +359,11 @@ class AdaptiveCartesianMesher:
         refinements: tuple[BoxRefinement, ...] = (),
         merge_outer_patch: str | None = None,
         include_cell_vertices: bool = True,
+        preserve_body_geometry: bool = True,
     ) -> None:
         _validate_bounds(domain, "domain")
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")
-        fitted_max_cell_size = _fitted_background_size(domain, max_cell_size)
         if (surface_file is None) != (wall_patch_name is None):
             raise ValueError("surface_file and wall_patch_name must be supplied together")
         if surface_file is None and surface_cell_size is not None:
@@ -186,14 +371,15 @@ class AdaptiveCartesianMesher:
         if wall_patch_name is not None and not wall_patch_name.strip():
             raise ValueError("wall_patch_name must not be empty")
 
+        requested_domain: Bounds = cast(Bounds, tuple(float(value) for value in domain))
         surface = TriangulatedSurface.from_stl(surface_file) if surface_file is not None else None
         if surface is not None:
             surface_bounds = surface.bounds
             if not all(
-                domain[2 * axis]
+                requested_domain[2 * axis]
                 < surface_bounds[2 * axis]
                 < surface_bounds[2 * axis + 1]
-                < domain[2 * axis + 1]
+                < requested_domain[2 * axis + 1]
                 for axis in range(3)
             ):
                 raise ValueError("STL surface must lie strictly inside domain")
@@ -202,18 +388,60 @@ class AdaptiveCartesianMesher:
         for refinement in refinements:
             _validate_bounds(refinement.bounds, f"{refinement.name}.bounds")
             if not all(
-                domain[2 * axis]
+                requested_domain[2 * axis]
                 <= refinement.bounds[2 * axis]
                 < refinement.bounds[2 * axis + 1]
-                <= domain[2 * axis + 1]
+                <= requested_domain[2 * axis + 1]
                 for axis in range(3)
             ):
                 raise ValueError(f"{refinement.name} must lie inside domain")
-            _dyadic_level(fitted_max_cell_size, refinement.cell_size)
 
-        self.domain: Bounds = cast(Bounds, tuple(float(value) for value in domain))
+        fitted_max_cell_size = _fitted_background_size(requested_domain, max_cell_size)
+        requested_sizes = [refinement.cell_size for refinement in refinements]
+        if surface_cell_size is not None:
+            requested_sizes.append(surface_cell_size)
+        requested_level = max(
+            (_dyadic_level(fitted_max_cell_size, size) for size in requested_sizes),
+            default=0,
+        )
+
+        if surface is not None:
+            if not preserve_body_geometry:
+                raise ValueError(
+                    "preserve_body_geometry=False is no longer supported: the legacy "
+                    "body-snapping path was removed and the input body is always "
+                    "preserved exactly."
+                )
+            resolved = _resolve_preserved_lattice(
+                requested_domain, fitted_max_cell_size, requested_level, surface.bounds
+            )
+            self._resolved_lattice = resolved
+            self.domain: Bounds = resolved.effective_domain
+        else:
+            self._resolved_lattice = None
+            resolved = None
+            self.domain = requested_domain
+
+        self._requested_domain = requested_domain
+        self._effective_domain = (
+            resolved.effective_domain if resolved is not None else requested_domain
+        )
+        self.padding_per_face = (
+            resolved.padding_per_face if resolved is not None else (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        )
         self.requested_max_cell_size = float(max_cell_size)
-        self.max_cell_size = fitted_max_cell_size
+        self.max_cell_size = (
+            resolved.background_cell_size if resolved is not None else fitted_max_cell_size
+        )
+        self._resolved_max_level = (
+            resolved.maximum_level if resolved is not None else requested_level
+        )
+        self._resolved_h_min = (
+            resolved.finest_cell_size
+            if resolved is not None
+            else fitted_max_cell_size / (2**requested_level)
+        )
+        self._body_lattice_indices = resolved.body_lattice_indices if resolved is not None else None
         self.surface = surface
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
@@ -222,10 +450,26 @@ class AdaptiveCartesianMesher:
         self.wall_patch_name = wall_patch_name or ""
         self.merge_outer_patch = merge_outer_patch
         self.include_cell_vertices = include_cell_vertices
+        self.preserve_body_geometry = preserve_body_geometry
 
     def effective_cell_size(self, requested: float) -> float:
         """Return the dyadic size generated for a requested size."""
         return self.max_cell_size / (2 ** _dyadic_level(self.max_cell_size, requested))
+
+    @property
+    def effective_domain(self) -> Bounds:
+        """Resolved outer domain; equals ``requested_domain`` when no padding was needed."""
+        return self._effective_domain
+
+    @property
+    def requested_domain(self) -> Bounds:
+        """The outer domain requested by the caller (before body-driven padding)."""
+        return self._requested_domain
+
+    @property
+    def padding(self) -> tuple[float, float, float, float, float, float]:
+        """Outward padding per outer face ``(xmin, xmax, ymin, ymax, zmin, zmax)``."""
+        return self.padding_per_face
 
     def _base_counts(self) -> tuple[int, int, int]:
         counts = []
@@ -258,42 +502,6 @@ class AdaptiveCartesianMesher:
                 indices.append(index)
         return _IntegerBox(*indices)
 
-    def _warn_if_body_inflated(self, solid: _IntegerBox, h_min: float) -> None:
-        """Warn when snapping the STL outward resizes the body.
-
-        ``_integer_box`` floors the lower bound and ceils the upper one, so a
-        surface that does not land on a finest-level cell boundary is absorbed
-        outward.  The solver then sees a body larger than the STL while force
-        coefficients are still divided by the nominal reference area, which
-        biases every reported Cd.  Choose sizes that put the surface on a cell
-        boundary instead.
-        """
-        bounds = self.surface_bounds
-        if bounds is None:
-            return
-        corners = ((solid.x0, solid.x1), (solid.y0, solid.y1), (solid.z0, solid.z1))
-        exact = [bounds[2 * a + 1] - bounds[2 * a] for a in range(3)]
-        snapped = [(hi - lo) * h_min for lo, hi in corners]
-        if any(span <= 0.0 for span in exact):
-            return
-        # Frontal area sets the pressure-drag scale, so report the worst of the
-        # three projections rather than the volume.
-        frontal = max(
-            (snapped[(a + 1) % 3] * snapped[(a + 2) % 3])
-            / (exact[(a + 1) % 3] * exact[(a + 2) % 3])
-            for a in range(3)
-        )
-        if frontal - 1.0 <= 0.01:
-            return
-        warnings.warn(
-            f"STL snapped outward to the finest cell ({h_min:.6g}): body spans "
-            f"{snapped[0]:.6g} x {snapped[1]:.6g} x {snapped[2]:.6g} instead of "
-            f"{exact[0]:.6g} x {exact[1]:.6g} x {exact[2]:.6g}, inflating frontal "
-            f"area by {100.0 * (frontal - 1.0):.2f}%. Force coefficients divided by "
-            f"the nominal area are biased by the same factor.",
-            stacklevel=2,
-        )
-
     def _refinement_regions(
         self,
         h_min: float,
@@ -312,11 +520,12 @@ class AdaptiveCartesianMesher:
                 current = current.expanded(2 ** (max_level - level), limits)
                 regions.append((current, level))
 
-        if solid is not None and self.surface_cell_size is not None:
-            surface_level = _dyadic_level(self.max_cell_size, self.surface_cell_size)
-            if surface_level:
-                fine_cell = 2 ** (max_level - surface_level)
-                add_balanced(solid, surface_level, first_padding=fine_cell)
+        if solid is not None:
+            # The preserved body needs a one-fine-cell shell around it so that
+            # every body plane is a lattice plane of the leaves themselves;
+            # coarse leaves whose width straddles a body face would otherwise
+            # have positive-volume overlap with the solid.
+            add_balanced(solid, max_level, first_padding=1)
 
         for refinement in self.refinements:
             level = _dyadic_level(self.max_cell_size, refinement.cell_size)
@@ -376,20 +585,24 @@ class AdaptiveCartesianMesher:
                 return
 
             if solid is not None and solid.overlaps(x0, x1, y0, y1, z0, z1):
-                # Arbitrary cut cells require the surface-mapping stage that is
-                # outside this Cartesian subset. Axis-aligned STL planes must
-                # therefore coincide with the finest template level.
-                centre_inside = (
-                    2 * solid.x0 < 2 * x0 + width < 2 * solid.x1
-                    and 2 * solid.y0 < 2 * y0 + width < 2 * solid.y1
-                    and 2 * solid.z0 < 2 * z0 + width < 2 * solid.z1
-                )
-                if centre_inside:
-                    return
-                raise ValueError(
-                    "STL surface cuts a leaf cell; request a surface_cell_size that "
-                    "aligns the surface with the finest Cartesian level"
-                )
+                # Exact interval/AABB classification: a leaf may touch the body
+                # with zero volume (wall-adjacent fluid) but must never overlap
+                # it with positive volume.  Wholly-inside cells are removed
+                # above by ``solid.contains``.  Any remaining positive-volume
+                # overlap means a body plane is not an exact leaf lattice
+                # plane, which preserved mode must reject rather than silently
+                # keep or remove on a centroid test.
+                overlap_x = min(x1, solid.x1) - max(x0, solid.x0)
+                overlap_y = min(y1, solid.y1) - max(y0, solid.y0)
+                overlap_z = min(z1, solid.z1) - max(z0, solid.z0)
+                if overlap_x > 0 and overlap_y > 0 and overlap_z > 0:
+                    raise ValueError(
+                        "STL surface cuts a leaf cell with positive volume; the body "
+                        "was not modified. The preserved-body contract requires every "
+                        "body face to be an exact Cartesian lattice plane, so a "
+                        "surface_cell_size (or a body position) that aligns the surface "
+                        "with the finest level must be used"
+                    )
             append_leaf(x0, y0, z0, width, level)
 
         nx, ny, nz = base_counts
@@ -662,7 +875,13 @@ class AdaptiveCartesianMesher:
         return encoded_faces, owners, neighbour_array, boundary, levels
 
     def build(self) -> dict:
-        """Generate and return a solver-native ``mesh_data`` dictionary."""
+        """Generate and return a solver-native ``mesh_data`` dictionary.
+
+        In preserved-body mode the body planes are exact lattice planes by
+        construction, and the returned mesh is verified before returning: no
+        ordinary fluid cell may overlap the solid with positive volume, and the
+        wall patch must lie exactly on the input STL bounds.
+        """
         base_counts = self._base_counts()
         requested_sizes = [refinement.cell_size for refinement in self.refinements]
         if self.surface_cell_size is not None:
@@ -671,16 +890,18 @@ class AdaptiveCartesianMesher:
             (_dyadic_level(self.max_cell_size, size) for size in requested_sizes),
             default=0,
         )
+        if self.surface_bounds is not None:
+            max_level = max(max_level, self._resolved_max_level)
         h_min = self.max_cell_size / (2**max_level)
         base_width = 2**max_level
         limits = tuple(count * base_width for count in base_counts)
-        solid = (
-            self._integer_box(self.surface_bounds, h_min)
-            if self.surface_bounds is not None
-            else None
-        )
-        if solid is not None:
-            self._warn_if_body_inflated(solid, h_min)
+        if self.surface_bounds is not None:
+            if self._body_lattice_indices is None:
+                raise RuntimeError("Internal lattice resolution missing for preserved body")
+            scale = 2 ** (max_level - self._resolved_max_level)
+            solid = _IntegerBox(*(index * scale for index in self._body_lattice_indices))
+        else:
+            solid = None
         regions = self._refinement_regions(h_min, max_level, limits, solid)
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(
@@ -727,6 +948,10 @@ class AdaptiveCartesianMesher:
                 "finest_cell_size": h_min,
                 "max_level": max_level,
                 "base_counts": base_counts,
+                "requested_domain": self.requested_domain,
+                "effective_domain": self.effective_domain,
+                "padding_per_face": self.padding_per_face,
+                "preserve_body_geometry": self.preserve_body_geometry,
                 "surface_file": self.surface_file,
                 "surface_sha256": self.surface.sha256 if self.surface is not None else None,
                 "surface_bounds": self.surface_bounds,
@@ -771,6 +996,10 @@ class AdaptiveCartesianMesher:
                 cell_vertices[start:stop] = indices.astype(np.int32)
             mesh_data["cell_vertices"] = cell_vertices
             mesh_data["cell_type_codes"] = np.full(len(leaves), 5, dtype=np.int32)
+
+        if self.surface_bounds is not None:
+            validate_no_fluid_solid_overlap(mesh_data, self.surface_bounds)
+            _validate_wall_on_surface(mesh_data, self.surface_bounds, self.wall_patch_name)
 
         return mesh_data
 

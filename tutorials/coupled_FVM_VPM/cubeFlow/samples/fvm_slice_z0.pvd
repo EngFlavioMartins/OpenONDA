@@ -2,37 +2,5 @@
 <VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
   <Collection>
     <DataSet timestep="0.6000000000000003" file="fvm_slice_z0_000060.vts"/>
-    <DataSet timestep="1.2000000000000008" file="fvm_slice_z0_000120.vts"/>
-    <DataSet timestep="1.8000000000000014" file="fvm_slice_z0_000180.vts"/>
-    <DataSet timestep="2.399999999999993" file="fvm_slice_z0_000240.vts"/>
-    <DataSet timestep="2.99999999999998" file="fvm_slice_z0_000300.vts"/>
-    <DataSet timestep="3.5999999999999672" file="fvm_slice_z0_000360.vts"/>
-    <DataSet timestep="4.199999999999955" file="fvm_slice_z0_000420.vts"/>
-    <DataSet timestep="4.799999999999942" file="fvm_slice_z0_000480.vts"/>
-    <DataSet timestep="5.399999999999929" file="fvm_slice_z0_000540.vts"/>
-    <DataSet timestep="5.9999999999999165" file="fvm_slice_z0_000600.vts"/>
-    <DataSet timestep="6.599999999999904" file="fvm_slice_z0_000660.vts"/>
-    <DataSet timestep="7.199999999999891" file="fvm_slice_z0_000720.vts"/>
-    <DataSet timestep="7.799999999999878" file="fvm_slice_z0_000780.vts"/>
-    <DataSet timestep="8.399999999999865" file="fvm_slice_z0_000840.vts"/>
-    <DataSet timestep="8.999999999999853" file="fvm_slice_z0_000900.vts"/>
-    <DataSet timestep="9.59999999999984" file="fvm_slice_z0_000960.vts"/>
-    <DataSet timestep="10.199999999999827" file="fvm_slice_z0_001020.vts"/>
-    <DataSet timestep="10.799999999999814" file="fvm_slice_z0_001080.vts"/>
-    <DataSet timestep="11.399999999999801" file="fvm_slice_z0_001140.vts"/>
-    <DataSet timestep="11.999999999999789" file="fvm_slice_z0_001200.vts"/>
-    <DataSet timestep="12.599999999999776" file="fvm_slice_z0_001260.vts"/>
-    <DataSet timestep="13.199999999999763" file="fvm_slice_z0_001320.vts"/>
-    <DataSet timestep="13.79999999999975" file="fvm_slice_z0_001380.vts"/>
-    <DataSet timestep="14.399999999999737" file="fvm_slice_z0_001440.vts"/>
-    <DataSet timestep="14.999999999999725" file="fvm_slice_z0_001500.vts"/>
-    <DataSet timestep="15.599999999999712" file="fvm_slice_z0_001560.vts"/>
-    <DataSet timestep="16.199999999999733" file="fvm_slice_z0_001620.vts"/>
-    <DataSet timestep="16.799999999999827" file="fvm_slice_z0_001680.vts"/>
-    <DataSet timestep="17.39999999999992" file="fvm_slice_z0_001740.vts"/>
-    <DataSet timestep="18.000000000000014" file="fvm_slice_z0_001800.vts"/>
-    <DataSet timestep="18.600000000000108" file="fvm_slice_z0_001860.vts"/>
-    <DataSet timestep="19.200000000000202" file="fvm_slice_z0_001920.vts"/>
-    <DataSet timestep="19.800000000000296" file="fvm_slice_z0_001980.vts"/>
   </Collection>
 </VTKFile>

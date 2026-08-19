@@ -24,6 +24,16 @@ needed by its cube verification cases:
 5. removal of an axis-aligned solid defined by the STL; and
 6. direct construction of OpenONDA's face-based FVM mesh representation.
 
+Since the geometry-preserving policy was introduced, the body is the
+authority: the STL body is never snapped, stretched or inflated.  The Cartesian
+lattice is resolved so that every body face is an exact lattice plane (the
+finest spacing is refined when the requested spacing does not divide a body
+extent, and the outer domain is padded outward until the lattice tiles it), and
+the mesh is validated at build time so that no fluid cell overlaps the body
+with positive volume and the wall patch coincides with the STL bounds.  This
+mirrors cfMesh's core principle that the input geometry is preserved exactly
+and the Cartesian cells conform to it, restricted here to axis-aligned bodies.
+
 It is an independent Python implementation and is not a line-by-line
 translation of cfMesh. It currently does **not** claim cfMesh compatibility or
 implement its general surface mapping, feature/corner extraction, mesh

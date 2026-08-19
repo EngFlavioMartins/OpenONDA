@@ -165,3 +165,41 @@ class TestVTKExporter:
 
         resumed = PVDManager(str(tmp_path / "case.pvd"))
         assert resumed.entries == [(0.25, "state&one.vtu")]
+
+
+def test_preserved_body_geometry_survives_vtk_export(tmp_path):
+    """A body-preserving adaptive mesh must stay conformal in the written VTU."""
+    import pyvista as pv
+
+    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+
+    from .test_preserve_body_geometry import write_box_stl
+
+    stl = tmp_path / "body.stl"
+    write_box_stl(str(stl), (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+    mesher = AdaptiveCartesianMesher(
+        domain=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        max_cell_size=0.5,
+        surface_file=str(stl),
+        wall_patch_name="cube",
+        surface_cell_size=0.25,
+        merge_outer_patch="numericalBoundary",
+    )
+    mesh = mesher.build()
+    path = tmp_path / "preserved.vtu"
+    exporter = VTKExporter(mesh)
+    exporter.export(str(path), {"p": np.zeros(mesh["n_elements"])})
+
+    data = pv.read(str(path))
+    points = np.asarray(data.points, dtype=np.float64)
+    cells = np.asarray(data.cells_dict[data.celltypes[0]]).reshape(-1, 8)
+    body = np.asarray(mesher.surface_bounds, dtype=np.float64)
+    lo = points[cells].min(axis=1)
+    hi = points[cells].max(axis=1)
+    overlap = np.maximum(
+        0.0,
+        np.minimum(hi, body[1::2]) - np.maximum(lo, body[::2]),
+    )
+    volumes = overlap[:, 0] * overlap[:, 1] * overlap[:, 2]
+    assert np.count_nonzero(volumes > 1e-12) == 0
+    assert data.n_cells == mesh["n_elements"]

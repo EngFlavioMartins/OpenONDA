@@ -47,9 +47,6 @@ NU = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-DT_FVM = 0.01
-DT_VPM = 0.05
-T_END = 20
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
@@ -58,33 +55,34 @@ TRANSFER_REGION_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 PIMPLE_CORRECTORS = 2
 
-FVM_WAKE_BOX = (-0.75, 1.5, -0.9, 0.9, -0.9, 0.9)
-FVM_CELL_SIZE = 0.0625
-FVM_WAKE_CELL_SIZE = 0.03125
+FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
 SURFACE_CELL_SIZE = 0.015625
 
 # VPM domain and resolution
-VPM_DOMAIN = (-4.5, 8.0, -3.0, 3.0, -3.0, 3.0)
-VPM_PARTICLE_SPACING = 0.04
-PARTICLE_LIMIT = 1200000
-VPM_CORE_RADIUS_RATIO = 1.0
+VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
+VPM_PARTICLE_SPACING = SURFACE_CELL_SIZE * 2
+PARTICLE_LIMIT = 1500000
+VPM_CORE_RADIUS_RATIO = 1.05
 TRANSFER_PRUNE_VORTICITY_MIN = 0.05
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 GBD_VORTICITY_FLOOR = 0.05
-OVERLAP_ZONE_RAMP_WIDTH = 0.24
+OVERLAP_ZONE_RAMP_WIDTH = SURFACE_CELL_SIZE * 4
 
 # Coupling
 VPM_BC_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
+DT_FVM = 0.01
 FORCE_INTERVAL = 0.05
 DIAGNOSTIC_INTERVAL = 0.60
 CHECKPOINT_INTERVAL = 1.0
 FVM_VOLUME_INTERVAL = 1.0
-VPM_LOG_PERIOD = 12
+VPM_LOG_PERIOD = 20
+DT_VPM = 0.03
+T_END = 20
 COUPLER_BACKUP_PERIOD = 20
-SAMPLE_SPACING = 0.04
+SAMPLE_SPACING = SURFACE_CELL_SIZE * 2
 TRANSFER_DIAGNOSTIC_INTERVAL = 12
 
 # Case files and derived sampling data
@@ -94,6 +92,16 @@ BODY_STL = str(CUBE_STL)
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
+
+FVM_MESH = AdaptiveCartesianMesher(
+    domain=FVM_BOX,
+    max_cell_size=SURFACE_CELL_SIZE * 4,
+    surface_file=CUBE_STL,
+    wall_patch_name="cube",
+    surface_cell_size=SURFACE_CELL_SIZE,
+    refinements=(BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
+    merge_outer_patch="numericalBoundary",
+)
 
 FVM_SAMPLERS = (
     ForceSampler(
@@ -125,17 +133,8 @@ FVM_SAMPLERS = (
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
         schedule=SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
+        body_bounds=FVM_MESH.surface_bounds,
     ),
-)
-
-FVM_MESH = AdaptiveCartesianMesher(
-    domain=FVM_BOX,
-    max_cell_size=FVM_CELL_SIZE,
-    surface_file=CUBE_STL,
-    wall_patch_name="cube",
-    surface_cell_size=SURFACE_CELL_SIZE,
-    refinements=(BoxRefinement(FVM_WAKE_BOX, FVM_WAKE_CELL_SIZE, "wakeBox"),),
-    merge_outer_patch="numericalBoundary",
 )
 
 FVM_SETUP = FVMSetup(

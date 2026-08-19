@@ -63,8 +63,6 @@ FACE_INTERVAL = DT_FVM
 SLICE_INTERVAL = 0.10  # full-domain field slices
 VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
 
-COUPLING_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
-
 SAMPLE_SCHEDULE = SamplingSchedule(every_time=SAMPLE_INTERVAL)
 SLICE_SCHEDULE = SamplingSchedule(every_time=SLICE_INTERVAL)
 FACE_SCHEDULE = SamplingSchedule(every_time=FACE_INTERVAL)

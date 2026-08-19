@@ -1,38 +1,6 @@
 <?xml version="1.0"?>
 <VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
   <Collection>
-    <DataSet timestep="0.6" file="vpm_slice_z0_000012.vts"/>
-    <DataSet timestep="1.2" file="vpm_slice_z0_000024.vts"/>
-    <DataSet timestep="1.8" file="vpm_slice_z0_000036.vts"/>
-    <DataSet timestep="2.4" file="vpm_slice_z0_000048.vts"/>
-    <DataSet timestep="3.0" file="vpm_slice_z0_000060.vts"/>
-    <DataSet timestep="3.6" file="vpm_slice_z0_000072.vts"/>
-    <DataSet timestep="4.2" file="vpm_slice_z0_000084.vts"/>
-    <DataSet timestep="4.8" file="vpm_slice_z0_000096.vts"/>
-    <DataSet timestep="5.4" file="vpm_slice_z0_000108.vts"/>
-    <DataSet timestep="6.0" file="vpm_slice_z0_000120.vts"/>
-    <DataSet timestep="6.6" file="vpm_slice_z0_000132.vts"/>
-    <DataSet timestep="7.2" file="vpm_slice_z0_000144.vts"/>
-    <DataSet timestep="7.8" file="vpm_slice_z0_000156.vts"/>
-    <DataSet timestep="8.4" file="vpm_slice_z0_000168.vts"/>
-    <DataSet timestep="9.0" file="vpm_slice_z0_000180.vts"/>
-    <DataSet timestep="9.6" file="vpm_slice_z0_000192.vts"/>
-    <DataSet timestep="10.2" file="vpm_slice_z0_000204.vts"/>
-    <DataSet timestep="10.8" file="vpm_slice_z0_000216.vts"/>
-    <DataSet timestep="11.4" file="vpm_slice_z0_000228.vts"/>
-    <DataSet timestep="12.0" file="vpm_slice_z0_000240.vts"/>
-    <DataSet timestep="12.6" file="vpm_slice_z0_000252.vts"/>
-    <DataSet timestep="13.2" file="vpm_slice_z0_000264.vts"/>
-    <DataSet timestep="13.8" file="vpm_slice_z0_000276.vts"/>
-    <DataSet timestep="14.4" file="vpm_slice_z0_000288.vts"/>
-    <DataSet timestep="15.0" file="vpm_slice_z0_000300.vts"/>
-    <DataSet timestep="15.6" file="vpm_slice_z0_000312.vts"/>
-    <DataSet timestep="16.2" file="vpm_slice_z0_000324.vts"/>
-    <DataSet timestep="16.8" file="vpm_slice_z0_000336.vts"/>
-    <DataSet timestep="17.4" file="vpm_slice_z0_000348.vts"/>
-    <DataSet timestep="18.0" file="vpm_slice_z0_000360.vts"/>
-    <DataSet timestep="18.6" file="vpm_slice_z0_000372.vts"/>
-    <DataSet timestep="19.2" file="vpm_slice_z0_000384.vts"/>
-    <DataSet timestep="19.8" file="vpm_slice_z0_000396.vts"/>
+    <DataSet timestep="0.6" file="vpm_slice_z0_000020.vts"/>
   </Collection>
 </VTKFile>

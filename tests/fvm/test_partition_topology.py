@@ -230,3 +230,90 @@ def test_partition_vtu_float32_fields(tmp_path):
     assert 'type="Float32" Name="pressure"' in collection.read_text(encoding="utf-8")
     data = pv.read(tmp_path / "float32-rank-00000.vtu")
     assert data.cell_data["pressure"].dtype == np.float32
+
+
+def test_localized_adaptive_mesh_ghost_cell_vertices_are_valid(tmp_path):
+    """Ghost-cell hex vertices must reference a compact point index, never -1.
+
+    Ghost cells are stored completely in the local view and their far-side
+    corners are not referenced by any local face; the compact point set must
+    therefore include every local cell corner explicitly.
+    """
+    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+
+    from .test_preserve_body_geometry import write_box_stl
+
+    stl = tmp_path / "body.stl"
+    write_box_stl(str(stl), (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+    mesh = AdaptiveCartesianMesher(
+        domain=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        max_cell_size=0.0625,
+        surface_file=str(stl),
+        wall_patch_name="cube",
+        surface_cell_size=0.015625,
+        merge_outer_patch="numericalBoundary",
+    ).build()
+
+    for size in (1, 2, 4):
+        local_mesh, _geo, partition = localize_mesh_and_geometry(mesh, {}, 0, size)
+        cell_vertices = np.asarray(local_mesh["cell_vertices"])
+        assert cell_vertices.min() >= 0, (
+            f"size={size}: {int(np.count_nonzero(cell_vertices < 0))} ghost corners "
+            "referenced -1 in the compact point set"
+        )
+        if size > 1:
+            assert len(partition.ghost_global_ids) > 0
+
+
+def test_four_rank_pvtu_round_trip_preserves_adaptive_mesh_geometry(tmp_path):
+    """A 4-rank preserved-body PVTU must reproduce the root mesh exactly.
+
+    Every owned GlobalCellId across the four pieces must union to the root
+    cell count with no duplicates, and no owned or ghost cell in any piece
+    may overlap the body with positive volume.
+    """
+    pv = pytest.importorskip("pyvista", reason="partitioned VTK output requires PyVista")
+    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+
+    from .test_preserve_body_geometry import write_box_stl
+
+    stl = tmp_path / "body.stl"
+    write_box_stl(str(stl), (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+    mesher = AdaptiveCartesianMesher(
+        domain=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        max_cell_size=0.0625,
+        surface_file=str(stl),
+        wall_patch_name="cube",
+        surface_cell_size=0.015625,
+        merge_outer_patch="numericalBoundary",
+    )
+    mesh = mesher.build()
+
+    size = 4
+    for rank in range(size):
+        local_mesh, _geo, partition = localize_mesh_and_geometry(mesh, {}, rank, size)
+        write_partition_vtu(
+            tmp_path,
+            "preserved4",
+            local_mesh,
+            partition,
+            {},
+            _SerialComm(),
+            output=OutputSetup(ghost_layers=1),
+        )
+
+    collection = pv.read(tmp_path / "preserved4.pvtu")
+    global_ids = np.asarray(collection.cell_data["GlobalCellIds"])
+    ghost = np.asarray(collection.cell_data["vtkGhostType"])
+    owned_ids = global_ids[ghost == 0]
+    assert len(owned_ids) == mesh["n_elements"]
+    np.testing.assert_array_equal(np.sort(owned_ids), np.arange(mesh["n_elements"]))
+
+    points = np.asarray(collection.points)
+    cells = np.asarray(collection.cells_dict[collection.celltypes[0]]).reshape(-1, 8)
+    body = np.asarray(mesher.surface_bounds, dtype=np.float64)
+    lo = points[cells].min(axis=1)
+    hi = points[cells].max(axis=1)
+    overlap = np.maximum(0.0, np.minimum(hi, body[1::2]) - np.maximum(lo, body[::2]))
+    volumes = overlap[:, 0] * overlap[:, 1] * overlap[:, 2]
+    assert np.count_nonzero(volumes > 1e-12) == 0

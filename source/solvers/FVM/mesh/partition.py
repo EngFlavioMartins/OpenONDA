@@ -437,6 +437,15 @@ def localize_mesh_and_geometry(
     else:
         selected_faces = [np.asarray(global_faces[index], dtype=np.int64) for index in face_ids]
         used_points = np.unique(np.concatenate(selected_faces))
+    if "cell_vertices" in mesh_data:
+        # Ghost cells are stored completely in the local view, and their far-side
+        # corners need not be referenced by any local face.  Include every local
+        # cell corner so the compact point set keeps hex vertex indices valid for
+        # owned and ghost cells alike instead of emitting -1 entries.
+        local_cell_vertices = np.asarray(mesh_data["cell_vertices"], dtype=np.int64)[
+            partition.local_global_ids
+        ]
+        used_points = np.unique(np.concatenate((used_points, local_cell_vertices.ravel())))
     point_lookup = np.full(len(mesh_data["points"]), -1, dtype=np.int32)
     point_lookup[used_points] = np.arange(len(used_points))
     if isinstance(selected_faces, np.ndarray):

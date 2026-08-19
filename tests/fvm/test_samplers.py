@@ -196,6 +196,7 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
         "Vorticity",
         "VorticityMagnitude",
         "Pressure",
+        "vtkValidPointMask",
     }
     assert grid.point_data["Velocity"].shape == (12, 3)
     assert "OpenONDASurfaceOrdering" in grid.field_data
@@ -239,6 +240,82 @@ def test_explicit_force_sampler_writes_its_own_named_file(tmp_path):
     # No legacy auto-ForceSampler runs behind explicit samplers, so there is
     # exactly one force history file: the explicit sampler's own output.
     assert not (tmp_path / "samples" / "forces_history.csv").exists()
+
+
+def test_surface_sampler_masks_probes_inside_the_body(tmp_path):
+    """Probe points geometrically inside the body are invalid in the output."""
+    pv = pytest.importorskip("pyvista")
+
+    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+
+    from .test_preserve_body_geometry import write_box_stl
+
+    stl = tmp_path / "body.stl"
+    write_box_stl(str(stl), (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5))
+    mesher = AdaptiveCartesianMesher(
+        domain=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
+        max_cell_size=0.5,
+        surface_file=str(stl),
+        wall_patch_name="cube",
+        surface_cell_size=0.25,
+        merge_outer_patch="numericalBoundary",
+    )
+    mesh = mesher.build()
+
+    class _FakeSolver:
+        parallel = None
+
+    class _Parallel:
+        is_partitioned = False
+        is_root = True
+
+    parallel = _Parallel()
+    n_elements = mesh["n_elements"]
+
+    class _Context:
+        def __init__(self):
+            self.parallel = parallel
+            self.mesh_data = mesh
+            self.geo_data = {}
+            self.U = np.ones((n_elements, 3))
+            self.p = np.ones(n_elements)
+
+        def _vorticity_field(self):
+            return np.zeros((n_elements, 3))
+
+    from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+
+    context = _Context()
+    context.geo_data = compute_mesh_geometry(mesh)
+    sampler = SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=[-1.5, 1.5, -1.5, 1.5],
+        spacing=0.25,
+        file_name="masked_slice",
+        body_bounds=mesher.surface_bounds,
+    )
+    out = tmp_path / "samples"
+    out.mkdir()
+    sampler.save_vts(context, out / "masked_slice_000001.vts")
+
+    grid = pv.read(out / "masked_slice_000001.vts")
+    points = np.asarray(grid.points)
+    mask = np.asarray(grid.point_data["vtkValidPointMask"])
+    velocity = np.asarray(grid.point_data["Velocity"])
+    body = np.asarray(mesher.surface_bounds, dtype=np.float64)
+    inside = (
+        (points[:, 0] > body[0])
+        & (points[:, 0] < body[1])
+        & (points[:, 1] > body[2])
+        & (points[:, 1] < body[3])
+    )
+    assert np.count_nonzero(inside) > 0
+    assert not np.any(mask[inside] == 1)
+    assert not np.any(np.isfinite(velocity[inside]))
+    assert np.all(mask[~inside] == 1)
+    assert np.all(np.isfinite(velocity[~inside]))
+    assert "vtkValidPointMask" in grid.point_data
 
 
 def test_sampler_failure_aborts_the_step(tmp_path):
