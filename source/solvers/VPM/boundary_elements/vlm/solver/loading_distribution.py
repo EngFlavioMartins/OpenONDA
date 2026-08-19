@@ -38,8 +38,8 @@ class VLMLoadingDistribution:
     def record_loading_distributions(
         vlm_solver,
         diagnostics_history: dict,
-        time_step: int,
-        flow_time: float,
+        step: int,
+        time: float,
         backup_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
@@ -53,7 +53,7 @@ class VLMLoadingDistribution:
         if not vlm_solver._surface_sampling:
             return
         freq = max(1, int(getattr(vlm_solver, "logging_frequency", 1)))
-        if time_step % freq != 0:
+        if step % freq != 0:
             return
 
         U_ref = getattr(vlm_solver, "_last_U_ref", None)
@@ -70,8 +70,8 @@ class VLMLoadingDistribution:
                     vlm_solver,
                     surface_name,
                     dists,
-                    flow_time,
-                    time_step,
+                    time,
+                    step,
                     backup_directory,
                     sample_subdirectory,
                 )
@@ -413,8 +413,8 @@ class VLMLoadingDistribution:
         vlm_solver,
         surface_name: str,
         dists: dict[str, Any],
-        flow_time: float,
-        time_step: int,
+        time: float,
+        step: int,
         backup_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
@@ -436,8 +436,8 @@ class VLMLoadingDistribution:
 
             # prepend metadata columns
             df = df.copy()
-            df.insert(0, "time", flow_time)
-            df.insert(1, "step", time_step)
+            df.insert(0, "time", time)
+            df.insert(1, "step", step)
             df.insert(2, "surface", surface_name)
 
             csv_path = samples_dir / fname_tpl

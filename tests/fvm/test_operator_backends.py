@@ -12,10 +12,10 @@ from source.solvers.FVM import (
     ExecutionConfig,
     FieldState,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -70,7 +70,7 @@ def _run_steps(tmp_path, backend, steps=1):
     config = FVMSetup(
         case_name=f"pimple_{backend}",
         execution=ExecutionConfig(operator_backend=backend),
-        time=TimeConfig.transient(dt=0.01, duration=steps * 0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=steps * 0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=1),
@@ -87,7 +87,7 @@ def _run_steps(tmp_path, backend, steps=1):
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, str(tmp_path / backend), mesh_data=mesh)
+        solver = FVMSolver(config, str(tmp_path / backend), mesh_data=mesh)
         solver.auto_write = False
         diagnostics = None
         for _ in range(steps):

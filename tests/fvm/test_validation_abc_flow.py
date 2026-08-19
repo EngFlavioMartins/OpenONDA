@@ -11,10 +11,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -34,7 +34,7 @@ def _abc_velocity(points: np.ndarray, time: float, nu: float) -> np.ndarray:
     )
 
 
-def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, float]:
+def _run_abc(level: int, *, time_step_size: float = 0.005, steps: int = 4) -> tuple[float, float]:
     mesh = structured_box(level, level, level, lx=TWO_PI, ly=TWO_PI, lz=TWO_PI)
     boundaries = [
         BoundaryConfig.cyclic("xmin", "xmax"),
@@ -50,7 +50,9 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=2)
     config = FVMSetup(
         case_name="abc-periodic-3d",
-        time=TimeConfig(delta_t=dt, end_time=steps * dt, write_interval=10**9),
+        time=TimeConfig(
+            time_step_size=time_step_size, end_time=steps * time_step_size, write_interval=10**9
+        ),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -59,7 +61,7 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         initial_velocity=[0.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, mesh_data=mesh)
+        solver = FVMSolver(config, mesh_data=mesh)
         solver.auto_write = False
         n_cells = mesh["n_elements"]
         centers = solver.geo_data["element_centroids"]
@@ -71,10 +73,10 @@ def _run_abc(level: int, *, dt: float = 0.005, steps: int = 4) -> tuple[float, f
         solver.phi = compute_volumetric_face_flux(solver.U, mesh, solver.geo_data)
 
         for _ in range(steps):
-            solver.solve_pimple(dt)
+            solver.solve_pimple(time_step_size)
             solver.advance_time()
 
-    exact = _abc_velocity(centers, steps * dt, nu)
+    exact = _abc_velocity(centers, steps * time_step_size, nu)
     volumes = solver.geo_data["element_volumes"]
     error = np.sqrt(np.sum(volumes[:, None] * (solver.U[:n_cells] - exact) ** 2))
     norm = np.sqrt(np.sum(volumes[:, None] * exact**2))

@@ -10,7 +10,7 @@ the cubeFlow tutorial — produces a valid body-fitted representation of the cub
 * positive volumes, valid owner/neighbour connectivity after cell renumbering;
 * no duplicated or zero-area faces;
 * correct patch classification (coupling patch ``patch``, body ``wall``);
-* the IBM path stays unreachable for this topology (``Solver.ibm is None``).
+* the IBM path stays unreachable for this topology (``FVMSolver.ibm is None``).
 
 Checked for both the uniform grid and the graded ``wall_refined_axis`` grid the
 tutorial actually runs with.
@@ -24,7 +24,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import BoundaryConfig, FVMSetup, Solver, TimeConfig, TransportConfig
+from source.solvers.FVM import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.mesh.rectilinear import (
     coupling_box_mesh,
@@ -170,7 +170,7 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
     mesh = coupling_box_mesh(BOX, 0.25, hole_box=HOLE, wall_patch_name="cube")
     config = FVMSetup(
         case_name="body_fitted",
-        time=TimeConfig(delta_t=0.05, end_time=0.1),
+        time=TimeConfig(time_step_size=0.05, end_time=0.1),
         transport=TransportConfig(nu=1e-3),
         boundaries=[
             BoundaryConfig(
@@ -193,7 +193,7 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
         initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
     assert solver.ibm is None
     assert getattr(solver.algorithm, "ibm", None) is None
     # Force integration is configured as an explicit sampler from the body's

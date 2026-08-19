@@ -17,7 +17,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from source.solvers.VPM import Solver  # noqa: E402
+from source.solvers.VPM import VPMSolver  # noqa: E402
 from source.solvers.VPM.io import BackupSystem  # noqa: E402
 
 RUN = ROOT / (
@@ -41,22 +41,24 @@ GRID = "#d8dde2"
 LIMIT = 0.05
 
 
-def integral_state(solver: Solver, path: Path) -> dict[str, float]:
+def integral_state(solver: VPMSolver, path: Path) -> dict[str, float]:
     BackupSystem.load_numerical_state(solver, path)
     solver._update_all_flow_integrals()
     return {
-        "time": solver.flow_time,
+        "time": solver.time,
         "energy": solver.total_kinetic_energy,
         "molecular_energy_rate": float(solver._flow_integrals["vorticity_dissipation_rate"]),
     }
 
 
-def interval(start: dict[str, float], final: dict[str, float], dt: float) -> dict[str, float]:
+def interval(
+    start: dict[str, float], final: dict[str, float], time_step_size: float
+) -> dict[str, float]:
     duration = final["time"] - start["time"]
     measured = final["energy"] - start["energy"]
     predicted = 0.5 * duration * (start["molecular_energy_rate"] + final["molecular_energy_rate"])
     return {
-        "time_step": dt,
+        "time_step": time_step_size,
         "duration": duration,
         "initial_energy": start["energy"],
         "final_energy": final["energy"],
@@ -115,7 +117,7 @@ def plot(rows: list[dict[str, float]], output: Path) -> None:
 
 
 def main() -> None:
-    solver = Solver.continue_from_backup(str(BASE_CONFIG))
+    solver = VPMSolver.continue_from_backup(str(BASE_CONFIG))
     if solver is None:
         raise RuntimeError(f"could not restore {BASE_CONFIG}")
     start = integral_state(solver, START)

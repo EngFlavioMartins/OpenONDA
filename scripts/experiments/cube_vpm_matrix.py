@@ -46,8 +46,8 @@ NU = 1.0e-3
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-DT_FVM = 0.01
-DT_VPM = 0.05
+FVM_TIME_STEP_SIZE = 0.01
+VPM_TIME_STEP_SIZE = 0.05
 TRANSFER_REGION_BOX = (-1.5, 3.2, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
@@ -235,7 +235,7 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
             ghost_layers=0,
         ),
         time=TimeConfig(
-            delta_t=DT_FVM,
+            time_step_size=FVM_TIME_STEP_SIZE,
             start_time=0.0,
             end_time=t_end,
             write_interval=10**9,
@@ -349,7 +349,7 @@ def build_vpm(v: Variant, case_dir: Path):
         )
 
     return VPMSetup(
-        time_step_size=DT_VPM,
+        time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=viscous,
         stretching=stretching,
@@ -436,15 +436,15 @@ def main() -> None:
     case_dir = args.out / args.variant
     case_dir.mkdir(parents=True, exist_ok=True)
 
-    from openonda.coupler import FVMVPMCoupler, setup_coupler
-    from openonda.fvm import setup_fvm_solver
+    from openonda.coupler import FVMVPMCoupler, create_coupler
+    from openonda.fvm import create_fvm_solver
 
     setup, mesh = build_fvm(case_dir, args.t_end, args.cores)
-    fvm_solver = setup_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
+    fvm_solver = create_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
 
     vpm_solver = None
     if FVMVPMCoupler.is_master_rank():
-        from openonda.vpm import setup_vpm_solver
+        from openonda.vpm import create_vpm_solver
 
         print(f"[matrix] {args.variant}: {v.label}", flush=True)
         print(
@@ -453,9 +453,9 @@ def main() -> None:
             f"prune={v.prune} cap={v.cap:g} buffer={v.buffer} panel={v.panel}",
             flush=True,
         )
-        vpm_solver = setup_vpm_solver(build_vpm(v, case_dir))
+        vpm_solver = create_vpm_solver(build_vpm(v, case_dir))
 
-    setup_coupler(vpm_solver, fvm_solver, build_coupler(v)).run()
+    create_coupler(fvm_solver, vpm_solver, build_coupler(v)).run()
 
     if FVMVPMCoupler.is_master_rank():
         print(f"[matrix] {args.variant} done -> {case_dir / 'samples'}", flush=True)

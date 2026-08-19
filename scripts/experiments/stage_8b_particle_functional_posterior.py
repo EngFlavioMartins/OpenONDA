@@ -156,7 +156,7 @@ def model_step(
     solver: VorticitySolver,
     vorticity: np.ndarray,
     model: str,
-    dt: float,
+    time_step_size: float,
     acceleration_start_curl_hat: np.ndarray,
     acceleration_end_curl_hat: np.ndarray,
     h: float,
@@ -172,7 +172,7 @@ def model_step(
         filter_width,
         mansfield_coefficient,
     )
-    predictor = solver.grid.ifft(solver.grid.fft(vorticity + dt * first) * solver.mask)
+    predictor = solver.grid.ifft(solver.grid.fft(vorticity + time_step_size * first) * solver.mask)
     second = model_rhs(
         solver,
         predictor,
@@ -182,7 +182,9 @@ def model_step(
         filter_width,
         mansfield_coefficient,
     )
-    return solver.grid.ifft(solver.grid.fft(vorticity + 0.5 * dt * (first + second)) * solver.mask)
+    return solver.grid.ifft(
+        solver.grid.fft(vorticity + 0.5 * time_step_size * (first + second)) * solver.mask
+    )
 
 
 def diagnostics(
@@ -288,7 +290,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
 
     forcing = StreamingOUForcing(
         args.les_n,
-        args.dt,
+        args.time_step_size,
         args.correlation_time,
         args.forcing_rms,
         args.seed,
@@ -302,8 +304,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
     states = {model: initial.copy() for model in MODELS}
     histories: dict[str, list[dict[str, Any]]] = {name: [] for name in ("filtered_dns", *MODELS)}
     fine_high_k: list[float] = []
-    steps = int(round(args.duration / args.dt))
-    save_every = max(1, int(round(args.save_interval / args.dt)))
+    steps = int(round(args.duration / args.time_step_size))
+    save_every = max(1, int(round(args.save_interval / args.time_step_size)))
 
     # Exact forcing relation at the start of the branched trajectory.
     reference_force = inverse_particle_embed(forcing.field, args.reference_n, p_reference)
@@ -314,7 +316,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
 
     final_reference = initial
     for step in range(steps + 1):
-        time = step * args.dt
+        time = step * args.time_step_size
         if step % max(1, steps // 10) == 0:
             print(f"functional-posterior progress: {100.0 * step / steps:5.1f}%", flush=True)
         les_force = forcing.field
@@ -358,7 +360,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
         reference_vorticity = rotational_reference_step(
             reference_solver,
             reference_vorticity,
-            args.dt,
+            args.time_step_size,
             curl_hat(reference_solver, reference_start),
             curl_hat(reference_solver, reference_end),
         )
@@ -369,7 +371,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
                 les_solver,
                 state,
                 model,
-                args.dt,
+                args.time_step_size,
                 les_start_curl,
                 les_end_curl,
                 h,
@@ -449,7 +451,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
             "reference_n": args.reference_n,
             "les_n": args.les_n,
             "viscosity": args.viscosity,
-            "dt": args.dt,
+            "dt": args.time_step_size,
             "duration": args.duration,
             "sigma_over_h": args.sigma_over_h,
             "particle_filter_energy_equivalent_width_over_h": filter_width / h,

@@ -22,10 +22,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -42,7 +42,7 @@ def _config():
     return FVMSetup(
         case_name="surface-mpi",
         execution=ExecutionConfig.petsc_partitioned(),
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
@@ -86,13 +86,13 @@ def test_surface_sampler_files_are_root_owned(tmp_path):
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(
+        solver = FVMSolver(
             _config(),
             str(case_dir),
             mesh_data=mesh if context.is_root else None,
         )
         solver.auto_write = False
-        solver.evolve(0.01)
+        solver.advance(0.01)
         solver.close()
 
     context.barrier()

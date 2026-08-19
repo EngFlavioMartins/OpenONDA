@@ -32,7 +32,7 @@ from openonda.vpm import (
     AdvectionConfig,
     ForceConfig,
     SmoothRampVLM,
-    Solver,
+    VPMSolver,
     StaticVLM,
     SurfaceSampler,
     TranslatingVLM,
@@ -196,7 +196,7 @@ def run_case(
     ):
         (samples_dir / stale_name).unlink(missing_ok=True)
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP,
@@ -220,7 +220,7 @@ def run_case(
     )
 
     for _ in range(number_of_steps):
-        solver.update_state()
+        solver.advance()
     if final_samplers:
         solver.execute_final_samplers()
 

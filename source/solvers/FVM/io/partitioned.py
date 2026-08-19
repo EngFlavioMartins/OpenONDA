@@ -85,11 +85,11 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
         "U_old": solver.U_old,
         "U_old_old": solver.U_old_old,
         "nut": np.asarray([]) if solver.nut is None else solver.nut,
-        "flow_time": np.asarray(solver.flow_time),
-        "time_step": np.asarray(solver.time_step),
+        "time": np.asarray(solver.time),
+        "step": np.asarray(solver.step),
         "n_committed": np.asarray(solver._n_committed),
-        "dt": np.asarray(solver.dt),
-        "current_dt": np.asarray(solver._current_dt),
+        "dt": np.asarray(solver.time_step_size),
+        "current_dt": np.asarray(solver._current_time_step_size),
         "cfl_max": np.asarray(solver.cfl_max),
         "time_since_last_write": np.asarray(solver._time_since_last_write),
         "acceptance_counts": np.asarray(
@@ -212,12 +212,12 @@ def load_partitioned_solver_checkpoint(
     ):
         raise ValueError("Partitioned checkpoint turbulent viscosity is incompatible")
     solver.nut = None if not nut.size else nut
-    solver.flow_time = float(state["flow_time"])
-    solver.dt = float(state["dt"])
-    solver._current_dt = float(state["current_dt"])
+    solver.time = float(state["time"])
+    solver.time_step_size = float(state["dt"])
+    solver._current_time_step_size = float(state["current_dt"])
     solver.cfl_max = float(state["cfl_max"])
     solver._time_since_last_write = float(state["time_since_last_write"])
-    solver.time_step = int(state["time_step"])
+    solver.step = int(state["step"])
     solver._n_committed = int(state["n_committed"])
     acceptance_names = sorted(solver._acceptance_counts)
     if state["acceptance_counts"].shape != (len(acceptance_names),):

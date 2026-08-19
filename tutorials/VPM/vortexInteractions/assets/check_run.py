@@ -239,8 +239,8 @@ def inspect_case(case_name: str) -> dict[str, float]:
         expected_steps = np.append(expected_steps, completed_steps)
     if not np.array_equal(step, expected_steps):
         raise ValueError("diagnostic samples are missing, duplicated, or at the wrong steps")
-    expected_dt = float(manifest["requested_end_time"]) / requested_steps
-    if not np.allclose(time, step * expected_dt, rtol=0.0, atol=1.0e-9):
+    expected_time_step_size = float(manifest["requested_end_time"]) / requested_steps
+    if not np.allclose(time, step * expected_time_step_size, rtol=0.0, atol=1.0e-9):
         raise ValueError("diagnostic time does not match step times the configured time step")
     if np.any(np.diff(time) <= 0.0):
         raise ValueError("diagnostic time is not strictly increasing")

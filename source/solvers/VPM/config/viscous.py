@@ -282,7 +282,7 @@ class ViscousConfig:
             raise ValueError("characteristic_distance must be positive")
         return v
 
-    def rwm_accuracy_dt(self) -> float:
+    def rwm_accuracy_time_step_size(self) -> float:
         """Accuracy upper bound for the Random Walk Method: Δt ≤ h²/(4nu).
 
         The RWM is unconditionally stable (stochastic Monte Carlo), but accuracy
@@ -310,7 +310,7 @@ class ViscousConfig:
             raise ValueError("viscosity must be set to a positive value for RWM accuracy check.")
         return particle_spacing * particle_spacing / (4.0 * nu)
 
-    def dvh_required_dt(self) -> float:
+    def dvh_required_time_step_size(self) -> float:
         """Compute the DVH-required time-step size Δt_d = β·R_d²/(4nu).
 
         The DVH Gaussian width 4nu·Δt_d = β·R_d² must span several grid
@@ -336,7 +336,7 @@ class ViscousConfig:
         R_d = self.dvh_rd_ratio * particle_spacing
         return _DVH_BETA * R_d * R_d / (4.0 * nu)
 
-    def gbd_max_dt(self) -> float:
+    def gbd_max_time_step_size(self) -> float:
         """CFL upper bound for GBD: dt_max = h² / (6nu).
 
         Returns

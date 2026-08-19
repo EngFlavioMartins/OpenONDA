@@ -278,7 +278,9 @@ def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
     return np.asarray(matched)
 
 
-def comparison_times(dt: float, names: tuple[str, ...] = ("midspan_probe",)) -> np.ndarray:
+def comparison_times(
+    time_step_size: float, names: tuple[str, ...] = ("midspan_probe",)
+) -> np.ndarray:
     """Canonical ``dt``-spaced grid that drives every per-frame figure."""
     sources = []
     for source in ("reference", "fvm", "vpm"):
@@ -289,5 +291,5 @@ def comparison_times(dt: float, names: tuple[str, ...] = ("midspan_probe",)) -> 
     if not available:
         return np.empty(0)
     t_max = max(t.max() for t in available)
-    n_steps = int(round(t_max / dt))
-    return np.arange(1, n_steps + 1) * dt
+    n_steps = int(round(t_max / time_step_size))
+    return np.arange(1, n_steps + 1) * time_step_size

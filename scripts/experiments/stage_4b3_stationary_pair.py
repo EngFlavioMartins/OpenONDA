@@ -75,7 +75,7 @@ def configuration(args: argparse.Namespace) -> dict[str, Any]:
         "reference_n": args.reference_n,
         "les_n": args.les_n,
         "viscosity": args.viscosity,
-        "dt": args.dt,
+        "dt": args.time_step_size,
         "end_time": args.end_time,
         "save_interval": args.save_interval,
         "checkpoint_interval": args.checkpoint_interval,
@@ -176,7 +176,7 @@ def load_checkpoint(
     arrays = np.load(npz_path)
     forcing = StreamingOUForcing(
         args.les_n,
-        args.dt,
+        args.time_step_size,
         args.correlation_time,
         args.forcing_rms,
         args.seed,
@@ -215,7 +215,7 @@ def optimized_model_step(
     vorticity: np.ndarray,
     model: str,
     gaussian_delta: float,
-    dt: float,
+    time_step_size: float,
     acceleration_start_curl_hat: np.ndarray,
     acceleration_end_curl_hat: np.ndarray,
 ) -> np.ndarray:
@@ -226,7 +226,7 @@ def optimized_model_step(
         gaussian_delta,
         acceleration_start_curl_hat,
     )
-    predictor = solver.grid.ifft(solver.grid.fft(vorticity + dt * first) * solver.mask)
+    predictor = solver.grid.ifft(solver.grid.fft(vorticity + time_step_size * first) * solver.mask)
     second = optimized_model_rhs(
         solver,
         predictor,
@@ -234,7 +234,9 @@ def optimized_model_step(
         gaussian_delta,
         acceleration_end_curl_hat,
     )
-    return solver.grid.ifft(solver.grid.fft(vorticity + 0.5 * dt * (first + second)) * solver.mask)
+    return solver.grid.ifft(
+        solver.grid.fft(vorticity + 0.5 * time_step_size * (first + second)) * solver.mask
+    )
 
 
 def verify_optimized_rhs(
@@ -291,7 +293,7 @@ def initialize(
         step = 0
         forcing = StreamingOUForcing(
             args.les_n,
-            args.dt,
+            args.time_step_size,
             args.correlation_time,
             args.forcing_rms,
             args.seed,
@@ -393,7 +395,7 @@ def advance_one_step(
     reference_vorticity = rotational_reference_step(
         reference_solver,
         reference_vorticity,
-        args.dt,
+        args.time_step_size,
         curl_hat(reference_solver, reference_start),
         curl_hat(reference_solver, reference_end),
     )
@@ -405,7 +407,7 @@ def advance_one_step(
             state,
             model,
             gaussian_delta,
-            args.dt,
+            args.time_step_size,
             les_start_curl_hat,
             les_end_curl_hat,
         )
@@ -451,7 +453,7 @@ def restart_verification(args: argparse.Namespace, directory: Path) -> dict[str,
     checkpoint = write_checkpoint(
         directory,
         step,
-        step * verify_args.dt,
+        step * verify_args.time_step_size,
         configuration(verify_args),
         reference_vorticity,
         states,
@@ -642,17 +644,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     if max(rhs_differences.values()) > 1.0e-12:
         raise RuntimeError(f"optimized model RHS mismatch: {rhs_differences}")
-    total_steps = int(round(args.end_time / args.dt))
-    save_every = max(1, int(round(args.save_interval / args.dt)))
-    checkpoint_every = max(1, int(round(args.checkpoint_interval / args.dt)))
+    total_steps = int(round(args.end_time / args.time_step_size))
+    save_every = max(1, int(round(args.save_interval / args.time_step_size)))
+    checkpoint_every = max(1, int(round(args.checkpoint_interval / args.time_step_size)))
     config = configuration(args)
     for step in range(start_step, total_steps + 1):
-        time = step * args.dt
+        time = step * args.time_step_size
         if step % max(1, total_steps // 20) == 0:
             print(f"stationary-pair progress: {100.0 * step / total_steps:5.1f}%", flush=True)
         already_recorded = bool(
             histories["filtered_dns"]
-            and abs(histories["filtered_dns"][-1]["time"] - time) < 0.5 * args.dt
+            and abs(histories["filtered_dns"][-1]["time"] - time) < 0.5 * args.time_step_size
         )
         if (step % save_every == 0 or step == total_steps) and not already_recorded:
             append_diagnostics(

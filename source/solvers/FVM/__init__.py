@@ -25,9 +25,9 @@ from .config.types import (
     TransportConfig,
     TurbulenceConfig,
 )
-from .core.solver import Solver
+from .core.solver import FVMSolver
 from .core.state import FieldState
-from .factory import setup_fvm_solver
+from .factory import create_fvm_solver
 from .mesh.adaptive_cartesian import AdaptiveCartesianMesher, BoxRefinement
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import ForceSampler, IBMForceSampler, YPlusSampler
@@ -38,10 +38,10 @@ from .solve.linear_interface import LinearSolveResult
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
-    "Solver",
+    "FVMSolver",
     "__version__",
     "FVMSetup",
-    "setup_fvm_solver",
+    "create_fvm_solver",
     "AdaptiveCartesianMesher",
     "BoxRefinement",
     "ExecutionConfig",

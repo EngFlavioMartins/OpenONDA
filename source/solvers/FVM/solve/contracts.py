@@ -50,7 +50,7 @@ class StepDiagnostics:
         Zero-based time-step index.
     time : float
         Physical time at the end of the step.
-    dt : float
+    time_step_size : float
         Time-step size used.
     residuals : dict[str, float]
         Equation residuals keyed by field name.
@@ -85,7 +85,7 @@ class StepDiagnostics:
     algorithm: str
     step: int
     time: float
-    dt: float
+    time_step_size: float
     residuals: dict[str, float]
     outer_correctors: tuple[OuterCorrectorDiagnostics, ...]
     linear_solves: tuple[LinearSolveResult, ...]

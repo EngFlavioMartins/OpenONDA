@@ -88,14 +88,18 @@ class PanelKinematics(abc.ABC):
     """Abstract base class for panel body kinematics updates."""
 
     @abc.abstractmethod
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         """Advance body kinematics and apply the motion update on ``panel_solver``."""
 
 
 class StaticPanel(PanelKinematics):
     """No-motion model."""
 
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         zero = np.zeros(3, dtype=float)
         _call_translation_update(
             panel_solver,
@@ -121,10 +125,12 @@ class TranslatingPanel(PanelKinematics):
         self.velocity = velocity
         self.displacement = _to_vec3(initial_displacement, name="initial_displacement").copy()
 
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         v0 = _eval_vec3(self.velocity, t, name="velocity")
-        v1 = _eval_vec3(self.velocity, t + dt, name="velocity")
-        self.displacement += 0.5 * (v0 + v1) * dt
+        v1 = _eval_vec3(self.velocity, t + time_step_size, name="velocity")
+        self.displacement += 0.5 * (v0 + v1) * time_step_size
         _call_translation_update(
             panel_solver,
             body_range=body_range,
@@ -154,10 +160,12 @@ class RotatingPanel(PanelKinematics):
         self.center = _to_vec3(center, name="center")
         self.angle = float(initial_angle)
 
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         w0 = _eval_scalar(self.omega, t)
-        w1 = _eval_scalar(self.omega, t + dt)
-        self.angle += 0.5 * (w0 + w1) * dt
+        w1 = _eval_scalar(self.omega, t + time_step_size)
+        self.angle += 0.5 * (w0 + w1) * time_step_size
 
         axis_unit = self.axis / np.linalg.norm(self.axis)
         omega_vec = axis_unit * w1
@@ -237,11 +245,13 @@ class ManeuverPanel(PanelKinematics):
         self.translation = translation
         self.rotation = rotation
 
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         if self.translation is not None:
-            self.translation.update(panel_solver, t, dt, body_range)
+            self.translation.update(panel_solver, t, time_step_size, body_range)
         if self.rotation is not None:
-            self.rotation.update(panel_solver, t, dt, body_range)
+            self.rotation.update(panel_solver, t, time_step_size, body_range)
 
 
 class CompositePanel(PanelKinematics):
@@ -250,9 +260,11 @@ class CompositePanel(PanelKinematics):
     def __init__(self, components: Iterable[PanelKinematics]):
         self.components = list(components)
 
-    def update(self, panel_solver, t: float, dt: float, body_range: tuple[int, int]) -> None:
+    def update(
+        self, panel_solver, t: float, time_step_size: float, body_range: tuple[int, int]
+    ) -> None:
         for component in self.components:
-            component.update(panel_solver, t, dt, body_range)
+            component.update(panel_solver, t, time_step_size, body_range)
 
 
 class Static(StaticPanel):

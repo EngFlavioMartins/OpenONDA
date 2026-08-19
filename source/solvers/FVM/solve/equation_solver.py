@@ -37,7 +37,7 @@ class ScalarEquationSolver:
         spatial_matrix,
         spatial_rhs,
         density,
-        dt,
+        time_step_size,
         time_scheme,
         solver,
         linear_options,
@@ -48,7 +48,7 @@ class ScalarEquationSolver:
                 phi_old,
                 spatial_matrix,
                 spatial_rhs,
-                dt,
+                time_step_size,
                 density,
                 self.geo_data["element_volumes"],
             )
@@ -56,7 +56,7 @@ class ScalarEquationSolver:
             raise ValueError(f"Unknown scalar time scheme: {time_scheme}")
 
         transient = time_integration.assemble_transient_term_euler_implicit(
-            phi_old, dt, density, self.geo_data
+            phi_old, time_step_size, density, self.geo_data
         )
         spatial_matrix.setdiag(spatial_matrix.diagonal() + transient["ac"])
         rhs = spatial_rhs + transient["bc"]
@@ -213,7 +213,7 @@ class ScalarEquationSolver:
         phi_initial,
         gamma,
         density,
-        dt,
+        time_step_size,
         n_steps,
         time_scheme="euler_implicit",
         solver="spsolve",
@@ -226,7 +226,7 @@ class ScalarEquationSolver:
             phi_initial: Initial field (n_elements + n_boundary,)
             gamma: Diffusion coefficient
             density: Density
-            dt: Time step
+            time_step_size: Time step
             n_steps: Number of time steps
             time_scheme: 'euler_implicit' or 'euler_explicit'
             solver: Linear solver
@@ -269,7 +269,7 @@ class ScalarEquationSolver:
                 A_diff,
                 b_diff,
                 density,
-                dt,
+                time_step_size,
                 time_scheme,
                 solver,
                 kwargs,
@@ -288,7 +288,7 @@ class ScalarEquationSolver:
         velocity,
         gamma,
         density,
-        dt,
+        time_step_size,
         n_steps,
         convection_scheme="deferred",
         time_scheme="euler_implicit",
@@ -310,7 +310,7 @@ class ScalarEquationSolver:
             gamma: Diffusion coefficient (scalar or
                 n_elements array).
             density: Density (scalar or n_elements array).
-            dt: Time step size.
+            time_step_size: Time step size.
             n_steps: Number of time steps to advance.
             convection_scheme: Convection discretisation scheme
                 (``'upwind'``, ``'central'``, ``'deferred'``).
@@ -383,7 +383,7 @@ class ScalarEquationSolver:
                 A_combined,
                 b_combined,
                 density,
-                dt,
+                time_step_size,
                 time_scheme,
                 solver,
                 kwargs,

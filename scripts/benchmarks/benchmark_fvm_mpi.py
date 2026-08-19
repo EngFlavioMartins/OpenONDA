@@ -20,10 +20,10 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -55,7 +55,7 @@ def main() -> None:
     config = FVMSetup(
         case_name="partitioned-weak-scaling",
         execution=execution,
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=10**9),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=10**9),
         schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
@@ -83,7 +83,7 @@ def main() -> None:
         comm.Barrier()
         started = time.perf_counter()
         with contextlib.redirect_stdout(io.StringIO()):
-            solver = Solver(config, case_dir, mesh_data=mesh)
+            solver = FVMSolver(config, case_dir, mesh_data=mesh)
             solver.auto_write = False
         initialization = time.perf_counter() - started
         for _ in range(args.warmup_steps):

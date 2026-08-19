@@ -11,11 +11,11 @@ from scipy import sparse
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     LogConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -28,7 +28,7 @@ from ._structured_mesh import structured_box
 def _logging_config(log: LogConfig | None = None, steps: int = 1) -> FVMSetup:
     return FVMSetup(
         case_name="logging-contract",
-        time=TimeConfig.transient(dt=0.01, duration=0.01 * steps, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01 * steps, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
@@ -55,10 +55,10 @@ def _logging_config(log: LogConfig | None = None, steps: int = 1) -> FVMSetup:
 def _run(tmp_path, config, steps: int = 1) -> str:
     stdout = io.StringIO()
     with contextlib.redirect_stdout(stdout):
-        solver = Solver(config, case_dir=str(tmp_path), mesh_data=structured_box(2, 2, 2))
+        solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=structured_box(2, 2, 2))
         solver.auto_write = False
         for _ in range(steps):
-            solver.evolve(0.01)
+            solver.advance(0.01)
         solver.close()
     return stdout.getvalue()
 

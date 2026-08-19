@@ -58,14 +58,14 @@ class VLMKinematics(ABC):
         self.current_orientation = np.eye(3)
 
     @abstractmethod
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM solver geometry for new time step.
 
         Args:
             vlm_solver: VLMSolver instance to update
             t: Current time (s)
-            dt: Time step (s)
+            time_step_size: Time step (s)
             panel_range: Optional tuple (start_idx, end_idx) of panels to update.
                         If None, updates all panels.
         """
@@ -98,7 +98,7 @@ class StaticVLM(VLMKinematics):
         """Return zero angular velocity (static)."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """No update needed for static case."""
         pass
 
@@ -134,7 +134,7 @@ class TranslatingVLM(VLMKinematics):
         """Return zero angular velocity."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Translate VLM geometry.
         """
@@ -142,7 +142,7 @@ class TranslatingVLM(VLMKinematics):
         if vlm_solver.lattice is None or vlm_solver.lattice.num_panels == 0:
             return
 
-        dX = self.velocity * dt
+        dX = self.velocity * time_step_size
 
         # Update current position (metadata)
         self.current_position += dX
@@ -216,11 +216,11 @@ class RotatingVLM(VLMKinematics):
         R = I + np.sin(angle) * K + (1 - np.cos(angle)) * K @ K
         return R
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Rotate VLM geometry.
         """
-        angle = self.omega * dt
+        angle = self.omega * time_step_size
         R = self._rotation_matrix(angle)
 
         # Update metadata
@@ -280,9 +280,9 @@ class ManeuverVLM(VLMKinematics):
         """Return angular velocity from user function."""
         return np.array(self.angular_velocity_fn(t), dtype=np.float64)
 
-    def _rotation_matrix(self, omega: np.ndarray, dt: float) -> np.ndarray:
+    def _rotation_matrix(self, omega: np.ndarray, time_step_size: float) -> np.ndarray:
         """Create rotation matrix from angular velocity and time step."""
-        angle = np.linalg.norm(omega) * dt
+        angle = np.linalg.norm(omega) * time_step_size
         if angle < 1e-12:
             return np.eye(3)
 
@@ -293,15 +293,15 @@ class ManeuverVLM(VLMKinematics):
         R = I + np.sin(angle) * K + (1 - np.cos(angle)) * K @ K
         return R
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM geometry for maneuver (rotation + translation).
         """
         V = self.get_velocity(t)
         W = self.get_angular_velocity(t)
 
-        dX = V * dt
-        R = self._rotation_matrix(W, dt)
+        dX = V * time_step_size
+        R = self._rotation_matrix(W, time_step_size)
 
         # Update metadata
         self.current_orientation = R @ self.current_orientation
@@ -487,12 +487,12 @@ class LinearPeriodicVLM(VLMKinematics):
         """Return zero angular velocity."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM geometry for linear periodic motion.
         """
         V = self.get_velocity(t)
-        dX = V * dt
+        dX = V * time_step_size
 
         # Update metadata
         self.current_position += dX
@@ -577,9 +577,9 @@ class CompositeVLM(VLMKinematics):
             W_total += kinematics.get_angular_velocity(t)
         return W_total
 
-    def _rotation_matrix(self, omega: np.ndarray, dt: float) -> np.ndarray:
+    def _rotation_matrix(self, omega: np.ndarray, time_step_size: float) -> np.ndarray:
         """Create rotation matrix from angular velocity and time step."""
-        angle = np.linalg.norm(omega) * dt
+        angle = np.linalg.norm(omega) * time_step_size
         if angle < 1e-12:
             return np.eye(3)
 
@@ -590,15 +590,15 @@ class CompositeVLM(VLMKinematics):
         R = I + np.sin(angle) * K + (1 - np.cos(angle)) * K @ K
         return R
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM geometry for composite motion.
         """
         V = self.get_velocity(t)
         W = self.get_angular_velocity(t)
 
-        dX = V * dt
-        R = self._rotation_matrix(W, dt)
+        dX = V * time_step_size
+        R = self._rotation_matrix(W, time_step_size)
 
         # Update metadata
         self.current_orientation = R @ self.current_orientation
@@ -718,7 +718,7 @@ class AcceleratingVLM(VLMKinematics):
         """Return zero angular velocity (pure translation)."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM geometry with constant acceleration.
 
@@ -729,8 +729,8 @@ class AcceleratingVLM(VLMKinematics):
             return
 
         # Velocity at midpoint of time step (for trapezoidal integration)
-        V_mid = self.get_velocity(t + 0.5 * dt)
-        dX = V_mid * dt
+        V_mid = self.get_velocity(t + 0.5 * time_step_size)
+        dX = V_mid * time_step_size
 
         # Update current position
         self.current_position += dX
@@ -791,7 +791,7 @@ class SmoothRampVLM(VLMKinematics):
         """Return zero angular velocity (pure translation)."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, t: float, dt: float, panel_range: tuple = None):
+    def update(self, vlm_solver, t: float, time_step_size: float, panel_range: tuple = None):
         """
         Update VLM geometry using sin² velocity integration.
 
@@ -821,7 +821,7 @@ class SmoothRampVLM(VLMKinematics):
             )
             return 0.5 * self.U_final * (term1 - term2)
 
-        X1 = _get_displacement(t + dt)
+        X1 = _get_displacement(t + time_step_size)
         X0 = _get_displacement(t)
         dX = X1 - X0
 

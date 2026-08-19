@@ -26,7 +26,7 @@ def test_profiler_writes_phase_linear_and_memory_telemetry(tmp_path):
     logger = _debug_logger(tmp_path)
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
-    profiler.begin_step(step=7, flow_time=0.07, dt=0.01)
+    profiler.begin_step(step=7, time=0.07, time_step_size=0.01)
 
     profiler.record("Pressure Assembly", 0.2)
     profiler.record("Pressure Assembly", 0.3)
@@ -69,7 +69,7 @@ def test_timer_records_phases_without_emitting_standalone_lines(tmp_path):
     logger = _debug_logger(tmp_path)
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
-    profiler.begin_step(step=1, flow_time=0.01, dt=0.01)
+    profiler.begin_step(step=1, time=0.01, time_step_size=0.01)
 
     Timer.start("Momentum Predictor")
     Timer.log("Momentum Predictor", sink=logger)
@@ -88,7 +88,7 @@ def test_simple_mode_keeps_the_json_record_but_prints_no_table(tmp_path):
     logger = Logging(tmp_path, config=LogConfig(mode="simple", console=False))
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
-    profiler.begin_step(step=1, flow_time=0.01, dt=0.01)
+    profiler.begin_step(step=1, time=0.01, time_step_size=0.01)
 
     profiler.record("Pressure Solve", 0.5)
     record = profiler.finish_step(0.6)
@@ -108,7 +108,7 @@ def test_profiler_keeps_log_tracing_when_json_disk_is_full(tmp_path, monkeypatch
         raise OSError(errno.ENOSPC, "test disk full")
 
     monkeypatch.setattr("source.solvers.FVM.io.profiling.append_line_recoverably", disk_full)
-    profiler.begin_step(step=1, flow_time=0.01, dt=0.01)
+    profiler.begin_step(step=1, time=0.01, time_step_size=0.01)
     profiler.record("Pressure Solve", 0.5)
     record = profiler.finish_step(0.6)
     logger.close()

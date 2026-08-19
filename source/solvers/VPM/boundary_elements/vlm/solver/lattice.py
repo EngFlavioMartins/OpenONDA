@@ -515,7 +515,7 @@ class VLMLattice:
                 curr_pos += self.corners[i, k]
             self.position[i] = curr_pos * 0.25
 
-    def save_vtk(self, filename: str, flow_time: float = 0.0):
+    def save_vtk(self, filename: str, time: float = 0.0):
         """
         Save lattice to VTK file for visualization.
 
@@ -678,7 +678,7 @@ class VLMLattice:
         time_array = vtkDoubleArray()
         time_array.SetName("TimeValue")
         time_array.SetNumberOfTuples(1)
-        time_array.SetValue(0, flow_time)
+        time_array.SetValue(0, time)
         polydata.GetFieldData().AddArray(time_array)
 
         # Write to file

@@ -25,7 +25,7 @@ from assets.mesh_rectilinear import cylinder_ibm_mesh
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
-    Solver,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -76,15 +76,15 @@ def build_config(
     return FVMSetup(
         case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=time_step,
+            time_step_size=time_step,
             start_time=0.0,
             end_time=end_time,
             write_interval=10**9,
             write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
             max_cfl=MAX_CFL,
-            max_delta_t=max_time_step,
-            min_delta_t=MIN_TIME_STEP,
+            max_time_step_size=max_time_step,
+            min_time_step_size=MIN_TIME_STEP,
         ),
         schemes=schemes,
         linear=linear,
@@ -118,11 +118,13 @@ def main() -> None:
     nu = FREESTREAM_VELOCITY * DIAMETER / args.Re
     max_time_step = MAX_TIME_STEP
     time_step = TIME_STEP
-    dt_fo = MAX_FORCING_FOURIER * SPACING**2 / nu
-    if dt_fo < max_time_step:
-        print(f"  [IBM] capping max dt to {dt_fo:.4g} s (Fo = nu*dt/h^2 <= {MAX_FORCING_FOURIER})")
-        max_time_step = dt_fo
-        time_step = min(time_step, dt_fo)
+    fourier_time_step_size_limit = MAX_FORCING_FOURIER * SPACING**2 / nu
+    if fourier_time_step_size_limit < max_time_step:
+        print(
+            f"  [IBM] capping max dt to {fourier_time_step_size_limit:.4g} s (Fo = nu*dt/h^2 <= {MAX_FORCING_FOURIER})"
+        )
+        max_time_step = fourier_time_step_size_limit
+        time_step = min(time_step, fourier_time_step_size_limit)
 
     print("\n===== MESH =====")
     print("---- Generating the rectilinear IBM mesh ----")
@@ -134,7 +136,7 @@ def main() -> None:
 
     print("\n===== SIMULATION =====")
     config = build_config(args.Re, args.end_time, depth, time_step, max_time_step)
-    solver = Solver(config, case_dir, mesh_data=mesh_data)
+    solver = FVMSolver(config, case_dir, mesh_data=mesh_data)
 
     print("---- Setting the immersed cylinder ----")
     body = ImmersedBody.cylinder_z(
@@ -154,8 +156,8 @@ def main() -> None:
     )
 
     solver.write_vtk()
-    while solver.flow_time < config.time.end_time:
-        solver.evolve()
+    while solver.time < config.time.end_time:
+        solver.advance()
 
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

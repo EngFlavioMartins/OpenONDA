@@ -17,9 +17,9 @@ class TestCourant:
 
         U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
         phi = compute_volumetric_face_flux(U, mesh, geo)
-        dt = 0.1
+        time_step_size = 0.1
 
-        co = compute_courant_number(U, phi, dt, mesh, geo)
+        co = compute_courant_number(U, phi, time_step_size, mesh, geo)
         assert co.shape[0] >= n_elem
         co_int = co[:n_elem]
         # On uniform mesh with dx=1, U=1, Co ≈ 0.1
@@ -38,8 +38,8 @@ class TestCourant:
         U2 = np.tile([2.0, 0.0, 0.0], (n_elem + n_bnd, 1))
         phi1 = compute_volumetric_face_flux(U1, mesh, geo)
         phi2 = compute_volumetric_face_flux(U2, mesh, geo)
-        dt = 0.1
+        time_step_size = 0.1
 
-        co1 = compute_courant_number(U1, phi1, dt, mesh, geo)[:n_elem]
-        co2 = compute_courant_number(U2, phi2, dt, mesh, geo)[:n_elem]
+        co1 = compute_courant_number(U1, phi1, time_step_size, mesh, geo)[:n_elem]
+        co2 = compute_courant_number(U2, phi2, time_step_size, mesh, geo)[:n_elem]
         assert np.allclose(co2, 2.0 * co1, atol=1e-12), "Co should scale with velocity"

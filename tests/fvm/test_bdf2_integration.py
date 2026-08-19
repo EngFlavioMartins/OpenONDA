@@ -1,10 +1,10 @@
 """Integration coverage for the BDF2 time scheme wired through the full
-``Solver`` → ``PIMPLESolver`` → ``assemble_momentum_equation`` path.
+``FVMSolver`` → ``PIMPLESolver`` → ``assemble_momentum_equation`` path.
 
 The operator-level order is verified in ``test_temporal_order.py``; this test
 guards the *plumbing*: that ``solver.time_scheme="backward"`` reaches the
 momentum assembly (via the ``U_old``/``U_old_old`` history ring in
-``core.solver.Solver.evolve``) and produces a finite solution that differs from
+``core.solver.FVMSolver.advance``) and produces a finite solution that differs from
 the BDF1 result.
 """
 
@@ -17,10 +17,10 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -39,7 +39,7 @@ def _run(scheme, n_steps=4):
     )
     cfg = FVMSetup(
         case_name="bdf2",
-        time=TimeConfig(delta_t=0.05, end_time=0.25, write_interval=999),
+        time=TimeConfig(time_step_size=0.05, end_time=0.25, write_interval=999),
         schemes=schemes,
         linear=linear,
         pimple=pimple,
@@ -49,10 +49,10 @@ def _run(scheme, n_steps=4):
         initial_p=0.0,
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
-        s = Solver(cfg, case_dir=d, mesh_data=mesh)
+        s = FVMSolver(cfg, case_dir=d, mesh_data=mesh)
         s.auto_write = False
         for _ in range(n_steps):
-            s.evolve()
+            s.advance()
         return s.U[: mesh["n_elements"]].copy()
 
 

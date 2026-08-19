@@ -51,7 +51,7 @@ _ALPHA_Z = 1.0
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 
 
-# ── Solver factory ─────────────────────────────────────────────────────────────
+# ── VPMSolver factory ─────────────────────────────────────────────────────────────
 
 
 def _single_blob_solver(make_solver, kernel_name):
@@ -203,7 +203,7 @@ def test_kinetic_energy_self(kernel_name, backend, solver_for_backend):
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     # Use the solver's flow integral evaluation
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     ke = solver.total_kinetic_energy
     expected = 0.5 * _G_0[kernel_name] / (_SIGMA * np.sqrt(2.0)) * _ALPHA_Z**2
@@ -223,7 +223,7 @@ def test_helicity_is_zero(kernel_name, backend, solver_for_backend):
     Failure → sign error in helicity kernel or missing self-interaction.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     helicity = solver.total_helicity
     assert abs(helicity) < 1e-6, (
@@ -257,7 +257,7 @@ def test_linear_impulse(kernel_name, backend, solver_for_backend):
         volume=np.array([_VOLUME]),
         viscosity=np.array([0.0]),
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     impulse = solver.total_linear_impulse
     expected = np.array([0.0, -0.5, 0.0])
@@ -293,7 +293,7 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
         volume=np.array([_VOLUME]),
         viscosity=np.array([0.0]),
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     ang = solver.total_angular_impulse
     c = _ANG_CORR[kernel_name]

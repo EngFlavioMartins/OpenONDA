@@ -38,10 +38,10 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ForceSampler,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -243,7 +243,7 @@ _MOMENTUM_TOL = 1e-6
 _PRESSURE_TOL = 1e-10
 
 
-def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.05):
+def _external_flow_solver(tmp_path, spacing: float, n_steps: int, time_step_size: float = 0.05):
     mesh = box_mesh_3d(
         *(np.arange(_EXT_BOX[2 * a], _EXT_BOX[2 * a + 1] + spacing / 2, spacing) for a in range(3)),
         hole_box=HOLE,
@@ -251,7 +251,9 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.
     )
     config = FVMSetup(
         case_name="cv-balance",
-        time=TimeConfig.transient(dt=dt, duration=n_steps * dt, write_interval=10**9),
+        time=TimeConfig.transient(
+            time_step_size=time_step_size, duration=n_steps * time_step_size, write_interval=10**9
+        ),
         schemes=SchemesConfig(
             convection_scheme="central", gradient_scheme="gauss", time_scheme="euler_implicit"
         ),
@@ -284,7 +286,7 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, dt: float = 0.
         initial_velocity=[1.0, 0.0, 0.0],  # symmetric start: no perturbation
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
     return solver
 
@@ -299,7 +301,7 @@ def test_symmetric_flow_gives_symmetric_forces(tmp_path):
     solver = _external_flow_solver(tmp_path, spacing=0.5, n_steps=10)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(10):
-            solver.evolve()
+            solver.advance()
     forces = solver.last_forces["cube"]
     fx = abs(forces["Ftot"][0])
     assert fx > 1e-3, "drag should be nonzero for the impulsively started flow"
@@ -335,11 +337,11 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
 
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(n_steps - 1):
-            solver.evolve()
+            solver.advance()
         momentum_before = rho * (volumes[:, None] * solver.U[:n_elem]).sum(axis=0)
-        solver.evolve()
+        solver.advance()
     momentum_after = rho * (volumes[:, None] * solver.U[:n_elem]).sum(axis=0)
-    dmdt = (momentum_after - momentum_before) / solver.config.time.delta_t
+    dmdt = (momentum_after - momentum_before) / solver.config.time.time_step_size
 
     U, p, phi = np.asarray(solver.U), np.asarray(solver.p), np.asarray(solver.phi)
     grad_u = gradients._resolve_gradient_fn(geo)(U, mesh, geo)

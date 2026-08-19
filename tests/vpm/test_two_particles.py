@@ -132,7 +132,7 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     ke_two = solver.total_kinetic_energy
 
@@ -152,7 +152,7 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
         volume=np.array([_VOLUME]),
         viscosity=np.array([0.0]),
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
     ke_one = solver1.total_kinetic_energy
 
@@ -181,7 +181,7 @@ def test_helicity_parallel_zero(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     assert abs(solver.total_helicity) < 1e-5, (
         f"{kernel_name}/{backend}: helicity of parallel vortices = {solver.total_helicity:.3e} (must be 0)"
@@ -205,7 +205,7 @@ def test_helicity_orthogonal_nonzero(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 1.0, 0.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     assert abs(solver.total_helicity) > 1e-6, (
         f"{kernel_name}/{backend}: helicity of orthogonal vortices = {solver.total_helicity:.3e} (must be nonzero)"
@@ -230,7 +230,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     ens_two = solver.total_enstrophy
 
@@ -249,7 +249,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
         volume=np.array([_VOLUME]),
         viscosity=np.array([0.0]),
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
     ens_one = solver1.total_enstrophy
 

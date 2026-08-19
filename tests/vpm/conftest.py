@@ -5,7 +5,7 @@ import platform
 
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.backend import initialize_taichi_backend, reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
@@ -83,7 +83,7 @@ def solver_for_backend(tmp_path, backend):
             logging_frequency=0,
             **kwargs,
         )
-        solver = Solver(setup=config)
+        solver = VPMSolver(setup=config)
         if solver.processing_unit != backend:
             pytest.skip(f"{backend} unavailable; Taichi initialized {solver.processing_unit}")
         return solver
@@ -96,7 +96,7 @@ def solver_for_backend(tmp_path, backend):
 def minimal_solver_config(tmp_path):
     """Return a minimal ``VPMSetup`` that disables all I/O and physics."""
     return {
-        "time_step_size": 0.01,
+        "dt": 0.01,
         "processing_unit": "CPU",
         "stretching": StretchingConfig.disabled(),
         "viscous": ViscousConfig(scheme="NONE"),

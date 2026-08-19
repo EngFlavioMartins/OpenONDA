@@ -134,8 +134,8 @@ def configured_time_step(run_directory: Path) -> float:
 def evaluate(
     coarse_directory: Path, fine_directory: Path, modes: np.ndarray
 ) -> tuple[dict[str, object], dict]:
-    coarse_dt = configured_time_step(coarse_directory)
-    fine_dt = configured_time_step(fine_directory)
+    coarse_time_step_size = configured_time_step(coarse_directory)
+    fine_time_step_size = configured_time_step(fine_directory)
     coarse_time, coarse_modes, coarse_coefficients = mode_history(coarse_directory, modes)
     fine_time, fine_modes, fine_coefficients = mode_history(fine_directory, modes)
     common_end = min(coarse_time[-1], fine_time[-1])
@@ -223,7 +223,7 @@ def evaluate(
     }
     result = {
         "status": "PASS" if all(checks.values()) else "FAIL",
-        "comparison": f"dt={coarse_dt:g} against dt={fine_dt:g}",
+        "comparison": f"dt={coarse_time_step_size:g} against dt={fine_time_step_size:g}",
         "modes": modes.tolist(),
         "metrics": metrics,
         "checks": checks,
@@ -233,8 +233,8 @@ def evaluate(
         "coarse_modes": coarse_modes,
         "fine_modes": fine_at_coarse,
         "coefficient_relative_error": coefficient_relative_error,
-        "coarse_dt": coarse_dt,
-        "fine_dt": fine_dt,
+        "coarse_dt": coarse_time_step_size,
+        "fine_dt": fine_time_step_size,
         "coarse_health": coarse_health,
         "fine_health": fine_health,
         "modes": modes,
@@ -350,8 +350,10 @@ def main() -> None:
     if len(modes) == 0 or np.any(modes < 1) or len(np.unique(modes)) != len(modes):
         parser.error("--modes must be unique positive integers")
     result, histories = evaluate(args.coarse_directory, args.fine_directory, modes)
-    histories["coarse_label"] = args.coarse_label or rf"$\Delta t={histories['coarse_dt']:g}$"
-    histories["fine_label"] = args.fine_label or rf"$\Delta t={histories['fine_dt']:g}$"
+    histories["coarse_label"] = (
+        args.coarse_label or rf"$\Delta t={histories['coarse_time_step_size']:g}$"
+    )
+    histories["fine_label"] = args.fine_label or rf"$\Delta t={histories['fine_time_step_size']:g}$"
     histories["figure_title"] = args.figure_title
     histories["sensitivity_title"] = args.sensitivity_title
     if args.comparison_label:

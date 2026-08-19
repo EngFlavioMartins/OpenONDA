@@ -23,7 +23,7 @@ def _is_root_process() -> bool:
     return True
 
 
-def setup_vpm_solver(setup: VPMSetup):
+def create_vpm_solver(setup: VPMSetup):
     """Construct the VPM solver on the process that owns particle state.
 
     Serial cases naturally build one solver. In a coupled MPI case only the
@@ -32,9 +32,9 @@ def setup_vpm_solver(setup: VPMSetup):
     """
     if not _is_root_process():
         return None
-    from .core.solver import Solver
+    from .core.solver import VPMSolver
 
-    return Solver(setup=setup)
+    return VPMSolver(setup=setup)
 
 
-__all__ = ["setup_vpm_solver"]
+__all__ = ["create_vpm_solver"]

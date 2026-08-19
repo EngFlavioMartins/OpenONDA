@@ -4,7 +4,7 @@ Panel diagnostics module — recording and CSV export of panel force/circulation
 Mirrors ``vlm/solver/diagnostics.py`` conventions.  Owns all logic for:
   - Appending per-step panel scalars to the solver diagnostics history dict.
   - Writing panel_forces.csv with per-group force decomposition.
-  - Appending flow_time / observed_dt history entries.
+  - Appending time / observed_dt history entries.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: June 2026
@@ -21,22 +21,22 @@ class PanelDiagnostics:
     """Static helpers for recording panel diagnostics and writing CSV output."""
 
     @staticmethod
-    def record_flow_time(diagnostics_history: dict, flow_time: float, observed_dt: float) -> None:
+    def record_time(diagnostics_history: dict, time: float, observed_time_step_size: float) -> None:
         if "flow_time" not in diagnostics_history:
             return
         ft_hist = diagnostics_history["flow_time"]
-        if len(ft_hist) > 0 and ft_hist[-1] == flow_time:
+        if len(ft_hist) > 0 and ft_hist[-1] == time:
             return
-        ft_hist.append(flow_time)
+        ft_hist.append(time)
         if len(diagnostics_history["observed_dt"]) < len(ft_hist):
-            diagnostics_history["observed_dt"].append(float(observed_dt))
+            diagnostics_history["observed_dt"].append(float(observed_time_step_size))
 
     @staticmethod
     def record_panel_diagnostics(
         panel_solver,
         diagnostics_history: dict,
-        time_step: int,
-        flow_time: float,
+        step: int,
+        time: float,
         backup_directory: str,
     ) -> None:
         if panel_solver is None:
@@ -53,9 +53,9 @@ class PanelDiagnostics:
                 diagnostics_history.setdefault(f"panel_F_group{gid}_z", []).append(float(fvec[2]))
 
             freq = max(1, int(getattr(panel_solver, "logging_frequency", 1)))
-            if time_step % freq == 0:
+            if step % freq == 0:
                 PanelDiagnostics.export_forces_csv(
-                    panel_solver, last_forces, flow_time, time_step, backup_directory
+                    panel_solver, last_forces, time, step, backup_directory
                 )
         except Exception as exc:
             print(f"(Warning) Failed to record panel diagnostics: {exc}")
@@ -64,8 +64,8 @@ class PanelDiagnostics:
     def export_forces_csv(
         panel_solver,
         forces: dict,
-        flow_time: float,
-        time_step: int,
+        time: float,
+        step: int,
         backup_directory: str,
     ) -> None:
         backup_dir = Path(backup_directory)
@@ -75,7 +75,7 @@ class PanelDiagnostics:
 
         n_panels = panel_solver.lattice.num_panels if panel_solver.lattice else 0
 
-        row: list[float | int] = [flow_time, time_step, n_panels]
+        row: list[float | int] = [time, step, n_panels]
         headers = ["time", "step", "n_panels"]
         for gid in sorted(forces.keys()):
             fvec = forces[gid]

@@ -56,7 +56,7 @@ class SnapshotContext:
 
     Presents the same sampling interface a live solver does (``mesh_data``,
     ``geo_data``, ``boundaries``, ``config``, ``U``, ``p``, ``nut``,
-    ``parallel``, ``flow_time``, ``time_step``, ``_current_dt``, plus the
+    ``parallel``, ``time``, ``step``, ``_current_dt``, plus the
     derived ``_velocity_gradient()``/``_vorticity_field()``), so the samplers
     and executor cannot tell online and offline apart.
     """
@@ -71,9 +71,9 @@ class SnapshotContext:
         U: np.ndarray,
         p: np.ndarray,
         nut: np.ndarray | None,
-        flow_time: float,
-        time_step: int,
-        dt: float,
+        time: float,
+        step: int,
+        time_step_size: float,
     ):
         from ..core.parallel import ParallelContext
 
@@ -85,9 +85,9 @@ class SnapshotContext:
         self.U = U
         self.p = p
         self.nut = nut
-        self.flow_time = flow_time
-        self.time_step = time_step
-        self._current_dt = dt
+        self.time = time
+        self.step = step
+        self._current_time_step_size = time_step_size
         self.parallel = ParallelContext()
         self.logger = _NullLogger()
         self.last_forces = None
@@ -312,7 +312,7 @@ class PostProcess:
         return U, p
 
     def _archived_timesteps(self) -> dict[int, float]:
-        """Return accepted ``dt`` values keyed by archived solver step."""
+        """Return accepted ``time_step_size`` values keyed by archived solver step."""
         diagnostics = Path(self.case_dir) / "solution" / "diagnostics.jsonl"
         if not diagnostics.exists():
             return {}
@@ -322,14 +322,14 @@ class PostProcess:
                 try:
                     record = json.loads(line)
                     step = int(record["step"])
-                    dt = float(record["dt"])
+                    time_step_size = float(record["dt"])
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     raise ValueError(
                         f"Invalid diagnostics record at {diagnostics}:{line_number}"
                     ) from exc
-                if dt <= 0.0:
+                if time_step_size <= 0.0:
                     raise ValueError(f"Invalid non-positive dt at {diagnostics}:{line_number}")
-                values[step] = dt
+                values[step] = time_step_size
         return values
 
     def run(self) -> list[tuple[float, int]]:
@@ -338,27 +338,27 @@ class PostProcess:
         Output is *fresh*: the previous run's sampler products under
         ``samples/`` are cleared first, so re-running ``PostProcess`` never
         appends duplicate rows into an existing CSV or PVD.  The snapshot
-        ``dt`` passed to the samplers is the *archived* inter-frame advance
-        (not ``config.time.delta_t``), so adaptive-dt cases resample offline
+        ``time_step_size`` passed to the samplers is the *archived* inter-frame advance
+        (not ``config.time.time_step_size``), so adaptive-step cases resample offline
         with the same cadence they selected online.
         """
         if self.overwrite:
             self._clear_previous_output()
         frames = self._pvd_frames()
-        archived_dt = self._archived_timesteps()
+        archived_time_step_size = self._archived_timesteps()
         sampled: list[tuple[float, int]] = []
         n_elements = self.mesh_data["n_elements"]
-        default_dt = float(self.config.time.delta_t)
-        for index, (flow_time, step, path) in enumerate(frames):
+        default_time_step_size = float(self.config.time.time_step_size)
+        for index, (time, step, path) in enumerate(frames):
             # Recover the real archived advance: the time between this archived
             # snapshot and the previously archived one (falls back to the
             # nominal dt for the first frame).
-            if step in archived_dt:
-                dt = archived_dt[step]
+            if step in archived_time_step_size:
+                time_step_size = archived_time_step_size[step]
             elif index == 0:
-                dt = default_dt
+                time_step_size = default_time_step_size
             else:
-                dt = float(frames[index][0] - frames[index - 1][0])
+                time_step_size = float(frames[index][0] - frames[index - 1][0])
             fields = self._read_snapshot(path, n_elements)
             U, p = self._reconstruct_state(fields)
             context = SnapshotContext(
@@ -370,12 +370,12 @@ class PostProcess:
                 U=U,
                 p=p,
                 nut=fields["nut"],
-                flow_time=flow_time,
-                time_step=step,
-                dt=dt,
+                time=time,
+                step=step,
+                time_step_size=time_step_size,
             )
             FVMSamplerExecutor.execute(context, strict=True)
-            sampled.append((flow_time, step))
+            sampled.append((time, step))
         return sampled
 
     def _clear_previous_output(self) -> None:

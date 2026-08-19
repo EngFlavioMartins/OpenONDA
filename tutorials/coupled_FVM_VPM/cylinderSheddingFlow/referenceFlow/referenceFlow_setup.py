@@ -43,7 +43,7 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 
 CASE_DIR = Path(__file__).resolve().parent
@@ -101,7 +101,7 @@ BODY_BOX = (-0.65, 0.65, -0.65, 0.65, FVM_DOMAIN[4], FVM_DOMAIN[5])
 WAKE_BOX = (-0.75, 3.0, -1.25, 1.25, -5.5, 5.5)
 
 # Backward 2nd-order; CFL ~ 0.32 in the body region, 0.16 wake, 0.08 far field.
-DT_FVM = 0.02
+FVM_TIME_STEP_SIZE = 0.02
 PIMPLE_N_CORRECTORS = 2
 PIMPLE_N_OUTER_CORRECTORS = 1
 PIMPLE_N_ORTHOGONAL_CORRECTORS = 0
@@ -214,7 +214,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT_FVM,
+        time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
@@ -286,10 +286,10 @@ def main() -> None:
     print("\n===== SIMULATION (FVM reference) =====")
     print(
         f"  Re={REYNOLDS}, infinite cylinder D={DIAMETER}, "
-        f"dt={DT_FVM}s, body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
+        f"dt={FVM_TIME_STEP_SIZE}s, body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
         f"seed={SEED_AMPLITUDE:g}"
     )
-    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     solver.set_immersed_bodies(CYLINDER, h=FVM_BODY_CELL_SIZE)
     if SEED_AMPLITUDE > 0.0:
         _apply_seed(solver)
@@ -298,11 +298,11 @@ def main() -> None:
     # Optional step cap (OPENONDA_MAX_STEPS) for bounded memory/run probes.
     max_steps = int(os.environ.get("OPENONDA_MAX_STEPS", "0"))
     step = 0
-    while solver.flow_time < FVM_SETUP.time.end_time:
+    while solver.time < FVM_SETUP.time.end_time:
         if max_steps > 0 and step >= max_steps:
             print(f"  [probe] stopped after {step} steps (OPENONDA_MAX_STEPS={max_steps})")
             break
-        solver.evolve()
+        solver.advance()
         step += 1
 
     solver.close()

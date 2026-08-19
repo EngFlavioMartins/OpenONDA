@@ -17,11 +17,11 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from .config.types import CouplerSetup
-from .factory import setup_coupler
+from .factory import create_coupler
 from .solver import FVMVPMCoupler
 
 __all__ = [
     "CouplerSetup",
     "FVMVPMCoupler",
-    "setup_coupler",
+    "create_coupler",
 ]

@@ -102,7 +102,15 @@ def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bo
 
 
 def compute_ddt_flux_correction(
-    U_old, U_old_old, phi_old, phi_old_old, dt, mesh_data, geo_data, boundaries, ddt_scheme
+    U_old,
+    U_old_old,
+    phi_old,
+    phi_old_old,
+    time_step_size,
+    mesh_data,
+    geo_data,
+    boundaries,
+    ddt_scheme,
 ):
     r"""Return the transient Rhie-Chow flux correction.
 
@@ -116,12 +124,12 @@ def compute_ddt_flux_correction(
           - S_f \cdot \overline{(c_0 U^{n} - c_{00} U^{n-1})} \Big]
 
     with the ``backward`` coefficients ``c_0 = 2``, ``c_{00}`` = 0.5 at constant
-    ``dt`` (Euler uses ``c_0 = 1``, ``c_{00} = 0``).
+    ``time_step_size`` (Euler uses ``c_0 = 1``, ``c_{00} = 0``).
 
     It exists because the Rhie-Chow damping is proportional to ``rAU``, and in
     a transient run ``rAU`` is dominated by the ``V/dt`` of the time
     derivative.  Without this term the face flux carries a spurious
-    fourth-order pressure dissipation that scales with ``dt`` and never
+    fourth-order pressure dissipation that scales with ``time_step_size`` and never
     vanishes under mesh refinement; the correction removes exactly the part of
     the flux-velocity mismatch that the time derivative introduced, leaving the
     convection/diffusion part.  In a bluff-body wake that surplus dissipation
@@ -136,7 +144,7 @@ def compute_ddt_flux_correction(
     Returns a volumetric flux increment per unit ``rAU`` — the caller scales it
     by the face-interpolated ``DU``.
     """
-    if phi_old is None or dt is None or U_old is None:
+    if phi_old is None or time_step_size is None or U_old is None:
         return None
 
     n_faces = mesh_data["n_faces"]
@@ -181,7 +189,7 @@ def compute_ddt_flux_correction(
             np.abs(reference) / (np.abs(phi_old[start:stop]) + np.finfo(np.float64).tiny),
             1.0,
         )
-        correction[start:stop] = coupling * phi_corr / float(dt)
+        correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
     for start in range(n_interior, n_faces, chunk_size):
         stop = min(start + chunk_size, n_faces)
@@ -195,7 +203,7 @@ def compute_ddt_flux_correction(
             np.abs(reference) / (np.abs(phi_old[start:stop]) + np.finfo(np.float64).tiny),
             1.0,
         )
-        correction[start:stop] = coupling * phi_corr / float(dt)
+        correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
     for boundary in boundaries:
         strategy = BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "ghost")
@@ -1666,7 +1674,7 @@ class SIMPLESolver:
         if params:
             self.params.update(params)
 
-        # Optional immersed-boundary forcing (set via Solver.set_immersed_bodies).
+        # Optional immersed-boundary forcing (set via FVMSolver.set_immersed_bodies).
         self.ibm = None
         self.residuals = []
         self.last_linear_results = ()
@@ -1695,7 +1703,7 @@ class SIMPLESolver:
         p,
         phi,
         U_old=None,
-        dt=None,
+        time_step_size=None,
         rho=1.0,
         nu=0.01,
         U_old_old=None,
@@ -1720,7 +1728,7 @@ class SIMPLESolver:
             phi: Volumetric face flux ``U·Sf`` [m³/s], shape
                 ``(n_faces,)``.
             U_old: Previous velocity [m/s], unused by steady SIMPLE.
-            dt: Time-step size [s], normally ``None`` for steady SIMPLE.
+            time_step_size: Time-step size [s], normally ``None`` for steady SIMPLE.
             rho: Positive constant reference density [kg/m³]. It cancels
                 from the kinematic-pressure flow equations.
             nu: Positive kinematic viscosity [m²/s].
@@ -1745,7 +1753,7 @@ class SIMPLESolver:
             convection_scheme=self.params["convection_scheme"],
             solver=self.params.get("momentum_solver") or self.params["linear_solver"],
             under_relaxation=self.params["alpha_u"],
-            dt=dt,  # Use dt if provided (e.g. for PIMPLE)
+            time_step_size=time_step_size,  # Use dt if provided (e.g. for PIMPLE)
             source_explicit=source_explicit,
             source_implicit=source_implicit,
             linear_backend=self.params.get("_linear_backend", "scipy"),

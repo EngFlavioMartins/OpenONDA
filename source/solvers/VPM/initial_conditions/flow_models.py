@@ -292,7 +292,7 @@ def TaylorGreenVortexVPM(
     avg_particle_radius: float,
     positions: np.ndarray,
     volumes: np.ndarray = None,
-    flow_time: float = 0.0,
+    time: float = 0.0,
 ):
     """
     Initialize Taylor-Green vortex flow field for periodic turbulence studies.
@@ -329,7 +329,7 @@ def TaylorGreenVortexVPM(
     z = positions[:, 2] * scale
 
     # Time-dependent decay factor for viscous effects
-    decay_factor = np.exp(-2.0 * viscosity * flow_time * scale**2) if flow_time > 0 else 1.0
+    decay_factor = np.exp(-2.0 * viscosity * time * scale**2) if time > 0 else 1.0
 
     # Taylor-Green vortex velocity field
     velocities[:, 0] = decay_factor * np.sin(x) * np.cos(y) * np.cos(z)  # u

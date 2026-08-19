@@ -27,7 +27,7 @@ import numpy as np
 
 from source.solvers.VPM.physics.diffusion.grid import _m4_prime_1d
 
-DT = 0.03
+TIME_STEP_SIZE = 0.03
 EXACT_IMPULSE_RATE_Z = 27.0 / 512.0
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -131,7 +131,7 @@ def run_case(
     dtype = np.dtype(dtype_name)
     position, volume, h = particle_lattice(n, jitter, seed, disorder)
     torque = manufactured_torque(position)
-    increment = np.asarray(DT * volume[:, None] * torque, dtype=dtype)
+    increment = np.asarray(TIME_STEP_SIZE * volume[:, None] * torque, dtype=dtype)
     padding = 2
     shape = (n + 2 * padding,) * 3
     grid_min = np.full(3, -padding * h)
@@ -142,11 +142,11 @@ def run_case(
     x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
     target = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
     exact = manufactured_torque(target).reshape(n, n, n, 3)
-    recovered = np.asarray(central, dtype=np.float64) / (DT * h**3)
+    recovered = np.asarray(central, dtype=np.float64) / (TIME_STEP_SIZE * h**3)
     relative_l2 = float(np.linalg.norm(recovered - exact) / np.linalg.norm(exact))
 
-    source_rate = np.asarray(increment, dtype=np.float64) / DT
-    deposited_rate = np.asarray(deposited, dtype=np.float64) / DT
+    source_rate = np.asarray(increment, dtype=np.float64) / TIME_STEP_SIZE
+    deposited_rate = np.asarray(deposited, dtype=np.float64) / TIME_STEP_SIZE
     source_sum = source_rate.sum(axis=0)
     deposited_sum = deposited_rate.sum(axis=(0, 1, 2))
     scale = float(np.sum(np.linalg.norm(source_rate, axis=1)))

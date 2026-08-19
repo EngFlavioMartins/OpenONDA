@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+from source.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 from source.coupler.boundary import outflow_axis_sign
 
 
@@ -66,7 +66,7 @@ class _FakeFVM:
         self.ibm = None
         self.boundaries = []
         self.config = SimpleNamespace(
-            time=SimpleNamespace(delta_t=0.02, end_time=1.0),
+            time=SimpleNamespace(time_step_size=0.02, end_time=1.0),
             transport=SimpleNamespace(nu=1e-3, density=1.0),
             boundaries=[],
         )
@@ -143,7 +143,7 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
     vpm = _FakeVPM(time_step_size=0.1)
     fvm = _FakeFVM()
 
-    c = FVMVPMCoupler(vpm, fvm, cfg)
+    c = FVMVPMCoupler(fvm, vpm, cfg)
     assert c._injected_fvm is fvm and c._injected_vpm is vpm
 
     c.initialize()
@@ -151,8 +151,8 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
     assert c.fvm is fvm
     assert c.vpm is vpm
     # The native FVM configuration owns its sub-step and fluid properties.
-    assert c.dt_fvm == pytest.approx(0.02)
-    assert c.dt_vpm == pytest.approx(0.1)
+    assert c.fvm_time_step_size == pytest.approx(0.02)
+    assert c.vpm_time_step_size == pytest.approx(0.1)
     assert c.nu == pytest.approx(1e-3)
 
 
@@ -161,17 +161,17 @@ def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
     cfg = _make_config()
-    c = FVMVPMCoupler(_FakeVPM(time_step_size=0.06), _FakeFVM(), cfg)
+    c = FVMVPMCoupler(_FakeFVM(), _FakeVPM(time_step_size=0.06), cfg)
     c.initialize()
-    assert c.dt_fvm == pytest.approx(0.02)
-    assert c.dt_vpm == pytest.approx(0.06)
-    assert c.n_fvm_substeps == 3
+    assert c.fvm_time_step_size == pytest.approx(0.02)
+    assert c.vpm_time_step_size == pytest.approx(0.06)
+    assert c.fvm_substeps == 3
 
 
 def test_master_requires_vpm(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler(None, _FakeFVM(), _make_config())
+    c = FVMVPMCoupler(_FakeFVM(), None, _make_config())
     with pytest.raises(ValueError, match="vpm_solver is None on the master"):
         c.initialize()
 
@@ -179,7 +179,7 @@ def test_master_requires_vpm(monkeypatch, tmp_path):
 def test_non_master_tolerates_none_vpm(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "1")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler(None, _FakeFVM(), _make_config())
+    c = FVMVPMCoupler(_FakeFVM(), None, _make_config())
     assert c._is_master is False
     c.initialize()
     assert c.vpm is None
@@ -197,20 +197,20 @@ def test_physics_first_coupler_factory(monkeypatch):
     import source.coupler.solver as solver_mod
 
     setup = _make_config()
-    vpm = object()
     fvm = object()
+    vpm = object()
     result = object()
     captured = []
     monkeypatch.setattr(
         solver_mod,
         "FVMVPMCoupler",
-        lambda vpm_solver, fvm_solver, value: (
-            captured.append((vpm_solver, fvm_solver, value)) or result
+        lambda fvm_solver, vpm_solver, value: (
+            captured.append((fvm_solver, vpm_solver, value)) or result
         ),
     )
 
-    assert setup_coupler(vpm, fvm, setup) is result
-    assert captured == [(vpm, fvm, setup)]
+    assert create_coupler(fvm, vpm, setup) is result
+    assert captured == [(fvm, vpm, setup)]
 
 
 def test_coupler_uses_native_case_directory(monkeypatch, tmp_path):
@@ -220,15 +220,15 @@ def test_coupler_uses_native_case_directory(monkeypatch, tmp_path):
         config = FVMSetup(case_name="native")
         case_dir = str(tmp_path)
 
-    coupler = setup_coupler(object(), _NativeFVM(), CouplerSetup())
+    coupler = create_coupler(_NativeFVM(), object(), CouplerSetup())
     assert coupler.case_dir == tmp_path
 
 
 def test_vpm_factory_hides_distributed_root_ownership(monkeypatch):
-    from source.solvers.VPM import VPMSetup, setup_vpm_solver
+    from source.solvers.VPM import VPMSetup, create_vpm_solver
 
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "2")
-    assert setup_vpm_solver(VPMSetup()) is None
+    assert create_vpm_solver(VPMSetup()) is None
 
 
 def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
@@ -245,7 +245,7 @@ def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
     vpm = _FakeVPM(time_step_size=0.1)
     fvm = _FakeFVM()
 
-    c = FVMVPMCoupler(vpm, fvm, setup)
+    c = FVMVPMCoupler(fvm, vpm, setup)
 
     assert c.config is setup
     assert c._injected_fvm is fvm
@@ -257,7 +257,7 @@ def test_initialize_is_idempotent_and_solve_guard(monkeypatch, tmp_path):
     and solve() before initialize() fails loudly."""
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
-    c = FVMVPMCoupler(_FakeVPM(0.1), _FakeFVM(), _make_config())
+    c = FVMVPMCoupler(_FakeFVM(), _FakeVPM(0.1), _make_config())
     with pytest.raises(RuntimeError, match="before initialize"):
         c.solve()
 
@@ -275,13 +275,13 @@ def test_injected_vpm_domain_must_contain_box(monkeypatch, tmp_path):
     cfg = _make_config()
     # Domain too small in x (only ±1.0): does not contain the ±1.5 box.
     bad_vpm = _FakeVPM(0.1, vpm_domain_bounds=(-1.0, 1.0, -2.0, 2.0, -2.0, 2.0))
-    c = FVMVPMCoupler(bad_vpm, _FakeFVM(), cfg)
+    c = FVMVPMCoupler(_FakeFVM(), bad_vpm, cfg)
     with pytest.raises(ValueError, match="does not contain the FVM box"):
         c.initialize()
 
     # A domain that encloses the box passes.
     good_vpm = _FakeVPM(0.1, vpm_domain_bounds=(-2.0, 15.0, -2.0, 2.0, -2.0, 2.0))
-    c2 = FVMVPMCoupler(good_vpm, _FakeFVM(), cfg)
+    c2 = FVMVPMCoupler(_FakeFVM(), good_vpm, cfg)
     c2.initialize()  # no raise
 
 
@@ -303,4 +303,4 @@ def test_missing_fvm_solver_raises(monkeypatch, tmp_path):
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="requires an injected fvm_solver"):
-        FVMVPMCoupler(_FakeVPM(0.1), None, _make_config())
+        FVMVPMCoupler(None, _FakeVPM(0.1), _make_config())

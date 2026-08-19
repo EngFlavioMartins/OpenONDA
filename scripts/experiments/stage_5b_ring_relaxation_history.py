@@ -31,7 +31,7 @@ from scripts.experiments.stage_5b_ring_quasi_steady import (  # noqa: E402
     sample_solver,
     serializable_metrics,
 )
-from source.solvers.VPM import Solver  # noqa: E402
+from source.solvers.VPM import VPMSolver  # noqa: E402
 from source.solvers.VPM.io import BackupSystem  # noqa: E402
 
 INK = "#20252a"
@@ -194,7 +194,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     projection_ratios = projection_correction_history(run_directory, times)
 
     final_base = run_directory / f"vpm_{label}_final"
-    solver = Solver.continue_from_backup(str(final_base))
+    solver = VPMSolver.continue_from_backup(str(final_base))
     if solver is None:
         raise RuntimeError(f"could not restore {final_base}")
 

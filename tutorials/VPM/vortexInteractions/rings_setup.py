@@ -24,7 +24,7 @@ from openonda.vpm import (
     AdvectionConfig,
     ParticleDistributor,
     RingDiagnosticsSampler,
-    Solver,
+    VPMSolver,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -226,7 +226,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     print("\n---- " + case_name + " ----")
     print(f"  family={family}, model={variant}, steps={num_steps}")
 
-    solver = Solver(setup=solver_setup(case_name, output_dir))
+    solver = VPMSolver(setup=solver_setup(case_name, output_dir))
     centers, circulations = ring_geometry(family)
     for group, (center, circulation, seed) in enumerate(
         zip(centers, circulations, RING_SEEDS, strict=True)
@@ -303,8 +303,8 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     solver.backup_solution(str(output_dir / f"vpm_{case_name}"))
     resolution_lost = False
     for _ in range(num_steps):
-        solver.update_state()
-        if variant == "les_stabilized" or solver.time_step % DIAGNOSTIC_FREQUENCY:
+        solver.advance()
+        if variant == "les_stabilized" or solver.step % DIAGNOSTIC_FREQUENCY:
             continue
         health = solver._discretization_health
         misalignment = float(health["strength_misalignment_deg"])
@@ -314,20 +314,20 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         resolution_lost = True
         print(
             "RESOLUTION LIMIT "
-            f"step={solver.time_step} time={solver.flow_time:.8e} "
+            f"step={solver.step} time={solver.time:.8e} "
             f"misalignment_deg={misalignment:.8e} "
             f"divergence={divergence:.8e}",
             flush=True,
         )
         break
-    if not resolution_lost and solver.time_step % DIAGNOSTIC_FREQUENCY:
+    if not resolution_lost and solver.step % DIAGNOSTIC_FREQUENCY:
         solver.record_diagnostics(refresh_fields=True)
     solver.save_state(str(output_dir / f"vpm_{case_name}_final"))
 
     manifest.update(
         status="resolution_lost" if resolution_lost else "completed",
-        completed_steps=solver.time_step,
-        end_time=solver.flow_time,
+        completed_steps=solver.step,
+        end_time=solver.time,
         particles=len(solver.particles),
     )
     if resolution_lost:

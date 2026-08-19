@@ -34,7 +34,7 @@ def _rss_mb() -> float:
 
 
 def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
-    from source.solvers.VPM import Solver
+    from source.solvers.VPM import VPMSolver
     from source.solvers.VPM.config.types import StretchingConfig, VelocityConfig, VPMSetup
 
     setup = VPMSetup.dns_simulation(
@@ -50,7 +50,7 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
         log_mode="console",
         backup_directory=tmpdir,
     )
-    solver = Solver(setup=setup)
+    solver = VPMSolver(setup=setup)
 
     rng = np.random.default_rng(20260807)
     h = n ** (-1.0 / 3.0)
@@ -67,12 +67,12 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
 
 def run_case(backend: str, n: int, steps: int, tmpdir: str, stretch_treecode: bool = False) -> dict:
     solver = _make_solver(backend, n, tmpdir, stretch_treecode)
-    solver.update_state()  # warm-up: pays the Taichi JIT
+    solver.advance()  # warm-up: pays the Taichi JIT
     solver.profiler.reset()
 
     t0 = time.perf_counter()
     for _ in range(steps):
-        solver.update_state()
+        solver.advance()
     wall = time.perf_counter() - t0
 
     stages = {name: total / steps * 1e3 for name, total in solver.profiler._cumulative.items()}

@@ -162,14 +162,14 @@ def test_forcing_kills_slip_in_one_application(cylinder_setup):
     # Uniform flow through the (fixed) body: slip = |U_inf| initially.
     U = np.zeros((n_tot, 3))
     U[:, 0] = 1.0
-    dt = 0.01
+    time_step_size = 0.01
     slip0 = ibm.slip_error(U)
     assert slip0 == pytest.approx(1.0, rel=1e-6)
 
     # Explicit model update u += dt * f (what the momentum solve does to
     # leading order at the forced cells).
-    f = ibm.compute_force(U, dt)
-    U[: m["n_elements"]] += dt * f
+    f = ibm.compute_force(U, time_step_size)
+    U[: m["n_elements"]] += time_step_size * f
     slip1 = ibm.slip_error(U)
     assert slip1 < 0.05 * slip0  # >20x reduction
 
@@ -179,10 +179,10 @@ def test_multidirect_forcing_converges_slip(cylinder_setup):
     n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
     U = np.zeros((n_tot, 3))
     U[:, 0] = 1.0
-    dt = 0.01
-    ibm.compute_force(U, dt)  # initialise last_F
+    time_step_size = 0.01
+    ibm.compute_force(U, time_step_size)  # initialise last_F
     F_before = ibm.last_F.copy()
-    ibm.multidirect_correct(U, dt, n_iter=3)
+    ibm.multidirect_correct(U, time_step_size, n_iter=3)
     # Slip driven far below the single-application level (test above: < 0.05).
     assert ibm.last_slip < 5e-3
     # Increments were accumulated into the logged Lagrangian force.
@@ -194,7 +194,7 @@ def test_body_force_matches_eulerian_integral(cylinder_setup):
     n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
     U = np.zeros((n_tot, 3))
     U[:, 0] = 1.0
-    f = ibm.compute_force(U, dt=0.02)
+    f = ibm.compute_force(U, time_step_size=0.02)
     vol = geo["element_volumes"]
     F_euler = -np.sum(f * vol[:, np.newaxis], axis=0)
     F_body = ibm.body_forces(rho=1.0)["cylinder"]
@@ -210,10 +210,10 @@ def test_cylinder_step_integration():
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMSetup,
+        FVMSolver,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
-        Solver,
         TimeConfig,
         TransportConfig,
     )
@@ -221,7 +221,7 @@ def test_cylinder_step_integration():
     m, _ = _mesh_2d(nx=60, ny=40, lx=6.0, ly=4.0)
     config = FVMSetup(
         case_name="ibm_smoke",
-        time=TimeConfig(delta_t=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
+        time=TimeConfig(time_step_size=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
         schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
@@ -240,14 +240,14 @@ def test_cylinder_step_integration():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        solver = Solver(config, case_dir=tmp, mesh_data=m)
+        solver = FVMSolver(config, case_dir=tmp, mesh_data=m)
         solver.auto_write = False
         h = 6.0 / 60
         body = ImmersedBody.cylinder_z(centre=[2.0, 2.0, 0.05], diameter=1.0, h=h)
         ibm = solver.set_immersed_bodies(body, h=h)
 
         for _ in range(10):
-            solver.evolve()
+            solver.advance()
 
         n = m["n_elements"]
         assert np.all(np.isfinite(solver.U[:n]))
@@ -266,10 +266,10 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMSetup,
+        FVMSolver,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
-        Solver,
         TimeConfig,
         TransportConfig,
     )
@@ -277,7 +277,7 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     mesh, _ = _mesh_2d(nx=20, ny=20)
     config = FVMSetup(
         case_name="moving_ibm_rejected",
-        time=TimeConfig.transient(dt=0.01, duration=0.01),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01),
         schemes=SchemesConfig(),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(),
@@ -291,7 +291,7 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
             BoundaryConfig.empty("zmax"),
         ],
     )
-    solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+    solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
     moving = ImmersedBody.from_points([[1.5, 1.5, 0.05]], U_target=[0.1, 0.0, 0.0], name="moving")
     with pytest.raises(NotImplementedError, match="energy accounting"):
         solver.set_immersed_bodies(moving, h=0.15)
@@ -303,10 +303,10 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     from source.solvers.FVM import (
         BoundaryConfig,
         FVMSetup,
+        FVMSolver,
         LinearSolverConfig,
         PimpleControl,
         SchemesConfig,
-        Solver,
         TimeConfig,
         TransportConfig,
     )
@@ -346,7 +346,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
             ]
         return FVMSetup(
             case_name="body-fitted" if with_square else "ibm",
-            time=TimeConfig.transient(dt=0.02, duration=0.16, write_interval=1000),
+            time=TimeConfig.transient(time_step_size=0.02, duration=0.16, write_interval=1000),
             schemes=schemes,
             linear=linear,
             pimple=pimple,
@@ -377,15 +377,15 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     fitted_mesh["boundary"] = patches
     ibm_mesh = structured_box(nx, ny, 1, 6.0, 4.0, h)
 
-    fitted = Solver(config(True), str(tmp_path / "fitted"), mesh_data=fitted_mesh)
-    immersed = Solver(config(False), str(tmp_path / "immersed"), mesh_data=ibm_mesh)
+    fitted = FVMSolver(config(True), str(tmp_path / "fitted"), mesh_data=fitted_mesh)
+    immersed = FVMSolver(config(False), str(tmp_path / "immersed"), mesh_data=ibm_mesh)
     fitted.auto_write = False
     immersed.auto_write = False
     body = ImmersedBody.rectangle_z([2.0, 2.0, 0.5 * h], 1.0, 1.0, h=h, name="square")
     ibm = immersed.set_immersed_bodies(body, h=h)
     for _ in range(8):
-        fitted.evolve()
-        immersed.evolve()
+        fitted.advance()
+        immersed.advance()
 
     fitted_drag = fitted.last_forces["square"]["Ftot"][0]
     immersed_drag = ibm.body_forces(rho=1.0)["square"][0]

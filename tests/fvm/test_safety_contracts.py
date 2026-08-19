@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM import DynamicMeshConfig, FVMSetup, Solver
+from source.solvers.FVM import DynamicMeshConfig, FVMSetup, FVMSolver
 from source.solvers.FVM.fields.diagnostics import _should_compute_yplus
 
 
@@ -13,7 +13,7 @@ def test_dynamic_mesh_is_explicitly_unsupported(hand_built_3d_mesh, tmp_path):
         dynamic_mesh=DynamicMeshConfig.rigid(velocity=[1.0, 0.0, 0.0]),
     )
     with pytest.raises(NotImplementedError, match="ALE mesh-flux"):
-        Solver(config, case_dir=str(tmp_path), mesh_data=hand_built_3d_mesh)
+        FVMSolver(config, case_dir=str(tmp_path), mesh_data=hand_built_3d_mesh)
 
 
 def test_turbulence_failure_does_not_switch_to_laminar():
@@ -21,7 +21,7 @@ def test_turbulence_failure_does_not_switch_to_laminar():
         def compute_nut(self, *args):
             raise RuntimeError("LES failed")
 
-    solver = Solver.__new__(Solver)
+    solver = FVMSolver.__new__(FVMSolver)
     solver.turbulence = BrokenModel()
     solver.U = np.zeros((1, 3))
     solver.mesh_data = {}

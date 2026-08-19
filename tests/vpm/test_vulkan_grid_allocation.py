@@ -1,14 +1,14 @@
 import pytest
 import taichi as ti
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.core import solver as solver_module
 
 
 def _pretend_vulkan_on_cpu(monkeypatch):
-    """Initialize Taichi on CPU while making Solver exercise Vulkan policy."""
+    """Initialize Taichi on CPU while making VPMSolver exercise Vulkan policy."""
 
     def _fake_initialize_taichi_backend(*args, **kwargs):
         ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32, offline_cache=False)
@@ -35,7 +35,7 @@ def test_vulkan_grid_diffusion_requires_domain_bounds(monkeypatch, tmp_path):
     _pretend_vulkan_on_cpu(monkeypatch)
     try:
         with pytest.raises(ValueError, match="requires vpm_domain_bounds"):
-            Solver(_grid_diffusion_config(backup_directory=str(tmp_path)))
+            VPMSolver(_grid_diffusion_config(backup_directory=str(tmp_path)))
     finally:
         reset_taichi_backend()
 
@@ -44,7 +44,7 @@ def test_vulkan_grid_diffusion_preallocates_fixed_domain_grid(monkeypatch, tmp_p
     reset_taichi_backend()
     _pretend_vulkan_on_cpu(monkeypatch)
     try:
-        solver = Solver(
+        solver = VPMSolver(
             _grid_diffusion_config(
                 backup_directory=str(tmp_path),
                 vpm_domain_bounds=[-0.5, 0.5, -0.25, 0.25, -0.25, 0.25],
@@ -61,7 +61,7 @@ def test_cpu_grid_diffusion_does_not_preallocate_the_removal_domain(tmp_path):
     """Only Vulkan needs the fixed grid; CPU allocates around live particles."""
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 time_step_size=0.01,
                 processing_unit="CPU",

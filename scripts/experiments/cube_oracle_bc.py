@@ -61,7 +61,7 @@ RHO = 1.0
 NU = 1.0e-3
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
-DT_FVM = 0.01
+FVM_TIME_STEP_SIZE = 0.01
 FVM_BOX = (-1.5, 3.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 3.2, -1.25, 1.25, -1.25, 1.25)
 FVM_CELL_SIZE = 0.0625
@@ -276,7 +276,7 @@ def build_setup(case_dir: Path, t_end: float, cores: int, cell_size: float):
             ghost_layers=0,
         ),
         time=TimeConfig(
-            delta_t=DT_FVM,
+            time_step_size=FVM_TIME_STEP_SIZE,
             start_time=0.0,
             end_time=t_end,
             write_interval=10**9,
@@ -364,7 +364,7 @@ def main() -> None:
         check_only(FaceTrace(REF_SAMPLES))
         return
 
-    from openonda.fvm import setup_fvm_solver
+    from openonda.fvm import create_fvm_solver
 
     trace = FaceTrace(REF_SAMPLES) if rank == 0 else None
     if rank == 0 and trace.t_max + 1e-9 < args.t_end:
@@ -375,7 +375,7 @@ def main() -> None:
 
     args.case_dir.mkdir(parents=True, exist_ok=True)
     setup, mesh = build_setup(args.case_dir, args.t_end, args.cores, args.cell_size)
-    solver = setup_fvm_solver(setup, case_dir=args.case_dir, mesh=mesh)
+    solver = create_fvm_solver(setup, case_dir=args.case_dir, mesh=mesh)
 
     centres = solver.get_boundary_face_center_coordinates(PATCH)
     normals = solver.get_boundary_face_normals(PATCH)
@@ -388,10 +388,10 @@ def main() -> None:
             flush=True,
         )
 
-    n_steps = int(round(args.t_end / DT_FVM))
+    n_steps = int(round(args.t_end / FVM_TIME_STEP_SIZE))
     empty = np.zeros((0, 3), dtype=np.float64)
     for step in range(1, n_steps + 1):
-        t = step * DT_FVM
+        t = step * FVM_TIME_STEP_SIZE
         if rank == 0:
             u_bc = np.empty_like(centres)
             for face, idx in routing.items():

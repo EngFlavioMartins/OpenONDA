@@ -81,7 +81,7 @@ def _discover_planes(samples_dir: Path, rotor_radius: float) -> list[tuple[str, 
 
 def _select_time_window(
     files: list[Path],
-    dt: float,
+    time_step_size: float,
     omega: float,
     averaging_rotations: float,
     tail_fraction: float,
@@ -89,10 +89,10 @@ def _select_time_window(
     """Trailing window of ``averaging_rotations`` rotor revolutions."""
     if not files:
         return []
-    if averaging_rotations > 0.0 and dt > 0.0 and omega > 0.0:
-        t_max = _step_number(files[-1]) * dt
+    if averaging_rotations > 0.0 and time_step_size > 0.0 and omega > 0.0:
+        t_max = _step_number(files[-1]) * time_step_size
         t_cut = t_max - averaging_rotations * 2.0 * np.pi / omega
-        selected = [f for f in files if _step_number(f) * dt >= t_cut]
+        selected = [f for f in files if _step_number(f) * time_step_size >= t_cut]
     else:
         n_tail = max(1, int(np.ceil(len(files) * tail_fraction)))
         selected = files[-n_tail:]
@@ -163,12 +163,12 @@ def plot_wake_planes(args) -> int:
     drift_tolerance = 0.01
 
     # -- Time step: from the run, never a hardcoded guess -----------------
-    dt = read_time_step(samples)
-    if dt is None:
+    time_step_size = read_time_step(samples)
+    if time_step_size is None:
         print(
             "  [WARNING] could not determine the run's time step — falling back to tail fraction."
         )
-        dt = 0.0
+        time_step_size = 0.0
 
     # -- Reference induction: the run's own operating point ---------------
     operating_point = read_operating_point(
@@ -205,7 +205,7 @@ def plot_wake_planes(args) -> int:
     for i, (tag, label) in enumerate(planes):
         files = _select_time_window(
             _plane_files(samples, tag),
-            dt=dt,
+            time_step_size=time_step_size,
             omega=omega,
             averaging_rotations=averaging_rotations,
             tail_fraction=tail_fraction,

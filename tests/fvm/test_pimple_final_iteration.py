@@ -22,17 +22,17 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
 
 from ._structured_mesh import structured_box
 
-DT = 0.02
+TIME_STEP_SIZE = 0.02
 N_STEPS = 4
 
 
@@ -41,7 +41,9 @@ def _run(tmp_path, alpha_u, alpha_p, n_outer):
     mesh = structured_box(6, 5, 4)
     config = FVMSetup(
         case_name="pimple_final",
-        time=TimeConfig.transient(dt=DT, duration=DT * N_STEPS, write_interval=10**9),
+        time=TimeConfig.transient(
+            time_step_size=TIME_STEP_SIZE, duration=TIME_STEP_SIZE * N_STEPS, write_interval=10**9
+        ),
         schemes=SchemesConfig(convection_scheme="LUST", time_scheme="backward"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(
@@ -64,11 +66,11 @@ def _run(tmp_path, alpha_u, alpha_p, n_outer):
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
         n_elements = mesh["n_elements"]
         for _ in range(N_STEPS):
-            solver.solve_pimple(DT)
+            solver.solve_pimple(TIME_STEP_SIZE)
             solver.advance_time()
         return solver.U[:n_elements].copy(), solver.p[:n_elements].copy()
 
@@ -131,7 +133,9 @@ def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monke
     mesh = structured_box(4, 3, 3)
     config = FVMSetup(
         case_name="pimple_linear_final",
-        time=TimeConfig.transient(dt=DT, duration=DT, write_interval=10**9),
+        time=TimeConfig.transient(
+            time_step_size=TIME_STEP_SIZE, duration=TIME_STEP_SIZE, write_interval=10**9
+        ),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(
             linear_solver="bicgstab",
@@ -157,9 +161,9 @@ def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monke
         initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
-        solver.evolve()
+        solver.advance()
 
     assert momentum_tolerances == pytest.approx([(1e-6, 0.1)] * 3 + [(1e-6, 0.0)] * 3)
     assert pressure_tolerances == pytest.approx(

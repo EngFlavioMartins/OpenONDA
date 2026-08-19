@@ -186,10 +186,10 @@ def _rhs(x, g, s, mode):
     return velocity(x, g, s), stretch_rate(x, g, s, mode)
 
 
-def _explicit_rk2(x, g, s, dt, mode):
+def _explicit_rk2(x, g, s, time_step_size, mode):
     k1x, k1g = _rhs(x, g, s, mode)
-    k2x, k2g = _rhs(x + dt * k1x, g + dt * k1g, s, mode)
-    return x + 0.5 * dt * (k1x + k2x), g + 0.5 * dt * (k1g + k2g)
+    k2x, k2g = _rhs(x + time_step_size * k1x, g + time_step_size * k1g, s, mode)
+    return x + 0.5 * time_step_size * (k1x + k2x), g + 0.5 * time_step_size * (k1g + k2g)
 
 
 def test_transposed_mode_leaks_the_impulse_at_first_order_in_dt(cloud):
@@ -199,9 +199,9 @@ def test_transposed_mode_leaks_the_impulse_at_first_order_in_dt(cloud):
     scale = np.linalg.norm(impulse(x, g))
 
     rates = []
-    for dt in (2e-2, 1e-2, 5e-3):
-        xr, gr = _explicit_rk2(x, g, s, dt, "TRANSPOSED")
-        rates.append(np.linalg.norm(impulse(xr, gr) - impulse(x, g)) / scale / dt)
+    for time_step_size in (2e-2, 1e-2, 5e-3):
+        xr, gr = _explicit_rk2(x, g, s, time_step_size, "TRANSPOSED")
+        rates.append(np.linalg.norm(impulse(xr, gr) - impulse(x, g)) / scale / time_step_size)
 
     assert min(rates) > 1e-3
     assert max(rates) / min(rates) < 1.1

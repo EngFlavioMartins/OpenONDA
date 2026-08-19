@@ -1206,7 +1206,7 @@ class _GridDiffusionMixin:
         grid_min_np: np.ndarray,
         particle_spacing: float,
         nu: float,
-        dt: float,
+        time_step_size: float,
         particles,
         N: int,
         zone_winner_grid: np.ndarray,
@@ -1246,7 +1246,7 @@ class _GridDiffusionMixin:
     def _gbd_diffusion_impl(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
@@ -1278,7 +1278,7 @@ class _GridDiffusionMixin:
         externally; a warning is logged if α_node exceeds 1/6.
         """
         N = particles.number_of_particles
-        if N == 0 or dt == 0.0:
+        if N == 0 or time_step_size == 0.0:
             return None
         self._ping = True
 
@@ -1362,7 +1362,7 @@ class _GridDiffusionMixin:
                 mapping=node_mapping,
             )
             alpha_max = (
-                float(nu_eff_grid_np.max()) * dt / (particle_spacing * particle_spacing)
+                float(nu_eff_grid_np.max()) * time_step_size / (particle_spacing * particle_spacing)
                 if nu_eff_grid_np.size
                 else 0.0
             )
@@ -1372,7 +1372,7 @@ class _GridDiffusionMixin:
                     "explicit Laplacian may go unstable; reduce dt.",
                     alpha_max,
                     float(nu_eff_grid_np.max()) / nu if nu > 0 else 0.0,
-                    dt / (particle_spacing * particle_spacing),
+                    time_step_size / (particle_spacing * particle_spacing),
                 )
             self._upload_active_scalar_grid(self._nu_eff_grid, nu_eff_grid_np, nx, ny, nz)
             self._laplacian_step_variable_gpu_kernel(
@@ -1380,14 +1380,14 @@ class _GridDiffusionMixin:
                 self._other_grid,
                 self._nu_eff_grid,
                 self._body_mask_grid,
-                float(dt),
+                float(time_step_size),
                 float(particle_spacing),
                 nx,
                 ny,
                 nz,
             )
         else:
-            alpha = float(nu * dt / (particle_spacing * particle_spacing))
+            alpha = float(nu * time_step_size / (particle_spacing * particle_spacing))
             self._laplacian_step_gpu_kernel(
                 self._current_grid,
                 self._other_grid,
@@ -1535,7 +1535,7 @@ class _GridDiffusionMixin:
             grid_min_np,
             particle_spacing,
             nu,
-            dt,
+            time_step_size,
             particles,
             N,
             zone_winner_grid,
@@ -1548,7 +1548,7 @@ class _GridDiffusionMixin:
     def gbd_diffusion(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
@@ -1570,7 +1570,7 @@ class _GridDiffusionMixin:
         """
         return self._gbd_diffusion_impl(
             particles,
-            dt,
+            time_step_size,
             particle_spacing,
             nu,
             domain_padding,
@@ -1589,7 +1589,7 @@ class _GridDiffusionMixin:
         grid_min_np: np.ndarray,
         particle_spacing: float,
         nu: float,
-        dt: float,
+        time_step_size: float,
         nx: int,
         ny: int,
         nz: int,
@@ -1621,7 +1621,7 @@ class _GridDiffusionMixin:
         grid_min_np : (3,) float      Grid origin (minimum corner position).
         particle_spacing : float                     Grid spacing [m].
         nu : float                    Kinematic viscosity [m²/s].
-        dt : float                    Time step [s] (unused — diffusive width set by R_d and β).
+        time_step_size : float                    Time step [s] (unused — diffusive width set by R_d and β).
         nx, ny, nz : int              Active grid extents.
         rd_ratio : float              R_d / particle_spacing compact-support radius ratio.
                                       Default 4.0 (optimal, Durante 2024 Sec. 4.2).
@@ -1699,7 +1699,7 @@ class _GridDiffusionMixin:
     def _grid_based_diffusion_impl(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
@@ -1725,7 +1725,7 @@ class _GridDiffusionMixin:
         is encoded directly in the Gaussian scatter weights.
         """
         N = particles.number_of_particles
-        if N == 0 or dt == 0.0:
+        if N == 0 or time_step_size == 0.0:
             return None
 
         try:
@@ -1766,7 +1766,7 @@ class _GridDiffusionMixin:
             grid_min_np,
             particle_spacing,
             nu,
-            dt,
+            time_step_size,
             nx,
             ny,
             nz,
@@ -1892,7 +1892,7 @@ class _GridDiffusionMixin:
             grid_min_np,
             particle_spacing,
             nu,
-            dt,
+            time_step_size,
             particles,
             N,
             zone_winner_grid,
@@ -1903,7 +1903,7 @@ class _GridDiffusionMixin:
     def grid_based_diffusion(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         particle_spacing: float,
         nu: float,
         domain_padding: float = 3.0,
@@ -1927,7 +1927,7 @@ class _GridDiffusionMixin:
         """
         return self._grid_based_diffusion_impl(
             particles,
-            dt,
+            time_step_size,
             particle_spacing,
             nu,
             domain_padding,
@@ -2051,7 +2051,7 @@ class _GridDiffusionMixin:
         dst: ti.template(),
         nu_eff_grid: ti.template(),
         body_mask: ti.template(),
-        dt: ti.f32,
+        time_step_size: ti.f32,
         particle_spacing: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
@@ -2086,7 +2086,7 @@ class _GridDiffusionMixin:
             zp = centre if body_mask[i, j, kp] != 0 else src[i, j, kp]
             zm = centre if body_mask[i, j, km] != 0 else src[i, j, km]
             laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
-            alpha_node = nu_eff_grid[i, j, k] * dt / h_sq
+            alpha_node = nu_eff_grid[i, j, k] * time_step_size / h_sq
             dst[i, j, k] = src[i, j, k] + alpha_node * laplacian
 
     @ti.kernel

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.acceleration import treecode_gpu
 from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
 from source.solvers.VPM.config.backend import reset_taichi_backend
@@ -18,7 +18,7 @@ from source.solvers.VPM.particles.container import Particles
 def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
@@ -105,7 +105,7 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
 def test_bounds_removal_uses_compacted_replacement(tmp_path):
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
@@ -175,7 +175,7 @@ def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
     """Retention must use the downloaded positions, not stale GPU tags."""
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
@@ -218,7 +218,7 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
     """A no-op retention pass must not transfer or replace the full cloud."""
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
@@ -283,7 +283,7 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
     """Domain retention must preserve stored omega without an O(N^2) rebuild."""
     reset_taichi_backend()
     try:
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),

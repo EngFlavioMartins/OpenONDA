@@ -10,7 +10,6 @@ from source.solvers.VPM import (
     PanelSolver,
     ParticleDistributor,
     RingDiagnosticsSampler,
-    Solver,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -20,7 +19,8 @@ from source.solvers.VPM import (
     VLMSetup,
     VLMSurfaceSetup,
     VPMSetup,
-    setup_vpm_solver,
+    VPMSolver,
+    create_vpm_solver,
 )
 from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     ManeuverVLM,
@@ -60,7 +60,7 @@ __all__ = [
     "RotatingVLM",
     "RingDiagnosticsSampler",
     "SmoothRampVLM",
-    "Solver",
+    "VPMSolver",
     "StabilizationConfig",
     "StaticVLM",
     "StretchingConfig",
@@ -76,5 +76,5 @@ __all__ = [
     "VLMSurfaceSetup",
     "VortexRingVPM",
     "VPMSetup",
-    "setup_vpm_solver",
+    "create_vpm_solver",
 ]

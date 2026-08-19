@@ -15,7 +15,7 @@ behaviour: renames are purely semantic.
    `kinematic_viscosity` over `nu` outside a small numerical kernel; prefer
    `velocity` over `U` at any API boundary.
 2. **Descriptive names at the public/API level.** Single-letter equation symbols
-   (`u`, `p`, `phi`, `rho`, `nu`, `omega`, `gamma`, `dt`, `Sf`, `Co`) are
+   (`u`, `p`, `phi`, `rho`, `nu`, `omega`, `gamma`, `Sf`, `Co`) are
    allowed only inside small numerical kernels where the surrounding physics is
    unambiguous. They must never appear in the public `openonda` facade, in
    tutorial/script variables, or in serialized names.
@@ -50,14 +50,14 @@ behaviour: renames are purely semantic.
 
 | Concept | Canonical name | Units | Notes |
 |---|---|---|---|
-| Time-step size | `dt` | s | Property of a solver or its time config |
+| Time-step size | `time_step_size` | s | Property of a solver or its time config. Never abbreviated to `dt`, not even in kernels |
 | Current simulation time | `time` | s | Runtime state, not setup |
 | Time-step index | `step` | – | Runtime state, not setup |
 | Start of integration | `start_time` | s | |
 | End of integration | `end_time` | s | |
 | Number of steps | `n_steps` | – | |
-| Substeps within a step | `substep_dt` / `n_substeps` | s / – | e.g. coupler sub-cycling |
-| Solver-specific step size | `fvm_dt` / `vpm_dt` | s | Coupler context |
+| Substeps within a step | `substep_size` / `n_substeps` | s / – | e.g. coupler sub-cycling |
+| Solver-specific step size | `fvm_time_step_size` / `vpm_time_step_size` | s | Coupler context |
 | Sampling cadence in steps | `sampling_interval_steps` | – | |
 | Sampling cadence in time | `sampling_interval_time` | s | |
 | Output cadence | `output_interval_steps` | – | |
@@ -175,7 +175,7 @@ must match the live names exactly, in singular form.
 | Old | New | Notes |
 |---|---|---|
 | `Solver` | `VPMSolver` | |
-| `time_step_size` | `dt` | |
+| `time_step_size` | `time_step_size` | unchanged; already canonical |
 | `characteristic_distance` | `particle_spacing` | |
 | `particles_kernel` | `particle_kernel` | |
 | `processing_unit` | `compute_device` | |
@@ -200,7 +200,7 @@ must match the live names exactly, in singular form.
 | `self.transfer` | `self.vorticity_transfer` |
 | `self.blending` | `self.blending_zone` |
 | `self.t_end` | `self.end_time` |
-| `self.dt_fvm` / `self.dt_vpm` | `self.fvm_dt` / `self.vpm_dt` |
+| `self.dt_fvm` / `self.dt_vpm` | `self.fvm_time_step_size` / `self.vpm_time_step_size` |
 | `self.nu` / `self.rho` | `self.kinematic_viscosity` / `self.density` |
 | `n_fvm_substeps` | `fvm_substeps` |
 | `_u_bc_prev` (and similar) | `_previous_boundary_velocity` (etc.) |
@@ -285,7 +285,10 @@ Allowed broadly (standard CFD/acronyms, keep casing):
 
 Allowed only in tight equation-local scope:
 
-`u`, `p`, `phi`, `rho`, `nu`, `mu`, `omega`, `gamma`, `dt`, `Sf`, `Co`.
+`u`, `p`, `phi`, `rho`, `nu`, `mu`, `omega`, `gamma`, `Sf`, `Co`.
+
+`dt` is deliberately **not** on this list: the time-step size is spelled
+`time_step_size` in every scope, including numerical kernels.
 
 Expanded everywhere else (avoid in large scopes):
 

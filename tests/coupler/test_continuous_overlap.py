@@ -8,7 +8,7 @@ from source.coupler.vorticity_transfer import (
     build_transfer_lattice,
     continuous_transfer,
     cosine_eta,
-    max_stable_dt,
+    max_stable_time_step_size,
     redistribute_locally,
     required_buffer_length,
     smoothstep,
@@ -33,7 +33,7 @@ def test_cosine_authority_partition():
 
 def test_buffer_dt_inverse():
     length = required_buffer_length(1.2, 0.05, H)
-    assert np.isclose(max_stable_dt(1.2, length, H), 0.05)
+    assert np.isclose(max_stable_time_step_size(1.2, length, H), 0.05)
 
 
 def test_static_transfer_lattice_preserves_the_dynamic_transfer():
@@ -186,7 +186,7 @@ def test_transfer_reuses_native_ibm_solid_geometry():
     )
     coupler = SimpleNamespace(
         config=config,
-        dt_vpm=0.1,
+        vpm_time_step_size=0.1,
         nu=0.01,
         fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -0.1, 0.1]),
         vpm=None,
@@ -224,7 +224,7 @@ def test_transfer_uses_separate_transfer_region_box():
     transfer = VorticityTransfer(
         SimpleNamespace(
             config=config,
-            dt_vpm=0.1,
+            vpm_time_step_size=0.1,
             nu=0.01,
             fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]),
             vpm=None,

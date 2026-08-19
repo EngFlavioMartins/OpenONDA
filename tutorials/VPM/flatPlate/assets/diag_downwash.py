@@ -18,7 +18,7 @@ from openonda.vpm import (
     BackupSystem,
     ForceConfig,
     SmoothRampVLM,
-    Solver,
+    VPMSolver,
     VLMLoadingDistribution,
     VLMMeshSetup,
     VLMSurfaceSetup,
@@ -62,7 +62,7 @@ def travelled_distance(time: float, ramp_time: float) -> float:
     )
 
 
-def build_solver() -> Solver:
+def build_solver() -> VPMSolver:
     """Build the VLM geometry needed to query the saved wake."""
     surface_file = TUTORIAL_DIR / "assets" / "surfaces" / "diag_downwash.json"
     surface_file.parent.mkdir(parents=True, exist_ok=True)
@@ -96,7 +96,7 @@ def build_solver() -> Solver:
         sigma_factor=2.5,
         sample_surface_forces=True,
     )
-    return Solver(
+    return VPMSolver(
         setup=VPMSetup.les_simulation(
             cs=0.30,
             time_step_size=TIME_STEP,
@@ -107,7 +107,7 @@ def build_solver() -> Solver:
     )
 
 
-def spanwise_downwash(solver: Solver, checkpoint: Path) -> pd.DataFrame:
+def spanwise_downwash(solver: VPMSolver, checkpoint: Path) -> pd.DataFrame:
     """Evaluate VPM velocity at each VLM collocation point."""
     BackupSystem._load_numerical_data(solver, str(checkpoint))
 
@@ -116,7 +116,7 @@ def spanwise_downwash(solver: Solver, checkpoint: Path) -> pd.DataFrame:
         raise RuntimeError("The downwash diagnostic requires a VLM solver")
 
     ramp_time = 2.0 * RAMP_LENGTH * CHORD / FREESTREAM_SPEED
-    displacement = np.array([-travelled_distance(solver.flow_time, ramp_time), 0.0, 0.0])
+    displacement = np.array([-travelled_distance(solver.time, ramp_time), 0.0, 0.0])
     number_of_panels = vlm.lattice.num_panels
     collocation = vlm.lattice.collocation.to_numpy()[:number_of_panels] + displacement
     normals = vlm.lattice.normals.to_numpy()[:number_of_panels]

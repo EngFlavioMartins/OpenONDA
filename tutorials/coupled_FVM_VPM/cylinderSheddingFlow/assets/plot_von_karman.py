@@ -139,7 +139,7 @@ def plot_onset_alignment(figure_format: str) -> None:
     ref = analyse_series(reference)
     hyb = analyse_series(hybrid)
     sigma_bar = 0.5 * (ref.growth["sigma"] + hyb.growth["sigma"])
-    dt_pred = (
+    predicted_time_step_size = (
         (1.0 / sigma_bar) * np.log(hyb.growth["A0"] / ref.growth["A0"])
         if np.isfinite(sigma_bar) and sigma_bar > 0 and ref.growth["A0"] > 0
         else np.nan
@@ -179,16 +179,16 @@ def plot_onset_alignment(figure_format: str) -> None:
         lw=0.9,
         label="Reference FVM",
     )
-    if np.isfinite(dt_pred):
+    if np.isfinite(predicted_time_step_size):
         ax.plot(
-            hybrid.t_q[mask] + dt_pred,
+            hybrid.t_q[mask] + predicted_time_step_size,
             hybrid.q[mask],
             color=util.colour("fvm"),
             lw=0.9,
-            label=f"Coupled FVM shifted by $\\Delta t_\\mathrm{{pred}}={dt_pred:.2f}$ s",
+            label=f"Coupled FVM shifted by $\\Delta t_\\mathrm{{pred}}={predicted_time_step_size:.2f}$ s",
         )
     ax.axvline(
-        ref.t_onset + (dt_pred if np.isfinite(dt_pred) else 0.0),
+        ref.t_onset + (predicted_time_step_size if np.isfinite(predicted_time_step_size) else 0.0),
         color=util.colour("reference"),
         ls=":",
         lw=1.0,

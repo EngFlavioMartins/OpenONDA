@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.VPM.core.solver import Solver
+from source.solvers.VPM.core.solver import VPMSolver
 from source.solvers.VPM.physics.engine import _AdvectionHandler
 
 
@@ -22,7 +22,7 @@ def test_panel_body_field_is_added_to_target_velocity():
         def compute_induced_velocity(points):
             return np.zeros_like(points)
 
-    solver = Solver.__new__(Solver)
+    solver = VPMSolver.__new__(VPMSolver)
     solver.physics = SimpleNamespace(body_velocity=None)
     panel = Panel()
     solver._init_optional_solvers(
@@ -79,7 +79,7 @@ def test_target_only_panel_field_is_not_added_to_particle_advection():
         def compute_induced_velocity(points):
             return np.full_like(points, [0.2, 0.0, 0.0])
 
-    solver = Solver.__new__(Solver)
+    solver = VPMSolver.__new__(VPMSolver)
     solver.physics = SimpleNamespace(body_velocity=None)
     panel = Panel()
     solver._init_optional_solvers(SimpleNamespace(panel_solver=panel, body_stl=None, vlm=None))
@@ -101,7 +101,7 @@ def test_pressure_only_panel_field_is_not_added_to_velocity_targets():
         def compute_induced_velocity(points):
             return np.full_like(points, [0.2, 0.0, 0.0])
 
-    solver = Solver.__new__(Solver)
+    solver = VPMSolver.__new__(VPMSolver)
     solver.physics = SimpleNamespace(body_velocity=None)
     panel = Panel()
     solver._init_optional_solvers(SimpleNamespace(panel_solver=panel, body_stl=None, vlm=None))
@@ -120,7 +120,7 @@ def test_panel_field_contributes_to_pressure_gradient():
             velocity = kwargs["freestream_velocity"] + body_velocity
             return {"grad_p": -np.einsum("mb,ab->ma", velocity, matrix)}
 
-    solver = Solver.__new__(Solver)
+    solver = VPMSolver.__new__(VPMSolver)
     freestream = np.array([1.0, 0.0, 0.0])
     solver.particles = SimpleNamespace(
         number_of_particles=0,

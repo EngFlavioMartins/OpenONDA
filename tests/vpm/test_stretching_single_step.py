@@ -65,7 +65,9 @@ def test_single_blob_no_stretching(kernel_name, scheme, mode, backend, solver_fo
         circulations=[[0.0, 0.0, 1.0]],
     )
     gamma_before = solver.particles.circulation_cpu().copy()
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme=scheme, mode=mode)
+    solver.physics.vortex_stretching(
+        solver.particles, time_step_size=0.01, scheme=scheme, mode=mode
+    )
     gamma_after = solver.particles.circulation_cpu()
     assert np.allclose(gamma_after, gamma_before, atol=1e-6), (
         f"{kernel_name}/{backend}/{scheme}/{mode}: single blob stretched: "
@@ -96,7 +98,9 @@ def test_two_parallel_vortices_2d_invariance(
         circulations=[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
     )
     gamma_before = solver.particles.circulation_cpu().copy()
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme=scheme, mode=mode)
+    solver.physics.vortex_stretching(
+        solver.particles, time_step_size=0.01, scheme=scheme, mode=mode
+    )
     gamma_after = solver.particles.circulation_cpu()
     assert np.allclose(gamma_after, gamma_before, atol=1e-6), (
         f"{kernel_name}/{backend}/{scheme}/{mode}: 2-D vortices stretched: "
@@ -121,7 +125,9 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode="TRANSPOSED")
+    solver.physics.vortex_stretching(
+        solver.particles, time_step_size=0.01, scheme="RK3", mode="TRANSPOSED"
+    )
     sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
     assert np.allclose(sum_after, sum_before, atol=1e-5), (
         f"{kernel_name}/{backend}/TRANSPOSED: circulation not conserved: "
@@ -273,7 +279,7 @@ def test_nonconservative_stretching_changes_circulation(
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
-    solver.physics.vortex_stretching(solver.particles, dt=0.01, scheme="RK3", mode=mode)
+    solver.physics.vortex_stretching(solver.particles, time_step_size=0.01, scheme="RK3", mode=mode)
     sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
     delta = np.linalg.norm(sum_after - sum_before)
     assert delta > 1e-5, (
@@ -300,13 +306,15 @@ def test_small_dt_scheme_convergence(kernel_name, mode, backend, solver_for_back
         positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
     )
-    dt = 1e-6
+    time_step_size = 1e-6
     results = {}
     for scheme in ["EULER", "RK2", "RK3", "RK4"]:
         # Clone circulation state
         gamma0 = solver.particles.circulation_cpu().copy()
         solver.particles.set_field("circulation", gamma0)
-        solver.physics.vortex_stretching(solver.particles, dt=dt, scheme=scheme, mode=mode)
+        solver.physics.vortex_stretching(
+            solver.particles, time_step_size=time_step_size, scheme=scheme, mode=mode
+        )
         results[scheme] = solver.particles.circulation_cpu().copy()
 
     # Compare RK4 (highest order) against the others

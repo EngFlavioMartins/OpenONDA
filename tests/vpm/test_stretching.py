@@ -19,13 +19,13 @@ test_direct_stretching_changes_total_circulation
 
 import numpy as np
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
 _RNG_SEED = 42
 _N_PARTICLES = 20
-_DT = 0.05  # time step  [s]
+_TIME_STEP_SIZE = 0.05  # time step  [s]
 _SIGMA = 0.1  # particle core radius [m]
 _GAMMA_SCALE = 1.0  # RMS circulation magnitude per component [m²/s]
 
@@ -33,7 +33,7 @@ _GAMMA_SCALE = 1.0  # RMS circulation magnitude per component [m²/s]
 def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
     """Return a solver with only stretching active (advection=NONE, viscous=NONE)."""
     config = VPMSetup(
-        time_step_size=_DT,
+        time_step_size=_TIME_STEP_SIZE,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="NONE"),
         stretching=stretching_config,
@@ -42,7 +42,7 @@ def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     n = len(positions)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
@@ -92,7 +92,7 @@ def test_disabled_stretching_leaves_circulation_invariant(tmp_path):
 
     circ_before = solver.particles_circulation.copy()
     for _ in range(5):
-        solver.update_state()
+        solver.advance()
 
     np.testing.assert_array_equal(
         solver.particles_circulation,
@@ -133,7 +133,7 @@ def test_direct_stretching_changes_total_circulation(tmp_path):
     )
 
     sum_gamma_before = solver.particles_circulation.sum(axis=0)
-    solver.update_state()
+    solver.advance()
     sum_gamma_after = solver.particles_circulation.sum(axis=0)
 
     delta = np.linalg.norm(sum_gamma_after - sum_gamma_before)

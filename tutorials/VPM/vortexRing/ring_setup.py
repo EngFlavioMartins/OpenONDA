@@ -28,7 +28,7 @@ from assets.ring_initialization import initialize_single_mode_toroidal_ring
 from openonda.vpm import (
     AdvectionConfig,
     ParticleDistributor,
-    Solver,
+    VPMSolver,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -234,7 +234,7 @@ def run_case(
             f"unseeded_noise={initial_unseeded_to_seeded_rms:.3%}"
         )
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=time_step,
             processing_unit=processing_unit,
@@ -322,11 +322,11 @@ def run_case(
     solver.backup_solution(str(output_directory / f"vpm_{label}"))
     termination_reason = None
     for _ in range(number_of_steps):
-        solver.update_state()
+        solver.advance()
         if np.abs(solver.particles.circulation_cpu()).max() > 50 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
-        if solver.time_step % cadence_steps(SAMPLE_PERIOD, time_step):
+        if solver.step % cadence_steps(SAMPLE_PERIOD, time_step):
             continue
         health = solver._discretization_health
         divergence = float(health["vorticity_divergence_error"])
@@ -344,8 +344,8 @@ def run_case(
     solver.save_state(str(output_directory / f"vpm_{label}_final"))
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
-        completed_steps=solver.time_step,
-        completed_time=solver.flow_time,
+        completed_steps=solver.step,
+        completed_time=solver.time,
         final_particles=len(solver.particles),
     )
     if termination_reason:

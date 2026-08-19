@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StabilizationConfig,
@@ -21,7 +21,7 @@ def test_coupled_transposed_step_preserves_total_strength(tmp_path):
     radius = np.full(n_particles, 0.18)
     volume = np.full(n_particles, 0.18**3)
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=1.0e-3,
             time_integration="COUPLED",
@@ -47,7 +47,7 @@ def test_coupled_transposed_step_preserves_total_strength(tmp_path):
     )
 
     strength_before = circulation.sum(axis=0)
-    solver.update_state()
+    solver.advance()
     strength_after = solver.particles_circulation.sum(axis=0)
 
     np.testing.assert_allclose(strength_after, strength_before, rtol=0.0, atol=2e-13)
@@ -61,7 +61,7 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
     radius = np.full(n_particles, 0.2)
     volume = np.full(n_particles, 0.2**3)
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=2.0e-4,
             time_integration="COUPLED",
@@ -95,14 +95,14 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
         - (radius[:, None] ** 2 * circulation).sum(axis=0) / 3.0
     )
     energy_before = solver.field_diagnostics.compute_flow_integrals(
-        solver.particles, solver.flow_time, record_history=False
+        solver.particles, solver.time, record_history=False
     )["kinetic_energy"]
     for _ in range(20):
-        solver.update_state()
+        solver.advance()
     evolved_position = solver.particles_positions
     evolved_circulation = solver.particles_circulation
     energy_after = solver.field_diagnostics.compute_flow_integrals(
-        solver.particles, solver.flow_time, record_history=False
+        solver.particles, solver.time, record_history=False
     )["kinetic_energy"]
 
     np.testing.assert_allclose(
@@ -138,7 +138,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
     strength_before = circulation.sum(axis=0)
     impulse_before = 0.5 * np.cross(position, circulation).sum(axis=0)
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=1.0e-3,
             time_integration="COUPLED",
@@ -167,7 +167,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
     )
 
     for _ in range(5):
-        solver.update_state()
+        solver.advance()
 
     evolved_position = solver.particles_positions
     evolved_circulation = solver.particles_circulation
@@ -258,7 +258,7 @@ def test_moment_projection_survives_config_round_trip():
 
 
 def test_coupled_dvh_runs_after_the_inviscid_update(tmp_path, monkeypatch):
-    solver = Solver(
+    solver = VPMSolver(
         VPMSetup(
             time_step_size=0.01,
             time_integration="COUPLED",
@@ -273,16 +273,18 @@ def test_coupled_dvh_runs_after_the_inviscid_update(tmp_path, monkeypatch):
     )
     calls = []
     stepper = solver.stepper
-    monkeypatch.setattr(stepper, "_coupled_stable_dt", lambda remaining: remaining)
+    monkeypatch.setattr(stepper, "_coupled_stable_time_step_size", lambda remaining: remaining)
     monkeypatch.setattr(
         stepper,
         "_apply_coupled_advection_stretching",
-        lambda dt, *, precomputed_velocity_k1: calls.append(("inviscid", dt)),
+        lambda time_step_size, *, precomputed_velocity_k1: calls.append(
+            ("inviscid", time_step_size)
+        ),
     )
     monkeypatch.setattr(
         stepper,
         "_apply_viscous_diffusion",
-        lambda dt: calls.append(("diffusion", dt)),
+        lambda time_step_size: calls.append(("diffusion", time_step_size)),
     )
 
     stepper._apply_coupled_update_with_subcycling(0.01, precomputed_velocity_k1=False)

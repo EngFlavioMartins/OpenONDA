@@ -17,10 +17,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -37,7 +37,7 @@ def _slip_channel_solver(tmp_path):
     sp_pimple = PimpleControl(n_correctors=2)
     cfg = FVMSetup(
         case_name="slip_channel",
-        time=TimeConfig(delta_t=0.05, end_time=1.0, write_interval=10**9),
+        time=TimeConfig(time_step_size=0.05, end_time=1.0, write_interval=10**9),
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
@@ -54,7 +54,7 @@ def _slip_channel_solver(tmp_path):
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(cfg, case_dir=str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(cfg, case_dir=str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
     return solver, mesh
 
@@ -64,7 +64,7 @@ def test_uniform_stream_is_preserved_by_slip_walls(tmp_path):
     n = mesh["n_elements"]
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(5):
-            solver.evolve()
+            solver.advance()
     U = solver.U[:n]
     assert np.allclose(U[:, 0], U_INF, atol=1e-8)
     assert np.allclose(U[:, 1], 0.0, atol=1e-8)
@@ -74,7 +74,7 @@ def test_uniform_stream_is_preserved_by_slip_walls(tmp_path):
 def test_slip_ghosts_are_tangential(tmp_path):
     solver, mesh = _slip_channel_solver(tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
-        solver.evolve()
+        solver.advance()
     n = mesh["n_elements"]
     n_interior = mesh["n_interior_faces"]
     for patch in solver.boundaries:

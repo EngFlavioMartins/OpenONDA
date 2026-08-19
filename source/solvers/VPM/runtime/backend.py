@@ -316,20 +316,20 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
 def reset_taichi_backend() -> None:
     """Fully reset the Taichi runtime, releasing all GPU memory.
 
-    Call this **before** creating a new :class:`Solver` when running multiple
+    Call this **before** creating a new :class:`VPMSolver` when running multiple
     VPM simulations sequentially in the same Python process.  After this call
     every Taichi field, kernel, and ndarray from the previous run is invalid;
-    the next :class:`Solver` constructor will re-initialise Taichi from scratch.
+    the next :class:`VPMSolver` constructor will re-initialise Taichi from scratch.
 
     Typical usage in a script that runs several cases back-to-back::
 
-        from source.solvers.VPM import Solver, VPMSetup
+        from source.solvers.VPM import VPMSolver, VPMSetup
 
         for case in cases:
-            Solver.reset_gpu()          # free all GPU memory from previous run
-            solver = Solver(setup=case)
+            VPMSolver.reset_gpu()          # free all GPU memory from previous run
+            solver = VPMSolver(setup=case)
             for _ in range(num_steps):
-                solver.update_state()
+                solver.advance()
 
     This prevents the ``Failed to allocate ext arr buffer`` Taichi error that
     occurs when accumulated GPU allocations leave no room for staging buffers.

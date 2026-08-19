@@ -66,7 +66,9 @@ def _compute_particle_statistics(system):
     }
 
 
-def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_mean_spacing=False):
+def _compute_scheme_timestep(
+    scheme_name, stats, safety_factor, system_time_step_size, use_mean_spacing=False
+):
     """Compute time step limits for a specific viscous scheme."""
     CFL_advection = 0.5
     C_diff = 1.0  # RWM accuracy coefficient
@@ -75,25 +77,37 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
     particle_spacing = stats["h_mean"] if use_mean_spacing else stats["h_min"]
 
     # Advection limit
-    dt_adv = CFL_advection * particle_spacing / stats["u_max"] if stats["u_max"] > EPSILON else 1.0
+    advection_time_step_size_limit = (
+        CFL_advection * particle_spacing / stats["u_max"] if stats["u_max"] > EPSILON else 1.0
+    )
 
     # Diffusion limit (NONE and CS don't have an explicit diffusion step: CS
     # spreads cores analytically, so there is no parabolic-CFL stability bound).
     if scheme_name in ("NONE", "CS"):
-        dt_diff = float("inf")
+        diffusion_time_step_size_limit = float("inf")
     else:
-        dt_diff = (
+        diffusion_time_step_size_limit = (
             C_diff * particle_spacing**2 / stats["nu_eff_max"]
             if stats["nu_eff_max"] > EPSILON
             else 1.0
         )
 
     # Stretching limit
-    dt_stretch = C_stretching / stats["grad_u_max"] if stats["grad_u_max"] > EPSILON else 1.0
+    stretching_time_step_size_limit = (
+        C_stretching / stats["grad_u_max"] if stats["grad_u_max"] > EPSILON else 1.0
+    )
 
     # Find minimum
-    components = [dt_adv, dt_diff, dt_stretch] if scheme_name != "NONE" else [dt_adv, dt_stretch]
-    dt_limit = safety_factor * min(components)
+    components = (
+        [
+            advection_time_step_size_limit,
+            diffusion_time_step_size_limit,
+            stretching_time_step_size_limit,
+        ]
+        if scheme_name != "NONE"
+        else [advection_time_step_size_limit, stretching_time_step_size_limit]
+    )
+    time_step_size_limit = safety_factor * min(components)
 
     comp_names = (
         ["advection", "diffusion", "stretching"]
@@ -103,16 +117,18 @@ def _compute_scheme_timestep(scheme_name, stats, safety_factor, system_dt, use_m
     limiting_idx = np.argmin(components)
 
     result = {
-        "dt_limit": dt_limit,
-        "dt_recommended": dt_limit,
-        "dt_adv_component": dt_adv,
-        "dt_stretch_component": dt_stretch,
+        "dt_limit": time_step_size_limit,
+        "dt_recommended": time_step_size_limit,
+        "dt_adv_component": advection_time_step_size_limit,
+        "dt_stretch_component": stretching_time_step_size_limit,
         "limiting_component": comp_names[limiting_idx],
-        "status": "stable" if system_dt <= dt_limit else "WARNING: too large",
+        "status": "stable"
+        if system_time_step_size <= time_step_size_limit
+        else "WARNING: too large",
     }
 
     if scheme_name not in ("NONE", "CS"):
-        result["dt_diff_component"] = dt_diff
+        result["dt_diff_component"] = diffusion_time_step_size_limit
 
     return result
 
@@ -195,7 +211,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     if system.time_step_size > schemes_info[system.viscous_scheme]["dt_limit"]:
         issues.append(
             f"Current Δt = {system.time_step_size:.3e}s exceeds {system.viscous_scheme} limit "
-            f"({schemes_info[system.viscous_scheme]['dt_limit']:.3e}s). Risk of instability!"
+            f"({schemes_info[system.viscous_scheme]['time_step_size_limit']:.3e}s). Risk of instability!"
         )
 
     if nu_eff_max < EPSILON:

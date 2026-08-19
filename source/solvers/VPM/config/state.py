@@ -3,7 +3,7 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 def CachedParticleProperty(func):
@@ -21,7 +21,7 @@ def CachedParticleProperty(func):
         cache_valid = (
             use_cache
             and hasattr(self, step_name)
-            and getattr(self, step_name) == self.time_step
+            and getattr(self, step_name) == self.step
             and hasattr(self, cache_name)
         )
 
@@ -32,7 +32,7 @@ def CachedParticleProperty(func):
         if not cache_valid:
             result = func(self)
             setattr(self, cache_name, result)
-            setattr(self, step_name, self.time_step)
+            setattr(self, step_name, self.step)
 
         return getattr(self, cache_name)
 
@@ -51,12 +51,22 @@ class SolverState(BaseModel):
     backup/restore operations with validation.
     """
 
-    model_config = ConfigDict(extra="allow", validate_assignment=True)
+    model_config = ConfigDict(extra="allow", validate_assignment=True, populate_by_name=True)
 
     # Core simulation parameters (required for initialization)
     time_step_size: float = Field(gt=0.0, description="Time step size in seconds")
-    flow_time: float = Field(ge=0.0, default=0.0, description="Current simulation time")
-    time_step: int = Field(ge=0, default=0, description="Current time step number")
+    time: float = Field(
+        ge=0.0,
+        default=0.0,
+        description="Current simulation time",
+        validation_alias=AliasChoices("time", "flow_time"),
+    )
+    step: int = Field(
+        ge=0,
+        default=0,
+        description="Current time step number",
+        validation_alias=AliasChoices("step", "time_step"),
+    )
 
     # Method and model configuration
     # Method and model configuration
@@ -151,12 +161,12 @@ class SolverState(BaseModel):
         """Convert SolverState back to a solver object.
 
         The reverse (``to_solver``) conversion is not provided here: building a
-        :class:`Solver` belongs to ``core`` and would make the leaf ``config``
+        :class:`VPMSolver` belongs to ``core`` and would make the leaf ``config``
         package depend on ``core`` (see ARCHITECTURE.md).  Use ``from_solver``
         to serialise, and construct the solver in ``core`` from the config.
         """
         raise NotImplementedError(
-            "SolverState.to_solver was removed; config must not construct a Solver. "
+            "SolverState.to_solver was removed; config must not construct a VPMSolver. "
             "Build the solver in source.solvers.VPM.core from VPMSetup instead."
         )
 

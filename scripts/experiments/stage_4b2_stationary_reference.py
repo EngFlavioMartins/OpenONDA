@@ -52,16 +52,16 @@ class StreamingOUForcing:
     def __init__(
         self,
         les_n: int,
-        dt: float,
+        time_step_size: float,
         correlation_time: float,
         target_rms: float,
         seed: int,
     ) -> None:
         self.les_n = les_n
-        self.dt = dt
+        self.time_step_size = time_step_size
         self.target_rms = target_rms
         self.rng = np.random.default_rng(seed)
-        self.rho = float(np.exp(-dt / correlation_time))
+        self.rho = float(np.exp(-time_step_size / correlation_time))
         self.grid = VorticitySolver(les_n, 0.0).grid
         self.field = divergence_free_band_noise(self.grid, self.rng, target_rms)
 
@@ -131,14 +131,16 @@ def rotational_reference_rhs(
 def rotational_reference_step(
     solver: VorticitySolver,
     vorticity: np.ndarray,
-    dt: float,
+    time_step_size: float,
     acceleration_start_curl_hat: np.ndarray,
     acceleration_end_curl_hat: np.ndarray,
 ) -> np.ndarray:
     first = rotational_reference_rhs(solver, vorticity, acceleration_start_curl_hat)
-    predictor = solver.grid.ifft(solver.grid.fft(vorticity + dt * first) * solver.mask)
+    predictor = solver.grid.ifft(solver.grid.fft(vorticity + time_step_size * first) * solver.mask)
     second = rotational_reference_rhs(solver, predictor, acceleration_end_curl_hat)
-    return solver.grid.ifft(solver.grid.fft(vorticity + 0.5 * dt * (first + second)) * solver.mask)
+    return solver.grid.ifft(
+        solver.grid.fft(vorticity + 0.5 * time_step_size * (first + second)) * solver.mask
+    )
 
 
 def verify_rotational_rhs(
@@ -194,9 +196,9 @@ def record_state(
 def add_turnover_coordinate(records: list[dict[str, float]]) -> None:
     records[0]["turnovers"] = 0.0
     for previous, current in zip(records[:-1], records[1:], strict=True):
-        dt = current["time"] - previous["time"]
+        time_step_size = current["time"] - previous["time"]
         inverse_turnover = 0.5 * (1.0 / previous["turnover_time"] + 1.0 / current["turnover_time"])
-        current["turnovers"] = previous["turnovers"] + dt * inverse_turnover
+        current["turnovers"] = previous["turnovers"] + time_step_size * inverse_turnover
 
 
 def relative_slope(x: np.ndarray, y: np.ndarray) -> float:
@@ -394,15 +396,15 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     forcing = StreamingOUForcing(
         args.les_n,
-        args.dt,
+        args.time_step_size,
         args.correlation_time,
         args.forcing_rms,
         args.seed,
     )
     velocity = random_isotropic_velocity(args.reference_n, args.seed + 1, args.initial_rms)
     vorticity = solver.project(solver.grid.curl(velocity))
-    steps = int(round(args.end_time / args.dt))
-    save_every = max(1, int(round(args.save_interval / args.dt)))
+    steps = int(round(args.end_time / args.time_step_size))
+    save_every = max(1, int(round(args.save_interval / args.time_step_size)))
     reference_force = forcing.reference_field(args.reference_n, gaussian_delta)
     rhs_difference = verify_rotational_rhs(solver, vorticity, reference_force, gaussian_delta)
     if rhs_difference > 1.0e-12:
@@ -410,7 +412,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
     reference_force_curl_hat = curl_hat(solver, reference_force)
     records: list[dict[str, float]] = []
     for step in range(steps + 1):
-        time = step * args.dt
+        time = step * args.time_step_size
         if step % max(1, steps // 10) == 0:
             print(f"stationary-reference progress: {100.0 * step / steps:5.1f}%", flush=True)
         if step % save_every == 0 or step == steps:
@@ -425,7 +427,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
         vorticity = rotational_reference_step(
             solver,
             vorticity,
-            args.dt,
+            args.time_step_size,
             reference_force_curl_hat,
             next_reference_force_curl_hat,
         )
@@ -444,7 +446,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
                 "reference_n": args.reference_n,
                 "les_n": args.les_n,
                 "viscosity": args.viscosity,
-                "dt": args.dt,
+                "dt": args.time_step_size,
                 "end_time": args.end_time,
                 "save_interval": args.save_interval,
                 "forcing_rms": args.forcing_rms,

@@ -40,8 +40,8 @@ from source.coupler.reporting import (
 from source.coupler.vorticity_transfer import VorticityTransfer
 
 if TYPE_CHECKING:
-    from source.solvers.FVM import Solver as FVM_Solver
-    from source.solvers.VPM import Solver as VPM_Solver
+    from source.solvers.FVM import FVMSolver
+    from source.solvers.VPM import VPMSolver
 
 logger = logging.getLogger("coupler")
 
@@ -74,7 +74,7 @@ class FVMVPMCoupler:
     FVM-VPM coupler: the four-step overset loop with blending-zone relaxation.
     """
 
-    def __init__(self, vpm_solver, fvm_solver, coupler_setup: CouplerSetup):
+    def __init__(self, fvm_solver, vpm_solver, coupler_setup: CouplerSetup):
         """Build a coupler from externally configured FVM and VPM solvers.
 
         The FVM solver is required on every rank. The VPM solver is required
@@ -84,7 +84,7 @@ class FVMVPMCoupler:
             raise ValueError(
                 "FVMVPMCoupler requires an injected fvm_solver on every rank. "
                 "Build it with fvm_solver(case_dir) (all ranks) and the VPM on "
-                "the master, then FVMVPMCoupler(vpm_solver, fvm_solver, "
+                "the master, then FVMVPMCoupler(fvm_solver, vpm_solver, "
                 "coupler_setup)."
             )
         self.config = coupler_setup
@@ -108,8 +108,8 @@ class FVMVPMCoupler:
         else:
             self.vpm_redirector = OutputRedirector()  # no-op
 
-        self.vpm: VPM_Solver | None = None
-        self.fvm: FVM_Solver | None = None
+        self.vpm: VPMSolver | None = None
+        self.fvm: FVMSolver | None = None
         self.transfer: VorticityTransfer | None = None
         self.blending = None
         self._u_bc_prev: np.ndarray | None = None
@@ -131,13 +131,13 @@ class FVMVPMCoupler:
         self.coupling_diagnostics: list[dict] = []
         self._last_transfer_result = None
 
-        self.dt_fvm: float | None = None
-        self.dt_vpm: float | None = None
-        self.t_end: float | None = None
+        self.fvm_time_step_size: float | None = None
+        self.vpm_time_step_size: float | None = None
+        self.end_time: float | None = None
         self.nu: float | None = None
         self.rho: float | None = None
         self.fvm_box: np.ndarray | None = None
-        self.n_fvm_substeps = 1
+        self.fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
 
     @staticmethod
@@ -213,24 +213,24 @@ class FVMVPMCoupler:
         return _world_rank() == 0
 
     @staticmethod
-    def _derive_n_fvm_substeps(dt_vpm: float, dt_fvm: float) -> int:
+    def _derive_fvm_substeps(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
         """Return the integer FVM sub-cycle count implied by solver time steps."""
-        if dt_fvm <= 0.0:
-            raise ValueError(f"FVM time step must be positive, got {dt_fvm!r}.")
-        if dt_vpm <= 0.0:
-            raise ValueError(f"VPM time step must be positive, got {dt_vpm!r}.")
-        ratio = dt_vpm / dt_fvm
-        n_fvm_substeps = max(1, int(round(ratio)))
-        if not np.isclose(ratio, n_fvm_substeps, rtol=1e-9, atol=1e-12):
+        if fvm_time_step_size <= 0.0:
+            raise ValueError(f"FVM time step must be positive, got {fvm_time_step_size!r}.")
+        if vpm_time_step_size <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {vpm_time_step_size!r}.")
+        ratio = vpm_time_step_size / fvm_time_step_size
+        fvm_substeps = max(1, int(round(ratio)))
+        if not np.isclose(ratio, fvm_substeps, rtol=1e-9, atol=1e-12):
             raise ValueError(
                 "The VPM time step must be an integer multiple of the FVM time "
-                f"step for sub-cycling. Got dt_vpm={dt_vpm:.12g}, "
-                f"dt_fvm={dt_fvm:.12g}, ratio={ratio:.12g}."
+                f"step for sub-cycling. Got vpm_dt={vpm_time_step_size:.12g}, "
+                f"fvm_dt={fvm_time_step_size:.12g}, ratio={ratio:.12g}."
             )
-        return n_fvm_substeps
+        return fvm_substeps
 
     @staticmethod
-    def _derive_coupling_step_count(t_end: float, dt_vpm: float) -> int:
+    def _derive_coupling_step_count(end_time: float, vpm_time_step_size: float) -> int:
         """Return the number of VPM/coupling intervals for a given end time.
 
         The end time need not be an exact multiple of the VPM step size; the
@@ -238,17 +238,17 @@ class FVMVPMCoupler:
         coupling-step boundary.
 
         Args:
-            t_end:  Requested simulation end time.
-            dt_vpm: VPM (coupling) time-step size.
+            end_time: Requested simulation end time.
+            vpm_dt:   VPM (coupling) time-step size.
 
         Returns:
             Integer number of coupling steps.
         """
-        if dt_vpm <= 0.0:
-            raise ValueError(f"VPM time step must be positive, got {dt_vpm!r}.")
-        if t_end < 0.0:
-            raise ValueError(f"Coupling end time must be non-negative, got {t_end!r}.")
-        return max(0, int(round(t_end / dt_vpm)))
+        if vpm_time_step_size <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {vpm_time_step_size!r}.")
+        if end_time < 0.0:
+            raise ValueError(f"Coupling end time must be non-negative, got {end_time!r}.")
+        return max(0, int(round(end_time / vpm_time_step_size)))
 
     def _derive_fvm_box(self) -> np.ndarray:
         """Bounds of the coupling patch, from the injected solver's geometry.
@@ -292,8 +292,8 @@ class FVMVPMCoupler:
         """Read fluid properties, time integration, and domain from the FVM."""
         assert self.fvm is not None
         fvm_cfg = self.fvm.config
-        self.dt_fvm = float(fvm_cfg.time.delta_t)
-        self.t_end = float(fvm_cfg.time.end_time)
+        self.fvm_time_step_size = float(fvm_cfg.time.time_step_size)
+        self.end_time = float(fvm_cfg.time.end_time)
         self.nu = float(fvm_cfg.transport.nu)
         self.rho = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
@@ -306,7 +306,7 @@ class FVMVPMCoupler:
         The injected FVM solver's configuration owns the FVM step; the
         injected VPM solver's ``time_step_size`` configures the
         coupling/VPM step.  After both are known, the coupler derives
-        ``n_fvm_substeps = round(dt_vpm / dt_fvm)`` internally.
+        ``fvm_substeps = round(vpm_dt / fvm_dt)`` internally.
 
         Idempotent: a second call is a no-op (the coupling components are built
         exactly once), so ``initialize`` then ``run``/``solve`` is safe.
@@ -342,22 +342,26 @@ class FVMVPMCoupler:
             self._validate_vpm(self.vpm, cfg, self.fvm_box, self.nu)
             logger.info("[Init] Using injected VPM solver.")
 
-        assert self.dt_fvm is not None
-        vpm_dt = self.dt_fvm
+        assert self.fvm_time_step_size is not None
+        vpm_time_step_size = self.fvm_time_step_size
         if self._is_master:
             assert self.vpm is not None
-            vpm_dt = float(self.vpm.time_step_size)
+            vpm_time_step_size = float(self.vpm.time_step_size)
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
-            vpm_dt = float(_mpi4py_comm.bcast(vpm_dt if self._is_master else None, root=0))
+            vpm_time_step_size = float(
+                _mpi4py_comm.bcast(vpm_time_step_size if self._is_master else None, root=0)
+            )
 
-        self.dt_vpm = vpm_dt
-        self.n_fvm_substeps = self._derive_n_fvm_substeps(self.dt_vpm, self.dt_fvm)
+        self.vpm_time_step_size = vpm_time_step_size
+        self.fvm_substeps = self._derive_fvm_substeps(
+            self.vpm_time_step_size, self.fvm_time_step_size
+        )
         if self._is_master:
             logger.info(
-                "[Init] Time steps: dt_fvm=%.4e s, dt_vpm=%.4e s, n_fvm_substeps=%d.",
-                self.dt_fvm,
-                self.dt_vpm,
-                self.n_fvm_substeps,
+                "[Init] Time steps: fvm_dt=%.4e s, vpm_dt=%.4e s, fvm_substeps=%d.",
+                self.fvm_time_step_size,
+                self.vpm_time_step_size,
+                self.fvm_substeps,
             )
 
         self.transfer = VorticityTransfer(self)
@@ -389,7 +393,7 @@ class FVMVPMCoupler:
             cfg,
             self.vpm,
             self.fvm,
-            coupling_dt=self.dt_vpm,
+            coupling_time_step_size=self.vpm_time_step_size,
             fvm_box=self.fvm_box,
         )
         self.pressure_reference = PressureReference(
@@ -431,9 +435,9 @@ class FVMVPMCoupler:
     def solve(self, start_step: int = 0) -> None:
         """Run the FVM--VPM coupling loop."""
         face_geometry, n_steps = self._prepare_run()
-        assert self.dt_vpm is not None
+        assert self.vpm_time_step_size is not None
         for step in range(1 + start_step, n_steps + 1):
-            time_end = step * self.dt_vpm
+            time_end = step * self.vpm_time_step_size
             vpm_time = self._advance_vpm(step, time_end)
             u_previous, u_next, blending_time, boundary_time = evaluate_vpm_boundary(
                 self, *face_geometry
@@ -472,8 +476,8 @@ class FVMVPMCoupler:
         assert self._is_master == (self.vpm is not None)
         assert self.fvm is not None
 
-        assert self.t_end is not None and self.dt_vpm is not None
-        n_steps = self._derive_coupling_step_count(self.t_end, self.dt_vpm)
+        assert self.end_time is not None and self.vpm_time_step_size is not None
+        n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
         patch = self.config.bc_patch_name
         if self._is_master:
             logger.info("=" * 60)
@@ -501,7 +505,7 @@ class FVMVPMCoupler:
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
 
             with self.vpm_redirector:
-                self.vpm.update_state()
+                self.vpm.advance()
             self.vpm.synchronize()
         return time.perf_counter() - t0
 

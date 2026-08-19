@@ -5,15 +5,15 @@ from __future__ import annotations
 from .config.types import CouplerSetup
 
 
-def setup_coupler(vpm_solver, fvm_solver, setup: CouplerSetup):
-    """Connect configured VPM and FVM solvers through ``setup``.
+def create_coupler(fvm_solver, vpm_solver, coupler_setup: CouplerSetup):
+    """Connect configured FVM and VPM solvers through ``coupler_setup``.
 
     The native solvers retain ownership of their physics, mesh, and output
     directories; this function only creates the coupling driver.
     """
     from .solver import FVMVPMCoupler
 
-    return FVMVPMCoupler(vpm_solver, fvm_solver, setup)
+    return FVMVPMCoupler(fvm_solver, vpm_solver, coupler_setup)
 
 
-__all__ = ["setup_coupler"]
+__all__ = ["create_coupler"]

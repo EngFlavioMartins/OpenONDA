@@ -98,12 +98,12 @@ class ParticlesLES:
     def initialize(self, particles) -> None:
         self.model.initialize(particles)
 
-    def compute(self, particles, dt: float = None):
+    def compute(self, particles, time_step_size: float = None):
         """
         Main interface for SGS eddy viscosity computation.
         Delegates to the specific model implementation.
         """
-        self.model.compute(particles, dt)
+        self.model.compute(particles, time_step_size)
         self.update_turbulence_statistics(particles)
 
     def update_turbulence_statistics(self, particles):

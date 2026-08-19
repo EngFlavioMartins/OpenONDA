@@ -5,13 +5,14 @@ This reduced 48^3/24^3 calculation is a screen for forcing/filter consistency,
 energy budgets, stability, and model separation.  It is not a statistically
 stationary or publication-resolution Gate-B result.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
+import sys
 
 os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/openonda_stage4b1_hit_matplotlib")
 
@@ -84,7 +85,9 @@ def add_reference_diagnostics(
             "forcing_power": forcing_power(solver, vorticity, acceleration),
             "relative_vorticity_error": 0.0,
             "spectral_relative_l2": 0.0,
-            "reynolds_lambda": reynolds_lambda(record["energy"], record["enstrophy"], solver.viscosity),
+            "reynolds_lambda": reynolds_lambda(
+                record["energy"], record["enstrophy"], solver.viscosity
+            ),
         }
     )
     return record
@@ -108,7 +111,9 @@ def add_model_diagnostics(
             "forcing_power": forcing_power(solver, vorticity, acceleration),
             "relative_vorticity_error": relative_error(vorticity, reference),
             "spectral_relative_l2": relative_error(spectrum, reference_spectrum),
-            "reynolds_lambda": reynolds_lambda(record["energy"], record["enstrophy"], solver.viscosity),
+            "reynolds_lambda": reynolds_lambda(
+                record["energy"], record["enstrophy"], solver.viscosity
+            ),
         }
     )
     return record
@@ -142,7 +147,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     forcing = ForcingHistory(
         args.les_n,
-        args.dt,
+        args.time_step_size,
         args.end_time,
         args.correlation_time,
         args.forcing_rms,
@@ -150,9 +155,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     )
 
     reference_velocity = random_isotropic_velocity(args.reference_n, args.seed + 1)
-    reference_vorticity = reference_solver.project(
-        reference_solver.grid.curl(reference_velocity)
-    )
+    reference_vorticity = reference_solver.project(reference_solver.grid.curl(reference_velocity))
     initial_filtered = coarse_reference(
         reference_solver,
         reference_vorticity,
@@ -160,8 +163,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         gaussian_delta,
     )
     states = {model: initial_filtered.copy() for model in MODELS}
-    steps = int(round(args.end_time / args.dt))
-    save_every = max(1, int(round(args.save_interval / args.dt)))
+    steps = int(round(args.end_time / args.time_step_size))
+    save_every = max(1, int(round(args.save_interval / args.time_step_size)))
     histories: dict[str, list[dict[str, float]]] = {
         model: [] for model in ("filtered_dns", *MODELS)
     }
@@ -169,7 +172,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     final_reference = initial_filtered
 
     for step in range(steps + 1):
-        time = step * args.dt
+        time = step * args.time_step_size
         les_acceleration = forcing.at(time, args.les_n)
         if step % save_every == 0 or step == steps:
             fine_record = diagnostics(
@@ -233,9 +236,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             reference_solver,
             reference_vorticity,
             gaussian_delta,
-            args.dt,
+            args.time_step_size,
             forcing.reference_at(time, args.reference_n, gaussian_delta),
-            forcing.reference_at(time + args.dt, args.reference_n, gaussian_delta),
+            forcing.reference_at(time + args.time_step_size, args.reference_n, gaussian_delta),
             "no_sgs",
         )
         for model in MODELS:
@@ -243,9 +246,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 les_solver,
                 states[model],
                 gaussian_delta,
-                args.dt,
+                args.time_step_size,
                 les_acceleration,
-                forcing.at(time + args.dt, args.les_n),
+                forcing.at(time + args.time_step_size, args.les_n),
                 model,
             )
             if not np.all(np.isfinite(states[model])):
@@ -272,7 +275,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             / reference_final["enstrophy"],
             "final_vorticity_relative_l2": final["relative_vorticity_error"],
             "time_mean_spectral_relative_l2": mean_time_error(records, "spectral_relative_l2"),
-            "maximum_high_k_energy_fraction": max(record["high_k_energy_fraction"] for record in records),
+            "maximum_high_k_energy_fraction": max(
+                record["high_k_energy_fraction"] for record in records
+            ),
             "maximum_divergence_relative": max(record["divergence_relative"] for record in records),
             "mean_ssev_activation": mean_time_error(records, "activation"),
             "maximum_kkt_condition": max(record["kkt_condition"] for record in records),
@@ -292,15 +297,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "final_reynolds_lambda": fine_reference_history[-1]["reynolds_lambda"],
         "high_k_gate": 0.01,
-        "final_energy_spectrum": energy_spectrum(
-            reference_solver, reference_vorticity
-        ).tolist(),
+        "final_energy_spectrum": energy_spectrum(reference_solver, reference_vorticity).tolist(),
     }
     pilot_pass = bool(
         all(np.isfinite(value["final_vorticity_relative_l2"]) for value in summary.values())
         and max(value["maximum_divergence_relative"] for value in summary.values()) < 1.0e-12
         and max(value["energy_budget_relative_residual"] for value in summary.values()) < 2.0e-3
-        and reference_resolution["maximum_high_k_energy_fraction"] < reference_resolution["high_k_gate"]
+        and reference_resolution["maximum_high_k_energy_fraction"]
+        < reference_resolution["high_k_gate"]
         and summary["sensed"]["time_mean_spectral_relative_l2"]
         < summary["no_sgs"]["time_mean_spectral_relative_l2"]
     )
@@ -312,7 +316,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "reference_n": args.reference_n,
             "les_n": args.les_n,
             "viscosity": args.viscosity,
-            "dt": args.dt,
+            "dt": args.time_step_size,
             "end_time": args.end_time,
             "save_interval": args.save_interval,
             "forcing_rms": args.forcing_rms,
@@ -393,7 +397,13 @@ def plot_budgets(result: dict[str, object], output: Path) -> None:
         records = result["histories"][model]
         budget = result["budgets"][model]
         time = [record["time"] for record in records]
-        axis.plot(time, budget["actual_energy_change"], color=COLORS[model], linewidth=1.8, label=r"$E(t)-E(0)$")
+        axis.plot(
+            time,
+            budget["actual_energy_change"],
+            color=COLORS[model],
+            linewidth=1.8,
+            label=r"$E(t)-E(0)$",
+        )
         axis.plot(
             time,
             budget["predicted_energy_change"],
@@ -402,7 +412,7 @@ def plot_budgets(result: dict[str, object], output: Path) -> None:
             linewidth=1.5,
             label=r"$\int(P_f-2\nu Z+P_{SGS})\,dt$",
         )
-        axis.set_title(f'{DISPLAY_LABELS[model]}: residual {budget["relative_residual"]:.2e}')
+        axis.set_title(f"{DISPLAY_LABELS[model]}: residual {budget['relative_residual']:.2e}")
         axis.set_xlabel(r"$t$")
         axis.set_ylabel("energy change")
         axis.grid(color="#d8dde2", linewidth=0.7)
@@ -420,9 +430,24 @@ def plot_errors(result: dict[str, object], output: Path) -> None:
     for model in MODELS:
         records = histories[model]
         time = [record["time"] for record in records]
-        axes[0].plot(time, [record["relative_vorticity_error"] for record in records], color=COLORS[model], label=DISPLAY_LABELS[model])
-        axes[1].plot(time, [record["spectral_relative_l2"] for record in records], color=COLORS[model], label=DISPLAY_LABELS[model])
-        axes[2].plot(time, [record["activation"] for record in records], color=COLORS[model], label=DISPLAY_LABELS[model])
+        axes[0].plot(
+            time,
+            [record["relative_vorticity_error"] for record in records],
+            color=COLORS[model],
+            label=DISPLAY_LABELS[model],
+        )
+        axes[1].plot(
+            time,
+            [record["spectral_relative_l2"] for record in records],
+            color=COLORS[model],
+            label=DISPLAY_LABELS[model],
+        )
+        axes[2].plot(
+            time,
+            [record["activation"] for record in records],
+            color=COLORS[model],
+            label=DISPLAY_LABELS[model],
+        )
     axes[0].set_title("Vorticity-field error")
     axes[0].set_ylabel("relative $L_2$ error")
     axes[1].set_title("Energy-spectrum error")

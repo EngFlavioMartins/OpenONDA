@@ -131,7 +131,7 @@ def _solve_standalone(aircraft, mesh: str = "geom") -> VLMSolver:
     )
     vlm.generate_mesh()
     n_p = vlm.lattice.num_panels
-    vlm.solve(V_external=np.tile(REF_VELOCITY, (n_p, 1)), dt=None, coupled=False)
+    vlm.solve(V_external=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=None, coupled=False)
     return vlm
 
 
@@ -289,11 +289,13 @@ def test_loading_symmetry():
         assert g_pos == pytest.approx(g_neg, rel=1e-6), f"asymmetric loading at |y|={yy}"
 
 
-def _coupled_outer_ratio(vlm, dt) -> float:
+def _coupled_outer_ratio(vlm, time_step_size) -> float:
     """Outer-station Γ / root Γ for one coupled solve at the given dt."""
     n_p = vlm.lattice.num_panels
     vlm._last_U_ref = REF_VELOCITY  # wake_offset = U_ref * dt needs the cached ref
-    vlm.solve(V_external=np.tile(REF_VELOCITY, (n_p, 1)), dt=dt, coupled=True)
+    vlm.solve(
+        V_external=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=time_step_size, coupled=True
+    )
     n = vlm.lattice.num_panels
     gamma = np.abs(vlm.lattice.circulation.to_numpy()[:n])
     vortex = vlm.lattice.vortex_points.to_numpy()[:n]
@@ -322,13 +324,13 @@ def test_coupled_tip_taper_depends_on_mesh_resolution_not_dt():
     lever.
     """
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=28), mesh="uniform")
-    r_uniform_dt0 = _coupled_outer_ratio(vlm, dt=None)
+    r_uniform_dt0 = _coupled_outer_ratio(vlm, time_step_size=None)
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=28), mesh="uniform")
-    r_uniform_dt = _coupled_outer_ratio(vlm, dt=0.0125)
+    r_uniform_dt = _coupled_outer_ratio(vlm, time_step_size=0.0125)
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=28), mesh="geom")
-    r_geom_dt0 = _coupled_outer_ratio(vlm, dt=None)
+    r_geom_dt0 = _coupled_outer_ratio(vlm, time_step_size=None)
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=28), mesh="geom")
-    r_geom_dt = _coupled_outer_ratio(vlm, dt=0.0125)
+    r_geom_dt = _coupled_outer_ratio(vlm, time_step_size=0.0125)
 
     # wake_offset is NOT the lever: dt barely moves the ratio on a fixed mesh
     assert abs(r_uniform_dt - r_uniform_dt0) < 0.05, (

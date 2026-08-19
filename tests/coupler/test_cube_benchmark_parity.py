@@ -89,11 +89,11 @@ def vpm(bench):
 
 @pytest.fixture(scope="module")
 def hybrid_solver(bench, tmp_path_factory):
-    from source.solvers.FVM import Solver
+    from source.solvers.FVM import FVMSolver
 
     case_dir = tmp_path_factory.mktemp("hybrid_parity")
     with contextlib.redirect_stdout(io.StringIO()):
-        return Solver(
+        return FVMSolver(
             bench.FVM_SETUP, case_dir=str(case_dir), mesh_data=_small_coupled_mesh(bench.FVM_BOX)
         )
 
@@ -134,7 +134,7 @@ def test_vpm_setup_compatible(bench, vpm):
     assert type(vpm).__name__ == "VPMSetup"
     assert vpm.viscous.viscosity == pytest.approx(bench.NU)
     assert tuple(vpm.freestream_velocity) == tuple(bench.FREESTREAM_VELOCITY)
-    ratio = vpm.time_step_size / bench.DT_FVM
+    ratio = vpm.time_step_size / bench.FVM_TIME_STEP_SIZE
     assert ratio == pytest.approx(round(ratio))
     domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
     box = np.asarray(bench.FVM_BOX, dtype=float)
@@ -171,7 +171,7 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
             pass
 
     received = []
-    monkeypatch.setattr(bench, "setup_fvm_solver", lambda *args, **kwargs: FakeFVM())
+    monkeypatch.setattr(bench, "create_fvm_solver", lambda *args, **kwargs: FakeFVM())
     monkeypatch.setattr(bench.FVMVPMCoupler, "is_master_rank", staticmethod(lambda: False))
     monkeypatch.setattr(
         bench,
@@ -180,8 +180,8 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
     )
     monkeypatch.setattr(
         bench,
-        "setup_coupler",
-        lambda vpm, fvm, setup: received.append(vpm) or FakeCoupler(),
+        "create_coupler",
+        lambda fvm, vpm, setup: received.append(vpm) or FakeCoupler(),
     )
 
     bench.main()
@@ -193,11 +193,11 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
     from source.coupler import FVMVPMCoupler
 
     setup = bench.COUPLER_SETUP
-    coupler = FVMVPMCoupler(object(), hybrid_solver, setup)
+    coupler = FVMVPMCoupler(hybrid_solver, object(), setup)
     coupler.fvm = hybrid_solver
     coupler._read_fvm_state()
-    assert coupler.dt_fvm == pytest.approx(bench.DT_FVM)
-    assert coupler.t_end == pytest.approx(bench.T_END)
+    assert coupler.fvm_time_step_size == pytest.approx(bench.FVM_TIME_STEP_SIZE)
+    assert coupler.end_time == pytest.approx(bench.T_END)
     assert coupler.nu == pytest.approx(bench.NU)
     assert np.allclose(coupler.fvm_box, bench.FVM_BOX, atol=1e-12)
 
@@ -243,7 +243,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
 
     class _FakeVPM:
         config = _FakeVPMConfig()
-        time_step_size = bench.DT_VPM
+        time_step_size = bench.VPM_TIME_STEP_SIZE
         freestream_velocity = bench.FREESTREAM_VELOCITY
 
     with pytest.raises(ValueError, match="viscosity"):
@@ -257,7 +257,7 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
 
     class _FakeVPM:
         freestream_velocity = [0.5, 0.0, 0.0]
-        time_step_size = bench.DT_VPM
+        time_step_size = bench.VPM_TIME_STEP_SIZE
         config = type(
             "Config",
             (),
@@ -301,7 +301,7 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
 
     class _FakeVPM:
         config = _FakeVPMConfig()
-        time_step_size = bench.DT_VPM
+        time_step_size = bench.VPM_TIME_STEP_SIZE
         freestream_velocity = bench.FREESTREAM_VELOCITY
 
     _FakeViscous.scheme = scheme

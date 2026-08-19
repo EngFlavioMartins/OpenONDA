@@ -73,8 +73,8 @@ def report(reference: Series, hybrid: Series) -> dict:
         f"  {'envelope CV (growth)':<28}{_fmt(ref.modulation):>18}{_fmt(hyb.modulation):>18}",
         "",
         "  --- onset-shift prediction ---",
-        f"  predicted  dt = (1/sigma) ln(A0,hyb/A0,ref) = {_fmt(comp.dt_pred)} s",
-        f"  measured   dt = t*_ref - t*_hyb           = {_fmt(comp.dt_meas)} s",
+        f"  predicted  dt = (1/sigma) ln(A0,hyb/A0,ref) = {_fmt(comp.predicted_time_step_size)} s",
+        f"  measured   dt = t*_ref - t*_hyb           = {_fmt(comp.measured_time_step_size)} s",
         f"  shedding period T = 1/St = {_fmt(comp.shedding_period)} s "
         f"(tolerance {_fmt(0.25 * comp.shedding_period)} s)",
         f"  cross-correlation in saturation: r = {_fmt(comp.correlation['correlation'])} "
@@ -111,8 +111,8 @@ def report(reference: Series, hybrid: Series) -> dict:
             "saturated": hyb.saturated,
         },
         "comparison": {
-            "dt_pred": comp.dt_pred,
-            "dt_meas": comp.dt_meas,
+            "dt_pred": comp.predicted_time_step_size,
+            "dt_meas": comp.measured_time_step_size,
             "shedding_period": comp.shedding_period,
             "correlation": comp.correlation,
             "metrics": comp.metrics,

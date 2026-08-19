@@ -176,7 +176,7 @@ class PressurePhysics(PhysicsBase):
         include_freestream: bool = True,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         return_velocity: bool = False,
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         """
@@ -198,7 +198,7 @@ class PressurePhysics(PhysicsBase):
                            'eulerian' (fixed-point backward differences)
             velocity_previous: Previous velocity field for Eulerian method (M, 3).
                              Required if temporal_method='eulerian'
-            dt: Time step for Eulerian method. Required if temporal_method='eulerian'
+            time_step_size: Time step for Eulerian method. Required if temporal_method='eulerian'
             return_velocity: If True, also return the internally computed u_target.
                            This allows callers to obtain a velocity snapshot from
                            the same code path used for the pressure gradient,
@@ -247,7 +247,7 @@ class PressurePhysics(PhysicsBase):
             include_temporal,
             temporal_method,
             velocity_previous,
-            dt,
+            time_step_size,
             include_freestream,
         )
 
@@ -278,7 +278,7 @@ class PressurePhysics(PhysicsBase):
         include_freestream: bool = True,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         return_velocity: bool = False,
     ) -> dict | tuple[dict, np.ndarray]:
         """
@@ -298,7 +298,7 @@ class PressurePhysics(PhysicsBase):
             include_freestream: Include background velocity in computations
             temporal_method: 'lagrangian' (default) or 'eulerian'
             velocity_previous: Previous velocity field for Eulerian method (M, 3)
-            dt: Time step for Eulerian method
+            time_step_size: Time step for Eulerian method
             return_velocity: If True, also return the internally computed u_target.
 
         Returns:
@@ -341,9 +341,9 @@ class PressurePhysics(PhysicsBase):
         # Temporal term
         if include_temporal:
             if temporal_method == "eulerian":
-                if velocity_previous is None or dt is None:
+                if velocity_previous is None or time_step_size is None:
                     raise ValueError("temporal_method='eulerian' requires velocity_previous and dt")
-                temporal = (u_target - velocity_previous) / dt
+                temporal = (u_target - velocity_previous) / time_step_size
             else:
                 temporal = self._compute_temporal_term_with_particles(
                     particles, target_positions, include_freestream
@@ -429,7 +429,7 @@ class PressurePhysics(PhysicsBase):
         include_freestream: bool = True,
         temporal_method: str = "eulerian",
         velocity_previous: np.ndarray | None = None,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         particle_spacing: float | None = None,
         return_velocity: bool = False,
         theta: float = 0.5,
@@ -441,7 +441,7 @@ class PressurePhysics(PhysicsBase):
 
         This is the O(N log N) hierarchical variant of
         ``compute_target_pressure_gradients``. It requires the Eulerian temporal
-        method (``velocity_previous`` and ``dt``) and evaluates the velocity at the
+        method (``velocity_previous`` and ``time_step_size``) and evaluates the velocity at the
         targets plus the finite-difference offsets used for the viscous term in a
         single treecode pass.
 
@@ -456,7 +456,7 @@ class PressurePhysics(PhysicsBase):
             temporal_method: Must be 'eulerian' (fixed-point backward differences)
             velocity_previous: Previous velocity field [M, 3]. Required if
                 temporal_method='eulerian'
-            dt: Time step for Eulerian method. Required if temporal_method='eulerian'
+            time_step_size: Time step for Eulerian method. Required if temporal_method='eulerian'
             particle_spacing: Step size for the Laplacian finite difference. If None, uses average
                 particle radius
             return_velocity: If True, also return the internally computed velocity
@@ -517,9 +517,9 @@ class PressurePhysics(PhysicsBase):
         advective = np.einsum("mb,mab->ma", velocity, gradient)
         temporal = np.zeros_like(velocity)
         if include_temporal:
-            if velocity_previous is None or dt is None:
+            if velocity_previous is None or time_step_size is None:
                 raise ValueError("Treecode pressure gradients require velocity_previous and dt")
-            temporal = (velocity - velocity_previous) / float(dt)
+            temporal = (velocity - velocity_previous) / float(time_step_size)
         viscous = np.zeros_like(velocity)
         if include_viscous and nu > 0.0:
             plus = velocity_samples[count : 4 * count].reshape(3, count, 3)
@@ -548,16 +548,16 @@ class PressurePhysics(PhysicsBase):
         include_temporal: bool,
         temporal_method: str,
         velocity_previous: np.ndarray | None,
-        dt: float | None,
+        time_step_size: float | None,
         include_freestream: bool,
     ) -> np.ndarray:
         """Select and compute the temporal term ∂u/∂t."""
         if not include_temporal:
             return np.zeros((M, 3), dtype=np.float64)
         if temporal_method == "eulerian":
-            if velocity_previous is None or dt is None:
+            if velocity_previous is None or time_step_size is None:
                 raise ValueError("temporal_method='eulerian' requires velocity_previous and dt")
-            return (u_target - velocity_previous) / dt
+            return (u_target - velocity_previous) / time_step_size
         return self._compute_temporal_term_with_particles(
             particles, target_positions, include_freestream
         )

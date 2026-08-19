@@ -212,7 +212,7 @@ class IBMForcing:
         """Spread a Lagrangian field to cells: ``S[F]_j = Σ_s F_s δ_s(x_j) ε_s``."""
         return self._D.T @ (F * self.eps[:, np.newaxis])
 
-    def compute_force(self, U_star: np.ndarray, dt: float) -> np.ndarray:
+    def compute_force(self, U_star: np.ndarray, time_step_size: float) -> np.ndarray:
         """Direct-forcing acceleration field from the predictor velocity.
 
         Returns the Eulerian acceleration ``f`` (n_elements, 3); the momentum
@@ -220,7 +220,7 @@ class IBMForcing:
         error for diagnostics.
         """
         u_marker = self.interpolate(U_star)
-        F = (self.U_target - u_marker) / dt
+        F = (self.U_target - u_marker) / time_step_size
         self.last_F = F
         self.last_slip = float(np.linalg.norm(self.U_target - u_marker, axis=1).max())
         return self.spread(F)
@@ -229,7 +229,7 @@ class IBMForcing:
         """Reset the per-step Lagrangian force accumulator (for force logging)."""
         self.last_F = np.zeros_like(self.last_F)
 
-    def multidirect_correct(self, U: np.ndarray, dt: float, n_iter: int = 2) -> None:
+    def multidirect_correct(self, U: np.ndarray, time_step_size: float, n_iter: int = 2) -> None:
         """Multidirect forcing iterations (Kempe & Fröhlich 2012 / Breugem 2012).
 
         After the forced momentum solve the marker slip is not exactly zero
@@ -243,13 +243,13 @@ class IBMForcing:
 
         Args:
             U:      Velocity field (mutated in place, interior cells).
-            dt:     Time-step size.
+            time_step_size:     Time-step size.
             n_iter: Number of residual-forcing iterations.
         """
         n = self.mesh_data["n_elements"]
         for _ in range(n_iter):
-            dF = (self.U_target - self.interpolate(U)) / dt
-            U[:n] += dt * self.spread(dF)
+            dF = (self.U_target - self.interpolate(U)) / time_step_size
+            U[:n] += time_step_size * self.spread(dF)
             self.last_F = self.last_F + dF
         self.last_slip = float(np.linalg.norm(self.U_target - self.interpolate(U), axis=1).max())
 

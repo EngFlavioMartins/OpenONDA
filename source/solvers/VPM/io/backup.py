@@ -64,7 +64,7 @@ class BackupSystem:
     def backup_solver(
         solver,
         backup_file_name: str,
-        flow_time: float | None = None,
+        time: float | None = None,
         *,
         append_step: bool = True,
         verbose: bool = True,
@@ -79,10 +79,10 @@ class BackupSystem:
             verbose: Whether to print backup completion message
         """
         try:
-            time_value = float(solver.flow_time if flow_time is None else flow_time)
+            time_value = float(solver.time if time is None else time)
             backup_base = backup_file_name
             if append_step:
-                backup_base = f"{backup_base}_{int(getattr(solver, 'time_step', 0)):06d}"
+                backup_base = f"{backup_base}_{int(getattr(solver, 'step', 0)):06d}"
             hdf5_file = f"{backup_base}.h5"
             xdmf_file = f"{backup_base}.xdmf"
 
@@ -194,12 +194,12 @@ class BackupSystem:
             print(f"(Info) Warning: Could not compute enstrophy for backup: {e}")
 
     @staticmethod
-    def _save_numerical_data(solver, hdf5_file: str, flow_time: float) -> None:
+    def _save_numerical_data(solver, hdf5_file: str, time: float) -> None:
         """Save all numerical data to HDF5."""
         with h5py.File(hdf5_file, "w") as f:
             solver_group = f.create_group("solver")
-            solver_group.attrs["flow_time"] = flow_time
-            solver_group.attrs["time_step"] = solver.time_step
+            solver_group.attrs["flow_time"] = time
+            solver_group.attrs["time_step"] = solver.step
             solver_group.attrs["time_step_size"] = solver.time_step_size
             # DVH fires once every _dvh_substeps steps off this counter; without it
             # a restart resumes at phase 0 and the viscous update lands on different
@@ -255,8 +255,8 @@ class BackupSystem:
                 "particle_count": int(
                     solver.particles.number_of_particles
                 ),  # Convert to Python int
-                "flow_time": float(solver.flow_time),
-                "time_step": int(solver.time_step),  # Convert to Python int
+                "flow_time": float(solver.time),
+                "time_step": int(solver.step),  # Convert to Python int
             },
         }
 
@@ -271,7 +271,7 @@ class BackupSystem:
         )
 
     @staticmethod
-    def _create_xdmf_file(solver, backup_file_name: str, xdmf_file: str, flow_time: float) -> None:
+    def _create_xdmf_file(solver, backup_file_name: str, xdmf_file: str, time: float) -> None:
         """Create XDMF file that references the HDF5 data for ParaView visualization.
 
         Only datasets that actually exist in the HDF5 file are referenced,
@@ -331,7 +331,7 @@ class BackupSystem:
       </Geometry>
 
       <!-- Time information -->
-      <Time Value="{flow_time:.17g}"/>
+      <Time Value="{time:.17g}"/>
 
       <!-- Particle attributes -->
       <Attribute Name="Velocity" AttributeType="Vector" Center="Node">
@@ -444,8 +444,8 @@ class BackupSystem:
         for h5_file in h5_files:
             # Load time information
             with h5py.File(h5_file, "r") as f:
-                flow_time = float(f["solver"].attrs["flow_time"])
-                time_step = int(f["solver"].attrs["time_step"])
+                time = float(f["solver"].attrs["flow_time"])
+                step = int(f["solver"].attrs["time_step"])
                 n_particles = int(f["solver"].attrs["number_of_particles"])
                 particle_keys = set(f["particles"].keys()) if "particles" in f else set()
 
@@ -469,7 +469,7 @@ class BackupSystem:
         </Attribute>'''
 
             xdmf_content += f'''
-      <Grid Name="TimeStep_{time_step:06d}" GridType="Uniform">
+      <Grid Name="TimeStep_{step:06d}" GridType="Uniform">
         <Topology TopologyType="Polyvertex" NumberOfElements="{n_particles}"/>
 
         <Geometry GeometryType="XYZ">
@@ -478,7 +478,7 @@ class BackupSystem:
           </DataItem>
         </Geometry>
 
-        <Time Value="{flow_time}"/>
+        <Time Value="{time}"/>
 
         <!-- Key attributes for animation -->
         <Attribute Name="Velocity" AttributeType="Vector" Center="Node">
@@ -578,8 +578,8 @@ class BackupSystem:
         """Load all numerical data from HDF5 with full precision."""
         with h5py.File(hdf5_file, "r") as f:
             solver_group = f["solver"]
-            solver.flow_time = float(solver_group.attrs["flow_time"])
-            solver.time_step = int(solver_group.attrs["time_step"])
+            solver.time = float(solver_group.attrs["flow_time"])
+            solver.step = int(solver_group.attrs["time_step"])
             solver.time_step_size = float(solver_group.attrs["time_step_size"])
             if "dvh_fire_counter" in solver_group.attrs:
                 solver._dvh_fire_counter = int(solver_group.attrs["dvh_fire_counter"])

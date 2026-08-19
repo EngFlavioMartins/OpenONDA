@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM import BoundaryConfig, FVMSetup, Solver, TransportConfig
+from source.solvers.FVM import BoundaryConfig, FVMSetup, FVMSolver, TransportConfig
 
 
 def _config() -> FVMSetup:
@@ -20,7 +20,7 @@ def _config() -> FVMSetup:
 
 
 def test_set_initial_velocity_rebuilds_history_boundaries_and_flux(hand_built_3d_mesh, tmp_path):
-    solver = Solver(_config(), case_dir=tmp_path, mesh_data=hand_built_3d_mesh)
+    solver = FVMSolver(_config(), case_dir=tmp_path, mesh_data=hand_built_3d_mesh)
     values = np.tile([0.25, -0.5, 0.75], (hand_built_3d_mesh["n_elements"], 1))
 
     solver.set_initial_velocity(values)
@@ -32,11 +32,11 @@ def test_set_initial_velocity_rebuilds_history_boundaries_and_flux(hand_built_3d
 
 
 def test_set_initial_velocity_rejects_invalid_or_late_values(hand_built_3d_mesh, tmp_path):
-    solver = Solver(_config(), case_dir=tmp_path, mesh_data=hand_built_3d_mesh)
+    solver = FVMSolver(_config(), case_dir=tmp_path, mesh_data=hand_built_3d_mesh)
 
     with pytest.raises(ValueError, match="shape"):
         solver.set_initial_velocity(np.zeros((2, 3)))
 
-    solver.time_step = 1
+    solver.step = 1
     with pytest.raises(RuntimeError, match="before the first time step"):
         solver.set_initial_velocity(np.zeros((hand_built_3d_mesh["n_elements"], 3)))

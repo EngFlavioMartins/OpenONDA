@@ -16,7 +16,7 @@ class SolverIO:
     """Unified IO and Diagnostics manager for the FVM Solver.
 
     Attributes:
-        solver (Solver): Reference to the parent FVM solver instance.
+        solver (FVMSolver): Reference to the parent FVM solver instance.
         case_dir (str): Working directory for the simulation.
     """
 
@@ -49,7 +49,7 @@ class SolverIO:
             self._diagnostics_write_disabled = True
             self.solver.logger.warning(f"Diagnostics output disabled: no space left on {path}")
 
-    def rewind_histories(self, flow_time: float) -> None:
+    def rewind_histories(self, time: float) -> None:
         parallel = getattr(self.solver, "parallel", None)
         if parallel is not None and not parallel.is_root:
             return
@@ -57,19 +57,18 @@ class SolverIO:
         samples = Path(self.case_dir) / "samples"
         solution = Path(self.case_dir) / "solution"
 
-        # Every sampler CSV is rewound by its time column, whether that column
-        # is "time" (forces/IBM/y+) or "flow_time" (line samplers).
+        # Every sampler CSV is rewound by its "time" column.
         if samples.is_dir():
             for csv_path in samples.glob("*.csv"):
-                self._rewind_csv(csv_path, flow_time)
+                self._rewind_csv(csv_path, time)
             # Surface-sampler PVD indices: drop frames past the resume time so
             # a restarted live run or re-run PostProcess does not double-list
             # them (the per-step .vts files stay keyed by their own step).
             for pvd_path in samples.glob("*.pvd"):
-                self._rewind_pvd(pvd_path, flow_time)
+                self._rewind_pvd(pvd_path, time)
 
-        self._rewind_jsonl(solution / "diagnostics.jsonl", flow_time)
-        self._rewind_jsonl(solution / "performance.jsonl", flow_time)
+        self._rewind_jsonl(solution / "diagnostics.jsonl", time)
+        self._rewind_jsonl(solution / "performance.jsonl", time)
 
     @staticmethod
     def _replace(path: Path, lines: list[str]) -> None:
@@ -84,7 +83,7 @@ class SolverIO:
             raise
 
     @classmethod
-    def _rewind_csv(cls, path: Path, flow_time: float) -> None:
+    def _rewind_csv(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
         with path.open(newline="", encoding="utf-8") as stream:
@@ -92,20 +91,20 @@ class SolverIO:
         if not rows:
             return
         time_column = next(
-            (i for i, name in enumerate(rows[0]) if name.strip() in ("time", "flow_time")),
+            (i for i, name in enumerate(rows[0]) if name.strip() == "time"),
             None,
         )
         if time_column is None:
             return
         kept = [rows[0]]
         for row in rows[1:]:
-            if row and float(row[time_column]) <= flow_time + 1e-12:
+            if row and float(row[time_column]) <= time + 1e-12:
                 kept.append(row)
         if len(kept) != len(rows):
             cls._replace(path, [",".join(row) + "\n" for row in kept])
 
     @classmethod
-    def _rewind_pvd(cls, path: Path, flow_time: float) -> None:
+    def _rewind_pvd(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
         import re as _re
@@ -113,17 +112,17 @@ class SolverIO:
         text = path.read_text(encoding="utf-8")
         kept = _re.sub(
             r'<DataSet timestep="([^"]+)"[^>]*?/>',
-            lambda m: m.group(0) if float(m.group(1)) <= flow_time + 1e-12 else "",
+            lambda m: m.group(0) if float(m.group(1)) <= time + 1e-12 else "",
             text,
         )
         if kept != text:
             cls._replace(path, [kept])
 
     @classmethod
-    def _rewind_jsonl(cls, path: Path, flow_time: float) -> None:
+    def _rewind_jsonl(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-        kept = [line for line in lines if float(json.loads(line)["time"]) <= flow_time + 1e-12]
+        kept = [line for line in lines if float(json.loads(line)["time"]) <= time + 1e-12]
         if len(kept) != len(lines):
             cls._replace(path, kept)

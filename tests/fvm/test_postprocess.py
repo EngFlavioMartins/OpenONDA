@@ -11,11 +11,11 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -27,7 +27,7 @@ from ._structured_mesh import structured_box
 def _config(samplers):
     return FVMSetup(
         case_name="postproc",
-        time=TimeConfig.transient(dt=0.01, duration=0.05, write_interval=1),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.05, write_interval=1),
         schemes=SchemesConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
@@ -58,11 +58,11 @@ def _rows(path):
 
 def _build_archive(tmp_path, samplers):
     """Run a short live solve that writes a snapshot every accepted step."""
-    solver = Solver(_config(samplers), str(tmp_path), mesh_data=structured_box(3, 3, 3))
+    solver = FVMSolver(_config(samplers), str(tmp_path), mesh_data=structured_box(3, 3, 3))
     solver.auto_write = True
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(4):
-            solver.evolve()
+            solver.advance()
         solver.flush_output()
 
 
@@ -121,11 +121,11 @@ def test_postprocess_uses_diagnostics_dt_before_pvd_spacing(tmp_path, monkeypatc
     ]
     monkeypatch.setattr(post, "_pvd_frames", lambda: fake_frames)
 
-    recorded_dt = []
+    recorded_time_step_size = []
     original_execute = pp_module.FVMSamplerExecutor.execute
 
     def recording_execute(context, *, strict=False):
-        recorded_dt.append(float(context._current_dt))
+        recorded_time_step_size.append(float(context._current_time_step_size))
         return original_execute(context, strict=strict)
 
     monkeypatch.setattr(pp_module.FVMSamplerExecutor, "execute", staticmethod(recording_execute))
@@ -135,4 +135,4 @@ def test_postprocess_uses_diagnostics_dt_before_pvd_spacing(tmp_path, monkeypatc
 
     # The real archive diagnostics record dt=0.01 for every accepted step;
     # fabricated PVD spacing must not replace that physical timestep.
-    assert recorded_dt == pytest.approx([0.01, 0.01, 0.01])
+    assert recorded_time_step_size == pytest.approx([0.01, 0.01, 0.01])

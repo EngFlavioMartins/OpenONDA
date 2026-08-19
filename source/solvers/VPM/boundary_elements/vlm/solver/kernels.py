@@ -231,7 +231,7 @@ def _shed_right_particle(
 @ti.kernel
 def shed_wake_particles_kernel(
     num_panels: ti.i32,
-    dt: float,
+    time_step_size: float,
     V_convection: ti.types.vector(3, float),
     V_particle: ti.types.vector(3, float),
     sigma_factor: float,
@@ -293,7 +293,7 @@ def shed_wake_particles_kernel(
             # would divide by span_mag below, injecting NaN strengths into the VPM.
             if span_mag < 1e-12:
                 continue
-            l_te = V_kin_for_sizing * dt
+            l_te = V_kin_for_sizing * time_step_size
             # Trailing-vortex particle core tracks the LOCAL spanwise edge spacing
             # (span_mag), floored at one streamwise step (l_te) to keep the shed sheet
             # connected. The previous `sigma_factor * V * dt` floor over-sized the core on
@@ -304,10 +304,12 @@ def shed_wake_particles_kernel(
             # of the tip. Sizing the core to span_mag gives a uniform overlap (~1) across the
             # span and removes the artifact without changing the integrated load.
             sigma_trailing = ti.max(l_te, span_mag)
-            sigma_transverse = ti.max(sigma_factor * V_kin_for_sizing * dt, span_mag / 3.0)
+            sigma_transverse = ti.max(
+                sigma_factor * V_kin_for_sizing * time_step_size, span_mag / 3.0
+            )
             if sigma_transverse < 1e-10:
                 sigma_transverse = span_mag
-            vol = 3.14159 * (span_mag / 2.0) ** 2 * V_kin_for_sizing * dt
+            vol = 3.14159 * (span_mag / 2.0) ** 2 * V_kin_for_sizing * time_step_size
             V_part = V_particle
             if use_local_velocity == 1:
                 V_part = V_conv

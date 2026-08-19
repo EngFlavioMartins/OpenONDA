@@ -133,12 +133,12 @@ def test_gbd_box_mask_is_solid_free_and_zero_flux(physics):
 
 def test_gbd_moment_growth_equals_6_nu_dt(physics):
     """Discrete identity: ⟨r²⟩ grows by exactly 6·alpha·h² = 6·nu·dt per step."""
-    nu, dt = 1e-3, 0.3
-    alpha = nu * dt / H**2  # 0.12 < 1/6
+    nu, time_step_size = 1e-3, 0.3
+    alpha = nu * time_step_size / H**2  # 0.12 < 1/6
     field = _gaussian_blob_grid()
     out = _laplacian_step(physics, field, alpha)
     growth = _second_moment(out) - _second_moment(field)
-    expected = 6.0 * nu * dt
+    expected = 6.0 * nu * time_step_size
     assert abs(growth - expected) < 0.01 * expected, (
         f"moment growth {growth:.6e} vs 6·nu·dt = {expected:.6e}"
     )
@@ -167,7 +167,7 @@ def test_gbd_stability_bound_alpha_one_sixth(physics):
 
 def test_gbd_max_dt_formula():
     vc = ViscousConfig.gbd(particle_spacing=0.05, viscosity=0.001)
-    assert np.isclose(vc.gbd_max_dt(), 0.05**2 / (6 * 0.001))
+    assert np.isclose(vc.gbd_max_time_step_size(), 0.05**2 / (6 * 0.001))
 
 
 def test_particle_cap_protects_circulation_and_local_wake(physics):
@@ -321,7 +321,7 @@ def test_dvh_diffusive_width_is_fixed_at_dt_d(physics, rd_ratio):
 def test_dvh_required_dt_formula():
     vc = ViscousConfig.dvh(particle_spacing=0.05, viscosity=0.001, dvh_rd_ratio=3)
     expected = _DVH_BETA * (3 * 0.05) ** 2 / (4 * 0.001)
-    assert np.isclose(vc.dvh_required_dt(), expected)
+    assert np.isclose(vc.dvh_required_time_step_size(), expected)
     # cubeFlow numbers: this is ≈ 0.433 s — far above the convective dt,
     # which is exactly why the coupler must adopt the VPM dt.
     assert 0.4 < expected < 0.45
@@ -516,7 +516,7 @@ def test_scatter_scalar_weighted_averages_by_circulation(physics):
     assert grid[0, 0, 0] == 0.0
 
 
-def _laplacian_step_variable(physics, field, nu_eff_field, dt, h):
+def _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, h):
     """One variable-coefficient FTCS step through the production GPU kernel."""
     nx, ny, nz = field.shape[:3]
     enx, eny, enz = physics._ensure_grid_capacity(nx, ny, nz)
@@ -534,7 +534,7 @@ def _laplacian_step_variable(physics, field, nu_eff_field, dt, h):
         physics._other_grid,
         physics._nu_eff_grid,
         physics._body_mask_grid,
-        float(dt),
+        float(time_step_size),
         float(h),
         nx,
         ny,
@@ -549,18 +549,18 @@ def test_gbd_variable_laplacian_scales_moment_with_nu_eff(physics):
     A uniform ν_eff = q·ν must produce q× the moment growth of the molecular
     scalar-α kernel — the mechanism by which Smagorinsky ν_t acts in GBD runs.
     """
-    nu, dt = 1e-3, 0.3
+    nu, time_step_size = 1e-3, 0.3
     field = _gaussian_blob_grid()
 
     # Molecular baseline (scalar kernel, α = ν·dt/h²)
-    alpha_mol = nu * dt / H**2
+    alpha_mol = nu * time_step_size / H**2
     out_mol = _laplacian_step(physics, field, alpha_mol)
     growth_mol = _second_moment(out_mol) - _second_moment(field)
 
     # Variable kernel with uniform ν_eff = 3·ν → 3× the growth
     q = 3.0
     nu_eff_field = np.full((N, N, N), q * nu, dtype=np.float32)
-    out_var = _laplacian_step_variable(physics, field, nu_eff_field, dt, H)
+    out_var = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
     growth_var = _second_moment(out_var) - _second_moment(field)
 
     assert abs(growth_var - q * growth_mol) < 0.02 * q * growth_mol, (
@@ -570,24 +570,24 @@ def test_gbd_variable_laplacian_scales_moment_with_nu_eff(physics):
 
 def test_gbd_variable_laplacian_matches_scalar_when_nu_eff_equals_nu(physics):
     """ν_eff = ν everywhere must reproduce the scalar-α kernel exactly."""
-    nu, dt = 1e-3, 0.2
+    nu, time_step_size = 1e-3, 0.2
     field = _gaussian_blob_grid()
 
-    alpha_mol = nu * dt / H**2
+    alpha_mol = nu * time_step_size / H**2
     out_scalar = _laplacian_step(physics, field, alpha_mol)
 
     nu_eff_field = np.full((N, N, N), nu, dtype=np.float32)
-    out_variable = _laplacian_step_variable(physics, field, nu_eff_field, dt, H)
+    out_variable = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
 
     np.testing.assert_allclose(out_variable, out_scalar, atol=1e-6)
 
 
 def test_gbd_variable_laplacian_conerves_total_circulation(physics):
     """Variable-coefficient Laplacian with Neumann BC still conserves Γ."""
-    nu, dt = 1e-3, 0.15
+    nu, time_step_size = 1e-3, 0.15
     field = _gaussian_blob_grid()
     nu_eff_field = np.full((N, N, N), 3.0 * nu, dtype=np.float32)
-    out = _laplacian_step_variable(physics, field, nu_eff_field, dt, H)
+    out = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
     g0 = field[..., 2].astype(np.float64).sum()
     g1 = out[..., 2].astype(np.float64).sum()
     assert abs(g1 - g0) < 1e-4 * abs(g0), f"Γ drift {abs(g1 - g0) / g0:.2e}"

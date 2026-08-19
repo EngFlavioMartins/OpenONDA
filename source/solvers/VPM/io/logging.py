@@ -213,11 +213,11 @@ class Logging:
             system: Solver instance with cached flow quantities
         """
         lines = []
-        step = getattr(system, "time_step", None)
-        flow_time = getattr(system, "flow_time", None)
+        step = getattr(system, "step", None)
+        current_time = getattr(system, "time", None)
 
-        if step is not None and flow_time is not None:
-            title = f" FLOW DIAGNOSTICS  (step {step}, t = {flow_time:.3e} s)"
+        if step is not None and current_time is not None:
+            title = f" FLOW DIAGNOSTICS  (step {step}, t = {current_time:.3e} s)"
         else:
             title = " FLOW DIAGNOSTICS"
 
@@ -299,22 +299,24 @@ class Logging:
         # Time Step Diagnostics
         try:
             hist = getattr(system, "_diagnostics_history", None)
-            dt_items = []
+            time_step_size_items = []
             if hist is not None and len(hist.get("observed_dt", [])) > 0:
-                dts = np.array(hist["observed_dt"])
-                dts_nz = dts[dts > 0]
+                time_step_sizes = np.array(hist["observed_dt"])
+                dts_nz = time_step_sizes[time_step_sizes > 0]
                 if dts_nz.size > 0:
-                    dt_items.append(
+                    time_step_size_items.append(
                         (
                             "VPM observed dt (mean, median)",
                             f"({dts_nz.mean():.3e}, {np.median(dts_nz):.3e}) s",
                         )
                     )
-                    dt_items.append(("VPM configured dt", f"{system.time_step_size:.3e} s"))
-            if dt_items:
-                for label, _ in dt_items:
+                    time_step_size_items.append(
+                        ("VPM configured dt", f"{system.time_step_size:.3e} s")
+                    )
+            if time_step_size_items:
+                for label, _ in time_step_size_items:
                     label_w = max(label_w, len(label))
-                sections.append(("Time Step Diagnostics", dt_items))
+                sections.append(("Time Step Diagnostics", time_step_size_items))
         except Exception:
             pass
 
@@ -362,8 +364,8 @@ class Logging:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
         lines.append(f"  Processing Unit          : {system.processing_unit}")
         lines.append(f"  Time Step Size           : {system.time_step_size:.3e} s")
-        lines.append(f"  Current Time Step        : {system.time_step}")
-        lines.append(f"  Simulation Time          : {system.flow_time:.3e} s")
+        lines.append(f"  Current Time Step        : {system.step}")
+        lines.append(f"  Simulation Time          : {system.time:.3e} s")
         lines.append(f"  Wall-clock Time          : {system.simulation_time:.2f} s")
         return lines
 
@@ -394,7 +396,7 @@ class Logging:
         return lines
 
     @staticmethod
-    def _format_viscous_dt_limits(system) -> list:
+    def _format_viscous_time_step_size_limits(system) -> list:
         """Return lines showing Δt, stability/accuracy limit, and a warning if exceeded.
 
         Works whether or not particles are loaded — reads limits directly from
@@ -409,8 +411,8 @@ class Logging:
             if visc_cfg is None:
                 return lines
 
-            dt = getattr(system, "time_step_size", None)
-            if dt is None:
+            time_step_size = getattr(system, "time_step_size", None)
+            if time_step_size is None:
                 return lines
 
             scheme = getattr(system, "viscous_scheme", None) or getattr(visc_cfg, "scheme", None)
@@ -422,17 +424,17 @@ class Logging:
             limit_label: str = ""
 
             if scheme == "RWM" and particle_spacing and particle_spacing > 0 and nu and nu > 0:
-                limit = visc_cfg.rwm_accuracy_dt()
+                limit = visc_cfg.rwm_accuracy_time_step_size()
                 limit_label = "particle_spacing²/(4nu)"
             elif scheme == "GBD" and nu and nu > 0:
                 try:
-                    limit = visc_cfg.gbd_max_dt()
+                    limit = visc_cfg.gbd_max_time_step_size()
                     limit_label = "particle_spacing²/(6nu)"
                 except Exception:
                     pass
             elif scheme == "DVH" and nu and nu > 0:
                 try:
-                    limit = visc_cfg.dvh_required_dt()
+                    limit = visc_cfg.dvh_required_time_step_size()
                     limit_label = "β·R_d²/(4nu)"
                 except Exception:
                     pass
@@ -443,11 +445,11 @@ class Logging:
                         f"  Required diffusion interval ({limit_label}) : {limit:.3e} s  [PINNED]"
                     )
                     return lines
-                exceeded = dt > limit * (1.0 + 1e-6)
+                exceeded = time_step_size > limit * (1.0 + 1e-6)
                 status = "*** EXCEEDS LIMIT ***" if exceeded else "OK"
                 lines.append(f"  Stability limit ({limit_label})    : {limit:.3e} s  [{status}]")
                 if exceeded:
-                    ratio = dt / limit
+                    ratio = time_step_size / limit
                     lines.append(
                         f"  WARNING: Δt is {ratio:.2f}× the {scheme} stability limit "
                         f"— solution may be UNSTABLE."
@@ -469,7 +471,7 @@ class Logging:
 
         # Configured Δt and stability/accuracy limit — always shown when
         # characteristic_distance + viscosity are set on the config.
-        lines.extend(Logging._format_viscous_dt_limits(system))
+        lines.extend(Logging._format_viscous_time_step_size_limits(system))
 
         if hasattr(system, "particles") and len(system.particles) > 0:
             viscosities = system.particles.viscosity_cpu()
@@ -760,8 +762,8 @@ class Logging:
         # Current simulation state
         lines.append("")
         lines.append("SIMULATION STATE:")
-        lines.append(f"  Current Time Step        : {system.time_step}")
-        lines.append(f"  Simulation Time          : {system.flow_time:.2E} s")
+        lines.append(f"  Current Time Step        : {system.step}")
+        lines.append(f"  Simulation Time          : {system.time:.2E} s")
         lines.append(f"  Wall-clock Time          : {system.simulation_time:.2E} s")
         lines.append(f"  Total Strength           : {total_strength:.2E} m³/s")
 
@@ -856,7 +858,7 @@ class Logging:
             print("-" * 60)
             print("VLM FORCES")
             print("-" * 60)
-            print(f"  Step                     : {system.time_step}")
+            print(f"  Step                     : {system.step}")
             print(f"  Lift Coefficient (CL)    : {forces['CL']:.3e}")
             print(f"  Drag Coefficient (CD)    : {forces['CD']:.3e}")
             print(f"  Active Particles (n)     : {n_p}")
@@ -914,7 +916,9 @@ class Logging:
             print()
 
     @staticmethod
-    def stretching_dt_warning(dt: float, dt_rec: float, sigma_max: float) -> None:
+    def stretching_time_step_size_warning(
+        time_step_size: float, recommended_time_step_size: float, sigma_max: float
+    ) -> None:
         """Warn that the vortex-stretching step exceeds its stability limit.
 
         Mirrors the viscous ``*** EXCEEDS LIMIT ***`` warning in
@@ -924,8 +928,8 @@ class Logging:
         of a blow-up, so the user knows the time-step must be reduced.
         """
         print(
-            f"  WARNING: vortex-stretching Δt={dt:.3e} s > recommended "
-            f"{dt_rec:.3e} s (σ_max={sigma_max:.2f} s⁻¹) — reduce time-step.",
+            f"  WARNING: vortex-stretching Δt={time_step_size:.3e} s > recommended "
+            f"{recommended_time_step_size:.3e} s (σ_max={sigma_max:.2f} s⁻¹) — reduce time-step.",
             flush=True,
         )
 
@@ -955,31 +959,39 @@ class Logging:
 
         print("\nCURRENT CONFIGURATION:")
         print(f"  Scheme:                   {self['current_scheme']}")
-        print(f"  Time-step size:           {self['current_dt']:.3e} s")
+        print(f"  Time-step size:           {self['current_time_step_size']:.3e} s")
 
         print("\nRECOMMENDED TIME-STEP LIMITS (safety factor = 0.8):")
-        print(f"  {'Scheme':<8} {'dt_limit [s]':<18} {'Limiting Factor':<18} {'Status':<15}")
+        print(
+            f"  {'Scheme':<8} {'time_step_size_limit [s]':<18} {'Limiting Factor':<18} {'Status':<15}"
+        )
         print(f"  {'-' * 8} {'-' * 17} {'-' * 17} {'-' * 14}")
 
         for scheme_name in ["CS", "RWM", "NONE"]:
             scheme_data = self["schemes"][scheme_name]
             status = scheme_data["status"]
             limiting = scheme_data.get("limiting_component", "N/A")
-            dt = scheme_data["dt_limit"]
+            time_step_size = scheme_data["dt_limit"]
 
             # Color-code status (basic: just text markers)
             status_marker = "✓ " if "stable" in status else "⚠ "
 
-            print(f"  {scheme_name:<8} {dt:>16.3e} {limiting:<18} {status_marker}{status:<13}")
+            print(
+                f"  {scheme_name:<8} {time_step_size:>16.3e} {limiting:<18} {status_marker}{status:<13}"
+            )
 
         print(f"\nCOMPONENT ANALYSIS (Current scheme: {self['current_scheme']}):")
         current_scheme_data = self["schemes"][self["current_scheme"]]
-        print(f"  Advection limit:          {current_scheme_data['dt_adv_component']:.3e} s")
+        print(
+            f"  Advection limit:          {current_scheme_data['advection_time_step_size_component']:.3e} s"
+        )
         if "dt_diff_component" in current_scheme_data:
-            print(f"  Diffusion limit:          {current_scheme_data['dt_diff_component']:.3e} s")
+            print(
+                f"  Diffusion limit:          {current_scheme_data['diffusion_time_step_size_component']:.3e} s"
+            )
         if "dt_stretch_component" in current_scheme_data:
             print(
-                f"  Stretching limit:         {current_scheme_data['dt_stretch_component']:.3e} s"
+                f"  Stretching limit:         {current_scheme_data['stretching_time_step_size_component']:.3e} s"
             )
 
         if self["issues"]:

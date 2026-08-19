@@ -38,7 +38,7 @@ def checkpoint_args(args: argparse.Namespace) -> argparse.Namespace:
         reference_n=args.reference_n,
         les_n=args.les_n,
         viscosity=args.viscosity,
-        dt=args.dt,
+        time_step_size=args.time_step_size,
         end_time=args.original_end_time,
         save_interval=args.original_save_interval,
         checkpoint_interval=args.original_checkpoint_interval,
@@ -100,7 +100,7 @@ def replay(args: argparse.Namespace) -> dict[str, object]:
             states,
             forcing.field,
             gaussian_delta,
-            step * args.dt,
+            step * args.time_step_size,
         )
         for model, record in records.items():
             histories[model].append(record)
@@ -144,7 +144,7 @@ def replay(args: argparse.Namespace) -> dict[str, object]:
         "final_checkpoint": str(args.final_checkpoint),
         "start_time": start_time,
         "final_time": final_time,
-        "diagnostic_interval": args.dt,
+        "diagnostic_interval": args.time_step_size,
         "forcing_correlation_time": args.correlation_time,
         "checks": checks,
         "final_maximum_absolute_differences": final_differences,

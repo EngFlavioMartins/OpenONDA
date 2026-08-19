@@ -25,7 +25,7 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     coupling_box_mesh,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 import openonda.vpm
 
@@ -76,7 +76,7 @@ def _verify_native_fvm() -> dict[str, float | int]:
     setup = FVMSetup(
         case_name="installedWheelSmoke",
         execution=ExecutionConfig(operator_backend="numpy"),
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=1, n_outer_correctors=1),
@@ -93,10 +93,10 @@ def _verify_native_fvm() -> dict[str, float | int]:
         tempfile.TemporaryDirectory(prefix="openonda-installed-fvm-") as case_dir,
         contextlib.redirect_stdout(io.StringIO()),
     ):
-        solver = setup_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
+        solver = create_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
         try:
             solver.auto_write = False
-            solver.evolve(0.01)
+            solver.advance(0.01)
             velocity = np.asarray(solver.U[: mesh["n_elements"]], dtype=float)
             pressure = np.asarray(solver.p[: mesh["n_elements"]], dtype=float)
             diagnostics = solver.last_diagnostics

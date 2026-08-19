@@ -37,7 +37,7 @@ from .evolution import EvolutionStepper
 
 
 @ti.data_oriented
-class Solver:
+class VPMSolver:
     """Vortex Particle Method solver.
 
     The solver owns the particle field, time integration, viscous and turbulence
@@ -76,8 +76,8 @@ class Solver:
         final_config._validate_config()
         self.config = final_config
         self.time_step_size = final_config.time_step_size
-        self.flow_time = final_config.flow_time
-        self.time_step = final_config.time_step
+        self.time = final_config.time
+        self.step = final_config.step
         self.time_integration = final_config.time_integration.upper()
         self.coupled_max_strain_increment = final_config.coupled_max_strain_increment
         self.coupled_max_advection_fraction = final_config.coupled_max_advection_fraction
@@ -91,9 +91,9 @@ class Solver:
         # DVH uses a fixed heat-kernel increment Δt_d = β R_d² / (4ν).
         import math as _math
 
-        self._dvh_dt_info: str | None = None
-        self._gbd_dt_info: str | None = None
-        self._rwm_dt_info: str | None = None
+        self._dvh_time_step_size_info: str | None = None
+        self._gbd_time_step_size_info: str | None = None
+        self._rwm_time_step_size_info: str | None = None
         vc = final_config.viscous
 
         # RWM accuracy criterion.
@@ -104,33 +104,33 @@ class Solver:
             and vc.viscosity is not None
             and vc.viscosity > 0
         ):
-            dt_max_rwm = vc.rwm_accuracy_dt()
-            if self.time_step_size > dt_max_rwm * (1.0 + 1e-6):
+            rwm_max_time_step_size = vc.rwm_accuracy_time_step_size()
+            if self.time_step_size > rwm_max_time_step_size * (1.0 + 1e-6):
                 Logging.message(
                     f"[RWM] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> accuracy limit particle_spacing²/(4nu) = {dt_max_rwm:.4e} s — "
+                    f"> accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s — "
                     f"random displacement √(2nuΔt) exceeds inter-particle spacing particle_spacing; "
                     f"vorticity gradients will be artificially smoothed."
                 )
-            self._rwm_dt_info = (
-                f"RWM accuracy limit particle_spacing²/(4nu) = {dt_max_rwm:.4e} s "
+            self._rwm_time_step_size_info = (
+                f"RWM accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s "
                 f"(particle_spacing = {vc.characteristic_distance:.3e} m, "
                 f"nu = {vc.viscosity:.3e} m²/s)."
             )
 
         # GBD explicit-diffusion stability criterion.
         if vc.scheme == "GBD" and vc.viscosity is not None and vc.viscosity > 0:
-            dt_max = vc.gbd_max_dt()
-            if self.time_step_size > dt_max * (1.0 + 1e-6):
+            max_time_step_size = vc.gbd_max_time_step_size()
+            if self.time_step_size > max_time_step_size * (1.0 + 1e-6):
                 Logging.message(
                     f"[GBD] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> CFL limit particle_spacing²/(6nu) = {dt_max:.4e} s — "
+                    f"> CFL limit particle_spacing²/(6nu) = {max_time_step_size:.4e} s — "
                     f"explicit Laplacian may be UNSTABLE."
                 )
-            self._gbd_dt_info = (
+            self._gbd_time_step_size_info = (
                 f"GBD fires every step "
                 f"(Δt = {self.time_step_size:.4e} s, "
-                f"CFL max = {dt_max:.4e} s)."
+                f"CFL max = {max_time_step_size:.4e} s)."
             )
 
         # Match the user step to an integer subdivision of the DVH increment.
@@ -139,26 +139,32 @@ class Solver:
         if vc.scheme == "DVH" and vc.viscosity is not None and vc.viscosity > 0:
             from ..physics.diffusion import _DVH_BETA
 
-            dt_d_raw = vc.dvh_required_dt()
+            diffusion_time_step_size_raw = vc.dvh_required_time_step_size()
             # Avoid noisy floating-point time values.
-            magnitude = _math.floor(_math.log10(abs(dt_d_raw)))
-            dt_d = round(dt_d_raw, -magnitude + 2)
-            user_dt = self.time_step_size
-            n_sub = max(1, int(round(dt_d / user_dt))) if user_dt > 0 else 1
-            dt_sub = dt_d / n_sub
-            if abs(user_dt - dt_sub) > 1e-6 * max(user_dt, dt_sub):
+            magnitude = _math.floor(_math.log10(abs(diffusion_time_step_size_raw)))
+            diffusion_time_step_size = round(diffusion_time_step_size_raw, -magnitude + 2)
+            user_time_step_size = self.time_step_size
+            n_sub = (
+                max(1, int(round(diffusion_time_step_size / user_time_step_size)))
+                if user_time_step_size > 0
+                else 1
+            )
+            substep_size = diffusion_time_step_size / n_sub
+            if abs(user_time_step_size - substep_size) > 1e-6 * max(
+                user_time_step_size, substep_size
+            ):
                 Logging.message(
                     f"[DVH] INFO: time step adjusted — "
-                    f"user dt = {user_dt:.4e} s → dt = Δt_d/{n_sub} = {dt_sub:.4e} s "
-                    f"(Δt_d = β·R_d²/(4nu) = {dt_d:.4e} s, β={_DVH_BETA}, "
+                    f"user dt = {user_time_step_size:.4e} s → dt = Δt_d/{n_sub} = {substep_size:.4e} s "
+                    f"(Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s, β={_DVH_BETA}, "
                     f"R_d = {vc.dvh_rd_ratio}·particle_spacing = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m; "
                     f"DVH fires every {n_sub} step(s))."
                 )
-                self.time_step_size = dt_sub
+                self.time_step_size = substep_size
             self._dvh_substeps = n_sub
-            self._dvh_dt_info = (
-                f"DVH fires every {n_sub} step(s) (dt = Δt_d/{n_sub} = {dt_sub:.4e} s, "
-                f"Δt_d = β·R_d²/(4nu) = {dt_d:.4e} s)."
+            self._dvh_time_step_size_info = (
+                f"DVH fires every {n_sub} step(s) (dt = Δt_d/{n_sub} = {substep_size:.4e} s, "
+                f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
             )
 
         self.advection_scheme = final_config.advection.scheme
@@ -305,7 +311,7 @@ class Solver:
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
         self._body_induced_fn = None
-        self._stretch_dt_warned: bool = False
+        self._stretch_time_step_size_warned: bool = False
         self._particles_removed_this_step = 0
         self._circulation_removed_this_step = np.zeros(3, dtype=self.np_dtype)
         # Size of the last core-spreading moment projection, relative to |Gamma|.
@@ -344,8 +350,8 @@ class Solver:
                 compute_dtype=self.compute_dtype,
                 np_dtype=self.np_dtype,
                 flow_model=self.flow_model,
-                time_step=lambda: self.time_step,
-                flow_time=lambda: self.flow_time,
+                step=lambda: self.step,
+                time=lambda: self.time,
                 time_step_size=lambda: self.time_step_size,
                 replace_vortex_particles=self.replace_vortex_particles,
                 set_particles_properties=self.set_particles_properties,
@@ -431,7 +437,7 @@ class Solver:
         self.io.export_diagnostics_csv(self._diagnostics_history, filename)
 
     @classmethod
-    def from_config_file(cls, filename: str) -> "Solver":
+    def from_config_file(cls, filename: str) -> "VPMSolver":
         """Create a solver from a JSON configuration file."""
         config = VPMSetup.load_from_file(filename)
         return cls(setup=config)
@@ -466,7 +472,7 @@ class Solver:
         self.profiler.set_particle_count(self.particles.number_of_particles)
         self.profiler.report()
 
-    def update_state(self) -> None:
+    def advance(self) -> None:
         """Advance the VPM solution by one time step.
 
         The step algorithm (velocity/gradient preparation, advection,
@@ -475,7 +481,7 @@ class Solver:
         :class:`~source.solvers.VPM.core.evolution.EvolutionStepper`; this
         facade method delegates to it.
         """
-        self.stepper.update_state()
+        self.stepper.advance()
 
     def record_diagnostics(self, *, refresh_fields: bool = False) -> None:
         """Evaluate and log diagnostics for the current particle state.
@@ -531,8 +537,8 @@ class Solver:
             name_prefix,
             solution_dir,
             seq_num,
-            self.flow_time,
-            self.time_step,
+            self.time,
+            self.step,
         )
 
     def _write_pvd_file(self, output_dir, name_prefix, entries):
@@ -623,11 +629,11 @@ class Solver:
     def _update_all_flow_integrals(self) -> None:
         """Recompute flow integrals and associated diagnostic histories."""
         self._flow_integrals = self.field_diagnostics.compute_flow_integrals(
-            self.particles, self.flow_time
+            self.particles, self.time
         )
         self._update_discretization_health()
         self._record_centroid_history()
-        self._record_flow_time_history()
+        self._record_time_history()
         self._record_vlm_diagnostics()
 
     def _update_discretization_health(self) -> None:
@@ -651,11 +657,11 @@ class Solver:
             self.particles_circulation,
         )
 
-    def _record_flow_time_history(self) -> None:
+    def _record_time_history(self) -> None:
         """Delegate to VLMDiagnostics."""
         ft_hist = self._diagnostics_history.get("flow_time", [])
-        observed_dt = self.flow_time - ft_hist[-1] if len(ft_hist) >= 1 else 0.0
-        VLMDiagnostics.record_flow_time(self._diagnostics_history, self.flow_time, observed_dt)
+        observed_time_step_size = self.time - ft_hist[-1] if len(ft_hist) >= 1 else 0.0
+        VLMDiagnostics.record_time(self._diagnostics_history, self.time, observed_time_step_size)
 
     def _record_vlm_diagnostics(self) -> None:
         """Delegate to VLMDiagnostics."""
@@ -665,16 +671,16 @@ class Solver:
             self.particles,
             self.particles_strengths,
             self._diagnostics_history,
-            self.time_step,
-            self.flow_time,
+            self.step,
+            self.time,
             self.backup_directory,
             sample_subdirectory,
         )
         VLMLoadingDistribution.record_loading_distributions(
             self.vlm_solver,
             self._diagnostics_history,
-            self.time_step,
-            self.flow_time,
+            self.step,
+            self.time,
             self.backup_directory,
             sample_subdirectory,
         )
@@ -688,8 +694,8 @@ class Solver:
             gamma_wake,
             lesp_max,
             n_p,
-            self.flow_time,
-            self.time_step,
+            self.time,
+            self.step,
             self.backup_directory,
             getattr(self.config, "sample_subdirectory", None),
         )
@@ -733,7 +739,7 @@ class Solver:
     def total_linear_impulse(self) -> np.ndarray:
         """Return the current linear impulse, recomputed from the active particle field."""
         integrals = self.field_diagnostics.compute_flow_integrals(
-            self.particles, self.flow_time, record_history=False
+            self.particles, self.time, record_history=False
         )
         return integrals.get("linear_impulse", np.array([0.0, 0.0, 0.0]))
 
@@ -1080,7 +1086,7 @@ class Solver:
         particle_spacing: float | None = None,
         temporal_method: str = "lagrangian",
         velocity_previous: np.ndarray | None = None,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         return_velocity: bool = False,
         treecode_theta: float | None = None,
         include_body: bool = True,
@@ -1089,7 +1095,7 @@ class Solver:
 
         The result contains the total pressure gradient and its convective, viscous,
         and temporal contributions. ``temporal_method='eulerian'`` requires
-        ``velocity_previous`` and ``dt`` when the temporal term is enabled.
+        ``velocity_previous`` and ``time_step_size`` when the temporal term is enabled.
         ``include_body=False`` omits the optional boundary-element velocity from
         the hierarchical pressure evaluation while retaining particles and the
         configured freestream.
@@ -1126,7 +1132,7 @@ class Solver:
                 include_freestream=include_freestream,
                 temporal_method=temporal_method,
                 velocity_previous=velocity_previous,
-                dt=dt,
+                time_step_size=time_step_size,
                 particle_spacing=particle_spacing,
                 return_velocity=return_velocity,
                 theta=treecode_theta,
@@ -1147,7 +1153,7 @@ class Solver:
             include_freestream=include_freestream,
             temporal_method=temporal_method,
             velocity_previous=velocity_previous,
-            dt=dt,
+            time_step_size=time_step_size,
             return_velocity=return_velocity,
         )
 
@@ -1469,7 +1475,7 @@ class Solver:
             self.stepper._update_velocity_gradients()
 
     @staticmethod
-    def continue_from_backup(backup_file_name: str | None = None) -> "Solver | None":
+    def continue_from_backup(backup_file_name: str | None = None) -> "VPMSolver | None":
         """Restore a solver from an HDF5 backup and its saved configuration."""
         if not BackupSystem.validate_backup(backup_file_name):
             raise ValueError(f"Backup validation failed for: {backup_file_name}")
@@ -1492,7 +1498,7 @@ class Solver:
                 raise FileNotFoundError(f"Configuration file not found: {config_file}")
 
             config = BackupSystem._load_configuration(config_file)
-            restored_solver = Solver(setup=config)
+            restored_solver = VPMSolver(setup=config)
             BackupSystem._load_numerical_data(restored_solver, hdf5_file)
         except Exception as e:
             raise RuntimeError(f"Restore failed: {e}") from e
@@ -1502,8 +1508,8 @@ class Solver:
         restored_solver._update_all_flow_integrals()
 
         Logging.message("Simulation successfully restored!")
-        Logging.message(f"Flow time: {restored_solver.flow_time:.6f}")
-        Logging.message(f"Time step: {restored_solver.time_step}")
+        Logging.message(f"Flow time: {restored_solver.time:.6f}")
+        Logging.message(f"Time step: {restored_solver.step}")
         Logging.message(f"Particles: {restored_solver.particles.number_of_particles}")
         Logging.message(f"Backend: {restored_solver.config.processing_unit}")
 

@@ -12,7 +12,7 @@ Converted from uFVM cfdAssembleTransientTermEuler.m
 import numpy as np
 
 
-def assemble_transient_term_euler_implicit(phi_old, dt, rho, geo_data):
+def assemble_transient_term_euler_implicit(phi_old, time_step_size, rho, geo_data):
     """
     Assemble transient term using Euler implicit scheme.
 
@@ -23,7 +23,7 @@ def assemble_transient_term_euler_implicit(phi_old, dt, rho, geo_data):
     Args:
         phi_old: Previous cell values [units depend on field], shape
             ``(n_cells,)``.
-        dt: Positive time-step size [s].
+        time_step_size: Positive time-step size [s].
         rho: Positive density [kg/m³], scalar or shape ``(n_cells,)``.
         geo_data: Geometry dictionary containing ``element_volumes`` [m³].
 
@@ -36,7 +36,7 @@ def assemble_transient_term_euler_implicit(phi_old, dt, rho, geo_data):
     volumes = geo_data["element_volumes"]
 
     # Coefficient: ρV/Δt
-    ac = rho * volumes / dt
+    ac = rho * volumes / time_step_size
 
     # RHS: (ρV/Δt) * φ_old
     bc = ac * phi_old
@@ -44,7 +44,7 @@ def assemble_transient_term_euler_implicit(phi_old, dt, rho, geo_data):
     return {"ac": ac, "bc": bc}
 
 
-def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, dt, rho, volumes):
+def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, time_step_size, rho, volumes):
     """Advance one scalar-transport step with forward Euler.
 
     The steady finite-volume operators use ``A_spatial @ phi = b_spatial``.
@@ -63,7 +63,7 @@ def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, dt, rho, volume
         spatial_matrix: Assembled steady spatial operator ``A_spatial``.
         spatial_rhs: Assembled steady right-hand side ``b_spatial``, shape
             ``(n_cells,)``.
-        dt: Positive time-step size [s].
+        time_step_size: Positive time-step size [s].
         rho: Positive density [kg/m³], scalar or shape ``(n_cells,)``.
         volumes: Positive cell volumes [m³], shape ``(n_cells,)``.
 
@@ -84,12 +84,12 @@ def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, dt, rho, volume
         density = np.full(phi_old.shape, float(density), dtype=np.float64)
     if density.shape != phi_old.shape:
         raise ValueError("rho must be scalar or have the same shape as phi_old")
-    if not np.isfinite(dt) or dt <= 0.0:
-        raise ValueError("dt must be finite and positive")
+    if not np.isfinite(time_step_size) or time_step_size <= 0.0:
+        raise ValueError("time_step_size must be finite and positive")
     if not np.all(np.isfinite(density)) or np.any(density <= 0.0):
         raise ValueError("rho must contain finite positive values")
     if not np.all(np.isfinite(volumes)) or np.any(volumes <= 0.0):
         raise ValueError("volumes must contain finite positive values")
 
     residual = spatial_rhs - np.asarray(spatial_matrix @ phi_old, dtype=np.float64)
-    return phi_old + dt * residual / (density * volumes)
+    return phi_old + time_step_size * residual / (density * volumes)

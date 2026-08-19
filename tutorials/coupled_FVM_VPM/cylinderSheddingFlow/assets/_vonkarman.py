@@ -40,10 +40,10 @@ MIN_FIT_POINTS = 5
 
 def resample_uniform(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Return a uniformly sampled copy of (t, q) on the median delta-t grid."""
-    dt = float(np.median(np.diff(t)))
-    if not np.isfinite(dt) or dt <= 0.0:
+    time_step_size = float(np.median(np.diff(t)))
+    if not np.isfinite(time_step_size) or time_step_size <= 0.0:
         return np.asarray(t, dtype=float), np.asarray(q, dtype=float)
-    t_u = np.arange(t[0], t[-1] + 0.5 * dt, dt)
+    t_u = np.arange(t[0], t[-1] + 0.5 * time_step_size, time_step_size)
     return t_u, np.interp(t_u, t, q)
 
 
@@ -60,8 +60,8 @@ def peak_envelope(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     q = np.asarray(q, dtype=float)
     if t.size < 8:
         return t, np.abs(q)
-    dt = float(np.median(np.diff(t)))
-    if not np.isfinite(dt) or dt <= 0.0:
+    time_step_size = float(np.median(np.diff(t)))
+    if not np.isfinite(time_step_size) or time_step_size <= 0.0:
         return t, np.abs(q)
     # Use |q| directly: the observable u_y at the y=0 midspan oscillates about
     # a zero baseline, so the oscillation peaks sit exactly on |q| and no mean
@@ -72,7 +72,7 @@ def peak_envelope(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     # separation is ~0.3 shedding periods.  Peaks below the noise floor are
     # oscillation troughs and spurious noise bumps, not envelope samples.
     period = 1.0 / (0.5 * (SHEDDING_BAND[0] + SHEDDING_BAND[1]))
-    distance = max(int(round(0.3 * period / dt)), 2)
+    distance = max(int(round(0.3 * period / time_step_size)), 2)
     idx, _ = find_peaks(amp, distance=distance, height=NOISE_FLOOR)
     if idx.size < 4:
         return t, amp
@@ -222,8 +222,8 @@ def cross_correlation(
     a = q_u[valid]
     b = np.interp(t_common, t_v, q_v)
     best = {"shift": 0.0, "correlation": float(np.corrcoef(a, b)[0, 1])}
-    dt = float(np.median(np.diff(t_u)))
-    for shift in np.arange(-1.0, 1.0 + 1e-9, dt):
+    time_step_size = float(np.median(np.diff(t_u)))
+    for shift in np.arange(-1.0, 1.0 + 1e-9, time_step_size):
         b_shift = np.interp(t_common + shift, t_v, q_v)
         if not np.all(np.isfinite(b_shift)):
             continue
@@ -331,8 +331,8 @@ class Comparison:
     a0_hyb: float
     t_onset_ref: float
     t_onset_hyb: float
-    dt_meas: float
-    dt_pred: float
+    measured_time_step_size: float
+    predicted_time_step_size: float
     shedding_period: float
     correlation: dict
     metrics: dict
@@ -359,14 +359,14 @@ def compare(reference: CaseResult, hybrid: CaseResult, *, seed: bool = False) ->
     st_bar = 0.5 * (st_ref + st_hyb) if np.isfinite(st_ref) and np.isfinite(st_hyb) else st_ref
     shedding_period = 1.0 / st_bar if np.isfinite(st_bar) and st_bar > 0 else np.nan
 
-    dt_meas = (
+    measured_time_step_size = (
         reference.t_onset - hybrid.t_onset
         if (np.isfinite(hybrid.t_onset) and np.isfinite(reference.t_onset))
         else np.nan
     )
     # Sign convention: dt_pred = t*_ref - t*_hyb and dt_meas = t*_ref - t*_hyb,
     # both positive when the hybrid saturates first.
-    dt_pred = (
+    predicted_time_step_size = (
         (1.0 / sigma_bar) * np.log(a0_hyb / a0_ref)
         if (np.isfinite(sigma_bar) and sigma_bar > 0 and a0_ref > 0 and a0_hyb > 0)
         else np.nan
@@ -385,7 +385,8 @@ def compare(reference: CaseResult, hybrid: CaseResult, *, seed: bool = False) ->
         "rel_sigma": abs(sigma_hyb - sigma_ref) / abs(sigma_ref) if sigma_ref else np.nan,
         "rel_st": abs(st_hyb - st_ref) / abs(st_ref) if st_ref else np.nan,
         "a0_ratio": a0_hyb / a0_ref if a0_ref > 0 else np.nan,
-        "onset_error_periods": abs(dt_meas - dt_pred) / shedding_period
+        "onset_error_periods": abs(measured_time_step_size - predicted_time_step_size)
+        / shedding_period
         if np.isfinite(shedding_period)
         else np.nan,
     }
@@ -403,7 +404,7 @@ def compare(reference: CaseResult, hybrid: CaseResult, *, seed: bool = False) ->
         flags.append("hybrid initial amplitude is not above the reference")
     if not seed and metrics["onset_error_periods"] > ONSET_PERIODS:
         flags.append("measured onset shift does not match the amplitude prediction")
-    if seed and np.isfinite(dt_meas) and abs(dt_meas) > tol:
+    if seed and np.isfinite(measured_time_step_size) and abs(measured_time_step_size) > tol:
         # With equal controlled seeds both cases should share the same A0 and
         # saturate simultaneously.  A residual onset gap falsifies the seed
         # collapsing the coupling offset.
@@ -425,8 +426,8 @@ def compare(reference: CaseResult, hybrid: CaseResult, *, seed: bool = False) ->
         a0_hyb=a0_hyb,
         t_onset_ref=reference.t_onset,
         t_onset_hyb=hybrid.t_onset,
-        dt_meas=dt_meas,
-        dt_pred=dt_pred,
+        measured_time_step_size=measured_time_step_size,
+        predicted_time_step_size=predicted_time_step_size,
         shedding_period=shedding_period,
         correlation=corr,
         metrics=metrics,

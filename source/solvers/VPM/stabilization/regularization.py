@@ -109,7 +109,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     before_moments = gaussian_particle_moments(position, circulation, radius)
     before_integrals = ctx.field_diagnostics.compute_flow_integrals(
         particles,
-        ctx.flow_time(),
+        ctx.time(),
         record_history=False,
     )
     old_state = {
@@ -135,7 +135,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     else:
         proposal = ctx.physics.grid_based_diffusion(
             particles,
-            dt=ctx.time_step_size(),
+            time_step_size=ctx.time_step_size(),
             particle_spacing=spacing,
             nu=molecular_viscosity,
             domain_padding=4.0,
@@ -195,7 +195,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         )
         integrals = ctx.field_diagnostics.compute_flow_integrals(
             particles,
-            ctx.flow_time(),
+            ctx.time(),
             record_history=False,
         )
         return uploaded_strength, integrals

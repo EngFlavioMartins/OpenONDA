@@ -15,7 +15,7 @@ import pytest
 
 from source.solvers.VPM.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from source.solvers.VPM.config.types import VPMSetup
-from source.solvers.VPM.core.solver import Solver
+from source.solvers.VPM.core.solver import VPMSolver
 from source.solvers.VPM.io.backup import BackupSystem
 from source.solvers.VPM.io.logging import Logging, _TeeLogStream
 from source.solvers.VPM.io.sampler import SamplerExecutor
@@ -71,8 +71,8 @@ class _BackupParticles:
 
 def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
     solver = SimpleNamespace(
-        flow_time=0.123456789012345,
-        time_step=7,
+        time=0.123456789012345,
+        step=7,
         time_step_size=0.05,
         particles=_BackupParticles(),
         freestream_velocity=np.zeros(3),
@@ -84,7 +84,7 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
     assert (tmp_path / "vpm_000007.xdmf").is_file()
     ET.parse(tmp_path / "vpm_000007.xdmf")
     with h5py.File(snapshot, "r") as handle:
-        assert handle["solver"].attrs["flow_time"] == solver.flow_time
+        assert handle["solver"].attrs["flow_time"] == solver.time
 
     BackupSystem.backup_solver(
         solver,
@@ -132,13 +132,13 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
-        flow_time=0.1,
-        time_step=1,
+        time=0.1,
+        step=1,
     )
 
     SamplerExecutor.execute(solver)
-    solver.flow_time = 0.2
-    solver.time_step = 2
+    solver.time = 0.2
+    solver.step = 2
     SamplerExecutor.execute(solver)
 
     output = tmp_path / "samples" / "probe.csv"
@@ -168,8 +168,8 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
-        flow_time=0.3,
-        time_step=3,
+        time=0.3,
+        step=3,
     )
 
     SamplerExecutor.execute(solver)
@@ -196,13 +196,13 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
-        flow_time=0.1,
-        time_step=1,
+        time=0.1,
+        step=1,
     )
 
     SamplerExecutor.execute(solver)
-    solver.flow_time = 0.2
-    solver.time_step = 2
+    solver.time = 0.2
+    solver.step = 2
     SamplerExecutor.execute(solver)
 
     with (tmp_path / "samples" / "profile.csv").open(newline="", encoding="utf-8") as stream:
@@ -239,8 +239,8 @@ def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path / "solution"),
-        flow_time=0.1,
-        time_step=1,
+        time=0.1,
+        step=1,
     )
 
     SamplerExecutor.execute(solver)
@@ -257,8 +257,8 @@ def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
         gamma_wake=-1.0,
         lesp_max=0.0,
         n_p=10,
-        flow_time=0.2,
-        time_step=2,
+        time=0.2,
+        step=2,
         backup_directory=str(tmp_path / "solution"),
         sample_subdirectory="flat_plate",
     )
@@ -278,11 +278,11 @@ def test_flow_integral_export_is_configurable(monkeypatch):
         _execute_samplers=lambda: None,
     )
 
-    Solver.log_diagnostics(solver)
+    VPMSolver.log_diagnostics(solver)
     assert exports == []
 
     solver.config.export_flow_integrals = True
-    Solver.log_diagnostics(solver)
+    VPMSolver.log_diagnostics(solver)
     assert exports == [True]
 
 

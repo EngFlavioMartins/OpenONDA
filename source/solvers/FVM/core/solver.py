@@ -129,7 +129,7 @@ def _enforce_u_boundary_constraints(
             U[start:end] = projected
 
 
-class Solver(CouplerInterfaceMixin):
+class FVMSolver(CouplerInterfaceMixin):
     """Finite Volume Method (FVM) simulator for incompressible flow.
 
     Provides a high-level Python API for managing unstructured mesh CFD simulations.
@@ -144,8 +144,8 @@ class Solver(CouplerInterfaceMixin):
         p (np.ndarray): Kinematic pressure field [m^2/s^2] (includes ghost boundary cells).
         phi (np.ndarray): Volumetric face flux ``U·Sf`` [m³/s], positive
             from owner to neighbour on interior faces.
-        flow_time (float): Current physical time in the simulation.
-        time_step (int): Current time step index.
+        time (float): Current physical time in the simulation.
+        step (int): Current time step index.
         auto_write (bool): If True, automatically writes results based on writeInterval.
     """
 
@@ -180,14 +180,14 @@ class Solver(CouplerInterfaceMixin):
             self._derived_fields["velocity_gradient"] = gradient
         return gradient
 
-    def _courant_field(self, dt: float):
+    def _courant_field(self, time_step_size: float):
         from ..fields import diagnostics
 
-        key = ("courant", float(dt))
+        key = ("courant", float(time_step_size))
         courant = self._derived_fields.get(key)
         if courant is None:
             courant = diagnostics.compute_courant_number(
-                self.U, self.phi, dt, self.mesh_data, self.geo_data
+                self.U, self.phi, time_step_size, self.mesh_data, self.geo_data
             )
             self._derived_fields[key] = courant
         return courant
@@ -208,18 +208,18 @@ class Solver(CouplerInterfaceMixin):
 
     def __init__(
         self,
-        config: FVMSetup,
+        setup: FVMSetup,
         case_dir: str | None = None,
         mesh_data: dict[str, Any] | None = None,
     ):
         """Initializes the FVM solver instance.
 
         Args:
-            config: FVMSetup object containing all simulation and time parameters.
+            setup: FVMSetup object containing all simulation and time parameters.
             case_dir: Root directory for the case. Defaults to current working directory.
             mesh_data: Solver-native mesh dictionary. Required on the root rank.
         """
-        self.config = config
+        self.config = setup
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         # These dictionaries intentionally contain heterogeneous mesh metadata
         # (arrays, counts, patch dictionaries, and parallel objects).
@@ -540,7 +540,7 @@ class Solver(CouplerInterfaceMixin):
         self.blending_scale_selective = True
         self._blending_filter = None  # lazy CellBoxFilter, built on first blending-zone solve
         self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
-        self._current_dt = self.dt
+        self._current_time_step_size = self.time_step_size
         self._last_residuals = None
         self.last_diagnostics = None
         self._derived_fields: dict[object, np.ndarray] = {}
@@ -689,7 +689,7 @@ class Solver(CouplerInterfaceMixin):
         field; owned values are exchanged so every halo is made consistent.
         This operation is only valid before the first time step is committed.
         """
-        if self._n_committed or self.time_step:
+        if self._n_committed or self.step:
             raise RuntimeError("Initial velocity can only be set before the first time step")
 
         n_elements = self.mesh_data["n_elements"]
@@ -749,7 +749,7 @@ class Solver(CouplerInterfaceMixin):
         Uses :func:`..turbulence.create_model` to instantiate the model
         specified by ``self.config.turbulence``.  Stores the result in
         ``self.turbulence`` and logs the model info.  Sets
-        ``self.flow_time`` and ``self.time_step`` to their initial values.
+        ``self.time`` and ``self.step`` to their initial values.
         """
         self.turbulence = None
         self.nut = None
@@ -763,9 +763,9 @@ class Solver(CouplerInterfaceMixin):
                 )
 
         # Sync state
-        self.flow_time = self.config.time.start_time
-        self.time_step = 0
-        self.dt = self.config.time.delta_t
+        self.time = self.config.time.start_time
+        self.step = 0
+        self.time_step_size = self.config.time.time_step_size
 
     def compute_effective_viscosity(self):
         """Compute the effective viscosity (molecular + turbulent).
@@ -898,7 +898,7 @@ class Solver(CouplerInterfaceMixin):
         u_high = u - self._blending_filter(u)
         return lam[:, np.newaxis] * (ut + u_high), lam
 
-    def solve_pimple(self, dt: float | None = None):
+    def solve_pimple(self, time_step_size: float | None = None):
         """Solve the pressure–velocity system at the current time level WITHOUT
         advancing the clock (coupler-facing method).
 
@@ -909,8 +909,8 @@ class Solver(CouplerInterfaceMixin):
         """
         from ..fields import diagnostics
 
-        step_dt = dt if dt is not None else self.dt
-        self._current_dt = step_dt
+        step_time_step_size = time_step_size if time_step_size is not None else self.time_step_size
+        self._current_time_step_size = step_time_step_size
 
         # Diagnostics from the previously completed step cache full-mesh
         # Courant, velocity-gradient, and vorticity arrays.  None is valid once
@@ -938,7 +938,7 @@ class Solver(CouplerInterfaceMixin):
             self.p,
             self.phi,
             self.U_old,
-            step_dt,
+            step_time_step_size,
             rho=self.config.transport.density,
             nu=nu_eff,
             U_old_old=u_old_old_arg,
@@ -967,12 +967,12 @@ class Solver(CouplerInterfaceMixin):
         logging.Timer.log("Continuity diagnostics", sink=self.logger)
 
         logging.Timer.start("Acceptance checks")
-        self.last_diagnostics = self._build_step_diagnostics(step_dt, residuals)
+        self.last_diagnostics = self._build_step_diagnostics(step_time_step_size, residuals)
         self._enforce_acceptance_policy(self.last_diagnostics)
         logging.Timer.log("Acceptance checks", sink=self.logger)
         return residuals
 
-    def _build_step_diagnostics(self, step_dt, residuals):
+    def _build_step_diagnostics(self, step_time_step_size, residuals):
         """Build the backend-neutral health record for the current solved state."""
         from ..fields import diagnostics
         from ..solve.contracts import StepDiagnostics
@@ -981,7 +981,7 @@ class Solver(CouplerInterfaceMixin):
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n
         interior_u = np.asarray(self.U[:n_owned])
         interior_p = np.asarray(self.p[:n_owned])
-        cfl = self._courant_field(step_dt)
+        cfl = self._courant_field(step_time_step_size)
         self.cfl_max = float(self.parallel.global_max(float(np.max(cfl[:n_owned]))))
         local_nonfinite = int(
             np.count_nonzero(~np.isfinite(interior_u))
@@ -1024,9 +1024,9 @@ class Solver(CouplerInterfaceMixin):
         )
         return StepDiagnostics(
             algorithm=self.config.pimple.algorithm.upper(),
-            step=self.time_step + 1,
-            time=self.flow_time + step_dt,
-            dt=float(step_dt),
+            step=self.step + 1,
+            time=self.time + step_time_step_size,
+            time_step_size=float(step_time_step_size),
             residuals={key: float(value) for key, value in residuals.items()},
             outer_correctors=tuple(getattr(self.algorithm, "last_outer_diagnostics", ())),
             linear_solves=linear_results,
@@ -1094,40 +1094,45 @@ class Solver(CouplerInterfaceMixin):
         self.last_diagnostics = replace(diagnostics, warnings=tuple(warnings))
         self.logger.warnings_info(tuple(warnings))
 
-    def evolve(self, dt: float | None = None) -> None:
+    def advance(self, time_step_size: float | None = None) -> None:
         """Advance the simulation by one full time step (= solve_pimple + advance_time).
 
         Args:
-            dt: Optional override for the time step size [s].
+            time_step_size: Optional override for the time step size [s].
         """
         from ..fields import diagnostics
 
         # --- CFL-based adaptive dt adjustment (before step) ---
         cfg_time = self.config.time
-        if dt is None and cfg_time.adjust_timestep and self.cfl_max > 0 and self.time_step > 1:
+        if (
+            time_step_size is None
+            and cfg_time.adjust_timestep
+            and self.cfl_max > 0
+            and self.step > 1
+        ):
             ratio = cfg_time.max_cfl / max(self.cfl_max, 1e-8)
-            ratio = min(ratio, cfg_time.dt_adjust_coeff)
-            self.dt = np.clip(
-                self.dt * ratio,
-                cfg_time.min_delta_t,
-                cfg_time.max_delta_t,
+            ratio = min(ratio, cfg_time.time_step_size_adjust_coeff)
+            self.time_step_size = np.clip(
+                self.time_step_size * ratio,
+                cfg_time.min_time_step_size,
+                cfg_time.max_time_step_size,
             )
 
-        step_dt = dt if dt is not None else self.dt
+        step_time_step_size = time_step_size if time_step_size is not None else self.time_step_size
         self.profiler.begin_step(
-            step=self.time_step + 1,
-            flow_time=self.flow_time + step_dt,
-            dt=step_dt,
+            step=self.step + 1,
+            time=self.time + step_time_step_size,
+            time_step_size=step_time_step_size,
         )
-        logging.Timer.start(f"Step {self.time_step + 1}")
-        self.logger.step_begin(self.time_step + 1, self.flow_time + step_dt, step_dt)
+        logging.Timer.start(f"Step {self.step + 1}")
+        self.logger.step_begin(self.step + 1, self.time + step_time_step_size, step_time_step_size)
 
-        self.solve_pimple(step_dt)
+        self.solve_pimple(step_time_step_size)
 
         # Compute CFL after step (for next step's dt adjustment)
         if cfg_time.adjust_timestep:
             Co_field = diagnostics.compute_courant_number(
-                self.U, self.phi, step_dt, self.mesh_data, self.geo_data
+                self.U, self.phi, step_time_step_size, self.mesh_data, self.geo_data
             )
             n_owned = (
                 self.parallel.n_owned
@@ -1142,7 +1147,7 @@ class Solver(CouplerInterfaceMixin):
 
         self.advance_time()
 
-        elapsed = logging.Timer.stop(f"Step {self.time_step}")
+        elapsed = logging.Timer.stop(f"Step {self.step}")
         self.logger.step_end(elapsed)
         self.profiler.finish_step(
             elapsed,
@@ -1160,9 +1165,9 @@ class Solver(CouplerInterfaceMixin):
         self.phi_old_old[:] = self.phi_old[:]
         self.phi_old[:] = self.phi[:]
         self._n_committed += 1
-        self.time_step += 1
-        self.flow_time += self._current_dt
-        step_dt = self._current_dt
+        self.step += 1
+        self.time += self._current_time_step_size
+        step_time_step_size = self._current_time_step_size
         cfg_time = self.config.time
         logging.Timer.log("Field history commit", sink=self.logger)
 
@@ -1202,12 +1207,12 @@ class Solver(CouplerInterfaceMixin):
         if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
             wrt_time = cfg_time.write_interval_time
             if wrt_time is not None:
-                self._time_since_last_write += step_dt
+                self._time_since_last_write += step_time_step_size
                 if self._time_since_last_write >= wrt_time:
                     self.write_vtk()
                     self._time_since_last_write = 0.0
             else:
-                if self.time_step % cfg_time.write_interval == 0:
+                if self.step % cfg_time.write_interval == 0:
                     self.write_vtk()
         logging.Timer.log("Visualization output", sink=self.logger)
 
@@ -1251,14 +1256,14 @@ class Solver(CouplerInterfaceMixin):
             from ..io.partitioned import load_partitioned_solver_checkpoint
 
             load_partitioned_solver_checkpoint(self, path, allow_config_change=allow_config_change)
-            self.io.rewind_histories(self.flow_time)
+            self.io.rewind_histories(self.time)
             self.parallel.barrier()
             return
         from ..io.checkpoint import load_checkpoint
 
         self.parallel.barrier()
         load_checkpoint(self, path, allow_config_change=allow_config_change)
-        self.io.rewind_histories(self.flow_time)
+        self.io.rewind_histories(self.time)
         self.parallel.barrier()
 
     def write_vtk(self, filename: str | None = None) -> None:
@@ -1278,12 +1283,12 @@ class Solver(CouplerInterfaceMixin):
         if filename is None:
             os.makedirs(sol_dir, exist_ok=True)
             # Use case_name and sequential numbering: case_name_000000.vtu
-            filename = os.path.join(sol_dir, f"{self.config.case_name}_{self.time_step:06d}.vtu")
+            filename = os.path.join(sol_dir, f"{self.config.case_name}_{self.step:06d}.vtu")
 
         fields = {
             "U": self.U,
             "p": self.p,
-            "Co": self._courant_field(self._current_dt),
+            "Co": self._courant_field(self._current_time_step_size),
             "vorticity": self._vorticity_field(),
         }
         if self.nut is not None:
@@ -1316,7 +1321,7 @@ class Solver(CouplerInterfaceMixin):
                 pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
                 if self.pvd_manager is None:
                     self.pvd_manager = PVDManager(pvd_file)
-                self.pvd_manager.add_step(self.flow_time, str(collection))
+                self.pvd_manager.add_step(self.time, str(collection))
                 self.logger.output_info(f"Output written: {stem}.pvtu")
             return
 
@@ -1333,7 +1338,7 @@ class Solver(CouplerInterfaceMixin):
                     pvd_file,
                     self.config.output,
                 )
-            self._buffered_vtk_writer.submit(filename, self.flow_time, fields)
+            self._buffered_vtk_writer.submit(filename, self.time, fields)
             action = "queued"
         else:
             if self.vtk_exporter is None:
@@ -1346,7 +1351,7 @@ class Solver(CouplerInterfaceMixin):
                 pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
                 self.pvd_manager = PVDManager(pvd_file)
             self.vtk_exporter.export(filename, fields)
-            self.pvd_manager.add_step(self.flow_time, filename)
+            self.pvd_manager.add_step(self.time, filename)
             action = "written"
 
         self.logger.output_info(f"Output {action}: {os.path.basename(filename)}")

@@ -130,7 +130,7 @@ class LineSampler(_PointProbe):
     """Sample fields at uniformly spaced points along a line segment.
 
     Every sampling event appends one row per probe point to a growing
-    ``<name>.csv`` tagged with ``flow_time``/``time_step``.
+    ``<name>.csv`` tagged with ``time``/``step``.
 
     Examples
     --------
@@ -199,12 +199,12 @@ class LineSampler(_PointProbe):
         if data is None:
             return None
         rows = [
-            [context.flow_time, context.time_step, *[data[name][i] for name in SAMPLER_CSV_COLUMNS]]
+            [context.time, context.step, *[data[name][i] for name in SAMPLER_CSV_COLUMNS]]
             for i in range(len(data["x"]))
         ]
         append_csv_rows(
             f"{samples_dir}/{self.name}.csv",
-            ["flow_time", "time_step", *SAMPLER_CSV_COLUMNS],
+            ["time", "step", *SAMPLER_CSV_COLUMNS],
             rows,
         )
         return data

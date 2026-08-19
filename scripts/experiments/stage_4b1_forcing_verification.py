@@ -84,20 +84,20 @@ class ForcingHistory:
     def __init__(
         self,
         n: int,
-        anchor_dt: float,
+        anchor_time_step_size: float,
         end_time: float,
         correlation_time: float,
         target_rms: float,
         seed: int,
     ) -> None:
         self.n = n
-        self.anchor_dt = anchor_dt
+        self.anchor_time_step_size = anchor_time_step_size
         self.end_time = end_time
         self.correlation_time = correlation_time
         self.grid = SpectralGrid(n)
         rng = np.random.default_rng(seed)
-        count = int(round(end_time / anchor_dt)) + 1
-        rho = np.exp(-anchor_dt / correlation_time)
+        count = int(round(end_time / anchor_time_step_size)) + 1
+        rho = np.exp(-anchor_time_step_size / correlation_time)
         fields = [divergence_free_band_noise(self.grid, rng, target_rms)]
         for _ in range(1, count):
             innovation = divergence_free_band_noise(self.grid, rng, target_rms)
@@ -115,7 +115,7 @@ class ForcingHistory:
 
     def at(self, time: float, n: int) -> np.ndarray:
         fields = self.on_grid(n)
-        position = min(max(time / self.anchor_dt, 0.0), len(fields) - 1.0)
+        position = min(max(time / self.anchor_time_step_size, 0.0), len(fields) - 1.0)
         lower = min(int(np.floor(position)), len(fields) - 1)
         upper = min(lower + 1, len(fields) - 1)
         fraction = position - lower
@@ -132,7 +132,7 @@ class ForcingHistory:
 
     def reference_at(self, time: float, n: int, gaussian_delta: float) -> np.ndarray:
         fields = self.reference_on_grid(n, gaussian_delta)
-        position = min(max(time / self.anchor_dt, 0.0), len(fields) - 1.0)
+        position = min(max(time / self.anchor_time_step_size, 0.0), len(fields) - 1.0)
         lower = min(int(np.floor(position)), len(fields) - 1)
         upper = min(lower + 1, len(fields) - 1)
         fraction = position - lower
@@ -176,15 +176,15 @@ def forced_heun_step(
     solver: VorticitySolver,
     vorticity: np.ndarray,
     gaussian_delta: float,
-    dt: float,
+    time_step_size: float,
     acceleration_start: np.ndarray,
     acceleration_end: np.ndarray,
     model: str = "no_sgs",
 ) -> np.ndarray:
     first = forced_rhs(solver, vorticity, gaussian_delta, acceleration_start, model)
-    predictor = solver.project(vorticity + dt * first)
+    predictor = solver.project(vorticity + time_step_size * first)
     second = forced_rhs(solver, predictor, gaussian_delta, acceleration_end, model)
-    return solver.project(vorticity + 0.5 * dt * (first + second))
+    return solver.project(vorticity + 0.5 * time_step_size * (first + second))
 
 
 def state_diagnostics(
@@ -213,7 +213,7 @@ def cumulative_trapezoid(values: np.ndarray, time: np.ndarray) -> np.ndarray:
 def run_budget_case(
     n: int,
     viscosity: float,
-    dt: float,
+    time_step_size: float,
     end_time: float,
     initial_velocity: np.ndarray,
     forcing: ForcingHistory,
@@ -221,10 +221,10 @@ def run_budget_case(
     solver = VorticitySolver(n, viscosity)
     delta = 2.0 * (2.0 * np.pi / n) / np.sqrt(6.0)
     vorticity = solver.project(solver.grid.curl(initial_velocity))
-    steps = int(round(end_time / dt))
+    steps = int(round(end_time / time_step_size))
     records: list[dict[str, float]] = []
     for step in range(steps + 1):
-        time = step * dt
+        time = step * time_step_size
         acceleration = forcing.at(time, n)
         record = state_diagnostics(solver, vorticity, acceleration)
         record["time"] = time
@@ -234,9 +234,9 @@ def run_budget_case(
                 solver,
                 vorticity,
                 delta,
-                dt,
+                time_step_size,
                 acceleration,
-                forcing.at(time + dt, n),
+                forcing.at(time + time_step_size, n),
             )
     time = np.asarray([record["time"] for record in records])
     energy = np.asarray([record["energy"] for record in records])
@@ -247,7 +247,7 @@ def run_budget_case(
     scale = float(np.trapezoid(np.abs(forcing_power) + np.abs(viscous_power), time))
     residual = abs(actual_change[-1] - predicted_change[-1]) / max(scale, 1.0e-15)
     return {
-        "dt": dt,
+        "dt": time_step_size,
         "budget_relative_residual": residual,
         "records": records,
         "actual_energy_change": actual_change.tolist(),
@@ -298,7 +298,7 @@ def forcing_checks(
     component_fraction = component_energy / np.sum(component_energy)
     max_lag = min(15, len(coarse) // 3)
     empirical = autocorrelation(coarse, max_lag)
-    lag_time = np.arange(max_lag + 1) * forcing.anchor_dt
+    lag_time = np.arange(max_lag + 1) * forcing.anchor_time_step_size
     theoretical = np.exp(-lag_time / forcing.correlation_time)
     return {
         "maximum_nested_grid_pairing_error": pairing,
@@ -377,7 +377,7 @@ def plot_budget(result: dict[str, object], output: Path) -> None:
     runs = result["budget_runs"]
     finest = runs[-1]
     time = [record["time"] for record in finest["records"]]
-    dt = np.asarray([run["dt"] for run in runs])
+    time_step_size = np.asarray([run["dt"] for run in runs])
     residual = np.asarray([run["budget_relative_residual"] for run in runs])
     order = result["budget_convergence_order"]
     fig, axes = plt.subplots(1, 2, figsize=(10.8, 4.2), constrained_layout=True)
@@ -398,11 +398,20 @@ def plot_budget(result: dict[str, object], output: Path) -> None:
     axes[0].legend(frameon=False, fontsize=8)
 
     axes[1].loglog(
-        dt, residual, color=BLUE, marker="o", linewidth=1.6, label=f"Measured ($p={order:.3f}$)"
+        time_step_size,
+        residual,
+        color=BLUE,
+        marker="o",
+        linewidth=1.6,
+        label=f"Measured ($p={order:.3f}$)",
     )
-    reference = residual[0] * (dt / dt[0]) ** 2
+    reference = residual[0] * (time_step_size / time_step_size[0]) ** 2
     axes[1].loglog(
-        dt, reference, color=INK, linestyle="--", label=r"reference $\mathcal{O}(\Delta t^2)$"
+        time_step_size,
+        reference,
+        color=INK,
+        linestyle="--",
+        label=r"reference $\mathcal{O}(\Delta t^2)$",
     )
     axes[1].set_title("Energy-balance convergence")
     axes[1].set_xlabel(r"$\Delta t$")
@@ -433,7 +442,7 @@ def main() -> None:
 
     forcing = ForcingHistory(
         args.les_n,
-        args.anchor_dt,
+        args.anchor_time_step_size,
         args.end_time,
         args.correlation_time,
         args.forcing_rms,
@@ -442,21 +451,25 @@ def main() -> None:
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     checks = forcing_checks(forcing, args.reference_n, gaussian_delta)
     initial_velocity = random_isotropic_velocity(args.les_n, args.seed + 1)
-    dt_values = [args.anchor_dt, args.anchor_dt / 2.0, args.anchor_dt / 4.0]
+    time_step_size_values = [
+        args.anchor_time_step_size,
+        args.anchor_time_step_size / 2.0,
+        args.anchor_time_step_size / 4.0,
+    ]
     budget_runs = [
         run_budget_case(
             args.les_n,
             args.viscosity,
-            dt,
+            time_step_size,
             args.end_time,
             initial_velocity,
             forcing,
         )
-        for dt in dt_values
+        for time_step_size in time_step_size_values
     ]
     budget_order = float(
         np.polyfit(
-            np.log(dt_values),
+            np.log(time_step_size_values),
             np.log([run["budget_relative_residual"] for run in budget_runs]),
             1,
         )[0]
@@ -472,7 +485,7 @@ def main() -> None:
             "les_n": args.les_n,
             "reference_n": args.reference_n,
             "end_time": args.end_time,
-            "anchor_dt": args.anchor_dt,
+            "anchor_dt": args.anchor_time_step_size,
             "correlation_time": args.correlation_time,
             "forcing_rms": args.forcing_rms,
             "viscosity": args.viscosity,

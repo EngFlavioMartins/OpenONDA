@@ -260,16 +260,16 @@ def test_degenerate_coplanar_neighborhood_flagged_by_condition_number():
 
 def integrate_F(L_func, F0: np.ndarray, T: float, n_steps: int) -> np.ndarray:
     """RK4 integration of Fdot(t) = L(t) F(t)."""
-    dt = T / n_steps
+    time_step_size = T / n_steps
     F = F0.copy()
     t = 0.0
     for _ in range(n_steps):
         k1 = L_func(t) @ F
-        k2 = L_func(t + 0.5 * dt) @ (F + 0.5 * dt * k1)
-        k3 = L_func(t + 0.5 * dt) @ (F + 0.5 * dt * k2)
-        k4 = L_func(t + dt) @ (F + dt * k3)
-        F = F + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        t += dt
+        k2 = L_func(t + 0.5 * time_step_size) @ (F + 0.5 * time_step_size * k1)
+        k3 = L_func(t + 0.5 * time_step_size) @ (F + 0.5 * time_step_size * k2)
+        k4 = L_func(t + time_step_size) @ (F + time_step_size * k3)
+        F = F + (time_step_size / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        t += time_step_size
     return F
 
 
@@ -280,21 +280,21 @@ def integrate_B(L_func, B0: np.ndarray, T: float, n_steps: int) -> np.ndarray:
         L = L_func(t)
         return L @ B + B @ L.T
 
-    dt = T / n_steps
+    time_step_size = T / n_steps
     B = B0.copy()
     t = 0.0
     for _ in range(n_steps):
         k1 = rhs(t, B)
-        k2 = rhs(t + 0.5 * dt, B + 0.5 * dt * k1)
-        k3 = rhs(t + 0.5 * dt, B + 0.5 * dt * k2)
-        k4 = rhs(t + dt, B + dt * k3)
-        B = B + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        t += dt
+        k2 = rhs(t + 0.5 * time_step_size, B + 0.5 * time_step_size * k1)
+        k3 = rhs(t + 0.5 * time_step_size, B + 0.5 * time_step_size * k2)
+        k4 = rhs(t + time_step_size, B + time_step_size * k3)
+        B = B + (time_step_size / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        t += time_step_size
     return B
 
 
-def convergence_order(dts: np.ndarray, errors: np.ndarray) -> float:
-    slope, _ = np.polyfit(np.log(dts), np.log(np.maximum(errors, 1e-300)), 1)
+def convergence_order(time_step_sizes: np.ndarray, errors: np.ndarray) -> float:
+    slope, _ = np.polyfit(np.log(time_step_sizes), np.log(np.maximum(errors, 1e-300)), 1)
     return slope
 
 
@@ -305,12 +305,14 @@ def test_constant_incompressible_extension_matches_matrix_exponential_and_conver
     F_exact = expm(L * T)
 
     step_counts = np.array([5, 10, 20, 40, 80])
-    dts = T / step_counts
+    time_step_sizes = T / step_counts
     errors = np.array(
         [np.linalg.norm(integrate_F(lambda t: L, np.eye(3), T, n) - F_exact) for n in step_counts]
     )
     assert errors[-1] < 1e-6
-    order = convergence_order(dts[:-1], errors[:-1])  # last point near float noise floor
+    order = convergence_order(
+        time_step_sizes[:-1], errors[:-1]
+    )  # last point near float noise floor
     assert order > 3.5, f"expected ~4th order RK4 convergence, measured {order:.2f}"
 
     B_num = integrate_B(lambda t: L, np.eye(3), T, 40)
@@ -334,10 +336,10 @@ def test_rigid_rotation_no_false_anisotropy_over_many_periods():
     n_steps = 4000  # ~400 steps/period
 
     F = np.eye(3)
-    dt = T / n_steps
+    time_step_size = T / n_steps
     checkpoints = []
     for step in range(n_steps):
-        F = integrate_F(lambda tt: L, F, dt, 1)
+        F = integrate_F(lambda tt: L, F, time_step_size, 1)
         if step % (n_steps // (4 * n_periods)) == 0:
             B = F @ F.T
             eigvals = np.linalg.eigvalsh(B)
@@ -346,7 +348,7 @@ def test_rigid_rotation_no_false_anisotropy_over_many_periods():
     checkpoints = np.array(checkpoints)
     assert np.all(checkpoints < 1.001), (
         f"pure rotation spuriously created anisotropy up to {checkpoints.max():.6f} "
-        f"after {n_periods} periods at dt={dt:.4g}"
+        f"after {n_periods} periods at dt={time_step_size:.4g}"
     )
 
 
@@ -387,12 +389,12 @@ def test_rotating_principal_strain_matches_analytic_F():
         return omega * Sz + Rt @ Lambda @ Rt.T
 
     step_counts = np.array([10, 20, 40, 80, 160])
-    dts = T / step_counts
+    time_step_sizes = T / step_counts
     errors = np.array(
         [np.linalg.norm(integrate_F(L, np.eye(3), T, n) - F_exact(T)) for n in step_counts]
     )
     assert errors[-1] < 1e-6
-    order = convergence_order(dts[:-1], errors[:-1])
+    order = convergence_order(time_step_sizes[:-1], errors[:-1])
     assert order > 3.0, (
         f"expected ~4th order convergence for time-dependent L, measured {order:.2f}"
     )

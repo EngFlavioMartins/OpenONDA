@@ -23,9 +23,9 @@ from .config.types import (
     ViscousConfig,
     VPMSetup,
 )
-from .core.solver import Solver
+from .core.solver import VPMSolver
 from .diagnostics import RingDiagnosticsSampler
-from .factory import setup_vpm_solver
+from .factory import create_vpm_solver
 from .particles.distribution import ParticleDistributor
 from .stabilization import (
     DivergenceRelaxationError,
@@ -35,9 +35,9 @@ from .stabilization import (
 )
 
 __all__ = [
-    "Solver",
+    "VPMSolver",
     "VPMSetup",
-    "setup_vpm_solver",
+    "create_vpm_solver",
     "AdvectionConfig",
     "StretchingConfig",
     "TurbulenceConfig",

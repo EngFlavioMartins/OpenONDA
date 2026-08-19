@@ -73,7 +73,7 @@ def _solve_stations(vlm: VLMSolver, V_rel: np.ndarray):
     """Standalone steady solve; return (station_y, spanwise circulation)."""
     vlm.generate_mesh()
     n = vlm.lattice.num_panels
-    gamma = vlm.solve(V_external=np.tile(V_rel, (n, 1)), dt=None, coupled=False)
+    gamma = vlm.solve(V_external=np.tile(V_rel, (n, 1)), time_step_size=None, coupled=False)
     vortex = vlm.lattice.vortex_points.to_numpy()[:n]
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
     grouped = {}

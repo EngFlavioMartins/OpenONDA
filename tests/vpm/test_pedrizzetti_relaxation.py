@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StabilizationConfig,
@@ -13,8 +13,8 @@ from source.solvers.VPM.config.types import (
 )
 
 
-def _relaxation_solver(tmp_path, stabilization: StabilizationConfig) -> Solver:
-    solver = Solver(
+def _relaxation_solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolver:
+    solver = VPMSolver(
         setup=VPMSetup(
             processing_unit="CPU",
             precision="f64",
@@ -112,10 +112,10 @@ def test_step_applies_the_schedule_and_rotates_without_changing_strength(tmp_pat
         StabilizationConfig.pedrizzetti_relaxation(factor=0.5, frequency=2, start_step=2),
     )
 
-    solver.update_state()
+    solver.advance()
     assert solver.stabilization.events == 0
 
-    solver.update_state()
+    solver.advance()
     assert solver.stabilization.events == 1
     assert solver.stabilization.last_mechanism == "Pedrizzetti relaxation"
     # A pure rotation neither creates strength nor amplifies peak vorticity.
@@ -127,7 +127,7 @@ def test_step_applies_the_schedule_and_rotates_without_changing_strength(tmp_pat
         rtol=1.0e-12,
     )
 
-    solver.update_state()
+    solver.advance()
     assert solver.stabilization.events == 1
 
 

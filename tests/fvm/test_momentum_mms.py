@@ -102,7 +102,7 @@ def _solve_momentum_operator(mesh, geo, nu, scheme):
         geo,
         mesh["boundary"],
         convection_scheme=scheme,
-        dt=None,
+        time_step_size=None,
         source_explicit=S,
     )
 

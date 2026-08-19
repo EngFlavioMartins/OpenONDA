@@ -80,7 +80,7 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
     n_elem = mesh["n_elements"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
     cc = geo["element_centroids"]
-    dt = T / n_steps
+    time_step_size = T / n_steps
 
     # Frozen advecting flux from the constant velocity a.
     a_field = np.tile(a, (n_elem + n_bnd, 1)).astype(np.float64)
@@ -94,7 +94,7 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
     U_old_old = None
     t = 0.0
     for _ in range(n_steps):
-        t_new = t + dt
+        t_new = t + time_step_size
         U_old = U.copy()
         _set_ghosts(U, mesh, geo, t_new)  # Dirichlet at the new time level
         S = _source(cc[:, 0], cc[:, 1], t_new, a, nu)
@@ -119,7 +119,7 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
                 geo,
                 mesh["boundary"],
                 convection_scheme="central",
-                dt=dt,
+                time_step_size=time_step_size,
                 U_old=U_old,
                 U_old_old=U_old_old,
                 ddt_scheme=ddt_scheme,

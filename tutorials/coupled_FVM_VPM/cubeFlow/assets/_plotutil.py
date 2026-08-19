@@ -56,7 +56,7 @@ SOURCES = {
 # Hybrid line and surface diagnostics use a coarser cadence than the dense
 # reference history. PLOT_DT is their default comparison cadence;
 # common_times() still derives exact intersections from the files themselves.
-PLOT_DT = 0.60
+PLOT_TIME_STEP_SIZE = 0.60
 TIME_TOL = 1e-3
 
 
@@ -298,7 +298,7 @@ def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
     return np.asarray(matched)
 
 
-def comparison_times(dt: float = PLOT_DT) -> np.ndarray:
+def comparison_times(time_step_size: float = PLOT_TIME_STEP_SIZE) -> np.ndarray:
     """Canonical ``dt``-spaced grid that drives every per-frame figure.
 
     Built from the union of every source's native sample times rather than
@@ -320,5 +320,5 @@ def comparison_times(dt: float = PLOT_DT) -> np.ndarray:
     if not available:
         return np.empty(0)
     t_max = max(t.max() for t in available)
-    n_steps = int(round(t_max / dt))
-    return np.arange(1, n_steps + 1) * dt
+    n_steps = int(round(t_max / time_step_size))
+    return np.arange(1, n_steps + 1) * time_step_size

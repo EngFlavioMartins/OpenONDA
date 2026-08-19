@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
@@ -16,8 +16,8 @@ from source.solvers.VPM.config.types import (
 from source.solvers.VPM.io.backup import BackupSystem
 
 
-def _solver(tmp_path, *, refinement: bool) -> Solver:
-    return Solver(
+def _solver(tmp_path, *, refinement: bool) -> VPMSolver:
+    return VPMSolver(
         VPMSetup(
             processing_unit="CPU",
             stretching=StretchingConfig.disabled(),
@@ -38,7 +38,7 @@ def _solver(tmp_path, *, refinement: bool) -> Solver:
     )
 
 
-def _add_cloud(solver: Solver, count: int) -> None:
+def _add_cloud(solver: VPMSolver, count: int) -> None:
     coordinate = np.arange(count, dtype=np.float32)
     solver.add_vortex_particles(
         position=np.column_stack((0.1 * coordinate, np.zeros(count), np.zeros(count))).astype(
@@ -112,7 +112,7 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
     reset_taichi_backend()
     try:
         spacing = 0.1
-        solver = Solver(
+        solver = VPMSolver(
             VPMSetup(
                 processing_unit="CPU",
                 stretching=StretchingConfig.disabled(),
@@ -185,7 +185,7 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
         old_ratio = np.linalg.norm(old_circulation, axis=1) / (
             solver.stabilization.reference_strengths
         )
-        solver.time_step = 1
+        solver.step = 1
 
         solver.stabilization.apply_divergence_relaxation()
 
@@ -262,7 +262,7 @@ def test_solver_uploads_refinement_without_reporting_particle_deletion(tmp_path)
         _add_cloud(solver, 4)
         solver.stabilization.capture_reference_state()
         solver.stabilization.reference_strengths /= 2.1
-        solver.time_step = 1
+        solver.step = 1
 
         solver.stabilization.apply_filament_refinement()
 

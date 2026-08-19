@@ -128,7 +128,7 @@ def test_mixed_boundary_activates_component_momentum_diagonals():
         convection_scheme="upwind",
         solver="spsolve",
         under_relaxation=1.0,
-        dt=0.2,
+        time_step_size=0.2,
         U_old=velocity,
     )
 

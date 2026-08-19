@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
@@ -34,7 +34,7 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig as FVMTurbulenceConfig,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 from openonda.fvm import SamplingSchedule
 
@@ -73,13 +73,13 @@ VPM_BC_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
-DT_FVM = 0.01
+FVM_TIME_STEP_SIZE = 0.01
 FORCE_INTERVAL = 0.05
 DIAGNOSTIC_INTERVAL = 0.60
 CHECKPOINT_INTERVAL = 1.0
 FVM_VOLUME_INTERVAL = 1.0
 VPM_LOG_PERIOD = 20
-DT_VPM = 0.03
+VPM_TIME_STEP_SIZE = 0.03
 T_END = 20
 COUPLER_BACKUP_PERIOD = 20
 SAMPLE_SPACING = SURFACE_CELL_SIZE * 2
@@ -151,7 +151,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT_FVM,
+        time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
@@ -277,7 +277,7 @@ def make_vpm_setup():
         coupling_scope="vpm_bc",
     )
     return VPMSetup(
-        time_step_size=DT_VPM,
+        time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
@@ -306,7 +306,7 @@ def make_vpm_setup():
         log_mode="file",
         logging_frequency=VPM_LOG_PERIOD,
         timing_frequency=VPM_LOG_PERIOD,
-        backup_frequency=int(CHECKPOINT_INTERVAL / DT_VPM),
+        backup_frequency=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
         backup_directory=str(CASE_DIR / "solution"),
         export_flow_integrals=False,
         samplers=samplers,
@@ -316,17 +316,17 @@ def make_vpm_setup():
 
 
 def main() -> None:
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    fvm_solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
 
     is_master = FVMVPMCoupler.is_master_rank()
     vpm_solver = None
     if is_master:
-        from openonda.vpm import setup_vpm_solver
+        from openonda.vpm import create_vpm_solver
 
-        vpm_solver = setup_vpm_solver(make_vpm_setup())
+        vpm_solver = create_vpm_solver(make_vpm_setup())
 
-    coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
+    coupled_solver = create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
 
     coupled_solver.run()
     if is_master:

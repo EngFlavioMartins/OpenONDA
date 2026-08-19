@@ -111,8 +111,8 @@ def write_run_metadata(coupler) -> None:
             "freestream_velocity": coupler.config.freestream_velocity,
             "nu": coupler.nu,
             "rho": coupler.rho,
-            "dt": coupler.dt_fvm,
-            "t_end": coupler.t_end,
+            "dt": coupler.fvm_time_step_size,
+            "t_end": coupler.end_time,
             "coupler_backup_period": coupler.config.coupler_backup_period,
         },
         "fvm_solver": {
@@ -126,9 +126,9 @@ def write_run_metadata(coupler) -> None:
             "overlap_zone_dead_zone_width": coupler.config.overlap_zone_dead_zone_width,
         },
         **coupler.config.to_dict(),
-        "dt_fvm": coupler.dt_fvm,
-        "dt_vpm": coupler.dt_vpm,
-        "n_fvm_substeps": coupler.n_fvm_substeps,
+        "dt_fvm": coupler.fvm_time_step_size,
+        "dt_vpm": coupler.vpm_time_step_size,
+        "n_fvm_substeps": coupler.fvm_substeps,
     }
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
@@ -259,7 +259,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "interface_normal_velocity": interface,
         "vortex_line_closure": closure,
         "pressure_datum_shift": float(pressure_shift),
-        "n_fvm_substeps": int(coupler.n_fvm_substeps),
+        "n_fvm_substeps": int(coupler.fvm_substeps),
         "transfer_particle_count": int(particle_count),
     }
 

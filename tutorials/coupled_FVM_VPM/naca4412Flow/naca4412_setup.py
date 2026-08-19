@@ -23,7 +23,7 @@ import sys
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 from openonda.fvm import (
     BoundaryConfig,
     ExecutionConfig,
@@ -41,7 +41,7 @@ from openonda.fvm import (
     TransportConfig,
     TurbulenceConfig as FVMTurbulenceConfig,
     coupling_box_mesh,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 from openonda.vpm import (
     AdvectionConfig,
@@ -53,7 +53,7 @@ from openonda.vpm import (
     VelocityConfig,
     ViscousConfig,
     VPMSetup,
-    setup_vpm_solver,
+    create_vpm_solver,
 )
 
 CASE_DIR = Path(__file__).resolve().parent
@@ -66,8 +66,8 @@ SPAN = 5.0
 RHO = 1.0
 REYNOLDS = 1000.0
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
-DT_FVM = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
-DT_VPM = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
+FVM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
+VPM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
 T_END = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
 ANGLE = math.radians(ALPHA_DEG)
 FREESTREAM_VELOCITY = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
@@ -77,10 +77,10 @@ VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = float(os.environ.get("OPENONDA_IBM_MARKER_RATIO", "2.5"))
-WRITE_INTERVAL = DT_VPM if SMOKE else 0.8
+WRITE_INTERVAL = VPM_TIME_STEP_SIZE if SMOKE else 0.8
 SAMPLE_INTERVAL = min(WRITE_INTERVAL, T_END)
-FVM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / DT_FVM)))
-VPM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / DT_VPM)))
+FVM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / FVM_TIME_STEP_SIZE)))
+VPM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / VPM_TIME_STEP_SIZE)))
 
 
 def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
@@ -177,7 +177,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT_FVM,
+        time_step_size=FVM_TIME_STEP_SIZE,
         end_time=T_END,
         write_interval=10**9,
         write_interval_time=WRITE_INTERVAL,
@@ -218,7 +218,7 @@ FVM_SETUP = FVMSetup(
 )
 
 VPM_SETUP = VPMSetup(
-    time_step_size=DT_VPM,
+    time_step_size=VPM_TIME_STEP_SIZE,
     freestream_velocity=list(FREESTREAM_VELOCITY),
     viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
@@ -303,13 +303,15 @@ def _run_with_overrides(argv: list[str]) -> int:
 
 def main() -> None:
     print("\n===== SIMULATION =====")
-    print(f"  FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, spacing={SPACING}, particles<={MAX_PARTICLES}")
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    print(
+        f"  FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, spacing={SPACING}, particles<={MAX_PARTICLES}"
+    )
+    fvm_solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(AIRFOIL, particle_spacing=SPACING)
     fvm_solver.write_vtk()
 
-    vpm_solver = setup_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
-    coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
+    vpm_solver = create_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
+    coupled_solver = create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
     coupled_solver.run()
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

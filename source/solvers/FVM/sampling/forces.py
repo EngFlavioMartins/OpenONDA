@@ -169,9 +169,9 @@ class ForceSampler(Sampler):
             C = fdata.get("coeffs", {})
             rows.append(
                 [
-                    context.flow_time,
-                    context.time_step,
-                    context._current_dt,
+                    context.time,
+                    context.step,
+                    context._current_time_step_size,
                     pname,
                     Fp[0],
                     Fp[1],
@@ -251,7 +251,7 @@ class YPlusSampler(Sampler):
             return
         header = ["time", "step", "patch", "min", "max", "avg"]
         rows = [
-            [context.flow_time, context.time_step, name, v["min"], v["max"], v["avg"]]
+            [context.time, context.step, name, v["min"], v["max"], v["avg"]]
             for name, v in sorted(stats.items())
         ]
         append_csv_rows(f"{samples_dir}/{self.file_name}.csv", header, rows)
@@ -308,7 +308,7 @@ class IBMForceSampler(Sampler):
         if ibm is None:
             raise RuntimeError(
                 "IBMForceSampler requires a solver with immersed bodies; "
-                "call Solver.set_immersed_bodies(...) first"
+                "call FVMSolver.set_immersed_bodies(...) first"
             )
         return {
             "forces": ibm.body_forces(rho=context.config.transport.density),
@@ -329,9 +329,9 @@ class IBMForceSampler(Sampler):
         for name, F in data["forces"].items():
             rows.append(
                 [
-                    context.flow_time,
-                    context.time_step,
-                    context._current_dt,
+                    context.time,
+                    context.step,
+                    context._current_time_step_size,
                     name,
                     F[0],
                     F[1],

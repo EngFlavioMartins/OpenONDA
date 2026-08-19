@@ -1,7 +1,7 @@
 """
 Viscous diffusion single-step tests.
 
-Each test runs exactly ONE update_state() call with only the viscous scheme
+Each test runs exactly ONE advance() call with only the viscous scheme
 active.  This isolates the diffusion operator and verifies conservation,
 growth laws, and exchange symmetry.
 """
@@ -60,7 +60,7 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     C = 4 (Gaussian), 4 (HOG), 2 (Super-Gaussian), 4 (Winckelmans).
     """
     nu = 0.01
-    dt = 0.01
+    time_step_size = 0.01
     C = {
         "GAUSSIAN": 4.0,
         "HIGH_ORDER_GAUSSIAN": 4.0,
@@ -77,9 +77,9 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
         volume=np.array([_VOLUME]),
         viscosity=np.array([nu]),
     )
-    solver.update_state()
+    solver.advance()
     sigma_new = float(solver.particles_radii[0])
-    expected_sq = _SIGMA**2 + C * nu * dt
+    expected_sq = _SIGMA**2 + C * nu * time_step_size
     rel_err = abs(sigma_new**2 - expected_sq) / expected_sq
     assert rel_err < 1e-4, (
         f"{kernel_name}/{backend}: CS radius growth wrong: σ²={sigma_new**2:.6e}, expected {expected_sq:.6e}"
@@ -104,7 +104,7 @@ def test_cs_one_step_circulation_unchanged(kernel_name, backend, solver_for_back
         viscosity=np.full(5, 0.01),
     )
     gamma_before = solver.particles_circulation.copy()
-    solver.update_state()
+    solver.advance()
     gamma_after = solver.particles_circulation.copy()
     np.testing.assert_allclose(gamma_after, gamma_before, atol=1e-10, rtol=1e-6)
 
@@ -122,7 +122,7 @@ def _rwm_displacements(make_solver, kernel_name, nu, n_samples):
         volume=np.full(n_samples, _VOLUME),
         viscosity=np.full(n_samples, nu),
     )
-    solver.update_state()
+    solver.advance()
     return solver.particles_positions.copy()
 
 
@@ -152,11 +152,11 @@ def test_rwm_one_step_variance(kernel_name, backend, solver_for_backend):
         pytest.skip("RWM ensemble test: random sequences differ across GPU backends")
 
     nu = 0.1
-    dt = 0.01
+    time_step_size = 0.01
     n_ensemble = 2_000
     displacements = _rwm_displacements(solver_for_backend, kernel_name, nu, n_ensemble)
     var = np.var(displacements, axis=0)
-    expected = 2.0 * nu * dt
+    expected = 2.0 * nu * time_step_size
     for i, label in enumerate(["x", "y", "z"]):
         rel_err = abs(var[i] - expected) / expected
         assert rel_err < 0.15, (
@@ -179,7 +179,7 @@ def test_rwm_circulation_unchanged(kernel_name, backend, solver_for_backend):
         viscosity=np.array([0.1]),
     )
     gamma_before = solver.particles_circulation.copy()
-    solver.update_state()
+    solver.advance()
     gamma_after = solver.particles_circulation.copy()
     np.testing.assert_allclose(gamma_after, gamma_before, atol=1e-10)
 
@@ -213,7 +213,7 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
         viscosity=np.full(8, 0.01),
     )
     gamma_sum_before = solver.particles_circulation.sum(axis=0)
-    solver.update_state()
+    solver.advance()
     gamma_sum_after = solver.particles_circulation.sum(axis=0)
     rel_err = np.linalg.norm(gamma_sum_after - gamma_sum_before) / (
         np.linalg.norm(gamma_sum_before) + 1e-12
@@ -230,12 +230,12 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
     """GBD at CFL limit must not crash and must conserve circulation."""
     h = 2.0 * _SIGMA
     nu = 0.01
-    dt = h**2 / (6.0 * nu)  # explicit Laplacian CFL
+    time_step_size = h**2 / (6.0 * nu)  # explicit Laplacian CFL
     solver = _viscous_solver(
         solver_for_backend,
         "GBD",
         kernel=kernel_name,
-        time_step_size=dt,
+        time_step_size=time_step_size,
         vpm_domain_bounds=_GRID_DIFFUSION_BOUNDS,
         gbd_grid_spacing=h,
         gbd_threshold=1e-8,
@@ -252,7 +252,7 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
         viscosity=np.full(8, nu),
     )
     gamma_sum_before = solver.particles_circulation.sum(axis=0)
-    solver.update_state()
+    solver.advance()
     gamma_sum_after = solver.particles_circulation.sum(axis=0)
     rel_err = np.linalg.norm(gamma_sum_after - gamma_sum_before) / (
         np.linalg.norm(gamma_sum_before) + 1e-12
@@ -280,7 +280,7 @@ def test_cross_backend_viscous_consistency(scheme, backend, solver_for_backend):
         volume=np.full(2, _VOLUME),
         viscosity=np.full(2, 0.01),
     )
-    solver.update_state()
+    solver.advance()
     gamma_after = solver.particles_circulation.copy()
 
     key = f"{scheme}_gamma"

@@ -26,10 +26,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -46,7 +46,7 @@ def _tgv_U(x, y, t, nu):
     )
 
 
-def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
+def _run(N, scheme, nu=0.1, time_step_size=0.005, nsteps=10):
     """Return (relative L2 velocity error at T, KE(T), analytic KE(T), KE(0))."""
     mesh = structured_box(N, N, 1, lx=TWO_PI, ly=TWO_PI, lz=TWO_PI / N)
     sp_schemes = SchemesConfig(convection_scheme=scheme, time_scheme="backward")
@@ -61,7 +61,9 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
     bnds += [BoundaryConfig.empty("zmin"), BoundaryConfig.empty("zmax")]
     cfg = FVMSetup(
         case_name="tgv",
-        time=TimeConfig(delta_t=dt, end_time=dt * nsteps, write_interval=10**9),
+        time=TimeConfig(
+            time_step_size=time_step_size, end_time=time_step_size * nsteps, write_interval=10**9
+        ),
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
@@ -70,7 +72,7 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
         initial_velocity=[0, 0, 0],
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
-        s = Solver(cfg, case_dir=d, mesh_data=mesh)
+        s = FVMSolver(cfg, case_dir=d, mesh_data=mesh)
         s.auto_write = False
         ne = mesh["n_elements"]
         cc, vol = (
@@ -83,8 +85,8 @@ def _run(N, scheme, nu=0.1, dt=0.005, nsteps=10):
 
         t = 0.0
         for _ in range(nsteps):
-            t += dt
-            s.solve_pimple(dt)
+            t += time_step_size
+            s.solve_pimple(time_step_size)
             s.advance_time()
 
         Uex = _tgv_U(cc[:, 0], cc[:, 1], t, nu)

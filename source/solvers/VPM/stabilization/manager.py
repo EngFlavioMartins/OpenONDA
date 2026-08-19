@@ -262,7 +262,7 @@ class StabilizationManager:
         return tuple(active)
 
     def _due(self, frequency: int, start_step: int) -> bool:
-        step = self.ctx.time_step()
+        step = self.ctx.step()
         return frequency > 0 and step >= start_step and (step - start_step) % frequency == 0
 
     # -- lifecycle phases -------------------------------------------------------
@@ -366,7 +366,7 @@ class StabilizationManager:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
         ctx = self.ctx
         cfg = self.config.filament_refinement
-        if not cfg.enabled or ctx.time_step() % cfg.frequency != 0:
+        if not cfg.enabled or ctx.step() % cfg.frequency != 0:
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments

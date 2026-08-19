@@ -38,7 +38,7 @@ from math import erf, exp, pi, sqrt
 
 import numpy as np
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Analytical Gaussian kernel helpers ───────────────────────────────────────
@@ -83,7 +83,7 @@ def _single_particle_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),

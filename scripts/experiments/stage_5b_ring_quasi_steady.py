@@ -27,7 +27,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from source.solvers.VPM import Solver  # noqa: E402
+from source.solvers.VPM import VPMSolver  # noqa: E402
 from source.solvers.VPM.io import BackupSystem  # noqa: E402
 
 RING_RADIUS = 1.0
@@ -248,7 +248,7 @@ def manufactured_controls(grid_size: int) -> dict[str, dict[str, float]]:
 
 
 def sample_solver(
-    solver: Solver,
+    solver: VPMSolver,
     grid_size: int,
     *,
     axial_center: float,
@@ -432,7 +432,7 @@ def plot_results(
 
 def main() -> None:
     controls = manufactured_controls(GRID_SIZES[-1])
-    solver = Solver.continue_from_backup(str(FINAL_BACKUP))
+    solver = VPMSolver.continue_from_backup(str(FINAL_BACKUP))
     if solver is None:
         raise RuntimeError(f"could not restore {FINAL_BACKUP}")
 

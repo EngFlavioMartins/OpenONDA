@@ -91,7 +91,7 @@ def test_empty_system_zero_integrals(kernel_name, backend, solver_for_backend):
         advection=AdvectionConfig(scheme="NONE"),
         velocity=VelocityConfig.direct(),
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
     assert solver.total_kinetic_energy == 0.0
     assert solver.total_enstrophy == 0.0
@@ -121,7 +121,7 @@ def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_bac
     )
 
     integrals = solver.field_diagnostics.compute_flow_integrals(
-        solver.particles, solver.flow_time, record_history=False
+        solver.particles, solver.time, record_history=False
     )
     # Gaussian second moment m2 = 3/2 (verified against 3-D quadrature of
     # int x*(x*omega) dV; it was 3.0 here and in the kernel, twice too large).
@@ -153,9 +153,9 @@ def test_strength_linear_scaling(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 2.0],
         gamma2=[0.0, 0.0, 2.0],
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
-    solver2.update_state()
+    solver2.advance()
     solver2._update_all_flow_integrals()
     assert np.allclose(solver2.total_strength, 2.0 * solver1.total_strength), (
         f"{kernel_name}/{backend}: strength not linear in Γ"
@@ -185,9 +185,9 @@ def test_kinetic_energy_quadratic_scaling(kernel_name, backend, solver_for_backe
         gamma1=[0.0, 0.0, 2.0],
         gamma2=[0.0, 0.0, 2.0],
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
-    solver2.update_state()
+    solver2.advance()
     solver2._update_all_flow_integrals()
     ratio = solver2.total_kinetic_energy / (solver1.total_kinetic_energy + 1e-15)
     assert abs(ratio - 4.0) < 0.02, (
@@ -216,9 +216,9 @@ def test_linear_impulse_linear_scaling(kernel_name, backend, solver_for_backend)
         gamma1=[0.0, 0.0, 2.0],
         gamma2=[0.0, 0.0, 2.0],
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
-    solver2.update_state()
+    solver2.advance()
     solver2._update_all_flow_integrals()
     assert np.allclose(solver2.total_linear_impulse, 2.0 * solver1.total_linear_impulse), (
         f"{kernel_name}/{backend}: linear impulse not linear in Γ"
@@ -258,9 +258,9 @@ def test_translation_invariance_energy_enstrophy(kernel_name, backend, solver_fo
         volume=np.full(2, _VOLUME),
         viscosity=np.zeros(2),
     )
-    solver1.update_state()
+    solver1.advance()
     solver1._update_all_flow_integrals()
-    solver2.update_state()
+    solver2.advance()
     solver2._update_all_flow_integrals()
     assert (
         abs(solver1.total_kinetic_energy - solver2.total_kinetic_energy)
@@ -291,7 +291,7 @@ def test_cross_backend_consistency_flow_integrals(kernel_name, backend, solver_f
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, -1.0],
     )
-    solver.update_state()
+    solver.advance()
     solver._update_all_flow_integrals()
 
     key = kernel_name

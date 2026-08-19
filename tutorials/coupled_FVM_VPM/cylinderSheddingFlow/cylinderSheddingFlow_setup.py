@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 from openonda.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
@@ -50,7 +50,7 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig as FVMTurbulenceConfig,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 from seed_perturbation import build_seed_velocity
 
@@ -117,7 +117,7 @@ WAKE_BOX = (-0.75, 3.0, -1.25, 1.25, -5.5, 5.5)
 
 # FVM time integration / discretisation (cubeFlow numerics, laminar).
 # Backward 2nd-order; CFL ~ 0.32 in the body region, 0.16 wake, 0.08 far field.
-DT_FVM = 0.02
+FVM_TIME_STEP_SIZE = 0.02
 PIMPLE_N_CORRECTORS = 2
 PIMPLE_N_OUTER_CORRECTORS = 1
 PIMPLE_N_ORTHOGONAL_CORRECTORS = 0
@@ -143,7 +143,7 @@ VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -8.0, 8.0)
 # Coarsened with the FVM wake (8 cells/D) to keep particle memory bounded.
 VPM_PARTICLE_SPACING = 0.25 if SMOKE else 0.125
 VPM_CORE_RADIUS_RATIO = 1.0
-DT_VPM = 0.10
+VPM_TIME_STEP_SIZE = 0.10
 VPM_SCHEME = "RK2"
 PARTICLE_LIMIT = 200_000 if SMOKE else 1_000_000
 
@@ -263,7 +263,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT_FVM,
+        time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
@@ -398,7 +398,7 @@ def make_vpm_setup():
     # surface.  Omitting it keeps the VPM-BC at the FVM boundary equal to
     # freestream + wake-particle induction, matching the reference far-field.
     return VPMSetup(
-        time_step_size=DT_VPM,
+        time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
@@ -424,7 +424,7 @@ def make_vpm_setup():
         log_mode="file",
         logging_frequency=VPM_LOG_PERIOD,
         timing_frequency=VPM_LOG_PERIOD,
-        backup_frequency=int(CHECKPOINT_INTERVAL / DT_VPM),
+        backup_frequency=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
         backup_directory=str(CASE_DIR / "solution"),
         export_flow_integrals=False,
         samplers=samplers,
@@ -435,11 +435,11 @@ def main() -> None:
     print("\n===== SIMULATION (hybrid) =====")
     print(
         f"  Re={REYNOLDS}, infinite cylinder D={DIAMETER}, "
-        f"FVM dt={DT_FVM}s / VPM dt={DT_VPM}s, "
+        f"FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, "
         f"body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
         f"particles<={PARTICLE_LIMIT}, seed={SEED_AMPLITUDE:g}"
     )
-    fvm_solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    fvm_solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(CYLINDER, h=FVM_BODY_CELL_SIZE)
     if SEED_AMPLITUDE > 0.0:
         _apply_seed(fvm_solver)
@@ -448,16 +448,16 @@ def main() -> None:
     is_master = FVMVPMCoupler.is_master_rank()
     vpm_solver = None
     if is_master:
-        from openonda.vpm import setup_vpm_solver
+        from openonda.vpm import create_vpm_solver
 
-        vpm_solver = setup_vpm_solver(make_vpm_setup())
+        vpm_solver = create_vpm_solver(make_vpm_setup())
 
-    coupled_solver = setup_coupler(vpm_solver, fvm_solver, COUPLER_SETUP)
+    coupled_solver = create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
     max_steps = int(os.environ.get("OPENONDA_MAX_STEPS", "0"))
     if max_steps > 0:
         # The coupler derives its horizon from the FVM config's end_time during
         # initialize(), so cap that (the coupling step count follows).
-        capped_t = min(T_END, max_steps * DT_VPM)
+        capped_t = min(T_END, max_steps * VPM_TIME_STEP_SIZE)
         FVM_SETUP.time.end_time = float(capped_t)
         print(f"  [probe] capping run to {max_steps} VPM steps (t={capped_t:g})")
     coupled_solver.run()

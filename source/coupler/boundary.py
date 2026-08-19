@@ -237,7 +237,7 @@ def evaluate_vpm_boundary(
             assert coupler.vpm is not None
             assert coupler.rho is not None
             assert coupler.nu is not None
-            assert coupler.dt_vpm is not None
+            assert coupler.vpm_time_step_size is not None
             pressure_result, pressure_velocity = coupler.vpm.compute_target_pressure_gradients(
                 face_centers,
                 density=coupler.rho,
@@ -249,7 +249,7 @@ def evaluate_vpm_boundary(
                 particle_spacing=coupler.config.vpm_particle_spacing,
                 temporal_method="eulerian",
                 velocity_previous=coupler._pressure_velocity_snapshot,
-                dt=coupler.dt_vpm,
+                time_step_size=coupler.vpm_time_step_size,
                 return_velocity=True,
                 treecode_theta=0.3,
             )
@@ -491,10 +491,10 @@ def apply_fvm_boundary(
         coupler.fvm.set_dirichlet_velocity_boundary_condition_vec(u_target, patch)
         boundary_description = "Dirichlet U / fixedFluxPressure"
 
-    step_dt = coupler.fvm.dt
+    step_time_step_size = coupler.fvm.time_step_size
     step_t0 = time.perf_counter()
     coupler.fvm.logger.step_begin(
-        coupler.fvm.time_step + 1, coupler.fvm.flow_time + step_dt, step_dt
+        coupler.fvm.step + 1, coupler.fvm.time + step_time_step_size, step_time_step_size
     )
 
     coupler.fvm.solve_pimple()
@@ -539,16 +539,16 @@ def advance_fvm_substeps(
     tangential_gradient_next: np.ndarray | None = None,
 ) -> None:
     """Advance FVM substeps with interpolated VPM boundary condition data."""
-    n_substeps = coupler.n_fvm_substeps
+    n_substeps = coupler.fvm_substeps
     freestream_velocity_mag = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
     if n_substeps > 1 and u_next.shape[0] > 0:
         dU = float(np.max(np.linalg.norm(u_next - u_prev, axis=1))) / freestream_velocity_mag
         big = dU > 0.5
         logger.log(
             logging.WARNING if big else logging.INFO,
-            "     [Sub-cycle] %d×dt_fvm=%.3e s  VPM-BC Δ max|Δu|/U∞=%.3f%s",
+            "     [Sub-cycle] %d×fvm_dt=%.3e s  VPM-BC Δ max|Δu|/U∞=%.3f%s",
             n_substeps,
-            coupler.dt_fvm,
+            coupler.fvm_time_step_size,
             dU,
             "  (large — lower the time step)" if big else "",
         )

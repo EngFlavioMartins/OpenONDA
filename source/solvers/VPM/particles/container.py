@@ -108,7 +108,7 @@ class Particles:
         self.float_dtype = float_dtype or "f32"
         self._taichi_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
         self.number_of_particles = 0
-        self.time_step = 0  # For cache invalidation
+        self.step = 0  # For cache invalidation
         self._cached_step = -1  # Track when cache was last updated
         # Monotone source-state version for consumers that cache spatial
         # acceleration structures.  Velocity/diagnostic writes do not affect
@@ -1139,13 +1139,13 @@ class Particles:
         # with self._taichi_dtype, so feeding them self._np_float_dtype arrays
         # keeps the transfer exact (no f32←f64 / f64←f32 precision warnings)
         # and makes a precision='f64' VPM run end-to-end double-precision.
-        dt = self._np_float_dtype
-        position = np.ascontiguousarray(position, dtype=dt)
-        velocity = np.ascontiguousarray(velocity, dtype=dt)
-        circulation = np.ascontiguousarray(circulation, dtype=dt)
-        radius = np.ascontiguousarray(radius, dtype=dt)
-        volume = np.ascontiguousarray(volume, dtype=dt)
-        viscosity = np.ascontiguousarray(viscosity, dtype=dt)
+        time_step_size = self._np_float_dtype
+        position = np.ascontiguousarray(position, dtype=time_step_size)
+        velocity = np.ascontiguousarray(velocity, dtype=time_step_size)
+        circulation = np.ascontiguousarray(circulation, dtype=time_step_size)
+        radius = np.ascontiguousarray(radius, dtype=time_step_size)
+        volume = np.ascontiguousarray(volume, dtype=time_step_size)
+        viscosity = np.ascontiguousarray(viscosity, dtype=time_step_size)
 
         N = position.shape[0]
         if position.shape[1] != 3 or velocity.shape[1] != 3 or circulation.shape[1] != 3:
@@ -1155,9 +1155,9 @@ class Particles:
 
         # Ensure all arrays are contiguous and have the correct shape
         if viscosity_turbulent is None:
-            viscosity_turbulent = np.zeros(N, dtype=dt)
+            viscosity_turbulent = np.zeros(N, dtype=time_step_size)
         else:
-            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=dt)
+            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=time_step_size)
 
         # Calculate effective viscosity
         viscosity_effective = viscosity + viscosity_turbulent
@@ -1168,15 +1168,15 @@ class Particles:
 
         # Ensure velocity_gradient and strain_rate are properly initialized
         if velocity_gradient is None:
-            velocity_gradient = np.zeros((N, 3, 3), dtype=dt)
+            velocity_gradient = np.zeros((N, 3, 3), dtype=time_step_size)
         else:
-            velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=dt)
+            velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=time_step_size)
 
         # Initialize strain_rate tensor - will be computed from velocity_gradient later
-        strain_rate = np.zeros((N, 3, 3), dtype=dt)
+        strain_rate = np.zeros((N, 3, 3), dtype=time_step_size)
 
         # Initialize vorticity field: vorticity = circulation / volume
-        vorticity = (circulation / volume[:, None]).astype(dt)
+        vorticity = (circulation / volume[:, None]).astype(time_step_size)
 
         # Ensure we have enough space for all particles
         total_particles = self.number_of_particles + N
@@ -1252,13 +1252,13 @@ class Particles:
         if strain_rate is not None:
             _validate_finite_array(strain_rate, "strain_rate")
 
-        dt = self._np_float_dtype
-        position = np.ascontiguousarray(position, dtype=dt)
-        velocity = np.ascontiguousarray(velocity, dtype=dt)
-        circulation = np.ascontiguousarray(circulation, dtype=dt)
-        radius = np.ascontiguousarray(radius, dtype=dt)
-        volume = np.ascontiguousarray(volume, dtype=dt)
-        viscosity = np.ascontiguousarray(viscosity, dtype=dt)
+        time_step_size = self._np_float_dtype
+        position = np.ascontiguousarray(position, dtype=time_step_size)
+        velocity = np.ascontiguousarray(velocity, dtype=time_step_size)
+        circulation = np.ascontiguousarray(circulation, dtype=time_step_size)
+        radius = np.ascontiguousarray(radius, dtype=time_step_size)
+        volume = np.ascontiguousarray(volume, dtype=time_step_size)
+        viscosity = np.ascontiguousarray(viscosity, dtype=time_step_size)
 
         N = position.shape[0]
         if N == 0:
@@ -1273,9 +1273,9 @@ class Particles:
             raise ValueError("Radius, volume, and viscosity must have shape (N,).")
 
         if viscosity_turbulent is None:
-            viscosity_turbulent = np.zeros(N, dtype=dt)
+            viscosity_turbulent = np.zeros(N, dtype=time_step_size)
         else:
-            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=dt)
+            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=time_step_size)
             if viscosity_turbulent.shape != (N,):
                 raise ValueError("Turbulent viscosity must have shape (N,).")
         viscosity_effective = viscosity + viscosity_turbulent
@@ -1286,16 +1286,16 @@ class Particles:
             raise ValueError("Group and zone IDs must have shape (N,).")
 
         if velocity_gradient is None:
-            velocity_gradient = np.zeros((N, 3, 3), dtype=dt)
+            velocity_gradient = np.zeros((N, 3, 3), dtype=time_step_size)
         else:
-            velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=dt)
+            velocity_gradient = np.ascontiguousarray(velocity_gradient, dtype=time_step_size)
         if strain_rate is None:
-            strain_rate = np.zeros((N, 3, 3), dtype=dt)
+            strain_rate = np.zeros((N, 3, 3), dtype=time_step_size)
         else:
-            strain_rate = np.ascontiguousarray(strain_rate, dtype=dt)
+            strain_rate = np.ascontiguousarray(strain_rate, dtype=time_step_size)
         if velocity_gradient.shape != (N, 3, 3) or strain_rate.shape != (N, 3, 3):
             raise ValueError("Velocity gradient and strain rate must have shape (N, 3, 3).")
-        vorticity = (circulation / volume[:, None]).astype(dt)
+        vorticity = (circulation / volume[:, None]).astype(time_step_size)
 
         self._grow_capacity(N)
 
@@ -1777,7 +1777,7 @@ class Particles:
             self.touch_state()
 
     # ---- Backup methods ----
-    def backup_solution(self, backup_file_name, time_step):
+    def backup_solution(self, backup_file_name, step):
         """
         Export particle data to an HDF5 file (.h5).
 
@@ -1785,7 +1785,7 @@ class Particles:
         ParaView can read HDF5 files using the 'XDMF Reader' with an accompanying .xmf file.
         """
         # Format step number as 6-digit sequential id (ParaView-friendly)
-        step_str = str(time_step).zfill(6)
+        step_str = str(step).zfill(6)
 
         # Get NumPy arrays from Taichi fields (CPU copies)
         points = self.position_cpu()
@@ -1890,15 +1890,13 @@ class Particles:
 
                 # Store metadata
                 metadata = f.create_group("Metadata")
-                metadata.attrs["time_step"] = time_step
+                metadata.attrs["time_step"] = step
                 metadata.attrs["num_particles"] = len(points)
                 metadata.attrs["format_version"] = "1.0"
 
             # Create XDMF file for ParaView compatibility
             precision_bytes = 4 if self.float_dtype == "f32" else 8
-            self._create_xdmf_file(
-                xmf_filename, h5_filename, time_step, len(points), precision_bytes
-            )
+            self._create_xdmf_file(xmf_filename, h5_filename, step, len(points), precision_bytes)
 
             print(f"\u2022 Particle data exported to {h5_filename} (HDF5 format)")
             print(f"\u2022 ParaView metadata written to {xmf_filename}")
@@ -1906,9 +1904,7 @@ class Particles:
         except Exception as e:
             print(f"(Error) Failed to save HDF5 file {h5_filename}: {e}")
 
-    def _create_xdmf_file(
-        self, xmf_filename, h5_filename, time_step, num_particles, precision_bytes=4
-    ):
+    def _create_xdmf_file(self, xmf_filename, h5_filename, step, num_particles, precision_bytes=4):
         """Create XDMF metadata file for ParaView compatibility with HDF5 data."""
         import os
 
@@ -2046,7 +2042,7 @@ class Particles:
                 </DataItem>
             </Attribute>
 
-      <Information Name="TimeValue" Value="{time_step}"/>
+      <Information Name="TimeValue" Value="{step}"/>
     </Grid>
   </Domain>
 </Xdmf>'''
@@ -2069,9 +2065,9 @@ class Particles:
         grad_u = fields["Grad_U"][:] if "Grad_U" in fields else np.array([])
         Sij = fields["strain_rate"][:] if "strain_rate" in fields else np.array([])
         metadata = f["Metadata"]
-        time_step = metadata.attrs["time_step"]
+        step = metadata.attrs["time_step"]
         num_particles = metadata.attrs["num_particles"]
-        print(f"Loaded {num_particles} particles from {f.filename} (time step {time_step})")
+        print(f"Loaded {num_particles} particles from {f.filename} (time step {step})")
         if num_particles > 0:
             if len(grad_u) > 0:
                 grad_u = grad_u.reshape(num_particles, 3, 3)

@@ -184,7 +184,7 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
     coupler._pressure_velocity_snapshot = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    coupler.dt_vpm = 0.05
+    coupler.vpm_time_step_size = 0.05
     coupler.rho = 1.0
     coupler.nu = 1.0e-3
     coupler.config = SimpleNamespace(
@@ -519,10 +519,10 @@ def test_projection_is_flux_free_and_subcycle_ratio_is_strict():
     flux = float(np.dot(np.einsum("ij,ij->i", projected, normals), areas))
     assert abs(flux) < 1e-12 * float(np.sum(areas))
 
-    assert FVMVPMCoupler._derive_n_fvm_substeps(0.15, 0.05) == 3
+    assert FVMVPMCoupler._derive_fvm_substeps(0.15, 0.05) == 3
     assert FVMVPMCoupler._derive_coupling_step_count(0.15, 0.05) == 3
     with pytest.raises(ValueError, match="integer multiple"):
-        FVMVPMCoupler._derive_n_fvm_substeps(0.14, 0.05)
+        FVMVPMCoupler._derive_fvm_substeps(0.14, 0.05)
     assert FVMVPMCoupler._derive_coupling_step_count(0.14, 0.05) == 3  # round(2.8)
 
 
@@ -535,8 +535,8 @@ def test_vorticity_mixed_subcycling_interpolates_and_reprojects_both_fields(
             pass
 
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.n_fvm_substeps = 2
-    coupler.dt_fvm = 0.05
+    coupler.fvm_substeps = 2
+    coupler.fvm_time_step_size = 0.05
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed")
     coupler.blending = _Blending()
@@ -602,7 +602,7 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
         transfer_prune_threshold_abs=5.0e-4,
     )
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.n_fvm_substeps = 3
+    coupler.fvm_substeps = 3
     coupler.transfer = None
     coupler.pressure_reference = None
     coupler._last_transfer_result = result
@@ -635,7 +635,7 @@ def test_deferred_transfer_diagnostics_are_marked_unmeasured():
         compute_diagnostics=False,
     )
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.n_fvm_substeps = 1
+    coupler.fvm_substeps = 1
     coupler.transfer = None
     coupler.pressure_reference = None
     coupler._last_transfer_result = result

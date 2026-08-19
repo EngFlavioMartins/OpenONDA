@@ -645,7 +645,7 @@ class ParticleFieldEvaluation:
         centroid = self._centroid_result.to_numpy()
         return centroid
 
-    def compute_flow_integrals(self, particles, flow_time: float, record_history: bool = True):
+    def compute_flow_integrals(self, particles, time: float, record_history: bool = True):
         """
         Compute all flow integral quantities in a single efficient GPU kernel call.
 
@@ -674,7 +674,7 @@ class ParticleFieldEvaluation:
             # Return zero values for empty particle system
             return self._get_zero_results()
         if N > _DIRECT_INTEGRAL_LIMIT and self.particles_kernel == "GAUSSIAN":
-            return self._compute_fourier_flow_integrals(particles, flow_time, record_history)
+            return self._compute_fourier_flow_integrals(particles, time, record_history)
 
         self._resize_fields(N)
 
@@ -696,7 +696,7 @@ class ParticleFieldEvaluation:
         r = self.total_quantities_results[None]
         kinetic_energy = float(r.energy)
         if record_history:
-            self._update_energy_history(flow_time, kinetic_energy)
+            self._update_energy_history(time, kinetic_energy)
 
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
@@ -717,7 +717,7 @@ class ParticleFieldEvaluation:
     def _compute_fourier_flow_integrals(
         self,
         particles,
-        flow_time: float,
+        time: float,
         record_history: bool,
     ) -> dict:
         from ..numerics.fourier_integrals import gaussian_fourier_integrals
@@ -739,7 +739,7 @@ class ParticleFieldEvaluation:
 
         energy = spectral.energy
         if record_history:
-            self._update_energy_history(flow_time, energy)
+            self._update_energy_history(time, energy)
         total = circulation.sum(axis=0, dtype=np.float64)
         impulse = 0.5 * np.cross(position, circulation).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, circulation)).sum(
@@ -897,7 +897,7 @@ class ParticleFieldEvaluation:
 
     # ENERGY DISSIPATION RATE COMPUTATION
 
-    def _update_energy_history(self, flow_time: float, kinetic_energy: float):
+    def _update_energy_history(self, time: float, kinetic_energy: float):
         """
         Update the time history of kinetic energy.
 
@@ -908,12 +908,12 @@ class ParticleFieldEvaluation:
         # Replace the latest entry when callers request diagnostics multiple
         # times at the same physical time. This keeps dE/dt finite differences
         # well-posed and avoids zero-dt history pairs.
-        if self._flow_time_history and abs(self._flow_time_history[-1][0] - flow_time) < 1e-12:
-            self._flow_time_history[-1] = (flow_time, kinetic_energy)
+        if self._flow_time_history and abs(self._flow_time_history[-1][0] - time) < 1e-12:
+            self._flow_time_history[-1] = (time, kinetic_energy)
             return
 
         # Add new entry
-        self._flow_time_history.append((flow_time, kinetic_energy))
+        self._flow_time_history.append((time, kinetic_energy))
 
         # Keep only the last N entries
         if len(self._flow_time_history) > self._max_history_length:

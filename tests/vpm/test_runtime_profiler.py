@@ -1,6 +1,6 @@
 """
 Runtime profiler tests — the ``RuntimeProfiler`` abstraction and its
-integration with the VPM ``Solver`` time loop.
+integration with the VPM ``VPMSolver`` time loop.
 
 These verify the *bookkeeping* of the timing system (sections accumulate, calls
 count, steps tally, reports format, reset clears) without asserting on absolute
@@ -13,7 +13,7 @@ import time
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -100,7 +100,7 @@ def _tiny_solver(tmp_path, timing_frequency=0):
         timing_frequency=timing_frequency,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
@@ -120,7 +120,7 @@ def test_solver_uses_lightweight_timing_by_default(tmp_path):
 
     n_steps = 4
     for _ in range(n_steps):
-        solver.update_state()
+        solver.advance()
 
     assert solver.profiler.n_steps == n_steps
     assert solver.profiler._cumulative == {}
@@ -135,7 +135,7 @@ def test_solver_records_stage_timings_when_explicitly_enabled(tmp_path, monkeypa
 
     n_steps = 4
     for _ in range(n_steps):
-        solver.update_state()
+        solver.advance()
 
     assert solver.profiler.n_steps == n_steps
     # Core stages are synchronised and sampled only in this diagnostic mode.
@@ -151,7 +151,7 @@ def test_print_timing_runs_without_error(tmp_path):
     # report content (and that print_timing() does not raise) rather than capsys.
     solver = _tiny_solver(tmp_path)
     for _ in range(2):
-        solver.update_state()
+        solver.advance()
     report = "\n".join(solver.profiler.format_report())
     assert "VPM RUNTIME PROFILE" in report
     assert "2 steps" in report
@@ -163,7 +163,7 @@ def test_timing_frequency_triggers_periodic_report(tmp_path, monkeypatch):
     calls = {"n": 0}
     monkeypatch.setattr(solver.profiler, "report", lambda: calls.__setitem__("n", calls["n"] + 1))
     for _ in range(4):
-        solver.update_state()
+        solver.advance()
     # freq=2 over 4 steps → fires on steps 2 and 4.
     assert calls["n"] == 2
 
@@ -173,5 +173,5 @@ def test_timing_frequency_zero_never_reports(tmp_path, monkeypatch):
     calls = {"n": 0}
     monkeypatch.setattr(solver.profiler, "report", lambda: calls.__setitem__("n", calls["n"] + 1))
     for _ in range(3):
-        solver.update_state()
+        solver.advance()
     assert calls["n"] == 0

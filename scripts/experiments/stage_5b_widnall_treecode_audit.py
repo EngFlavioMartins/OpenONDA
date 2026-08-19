@@ -15,7 +15,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/private/tmp/openonda_stage5b_tree_cach
 import matplotlib.pyplot as plt
 import numpy as np
 
-from source.solvers.VPM import Solver
+from source.solvers.VPM import VPMSolver
 
 MODES = np.arange(20, 25)
 INK = "#20252a"
@@ -74,7 +74,7 @@ def transposed_rate(gradient: np.ndarray, circulation: np.ndarray) -> np.ndarray
 
 
 def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
-    solver = Solver.continue_from_backup(str(backup))
+    solver = VPMSolver.continue_from_backup(str(backup))
     if solver is None:
         raise RuntimeError(f"could not restore {backup}")
     particles = solver.particles
@@ -116,8 +116,8 @@ def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
         )
     result = {
         "backup": str(backup),
-        "flow_time": float(solver.flow_time),
-        "time_step": int(solver.time_step),
+        "flow_time": float(solver.time),
+        "time_step": int(solver.step),
         "particles": len(particles),
         "direct_seconds": direct_seconds,
         "theta_results": rows,

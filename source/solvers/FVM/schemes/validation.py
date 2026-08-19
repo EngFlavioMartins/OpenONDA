@@ -1,6 +1,6 @@
 """Single source of truth for valid scheme names + fast config validation.
 
-Catches typo'd / unsupported scheme selections at ``Solver`` construction with a
+Catches typo'd / unsupported scheme selections at ``FVMSolver`` construction with a
 clear, actionable message, instead of failing deep inside the first assembly
 (``Unknown scheme: ...``) several seconds into a run.
 """
@@ -138,8 +138,8 @@ def validate_solver_params(solver, time=None) -> None:
             "variable-step coefficients are implemented"
         )
     if time is not None:
-        if not float(time.delta_t) > 0.0:
-            errors.append(f"  delta_t={time.delta_t!r} must be > 0")
+        if not float(time.time_step_size) > 0.0:
+            errors.append(f"  dt={time.time_step_size!r} must be > 0")
         if not float(time.end_time) > float(time.start_time):
             errors.append(
                 f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"
@@ -147,10 +147,8 @@ def validate_solver_params(solver, time=None) -> None:
         if not isinstance(time.write_interval, int) or time.write_interval < 1:
             errors.append(f"  write_interval={time.write_interval!r} must be an integer >= 1")
         if bool(time.adjust_timestep):
-            if not 0.0 < float(time.min_delta_t) <= float(time.max_delta_t):
-                errors.append(
-                    "  adaptive time-step bounds must satisfy 0 < min_delta_t <= max_delta_t"
-                )
+            if not 0.0 < float(time.min_time_step_size) <= float(time.max_time_step_size):
+                errors.append("  adaptive time-step bounds must satisfy 0 < min_dt <= max_dt")
             if not float(time.max_cfl) > 0.0:
                 errors.append(f"  max_cfl={time.max_cfl!r} must be > 0")
     if errors:

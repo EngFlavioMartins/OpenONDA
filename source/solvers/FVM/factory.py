@@ -19,7 +19,7 @@ def _load_mesh_file(path: str | Path) -> dict[str, Any]:
     """Load a mesh file into FVM ``mesh_data``.
 
     Currently supports Gmsh ``.msh`` files via :class:`GmshImporter`, so a case
-    can pass ``mesh="path/to/mesh.msh"`` straight to :func:`setup_fvm_solver`.
+    can pass ``mesh="path/to/mesh.msh"`` straight to :func:`create_fvm_solver`.
     """
     path = Path(path)
     if path.suffix.lower() == ".msh":
@@ -69,7 +69,7 @@ def _materialize_mesh(mesh: MeshSource | None, *, is_root: bool) -> dict[str, An
     return generated
 
 
-def setup_fvm_solver(
+def create_fvm_solver(
     setup: FVMSetup,
     *,
     case_dir: str | Path | None = None,
@@ -96,15 +96,15 @@ def setup_fvm_solver(
             runtime_setup.execution.parallel_mode == "petsc_replicated"
             or MPI.COMM_WORLD.Get_rank() == 0
         )
-    from .core.solver import Solver
+    from .core.solver import FVMSolver
 
-    return Solver(
+    return FVMSolver(
         runtime_setup,
         case_dir=str(Path(case_dir).resolve()) if case_dir is not None else None,
         # Do not retain a second caller-frame reference to the complete mesh
-        # while Solver partitions it and allocates rank-local state.
+        # while FVMSolver partitions it and allocates rank-local state.
         mesh_data=_materialize_mesh(mesh, is_root=materialize_mesh_here),
     )
 
 
-__all__ = ["setup_fvm_solver"]
+__all__ = ["create_fvm_solver"]

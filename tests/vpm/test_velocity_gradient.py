@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
@@ -209,7 +209,7 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
     whole tensor has the wrong sign convention.
     """
     reset_taichi_backend()
-    solver = Solver(
+    solver = VPMSolver(
         VPMSetup(
             time_step_size=0.01,
             processing_unit="CPU",
@@ -249,7 +249,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     """The coupled velocity and Jacobian must share the configured treecode trace."""
     reset_taichi_backend()
     theta = 0.2
-    solver = Solver(
+    solver = VPMSolver(
         VPMSetup(
             time_step_size=0.01,
             processing_unit="CPU",
@@ -367,7 +367,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
 
 def test_mixed_target_trace_uses_only_two_nonparticle_samples():
     matrix = np.array([[0.2, -0.1, 0.3], [0.4, 0.05, -0.2], [-0.1, 0.3, -0.25]])
-    solver = Solver.__new__(Solver)
+    solver = VPMSolver.__new__(VPMSolver)
     solver.physics = SimpleNamespace(
         velocity_method="DIRECT",
         compute_target_velocities=lambda *_args, **_kwargs: np.zeros((2, 3)),

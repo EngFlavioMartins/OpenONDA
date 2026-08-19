@@ -32,13 +32,13 @@ test_cs_vorticity_field_matches_grown_kernel
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.core.evolution import EvolutionStepper
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
 _NU = 1e-3  # kinematic viscosity  [m²/s]
-_DT = 0.02  # time step            [s]
+_TIME_STEP_SIZE = 0.02  # time step            [s]
 _N_STEPS = 20  # number of steps
 _SIGMA_0 = 0.05  # initial core radius  [m]
 _ALPHA_Z = 1.0  # z-circulation strength
@@ -47,7 +47,7 @@ _ALPHA_Z = 1.0  # z-circulation strength
 def _single_particle_cs_solver(tmp_path):
     """Return a solver with one z-circulation particle and CS enabled."""
     config = VPMSetup(
-        time_step_size=_DT,
+        time_step_size=_TIME_STEP_SIZE,
         processing_unit="CPU",
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="CS"),
@@ -56,7 +56,7 @@ def _single_particle_cs_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA_0**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
@@ -92,12 +92,12 @@ def test_cs_core_radius_grows_at_correct_rate(tmp_path):
     * The viscosity stored in the particle is not propagated to the CS kernel.
     * The update is applied to σ (not σ²), breaking the quadratic growth law.
     """
-    sigma_expected_sq = _SIGMA_0**2 + 4.0 * _NU * _N_STEPS * _DT
+    sigma_expected_sq = _SIGMA_0**2 + 4.0 * _NU * _N_STEPS * _TIME_STEP_SIZE
     sigma_expected = float(np.sqrt(sigma_expected_sq))
 
     solver = _single_particle_cs_solver(tmp_path)
     for _ in range(_N_STEPS):
-        solver.update_state()
+        solver.advance()
 
     sigma_actual = float(solver.particles_radii[0])
     rel_err = abs(sigma_actual - sigma_expected) / sigma_expected
@@ -133,7 +133,7 @@ def test_cs_vorticity_field_matches_grown_kernel(tmp_path):
     """
     solver = _single_particle_cs_solver(tmp_path)
     for _ in range(_N_STEPS):
-        solver.update_state()
+        solver.advance()
 
     sigma_final = float(solver.particles_radii[0])
 
@@ -172,7 +172,9 @@ def test_dvh_subcycling_applies_the_full_accumulated_diffusion_interval():
     solver = FakeSolver()
     stepper = EvolutionStepper(solver)
     applied_intervals = []
-    stepper._apply_grid_diffusion = lambda _config, dt: applied_intervals.append(dt)
+    stepper._apply_grid_diffusion = lambda _config, time_step_size: applied_intervals.append(
+        time_step_size
+    )
 
     stepper._apply_viscous_diffusion(0.1)
     stepper._apply_viscous_diffusion(0.1)

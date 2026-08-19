@@ -68,8 +68,8 @@ def _one_explicit_step(mesh, geo, mdot, phi, scheme, cfl=0.5):
     A = assemble_matrix_from_fluxes_vectorized(conv, mesh)
     b = assemble_rhs_from_fluxes_vectorized(conv, mesh)
     dudt = (-(A @ phi[:n_elem]) + b) / vol
-    dt = cfl * (1.0 / N)  # |U| = 1, dx = 1/N
-    return phi[:n_elem] + dt * dudt
+    time_step_size = cfl * (1.0 / N)  # |U| = 1, dx = 1/N
+    return phi[:n_elem] + time_step_size * dudt
 
 
 class TestTVDBoundedness:

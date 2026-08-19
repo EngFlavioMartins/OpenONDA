@@ -30,14 +30,14 @@ class PanelLoadingDistribution:
     def record_loading_distributions(
         panel_solver,
         diagnostics_history: dict,
-        time_step: int,
-        flow_time: float,
+        step: int,
+        time: float,
         backup_directory: str,
     ) -> None:
         if panel_solver is None or panel_solver.lattice is None:
             return
         freq = max(1, int(getattr(panel_solver, "logging_frequency", 1)))
-        if time_step % freq != 0:
+        if step % freq != 0:
             return
 
         n = panel_solver.lattice.num_panels
@@ -63,7 +63,7 @@ class PanelLoadingDistribution:
 
             samples_dir = resolve_samples_dir(backup_directory)
             samples_dir.mkdir(parents=True, exist_ok=True)
-            csv_path = samples_dir / f"panel_distribution_step{time_step:06d}.csv"
+            csv_path = samples_dir / f"panel_distribution_step{step:06d}.csv"
 
             with open(csv_path, "w") as f:
                 f.write("time,step,cx,cy,cz,nx,ny,nz,strength,area,Cp,Fx,Fy,Fz,group_id\n")
@@ -71,7 +71,7 @@ class PanelLoadingDistribution:
                     c = centers[i]
                     nv = normals[i]
                     f.write(
-                        f"{flow_time},{time_step},"
+                        f"{time},{step},"
                         f"{c[0]:.10e},{c[1]:.10e},{c[2]:.10e},"
                         f"{nv[0]:.10e},{nv[1]:.10e},{nv[2]:.10e},"
                         f"{strengths[i]:.10e},{areas[i]:.10e},{cp[i]:.10e},"

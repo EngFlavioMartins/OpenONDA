@@ -103,14 +103,14 @@ class VorticitySolver:
     def heun_step(
         self,
         vorticity: np.ndarray,
-        dt: float,
+        time_step_size: float,
         model: str,
         gaussian_delta: float,
     ) -> np.ndarray:
         first = self.rhs(vorticity, model, gaussian_delta)
-        predictor = self.project(vorticity + dt * first)
+        predictor = self.project(vorticity + time_step_size * first)
         second = self.rhs(predictor, model, gaussian_delta)
-        return self.project(vorticity + 0.5 * dt * (first + second))
+        return self.project(vorticity + 0.5 * time_step_size * (first + second))
 
 
 def taylor_green(grid: SpectralGrid) -> np.ndarray:
@@ -327,9 +327,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     dns_vorticity = dns.project(dns.grid.curl(taylor_green(dns.grid)))
     initial_reference = coarse_reference(dns, dns_vorticity, args.les_n, gaussian_delta)
     states = {model: les.project(initial_reference.copy()) for model in MODELS}
-    save_every = max(1, int(round(args.save_interval / args.dt)))
-    steps = int(round(args.end_time / args.dt))
-    if abs(steps * args.dt - args.end_time) > 1.0e-12:
+    save_every = max(1, int(round(args.save_interval / args.time_step_size)))
+    steps = int(round(args.end_time / args.time_step_size))
+    if abs(steps * args.time_step_size - args.end_time) > 1.0e-12:
         raise ValueError("end_time must be an integer multiple of dt")
 
     histories: dict[str, list[dict[str, float]]] = {
@@ -338,7 +338,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     final_reference = initial_reference
     for step in range(steps + 1):
         if step % save_every == 0 or step == steps:
-            time = step * args.dt
+            time = step * args.time_step_size
             final_reference = coarse_reference(dns, dns_vorticity, args.les_n, gaussian_delta)
             reference_record = diagnostics(les, final_reference, "no_sgs", gaussian_delta)
             reference_spectrum = energy_spectrum(les, final_reference)
@@ -363,9 +363,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 histories[model].append(record)
         if step == steps:
             break
-        dns_vorticity = dns.heun_step(dns_vorticity, args.dt, "no_sgs", gaussian_delta)
+        dns_vorticity = dns.heun_step(dns_vorticity, args.time_step_size, "no_sgs", gaussian_delta)
         for model in MODELS:
-            states[model] = les.heun_step(states[model], args.dt, model, gaussian_delta)
+            states[model] = les.heun_step(states[model], args.time_step_size, model, gaussian_delta)
             if not np.all(np.isfinite(states[model])):
                 raise FloatingPointError(f"non-finite state in {model} at step {step + 1}")
 
@@ -412,7 +412,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "dns_n": args.dns_n,
             "les_n": args.les_n,
             "viscosity": args.viscosity,
-            "dt": args.dt,
+            "dt": args.time_step_size,
             "end_time": args.end_time,
             "integrator": "Heun RK2",
             "dealiasing": "strict two-thirds component cutoff",

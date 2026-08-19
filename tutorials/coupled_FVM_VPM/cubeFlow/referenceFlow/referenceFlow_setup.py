@@ -31,7 +31,7 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
-    setup_fvm_solver,
+    create_fvm_solver,
 )
 
 
@@ -47,7 +47,7 @@ NU = float(np.linalg.norm(FREESTREAM_VELOCITY)) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-DT_FVM = 0.01
+FVM_TIME_STEP_SIZE = 0.01
 T_END = 20.0
 FVM_CORES = 4
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
@@ -59,7 +59,7 @@ OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
 SAMPLE_INTERVAL = 0.05  # forces, line probes
-FACE_INTERVAL = DT_FVM
+FACE_INTERVAL = FVM_TIME_STEP_SIZE
 SLICE_INTERVAL = 0.10  # full-domain field slices
 VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
 
@@ -134,7 +134,7 @@ FVM_SETUP = FVMSetup(
         ghost_layers=0,
     ),
     time=TimeConfig(
-        delta_t=DT_FVM,
+        time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=T_END,
         write_interval=10**9,
@@ -189,11 +189,11 @@ FVM_SETUP = FVMSetup(
 
 
 def main() -> None:
-    solver = setup_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     solver.write_vtk()
 
-    while solver.flow_time < FVM_SETUP.time.end_time:
-        solver.evolve()
+    while solver.time < FVM_SETUP.time.end_time:
+        solver.advance()
 
     solver.close()
 

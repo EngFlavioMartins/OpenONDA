@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from source.solvers.VPM import Solver
+from source.solvers.VPM import VPMSolver
 
 
 def continue_run(
@@ -25,10 +25,10 @@ def continue_run(
     # manifests naturally point at the HDF5 file itself.
     if backup.suffix == ".h5":
         backup = backup.with_suffix("")
-    solver = Solver.continue_from_backup(str(backup))
+    solver = VPMSolver.continue_from_backup(str(backup))
     if solver is None:
         raise RuntimeError(f"could not restore {backup}")
-    if target_time_star <= solver.flow_time:
+    if target_time_star <= solver.time:
         raise ValueError("target time must be later than the restart state")
     if time_step is not None:
         if time_step <= 0.0:
@@ -52,7 +52,7 @@ def continue_run(
     if manifest_path.exists() or final_base.with_suffix(".h5").exists():
         raise FileExistsError(f"refusing to overwrite extension {extension_label}")
 
-    remaining_steps = int(np.ceil((target_time_star - solver.flow_time) / solver.time_step_size))
+    remaining_steps = int(np.ceil((target_time_star - solver.time) / solver.time_step_size))
     initial_strength = float(np.abs(solver.particles.circulation_cpu()).max())
     initial_energy = solver.total_kinetic_energy
     initial_dissipation = float(solver._flow_integrals["vorticity_dissipation_rate"])
@@ -60,7 +60,7 @@ def continue_run(
         "status": "running",
         "claim_scope": "continuation of unperturbed axisymmetric relaxation only",
         "restart": str(backup.with_suffix(".h5")),
-        "start_time_star": solver.flow_time,
+        "start_time_star": solver.time,
         "target_time_star": target_time_star,
         "requested_additional_steps": remaining_steps,
         "particle_spacing": solver.config.viscous.characteristic_distance,
@@ -74,11 +74,11 @@ def continue_run(
     termination_reason = None
     health_cadence = max(1, round(0.25 / solver.time_step_size))
     for _ in range(remaining_steps):
-        solver.update_state()
+        solver.advance()
         if np.abs(solver.particles.circulation_cpu()).max() > 50.0 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times restart value"
             break
-        if solver.time_step % health_cadence:
+        if solver.step % health_cadence:
             continue
         health = solver._discretization_health
         if float(health["vorticity_divergence_error"]) > 0.12:
@@ -96,13 +96,13 @@ def continue_run(
     final_energy = solver.total_kinetic_energy
     final_dissipation = float(solver._flow_integrals["vorticity_dissipation_rate"])
     solver.save_state(str(final_base))
-    duration = solver.flow_time - float(manifest["start_time_star"])
+    duration = solver.time - float(manifest["start_time_star"])
     predicted_energy_change = 0.5 * duration * (initial_dissipation + final_dissipation)
     measured_energy_change = final_energy - initial_energy
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
-        completed_steps=solver.time_step,
-        completed_time_star=solver.flow_time,
+        completed_steps=solver.step,
+        completed_time_star=solver.time,
         final_particles=len(solver.particles),
         initial_kinetic_energy=initial_energy,
         final_kinetic_energy=final_energy,

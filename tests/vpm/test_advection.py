@@ -37,7 +37,7 @@ test_velocity_method_is_consistent_at_arbitrary_targets
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -46,7 +46,7 @@ from source.solvers.VPM.config.types import (
 )
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
-_DT = 0.1  # time step            [s]
+_TIME_STEP_SIZE = 0.1  # time step            [s]
 _N_STEPS = 10  # number of steps
 _U_BG = [2.0, -1.0, 0.5]  # background velocity   [m/s]
 _X0 = np.array([[0.3, -0.7, 1.2]])  # initial position      [m]
@@ -63,7 +63,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
     by the background (free-stream) velocity.
     """
     config = VPMSetup(
-        time_step_size=_DT,
+        time_step_size=_TIME_STEP_SIZE,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme=scheme),
         stretching=StretchingConfig.disabled(),
@@ -73,7 +73,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=_X0.copy(),
@@ -111,7 +111,7 @@ def test_none_scheme_freezes_particle_positions(tmp_path):
     pos_before = solver.particles_positions.copy()
 
     for _ in range(_N_STEPS):
-        solver.update_state()
+        solver.advance()
 
     np.testing.assert_array_equal(
         solver.particles_positions,
@@ -144,9 +144,9 @@ def test_uniform_background_all_schemes_exact_translation(tmp_path, scheme):
     x0 = solver.particles_positions.copy()
 
     for _ in range(_N_STEPS):
-        solver.update_state()
+        solver.advance()
 
-    x_expected = x0 + _N_STEPS * _DT * np.array(_U_BG)
+    x_expected = x0 + _N_STEPS * _TIME_STEP_SIZE * np.array(_U_BG)
 
     np.testing.assert_allclose(
         solver.particles_positions,
@@ -160,9 +160,9 @@ def test_uniform_background_all_schemes_exact_translation(tmp_path, scheme):
 
 
 def _self_induced_solver(tmp_path, *, velocity_config):
-    """Solver with a small cloud of finite-circulation particles (self-induced flow)."""
+    """VPMSolver with a small cloud of finite-circulation particles (self-induced flow)."""
     config = VPMSetup(
-        time_step_size=_DT,
+        time_step_size=_TIME_STEP_SIZE,
         processing_unit="CPU",
         advection=AdvectionConfig(scheme="RK4"),
         stretching=StretchingConfig.disabled(),
@@ -172,7 +172,7 @@ def _self_induced_solver(tmp_path, *, velocity_config):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     rng = np.random.default_rng(0)
     n = 8
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -226,7 +226,7 @@ def test_velocity_method_is_consistent_across_all_rk_stages(
     physics.compute_velocities_kernel = counting_direct
     physics._copy_vec3 = counting_treecode
     try:
-        physics.update_positions(solver.particles, _DT, scheme="RK4")
+        physics.update_positions(solver.particles, _TIME_STEP_SIZE, scheme="RK4")
     finally:
         physics.compute_velocities_kernel = direct_fn
         physics._copy_vec3 = treecode_fn

@@ -8,10 +8,10 @@ import numpy as np
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -27,7 +27,7 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
     params_pimple = PimpleControl(n_correctors=1, n_orthogonal_correctors=1)
     config = FVMSetup(
         case_name="skewed_pimple",
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -45,7 +45,7 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, str(tmp_path), mesh_data=mesh)
         residuals = solver.solve_pimple(0.01)
 
     for key in ("p", "U", "p_initial", "U_increment", "U_x", "U_y", "U_z"):

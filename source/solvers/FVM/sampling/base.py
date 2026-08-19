@@ -6,7 +6,7 @@ by the :class:`~source.solvers.FVM.sampling.executor.FVMSamplerExecutor`,
 which runs after every accepted solver step and lets each sampler decide
 whether it is due.  The same samplers drive live runs and offline
 post-processing (:class:`~source.solvers.FVM.sampling.postprocess.PostProcess`),
-so a schedule's decision must be reproducible from ``time_step`` / ``flow_time``
+so a schedule's decision must be reproducible from ``step`` / ``time``
 alone — never from a mutable call counter.
 
 All sampler output lands in ``<case_root>/samples/`` (see :func:`samples_dir`);
@@ -58,14 +58,14 @@ class SamplingSchedule:
     """Deterministic sampling cadence owned by one sampler.
 
     Provide exactly one of ``every_n_steps`` (sample when
-    ``time_step % every_n_steps == 0``) or ``every_time`` (sample on the first
+    ``step % every_n_steps == 0``) or ``every_time`` (sample on the first
     accepted step that steps over an integer multiple of ``every_time``).
-    Because the decision depends only on ``time_step``/``flow_time``/``dt``, a
+    Because the decision depends only on ``step``/``time``/``time_step_size``, a
     live simulation and an offline ``PostProcess`` over archived snapshots
     produce identical events.
 
     The ``every_time`` criterion is a *crossing* test — a multiple of
-    ``every_time`` lies inside ``(flow_time - dt, flow_time]`` — so a slowly
+    ``every_time`` lies inside ``(time - dt, time]`` — so a slowly
     stepping solver fires once per interval instead of twice around the target.
 
     Examples
@@ -94,11 +94,11 @@ class SamplingSchedule:
     def from_dict(cls, data: dict) -> SamplingSchedule:
         return cls(**data)
 
-    def is_due(self, time_step: int, flow_time: float, dt: float | None = None) -> bool:
+    def is_due(self, step: int, time: float, time_step_size: float | None = None) -> bool:
         """Whether a sampling event at the given state should run."""
         if self.every_n_steps is not None:
-            return int(time_step) % int(self.every_n_steps) == 0
-        if dt is None or dt <= 0.0 or self.every_time is None:
+            return int(step) % int(self.every_n_steps) == 0
+        if time_step_size is None or time_step_size <= 0.0 or self.every_time is None:
             return False
         interval = float(self.every_time)
 
@@ -107,7 +107,7 @@ class SamplingSchedule:
         def bucket(t):
             return math.floor(t / interval + 1e-9)
 
-        return bucket(flow_time) != bucket(flow_time - dt)
+        return bucket(time) != bucket(time - time_step_size)
 
 
 class Sampler:
@@ -147,9 +147,9 @@ class Sampler:
         """Output stem: ``file_name`` or the class name without the suffix."""
         return self.file_name or self.__class__.__name__.lower().replace("sampler", "")
 
-    def is_due(self, time_step: int, flow_time: float, dt: float | None = None) -> bool:
+    def is_due(self, step: int, time: float, time_step_size: float | None = None) -> bool:
         """Whether this sampler runs at the given time/step."""
-        return self.schedule.is_due(time_step, flow_time, dt)
+        return self.schedule.is_due(step, time, time_step_size)
 
     def __eq__(self, other) -> bool:
         """Samplers are equal when they reconstruct the same configuration.

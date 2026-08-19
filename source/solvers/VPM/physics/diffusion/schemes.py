@@ -38,7 +38,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
     # CORE SPREADING METHOD (CSM)
 
-    def core_spreading_diffusion(self, particles, dt: float):
+    def core_spreading_diffusion(self, particles, time_step_size: float):
         """
         Apply viscous diffusion using Core Spreading Method.
 
@@ -59,13 +59,13 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
         """
-        apply_core_spreading(self, particles, dt)
+        apply_core_spreading(self, particles, time_step_size)
 
     # RANDOM WALK METHOD (RWM)
 
-    def random_walk_method_diffusion(self, particles, dt: float):
+    def random_walk_method_diffusion(self, particles, time_step_size: float):
         """
         Apply viscous diffusion using Random Walk Method.
 
@@ -88,8 +88,8 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
         """
-        apply_random_walk(self, particles, dt)
+        apply_random_walk(self, particles, time_step_size)
 
     # VOLUME UPDATE FROM DIVERGENCE

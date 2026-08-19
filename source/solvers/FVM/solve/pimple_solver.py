@@ -25,7 +25,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
     Inherits the SIMPLE boundary handling and pressure-correction operators;
     replaces the steady outer iteration with a time-advancement loop driven
-    by the :class:`~source.solvers.FVM.core.solver.Solver`.
+    by the :class:`~source.solvers.FVM.core.solver.FVMSolver`.
 
     References
     ----------
@@ -60,7 +60,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
-        # Optional immersed-boundary forcing (set via Solver.set_immersed_bodies).
+        # Optional immersed-boundary forcing (set via FVMSolver.set_immersed_bodies).
         self.ibm = None
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
@@ -101,7 +101,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         p,
         phi,
         U_old=None,
-        dt=None,
+        time_step_size=None,
         rho=1.0,
         nu=0.01,
         U_old_old=None,
@@ -117,7 +117,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             p: Kinematic pressure ``p/ρ`` [m²/s²].
             phi: Volumetric face flux ``U·Sf`` [m³/s].
             U_old: Velocity at the previous committed time [m/s].
-            dt: Positive time-step size [s].
+            time_step_size: Positive time-step size [s].
             rho: Positive constant reference density [kg/m³]. It cancels
                 from the kinematic-pressure flow equations.
             nu: Positive kinematic viscosity [m²/s].
@@ -129,7 +129,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         Returns:
             tuple: Updated ``(U, p, phi, residuals)``.
         """
-        if U_old is None or dt is None:
+        if U_old is None or time_step_size is None:
             raise ValueError("PIMPLESolver.step requires U_old and dt")
         n_elem = self.mesh_data["n_elements"]
         n_outer = int(self.params.get("n_outer_correctors", 1))
@@ -166,7 +166,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 U_old_old,
                 phi_old,
                 phi_old_old,
-                dt,
+                time_step_size,
                 self.mesh_data,
                 self.geo_data,
                 self.boundaries,
@@ -224,7 +224,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     convection_scheme=self.params["convection_scheme"],
                     solver=momentum_method,
                     under_relaxation=alpha_u,
-                    dt=dt,
+                    time_step_size=time_step_size,
                     U_old=U_old,
                     U_old_old=U_old_old,
                     ddt_scheme=ddt_scheme,
@@ -266,17 +266,17 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 logging.Timer.start("IBM Forcing")
                 n_loops = int(self.params.get("ibm_forcing_loops", 2))
                 if bool(self.params["ibm_second_solve"]):
-                    src_ibm = rho * ibm.compute_force(U_star, dt)
+                    src_ibm = rho * ibm.compute_force(U_star, time_step_size)
                     if source_explicit is not None:
                         src_ibm = src_ibm + source_explicit
                     U_star, A_U, momentum_diagnostics = _solve_predictor(src_ibm)
                     linear_results.extend(
                         values["linear_result"] for values in momentum_diagnostics.values()
                     )
-                    ibm.multidirect_correct(U_star, dt, n_iter=n_loops)
+                    ibm.multidirect_correct(U_star, time_step_size, n_iter=n_loops)
                 else:
                     ibm.begin_step()
-                    ibm.multidirect_correct(U_star, dt, n_iter=max(n_loops, 2))
+                    ibm.multidirect_correct(U_star, time_step_size, n_iter=max(n_loops, 2))
                 logging.Timer.log(
                     "IBM Forcing",
                     sink=logger,

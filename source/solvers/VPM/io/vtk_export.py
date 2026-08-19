@@ -80,7 +80,7 @@ def export_panels_vtk(solver, filename: str, compression: bool = True):
     polydata.GetCellData().GetArray(3).SetName("Cp")
 
     # Add time stamp
-    time_array = numpy_support.numpy_to_vtk(np.array([solver.flow_time]), deep=True)
+    time_array = numpy_support.numpy_to_vtk(np.array([solver.time]), deep=True)
     time_array.SetName("TimeValue")
     polydata.GetFieldData().AddArray(time_array)
 

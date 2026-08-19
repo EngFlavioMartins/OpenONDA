@@ -19,7 +19,6 @@ from ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler 
 from openonda.vpm import (  # noqa: E402
     AdvectionConfig,
     ParticleDistributor,
-    Solver,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -27,6 +26,7 @@ from openonda.vpm import (  # noqa: E402
     ViscousConfig,
     VortexRingVPM,
     VPMSetup,
+    VPMSolver,
 )
 
 RING_RADIUS = 1.0
@@ -129,7 +129,7 @@ def run(
         reference_radius=RING_RADIUS,
         transverse_origin=(0.0, 0.0),
     )
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=time_step,
             processing_unit=processing_unit,
@@ -209,7 +209,7 @@ def run(
     solver.backup_solution(str(output_directory / f"vpm_{label}"))
     termination_reason = None
     for _ in range(requested_steps):
-        solver.update_state()
+        solver.advance()
         if np.abs(solver.particles.circulation_cpu()).max() > 50.0 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
@@ -230,7 +230,7 @@ def run(
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
         completed_steps=solver.time_step,
-        completed_time_star=solver.flow_time,
+        completed_time_star=solver.time,
         final_particles=len(solver.particles),
     )
     if termination_reason:

@@ -25,10 +25,10 @@ from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -213,7 +213,7 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
     config = FVMSetup(
         case_name="petsc_pimple",
         execution=ExecutionConfig.petsc_replicated(),
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(linear_solver="bicgstab", pressure_tol=1e-10),
         pimple=PimpleControl(n_correctors=2),
@@ -229,7 +229,7 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
         initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
         residuals = solver.solve_pimple(0.01)
 
@@ -244,7 +244,7 @@ def _pimple_config(execution, case_name):
     return FVMSetup(
         case_name=case_name,
         execution=execution,
-        time=TimeConfig.transient(dt=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
         schemes=SchemesConfig(convection_scheme="linearUpwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
@@ -274,7 +274,7 @@ def test_partitioned_solver_header_is_printed_once(tmp_path):
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):
-        solver = Solver(
+        solver = FVMSolver(
             _pimple_config(execution, "single-header"),
             str(tmp_path / "single-header"),
             mesh_data=mesh if context.is_root else None,
@@ -299,13 +299,13 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):
-        solver = Solver(
+        solver = FVMSolver(
             _pimple_config(execution, "root-owned-output"),
             str(case_dir),
             mesh_data=mesh if context.is_root else None,
         )
         solver.auto_write = False
-        solver.evolve(0.01)
+        solver.advance(0.01)
         solver.close()
 
     outputs = context.comm.allgather(stdout.getvalue())
@@ -341,7 +341,7 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     replicated_context = ParallelContext.create(replicated_execution)
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
-        reference = Solver(
+        reference = FVMSolver(
             _pimple_config(replicated_execution, "replicated-reference"),
             str(tmp_path / "replicated"),
             mesh_data=mesh,
@@ -351,7 +351,7 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
 
     partitioned_execution = ExecutionConfig.petsc_partitioned()
     with contextlib.redirect_stdout(io.StringIO()):
-        actual = Solver(
+        actual = FVMSolver(
             _pimple_config(partitioned_execution, "partitioned"),
             str(tmp_path / "partitioned"),
             mesh_data=mesh if replicated_context.is_root else None,
@@ -415,7 +415,7 @@ def test_partitioned_initial_velocity_rebuilds_histories_halos_and_flux(tmp_path
     execution = ExecutionConfig.petsc_partitioned()
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(
+        solver = FVMSolver(
             _pimple_config(execution, "partitioned-initial-velocity"),
             str(tmp_path / "partitioned-initial-velocity"),
             mesh_data=mesh if context.is_root else None,
@@ -443,12 +443,12 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     context = ParallelContext.create(replicated_execution)
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
-        reference = Solver(
+        reference = FVMSolver(
             _pimple_config(replicated_execution, "coupling-interface-reference"),
             str(tmp_path / "coupling-interface-reference"),
             mesh_data=mesh,
         )
-        actual = Solver(
+        actual = FVMSolver(
             _pimple_config(
                 ExecutionConfig.petsc_partitioned(),
                 "coupling-interface-partitioned",
@@ -557,7 +557,7 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
     reference_config = _pimple_config(replicated_execution, "replicated-lsq")
     reference_config.schemes.gradient_scheme = "lsq"
     with contextlib.redirect_stdout(io.StringIO()):
-        reference = Solver(
+        reference = FVMSolver(
             reference_config,
             str(tmp_path / "replicated-lsq"),
             mesh_data=mesh,
@@ -568,7 +568,7 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
     partitioned_config = _pimple_config(ExecutionConfig.petsc_partitioned(), "partitioned-lsq")
     partitioned_config.schemes.gradient_scheme = "lsq"
     with contextlib.redirect_stdout(io.StringIO()):
-        actual = Solver(
+        actual = FVMSolver(
             partitioned_config,
             str(tmp_path / "partitioned-lsq"),
             mesh_data=mesh if context.is_root else None,
@@ -605,7 +605,7 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
     mesh["boundary"][1]["name"] = "xmax"
     shared_root = context.bcast(str(tmp_path) if context.is_root else None)
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(
+        solver = FVMSolver(
             _pimple_config(execution, "partitioned-restart"),
             str(tmp_path / "run"),
             mesh_data=mesh if context.is_root else None,
@@ -636,7 +636,7 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
             assert "U" in parallel.cell_data
         solver.save_state(f"{shared_root}/partitioned-checkpoint")
 
-        restored = Solver(
+        restored = FVMSolver(
             _pimple_config(execution, "partitioned-restart"),
             str(tmp_path / "restored"),
             mesh_data=mesh if context.is_root else None,
@@ -646,8 +646,8 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
 
     for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         np.testing.assert_array_equal(getattr(restored, name), getattr(solver, name))
-    assert restored.flow_time == solver.flow_time
-    assert restored.time_step == solver.time_step
+    assert restored.time == solver.time
+    assert restored.step == solver.step
     assert restored._n_committed == solver._n_committed
     if context.is_root:
         assert (Path(shared_root) / "partitioned-state.pvtu").exists()

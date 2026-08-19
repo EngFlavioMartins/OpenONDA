@@ -72,12 +72,12 @@ class TestMMSTransientDiffusion:
         cents = geo["element_centroids"]
         vol = geo["element_volumes"]
 
-        t0, t_end, dt = 0.0, 0.2, 0.1
+        t0, t_end, time_step_size = 0.0, 0.2, 0.1
         phi_old = _phi_exact_t(t0, cents[:, 0], cents[:, 1], cents[:, 2])
         t = t0
 
         while t < t_end - 1e-12:
-            t += dt
+            t += time_step_size
             phi_exact_new = _phi_exact_t(t, cents[:, 0], cents[:, 1], cents[:, 2])
             phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
 
@@ -89,14 +89,14 @@ class TestMMSTransientDiffusion:
             b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
 
             # Transient term
-            transient = assemble_transient_term_euler_implicit(phi_old, dt, 1.0, geo)
+            transient = assemble_transient_term_euler_implicit(phi_old, time_step_size, 1.0, geo)
             # transient → {"ac": V/dt (diagonal), "bc": V·φ_old/dt (RHS source)}
 
             # Discrete residual at φ_exact(t)
             R = A @ phi_exact_new - b
 
             # Discrete source: S_mms·V = R + (V/dt)·[φ_exact(t) – φ_exact(t–dt)]
-            S_mms = R + (vol / dt) * (phi_exact_new - phi_old)
+            S_mms = R + (vol / time_step_size) * (phi_exact_new - phi_old)
 
             # Build and solve
             A_diag = A.diagonal().copy()
@@ -118,8 +118,8 @@ class TestMMSTransientDiffusion:
         cents = geo["element_centroids"]
         vol = geo["element_volumes"]
 
-        t0, dt = 0.0, 0.1
-        t = t0 + dt
+        t0, time_step_size = 0.0, 0.1
+        t = t0 + time_step_size
         phi_old = _phi_exact_t(t0, cents[:, 0], cents[:, 1], cents[:, 2])
         phi_exact_new = _phi_exact_t(t, cents[:, 0], cents[:, 1], cents[:, 2])
         phi_full = _setup_full_field(mesh, geo, t, phi_exact_new)
@@ -130,10 +130,10 @@ class TestMMSTransientDiffusion:
         )
         A = assemble_matrix_from_fluxes_vectorized(diff_flux, mesh)
         b = assemble_rhs_from_fluxes_vectorized(diff_flux, mesh)
-        transient = assemble_transient_term_euler_implicit(phi_old, dt, 1.0, geo)
+        transient = assemble_transient_term_euler_implicit(phi_old, time_step_size, 1.0, geo)
 
         R = A @ phi_exact_new - b
-        S_mms = R + (vol / dt) * (phi_exact_new - phi_old)
+        S_mms = R + (vol / time_step_size) * (phi_exact_new - phi_old)
 
         A_diag = A.diagonal().copy()
         A.setdiag(A_diag + transient["ac"])

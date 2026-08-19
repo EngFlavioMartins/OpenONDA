@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..core.solver import Solver
+    from ..core.solver import VPMSolver
 
 
 @dataclass
@@ -84,9 +84,9 @@ class ConservationTracker:
         self.history: list[ConservationState] = []
         self._initial_circulation: float | None = None
 
-    def record_state(self, solver: "Solver") -> ConservationState:
+    def record_state(self, solver: "VPMSolver") -> ConservationState:
         """Record conservation quantities at the current time step."""
-        state = ConservationState(time=solver.flow_time)
+        state = ConservationState(time=solver.time)
 
         state.circulation_wake = solver.total_strength
         state.impulse_wake = solver.total_linear_impulse * self.density

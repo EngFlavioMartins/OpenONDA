@@ -26,10 +26,10 @@ from openonda.fvm import (
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
     periodic_square_mesh,
@@ -120,7 +120,7 @@ def _run(
     config = FVMSetup(
         case_name=f"benchmark_{n}",
         execution=ExecutionConfig(operator_backend=operator_backend),
-        time=TimeConfig(delta_t=0.001, end_time=0.001, write_interval=2),
+        time=TimeConfig(time_step_size=0.001, end_time=0.001, write_interval=2),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -138,7 +138,7 @@ def _run(
     output = contextlib.nullcontext() if verbose else contextlib.redirect_stdout(io.StringIO())
     with tempfile.TemporaryDirectory(prefix="openonda-fvm-benchmark-") as case_dir, output:
         start = time.perf_counter()
-        solver = Solver(config, case_dir=case_dir, mesh_data=mesh)
+        solver = FVMSolver(config, case_dir=case_dir, mesh_data=mesh)
         initialization = time.perf_counter() - start
         solver.auto_write = False
 
@@ -152,7 +152,7 @@ def _run(
         total_steps = 1 if cold_one_step else warmup_steps + measured_steps
         for index in range(total_steps):
             start = time.perf_counter()
-            solver.evolve()
+            solver.advance()
             elapsed = time.perf_counter() - start
             telemetry = _linear_telemetry(solver.last_diagnostics.linear_solves)
             if index == 0:

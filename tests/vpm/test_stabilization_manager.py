@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, StabilizationConfig, VPMSetup
+from source.solvers.VPM import StabilizationConfig, VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     DivergenceRelaxationConfig,
@@ -15,8 +15,8 @@ from source.solvers.VPM.config.types import (
 from source.solvers.VPM.stabilization import StabilizationError
 
 
-def _solver(tmp_path, stabilization: StabilizationConfig) -> Solver:
-    solver = Solver(
+def _solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolver:
+    solver = VPMSolver(
         setup=VPMSetup(
             processing_unit="CPU",
             precision="f64",
@@ -166,7 +166,7 @@ def test_rejected_regularization_restores_the_original_field(tmp_path):
     )
     volume = np.full(len(position), spacing**3)
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             processing_unit="CPU",
             precision="f64",
@@ -197,7 +197,7 @@ def test_rejected_regularization_restores_the_original_field(tmp_path):
         viscosity=np.full(len(position), 1e-3),
     )
     circulation = solver.particles.circulation_cpu().copy()
-    solver.time_step = 1
+    solver.step = 1
 
     # This cloud is far too small for the redistribution grid, so the worker's
     # own dissipation limits refuse the candidate it builds.

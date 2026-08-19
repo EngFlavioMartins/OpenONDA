@@ -35,24 +35,26 @@ def build_lambda(
 def lambda_max_from_scales(
     u_char: float,
     overlap_zone_ramp_width: float,
-    dt: float,
+    time_step_size: float,
 ) -> float:
     return float(
         min(
             BLEND_STRENGTH * u_char / max(overlap_zone_ramp_width, 1.0e-12),
-            1.0 / max(dt, 1.0e-12),
+            1.0 / max(time_step_size, 1.0e-12),
         )
     )
 
 
 class BlendingZone:
-    def __init__(self, cfg, vpm, fvm, *, coupling_dt: float, fvm_box):
+    def __init__(self, cfg, vpm, fvm, *, coupling_time_step_size: float, fvm_box):
         self.cfg = cfg
         self.vpm = vpm
         self.fvm = fvm
         self.cell_centres = np.asarray(fvm.get_cell_center_coordinates()).reshape(-1, 3)
         u_char = float(np.linalg.norm(cfg.freestream_velocity_vector))
-        lambda_max = lambda_max_from_scales(u_char, cfg.overlap_zone_ramp_width, coupling_dt)
+        lambda_max = lambda_max_from_scales(
+            u_char, cfg.overlap_zone_ramp_width, coupling_time_step_size
+        )
         overlap_zone_dead_zone = float(cfg.overlap_zone_dead_zone_width)
         self.relaxation = build_lambda(
             self.cell_centres,

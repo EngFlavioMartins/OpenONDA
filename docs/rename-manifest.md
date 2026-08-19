@@ -39,13 +39,13 @@ are updated in the same change.
 
 | Old | New | Units | Scope |
 |---|---|---|---|
-| FVM `TimeConfig.delta_t` | `dt` | s | API/internal |
-| VPM `time_step_size` | `dt` | s | API/internal |
+| FVM `TimeConfig.delta_t` | `time_step_size` | s | API/internal |
+| VPM `time_step_size` | `time_step_size` (unchanged) | s | API/internal |
 | runtime `flow_time` | `time` | s | internal |
 | runtime `time_step` | `step` | – | internal |
 | coupler `self.t_end` | `self.end_time` | s | internal |
-| coupler `self.dt_fvm` | `self.fvm_dt` | s | internal |
-| coupler `self.dt_vpm` | `self.vpm_dt` | s | internal |
+| coupler `self.dt_fvm` | `self.fvm_time_step_size` | s | internal |
+| coupler `self.dt_vpm` | `self.vpm_time_step_size` | s | internal |
 | `n_fvm_substeps` | `fvm_substeps` | – | internal |
 | `backup_frequency` | `checkpoint_interval_steps` | – | API |
 | `coupler_backup_period` | `checkpoint_interval_steps` | – | API |
@@ -186,6 +186,17 @@ are updated in the same change.
 | `logging_interval_steps` | `logging_interval_steps` | – | API |
 | CSV column names | singular, unit-honest vocabulary | – | serialized |
 
+Serialized keys deliberately still spelled with the pre-rename vocabulary,
+deferred to PR7 so writers and readers move together:
+
+| Key | Where | Paired reader |
+|---|---|---|
+| `"dt"` | FVM checkpoint, partitioned restart, diagnostics JSON, step log, forces CSV | same modules |
+| `"flow_time"`, `"time_step"` | VPM HDF5 `solver` attrs, XDMF, sampler CSV headers | `BackupSystem`, `SamplerExecutor` |
+
+`SolverState.time` / `.step` already accept the legacy `flow_time` / `time_step`
+spellings via `validation_alias`, so pre-rename restart files still load.
+
 ## 13. Tutorials
 
 | Old | New | Scope |
@@ -223,11 +234,23 @@ After the refactor, the following must return no hits in `source/`, `openonda/`,
 `tutorials/`, and `tests/` (except where documented in this manifest):
 
 - `n_elements`, `element_centroid`, `element_volume`, `elem_`
-- `self\.U\b`, `self\.p\b` (FVM field accesses), `self\.phi\b`, `self\.nut\b`
+- `self\.U\b`, `self\.p\b`, `self\.phi\b`, `self\.nut\b` **restricted to
+  `source/solvers/FVM/`**.  `self.p` in the VLM/panel Krylov solvers is the
+  CG/BiCGSTAB search direction, not pressure, and stays as is.
 - `circulation`, `circulation_cpu`, `strengths`, `gamma`
 - `setup_fvm_solver`, `setup_vpm_solver`, `setup_coupler`
 - `backup_frequency`, `backup_file_name`, `BackupSystem`
-- `delta_t`, `time_step_size`, `flow_time`
+- `delta_t`, `flow_time`
+- bare `dt` / `*_dt` / `dt_*` as a time-step size.  Exempt, by category:
+  - NumPy/Taichi `*dtype*`;
+  - derivative notation `d(x)/dt`: `ddt_scheme`, `ddt_flux_correction`, `dE_dt`,
+    `dU_dt_peak`, `du_dt`, `dalpha_dt`, `dstr_dt`;
+  - `dT`, `dT_arr`, `dT_dr` — thrust/temperature increments, not time;
+  - `four_nu_dt` — names the product 4·nu·Δt, not a step size;
+  - `OPENONDA_FVM_DT` / `OPENONDA_VPM_DT` — external env-var contract, kept as
+    string literals while the Python constants become `FVM_TIME_STEP_SIZE` /
+    `VPM_TIME_STEP_SIZE`;
+  - archived dataset/case names on disk (`relaxed_reference_*dt002*`).
 - `E_previous`, `E_previous2`
 - `alpha_u`, `alpha_p`, `momentum_maxiter`, `amg_maxiter`, `_tol`
 - `\bcenter\b` in code (excluding third-party strings)

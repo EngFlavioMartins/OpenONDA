@@ -71,8 +71,10 @@ def _solve_static(vlm, u_ref):
     """One uncoupled steady solve + postprocess (computes panel forces)."""
     n_p = vlm.lattice.num_panels
     v_ext = np.tile(np.asarray(u_ref, dtype=float), (n_p, 1))
-    vlm.solve(V_external=v_ext, dt=None, coupled=False)
-    vlm.compute_postprocess(v_ext, np.asarray(u_ref, dtype=float), DENSITY, dt=None, coupled=False)
+    vlm.solve(V_external=v_ext, time_step_size=None, coupled=False)
+    vlm.compute_postprocess(
+        v_ext, np.asarray(u_ref, dtype=float), DENSITY, time_step_size=None, coupled=False
+    )
 
 
 def _extract(vlm, name, u_ref):
@@ -325,7 +327,7 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
         )
         vlm.generate_mesh()
         n_p = vlm.lattice.num_panels
-        vlm.solve(V_external=np.tile(u_ref, (n_p, 1)), dt=0.0125, coupled=coupled)
+        vlm.solve(V_external=np.tile(u_ref, (n_p, 1)), time_step_size=0.0125, coupled=coupled)
         get[coupled] = _outer_station_tip_to_root_ratio(vlm)
 
     _, coupled_lo = get[True]

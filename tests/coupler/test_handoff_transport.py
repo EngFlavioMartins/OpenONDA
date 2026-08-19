@@ -37,12 +37,12 @@ def _invariants(pos, circ):
     return np.sum(circ, axis=0), 0.5 * np.sum(np.cross(pos, circ), axis=0)
 
 
-def _cycle(pos, circ, target_fn, dt, mesh_weight=None):
+def _cycle(pos, circ, target_fn, time_step_size, mesh_weight=None):
     """Advect by a uniform stream, then hand off once.
 
     ``mesh_weight = 0`` drives eta to zero, leaving particles Lagrangian.
     """
-    pos = pos + U_INF * dt
+    pos = pos + U_INF * time_step_size
     result = continuous_transfer(
         pos,
         circ,
@@ -57,7 +57,7 @@ def _cycle(pos, circ, target_fn, dt, mesh_weight=None):
         core_radius_ratio=1.0,
         transfer_amplification_cap=2.0,
         freestream_speed=1.0,
-        dt=dt,
+        time_step_size=time_step_size,
         lattice_anchor=np.array([-0.625, -0.625, -0.625]),
     )
     return result.pos, result.circ, result
@@ -77,7 +77,7 @@ def _seed_from_field(field_fn):
 def test_fvm_authority_zone_does_not_accumulate_error():
     """With eta = 1 and an exact target, the error must be flat, not growing."""
     radius, core, gamma = 0.25, 6.0 * H, 1.0
-    dt = 0.02
+    time_step_size = 0.02
 
     def target(points):
         return gaussian_ring(points, np.array([0.0, 0.0, 0.0]), radius, core, gamma)
@@ -87,8 +87,8 @@ def test_fvm_authority_zone_does_not_accumulate_error():
     for _ in range(25):
         # Hold the ring fixed so the analytic target stays valid; the advection
         # is what forces a fresh off-lattice remesh every cycle.
-        pos, circ, result = _cycle(pos, circ, target, dt)
-        pos = pos - U_INF * dt
+        pos, circ, result = _cycle(pos, circ, target, time_step_size)
+        pos = pos - U_INF * time_step_size
         inner = np.all(np.abs(pos) < 0.4, axis=1)
         exact = target(pos[inner])
         errors.append(float(np.linalg.norm(circ[inner] - exact) / (np.linalg.norm(exact) + 1e-30)))
@@ -104,7 +104,7 @@ def test_fvm_authority_zone_does_not_accumulate_error():
 def test_lagrangian_zone_conserves_circulation_and_impulse_exactly():
     """Remesh-only transport must not leak circulation or linear impulse."""
     radius, core, gamma = 0.2, 5.0 * H, 1.0
-    dt = 0.02
+    time_step_size = 0.02
     pos, circ = _seed_from_field(
         lambda q: gaussian_ring(q, np.array([0.0, 0.0, 0.0]), radius, core, gamma)
     )
@@ -113,12 +113,12 @@ def test_lagrangian_zone_conserves_circulation_and_impulse_exactly():
     zero = lambda points: np.zeros((len(np.atleast_2d(points)), 3))  # noqa: E731
     no_fvm = lambda points: np.zeros(len(np.atleast_2d(points)))  # noqa: E731
     for _ in range(20):
-        pos, circ, _ = _cycle(pos, circ, zero, dt, mesh_weight=no_fvm)
+        pos, circ, _ = _cycle(pos, circ, zero, time_step_size, mesh_weight=no_fvm)
 
     gamma1, impulse1 = _invariants(pos, circ)
     np.testing.assert_allclose(gamma1, gamma0, atol=1e-12, rtol=0)
     # Impulse translates with the ring; compare in the co-moving frame.
-    shift = U_INF * dt * 20
+    shift = U_INF * time_step_size * 20
     impulse1_comoving = impulse1 - 0.5 * np.cross(shift, gamma1)
     np.testing.assert_allclose(impulse1_comoving, impulse0, atol=1e-12, rtol=0)
 
@@ -127,7 +127,7 @@ def test_lagrangian_zone_conserves_circulation_and_impulse_exactly():
 def test_lagrangian_zone_diffusion_is_bounded_and_measured(capsys):
     """Quantify the per-cycle amplitude loss of remesh-only transport."""
     radius, gamma = 0.2, 1.0
-    dt = 0.02
+    time_step_size = 0.02
     rows = []
     for cells_per_core in (2.0, 4.0, 6.0):
         core = cells_per_core * H
@@ -138,7 +138,7 @@ def test_lagrangian_zone_diffusion_is_bounded_and_measured(capsys):
         zero = lambda points: np.zeros((len(np.atleast_2d(points)), 3))  # noqa: E731
         no_fvm = lambda points: np.zeros(len(np.atleast_2d(points)))  # noqa: E731
         for _ in range(20):
-            pos, circ, _ = _cycle(pos, circ, zero, dt, mesh_weight=no_fvm)
+            pos, circ, _ = _cycle(pos, circ, zero, time_step_size, mesh_weight=no_fvm)
         peak = np.linalg.norm(circ, axis=1).max() / peak0
         rows.append((cells_per_core, peak, peak ** (1.0 / 20.0)))
 

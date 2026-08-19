@@ -18,10 +18,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -68,7 +68,7 @@ def _make_solver(init=(0.0, 0.0, 0.0)):
     bnds = [BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")]
     cfg = FVMSetup(
         case_name="coupler-contract",
-        time=TimeConfig(delta_t=0.1, end_time=1.0, write_interval=999),
+        time=TimeConfig(time_step_size=0.1, end_time=1.0, write_interval=999),
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
@@ -77,7 +77,7 @@ def _make_solver(init=(0.0, 0.0, 0.0)):
         initial_velocity=list(init),
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        s = Solver(cfg, case_dir="/tmp/openonda-coupler-contract", mesh_data=mesh)
+        s = FVMSolver(cfg, case_dir="/tmp/openonda-coupler-contract", mesh_data=mesh)
         s.auto_write = False
     return s, mesh
 
@@ -149,7 +149,7 @@ def test_scalar_param_setters():
     s, _ = _make_solver()
     s.set_time_step(0.05)
     s.set_kinematic_viscosity(0.02)
-    assert s.dt == 0.05 and s.config.transport.nu == 0.02
+    assert s.time_step_size == 0.05 and s.config.transport.nu == 0.02
 
 
 def test_registered_fields_build_blending_source():
@@ -166,14 +166,14 @@ def test_registered_fields_build_blending_source():
 
 def test_driver_split_solve_then_advance():
     s, _ = _make_solver()
-    t0, step0, nc0 = s.flow_time, s.time_step, s._n_committed
+    t0, step0, nc0 = s.time, s.step, s._n_committed
     with contextlib.redirect_stdout(io.StringIO()):
         s.set_time_step(0.1)
         s.solve_pimple()
-        assert s.flow_time == t0 and s.time_step == step0, "solve_pimple must not advance time"
+        assert s.time == t0 and s.step == step0, "solve_pimple must not advance time"
         s.advance_time()
-    assert abs(s.flow_time - (t0 + 0.1)) < 1e-12
-    assert s.time_step == step0 + 1 and s._n_committed == nc0 + 1
+    assert abs(s.time - (t0 + 0.1)) < 1e-12
+    assert s.step == step0 + 1 and s._n_committed == nc0 + 1
 
 
 def test_vector_dirichlet_writes_ghosts():
@@ -218,7 +218,7 @@ def test_blending_source_relaxes_velocity_to_target():
         geo,
         mesh["boundary"],
         convection_scheme="central",
-        dt=0.1,
+        time_step_size=0.1,
         U_old=U,
         source_explicit=lam[:, None] * target,
         source_implicit=lam,

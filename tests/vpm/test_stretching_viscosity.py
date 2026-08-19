@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StabilizationConfig,
@@ -15,7 +15,7 @@ from source.solvers.VPM.config.types import (
 
 @pytest.mark.unit
 def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path):
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             processing_unit="CPU",
             precision="f64",

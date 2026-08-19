@@ -235,7 +235,7 @@ class PanelSolver:
 
             self.add_surface(uid=uid, stl_path=stl_file, motion=motion, group_id=group_id)
 
-    def save_results(self, filename: str, flow_time: float = 0.0) -> None:
+    def save_results(self, filename: str, time: float = 0.0) -> None:
         """
         Save panel results to VTK file.
 
@@ -268,7 +268,7 @@ class PanelSolver:
             cp=cp,
             panel_forces=panel_forces,
             group_ids=group_ids,
-            flow_time=flow_time,
+            time=time,
             filepath=f"{filename}.vtp",
         )
 
@@ -417,7 +417,7 @@ class PanelSolver:
         )
 
     def compute_forces(
-        self, V_inf: np.ndarray, V_wake_field: Any, dt: float, rho: float
+        self, V_inf: np.ndarray, V_wake_field: Any, time_step_size: float, rho: float
     ) -> dict[int, np.ndarray]:
         """
         Compute integrated force vector per body group using Bernoulli or Impulse.
@@ -482,9 +482,9 @@ class PanelSolver:
         return total_forces
 
     def compute_loads(
-        self, V_inf: np.ndarray, V_wake_field: Any, dt: float, rho: float
+        self, V_inf: np.ndarray, V_wake_field: Any, time_step_size: float, rho: float
     ) -> dict[int, np.ndarray]:
-        return self.compute_forces(V_inf, V_wake_field, dt, rho)
+        return self.compute_forces(V_inf, V_wake_field, time_step_size, rho)
 
     def compute_induced_velocity(self, points: np.ndarray) -> np.ndarray:
         self._ensure_initialized()
@@ -545,12 +545,12 @@ class PanelSolver:
         V_inf: np.ndarray | None = None,
         V_wake_field: Any = None,
         t: float | None = None,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         particles: Any = None,
         physics: Any = None,
         config: Any = None,
         time: float | None = None,
-        time_step: int | None = None,
+        step: int | None = None,
         logging_frequency: int | None = None,
         density: float | None = None,
         **kwargs,
@@ -574,14 +574,14 @@ class PanelSolver:
                 if self.freestream_velocity is not None
                 else np.array([1.0, 0.0, 0.0])
             )
-        if dt is None:
-            dt = 0.01
+        if time_step_size is None:
+            time_step_size = 0.01
         if t is None and time is not None:
             t = time
         if t is None:
             t = self._current_time
-        if time_step is not None:
-            self.step = time_step
+        if step is not None:
+            self.step = step
         if density is not None:
             self.density = density
         if logging_frequency is not None:
@@ -598,7 +598,9 @@ class PanelSolver:
             if kinematics is None:
                 kinematics = getattr(body, "motion", None)
             if kinematics is not None:
-                kinematics.update(self, t, dt, (body.start_idx, body.start_idx + body.count))
+                kinematics.update(
+                    self, t, time_step_size, (body.start_idx, body.start_idx + body.count)
+                )
 
         # 3. Compute VPM-induced velocity at collocation points (if coupled)
         V_wake = V_wake_field
@@ -627,9 +629,13 @@ class PanelSolver:
         # particle dynamics or post-processing.
         if self.coupling_scope != "vpm_bc":
             self.compute_postprocess(
-                V_inf, V_inf, self.density, dt=dt, coupled=(particles is not None)
+                V_inf,
+                V_inf,
+                self.density,
+                time_step_size=time_step_size,
+                coupled=(particles is not None),
             )
-            self.compute_loads(V_inf, V_wake, dt, self.density)
+            self.compute_loads(V_inf, V_wake, time_step_size, self.density)
             log_freq = self.logging_frequency
             if log_freq > 0 and self.step % log_freq == 0:
                 try:
@@ -645,7 +651,7 @@ class PanelSolver:
         self.step += 1
         return None
 
-    def advance_time(self, dt: float, current_time: float) -> None:
+    def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance kinematics state and geometry for all surfaces (VLM-compatible API)."""
         self.ensure_mesh_generated()
         self._current_time = float(current_time)
@@ -658,7 +664,10 @@ class PanelSolver:
             kinematics = getattr(body, "kinematics", None) or getattr(body, "motion", None)
             if kinematics is not None:
                 kinematics.update(
-                    self, current_time, dt, (body.start_idx, body.start_idx + body.count)
+                    self,
+                    current_time,
+                    time_step_size,
+                    (body.start_idx, body.start_idx + body.count),
                 )
         self.solve(V_inf, V_wake, current_time)
 
@@ -825,7 +834,7 @@ class PanelSolver:
         V_external_np: np.ndarray,
         U_ref: np.ndarray,
         density: float,
-        dt: float | None = None,
+        time_step_size: float | None = None,
         coupled: bool = False,
     ) -> None:
         """
@@ -835,7 +844,7 @@ class PanelSolver:
             V_external_np: External velocity (N, 3) or (3,)
             U_ref: Reference velocity vector [ux, uy, uz] (m/s)
             density: Fluid density
-            dt: Time step size
+            time_step_size: Time step size
             coupled: Whether in coupled mode (unused for panel method)
         """
         if self.lattice is None or self.lattice.num_panels == 0:

@@ -45,14 +45,14 @@ class TestConfigFactories:
         assert bc.mesh_type == "empty"
 
     def test_time_config_transient(self):
-        tc = TimeConfig.transient(dt=0.1, duration=20.0)
-        assert tc.delta_t == 0.1
+        tc = TimeConfig.transient(time_step_size=0.1, duration=20.0)
+        assert tc.time_step_size == 0.1
         assert tc.start_time == 0.0
         assert tc.end_time == 20.0
 
     def test_time_config_steady(self):
         tc = TimeConfig.steady(max_iter=1000)
-        assert tc.delta_t == 1  # default dt for steady
+        assert tc.time_step_size == 1  # default dt for steady
         assert tc.end_time == 1000
         assert tc.start_time == 0
 
@@ -96,7 +96,7 @@ class TestConfigFactories:
             case_name="test_case",
             cores=3,
             mesh=MeshConfig(max_aspect_ratio=100.0),
-            time=TimeConfig.transient(dt=0.1, duration=10.0),
+            time=TimeConfig.transient(time_step_size=0.1, duration=10.0),
             transport=TransportConfig.air(),
             boundaries=[BoundaryConfig.inlet("in", [1, 0, 0])],
         )
@@ -105,7 +105,7 @@ class TestConfigFactories:
         loaded = FVMSetup.load(path)
         assert loaded.case_name == "test_case"
         assert loaded.cores == 3
-        assert loaded.time.delta_t == 0.1
+        assert loaded.time.time_step_size == 0.1
         assert loaded.pimple.algorithm == "PIMPLE"
         assert loaded.boundaries[0].name == "in"
 

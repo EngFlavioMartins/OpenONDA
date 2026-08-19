@@ -24,17 +24,19 @@ DEFAULT_TRANSFER_AMPLIFICATION_CAP = 2.0
 
 
 def required_buffer_length(
-    freestream_speed: float, dt: float, particle_spacing: float, safety: float = 1.5
+    freestream_speed: float, time_step_size: float, particle_spacing: float, safety: float = 1.5
 ) -> float:
     """Minimum downstream buffer length for a dt-robust hand-off:
     ``L_buf >= safety * freestream_speed * dt + 2h`` (M4' stencil must stay interior)."""
-    return float(safety * abs(freestream_speed) * abs(dt) + _M4P_SUPPORT * particle_spacing)
+    return float(
+        safety * abs(freestream_speed) * abs(time_step_size) + _M4P_SUPPORT * particle_spacing
+    )
 
 
-def max_stable_dt(
+def max_stable_time_step_size(
     freestream_speed: float, l_buf: float, particle_spacing: float, safety: float = 1.5
 ) -> float:
-    """Largest ``dt`` for which the given buffer keeps the hand-off exact
+    """Largest ``time_step_size`` for which the given buffer keeps the hand-off exact
     (inverse of :func:`required_buffer_length`)."""
     u = abs(freestream_speed)
     if u < 1e-30:
@@ -551,7 +553,7 @@ def continuous_transfer(
     transfer_amplification_cap: float = DEFAULT_TRANSFER_AMPLIFICATION_CAP,
     transfer_boundary_prune_multiplier: float = 1.0,
     freestream_speed: float = 0.0,
-    dt: float = 0.0,
+    time_step_size: float = 0.0,
     lattice_anchor=None,
     max_output_particles: int | None = None,
     lattice: TransferLattice | None = None,
@@ -894,7 +896,7 @@ def continuous_transfer(
         out_rad = out_rad[keep_indices]
         out_circ = recover_invariants(out_pos, out_circ, combined_target, volumes=out_vol)
 
-    cfl = float(abs(freestream_speed) * abs(dt) / (transfer_buffer_length + 1e-30))
+    cfl = float(abs(freestream_speed) * abs(time_step_size) / (transfer_buffer_length + 1e-30))
 
     return TransferResult(
         pos=out_pos,
@@ -934,7 +936,7 @@ class VorticityTransfer:
 
     def __init__(self, coupler):
         cfg = coupler.config
-        if coupler.nu is None or coupler.dt_vpm is None or coupler.fvm_box is None:
+        if coupler.nu is None or coupler.vpm_time_step_size is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM time state")
         self.config = cfg
         self.particle_spacing = float(cfg.vpm_particle_spacing)
@@ -950,7 +952,7 @@ class VorticityTransfer:
         self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
         self.diagnostic_interval = int(getattr(cfg, "transfer_diagnostic_interval", 1))
         self.freestream_speed = float(np.linalg.norm(cfg.freestream_velocity))
-        self.dt = float(coupler.dt_vpm)
+        self.time_step_size = float(coupler.vpm_time_step_size)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
 
         if coupler.vpm is not None and coupler.vpm.config.particles_kernel != "GAUSSIAN":
@@ -1146,7 +1148,7 @@ class VorticityTransfer:
             self.overlap_zone_ramp_width,
             self.overlap_zone_dead_zone,
             l_buf,
-            max_stable_dt(self.freestream_speed, l_buf, self.particle_spacing),
+            max_stable_time_step_size(self.freestream_speed, l_buf, self.particle_spacing),
             self.config.transfer_prune_vorticity_min,
             self.transfer_prune_threshold_abs,
             self.transfer_amplification_cap,
@@ -1160,7 +1162,9 @@ class VorticityTransfer:
 
     @property
     def transfer_buffer_length(self) -> float:
-        return required_buffer_length(self.freestream_speed, self.dt, self.particle_spacing)
+        return required_buffer_length(
+            self.freestream_speed, self.time_step_size, self.particle_spacing
+        )
 
     def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
         """Signed distance to the nearest solid surface, positive in the fluid.
@@ -1306,23 +1310,23 @@ class VorticityTransfer:
             transfer_amplification_cap=self.transfer_amplification_cap,
             transfer_boundary_prune_multiplier=self.transfer_boundary_prune_multiplier,
             freestream_speed=self.freestream_speed,
-            dt=self.dt,
+            time_step_size=self.time_step_size,
             lattice_anchor=self._lattice_anchor,
             max_output_particles=self.config.transfer_max_particles,
             lattice=self._lattice,
             compute_diagnostics=self.step % self.diagnostic_interval == 0,
         )
 
-        vpm_dt = vpm.np_dtype
+        vpm_time_step_size = vpm.np_dtype
         k = res.n_total
         vpm.replace_vortex_particles(
-            position=res.pos.astype(vpm_dt),
-            velocity=np.zeros((k, 3), dtype=vpm_dt),
-            circulation=res.circ.astype(vpm_dt),
-            radius=res.rad.astype(vpm_dt),
-            volume=res.vol.astype(vpm_dt),
-            viscosity=np.full(k, self.nu, dtype=vpm_dt),
-            viscosity_turbulent=np.zeros(k, dtype=vpm_dt),
+            position=res.pos.astype(vpm_time_step_size),
+            velocity=np.zeros((k, 3), dtype=vpm_time_step_size),
+            circulation=res.circ.astype(vpm_time_step_size),
+            radius=res.rad.astype(vpm_time_step_size),
+            volume=res.vol.astype(vpm_time_step_size),
+            viscosity=np.full(k, self.nu, dtype=vpm_time_step_size),
+            viscosity_turbulent=np.zeros(k, dtype=vpm_time_step_size),
             zone_id=np.zeros(k, dtype=np.int32),
         )
 
@@ -1409,7 +1413,7 @@ class VorticityTransfer:
                 "[Transfer] CFL=%.2f > 0.7 - buffer too short for this dt; "
                 "reduce dt (max_dt~%.3e s).",
                 res.cfl,
-                max_stable_dt(
+                max_stable_time_step_size(
                     self.freestream_speed, self.transfer_buffer_length, self.particle_spacing
                 ),
             )

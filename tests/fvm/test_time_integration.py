@@ -18,18 +18,18 @@ class TestTimeIntegration:
         n_elem = mesh["n_elements"]
 
         lam = 2.0
-        dt = 0.1
+        time_step_size = 0.1
         phi_old = np.ones(n_elem) * 10.0
 
         # Manually assemble: V·(φ - φ_old)/dt + λ·V·φ = 0
         # → (V/dt)·φ + (λ·V)·φ = (V/dt)·φ_old
         # → A·φ = b
         volumes = geo["element_volumes"]
-        A_diag = volumes / dt + lam * volumes
-        b = volumes / dt * phi_old
+        A_diag = volumes / time_step_size + lam * volumes
+        b = volumes / time_step_size * phi_old
 
         phi_new = b / A_diag
-        expected = phi_old / (1.0 + lam * dt)
+        expected = phi_old / (1.0 + lam * time_step_size)
         assert np.allclose(phi_new, expected), (
             f"max error = {np.max(np.abs(phi_new - expected)):.2e}"
         )
@@ -41,11 +41,11 @@ class TestTimeIntegration:
         n_elem = mesh["n_elements"]
 
         rho = 1.0
-        dt = 0.1
+        time_step_size = 0.1
         phi_old = np.ones(n_elem) * 10.0
-        result = assemble_transient_term_euler_implicit(phi_old, dt, rho, geo)
+        result = assemble_transient_term_euler_implicit(phi_old, time_step_size, rho, geo)
         volumes = geo["element_volumes"]
-        expected_ac = rho * volumes / dt
+        expected_ac = rho * volumes / time_step_size
         expected_bc = expected_ac * phi_old
         assert np.allclose(result["ac"], expected_ac), "transient term ac mismatch"
         assert np.allclose(result["bc"], expected_bc), "transient term bc mismatch"
@@ -56,13 +56,13 @@ class TestTimeIntegration:
         volumes = np.array([2.0, 0.5])
         rho = np.array([1.0, 3.0])
         decay_rate = 2.0
-        dt = 0.1
+        time_step_size = 0.1
         matrix = diags(decay_rate * rho * volumes, format="csr")
         rhs = np.zeros_like(phi_old)
 
-        phi_new = advance_euler_explicit(phi_old, matrix, rhs, dt, rho, volumes)
+        phi_new = advance_euler_explicit(phi_old, matrix, rhs, time_step_size, rho, volumes)
 
-        assert np.allclose(phi_new, phi_old * (1.0 - decay_rate * dt))
+        assert np.allclose(phi_new, phi_old * (1.0 - decay_rate * time_step_size))
 
     def test_explicit_diffusion_preserves_uniform_field(self, hand_built_3d_mesh):
         """The public scalar path applies the explicit residual update."""
@@ -78,7 +78,7 @@ class TestTimeIntegration:
             phi,
             gamma=0.2,
             density=1.0,
-            dt=0.01,
+            time_step_size=0.01,
             n_steps=2,
             time_scheme="euler_explicit",
         )
@@ -93,14 +93,14 @@ class TestTimeIntegration:
         n_elem = mesh["n_elements"]
 
         lam = 1.0
-        dt = 0.5
+        time_step_size = 0.5
         volumes = geo["element_volumes"]
         phi = np.ones(n_elem) * 10.0
 
         history = [phi.copy()]
         for _ in range(3):
-            A_diag = volumes / dt + lam * volumes
-            b = volumes / dt * phi
+            A_diag = volumes / time_step_size + lam * volumes
+            b = volumes / time_step_size * phi
             phi = b / A_diag
             history.append(phi.copy())
 

@@ -76,10 +76,15 @@ def balance_metrics(
     sink: np.ndarray,
 ) -> dict[str, float]:
     """Compare each sampled energy increment with its interval-averaged sink."""
-    dt = np.diff(t)
+    time_step_size = np.diff(t)
     interval_rate = dE_dt[1:]
     interval_sink = sink[1:]
-    valid = np.isfinite(interval_rate) & np.isfinite(interval_sink) & np.isfinite(dt) & (dt > 0.0)
+    valid = (
+        np.isfinite(interval_rate)
+        & np.isfinite(interval_sink)
+        & np.isfinite(time_step_size)
+        & (time_step_size > 0.0)
+    )
     if valid.sum() < 2:
         return {
             "point_rel_l2": np.nan,
@@ -92,7 +97,7 @@ def balance_metrics(
 
     dv = interval_rate[valid]
     sv = interval_sink[valid]
-    dtv = dt[valid]
+    dtv = time_step_size[valid]
     diff = dv - sv
     denom = rms(sv)
     point_rel_l2 = rms(diff) / denom if denom > 0.0 else np.nan

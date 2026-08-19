@@ -97,9 +97,9 @@ def plot_forces(samples_dir: Path, figures_dir: Path, figure_format: str = "png"
     if meta:
         A = meta["A"]
         omega = meta["omega"]
-        dt = meta["dt"]
+        time_step_size = meta["dt"]
         n = meta["num_steps"]
-        t = np.arange(n) * dt
+        t = np.arange(n) * time_step_size
         for surf, color, lbl in [
             ("front_wing", c_front, "Front wing"),
             ("rear_wing", c_rear, "Rear wing"),

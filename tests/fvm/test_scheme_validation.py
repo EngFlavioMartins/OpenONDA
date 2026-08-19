@@ -72,7 +72,7 @@ def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
     params = _params_from(
         (SchemesConfig(time_scheme="backward"), LinearSolverConfig(), PimpleControl())
     )
-    time = TimeConfig.transient(dt=0.1, duration=1.0)
+    time = TimeConfig.transient(time_step_size=0.1, duration=1.0)
     time.adjust_timestep = True
     with pytest.raises(ValueError, match="adaptive time stepping with BDF2"):
         validate_solver_params(params, time)

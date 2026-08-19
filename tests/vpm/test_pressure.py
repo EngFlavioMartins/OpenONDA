@@ -63,7 +63,7 @@ test_eulerian_temporal_term_self_consistency
 
 test_eulerian_temporal_mismatch_with_corrected_velocity
     Supplying a velocity_previous that was computed via a DIFFERENT code path
-    (VPM_Solver.compute_target_velocities, which applies a divergence-free
+    (VPMSolver.compute_target_velocities, which applies a divergence-free
     correction) to a steady, unchanging particle field must produce a nonzero
     temporal term.  This is the canary test that documents and protects against
     the source-of-error identified in the coupling BC: if the coupler naively
@@ -76,7 +76,7 @@ from math import erf, exp, pi, sqrt
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.physics.pressure import _q_kernel, _zeta_kernel
 
@@ -151,7 +151,7 @@ def test_zeta_kernel_maximum_at_origin():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Solver-level pressure gradient tests
+# VPMSolver-level pressure gradient tests
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -167,7 +167,7 @@ def _empty_solver(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    return Solver(setup=config)
+    return VPMSolver(setup=config)
 
 
 def test_pressure_gradients_zero_for_empty_field(tmp_path):
@@ -252,7 +252,7 @@ def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     sigma = 0.1
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
@@ -355,7 +355,7 @@ def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _A
         logging_frequency=0,
         backup_directory=str(tmp_path),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
@@ -674,7 +674,7 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
     ).copy()
 
     # Simulate a small particle displacement (freestream advection Δx = U·dt)
-    dt = 0.05
+    time_step_size = 0.05
     pos = solver.particles.position_cpu()
     solver.particles.set_field("position", pos + np.array([[0.05, 0.0, 0.0]]))
 
@@ -687,7 +687,7 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
         include_temporal=True,
         temporal_method="eulerian",
         velocity_previous=u_prev,
-        dt=dt,
+        time_step_size=time_step_size,
         include_freestream=False,
     )["grad_p"]
 
@@ -695,7 +695,7 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
     u_new = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
 
     # Expected temporal contribution: −ρ·(u_new − u_prev)/dt
-    expected_temporal = -_DENSITY * (u_new - u_prev) / dt
+    expected_temporal = -_DENSITY * (u_new - u_prev) / time_step_size
 
     # Expected total grad_p (convective + temporal, no viscous)
     grad_u = pp.compute_target_velocity_gradients(solver.particles, targets).reshape(-1, 3, 3)
@@ -723,7 +723,7 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
 
 def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     """
-    Supplying a velocity_previous obtained from VPM_Solver.compute_target_velocities
+    Supplying a velocity_previous obtained from VPMSolver.compute_target_velocities
     (which may differ from PressurePhysics.compute_target_velocities due to
     divergence-free correction or source induction) to a steady particle field
     must produce a nonzero temporal contribution.
@@ -742,7 +742,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
 
     This test fails when
     --------------------
-    * VPM_Solver.compute_target_velocities and PressurePhysics.compute_target_velocities
+    * VPMSolver.compute_target_velocities and PressurePhysics.compute_target_velocities
       return identical results (e.g., the divergence-free correction is removed
       from the coupler, at which point this test rightly stops alerting).
     * The test is refactored to pass a consistent snapshot (then test 1.6 is
@@ -752,7 +752,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     targets = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
 
     # Steady state: same particles, two consecutive velocity evaluations
-    # via the Solver-level API (which adds div-free correction if present).
+    # via the VPMSolver-level API (which adds div-free correction if present).
     # We simulate the correction by adding a small uniform offset.
     u_via_solver = solver.compute_target_velocities(targets, include_freestream=False)
 
@@ -765,7 +765,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
 
     # Nothing has moved — physics says ∂u/∂t = 0.
     # But using the corrected velocity as the previous snapshot must give nonzero temporal.
-    dt = 0.1
+    time_step_size = 0.1
     _ = solver.compute_target_pressure_gradients(
         targets,
         density=_DENSITY,
@@ -774,7 +774,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
         include_temporal=True,
         temporal_method="eulerian",
         velocity_previous=u_corrected,
-        dt=dt,
+        time_step_size=time_step_size,
         include_freestream=False,
     )["grad_p"]
 
@@ -783,15 +783,15 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     u_internal = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
 
     # The temporal term (internal) is (u_internal - u_corrected)/dt
-    temporal_from_mismatch = (u_internal - u_corrected) / dt
+    temporal_from_mismatch = (u_internal - u_corrected) / time_step_size
 
     # It must NOT be zero (the whole point is to document the mismatch)
     mismatch_norm = np.linalg.norm(temporal_from_mismatch)
-    expected_norm = correction / dt  # ≈ 0.01/0.1 = 0.1 m/s²
+    expected_norm = correction / time_step_size  # ≈ 0.01/0.1 = 0.1 m/s²
     assert mismatch_norm > 0.5 * expected_norm, (
         f"Expected nonzero temporal term from code-path mismatch "
         f"(norm ≈ {expected_norm:.3e}), got {mismatch_norm:.3e}. "
-        "This means VPM_Solver.compute_target_velocities and "
+        "This means VPMSolver.compute_target_velocities and "
         "PressurePhysics.compute_target_velocities now return the same result — "
         "verify whether the divergence-free correction is still present."
     )
@@ -828,7 +828,7 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
     _components_prev, u_snapshot = result
 
     # Move the particle to simulate physical evolution
-    dt = 0.05
+    time_step_size = 0.05
     pos = solver.particles.position_cpu()
     solver.particles.set_field("position", pos + np.array([[0.05, 0.0, 0.0]]))
 
@@ -841,7 +841,7 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
         include_temporal=True,
         temporal_method="eulerian",
         velocity_previous=u_snapshot,
-        dt=dt,
+        time_step_size=time_step_size,
         include_freestream=False,
         return_velocity=True,
     )
@@ -861,7 +861,7 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
     # The temporal contribution should equal -ρ(u_new - u_old)/dt
     pp = solver._pressure_physics
     u_new = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
-    expected_temporal = -_DENSITY * (u_new - u_snapshot) / dt
+    expected_temporal = -_DENSITY * (u_new - u_snapshot) / time_step_size
     expected_total = grad_p_conv_only + expected_temporal
 
     np.testing.assert_allclose(

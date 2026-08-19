@@ -20,7 +20,7 @@ import numpy as np
 from openonda.vpm import (
     AdvectionConfig,
     ManeuverVLM,
-    Solver,
+    VPMSolver,
     StabilizationConfig,
     StretchingConfig,
     SurfaceSampler,
@@ -132,7 +132,7 @@ def build_solver_config(
     )
 
 
-def enforce_wake_admissibility(solver: Solver, max_particle_strength: float) -> None:
+def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) -> None:
     """Stop a divergent wake without altering circulation or core size."""
     fields = {
         "position": solver.particles_positions,
@@ -156,13 +156,13 @@ def enforce_wake_admissibility(solver: Solver, max_particle_strength: float) -> 
     if failures:
         raise RuntimeError(
             "Rotor wake admissibility failed at "
-            f"step={solver.time_step}, t={solver.flow_time:.6e}: "
+            f"step={solver.step}, t={solver.time:.6e}: "
             + "; ".join(failures)
             + ". The run was stopped without modifying the particle field."
         )
 
 
-def write_manifest(solver: Solver) -> None:
+def write_manifest(solver: VPMSolver) -> None:
     """Store the numerical settings beside the sampled results."""
     cfg = solver.config
     output_dir = resolve_samples_dir(SOLUTION_DIR, CASE_NAME)
@@ -268,14 +268,14 @@ def main() -> int:
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
     )
-    vpm = Solver(setup=solver_config)
+    vpm = VPMSolver(setup=solver_config)
     write_manifest(vpm)
     vpm.info()
 
     print("\n===== SIMULATION =====")
     try:
         for step in range(NUMBER_OF_STEPS):
-            vpm.update_state()
+            vpm.advance()
             if (step + 1) % GUARD_FREQUENCY == 0:
                 enforce_wake_admissibility(vpm, MAX_PARTICLE_STRENGTH)
     except RuntimeError:

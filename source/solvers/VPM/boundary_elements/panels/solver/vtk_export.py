@@ -30,7 +30,7 @@ def panel_mesh_to_vtp(
     cp: np.ndarray,
     panel_forces: np.ndarray,
     group_ids: np.ndarray,
-    flow_time: float,
+    time: float,
     filepath: str | Path,
 ) -> str:
     n = len(vertices)
@@ -99,7 +99,7 @@ def panel_mesh_to_vtp(
     ft = ET.SubElement(
         field, "DataArray", type="Float64", Name="TimeValue", NumberOfComponents="1", format="ascii"
     )
-    ft.text = str(flow_time)
+    ft.text = str(time)
 
     # Write pretty-printed XML
     xml_str = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")  # nosec B318

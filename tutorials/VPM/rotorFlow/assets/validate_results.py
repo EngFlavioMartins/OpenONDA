@@ -105,7 +105,7 @@ def _plane_drifts(
     samples: Path,
     R: float,
     U_inf: float,
-    dt: float,
+    time_step_size: float,
     omega: float,
 ) -> dict[str, float]:
     """Per-plane relative drift of the disc-averaged deficit over the averaging window."""
@@ -127,7 +127,7 @@ def _plane_drifts(
     for tag, _label in _discover_planes(samples, R):
         files = _select_time_window(
             _plane_files(samples, tag),
-            dt=dt,
+            time_step_size=time_step_size,
             omega=omega,
             averaging_rotations=3.0,
             tail_fraction=0.25,
@@ -188,11 +188,11 @@ def main() -> int:
             )
 
     # -- 3. Wake-plane stationarity -------------------------------------------
-    dt = read_time_step(SAMPLES_DIR)
-    if dt is None:
+    time_step_size = read_time_step(SAMPLES_DIR)
+    if time_step_size is None:
         failures.append("could not determine the run's time step")
     else:
-        drifts = _plane_drifts(SAMPLES_DIR, R, U_inf, dt, omega)
+        drifts = _plane_drifts(SAMPLES_DIR, R, U_inf, time_step_size, omega)
         if not drifts:
             failures.append("no wake-plane samples found to check for stationarity")
         for tag, drift in sorted(drifts.items()):

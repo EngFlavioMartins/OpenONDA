@@ -132,13 +132,13 @@ class RuntimeProfiler:
         return _Section(self, name)
 
     def step(self):
-        """Time one full solver step (use around the body of ``update_state``)."""
+        """Time one full solver step (use around the body of ``advance``)."""
         return _Step(self)
 
-    def _record(self, name: str, dt: float) -> None:
-        self._cumulative[name] = self._cumulative.get(name, 0.0) + dt
+    def _record(self, name: str, time_step_size: float) -> None:
+        self._cumulative[name] = self._cumulative.get(name, 0.0) + time_step_size
         self._calls[name] = self._calls.get(name, 0) + 1
-        self._last[name] = dt
+        self._last[name] = time_step_size
 
     # -- lifecycle ---------------------------------------------------------------
     def reset(self) -> None:

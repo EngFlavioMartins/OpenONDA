@@ -20,7 +20,7 @@ test_cs_diffusion_conserves_total_circulation
 
 import numpy as np
 
-from source.solvers.VPM import ParticleDistributor, Solver, VPMSetup
+from source.solvers.VPM import ParticleDistributor, VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.initial_conditions import LambOseenVPM
 
@@ -37,10 +37,10 @@ _H = 0.04  # particle spacing       [m]
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _minimal_config(tmp_path, *, stretching, viscous, advection, dt=0.01):
+def _minimal_config(tmp_path, *, stretching, viscous, advection, time_step_size=0.01):
     """Return a VPMSetup that writes nothing useful, only logs to tmp_path."""
     return VPMSetup(
-        time_step_size=dt,
+        time_step_size=time_step_size,
         processing_unit="CPU",
         stretching=stretching,
         viscous=viscous,
@@ -115,7 +115,7 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=positions,
         velocity=velocities,
@@ -126,7 +126,7 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
     )
 
     gamma_before = solver.particles_strengths.sum(axis=0)
-    solver.update_state()
+    solver.advance()
     gamma_after = solver.particles_strengths.sum(axis=0)
 
     # Relative error per component; skip near-zero components to avoid division by ~0.
@@ -163,15 +163,15 @@ def test_cs_diffusion_conserves_total_circulation(tmp_path):
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="CS"),
         advection=AdvectionConfig(scheme="NONE"),
-        dt=0.02,
+        time_step_size=0.02,
     )
-    solver = Solver(setup=config)
+    solver = VPMSolver(setup=config)
     _load_lamb_oseen(solver, bounds, _H)
 
     gamma_z_initial = solver.particles_strengths[:, 2].sum()
 
     for _ in range(20):
-        solver.update_state()
+        solver.advance()
 
     gamma_z_final = solver.particles_strengths[:, 2].sum()
     rel_err = abs(gamma_z_final - gamma_z_initial) / abs(gamma_z_initial)

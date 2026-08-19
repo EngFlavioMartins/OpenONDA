@@ -13,11 +13,11 @@ from scipy import sparse
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     RunAcceptancePolicy,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -43,7 +43,7 @@ def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
             raise AttributeError(f"no solver group owns field {name!r}")
     return FVMSetup(
         case_name="restart_contract",
-        time=TimeConfig.transient(dt=0.01, duration=0.1, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, write_interval=100),
         schemes=solver_schemes,
         linear=solver_linear,
         pimple=solver_pimple,
@@ -63,7 +63,7 @@ def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
 
 def _solver(config, path):
     with contextlib.redirect_stdout(io.StringIO()):
-        result = Solver(config, str(path), mesh_data=structured_box(2, 2, 2))
+        result = FVMSolver(config, str(path), mesh_data=structured_box(2, 2, 2))
     result.auto_write = False
     return result
 
@@ -74,21 +74,21 @@ def test_restart_matches_uninterrupted_bdf_integration(tmp_path, time_scheme):
     split = _solver(_config(time_scheme), tmp_path / "split")
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(3):
-            reference.evolve()
+            reference.advance()
         for _ in range(2):
-            split.evolve()
+            split.advance()
     checkpoint = tmp_path / f"{time_scheme}.restart.npz"
     split.save_state(checkpoint)
 
     resumed = _solver(_config(time_scheme), tmp_path / "resumed")
     resumed.load_state(checkpoint)
     with contextlib.redirect_stdout(io.StringIO()):
-        resumed.evolve()
+        resumed.advance()
 
     for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
         np.testing.assert_allclose(getattr(resumed, name), getattr(reference, name), atol=1e-13)
-    assert resumed.flow_time == pytest.approx(reference.flow_time)
-    assert resumed.time_step == reference.time_step
+    assert resumed.time == pytest.approx(reference.time)
+    assert resumed.step == reference.step
     assert resumed._n_committed == reference._n_committed
 
 
@@ -103,7 +103,9 @@ def test_restart_rejects_incompatible_config_and_mesh(tmp_path):
         _solver(changed_config, tmp_path / "changed").load_state(checkpoint)
 
     with contextlib.redirect_stdout(io.StringIO()):
-        changed_mesh = Solver(_config(), str(tmp_path / "mesh"), mesh_data=structured_box(3, 2, 2))
+        changed_mesh = FVMSolver(
+            _config(), str(tmp_path / "mesh"), mesh_data=structured_box(3, 2, 2)
+        )
     with pytest.raises(ValueError, match="mesh hash"):
         changed_mesh.load_state(checkpoint)
 
@@ -118,7 +120,7 @@ def test_restart_allows_an_explicit_end_time_extension(tmp_path):
     restored = _solver(extended, tmp_path / "extended")
     restored.load_state(checkpoint, allow_config_change=True)
 
-    assert restored.flow_time == original.flow_time
+    assert restored.time == original.time
     np.testing.assert_array_equal(restored.U, original.U)
 
 
@@ -157,7 +159,7 @@ def test_restart_rewinds_append_only_histories(tmp_path):
     solver = _solver(_config(), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(2):
-            solver.evolve()
+            solver.advance()
     checkpoint = tmp_path / "state.npz"
     solver.save_state(checkpoint)
 

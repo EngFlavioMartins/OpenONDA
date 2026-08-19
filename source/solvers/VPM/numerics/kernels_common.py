@@ -131,12 +131,12 @@ def _make_update_position_euler_kernel():
     def update_position_euler_kernel(
         positions: ti.template(),
         velocities: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         N = num_particles
         for i in range(N):
-            positions[i] += dt * velocities[i]
+            positions[i] += time_step_size * velocities[i]
 
     return update_position_euler_kernel
 
@@ -149,13 +149,13 @@ def _make_step_euler_forward_strengths_kernel():
         str_in: ti.template(),
         dstr_dt: ti.template(),
         str_out: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
         growth_limit: ti.template(),
     ):
         """Euler step for strength update with per-particle clipping to avoid runaway growth."""
         for i in range(num_particles):
-            delta = dt * dstr_dt[i]
+            delta = time_step_size * dstr_dt[i]
             gamma = str_in[i]
             mag = ti.sqrt(gamma.dot(gamma))
             max_allowed = ti.max(growth_limit * mag, 1e-12)
@@ -277,14 +277,14 @@ def _make_csm_kernel(diffusivity_constant_):
     def update_radius_csm_kernel(
         radii: ti.template(),
         viscosities_eff: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         N = num_particles
         for i in range(N):
             nu_eff = viscosities_eff[i]
             current_radius = radii[i]
-            diffusion_term = diffusivity_constant_() * nu_eff * dt
+            diffusion_term = diffusivity_constant_() * nu_eff * time_step_size
             new_rad_sq = current_radius * current_radius + diffusion_term
 
             # Guard against invalid radius
@@ -300,7 +300,7 @@ def _make_rwm_kernel():
     def update_position_rwm_kernel(
         positions: ti.template(),
         viscosities_eff: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Apply the Random Walk Method (RWM) with Brownian displacements.
@@ -312,7 +312,7 @@ def _make_rwm_kernel():
         N = num_particles
         for i in range(N):
             nu_eff = viscosities_eff[i]
-            displacement_factor = ti.sqrt(2.0 * nu_eff * dt)
+            displacement_factor = ti.sqrt(2.0 * nu_eff * time_step_size)
             # Box-Muller transform: two uniform samples -> two standard normals
             u1 = ti.max(ti.random(ti.f32), 1e-7)
             u2 = ti.random(ti.f32)
@@ -633,12 +633,12 @@ def _create_position_update_kernels(kernel_functions):
         pos_in: ti.template(),
         vel_in: ti.template(),
         pos_out: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Simple advection: pos_out = pos_in + dt * vel_in"""
         for i in range(num_particles):
-            pos_out[i] = pos_in[i] + dt * vel_in[i]
+            pos_out[i] = pos_in[i] + time_step_size * vel_in[i]
 
     @ti.kernel
     def linear_combination_kernel(
@@ -658,7 +658,7 @@ def _create_position_update_kernels(kernel_functions):
         positions: ti.template(),
         k1: ti.template(),
         k2: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """RK2 Heun's method: pos += (dt/2) * (k1 + k2).
@@ -667,7 +667,7 @@ def _create_position_update_kernels(kernel_functions):
         method for particle methods near boundaries or with stiff interactions.
         """
         for i in range(num_particles):
-            positions[i] += (dt / 2.0) * (k1[i] + k2[i])
+            positions[i] += (time_step_size / 2.0) * (k1[i] + k2[i])
 
     @ti.kernel
     def step_rk3_ssp_combine_kernel(
@@ -675,7 +675,7 @@ def _create_position_update_kernels(kernel_functions):
         k1: ti.template(),
         k2: ti.template(),
         k3: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """SSP-RK3 (Strong Stability Preserving): pos += (dt/6) * (k1 + k2 + 4*k3).
@@ -684,7 +684,7 @@ def _create_position_update_kernels(kernel_functions):
         convection-dominated problems and preserves monotonicity (TVD property).
         """
         for i in range(num_particles):
-            positions[i] += (dt / 6.0) * (k1[i] + k2[i] + 4.0 * k3[i])
+            positions[i] += (time_step_size / 6.0) * (k1[i] + k2[i] + 4.0 * k3[i])
 
     @ti.kernel
     def step_rk4_combine_kernel(
@@ -693,7 +693,7 @@ def _create_position_update_kernels(kernel_functions):
         k2: ti.template(),
         k3: ti.template(),
         k4: ti.template(),
-        dt: ti.template(),
+        time_step_size: ti.template(),
         num_particles: ti.i32,
     ):  # type: ignore
         """Classic RK4: pos += (dt/6) * (k1 + 2*k2 + 2*k3 + k4).
@@ -702,7 +702,7 @@ def _create_position_update_kernels(kernel_functions):
         for smooth problems. Requires 4 function evaluations per step.
         """
         for i in range(num_particles):
-            positions[i] += (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
+            positions[i] += (time_step_size / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
 
     return {
         "update_position_euler_kernel": _make_update_position_euler_kernel(),

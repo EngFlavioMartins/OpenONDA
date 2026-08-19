@@ -21,7 +21,7 @@ from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
     ForceSampler,
-    Solver,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -71,15 +71,15 @@ def build_config(reynolds: float, end_time: float, u_vec: list[float]) -> FVMSet
     ]
 
     time = TimeConfig(
-        delta_t=TIME_STEP,
+        time_step_size=TIME_STEP,
         start_time=0.0,
         end_time=end_time,
         write_interval=10**9,
         write_interval_time=WRITE_INTERVAL_TIME,
         adjust_timestep=True,
         max_cfl=MAX_CFL,
-        max_delta_t=MAX_TIME_STEP,
-        min_delta_t=MIN_TIME_STEP,
+        max_time_step_size=MAX_TIME_STEP,
+        min_time_step_size=MIN_TIME_STEP,
     )
 
     return FVMSetup(
@@ -158,11 +158,11 @@ def main() -> None:
 
     print("\n===== SIMULATION =====")
     config = build_config(args.Re, args.end_time, u_vec)
-    solver = Solver(config, case_dir, mesh_data=mesh_data)
+    solver = FVMSolver(config, case_dir, mesh_data=mesh_data)
 
     solver.write_vtk()
-    while solver.flow_time < config.time.end_time:
-        solver.evolve()
+    while solver.time < config.time.end_time:
+        solver.advance()
 
     sol_dir = os.path.join(case_dir, "solution")
     os.makedirs(sol_dir, exist_ok=True)

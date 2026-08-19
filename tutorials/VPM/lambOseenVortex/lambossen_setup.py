@@ -26,7 +26,7 @@ from openonda.vpm import (
     AdvectionConfig,
     LambOseenVPM,
     ParticleDistributor,
-    Solver,
+    VPMSolver,
     SurfaceSampler,
     VelocityConfig,
     ViscousConfig,
@@ -201,7 +201,7 @@ def run_case(
     scheduled_samplers = [field_sampler]
     final_samplers = [field_sampler]
 
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup.viscous_flow_simulation(
             time_step_size=TIME_STEP,
             viscous=viscous,
@@ -284,7 +284,7 @@ def run_case(
     try:
         solver.execute_final_samplers()  # Record the exact t=0 state.
         for _ in range(number_of_steps):
-            solver.update_state()
+            solver.advance()
         solver.execute_final_samplers()
     except BaseException:
         metadata["status"] = "failed"

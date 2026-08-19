@@ -14,10 +14,10 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ExecutionConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -69,7 +69,7 @@ def _fvm_setup(tmp_path, **overrides):
 
 
 class _FakeStepLogger:
-    def step_begin(self, step, flow_time, dt):
+    def step_begin(self, step, time, time_step_size):
         pass
 
     def courant_info(self, maximum, target=None):
@@ -140,7 +140,7 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
     config = FVMSetup(
         case_name="coupled_test",
         execution=ExecutionConfig(),
-        time=TimeConfig(delta_t=0.05, end_time=0.3, write_interval=10**9),
+        time=TimeConfig(time_step_size=0.05, end_time=0.3, write_interval=10**9),
         schemes=SchemesConfig(
             convection_scheme="LUST", gradient_scheme="lsq", time_scheme="backward"
         ),
@@ -160,7 +160,7 @@ def _build_backend(tmp_path, spacing=0.25, box=BOX, hole_box=None, wall_patch_na
         initial_velocity=[1.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
     solver.auto_write = False
     return solver
 
@@ -220,11 +220,11 @@ def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
 
     fvm = _build_backend(tmp_path)
     setup = _fvm_setup(tmp_path)
-    coupler = FVMVPMCoupler(object(), fvm, setup)
+    coupler = FVMVPMCoupler(fvm, object(), setup)
     coupler.fvm = fvm
     coupler._read_fvm_state()
-    assert coupler.dt_fvm == 0.05
-    assert coupler.t_end == 0.3
+    assert coupler.fvm_time_step_size == 0.05
+    assert coupler.end_time == 0.3
     assert coupler.nu == 0.01
     assert np.allclose(coupler.fvm_box, BOX, atol=1e-12)
     assert "nu" not in setup.to_dict()["coupler"]
@@ -354,9 +354,9 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
     class FakeFVM:
         last_yplus = None
-        dt = 0.01
-        time_step = 0
-        flow_time = 0.0
+        time_step_size = 0.01
+        step = 0
+        time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
         config = _FakeFVMConfig()
@@ -396,9 +396,9 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     class FakeFVM:
         last_yplus = None
-        dt = 0.01
-        time_step = 0
-        flow_time = 0.0
+        time_step_size = 0.01
+        step = 0
+        time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
         config = _FakeFVMConfig()
@@ -445,9 +445,9 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
 
     class FakeFVM:
         last_yplus = None
-        dt = 0.01
-        time_step = 0
-        flow_time = 0.0
+        time_step_size = 0.01
+        step = 0
+        time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
         config = _FakeFVMConfig()
@@ -489,9 +489,9 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
 
     class FakeFVM:
         last_yplus = None
-        dt = 0.01
-        time_step = 0
-        flow_time = 0.0
+        time_step_size = 0.01
+        step = 0
+        time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
         config = _FakeFVMConfig()
@@ -560,7 +560,7 @@ def test_coupler_runtime_setters_apply(built_backend):
     # What FVMVPMCoupler.initialize() stamps on the injected backend.
     fvm.set_time_step(0.025)
     fvm.set_kinematic_viscosity(0.02)
-    assert fvm.dt == 0.025
+    assert fvm.time_step_size == 0.025
     assert fvm.config.transport.nu == 0.02
     assert fvm.n_procs() == 1
     # Coupled runs must not let the FVM adapt its own dt.
@@ -581,7 +581,7 @@ def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):
             return 1
 
     setup = _fvm_setup(tmp_path)
-    coupler = coupler_mod.FVMVPMCoupler(object(), _SerialBackend(), setup)
+    coupler = coupler_mod.FVMVPMCoupler(_SerialBackend(), object(), setup)
     with pytest.raises(RuntimeError, match="serial"):
         coupler.initialize()
 

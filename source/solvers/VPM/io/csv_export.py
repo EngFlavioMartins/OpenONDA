@@ -14,7 +14,7 @@ import os
 
 
 def append_loads_to_csv(
-    backup_file_name: str, flow_time: float, loads: dict, directory: str = "solution"
+    backup_file_name: str, time: float, loads: dict, directory: str = "solution"
 ) -> None:
     """Append aerodynamic loads to CSV file.
 
@@ -55,7 +55,7 @@ def append_loads_to_csv(
 
         writer.writerow(
             {
-                "time": flow_time,
+                "time": time,
                 "force_x": loads["force"][0],
                 "force_y": loads["force"][1],
                 "force_z": loads["force"][2],

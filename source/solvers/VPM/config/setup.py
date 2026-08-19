@@ -51,10 +51,10 @@ class VPMSetup:
     time_step_size: float = DEFAULT_TIME_STEP
     """Time increment per simulation step [s]"""
 
-    flow_time: float = 0.0
+    time: float = 0.0
     """Initial simulation time [s]"""
 
-    time_step: int = 0
+    step: int = 0
     """Initial time step number"""
 
     # ---- PHYSICS CONFIGURATION ----
@@ -182,7 +182,7 @@ class VPMSetup:
     timing_frequency: int = 0
     """Print the cumulative runtime-profiling report every N time steps
     (0 = disabled). The per-step time line is always shown; this only controls
-    the periodic ``RuntimeProfiler`` summary. ``Solver.print_timing()`` can be
+    the periodic ``RuntimeProfiler`` summary. ``VPMSolver.print_timing()`` can be
     called manually at any time regardless of this setting."""
 
     # ---- BACKUP AND OUTPUT ----
@@ -276,7 +276,7 @@ class VPMSetup:
     """List of field samplers (SurfaceSampler, LineSampler) called at logging_frequency intervals."""
 
     final_samplers: tuple[Any, ...] | None = None
-    """Field samplers executed only when ``Solver.execute_final_samplers()`` is called."""
+    """Field samplers executed only when ``VPMSolver.execute_final_samplers()`` is called."""
 
     body_stl: str | None = None
     """Path to body STL file for field sampler masking and geometry-aware output.
@@ -332,7 +332,7 @@ class VPMSetup:
             # The GPU LBVH currently implements Gaussian and Winckelmans
             # regularisation. Corrected/super-Gaussian solvers remain fully
             # GPU-capable through exact direct summation instead of failing
-            # later during the first update_state().
+            # later during the first advance().
             if self.particles_kernel.upper() in ("GAUSSIAN", "WINCKELMANS"):
                 velocity = VelocityConfig.treecode(theta=0.3)
             else:
@@ -515,9 +515,9 @@ class VPMSetup:
             return obj
 
         return {
-            "time_step_size": self.time_step_size,
-            "flow_time": self.flow_time,
-            "time_step": self.time_step,
+            "dt": self.time_step_size,
+            "time": self.time,
+            "step": self.step,
             "time_integration": self.time_integration,
             "coupled_max_strain_increment": self.coupled_max_strain_increment,
             "coupled_max_advection_fraction": self.coupled_max_advection_fraction,
@@ -645,7 +645,7 @@ class VPMSetup:
               0.01
 
               >>> config = VPMSetup.viscous_flow_simulation(
-              ...     time_step_size=0.005, freestream_velocity=(10.0, 0.0, 0.0)
+              ...     dt=0.005, freestream_velocity=(10.0, 0.0, 0.0)
               ... )
               >>> config.time_step_size
               0.005
@@ -690,7 +690,7 @@ class VPMSetup:
               0.01
 
               >>> config = VPMSetup.dns_simulation(
-              ...     time_step_size=0.001, processing_unit="CPU"
+              ...     dt=0.001, processing_unit="CPU"
               ... )
               >>> config.time_step_size
               0.001
@@ -737,7 +737,7 @@ class VPMSetup:
               0.01
 
               >>> config = VPMSetup.les_simulation(
-              ...     time_step_size=0.005, cs=0.15
+              ...     dt=0.005, cs=0.15
               ... )
               >>> config.time_step_size
               0.005

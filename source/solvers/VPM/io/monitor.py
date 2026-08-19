@@ -13,7 +13,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..core.solver import Solver
+    from ..core.solver import VPMSolver
 
 # =========================================================
 
@@ -35,7 +35,7 @@ class SimulationMonitor:
         >>> monitor.log_vlm_loads(forces)
     """
 
-    def __init__(self, solver: "Solver", output_dir: str | None = None):
+    def __init__(self, solver: "VPMSolver", output_dir: str | None = None):
         """
         Initialize simulation monitor.
 
@@ -98,7 +98,7 @@ class SimulationMonitor:
 
             writer.writerow(
                 {
-                    "time": self.solver.flow_time,
+                    "time": self.solver.time,
                     "force_x": loads["force"][0],
                     "force_y": loads["force"][1],
                     "force_z": loads["force"][2],
@@ -157,8 +157,8 @@ class SimulationMonitor:
 
             writer.writerow(
                 {
-                    "time": self.solver.flow_time,
-                    "step": self.solver.time_step,
+                    "time": self.solver.time,
+                    "step": self.solver.step,
                     "CL": forces.get("CL", 0.0),
                     "CD": forces.get("CD", 0.0),
                     "CC": forces.get("CC", 0.0),

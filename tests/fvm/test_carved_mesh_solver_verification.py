@@ -22,7 +22,7 @@ def _run(tmp_path, n_steps=5, spacing=0.5):
     solver = _external_flow_solver(tmp_path, spacing=spacing, n_steps=n_steps)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(n_steps):
-            solver.evolve()
+            solver.advance()
     return solver
 
 

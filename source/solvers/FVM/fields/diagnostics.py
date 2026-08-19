@@ -15,7 +15,7 @@ import numpy as np
 from . import gradients
 
 
-def compute_courant_number(U, phi, dt, mesh_data, geo_data):
+def compute_courant_number(U, phi, time_step_size, mesh_data, geo_data):
     """
     Compute Courant number field.
     Co = 0.5 * dt * sum(|phi_f|) / V_c
@@ -23,7 +23,7 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     Args:
         U: Velocity field [m/s] (unused; retained for API compatibility).
         phi: Face volumetric flux ``U·Sf`` [m³/s], shape ``(n_faces,)``.
-        dt: Time-step size [s].
+        time_step_size: Time-step size [s].
         mesh_data: Mesh connectivity
         geo_data: Geometric data
 
@@ -52,7 +52,7 @@ def compute_courant_number(U, phi, dt, mesh_data, geo_data):
     np.add.at(Co, owners[n_interior:], abs_phi[n_interior:])
 
     # Final scaling
-    Co = 0.5 * dt * Co / volumes
+    Co = 0.5 * time_step_size * Co / volumes
 
     return Co
 

@@ -19,7 +19,7 @@ import numpy as np
 from assets.generate_blade import create_rotor_blade, save_blade
 from openonda.vpm import (
     RotatingVLM,
-    Solver,
+    VPMSolver,
     StabilizationConfig,
     StretchingConfig,
     SurfaceSampler,
@@ -113,7 +113,7 @@ def run() -> None:
     )
 
     sample_steps = cadence_steps(SAMPLE_PERIOD)
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
             processing_unit="AUTO",
@@ -149,7 +149,7 @@ def run() -> None:
     )
 
     for _ in range(NUMBER_OF_STEPS):
-        solver.update_state()
+        solver.advance()
 
 
 def main() -> int:

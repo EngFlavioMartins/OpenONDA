@@ -47,7 +47,7 @@ class FVMSamplerExecutor:
         for sampler in samplers:
             is_due = getattr(sampler, "is_due", None)
             if is_due is not None and not is_due(
-                solver.time_step, solver.flow_time, solver._current_dt
+                solver.step, solver.time, solver._current_time_step_size
             ):
                 continue
             if isinstance(sampler, ForceSampler):
@@ -74,7 +74,7 @@ class FVMSamplerExecutor:
     @staticmethod
     def _write_field_sampler(solver, sampler, samples_dir: str, *, strict: bool = True) -> None:
         if hasattr(sampler, "save_vts"):
-            filename = f"{sampler.name}_{solver.time_step:06d}.vts"
+            filename = f"{sampler.name}_{solver.step:06d}.vts"
             try:
                 data = sampler.save_vts(solver, os.path.join(samples_dir, filename))
             except Exception as exc:
@@ -85,7 +85,7 @@ class FVMSamplerExecutor:
             entries = getattr(sampler, "_pvd_entries", None)
             if entries is None:
                 entries = sampler._pvd_entries = []
-            entries.append((solver.flow_time, filename))
+            entries.append((solver.time, filename))
             base.write_pvd(samples_dir, sampler.name, entries)
         else:
             try:

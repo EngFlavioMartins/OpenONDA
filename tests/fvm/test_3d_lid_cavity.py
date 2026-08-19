@@ -11,10 +11,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -47,7 +47,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
     params_pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
     config = FVMSetup(
         case_name=f"cubic-cavity-{level}",
-        time=TimeConfig.transient(dt=0.01, duration=50.0, write_interval=10**9),
+        time=TimeConfig.transient(time_step_size=0.01, duration=50.0, write_interval=10**9),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -69,10 +69,10 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
         initial_p=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, mesh_data=mesh)
+        solver = FVMSolver(config, mesh_data=mesh)
         solver.auto_write = False
         for _ in range(5000):
-            solver.evolve()
+            solver.advance()
             increment = solver.last_diagnostics.residuals["U_increment"]
             if increment < 2.0e-5:
                 break

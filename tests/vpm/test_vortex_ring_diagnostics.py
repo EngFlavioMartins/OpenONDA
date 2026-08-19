@@ -171,13 +171,13 @@ def test_ring_sampler_writes_dense_diagnostics_beside_other_samples(tmp_path):
         particles_circulation=circulation,
         particles_group_ids=np.zeros(len(theta), dtype=np.int32),
         backup_directory=str(tmp_path / "solution"),
-        flow_time=0.1,
-        time_step=5,
+        time=0.1,
+        step=5,
     )
     SamplerExecutor.execute(solver)
     solver.particles_positions[:, 0] += 0.02
-    solver.flow_time = 0.2
-    solver.time_step = 10
+    solver.time = 0.2
+    solver.step = 10
     SamplerExecutor.execute(solver)
 
     csv_path = tmp_path / "samples" / "DNS_direct" / "ring_diagnostics.csv"

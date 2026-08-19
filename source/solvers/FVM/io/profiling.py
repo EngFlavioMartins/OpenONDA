@@ -176,15 +176,15 @@ class PerformanceProfiler:
             PETSc: Any = _PETSc
             PETSc.Log.begin()
 
-    def begin_step(self, *, step: int, flow_time: float, dt: float) -> None:
+    def begin_step(self, *, step: int, time: float, time_step_size: float) -> None:
         """Reset local counters at the beginning of a time step."""
         if not self.enabled:
             return
         self._active = True
         self._metadata = {
             "step": int(step),
-            "time": float(flow_time),
-            "dt": float(dt),
+            "time": float(time),
+            "dt": float(time_step_size),
         }
         self._phase_seconds.clear()
         self._phase_calls.clear()

@@ -23,7 +23,7 @@ CASE_DIR = Path(__file__).resolve().parent
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
-    Solver,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -78,10 +78,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if args.n < 4 or args.nu <= 0.0 or args.dt <= 0.0 or args.end_time <= 0.0:
+    if args.n < 4 or args.nu <= 0.0 or args.time_step_size <= 0.0 or args.end_time <= 0.0:
         raise ValueError("n must be at least 4 and nu, dt, and end-time must be positive")
-    nsteps = int(round(args.end_time / args.dt))
-    if nsteps < 1 or not np.isclose(nsteps * args.dt, args.end_time):
+    nsteps = int(round(args.end_time / args.time_step_size))
+    if nsteps < 1 or not np.isclose(nsteps * args.time_step_size, args.end_time):
         raise ValueError("end-time must be a positive integer multiple of dt")
 
     print("\n===== MESH =====")
@@ -104,7 +104,7 @@ def main() -> None:
     config = FVMSetup(
         case_name="taylorGreen",
         time=TimeConfig(
-            delta_t=args.dt,
+            time_step_size=args.time_step_size,
             end_time=args.end_time,
             write_interval=nsteps,
         ),
@@ -117,7 +117,7 @@ def main() -> None:
 
     solution_dir = CASE_DIR / "solution"
     solution_dir.mkdir(parents=True, exist_ok=True)
-    solver = Solver(config, case_dir=str(CASE_DIR), mesh_data=mesh)
+    solver = FVMSolver(config, case_dir=str(CASE_DIR), mesh_data=mesh)
     centres = solver.geo_data["element_centroids"]
     volumes = solver.geo_data["element_volumes"]
     solver.set_initial_velocity(exact_velocity(centres, 0.0, args.nu))
@@ -141,16 +141,16 @@ def main() -> None:
     )
 
     def row() -> dict[str, float | int]:
-        analytic = exact_velocity(centres, solver.flow_time, args.nu)
+        analytic = exact_velocity(centres, solver.time, args.nu)
         energy = compute_kinetic_energy(solver.U, solver.geo_data)
-        analytic_energy = initial_energy * np.exp(-4.0 * args.nu * solver.flow_time)
+        analytic_energy = initial_energy * np.exp(-4.0 * args.nu * solver.time)
         enstrophy = compute_enstrophy(solver.U, solver.mesh_data, solver.geo_data)
-        analytic_enstrophy = initial_enstrophy * np.exp(-4.0 * args.nu * solver.flow_time)
+        analytic_enstrophy = initial_enstrophy * np.exp(-4.0 * args.nu * solver.time)
         continuity = compute_continuity_error(solver.phi, solver.mesh_data, solver.geo_data)
         continuity_max = np.max(np.abs(continuity) / (volumes + 1e-30))
         return {
-            "step": solver.time_step,
-            "time": solver.flow_time,
+            "step": solver.step,
+            "time": solver.time,
             "kinetic_energy": energy,
             "analytic_energy": analytic_energy,
             "energy_relative_error": abs(energy - analytic_energy) / analytic_energy,
@@ -167,7 +167,7 @@ def main() -> None:
         writer.writeheader()
         writer.writerow(row())
         for _ in range(nsteps):
-            solver.evolve()
+            solver.advance()
             writer.writerow(row())
 
     final = row()

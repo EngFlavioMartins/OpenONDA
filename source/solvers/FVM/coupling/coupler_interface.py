@@ -1,6 +1,6 @@
 """Methods the FVM-VPM coupler calls on its native Eulerian solver.
 
-Implements the compact coupling API on the FVM ``Solver``:
+Implements the compact coupling API on the FVM ``FVMSolver``:
 
 Getters
     ``get_cell_center_coordinates``, ``get_cell_volumes``, ``get_velocity_field``,
@@ -17,7 +17,7 @@ Setters
     ``set_freestream_pressure_boundary_condition``,
     ``set_flux_consistent_pressure_boundary_condition``.
 Driver
-    ``solve_pimple`` / ``advance_time`` live on the ``Solver`` itself.
+    ``solve_pimple`` / ``advance_time`` live on the ``FVMSolver`` itself.
 
 Coupler-facing getters are collective under MPI and expose one global,
 global-ID-ordered field on rank zero (with typed empty arrays elsewhere).
@@ -40,7 +40,7 @@ from ..fields.mixed_velocity_boundary import (
 class CouplerInterfaceMixin:
     """Coupler-facing methods.  Expects the host to provide ``mesh_data``,
     ``geo_data``, ``boundaries``, ``U``, ``p``, ``config``, ``registered_fields``
-    and ``dt`` (all set up by ``Solver.__init__``)."""
+    and ``time_step_size`` (all set up by ``FVMSolver.__init__``)."""
 
     parallel: Any
     mesh_data: dict[str, Any]
@@ -50,8 +50,8 @@ class CouplerInterfaceMixin:
     p: np.ndarray
     config: Any
     registered_fields: dict[str, np.ndarray]
-    dt: float
-    _current_dt: float
+    time_step_size: float
+    _current_time_step_size: float
     _coupling_patch_ids_by_rank: dict[str, Any]
 
     def _velocity_gradient(self) -> np.ndarray:
@@ -555,18 +555,18 @@ class CouplerInterfaceMixin:
         self.registered_fields[name] = field
 
     # ── setters: scalar parameters ───────────────────────────────────────────
-    def set_time_step(self, dt):
+    def set_time_step(self, time_step_size):
         """Override the solver time-step size.
 
         Args:
-            dt: New time-step value (seconds).
+            time_step_size: New time-step value (seconds).
         """
-        dt = float(dt)
-        if not np.isfinite(dt) or dt <= 0.0:
-            raise ValueError(f"Time step must be finite and positive; got {dt!r}")
-        self.dt = dt
-        self._current_dt = dt
-        self.config.time.delta_t = dt
+        time_step_size = float(time_step_size)
+        if not np.isfinite(time_step_size) or time_step_size <= 0.0:
+            raise ValueError(f"Time step must be finite and positive; got {time_step_size!r}")
+        self.time_step_size = time_step_size
+        self._current_time_step_size = time_step_size
+        self.config.time.time_step_size = time_step_size
 
     def set_kinematic_viscosity(self, nu):
         """Override the fluid kinematic viscosity.

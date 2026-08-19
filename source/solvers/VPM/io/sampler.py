@@ -72,15 +72,15 @@ class SamplerExecutor:
                 sampler._pvd_entries = SamplerExecutor._read_pvd(solution_dir, name_prefix)
             sampler._call_count += 1
 
-            seq_num = f"{solver.time_step:06d}"
+            seq_num = f"{solver.step:06d}"
             SamplerExecutor._save_output(
                 sampler,
                 solver,
                 name_prefix,
                 solution_dir,
                 seq_num,
-                solver.flow_time,
-                solver.time_step,
+                solver.time,
+                solver.step,
             )
 
     # ---- Helpers ----
@@ -109,19 +109,19 @@ class SamplerExecutor:
         name_prefix: str,
         solution_dir: Path,
         seq_num: str,
-        flow_time: float,
-        time_step: int | None = None,
+        time: float,
+        step: int | None = None,
     ) -> None:
         """Persist one sampler event using the canonical format for its geometry."""
         try:
             if hasattr(sampler, "save_vtp"):
                 filename = f"{name_prefix}_{seq_num}.vts"
                 filepath = solution_dir / filename
-                sampler.save_vtp(solver, filepath, time=flow_time)
+                sampler.save_vtp(solver, filepath, time=time)
                 sampler._pvd_entries = [
                     entry for entry in sampler._pvd_entries if entry[1] != filename
                 ]
-                sampler._pvd_entries.append((flow_time, filename))
+                sampler._pvd_entries.append((time, filename))
                 sampler._pvd_entries.sort(key=lambda entry: (entry[0], entry[1]))
                 SamplerExecutor._write_pvd(solution_dir, name_prefix, sampler._pvd_entries)
             elif getattr(sampler, "csv_time_series", False):
@@ -129,22 +129,22 @@ class SamplerExecutor:
                     sampler,
                     solver,
                     solution_dir / f"{name_prefix}.csv",
-                    flow_time,
-                    time_step,
+                    time,
+                    step,
                 )
             elif hasattr(sampler, "save_csv"):
                 save_csv = sampler.save_csv
-                keywords = {"time": flow_time}
+                keywords = {"time": time}
                 if "step" in inspect.signature(save_csv).parameters:
-                    keywords["step"] = time_step
+                    keywords["step"] = step
                 save_csv(solver, solution_dir / f"{name_prefix}.csv", **keywords)
             else:
                 SamplerExecutor._append_csv(
                     sampler,
                     solver,
                     solution_dir / f"{name_prefix}.csv",
-                    flow_time,
-                    time_step,
+                    time,
+                    step,
                 )
         except Exception as exc:
             print(f"(Warning) Sampler '{name_prefix}' failed: {exc}")
@@ -154,8 +154,8 @@ class SamplerExecutor:
         sampler,
         solver,
         filepath: Path,
-        flow_time: float,
-        time_step: int | None,
+        time: float,
+        step: int | None,
     ) -> None:
         """Append one complete sampled field to a time-aware CSV table."""
         data = sampler.sample(solver)
@@ -173,12 +173,12 @@ class SamplerExecutor:
             writer = csv.writer(stream, lineterminator="\n")
             if write_header:
                 writer.writerow(["flow_time", "time_step", *SAMPLER_CSV_COLUMNS])
-            step = "" if time_step is None else int(time_step)
+            step = "" if step is None else int(step)
             for values in zip(
                 *(np.asarray(data[name]).reshape(-1) for name in SAMPLER_CSV_COLUMNS),
                 strict=True,
             ):
-                writer.writerow([float(flow_time), step, *values])
+                writer.writerow([float(time), step, *values])
 
     @staticmethod
     def _write_pvd(output_dir: Path, name_prefix: str, entries: list) -> None:

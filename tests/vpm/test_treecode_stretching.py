@@ -12,7 +12,7 @@ for every mode, and that the per-mode contraction convention is not swapped.
 import numpy as np
 import pytest
 
-from source.solvers.VPM import Solver, VPMSetup
+from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
@@ -46,7 +46,7 @@ def solver_and_rates(tmp_path_factory):
         clean=True,
         max_particles=N + 16,
     )
-    s = Solver(setup=cfg)
+    s = VPMSolver(setup=cfg)
     s.add_vortex_particles(
         pos,
         np.zeros((N, 3), np.float32),
@@ -128,7 +128,7 @@ def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
         clean=True,
         max_particles=32,
     )
-    solver = Solver(setup=cfg)
+    solver = VPMSolver(setup=cfg)
     try:
         assert solver.physics.velocity_theta == 0.4
         assert solver.physics.treecode_multipole_order == 2

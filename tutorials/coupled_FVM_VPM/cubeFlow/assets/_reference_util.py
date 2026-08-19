@@ -11,14 +11,14 @@ from _plotutil import load_vpm_particles
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _coupling_dt() -> float:
+def _coupling_time_step_size() -> float:
     metadata = ROOT / "solution" / "run_metadata.json"
     if metadata.exists():
         return float(json.loads(metadata.read_text())["dt_vpm"])
     return 0.05
 
 
-MATCH_TOL = 0.25 * _coupling_dt()
+MATCH_TOL = 0.25 * _coupling_time_step_size()
 
 
 def _pvd_times(pvd: Path) -> list[tuple[float, Path]]:

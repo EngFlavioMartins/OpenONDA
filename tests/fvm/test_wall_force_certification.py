@@ -20,10 +20,10 @@ import pytest
 from source.solvers.FVM import (
     BoundaryConfig,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
-    Solver,
     TimeConfig,
     TransportConfig,
 )
@@ -260,7 +260,7 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     ]
     config = FVMSetup(
         case_name="ghost-cert",
-        time=TimeConfig.transient(dt=0.05, duration=0.5, write_interval=10**9),
+        time=TimeConfig.transient(time_step_size=0.05, duration=0.5, write_interval=10**9),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -278,10 +278,10 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
         initial_velocity=[1.0, 0.02, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = Solver(config, case_dir=str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
         for _ in range(10):
-            solver.evolve()
+            solver.advance()
 
     geo = solver.geo_data
     n_elem, n_int = mesh["n_elements"], mesh["n_interior_faces"]

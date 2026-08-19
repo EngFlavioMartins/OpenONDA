@@ -11,11 +11,11 @@ from source.solvers.FVM import (
     BoundaryConfig,
     ForceSampler,
     FVMSetup,
+    FVMSolver,
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
     SchemesConfig,
-    Solver,
     SurfaceSampler,
     TimeConfig,
     TransportConfig,
@@ -25,8 +25,8 @@ from source.solvers.FVM.sampling.base import SamplingSchedule
 from ._structured_mesh import structured_box
 
 LINE_HEADER = [
-    "flow_time",
-    "time_step",
+    "time",
+    "step",
     "x",
     "y",
     "z",
@@ -63,7 +63,7 @@ FORCES_HEADER = [
 def _config(samplers=()):
     return FVMSetup(
         case_name="samplers",
-        time=TimeConfig.transient(dt=0.01, duration=0.1, write_interval=1),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, write_interval=1),
         schemes=SchemesConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
@@ -83,7 +83,7 @@ def _config(samplers=()):
 
 def _solver(config, path):
     with contextlib.redirect_stdout(io.StringIO()):
-        result = Solver(config, str(path), mesh_data=structured_box(3, 3, 3))
+        result = FVMSolver(config, str(path), mesh_data=structured_box(3, 3, 3))
     result.auto_write = False
     return result
 
@@ -96,7 +96,7 @@ def _rows(path):
 def test_force_history_lands_in_samples_with_unchanged_schema(tmp_path):
     solver = _solver(_config(samplers=(ForceSampler(),)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
-        solver.evolve()
+        solver.advance()
 
     csv_path = tmp_path / "samples" / "forces_history.csv"
     assert csv_path.exists()
@@ -114,7 +114,7 @@ def test_line_sampler_appends_a_time_aware_row_per_point(tmp_path):
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(2):
-            solver.evolve()
+            solver.advance()
 
     csv_path = tmp_path / "samples" / "centerline.csv"
     rows = _rows(csv_path)
@@ -222,7 +222,7 @@ def test_surface_sampler_cadence_is_owned_by_the_schedule(tmp_path):
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(4):
-            solver.evolve()
+            solver.advance()
 
     written = sorted((tmp_path / "samples").glob("slice_z0_*.vts"))
     assert len(written) == 2
@@ -232,7 +232,7 @@ def test_explicit_force_sampler_writes_its_own_named_file(tmp_path):
     extra = ForceSampler(patch_names=["ymin"], ref_velocity=0.5, file_name="wall_loads")
     solver = _solver(_config(samplers=(extra,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
-        solver.evolve()
+        solver.advance()
 
     rows = _rows(tmp_path / "samples" / "wall_loads.csv")
     assert rows[0] == FORCES_HEADER
@@ -330,7 +330,7 @@ def test_sampler_failure_aborts_the_step(tmp_path):
         contextlib.redirect_stdout(io.StringIO()),
         pytest.raises(RuntimeError, match="Sampler 'boom' failed"),
     ):
-        solver.evolve()
+        solver.advance()
 
-    assert solver.time_step == 1
+    assert solver.step == 1
     assert not (tmp_path / "samples" / "boom.csv").exists()

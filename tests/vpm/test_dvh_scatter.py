@@ -43,7 +43,7 @@ def dvh_scatter_pure_numpy(
     grid_min: np.ndarray,  # (3,)
     h: float,
     nu: float,
-    dt: float,  # advection dt (unused — width set by β and R_d)
+    time_step_size: float,  # advection dt (unused — width set by β and R_d)
     nx: int,
     ny: int,
     nz: int,
@@ -146,7 +146,7 @@ def test_single_particle_conservation():
     """A single particle's Γ must be exactly conserved by DVH scatter."""
     h = 0.1
     nu = 1e-3
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
 
     pos = np.array([[0.5, 0.5, 0.5]])
@@ -154,7 +154,7 @@ def test_single_particle_conservation():
     grid_min = np.array([0.0, 0.0, 0.0])
     nx = ny = nz = 11
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
 
     total_circ = grid.sum(axis=(0, 1, 2))  # (3,)
     err = np.abs(total_circ - circ[0])
@@ -185,12 +185,12 @@ def test_multi_particle_conservation():
     nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
     grid_min = lo.astype(np.float64)
 
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
 
     input_total = circ.sum(axis=0)  # (3,)
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
     output_total = grid.sum(axis=(0, 1, 2))
 
     rel_err = np.abs(output_total - input_total) / (np.abs(input_total) + 1e-30)
@@ -221,14 +221,14 @@ def test_center_of_vorticity_preservation():
     nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
     grid_min = lo.astype(np.float64)
 
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
 
     # Input center of vorticity
     circ_mag_in = np.linalg.norm(circ, axis=1)
     cov_in = (pos * circ_mag_in[:, None]).sum(axis=0) / circ_mag_in.sum()
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
 
     # Output center of vorticity from grid
     circ_mag_grid = np.linalg.norm(grid, axis=-1)
@@ -273,13 +273,13 @@ def test_enstrophy_decrease():
     nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
     grid_min = lo.astype(np.float64)
 
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
 
     # Input enstrophy proxy: Σ|α|²
     enstr_in = (circ**2).sum()
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
     enstr_out = (grid**2).sum()
 
     ratio = enstr_out / enstr_in
@@ -298,7 +298,7 @@ def test_symmetry():
     """An axisymmetric vortex must produce symmetric grid output."""
     h = 0.1
     nu = 1e-3
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
 
     # Place 4 particles symmetrically around origin (in xy plane, single z)
@@ -324,7 +324,7 @@ def test_symmetry():
     grid_min = np.array([-0.5, -0.5, -0.5])
     nx = ny = nz = 11
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
     gz = grid[:, :, 5, 2]  # z-component at z=0 slice
 
     # Check x-symmetry: grid[i,j] ~ grid[nx-1-i,j]
@@ -354,11 +354,11 @@ def test_pruning_budget_mode():
     nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
     grid_min = lo.astype(np.float64)
 
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
     threshold_frac = 0.01  # budget threshold
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
     circ_mag = np.linalg.norm(grid, axis=-1)
     gamma_total = circ_mag.sum()
 
@@ -392,7 +392,7 @@ def test_repeated_regen_stability():
     nu = 1.0 / 530.0
     rc = 0.125
     gamma = 1.0
-    dt = 0.01
+    time_step_size = 0.01
     rd_ratio = 4.0
     threshold_frac = 0.005
     n_cycles = 10
@@ -415,7 +415,9 @@ def test_repeated_regen_stability():
         nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
         grid_min = lo.astype(np.float64)
 
-        grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+        grid = dvh_scatter_pure_numpy(
+            pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio
+        )
 
         # Budget pruning
         circ_mag = np.linalg.norm(grid, axis=-1)
@@ -481,7 +483,7 @@ def test_lamb_oseen_profile_accuracy():
     nu = 1.0 / 530.0
     rc = 0.125
     gamma = 1.0
-    dt = 0.05
+    time_step_size = 0.05
 
     pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.6)
 
@@ -494,11 +496,11 @@ def test_lamb_oseen_profile_accuracy():
     grid_min = lo.astype(np.float64)
 
     rd_ratio = 4.0
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, dt, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
 
     # Analytical solution at t = t0 + dt
     t0 = rc**2 / (4 * nu)
-    t_new = t0 + dt
+    t_new = t0 + time_step_size
 
     # Sample radial profile from grid at z mid-plane
     nz_mid = nz // 2
@@ -547,7 +549,7 @@ def test_lamb_oseen_profile_accuracy():
             print("  Lamb-Oseen profile accuracy test:")
             print(f"    Particles    = {len(pos)}")
             print(f"    Grid         = {nx}×{ny}×{nz}")
-            print(f"    t0={t0:.4f}, dt={dt}, t_new={t_new:.4f}")
+            print(f"    t0={t0:.4f}, dt={time_step_size}, t_new={t_new:.4f}")
             print(f"    Max rel err (r < 2rc)  = {max_rel_err:.4f}")
             print(f"    Mean rel err (r < 2rc) = {mean_rel_err:.4f}")
             # During DVH: we don't expect < 5% error on first step because

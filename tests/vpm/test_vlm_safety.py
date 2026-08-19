@@ -87,11 +87,11 @@ def test_coupling_stability_uses_shortest_edge_of_tapered_panels():
     assert result["courant"] == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("dt", [0.0, -0.1, np.inf, np.nan])
-def test_coupling_stability_rejects_invalid_time_steps(dt):
+@pytest.mark.parametrize("time_step_size", [0.0, -0.1, np.inf, np.nan])
+def test_coupling_stability_rejects_invalid_time_steps(time_step_size):
     vlm = VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(_plate()),)))
     with pytest.raises(ValueError, match="finite and positive"):
-        vlm.check_coupling_stability(dt, [1.0, 0.0, 0.0])
+        vlm.check_coupling_stability(time_step_size, [1.0, 0.0, 0.0])
 
 
 def test_f64_mesh_generation_preserves_input_precision(taichi_f64):

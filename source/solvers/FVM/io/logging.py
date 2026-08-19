@@ -134,7 +134,7 @@ class _StepRecord:
 
     step: int
     time: float
-    dt: float
+    time_step_size: float
     residuals: dict[str, float] = field(default_factory=dict)
     continuity_max: float | None = None
     continuity_sum: float | None = None
@@ -352,10 +352,12 @@ class Logging:
 
     # -- Per-step diagnostics --------------------------------------------------
 
-    def step_begin(self, step: int, flow_time: float, dt: float) -> None:
+    def step_begin(self, step: int, time: float, time_step_size: float) -> None:
         """Open a new per-step record, flushing any left open by an abort."""
         self._flush_step()
-        self._step = _StepRecord(step=int(step), time=float(flow_time), dt=float(dt))
+        self._step = _StepRecord(
+            step=int(step), time=float(time), time_step_size=float(time_step_size)
+        )
 
     def _record(self, **values: Any) -> None:
         if self._step is not None:
@@ -364,7 +366,7 @@ class Logging:
             return
         if not self.debug:
             return
-        orphan = _StepRecord(step=0, time=0.0, dt=0.0)
+        orphan = _StepRecord(step=0, time=0.0, time_step_size=0.0)
         for name, value in values.items():
             setattr(orphan, name, value)
         for title, items in _sections(orphan):
@@ -459,7 +461,7 @@ class Logging:
             self._emit(self._simple_row(record), flush=True)
 
     def _debug_block(self, record: _StepRecord) -> str:
-        title = f" TIME STEP  (step {record.step}, t = {record.time:.3e} s, Δt = {record.dt:.3e} s)"
+        title = f" TIME STEP  (step {record.step}, t = {record.time:.3e} s, Δt = {record.time_step_size:.3e} s)"
         bar = "=" * _WIDTH
         sep = "-" * _WIDTH
         sections = _sections(record)
@@ -487,7 +489,7 @@ class Logging:
         cells = {
             "step": f"{record.step:d}",
             "time": f"{record.time:.3e}",
-            "dt": f"{record.dt:.3e}",
+            "dt": f"{record.time_step_size:.3e}",
             "Co": "-" if record.courant is None else f"{record.courant:.3f}",
             "res(U)": "-" if "U" not in residuals else f"{residuals['U']:.2e}",
             "res(p)": "-" if "p" not in residuals else f"{residuals['p']:.2e}",
@@ -558,7 +560,7 @@ class Logging:
             Logging._section(
                 "NUMERICS",
                 [
-                    ("Time Step Size", f"{config.time.delta_t:.3e} s"),
+                    ("Time Step Size", f"{config.time.time_step_size:.3e} s"),
                     ("End Time", f"{config.time.end_time:.3e} s"),
                     ("Time Scheme", str(config.schemes.time_scheme)),
                     ("Convection Scheme", str(config.schemes.convection_scheme)),
@@ -626,8 +628,8 @@ class Logging:
             "FVM SOLVER STATE",
             [
                 ("Case", str(solver.config.case_name)),
-                ("Time", f"{solver.flow_time:.5f} s"),
-                ("Step", str(solver.time_step)),
+                ("Time", f"{solver.time:.5f} s"),
+                ("Step", str(solver.step)),
                 ("Local Cells", f"{solver.mesh_data['n_elements']:,}"),
                 ("Algorithm", str(solver.config.pimple.algorithm)),
             ],

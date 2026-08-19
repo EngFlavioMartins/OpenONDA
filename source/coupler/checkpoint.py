@@ -48,7 +48,7 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     step = (
         int(coupling_step)
         if coupling_step is not None
-        else int(coupler.fvm.time_step // coupler.n_fvm_substeps)
+        else int(coupler.fvm.step // coupler.fvm_substeps)
     )
     suffix = f"{step:06d}"
     partitioned = coupler.fvm.parallel.is_partitioned
@@ -94,10 +94,10 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
         "config_sha256": config_digest(coupler.config),
         "config": coupler.config.to_dict(),
         "coupling_step": step,
-        "flow_time": float(coupler.vpm.flow_time),
-        "fvm_time_step": int(coupler.fvm.time_step),
-        "vpm_time_step": int(coupler.vpm.time_step),
-        "n_fvm_substeps": int(coupler.n_fvm_substeps),
+        "flow_time": float(coupler.vpm.time),
+        "fvm_time_step": int(coupler.fvm.step),
+        "vpm_time_step": int(coupler.vpm.step),
+        "n_fvm_substeps": int(coupler.fvm_substeps),
         "artifacts": {
             "fvm": fvm_artifact,
             "vpm": f"vpm_{suffix}.h5",
@@ -165,10 +165,10 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
     artifacts = manifest["artifacts"]
 
     coupler.fvm.load_state(target / artifacts["fvm"])
-    expected_fvm_step = int(manifest["vpm_time_step"]) * coupler.n_fvm_substeps
-    if coupler.fvm.time_step != expected_fvm_step:
+    expected_fvm_step = int(manifest["vpm_time_step"]) * coupler.fvm_substeps
+    if coupler.fvm.step != expected_fvm_step:
         raise ValueError(
-            f"Coupled checkpoint time-step mismatch: FVM={coupler.fvm.time_step}, "
+            f"Coupled checkpoint time-step mismatch: FVM={coupler.fvm.step}, "
             f"expected {expected_fvm_step} from VPM={manifest['vpm_time_step']}"
         )
 
@@ -191,10 +191,9 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
             )
             coupler._normal_velocity_bc_next = None
             coupler._tangential_gradient_bc_next = None
-        if not np.isclose(coupler.fvm.flow_time, coupler.vpm.flow_time, rtol=0.0, atol=1e-12):
+        if not np.isclose(coupler.fvm.time, coupler.vpm.time, rtol=0.0, atol=1e-12):
             error = (
-                f"Coupled checkpoint time mismatch: FVM={coupler.fvm.flow_time}, "
-                f"VPM={coupler.vpm.flow_time}"
+                f"Coupled checkpoint time mismatch: FVM={coupler.fvm.time}, VPM={coupler.vpm.time}"
             )
     if comm is not None and comm.Get_size() > 1:
         error = comm.bcast(error if coupler._is_master else None, root=0)

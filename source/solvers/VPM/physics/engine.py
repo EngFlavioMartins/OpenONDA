@@ -68,7 +68,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
     # ADVECTION INTERFACE
 
     def update_positions(
-        self, particles, dt: float, scheme: str = "RK3", precomputed_k1: bool = False
+        self, particles, time_step_size: float, scheme: str = "RK3", precomputed_k1: bool = False
     ):
         """
         Update particle positions using specified time integration scheme.
@@ -77,18 +77,18 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
             scheme: 'NONE', 'EULER', 'RK2', 'RK3', or 'RK4'
             precomputed_k1: when True, ``particles.velocity`` already holds
                 v(x_n) (e.g. from a fused velocity+gradient pass at t_n), so the
                 integrator's first stage reuses it instead of recomputing.
         """
-        self._advection.update_positions(particles, dt, scheme, precomputed_k1)
+        self._advection.update_positions(particles, time_step_size, scheme, precomputed_k1)
 
     def update_positions_and_strengths(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         scheme: str = "RK3",
         mode: str = "TRANSPOSED",
         use_treecode: bool = False,
@@ -107,7 +107,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._coupled.update(
             particles,
-            dt,
+            time_step_size,
             scheme,
             mode,
             use_treecode,
@@ -120,7 +120,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     # DIFFUSION INTERFACE
 
-    def core_spreading_diffusion(self, particles, dt: float):
+    def core_spreading_diffusion(self, particles, time_step_size: float):
         """
         Apply Core Spreading Method diffusion.
 
@@ -128,11 +128,11 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
         """
-        self._diffusion.core_spreading_diffusion(particles, dt)
+        self._diffusion.core_spreading_diffusion(particles, time_step_size)
 
-    def random_walk_method_diffusion(self, particles, dt: float):
+    def random_walk_method_diffusion(self, particles, time_step_size: float):
         """
         Apply Random Walk Method diffusion.
 
@@ -140,16 +140,16 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
         """
-        self._diffusion.random_walk_method_diffusion(particles, dt)
+        self._diffusion.random_walk_method_diffusion(particles, time_step_size)
 
     # STRETCHING INTERFACE
 
     def vortex_stretching(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         scheme: str = "RK3",
         mode: str = "TRANSPOSED",
         use_treecode: bool = False,
@@ -162,7 +162,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         Args:
             particles: Particle container
-            dt: Time step size [s]
+            time_step_size: Time step size [s]
             scheme: 'EULER', 'RK2', 'RK3', or 'RK4'
             mode: 'DIRECT', 'TRANSPOSED', or 'MIXED'
             use_treecode: evaluate the rate from the O(N log N) treecode gradient
@@ -170,7 +170,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             treecode_theta: Barnes–Hut opening angle for the treecode gradient.
         """
         self._stretching.vortex_stretching(
-            particles, dt, scheme, mode, use_treecode, treecode_theta
+            particles, time_step_size, scheme, mode, use_treecode, treecode_theta
         )
 
 
@@ -191,7 +191,7 @@ class _AdvectionHandler:
         self._parent = parent
 
     def update_positions(
-        self, particles, dt: float, scheme: str = "RK3", precomputed_k1: bool = False
+        self, particles, time_step_size: float, scheme: str = "RK3", precomputed_k1: bool = False
     ):
         """Advance particle positions by dt with a single step of the given scheme.
 
@@ -202,7 +202,7 @@ class _AdvectionHandler:
 
         Args:
             particles:  particle container.
-            dt:         macro time-step [s].
+            time_step_size:         macro time-step [s].
             scheme:     "NONE" | "EULER" | "RK2" | "RK3" | "RK4".
             precomputed_k1: when True the first stage reuses ``particles.velocity``
                 (already holds v(x_n)) instead of recomputing it — set by the
@@ -210,11 +210,11 @@ class _AdvectionHandler:
         """
         N = len(particles)
         scheme = scheme.upper()
-        if N == 0 or dt == 0.0 or scheme == "NONE":
+        if N == 0 or time_step_size == 0.0 or scheme == "NONE":
             return
 
         self._parent._resize_temp_fields(N)
-        self._step(particles, dt, scheme, N, precomputed_k1)
+        self._step(particles, time_step_size, scheme, N, precomputed_k1)
 
     def _vel(
         self,
@@ -257,16 +257,16 @@ class _AdvectionHandler:
                     vel_np[:N] = override(pos_np[:N], vel_np[:N])
             out_field.from_numpy(vel_np)
 
-    def _step(self, particles, dt, scheme, N, precomputed_k1=False):
+    def _step(self, particles, time_step_size, scheme, N, precomputed_k1=False):
         """One full step of the chosen scheme over dt."""
         if scheme == "EULER":
-            self._euler(particles, dt, N, precomputed_k1)
+            self._euler(particles, time_step_size, N, precomputed_k1)
         elif scheme == "RK2":
-            self._rk2(particles, dt, N, precomputed_k1)
+            self._rk2(particles, time_step_size, N, precomputed_k1)
         elif scheme == "RK3":
-            self._rk3(particles, dt, N, precomputed_k1)
+            self._rk3(particles, time_step_size, N, precomputed_k1)
         elif scheme == "RK4":
-            self._rk4(particles, dt, N, precomputed_k1)
+            self._rk4(particles, time_step_size, N, precomputed_k1)
         else:
             raise ValueError(
                 f"Unknown advection scheme: {scheme}. Use NONE, EULER, RK2, RK3, or RK4."
@@ -277,55 +277,76 @@ class _AdvectionHandler:
         if not precomputed_k1:
             self._vel(particles, particles.position, particles.velocity, N)
 
-    def _euler(self, particles, dt, N, precomputed_k1=False):
+    def _euler(self, particles, time_step_size, N, precomputed_k1=False):
         """x_{n+1} = x_n + dt·v(x_n)."""
         p = self._parent
         self._k1(particles, N, precomputed_k1)
         p.step_euler_forward_kernel(
-            particles.position, particles.velocity, particles.position, dt, N
+            particles.position, particles.velocity, particles.position, time_step_size, N
         )
 
-    def _rk2(self, particles, dt, N, precomputed_k1=False):
+    def _rk2(self, particles, time_step_size, N, precomputed_k1=False):
         """Heun's method: x_{n+1} = x_n + dt/2·(k1 + k2)."""
         p = self._parent
         self._k1(particles, N, precomputed_k1)
         # x_pred = x_n + dt·k1
-        p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.position, particles.velocity, p.pos_temp, time_step_size, N
+        )
         self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)  # k2 = v(x_pred)
-        p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
+        p.step_rk2_combine_kernel(
+            particles.position, particles.velocity, p.vel_temp, time_step_size, N
+        )
 
-    def _rk3(self, particles, dt, N, precomputed_k1=False):
+    def _rk3(self, particles, time_step_size, N, precomputed_k1=False):
         """SSP-RK3: x_{n+1} = x_n + dt/6·(k1 + k2 + 4·k3)."""
         p = self._parent
         self._k1(particles, N, precomputed_k1)
         # x1 = x_n + dt·k1
-        p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.position, particles.velocity, p.pos_temp, time_step_size, N
+        )
         self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)  # k2 = v(x1)
         # x2 = x_n + dt/4·(k1 + k2)
         p.linear_combination_kernel(
-            p.pos_temp2, particles.velocity, p.vel_temp, 0.25 * dt, 0.25 * dt, N
+            p.pos_temp2,
+            particles.velocity,
+            p.vel_temp,
+            0.25 * time_step_size,
+            0.25 * time_step_size,
+            N,
         )
         p.step_euler_forward_kernel(particles.position, p.pos_temp2, p.pos_temp2, 1.0, N)
         self._vel(particles, p.pos_temp2, p.vel_temp2, N, reuse_tree=True)  # k3 = v(x2)
         p.step_rk3_ssp_combine_kernel(
-            particles.position, particles.velocity, p.vel_temp, p.vel_temp2, dt, N
+            particles.position, particles.velocity, p.vel_temp, p.vel_temp2, time_step_size, N
         )
 
-    def _rk4(self, particles, dt, N, precomputed_k1=False):
+    def _rk4(self, particles, time_step_size, N, precomputed_k1=False):
         """Classic RK4: x_{n+1} = x_n + dt/6·(k1 + 2·k2 + 2·k3 + k4)."""
         p = self._parent
         self._k1(particles, N, precomputed_k1)  # k1 → particles.velocity
         # k2 = v(x_n + 0.5·dt·k1)
-        p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, 0.5 * dt, N)
+        p.step_euler_forward_kernel(
+            particles.position, particles.velocity, p.pos_temp, 0.5 * time_step_size, N
+        )
         self._vel(particles, p.pos_temp, p.vel_temp, N, reuse_tree=True)
         # k3 = v(x_n + 0.5·dt·k2)
-        p.step_euler_forward_kernel(particles.position, p.vel_temp, p.pos_temp, 0.5 * dt, N)
+        p.step_euler_forward_kernel(
+            particles.position, p.vel_temp, p.pos_temp, 0.5 * time_step_size, N
+        )
         self._vel(particles, p.pos_temp, p.vel_temp2, N, reuse_tree=True)
         # k4 = v(x_n + dt·k3)  (stored in pos_temp2)
-        p.step_euler_forward_kernel(particles.position, p.vel_temp2, p.pos_temp, dt, N)
+        p.step_euler_forward_kernel(particles.position, p.vel_temp2, p.pos_temp, time_step_size, N)
         self._vel(particles, p.pos_temp, p.pos_temp2, N, reuse_tree=True)
         p.step_rk4_combine_kernel(
-            particles.position, particles.velocity, p.vel_temp, p.vel_temp2, p.pos_temp2, dt, N
+            particles.position,
+            particles.velocity,
+            p.vel_temp,
+            p.vel_temp2,
+            p.pos_temp2,
+            time_step_size,
+            N,
         )
 
 
@@ -349,7 +370,7 @@ class _CoupledAdvectionStretchingHandler:
     def update(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         scheme: str,
         mode: str,
         use_treecode: bool,
@@ -361,7 +382,7 @@ class _CoupledAdvectionStretchingHandler:
     ) -> None:
         N = len(particles)
         scheme = scheme.upper()
-        if N == 0 or dt == 0.0:
+        if N == 0 or time_step_size == 0.0:
             return
         if scheme not in {"RK2", "RK3"}:
             raise ValueError("Coupled advection/stretching supports RK2 and RK3.")
@@ -389,8 +410,12 @@ class _CoupledAdvectionStretchingHandler:
         )
 
         # y1 = y_n + dt*k1
-        p.step_euler_forward_kernel(particles.position, particles.velocity, p.pos_temp, dt, N)
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.position, particles.velocity, p.pos_temp, time_step_size, N
+        )
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+        )
 
         # k2 = f(y1).  A tree topology cannot merely be refitted here because
         # coupled stages change both positions and circulations.
@@ -409,17 +434,31 @@ class _CoupledAdvectionStretchingHandler:
         )
 
         if scheme == "RK2":
-            p.step_rk2_combine_kernel(particles.position, particles.velocity, p.vel_temp, dt, N)
-            p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
+            p.step_rk2_combine_kernel(
+                particles.position, particles.velocity, p.vel_temp, time_step_size, N
+            )
+            p.step_rk2_combine_kernel(
+                particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
+            )
             return
 
         # SSP-RK3 stage y2 = y_n + dt/4*(k1+k2)
         p.linear_combination_kernel(
-            p.pos_temp2, particles.velocity, p.vel_temp, 0.25 * dt, 0.25 * dt, N
+            p.pos_temp2,
+            particles.velocity,
+            p.vel_temp,
+            0.25 * time_step_size,
+            0.25 * time_step_size,
+            N,
         )
         p.step_euler_forward_kernel(particles.position, p.pos_temp2, p.pos_temp2, 1.0, N)
         p.linear_combination_kernel(
-            p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
+            p.str_temp2,
+            p.dstr_dt_temp,
+            p.dstr_dt_temp2,
+            0.25 * time_step_size,
+            0.25 * time_step_size,
+            N,
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
 
@@ -443,7 +482,7 @@ class _CoupledAdvectionStretchingHandler:
             particles.velocity,
             p.vel_temp,
             p.vel_temp2,
-            dt,
+            time_step_size,
             N,
         )
         p.step_rk3_ssp_combine_kernel(
@@ -451,7 +490,7 @@ class _CoupledAdvectionStretchingHandler:
             p.dstr_dt_temp,
             p.dstr_dt_temp2,
             p.dstr_dt_temp3,
-            dt,
+            time_step_size,
             N,
         )
 
@@ -577,13 +616,13 @@ class _DiffusionHandler:
     def __init__(self, parent: PhysicsEngine):
         self._parent = parent
 
-    def core_spreading_diffusion(self, particles, dt: float):
+    def core_spreading_diffusion(self, particles, time_step_size: float):
         """Core spreading diffusion."""
-        apply_core_spreading(self._parent, particles, dt)
+        apply_core_spreading(self._parent, particles, time_step_size)
 
-    def random_walk_method_diffusion(self, particles, dt: float):
+    def random_walk_method_diffusion(self, particles, time_step_size: float):
         """Random walk diffusion."""
-        apply_random_walk(self._parent, particles, dt)
+        apply_random_walk(self._parent, particles, time_step_size)
 
 
 class _StretchingHandler:
@@ -601,7 +640,7 @@ class _StretchingHandler:
     def vortex_stretching(
         self,
         particles,
-        dt: float,
+        time_step_size: float,
         scheme: str = "RK3",
         mode: str = "TRANSPOSED",
         use_treecode: bool = False,
@@ -614,7 +653,7 @@ class _StretchingHandler:
         (see _rate); numerically identical up to the Barnes–Hut tolerance.
         """
         N = len(particles)
-        if N == 0 or dt == 0.0:
+        if N == 0 or time_step_size == 0.0:
             return
 
         p = self._parent
@@ -647,17 +686,17 @@ class _StretchingHandler:
                 N,
             )
             p.step_euler_forward_kernel(
-                particles.circulation, p.dstr_dt_temp, particles.circulation, dt, N
+                particles.circulation, p.dstr_dt_temp, particles.circulation, time_step_size, N
             )
 
         elif scheme == "RK2":
-            self._stretching_rk2(particles, dt, mode_int, N)
+            self._stretching_rk2(particles, time_step_size, mode_int, N)
 
         elif scheme == "RK3":
-            self._stretching_rk3(particles, dt, mode_int, N)
+            self._stretching_rk3(particles, time_step_size, mode_int, N)
 
         elif scheme == "RK4":
-            self._stretching_rk4(particles, dt, mode_int, N)
+            self._stretching_rk4(particles, time_step_size, mode_int, N)
 
         else:
             raise ValueError(f"Unknown scheme: {scheme}")
@@ -693,13 +732,15 @@ class _StretchingHandler:
                 )
                 ti.sync()
 
-    def _stretching_rk2(self, particles, dt, mode_int, N):
+    def _stretching_rk2(self, particles, time_step_size, mode_int, N):
         """RK2 stretching."""
         p = self._parent
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+        )
         # The next rate reads ``str_temp``.  Keep that RK dependency explicit
         # across backends; on Vulkan it also separates two expensive direct
         # stretching dispatch sequences.
@@ -713,15 +754,19 @@ class _StretchingHandler:
             N,
             reuse_tree=True,
         )
-        p.step_rk2_combine_kernel(particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, dt, N)
+        p.step_rk2_combine_kernel(
+            particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
+        )
 
-    def _stretching_rk3(self, particles, dt, mode_int, N):
+    def _stretching_rk3(self, particles, time_step_size, mode_int, N):
         """RK3 stretching."""
         p = self._parent
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+        )
         ti.sync()
         self._rate(
             particles.position,
@@ -733,7 +778,12 @@ class _StretchingHandler:
             reuse_tree=True,
         )
         p.linear_combination_kernel(
-            p.str_temp2, p.dstr_dt_temp, p.dstr_dt_temp2, 0.25 * dt, 0.25 * dt, N
+            p.str_temp2,
+            p.dstr_dt_temp,
+            p.dstr_dt_temp2,
+            0.25 * time_step_size,
+            0.25 * time_step_size,
+            N,
         )
         p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
         ti.sync()
@@ -747,16 +797,23 @@ class _StretchingHandler:
             reuse_tree=True,
         )
         p.step_rk3_ssp_combine_kernel(
-            particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, p.dstr_dt_temp3, dt, N
+            particles.circulation,
+            p.dstr_dt_temp,
+            p.dstr_dt_temp2,
+            p.dstr_dt_temp3,
+            time_step_size,
+            N,
         )
 
-    def _stretching_rk4(self, particles, dt, mode_int, N):
+    def _stretching_rk4(self, particles, time_step_size, mode_int, N):
         """RK4 stretching."""
         p = self._parent
         self._rate(
             particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
         )
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * dt, N)
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * time_step_size, N
+        )
         ti.sync()
         self._rate(
             particles.position,
@@ -767,7 +824,9 @@ class _StretchingHandler:
             N,
             reuse_tree=True,
         )
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * dt, N)
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * time_step_size, N
+        )
         ti.sync()
         self._rate(
             particles.position,
@@ -778,7 +837,9 @@ class _StretchingHandler:
             N,
             reuse_tree=True,
         )
-        p.step_euler_forward_kernel(particles.circulation, p.dstr_dt_temp3, p.str_temp, dt, N)
+        p.step_euler_forward_kernel(
+            particles.circulation, p.dstr_dt_temp3, p.str_temp, time_step_size, N
+        )
         ti.sync()
         self._rate(
             particles.position,
@@ -795,6 +856,6 @@ class _StretchingHandler:
             p.dstr_dt_temp2,
             p.dstr_dt_temp3,
             p.vel_temp,
-            dt,
+            time_step_size,
             N,
         )

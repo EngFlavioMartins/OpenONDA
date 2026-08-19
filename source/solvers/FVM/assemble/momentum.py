@@ -126,7 +126,7 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
 
 
 def _add_transient_term(
-    A, b_vec, vol, dt, U_old_comp, U_curr_comp, U_old_old_comp=None, scheme="euler"
+    A, b_vec, vol, time_step_size, U_old_comp, U_curr_comp, U_old_old_comp=None, scheme="euler"
 ):
     """Apply the implicit transient ``∂u/∂t`` term (only called when dt is not None).
 
@@ -141,7 +141,7 @@ def _add_transient_term(
     BDF2 here assumes a constant time step. Configuration validation rejects
     adaptive time stepping with BDF2 before assembly.
     """
-    coeff = vol / dt
+    coeff = vol / time_step_size
     if scheme == "backward" and U_old_comp is not None and U_old_old_comp is not None:
         A.setdiag(A.diagonal() + 1.5 * coeff)
         b_vec += coeff * (2.0 * U_old_comp - 0.5 * U_old_old_comp)
@@ -249,7 +249,7 @@ def assemble_momentum_equation(
     geo_data,
     boundaries,
     convection_scheme="deferred",
-    dt=None,
+    time_step_size=None,
     U_old=None,
     U_old_old=None,
     ddt_scheme="euler",
@@ -274,7 +274,7 @@ def assemble_momentum_equation(
         geo_data: Geometric data
         boundaries: Boundary conditions
         convection_scheme: Convection discretization scheme
-        dt: Time step size (optional)
+        time_step_size: Time step size (optional)
         U_old: Previous time step velocity (optional, for transient term)
         source_explicit: Optional acceleration source Su [m/s²], shape
             ``(n_elements, 3)``. Added to the RHS as ``Su * V`` for each
@@ -407,9 +407,9 @@ def assemble_momentum_equation(
             # component before the next workspace update overwrites its data.
             if has_directional_mixed_bc and matrix_workspace is not None:
                 assembled_matrix = assembled_matrix.copy()
-            if dt is not None:
+            if time_step_size is not None:
                 use_bdf2 = ddt_scheme == "backward" and U_old is not None and U_old_old is not None
-                transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / dt
+                transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / time_step_size
                 assembled_matrix.setdiag(assembled_matrix.diagonal() + transient_diagonal)
             if source_implicit is not None:
                 assembled_matrix.setdiag(
@@ -441,8 +441,8 @@ def assemble_momentum_equation(
 
         # 6. Transient RHS (the component-independent diagonal was added once
         #    to ``common_matrix`` above).
-        if dt is not None:
-            coefficient = vol / dt
+        if time_step_size is not None:
+            coefficient = vol / time_step_size
             old_component = (
                 U_old[:n_elements, i_comp] if U_old is not None else U[:n_elements, i_comp]
             )
@@ -481,7 +481,7 @@ def solve_momentum_predictor(
     convection_scheme="deferred",
     solver="spsolve",
     under_relaxation=0.7,
-    dt=None,
+    time_step_size=None,
     U_old=None,
     U_old_old=None,
     ddt_scheme="euler",
@@ -513,7 +513,7 @@ def solve_momentum_predictor(
         geo_data,
         boundaries,
         convection_scheme,
-        dt=dt,
+        time_step_size=time_step_size,
         U_old=U_old,
         U_old_old=U_old_old,
         ddt_scheme=ddt_scheme,

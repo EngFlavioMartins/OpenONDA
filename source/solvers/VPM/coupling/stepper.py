@@ -20,13 +20,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..core.solver import Solver
+    from ..core.solver import VPMSolver
 
 
 class CouplingStepper:
     """Advance the coupled boundary-element solvers and append shed particles."""
 
-    def __init__(self, solver: Solver) -> None:
+    def __init__(self, solver: VPMSolver) -> None:
         self.solver = solver
 
     def __getattr__(self, name: str):
@@ -38,9 +38,9 @@ class CouplingStepper:
             particles=self.particles,
             physics=self.physics,
             V_inf=self.freestream_velocity,
-            dt=self.time_step_size,
-            time=self.flow_time,
-            step=self.time_step,
+            time_step_size=self.time_step_size,
+            time=self.time,
+            step=self.step,
             logging_frequency=self.logging_frequency,
             density=getattr(self.config, "density", 1.0),
         )
@@ -67,7 +67,7 @@ class CouplingStepper:
                     viscosity=viscosity,
                 )
 
-    def advance_vlm(self, dt: float) -> None:
+    def advance_vlm(self, time_step_size: float) -> None:
         """Advance VLM–VPM coupling and append shed wake particles."""
         if self.vlm_solver is None:
             return
@@ -76,9 +76,9 @@ class CouplingStepper:
             particles=self.particles,
             physics=self.physics,
             config=self.config,
-            dt=dt,
-            time_step=self.time_step,
-            time=self.flow_time,
+            time_step_size=time_step_size,
+            step=self.step,
+            time=self.time,
         )
 
         if wake_particles is not None:

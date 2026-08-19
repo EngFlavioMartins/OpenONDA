@@ -103,8 +103,8 @@ class TestAdaptiveSolverSelection:
         t0 = time.perf_counter()
         gamma = vlm.solve(V_external=V_ext)
         ti.sync()
-        dt = time.perf_counter() - t0
+        time_step_size = time.perf_counter() - t0
 
-        assert dt < 1.0, f"SCIPY solve took {dt:.2f}s, expected < 1.0s"
+        assert time_step_size < 1.0, f"SCIPY solve took {time_step_size:.2f}s, expected < 1.0s"
         assert gamma is not None
         assert len(gamma) == n_panels

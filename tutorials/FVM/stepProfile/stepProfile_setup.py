@@ -22,7 +22,7 @@ from assets.mesh_step import backward_facing_step_mesh
 from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
-    Solver,
+    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     SchemesConfig,
@@ -153,14 +153,14 @@ def build_config(reynolds: float, end_time: float, inlet_values: np.ndarray, nu:
     return FVMSetup(
         case_name=CASE_NAME,
         time=TimeConfig(
-            delta_t=TIME_STEP,
+            time_step_size=TIME_STEP,
             end_time=end_time,
             write_interval=10**9,
             write_interval_time=WRITE_INTERVAL_TIME,
             adjust_timestep=True,
             max_cfl=MAX_CFL,
-            max_delta_t=MAX_TIME_STEP,
-            min_delta_t=MIN_TIME_STEP,
+            max_time_step_size=MAX_TIME_STEP,
+            min_time_step_size=MIN_TIME_STEP,
         ),
         schemes=schemes,
         linear=linear,
@@ -209,18 +209,16 @@ def main() -> None:
     nu = MEAN_VELOCITY * STEP_HEIGHT / args.Re
     inlet_values = inlet_velocity(mesh_data, geo_data)
     config = build_config(args.Re, args.end_time, inlet_values, nu)
-    solver = Solver(config, case_dir, mesh_data=mesh_data)
+    solver = FVMSolver(config, case_dir, mesh_data=mesh_data)
     solver.set_initial_velocity(initial_velocity(geo_data, mesh_data["n_elements"]))
     solver.write_vtk()
 
     history = []
-    while solver.flow_time < config.time.end_time:
-        solver.evolve()
+    while solver.time < config.time.end_time:
+        solver.advance()
         x_re, min_u = reattachment_location(solver)
         diagnostics = solver.last_diagnostics
-        history.append(
-            [solver.flow_time, x_re, min_u, diagnostics.continuity_max, diagnostics.cfl_max]
-        )
+        history.append([solver.time, x_re, min_u, diagnostics.continuity_max, diagnostics.cfl_max])
 
     write_solution_tables(solver, solution_dir, history)
     x_re, min_u = reattachment_location(solver)

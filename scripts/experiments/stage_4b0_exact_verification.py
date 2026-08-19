@@ -90,18 +90,18 @@ def integrate_case(
     eigenvalue: float,
     gaussian_delta: float,
     model: str,
-    dt: float,
+    time_step_size: float,
     end_time: float,
 ) -> dict[str, object]:
-    steps = int(round(end_time / dt))
-    if abs(steps * dt - end_time) > 1.0e-13:
+    steps = int(round(end_time / time_step_size))
+    if abs(steps * time_step_size - end_time) > 1.0e-13:
         raise ValueError("end_time must be an integer multiple of dt")
     state = initial_vorticity.copy()
     e0 = energy(solver, state)
     z0 = enstrophy(state)
     records: list[dict[str, float]] = []
     for step in range(steps + 1):
-        time = step * dt
+        time = step * time_step_size
         exact_factor = np.exp(-solver.viscosity * eigenvalue * time)
         exact_state = initial_vorticity * exact_factor
         records.append(
@@ -115,7 +115,7 @@ def integrate_case(
             }
         )
         if step < steps:
-            state = solver.heun_step(state, dt, model, gaussian_delta)
+            state = solver.heun_step(state, time_step_size, model, gaussian_delta)
     time = np.asarray([record["time"] for record in records])
     viscous_power = np.asarray(
         [-2.0 * solver.viscosity * z0 * record["enstrophy_ratio"] for record in records]
@@ -124,7 +124,7 @@ def integrate_case(
     energy_change = max(abs(records[-1]["energy_ratio"] * e0 - e0), 1.0e-15)
     budget_residual = abs(records[-1]["energy_ratio"] * e0 - predicted_energy) / energy_change
     return {
-        "dt": dt,
+        "dt": time_step_size,
         "model": model,
         "final_field_relative_error": records[-1]["field_relative_error"],
         "energy_budget_relative_residual": budget_residual,
@@ -133,8 +133,8 @@ def integrate_case(
     }
 
 
-def convergence_order(dt: list[float], error: list[float]) -> float:
-    return float(np.polyfit(np.log(dt), np.log(error), 1)[0])
+def convergence_order(time_step_size: list[float], error: list[float]) -> float:
+    return float(np.polyfit(np.log(time_step_size), np.log(error), 1)[0])
 
 
 def exact_case_checks(
@@ -143,7 +143,7 @@ def exact_case_checks(
     eigenvalue: float,
     viscosity: float,
     n: int,
-    dt_values: list[float],
+    time_step_size_values: list[float],
     end_time: float,
 ) -> dict[str, object]:
     solver = VorticitySolver(n, viscosity)
@@ -167,14 +167,14 @@ def exact_case_checks(
                 eigenvalue,
                 gaussian_delta,
                 model,
-                dt,
+                time_step_size,
                 end_time,
             )
-            for dt in dt_values
+            for time_step_size in time_step_size_values
         ]
     orders = {
         model: convergence_order(
-            dt_values,
+            time_step_size_values,
             [float(run["final_field_relative_error"]) for run in model_runs],
         )
         for model, model_runs in runs.items()
@@ -362,21 +362,23 @@ def plot_temporal_convergence(result: dict[str, object], output: Path) -> None:
     for axis, case in zip(axes, result["exact_cases"], strict=True):
         for model in ("no_sgs", "sensed"):
             runs = case["runs"][model]
-            dt = np.asarray([run["dt"] for run in runs])
+            time_step_size = np.asarray([run["dt"] for run in runs])
             error = np.asarray([run["final_field_relative_error"] for run in runs])
             axis.loglog(
-                dt,
+                time_step_size,
                 error,
                 color=COLORS[model],
                 marker=markers[model],
                 linewidth=1.5,
                 label=f"{LABELS[model]} ($p={case['temporal_order'][model]:.3f}$)",
             )
-        anchor_dt = np.asarray([case["runs"]["no_sgs"][0]["dt"], case["runs"]["no_sgs"][-1]["dt"]])
+        anchor_time_step_size = np.asarray(
+            [case["runs"]["no_sgs"][0]["dt"], case["runs"]["no_sgs"][-1]["dt"]]
+        )
         anchor_error = float(case["runs"]["no_sgs"][0]["final_field_relative_error"])
         axis.loglog(
-            anchor_dt,
-            anchor_error * (anchor_dt / anchor_dt[0]) ** 2,
+            anchor_time_step_size,
+            anchor_error * (anchor_time_step_size / anchor_time_step_size[0]) ** 2,
             color=COLORS["theory"],
             linestyle="--",
             linewidth=1.2,
@@ -465,7 +467,7 @@ def main() -> None:
     parser.add_argument("--viscosity", type=float, default=0.2)
     parser.add_argument("--end-time", type=float, default=1.0)
     args = parser.parse_args()
-    dt_values = [0.1, 0.05, 0.025, 0.0125]
+    time_step_size_values = [0.1, 0.05, 0.025, 0.0125]
     result: dict[str, object] = {
         "gate": "B.0 exact-solution verification",
         "equations": {
@@ -482,7 +484,7 @@ def main() -> None:
                 4.0,
                 args.viscosity,
                 args.n,
-                dt_values,
+                time_step_size_values,
                 args.end_time,
             ),
             exact_case_checks(
@@ -491,7 +493,7 @@ def main() -> None:
                 1.0,
                 args.viscosity,
                 args.n,
-                dt_values,
+                time_step_size_values,
                 args.end_time,
             ),
         ],

@@ -19,7 +19,7 @@ import numpy as np
 from assets.generate_surface import create_delta_wing, save_surface
 from openonda.vpm import (
     ManeuverVLM,
-    Solver,
+    VPMSolver,
     StabilizationConfig,
     SurfaceSampler,
     TurbulenceConfig,
@@ -138,7 +138,7 @@ def run() -> None:
         )
         for distance in (1, 5, 10)
     )
-    solver = Solver(
+    solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
             processing_unit="AUTO",
@@ -186,7 +186,7 @@ def run() -> None:
     )
 
     for _ in range(NUMBER_OF_STEPS):
-        solver.update_state()
+        solver.advance()
 
 
 def main() -> int:

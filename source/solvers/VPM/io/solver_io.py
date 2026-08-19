@@ -18,7 +18,7 @@ from .backup import BackupSystem
 from .sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
-    from ..core.solver import Solver
+    from ..core.solver import VPMSolver
 
 # =========================================================
 
@@ -30,7 +30,7 @@ class SolverIO:
     Consolidates all IO operations into a single, clean interface.
     """
 
-    def __init__(self, solver: "Solver"):
+    def __init__(self, solver: "VPMSolver"):
         """
         Initialize IO manager.
 
@@ -64,24 +64,24 @@ class SolverIO:
         return f"vlm_{self.backup_file_name}" if self.backup_file_name else "vlm"
 
     @property
-    def time_step(self) -> int:
-        return self.solver.time_step
+    def step(self) -> int:
+        return self.solver.step
 
     @property
-    def flow_time(self) -> float:
-        return self.solver.flow_time
+    def time(self) -> float:
+        return self.solver.time
 
-    def should_backup(self, time_step: int | None = None) -> bool:
+    def should_backup(self, step: int | None = None) -> bool:
         """
         Check if backup should be performed at given timestep.
 
         Args:
-            time_step: Timestep to check (default: current solver timestep)
+            step: Step index to check (default: current solver step)
 
         Returns:
             True if backup should be performed
         """
-        ts = time_step if time_step is not None else self.time_step
+        ts = step if step is not None else self.step
         return self.backup_frequency > 0 and (ts % self.backup_frequency == 0 or ts == 0)
 
     def backup(self, verbose: bool = True):
@@ -101,13 +101,13 @@ class SolverIO:
         BackupSystem.backup_solver(self.solver, backup_path, verbose=verbose)
 
         # Track VPM particle data for XDMF series
-        xdmf_filename = f"{self.vpm_prefix}_{self.time_step:06d}.xdmf"
+        xdmf_filename = f"{self.vpm_prefix}_{self.step:06d}.xdmf"
         # Use float64 for consistent time with HDF5
-        time_val = float(self.flow_time)
+        time_val = float(self.time)
         self._xdmf_series_entries.append((time_val, xdmf_filename))
 
         # 2. VTK Visualization Export
-        vtk_base = f"{self.export_dir}/{self.vpm_prefix}_{self.time_step:06d}"
+        vtk_base = f"{self.export_dir}/{self.vpm_prefix}_{self.step:06d}"
         self.export_state(vtk_base)
 
         # 3. Panel Solver Aerodynamic Loads (CSV)
@@ -168,7 +168,7 @@ class SolverIO:
                 )
         print(f"[INFO] Diagnostics exported to {filename}")
 
-    def export_flow_integrals_csv(self, solver: "Solver") -> None:
+    def export_flow_integrals_csv(self, solver: "VPMSolver") -> None:
         """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``.
 
         Args:
@@ -193,8 +193,8 @@ class SolverIO:
         effective_viscosity = solver.particles.viscosity_effective_cpu()
 
         row = {
-            "time": solver.flow_time,
-            "step": solver.time_step,
+            "time": solver.time,
+            "step": solver.step,
             "kinetic_energy": solver.total_kinetic_energy,
             "enstrophy": solver.total_enstrophy,
             "enstrophy_test": solver._flow_integrals.get("enstrophy_test", 0.0),
@@ -329,10 +329,10 @@ class SolverIO:
             return
 
         # Export VLM lattice visualization using consistent time
-        vlm_filename = f"{self.vlm_prefix}_{self.time_step:06d}"
+        vlm_filename = f"{self.vlm_prefix}_{self.step:06d}"
         vlm_base = f"{self.export_dir}/{vlm_filename}"
         try:
-            vlm_solver.save_results(vlm_base, flow_time=time_val)
+            vlm_solver.save_results(vlm_base, time=time_val)
             # Track for PVD collection
             self._vlm_pvd_entries.append((time_val, f"{vlm_filename}.vtp"))
             # Write PVD collection file for ParaView time-series

@@ -4,7 +4,7 @@ VLM diagnostics module — recording and CSV export of VLM force/circulation his
 Owns all logic for:
   - Appending per-step VLM scalars to the solver diagnostics history dict.
   - Writing vlm_forces.csv.
-  - Appending flow_time / observed_dt history entries.
+  - Appending time / observed_dt history entries.
 
 Nothing in this module should import from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
@@ -27,14 +27,14 @@ class VLMDiagnostics:
     """Static helpers for recording VLM diagnostics and writing CSV output."""
 
     @staticmethod
-    def record_flow_time(diagnostics_history: dict, flow_time: float, observed_dt: float) -> None:
-        """Append *flow_time* and *observed_dt* to diagnostics history (no duplicates).
+    def record_time(diagnostics_history: dict, time: float, observed_time_step_size: float) -> None:
+        """Append *time* and *observed_dt* to diagnostics history (no duplicates).
 
         Parameters
         ----------
         diagnostics_history:
             The solver's ``_diagnostics_history`` dict (mutated in-place).
-        flow_time:
+        time:
             Current simulation time [s].
         observed_dt:
             Wall-clock or physical dt observed for this step [s].
@@ -42,11 +42,11 @@ class VLMDiagnostics:
         if "flow_time" not in diagnostics_history:
             return
         ft_hist = diagnostics_history["flow_time"]
-        if len(ft_hist) > 0 and ft_hist[-1] == flow_time:
+        if len(ft_hist) > 0 and ft_hist[-1] == time:
             return
-        ft_hist.append(flow_time)
+        ft_hist.append(time)
         if len(diagnostics_history["observed_dt"]) < len(ft_hist):
-            diagnostics_history["observed_dt"].append(float(observed_dt))
+            diagnostics_history["observed_dt"].append(float(observed_time_step_size))
 
     @staticmethod
     def record_vlm_diagnostics(
@@ -54,8 +54,8 @@ class VLMDiagnostics:
         particles,
         particles_strengths: np.ndarray,
         diagnostics_history: dict,
-        time_step: int,
-        flow_time: float,
+        step: int,
+        time: float,
         backup_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
@@ -71,9 +71,9 @@ class VLMDiagnostics:
             Circulation array (N, 3) for the current particle set.
         diagnostics_history:
             Solver's ``_diagnostics_history`` dict (mutated in-place).
-        time_step:
+        step:
             Current integer step counter.
-        flow_time:
+        time:
             Current simulation time [s].
         backup_directory:
             Solver backup/output root directory (CSV is written under
@@ -112,7 +112,7 @@ class VLMDiagnostics:
             diagnostics_history["vlm_n_particles"].append(float(n_p))
 
             freq = max(1, int(getattr(vlm_solver, "logging_frequency", 1)))
-            if time_step % freq == 0:
+            if step % freq == 0:
                 VLMDiagnostics.export_forces_csv(
                     vlm_solver,
                     forces,
@@ -120,8 +120,8 @@ class VLMDiagnostics:
                     gamma_wake_y,
                     lesp_max,
                     n_p,
-                    flow_time,
-                    time_step,
+                    time,
+                    step,
                     backup_directory,
                     sample_subdirectory,
                 )
@@ -138,8 +138,8 @@ class VLMDiagnostics:
         gamma_wake: float,
         lesp_max: float,
         n_p: int,
-        flow_time: float,
-        time_step: int,
+        time: float,
+        step: int,
         backup_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
@@ -157,9 +157,9 @@ class VLMDiagnostics:
             Maximum Leading Edge Suction Parameter for this step.
         n_p:
             Number of VPM particles at this step.
-        flow_time:
+        time:
             Current simulation time [s].
-        time_step:
+        step:
             Integer step counter.
         backup_directory:
             Output root; CSV is written under ``<backup_directory>/samples/``.
@@ -171,8 +171,8 @@ class VLMDiagnostics:
         csv_path = samples_dir / "vlm_forces.csv"
 
         row = {
-            "time": flow_time,
-            "step": time_step,
+            "time": time,
+            "step": step,
             "CL": forces.get("CL", 0.0),
             "CD": forces.get("CD", 0.0),
             "CC": forces.get("CC", 0.0),

@@ -82,7 +82,7 @@ class SmagorinskyModel:
     def initialize(self, particles):
         pass
 
-    def compute(self, particles, dt: float = None):
+    def compute(self, particles, time_step_size: float = None):
         """
         Main compute step for Smagorinsky model.
 
@@ -91,7 +91,7 @@ class SmagorinskyModel:
 
         Args:
             particles: Particle system (particles.strain_rate must be current).
-            dt: Unused; retained for API compatibility.
+            time_step_size: Unused; retained for API compatibility.
         """
         N = len(particles)
         if N == 0:

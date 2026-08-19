@@ -1,9 +1,9 @@
 """Rewinding sampler histories on restart (blocker: line/surface + PVD).
 
-``SolverIO.rewind_histories`` must strip rows/frames past the resumed ``flow_time``
+``SolverIO.rewind_histories`` must strip rows/frames past the resumed ``time``
 from *every* sampler product, not just the classic ``forces_history`` / IBM CSVs:
-line samplers write a ``flow_time`` time column (not ``time``), and surface
-samplers write a ``.pvd`` index alongside their per-step ``.vts`` files.
+line samplers write a ``time`` column too, and surface samplers write a
+``.pvd`` index alongside their per-step ``.vts`` files.
 """
 
 from __future__ import annotations
@@ -28,17 +28,14 @@ def _write(tmp_path, relpath, text):
     return path
 
 
-def test_rewind_trims_flow_time_line_csv(io, tmp_path):
+def test_rewind_trims_time_line_csv(io, tmp_path):
     path = _write(
         tmp_path,
         "samples/centerline.csv",
-        "flow_time,time_step,x\n0.00,0,0.5\n0.02,2,0.5\n0.04,4,0.5\n0.06,6,0.5\n",
+        "time,step,x\n0.00,0,0.5\n0.02,2,0.5\n0.04,4,0.5\n0.06,6,0.5\n",
     )
     io.rewind_histories(0.04)
-    assert (
-        path.read_text(encoding="utf-8")
-        == "flow_time,time_step,x\n0.00,0,0.5\n0.02,2,0.5\n0.04,4,0.5\n"
-    )
+    assert path.read_text(encoding="utf-8") == "time,step,x\n0.00,0,0.5\n0.02,2,0.5\n0.04,4,0.5\n"
 
 
 def test_rewind_trims_time_column_forces_csv(io, tmp_path):

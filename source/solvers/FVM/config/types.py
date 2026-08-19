@@ -167,7 +167,7 @@ class BoundaryConfig:
 class MeshConfig:
     """Quality limits applied to a solver-native or Gmsh mesh.
 
-    Meshes are supplied directly to :func:`setup_fvm_solver` as an in-memory
+    Meshes are supplied directly to :func:`create_fvm_solver` as an in-memory
     mesh, a callable that builds one, or a Gmsh ``.msh`` path.  Set any limit
     below to reject a mesh that does not satisfy it.
     """
@@ -196,7 +196,7 @@ class TimeConfig:
     >>> TimeConfig.steady(max_iter=500)
     """
 
-    delta_t: float = 0.01
+    time_step_size: float = 0.01
     """Time-step size (seconds)."""
     start_time: float = 0.0
     """Simulation start time (seconds)."""
@@ -207,21 +207,21 @@ class TimeConfig:
     write_interval_time: float | None = None
     """Physical-time output interval (seconds); overrides ``write_interval`` when set."""
     adjust_timestep: bool = False
-    """Dynamically adapt ``delta_t`` to respect ``max_cfl``."""
+    """Dynamically adapt ``time_step_size`` to respect ``max_cfl``."""
     max_cfl: float = 1.0
     """Target maximum CFL number when ``adjust_timestep`` is enabled."""
-    max_delta_t: float = 0.1
+    max_time_step_size: float = 0.1
     """Upper bound on the adaptive time step (seconds)."""
-    min_delta_t: float = 1e-4
+    min_time_step_size: float = 1e-4
     """Lower bound on the adaptive time step (seconds)."""
-    dt_adjust_coeff: float = 1.2
+    time_step_size_adjust_coeff: float = 1.2
     """Multiplicative factor used when adapting the time step."""
 
     @staticmethod
     def steady(max_iter: int = 1000, write_interval: int = 100) -> "TimeConfig":
         """Create a steady-state time configuration.
 
-        Sets ``delta_t=1``, so ``n_steps = end_time - start_time = max_iter``,
+        Sets ``dt=1``, so ``n_steps = end_time - start_time = max_iter``,
         which is treated by the SIMPLE algorithm as outer iterations.
 
         Args:
@@ -231,14 +231,16 @@ class TimeConfig:
         Returns:
             :class:`TimeConfig` suitable for steady SIMPLE.
         """
-        return TimeConfig(delta_t=1, start_time=0, end_time=max_iter, write_interval=write_interval)
+        return TimeConfig(
+            time_step_size=1, start_time=0, end_time=max_iter, write_interval=write_interval
+        )
 
     @staticmethod
-    def transient(dt: float, duration: float, write_interval: int = 10) -> "TimeConfig":
+    def transient(time_step_size: float, duration: float, write_interval: int = 10) -> "TimeConfig":
         """Create a transient time configuration.
 
         Args:
-            dt:             Time-step size (seconds).
+            time_step_size:             Time-step size (seconds).
             duration:       Total simulation time (seconds).
             write_interval: Save every *write_interval*-th step.
 
@@ -246,7 +248,10 @@ class TimeConfig:
             :class:`TimeConfig` suitable for PIMPLE / PISO.
         """
         return TimeConfig(
-            delta_t=dt, start_time=0, end_time=duration, write_interval=write_interval
+            time_step_size=time_step_size,
+            start_time=0,
+            end_time=duration,
+            write_interval=write_interval,
         )
 
 
@@ -782,7 +787,7 @@ class FVMSetup:
     Aggregates all sub-configurations (mesh, time, schemes, linear solvers,
     PIMPLE control, forces, transport, turbulence, boundaries, output, and
     execution backends) into a single dataclass.  Create a fully populated
-    instance and pass it to :func:`source.solvers.FVM.setup_fvm_solver`.
+    instance and pass it to :func:`source.solvers.FVM.create_fvm_solver`.
 
     Most fields accept a sub-config object; leaving one at its default
     produces a sensible baseline.  The ``case_name`` and (for non-generated
@@ -839,7 +844,7 @@ class FVMSetup:
         """Validate user-facing process settings.
 
         Parallel backend selection is deliberately deferred to
-        :func:`source.solvers.FVM.setup_fvm_solver`; case files only choose a
+        :func:`source.solvers.FVM.create_fvm_solver`; case files only choose a
         core count.
         """
         if isinstance(self.cores, bool) or not isinstance(self.cores, int):
