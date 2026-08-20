@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     DivergenceRelaxationConfig,
@@ -13,26 +12,27 @@ from source.solvers.VPM.config.types import (
     StretchingConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.io.backup import BackupSystem
+from source.solvers.VPM.io.checkpoint import CheckpointManager
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 
 def _solver(tmp_path, *, refinement: bool) -> VPMSolver:
     return VPMSolver(
         VPMSetup(
-            processing_unit="CPU",
+            compute_device="CPU",
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig(scheme="NONE"),
             advection=AdvectionConfig(scheme="NONE"),
             stabilization=StabilizationConfig(
                 filament_refinement=(
-                    FilamentRefinementConfig.adaptive(frequency=1, max_particles=32)
+                    FilamentRefinementConfig.adaptive(interval_steps=1, max_particles=32)
                     if refinement
                     else FilamentRefinementConfig.disabled()
                 )
             ),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
             max_particles=32,
         )
     )
@@ -45,12 +45,12 @@ def _add_cloud(solver: VPMSolver, count: int) -> None:
             np.float32
         ),
         velocity=np.zeros((count, 3), dtype=np.float32),
-        circulation=np.column_stack((np.zeros(count), np.zeros(count), 0.1 + coordinate)).astype(
-            np.float32
-        ),
-        radius=np.full(count, 0.1, dtype=np.float32),
+        vortex_strength=np.column_stack(
+            (np.zeros(count), np.zeros(count), 0.1 + coordinate)
+        ).astype(np.float32),
+        core_radius=np.full(count, 0.1, dtype=np.float32),
         volume=np.full(count, 1e-3, dtype=np.float32),
-        viscosity=np.zeros(count, dtype=np.float32),
+        kinematic_viscosity=np.zeros(count, dtype=np.float32),
     )
 
 
@@ -64,15 +64,15 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         source.stabilization.capture_reference_state()
         expected_strength = np.array([0.04, 0.2, 0.7, 1.3])
         expected_length = np.array([0.03, 0.04, 0.05, 0.06])
-        source.stabilization.reference_strengths = expected_strength.copy()
+        source.stabilization.reference_vortex_strength = expected_strength.copy()
         source.stabilization.reference_lengths = expected_length.copy()
         source.stabilization.events = 7
         source.stabilization.last_mechanism = "filament refinement"
-        source.stabilization.last_circulation_error = 4.2e-9
+        source.stabilization.last_vortex_strength_error = 4.2e-9
         source.stabilization.max_vorticity_growth = 1.5e-3
         expected_moments = tuple(value.copy() for value in source.stabilization.reference_moments)
         checkpoint = tmp_path / "lineage"
-        BackupSystem.backup_solver(
+        CheckpointManager.write_checkpoint(
             source,
             str(checkpoint),
             append_step=False,
@@ -82,10 +82,10 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         restored = _solver(tmp_path, refinement=True)
         _add_cloud(restored, 4)
         restored.stabilization.capture_reference_state()
-        BackupSystem.load_numerical_state(restored, checkpoint.with_suffix(".h5"))
+        CheckpointManager.load_numerical_state(restored, checkpoint.with_suffix(".h5"))
 
         np.testing.assert_array_equal(
-            restored.stabilization.reference_strengths,
+            restored.stabilization.reference_vortex_strength,
             expected_strength,
         )
         np.testing.assert_array_equal(
@@ -94,7 +94,7 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         )
         assert restored.stabilization.events == 7
         assert restored.stabilization.last_mechanism == "filament refinement"
-        assert restored.stabilization.last_circulation_error == pytest.approx(4.2e-9)
+        assert restored.stabilization.last_vortex_strength_error == pytest.approx(4.2e-9)
         assert restored.stabilization.max_vorticity_growth == pytest.approx(1.5e-3)
         for restored_value, expected_value in zip(
             restored.stabilization.reference_moments,
@@ -114,17 +114,17 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
         spacing = 0.1
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
                 stabilization=StabilizationConfig(
                     filament_refinement=FilamentRefinementConfig.adaptive(
-                        frequency=100,
+                        interval_steps=100,
                         max_particles=256,
                     ),
                     divergence_relaxation=DivergenceRelaxationConfig.constrained(
-                        frequency=1,
+                        interval_steps=1,
                         grid_spacing=spacing,
                         max_correction_norm=0.2,
                         max_residual_ratio=0.9,
@@ -134,9 +134,9 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
                         variation_tolerance=0.02,
                     ),
                 ),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=256,
             )
         )
@@ -168,30 +168,32 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
         solver.add_vortex_particles(
             position=position,
             velocity=np.zeros_like(position),
-            circulation=circulation,
-            radius=(1.5 * spacing * np.linspace(0.995, 1.005, len(position))).astype(np.float32),
+            vortex_strength=circulation,
+            core_radius=(1.5 * spacing * np.linspace(0.995, 1.005, len(position))).astype(
+                np.float32
+            ),
             volume=volume,
-            viscosity=np.zeros(len(position), dtype=np.float32),
+            kinematic_viscosity=np.zeros(len(position), dtype=np.float32),
         )
         solver.stabilization.capture_reference_state()
         target_moments = tuple(value.copy() for value in solver.stabilization.reference_moments)
-        drifted_circulation = solver.particles.circulation_cpu()
+        drifted_circulation = solver.particles.vortex_strength_cpu()
         drifted_circulation[0] += np.array(
             [2.0e-8, -1.0e-8, 1.5e-8],
             dtype=np.float32,
         )
-        solver.set_particles_properties(strengths=drifted_circulation)
-        old_circulation = solver.particles.circulation_cpu()
+        solver.set_particles_properties(vortex_strength=drifted_circulation)
+        old_circulation = solver.particles.vortex_strength_cpu()
         old_ratio = np.linalg.norm(old_circulation, axis=1) / (
-            solver.stabilization.reference_strengths
+            solver.stabilization.reference_vortex_strength
         )
         solver.step = 1
 
         solver.stabilization.apply_divergence_relaxation()
 
-        new_circulation = solver.particles.circulation_cpu()
+        new_circulation = solver.particles.vortex_strength_cpu()
         new_ratio = np.linalg.norm(new_circulation, axis=1) / (
-            solver.stabilization.reference_strengths
+            solver.stabilization.reference_vortex_strength
         )
         nonzero = np.linalg.norm(old_circulation, axis=1) > 1e-12
         np.testing.assert_allclose(
@@ -202,14 +204,14 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
         )
         assert solver.stabilization.events == 1
         assert solver.stabilization.last_mechanism == "divergence relaxation"
-        assert solver.stabilization.last_circulation_error < 1e-5
+        assert solver.stabilization.last_vortex_strength_error < 1e-5
         assert solver.stabilization.last_vorticity_growth <= 0.05
         restored_moments = (
-            solver.particles.circulation_cpu().astype(np.float64).sum(axis=0),
+            solver.particles.vortex_strength_cpu().astype(np.float64).sum(axis=0),
             0.5
             * np.cross(
                 solver.particles.position_cpu().astype(np.float64),
-                solver.particles.circulation_cpu().astype(np.float64),
+                solver.particles.vortex_strength_cpu().astype(np.float64),
             ).sum(axis=0),
         )
         np.testing.assert_allclose(
@@ -236,7 +238,7 @@ def test_legacy_checkpoint_cannot_silently_reset_an_already_refined_lineage(
         legacy = _solver(tmp_path, refinement=False)
         _add_cloud(legacy, 5)
         checkpoint = tmp_path / "legacy"
-        BackupSystem.backup_solver(
+        CheckpointManager.write_checkpoint(
             legacy,
             str(checkpoint),
             append_step=False,
@@ -246,8 +248,10 @@ def test_legacy_checkpoint_cannot_silently_reset_an_already_refined_lineage(
         restored = _solver(tmp_path, refinement=True)
         _add_cloud(restored, 4)
         restored.stabilization.capture_reference_state()
-        with pytest.raises(ValueError, match="reset its material stretch history"):
-            BackupSystem.load_numerical_state(
+        with pytest.raises(
+            ValueError, match="no filament-lineage state compatible with this refined cloud"
+        ):
+            CheckpointManager.load_numerical_state(
                 restored,
                 checkpoint.with_suffix(".h5"),
             )
@@ -261,21 +265,21 @@ def test_solver_uploads_refinement_without_reporting_particle_deletion(tmp_path)
         solver = _solver(tmp_path, refinement=True)
         _add_cloud(solver, 4)
         solver.stabilization.capture_reference_state()
-        solver.stabilization.reference_strengths /= 2.1
+        solver.stabilization.reference_vortex_strength /= 2.1
         solver.step = 1
 
         solver.stabilization.apply_filament_refinement()
 
-        assert solver.particles.number_of_particles == 8
+        assert solver.particles.n_particles == 8
         assert solver.stabilization.events == 1
         assert solver.stabilization.last_mechanism == "filament refinement"
-        assert solver.stabilization.last_circulation_error <= 512.0 * np.finfo(np.float32).eps
+        assert solver.stabilization.last_vortex_strength_error <= 512.0 * np.finfo(np.float32).eps
         assert solver._particles_removed_this_step == 0
         np.testing.assert_array_equal(
-            solver._circulation_removed_this_step,
+            solver._vortex_strength_removed_this_step,
             np.zeros(3),
         )
-        assert len(solver.stabilization.reference_strengths) == 8
+        assert len(solver.stabilization.reference_vortex_strength) == 8
         assert len(solver.stabilization.reference_lengths) == 8
     finally:
         reset_taichi_backend()

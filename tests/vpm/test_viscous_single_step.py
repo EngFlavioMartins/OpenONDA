@@ -28,17 +28,17 @@ def _viscous_solver(
     scheme,
     kernel="GAUSSIAN",
     time_step_size=0.01,
-    vpm_domain_bounds=None,
+    domain_bounds=None,
     **kwargs,
 ):
     """Create a solver with only viscous diffusion active."""
     # vpm_domain_bounds belongs to the setup, not to ViscousConfig.
     setup_kwargs = {}
-    if vpm_domain_bounds is not None:
-        setup_kwargs["vpm_domain_bounds"] = vpm_domain_bounds
+    if domain_bounds is not None:
+        setup_kwargs["domain_bounds"] = domain_bounds
     return make_solver(
         time_step_size=time_step_size,
-        particles_kernel=kernel,
+        particle_kernel=kernel,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme=scheme, **kwargs),
         advection=AdvectionConfig(scheme="NONE"),
@@ -72,10 +72,10 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([nu]),
+        kinematic_viscosity=np.array([nu]),
     )
     solver.advance()
     sigma_new = float(solver.particles_radii[0])
@@ -98,14 +98,14 @@ def test_cs_one_step_circulation_unchanged(kernel_name, backend, solver_for_back
     solver.add_vortex_particles(
         position=positions,
         velocity=np.zeros((5, 3)),
-        circulation=circulations,
-        radius=np.full(5, _SIGMA),
+        vortex_strength=circulations,
+        core_radius=np.full(5, _SIGMA),
         volume=np.full(5, _VOLUME),
-        viscosity=np.full(5, 0.01),
+        kinematic_viscosity=np.full(5, 0.01),
     )
-    gamma_before = solver.particles_circulation.copy()
+    gamma_before = solver.particle_vortex_strength.copy()
     solver.advance()
-    gamma_after = solver.particles_circulation.copy()
+    gamma_after = solver.particle_vortex_strength.copy()
     np.testing.assert_allclose(gamma_after, gamma_before, atol=1e-10, rtol=1e-6)
 
 
@@ -117,10 +117,10 @@ def _rwm_displacements(make_solver, kernel_name, nu, n_samples):
     solver.add_vortex_particles(
         position=np.zeros((n_samples, 3)),
         velocity=np.zeros((n_samples, 3)),
-        circulation=np.tile([0.0, 0.0, 1.0], (n_samples, 1)),
-        radius=np.full(n_samples, _SIGMA),
+        vortex_strength=np.tile([0.0, 0.0, 1.0], (n_samples, 1)),
+        core_radius=np.full(n_samples, _SIGMA),
         volume=np.full(n_samples, _VOLUME),
-        viscosity=np.full(n_samples, nu),
+        kinematic_viscosity=np.full(n_samples, nu),
     )
     solver.advance()
     return solver.particles_positions.copy()
@@ -173,14 +173,14 @@ def test_rwm_circulation_unchanged(kernel_name, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.1]),
+        kinematic_viscosity=np.array([0.1]),
     )
-    gamma_before = solver.particles_circulation.copy()
+    gamma_before = solver.particle_vortex_strength.copy()
     solver.advance()
-    gamma_after = solver.particles_circulation.copy()
+    gamma_after = solver.particle_vortex_strength.copy()
     np.testing.assert_allclose(gamma_after, gamma_before, atol=1e-10)
 
 
@@ -197,7 +197,7 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
         solver_for_backend,
         "DVH",
         kernel=kernel_name,
-        vpm_domain_bounds=_GRID_DIFFUSION_BOUNDS,
+        domain_bounds=_GRID_DIFFUSION_BOUNDS,
         dvh_grid_spacing=h,
         dvh_threshold=1e-8,
     )
@@ -207,14 +207,14 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
     solver.add_vortex_particles(
         position=positions,
         velocity=np.zeros((8, 3)),
-        circulation=circulations,
-        radius=np.full(8, _SIGMA),
+        vortex_strength=circulations,
+        core_radius=np.full(8, _SIGMA),
         volume=np.full(8, _VOLUME),
-        viscosity=np.full(8, 0.01),
+        kinematic_viscosity=np.full(8, 0.01),
     )
-    gamma_sum_before = solver.particles_circulation.sum(axis=0)
+    gamma_sum_before = solver.particle_vortex_strength.sum(axis=0)
     solver.advance()
-    gamma_sum_after = solver.particles_circulation.sum(axis=0)
+    gamma_sum_after = solver.particle_vortex_strength.sum(axis=0)
     rel_err = np.linalg.norm(gamma_sum_after - gamma_sum_before) / (
         np.linalg.norm(gamma_sum_before) + 1e-12
     )
@@ -236,7 +236,7 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
         "GBD",
         kernel=kernel_name,
         time_step_size=time_step_size,
-        vpm_domain_bounds=_GRID_DIFFUSION_BOUNDS,
+        domain_bounds=_GRID_DIFFUSION_BOUNDS,
         gbd_grid_spacing=h,
         gbd_threshold=1e-8,
     )
@@ -246,14 +246,14 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=positions,
         velocity=np.zeros((8, 3)),
-        circulation=circulations,
-        radius=np.full(8, _SIGMA),
+        vortex_strength=circulations,
+        core_radius=np.full(8, _SIGMA),
         volume=np.full(8, _VOLUME),
-        viscosity=np.full(8, nu),
+        kinematic_viscosity=np.full(8, nu),
     )
-    gamma_sum_before = solver.particles_circulation.sum(axis=0)
+    gamma_sum_before = solver.particle_vortex_strength.sum(axis=0)
     solver.advance()
-    gamma_sum_after = solver.particles_circulation.sum(axis=0)
+    gamma_sum_after = solver.particle_vortex_strength.sum(axis=0)
     rel_err = np.linalg.norm(gamma_sum_after - gamma_sum_before) / (
         np.linalg.norm(gamma_sum_before) + 1e-12
     )
@@ -275,13 +275,13 @@ def test_cross_backend_viscous_consistency(scheme, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=np.array([[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]]),
         velocity=np.zeros((2, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
-        radius=np.full(2, _SIGMA),
+        vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+        core_radius=np.full(2, _SIGMA),
         volume=np.full(2, _VOLUME),
-        viscosity=np.full(2, 0.01),
+        kinematic_viscosity=np.full(2, 0.01),
     )
     solver.advance()
-    gamma_after = solver.particles_circulation.copy()
+    gamma_after = solver.particle_vortex_strength.copy()
 
     key = f"{scheme}_gamma"
     if backend == "CPU":

@@ -79,7 +79,7 @@ def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
         raise RuntimeError(f"could not restore {backup}")
     particles = solver.particles
     position = particles.position_cpu(use_cache=False).astype(np.float64)
-    circulation = particles.circulation_cpu(use_cache=False).astype(np.float64)
+    circulation = particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
 
     started = time.perf_counter()
     solver.physics.compute_velocity_and_gradient(particles)

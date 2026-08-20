@@ -741,10 +741,10 @@ class EvolutionStepper:
                 M = len(new_p["position"])
                 new_position = np.asarray(new_p["position"], dtype=np.float64)
                 proposed_circulation = np.asarray(
-                    new_p["circulation"],
+                    new_p["vortex_strength"],
                     dtype=np.float64,
                 )
-                new_radius = np.asarray(new_p["radius"], dtype=np.float64)
+                new_radius = np.asarray(new_p["core_radius"], dtype=np.float64)
                 new_volume = np.asarray(new_p["volume"], dtype=np.float64)
                 proposed_moments = gaussian_particle_moments(
                     new_position,
@@ -770,7 +770,7 @@ class EvolutionStepper:
                 )
                 moment_correction = nullspace.correction_for_moment_change(moment_change)
                 corrected_circulation = proposed_circulation + moment_correction
-                new_p["circulation"] = corrected_circulation.astype(self.np_dtype)
+                new_p["vortex_strength"] = corrected_circulation.astype(self.np_dtype)
                 correction_relative = float(
                     np.linalg.norm(moment_correction)
                     / max(np.linalg.norm(proposed_circulation), np.finfo(float).tiny)
@@ -804,15 +804,15 @@ class EvolutionStepper:
                 self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
-                    vortex_strength=new_p["circulation"],
-                    core_radius=new_p["radius"],
+                    vortex_strength=new_p["vortex_strength"],
+                    core_radius=new_p["core_radius"],
                     volume=new_p["volume"],
-                    kinematic_viscosity=new_p.get("viscosity"),
-                    eddy_viscosity=new_p.get("viscosity_turbulent"),
+                    kinematic_viscosity=new_p.get("kinematic_viscosity"),
+                    eddy_viscosity=new_p.get("eddy_viscosity"),
                     zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
                 )
-                new_circulation = np.asarray(new_p["circulation"], dtype=np.float64)
+                new_circulation = np.asarray(new_p["vortex_strength"], dtype=np.float64)
                 new_moments = gaussian_particle_moments(
                     new_position,
                     new_circulation,
@@ -863,7 +863,7 @@ class EvolutionStepper:
     def _apply_grid_diffusion(self, vc, time_step_size: float):
         """Run DVH or GBD grid-based diffusion; return new particle dict."""
         # Fall back to particle viscosity when the scheme has no scalar ν.
-        nu = vc.viscosity
+        nu = vc.kinematic_viscosity
         if nu is None or nu <= 0.0:
             n_part = self.particles.n_particles
             nu = (
@@ -897,11 +897,11 @@ class EvolutionStepper:
                 domain_padding=vc.dvh_domain_padding,
                 regen_threshold=vc.dvh_threshold,
                 regen_threshold_mode=vc.dvh_threshold_mode,
-                regen_threshold_window=getattr(vc, "regen_threshold_window", 3),
-                rd_ratio=vc.dvh_rd_ratio,
+                regen_threshold_window=vc.regeneration_threshold_window,
+                rd_ratio=vc.dvh_support_radius_ratio,
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "dvh_max_nodes", None),
-                cap_abs_fraction=vc.regen_cap_abs_fraction,
+                cap_abs_fraction=vc.regeneration_cap_absolute_fraction,
             )
         else:
             # LES uses per-particle effective viscosity in the grid Laplacian.
@@ -929,10 +929,10 @@ class EvolutionStepper:
                 domain_padding=vc.gbd_domain_padding,
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,
-                regen_threshold_window=getattr(vc, "regen_threshold_window", 3),
+                regen_threshold_window=vc.regeneration_threshold_window,
                 nu_eff=nu_eff,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
-                cap_abs_fraction=vc.regen_cap_abs_fraction,
+                cap_abs_fraction=vc.regeneration_cap_absolute_fraction,
             )
 
     def _update_positions(

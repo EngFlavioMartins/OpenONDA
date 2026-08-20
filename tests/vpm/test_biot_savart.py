@@ -74,23 +74,23 @@ def _single_particle_solver(tmp_path):
     """Return a solver loaded with one z-circulation particle at the origin."""
     config = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
-        particles_kernel="GAUSSIAN",
+        compute_device="CPU",
+        particle_kernel="GAUSSIAN",
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, _ALPHA_Z]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([(4.0 / 3.0) * np.pi * _SIGMA**3]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     return solver
 

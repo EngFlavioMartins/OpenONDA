@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from source.solvers.VPM import VPMSolver  # noqa: E402
-from source.solvers.VPM.io import BackupSystem  # noqa: E402
+from source.solvers.VPM.io import CheckpointManager  # noqa: E402
 
 RUN = ROOT / (
     "tutorials/VPM/vortexRing/solution/relaxed_reference_tail002_cs_h012_dt002_tstar2_qpsi"
@@ -42,7 +42,7 @@ LIMIT = 0.05
 
 
 def integral_state(solver: VPMSolver, path: Path) -> dict[str, float]:
-    BackupSystem.load_numerical_state(solver, path)
+    CheckpointManager.load_numerical_state(solver, path)
     solver._update_all_flow_integrals()
     return {
         "time": solver.time,

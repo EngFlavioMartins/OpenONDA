@@ -73,11 +73,11 @@ def test_axial_split_preserves_gaussian_blob_moments_and_volume():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
-    after = gaussian_particle_moments(result.position, result.circulation, result.radius)
+    after = gaussian_particle_moments(result.position, result.vortex_strength, result.radius)
 
     assert result.refined_particles > 0
     np.testing.assert_allclose(after[0], before[0], rtol=0.0, atol=2e-14)
@@ -99,7 +99,7 @@ def test_children_are_symmetric_and_parallel_to_parent_circulation():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
@@ -108,7 +108,7 @@ def test_children_are_symmetric_and_parallel_to_parent_circulation():
     np.testing.assert_allclose(offsets[0], -offsets[1], rtol=0.0, atol=1e-16)
     np.testing.assert_allclose(np.cross(offsets[0], circulation[0]), 0.0, atol=2e-16)
     np.testing.assert_allclose(
-        result.circulation,
+        result.vortex_strength,
         np.repeat(0.5 * circulation, 2, axis=0),
     )
     np.testing.assert_allclose(result.radius, radius[0])
@@ -116,7 +116,7 @@ def test_children_are_symmetric_and_parallel_to_parent_circulation():
     expected_current_length = reference_length[0] * np.linalg.norm(circulation[0]) / 2.0
     np.testing.assert_allclose(np.linalg.norm(offsets, axis=1), 0.25 * expected_current_length)
     np.testing.assert_allclose(
-        result.reference_strength,
+        result.reference_vortex_strength,
         0.5 * np.linalg.norm(circulation[0]),
     )
     np.testing.assert_allclose(result.reference_length, 0.5 * expected_current_length)
@@ -130,7 +130,7 @@ def test_isolated_split_energy_is_strictly_non_increasing():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
@@ -141,7 +141,7 @@ def test_isolated_split_energy_is_strictly_non_increasing():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
         offset_fraction=0.0,
@@ -161,7 +161,7 @@ def test_transfer_audit_matches_full_gaussian_pair_integrals():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
@@ -174,7 +174,7 @@ def test_transfer_audit_matches_full_gaussian_pair_integrals():
     )
     expected = _direct_gaussian_integrals(
         result.position,
-        result.circulation,
+        result.vortex_strength,
         result.radius,
     ) - _direct_gaussian_integrals(position, circulation, radius)
 
@@ -197,7 +197,7 @@ def test_noop_transfer_has_exactly_zero_integral_jump():
         circulation,
         radius,
         volume,
-        reference_strength=np.linalg.norm(circulation, axis=1),
+        reference_vortex_strength=np.linalg.norm(circulation, axis=1),
         reference_length=np.cbrt(volume),
         max_stretch_factor=2.0,
     )
@@ -221,7 +221,7 @@ def test_refinement_rejects_an_insufficient_particle_budget():
             circulation,
             radius,
             volume,
-            reference_strength=reference_strength,
+            reference_vortex_strength=reference_strength,
             reference_length=reference_length,
             max_stretch_factor=2.0,
             max_particles=len(position),
@@ -237,16 +237,16 @@ def test_particles_below_threshold_are_an_exact_noop():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
     assert result.refined_particles == 0
     np.testing.assert_array_equal(result.position, position)
-    np.testing.assert_array_equal(result.circulation, circulation)
+    np.testing.assert_array_equal(result.vortex_strength, circulation)
     np.testing.assert_array_equal(result.radius, radius)
     np.testing.assert_array_equal(result.volume, volume)
-    np.testing.assert_array_equal(result.reference_strength, reference_strength)
+    np.testing.assert_array_equal(result.reference_vortex_strength, reference_strength)
     np.testing.assert_array_equal(result.reference_length, reference_length)
 
 
@@ -260,17 +260,17 @@ def test_children_reset_their_own_stretch_reference():
         circulation,
         radius,
         volume,
-        reference_strength=np.array([2.0]),
+        reference_vortex_strength=np.array([2.0]),
         reference_length=np.array([0.1]),
         max_stretch_factor=2.0,
     )
 
     second = split_stretched_filaments(
         result.position,
-        result.circulation,
+        result.vortex_strength,
         result.radius,
         result.volume,
-        reference_strength=result.reference_strength,
+        reference_vortex_strength=result.reference_vortex_strength,
         reference_length=result.reference_length,
         max_stretch_factor=2.0,
     )
@@ -287,11 +287,11 @@ def test_axial_split_preserves_strength_weighted_centroid():
         circulation,
         radius,
         volume,
-        reference_strength=reference_strength,
+        reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
-    weights_after = np.linalg.norm(result.circulation, axis=1)
+    weights_after = np.linalg.norm(result.vortex_strength, axis=1)
     centroid_after = (weights_after[:, None] * result.position).sum(axis=0) / weights_after.sum()
     np.testing.assert_allclose(centroid_after, centroid_before, rtol=0.0, atol=2e-15)
 
@@ -300,8 +300,8 @@ def test_filament_refinement_configuration_round_trip():
     setup = VPMSetup(
         stabilization=StabilizationConfig(
             filament_refinement=FilamentRefinementConfig.adaptive(
-                frequency=10,
-                max_strength_factor=2.5,
+                interval_steps=10,
+                max_vortex_strength_factor=2.5,
                 offset_fraction=0.4,
                 max_particles=120_000,
             )
@@ -312,11 +312,11 @@ def test_filament_refinement_configuration_round_trip():
 
 
 def test_filament_refinement_rejects_a_non_gaussian_kernel():
-    with pytest.raises(ValueError, match="requires the GAUSSIAN kernel"):
+    with pytest.raises(ValueError, match="requires GAUSSIAN particles"):
         VPMSetup(
-            particles_kernel="WINCKELMANS",
+            particle_kernel="WINCKELMANS",
             stabilization=StabilizationConfig(
-                filament_refinement=FilamentRefinementConfig.adaptive(frequency=1)
+                filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1)
             ),
         )
 
@@ -324,7 +324,7 @@ def test_filament_refinement_rejects_a_non_gaussian_kernel():
 def test_filament_refinement_rejects_children_outside_the_parent_segment():
     with pytest.raises(ValueError, match=r"offset_fraction must be in \[0, 0.5\]"):
         FilamentRefinementConfig.adaptive(
-            frequency=1,
+            interval_steps=1,
             offset_fraction=0.6,
         )
 
@@ -335,7 +335,7 @@ def test_refinement_budget_must_fit_the_fixed_particle_allocation():
             max_particles=100,
             stabilization=StabilizationConfig(
                 filament_refinement=FilamentRefinementConfig.adaptive(
-                    frequency=1,
+                    interval_steps=1,
                     max_particles=101,
                 )
             ),

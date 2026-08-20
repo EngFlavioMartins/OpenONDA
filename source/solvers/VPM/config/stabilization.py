@@ -81,9 +81,11 @@ class StabilizationConfig:
         if self.regularization_start_step < 0:
             raise ValueError("regularization_start_step must be non-negative")
         if self.regularization_interval_steps > 0 and (
-            self.regularization_grid_spacing is None or self.regularization_grid_spacing <= 0.0
+            self.regularization_grid_spacing is None
+            or not np.isfinite(self.regularization_grid_spacing)
+            or self.regularization_grid_spacing <= 0.0
         ):
-            raise ValueError("enabled regularization requires positive grid spacing")
+            raise ValueError("enabled regularization requires finite positive grid spacing")
         if self.regularization_max_particles is not None and self.regularization_max_particles <= 0:
             raise ValueError("regularization_max_particles must be positive or None")
         if not 0.0 < self.regularization_tail_budget < 1.0:
@@ -107,18 +109,21 @@ class StabilizationConfig:
             raise ValueError("regularization_capacity_misalignment_trigger must lie in [0, 180]")
         if not 0.0 < self.regularization_capacity_fraction <= 1.0:
             raise ValueError("regularization_capacity_fraction must lie in (0, 1]")
-        if (
-            self.regularization_capacity_grid_spacing is not None
-            and self.regularization_capacity_grid_spacing <= 0.0
+        if self.regularization_capacity_grid_spacing is not None and (
+            not np.isfinite(self.regularization_capacity_grid_spacing)
+            or self.regularization_capacity_grid_spacing <= 0.0
         ):
-            raise ValueError("regularization_capacity_grid_spacing must be positive")
-        if self.regularization_core_radius is not None and self.regularization_core_radius <= 0.0:
-            raise ValueError("regularization_core_radius must be positive")
-        if (
-            self.regularization_capacity_core_radius is not None
-            and self.regularization_capacity_core_radius <= 0.0
+            raise ValueError("regularization_capacity_grid_spacing must be finite and positive")
+        if self.regularization_core_radius is not None and (
+            not np.isfinite(self.regularization_core_radius)
+            or self.regularization_core_radius <= 0.0
         ):
-            raise ValueError("regularization_capacity_core_radius must be positive")
+            raise ValueError("regularization_core_radius must be finite and positive")
+        if self.regularization_capacity_core_radius is not None and (
+            not np.isfinite(self.regularization_capacity_core_radius)
+            or self.regularization_capacity_core_radius <= 0.0
+        ):
+            raise ValueError("regularization_capacity_core_radius must be finite and positive")
         if self.regularization_projection_trigger < 0.0:
             raise ValueError("regularization_projection_trigger must be non-negative")
         if not 0.0 < self.regularization_projection_max_correction < 1.0:

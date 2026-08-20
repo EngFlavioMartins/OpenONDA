@@ -102,7 +102,7 @@ def test_relaxation_reduces_actual_divergence_and_preserves_invariants():
     )
     after = gaussian_particle_moments(
         position,
-        result.circulation,
+        result.vortex_strength,
         radius,
     )
 
@@ -142,11 +142,11 @@ def test_relaxation_restores_reference_moments_without_energy_transfer():
     )
     restored = gaussian_particle_moments(
         position,
-        result.circulation,
+        result.vortex_strength,
         radius,
     )
 
-    assert result.circulation_restored == pytest.approx(
+    assert result.vortex_strength_restored == pytest.approx(
         np.linalg.norm(reference[0] - drifted_moments[0])
     )
     assert result.linear_impulse_restored == pytest.approx(
@@ -212,7 +212,7 @@ def test_restoration_and_divergence_amplitudes_backtrack_independently():
         variation_tolerance=0.02,
         target_moments=(reference[0], reference[2], reference[3]),
     )
-    after = gaussian_particle_moments(position, result.circulation, radius)
+    after = gaussian_particle_moments(position, result.vortex_strength, radius)
 
     assert result.reference_restoration_scale == pytest.approx(0.0625)
     assert result.trust_region_scale < 1.0
@@ -295,7 +295,7 @@ def test_iterated_projection_uses_multiple_sweeps_as_one_physics_transaction():
         helicity_tolerance=1e-12,
         variation_tolerance=1.0,
     )
-    after = gaussian_particle_moments(position, result.circulation, radius)
+    after = gaussian_particle_moments(position, result.vortex_strength, radius)
 
     assert result.projection_sweeps == 2
     assert result.final_residual_ratio < 0.9
@@ -330,11 +330,11 @@ def test_line_search_reduces_transfer_without_sacrificing_residual_gate():
 
 
 def test_relaxation_config_round_trip_and_combined_method_contract():
-    refinement = FilamentRefinementConfig.adaptive(frequency=1)
+    refinement = FilamentRefinementConfig.adaptive(interval_steps=1)
     relaxation = DivergenceRelaxationConfig.constrained(
-        frequency=10,
+        interval_steps=10,
         grid_spacing=0.03,
-        circulation_reference_scale=1.0,
+        vortex_strength_reference_scale=1.0,
         linear_impulse_reference_scale=2.0,
         angular_impulse_reference_scale=3.0,
     )
@@ -353,16 +353,16 @@ def test_relaxation_config_round_trip_and_combined_method_contract():
 
 def test_relaxation_requires_gaussian_particles_and_filament_refinement():
     relaxation = DivergenceRelaxationConfig.constrained(
-        frequency=10,
+        interval_steps=10,
         grid_spacing=0.03,
     )
     with pytest.raises(ValueError, match="requires filament refinement"):
         VPMSetup(stabilization=StabilizationConfig(divergence_relaxation=relaxation))
-    with pytest.raises(ValueError, match="requires the GAUSSIAN kernel"):
+    with pytest.raises(ValueError, match="requires GAUSSIAN particles"):
         VPMSetup(
-            particles_kernel="WINCKELMANS",
+            particle_kernel="WINCKELMANS",
             stabilization=StabilizationConfig(
-                filament_refinement=FilamentRefinementConfig.adaptive(frequency=1),
+                filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1),
                 divergence_relaxation=relaxation,
             ),
         )

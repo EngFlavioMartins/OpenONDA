@@ -9,8 +9,8 @@ import numpy as np
 
 
 CSV_COLUMNS = (
-    "flow_time",
-    "time_step",
+    "time",
+    "step",
     "group_id",
     "x_centroid",
     "y_centroid",
@@ -28,8 +28,8 @@ CSV_COLUMNS = (
 )
 
 MODE_CSV_COLUMNS = (
-    "flow_time",
-    "time_step",
+    "time",
+    "step",
     "group_id",
     "mode",
     "radial_amplitude",
@@ -56,7 +56,7 @@ class RingDiagnosticsSampler:
         step: int | None,
     ) -> None:
         positions = np.asarray(solver.particles_positions, dtype=np.float64)
-        circulation = np.asarray(solver.particles_circulation, dtype=np.float64)
+        circulation = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         group_ids = np.asarray(solver.particles_group_ids, dtype=np.int32)
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,7 +155,7 @@ class RingModeDiagnosticsSampler:
         step: int | None,
     ) -> None:
         positions = np.asarray(solver.particles_positions, dtype=np.float64)
-        circulation = np.asarray(solver.particles_circulation, dtype=np.float64)
+        circulation = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         group_ids = np.asarray(solver.particles_group_ids, dtype=np.int32)
 
         path.parent.mkdir(parents=True, exist_ok=True)

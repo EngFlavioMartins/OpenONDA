@@ -42,6 +42,6 @@ def test_gate_requires_small_residuals_not_only_a_plateau() -> None:
 
     gate = evaluate(rows)
 
-    assert gate["status"] == "CONTINUE_RELAXATION"
+    assert gate["status"] == "PLATEAUED_ABOVE_TARGET"
     assert gate["checks"]["time_plateau"]
     assert not gate["checks"]["single_valued_relation"]

@@ -103,8 +103,8 @@ class VPMSolver:
             vc.scheme == "RWM"
             and vc.particle_spacing is not None
             and vc.particle_spacing > 0
-            and vc.viscosity is not None
-            and vc.viscosity > 0
+            and vc.kinematic_viscosity is not None
+            and vc.kinematic_viscosity > 0
         ):
             rwm_max_time_step_size = vc.rwm_accuracy_time_step_size()
             if self.time_step_size > rwm_max_time_step_size * (1.0 + 1e-6):
@@ -117,11 +117,11 @@ class VPMSolver:
             self._rwm_time_step_size_info = (
                 f"RWM accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s "
                 f"(particle_spacing = {vc.particle_spacing:.3e} m, "
-                f"nu = {vc.viscosity:.3e} m²/s)."
+                f"nu = {vc.kinematic_viscosity:.3e} m²/s)."
             )
 
         # GBD explicit-diffusion stability criterion.
-        if vc.scheme == "GBD" and vc.viscosity is not None and vc.viscosity > 0:
+        if vc.scheme == "GBD" and vc.kinematic_viscosity is not None and vc.kinematic_viscosity > 0:
             max_time_step_size = vc.gbd_max_time_step_size()
             if self.time_step_size > max_time_step_size * (1.0 + 1e-6):
                 Logging.message(
@@ -138,7 +138,7 @@ class VPMSolver:
         # Match the user step to an integer subdivision of the DVH increment.
         self._dvh_substeps: int = 1
         self._dvh_fire_counter: int = 0
-        if vc.scheme == "DVH" and vc.viscosity is not None and vc.viscosity > 0:
+        if vc.scheme == "DVH" and vc.kinematic_viscosity is not None and vc.kinematic_viscosity > 0:
             from ..physics.diffusion import _DVH_BETA
 
             diffusion_time_step_size_raw = vc.dvh_required_time_step_size()
@@ -159,7 +159,7 @@ class VPMSolver:
                     f"[DVH] INFO: time step adjusted — "
                     f"user dt = {user_time_step_size:.4e} s → dt = Δt_d/{n_sub} = {substep_size:.4e} s "
                     f"(Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s, β={_DVH_BETA}, "
-                    f"R_d = {vc.dvh_rd_ratio}·particle_spacing = {vc.dvh_rd_ratio * vc.dvh_grid_spacing:.4e} m; "
+                    f"R_d = {vc.dvh_support_radius_ratio}·particle_spacing = {vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e} m; "
                     f"DVH fires every {n_sub} step(s))."
                 )
                 self.time_step_size = substep_size
@@ -185,13 +185,9 @@ class VPMSolver:
         self.particle_kernel = final_setup.particle_kernel.upper()
         self.checkpoint_interval_steps = final_setup.checkpoint_interval_steps
         self.logging_interval_steps = final_setup.logging_interval_steps
-        self.timing_interval_steps = getattr(final_setup, "timing_frequency", 0)
+        self.timing_interval_steps = final_setup.timing_interval_steps
         self.checkpoint_name = final_setup.checkpoint_name
-        self.checkpoint_directory = getattr(
-            final_setup,
-            "backup_directory",
-            getattr(final_setup, "solution_name", "solution"),
-        )
+        self.checkpoint_directory = final_setup.checkpoint_directory
         if getattr(final_setup, "clean", False):
             import shutil as _shutil
 
@@ -229,7 +225,7 @@ class VPMSolver:
             particle_kernel=self.particle_kernel,
             max_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
-            max_evaluation_points=getattr(final_setup, "max_targets", 200000),
+            max_evaluation_points=final_setup.max_evaluation_points,
         )
 
         _vel_cfg = getattr(final_setup, "velocity", None)
@@ -253,7 +249,7 @@ class VPMSolver:
                 Logging.warning(f"Failed to configure DVH body mask: {exc}")
 
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
-        vpm_bounds = getattr(final_setup, "vpm_domain_bounds", None)
+        vpm_bounds = final_setup.domain_bounds
         vc = getattr(final_setup, "viscous", None)
         scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
         is_grid_diffusion = scheme in {"DVH", "GBD"}
@@ -272,7 +268,7 @@ class VPMSolver:
 
             if vpm_bounds is None:
                 raise ValueError(
-                    "GPU DVH/GBD requires vpm_domain_bounds so the diffusion "
+                    "GPU DVH/GBD requires domain_bounds so the diffusion "
                     "grid can be allocated once."
                 )
             if _grid_h is None or _grid_h <= 0:
@@ -295,11 +291,11 @@ class VPMSolver:
         self.turbulence_model = None
         if self.flow_model == "LES":
             self.turbulence_model = ParticlesLES(
-                LES_filter_type=final_setup.turbulence.model,
+                model_name=final_setup.turbulence.model,
                 max_particles=max_p,
-                kernel_type=self.particle_kernel,
-                cs=final_setup.turbulence.cs,
-                ce=final_setup.turbulence.ce,
+                particle_kernel=self.particle_kernel,
+                c_s=final_setup.turbulence.c_s,
+                c_e=final_setup.turbulence.c_e,
                 accumulator_dtype=self.accumulator_dtype,
             )
         self.stretching_enabled = final_setup.stretching.enabled
@@ -363,7 +359,7 @@ class VPMSolver:
                 ),
                 vortex_strength_removed=lambda: self._vortex_strength_removed_this_step,
                 set_vortex_strength_removed=lambda value: setattr(
-                    self, "_circulation_removed_this_step", value
+                    self, "_vortex_strength_removed_this_step", value
                 ),
                 domain_bounds_enforced=lambda: self._domain_bounds_enforced_this_step,
                 set_domain_bounds_enforced=lambda value: setattr(
@@ -564,12 +560,12 @@ class VPMSolver:
     @property
     def particles_strengths(self) -> np.ndarray:
         """Particle circulation vectors with shape ``(N, 3)`` [m²/s]."""
-        return self._get_particle_field("circulation")
+        return self._get_particle_field("vortex_strength")
 
     @property
     def particles_radii(self) -> np.ndarray:
         """Particle core radii with shape ``(N,)`` [m]."""
-        return self._get_particle_field("radius")
+        return self._get_particle_field("core_radius")
 
     @property
     def particles_volumes(self) -> np.ndarray:
@@ -589,17 +585,17 @@ class VPMSolver:
     @property
     def particles_viscosities(self) -> np.ndarray:
         """Particle molecular viscosities with shape ``(N,)`` [m²/s]."""
-        return self._get_particle_field("viscosity")
+        return self._get_particle_field("kinematic_viscosity")
 
     @property
     def particles_viscosities_t(self) -> np.ndarray:
         """Particle turbulent viscosities with shape ``(N,)`` [m²/s]."""
-        return self._get_particle_field("viscosity_turbulent")
+        return self._get_particle_field("eddy_viscosity")
 
     @property
     def particles_viscosities_eff(self) -> np.ndarray:
         """Particle effective viscosities with shape ``(N,)`` [m²/s]."""
-        return self._get_particle_field("viscosity_effective")
+        return self._get_particle_field("effective_viscosity")
 
     @property
     def particles_velocity_gradients(self) -> np.ndarray:
@@ -624,7 +620,7 @@ class VPMSolver:
     @property
     def particle_vortex_strength(self) -> np.ndarray:
         """Alias for :attr:`particles_strengths`."""
-        return self._get_particle_field("circulation")
+        return self._get_particle_field("vortex_strength")
 
     # Flow diagnostics
     def _update_all_flow_integrals(self) -> None:
@@ -1177,7 +1173,7 @@ class VPMSolver:
 
         elif remove_all:
             # Sum removed circulation on device.
-            circ_removed = self.particles.total_circulation()
+            circ_removed = self.particles.total_vortex_strength()
 
             self._particles_removed_this_step = len(self.particles)
             self._vortex_strength_removed_this_step = circ_removed
@@ -1198,11 +1194,11 @@ class VPMSolver:
         self,
         position: np.ndarray,
         velocity: np.ndarray,
-        circulation: np.ndarray,
-        radius: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
         volume: np.ndarray,
-        viscosity: np.ndarray | None = None,
-        viscosity_turbulent: np.ndarray | None = None,
+        kinematic_viscosity: np.ndarray | None = None,
+        eddy_viscosity: np.ndarray | None = None,
         group_id: np.ndarray | None = None,
         zone_id: np.ndarray | None = None,
         velocity_gradient: np.ndarray | None = None,
@@ -1213,11 +1209,11 @@ class VPMSolver:
         ``radius`` and ``volume`` have shape ``(N,)``. Molecular viscosity may be
         omitted when it is defined by the viscous configuration.
         """
-        if viscosity is None:
-            nu = getattr(self._viscous_config, "viscosity", None)
+        if kinematic_viscosity is None:
+            nu = getattr(self._viscous_config, "kinematic_viscosity", None)
             if nu is not None and nu > 0:
                 N = len(position)
-                viscosity = np.full(N, nu, dtype=self.np_dtype)
+                kinematic_viscosity = np.full(N, nu, dtype=self.np_dtype)
             else:
                 raise ValueError(
                     "viscosity parameter is required.  Either set "
@@ -1228,17 +1224,17 @@ class VPMSolver:
         self.particles.add_vortex_particles(
             position=position,
             velocity=velocity,
-            vortex_strength=circulation,
-            core_radius=radius,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
             volume=volume,
-            kinematic_viscosity=viscosity,
-            eddy_viscosity=viscosity_turbulent,
+            kinematic_viscosity=kinematic_viscosity,
+            eddy_viscosity=eddy_viscosity,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
         )
         self._axisymmetric_orbits_validated = False
-        magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+        magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_add(
             magnitude,
             volume,
@@ -1250,11 +1246,11 @@ class VPMSolver:
         self,
         position: np.ndarray,
         velocity: np.ndarray,
-        circulation: np.ndarray,
-        radius: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
         volume: np.ndarray,
-        viscosity: np.ndarray | None = None,
-        viscosity_turbulent: np.ndarray | None = None,
+        kinematic_viscosity: np.ndarray | None = None,
+        eddy_viscosity: np.ndarray | None = None,
         group_id: np.ndarray | None = None,
         zone_id: np.ndarray | None = None,
         velocity_gradient: np.ndarray | None = None,
@@ -1270,17 +1266,17 @@ class VPMSolver:
         """
         if report_removal:
             circ_removed = (
-                self.particles.total_circulation()
+                self.particles.total_vortex_strength()
                 if len(self.particles) > 0
                 else np.zeros(3, dtype=self.np_dtype)
             )
             self._particles_removed_this_step = len(self.particles)
             self._vortex_strength_removed_this_step = circ_removed
 
-        if viscosity is None:
-            nu = getattr(self._viscous_config, "viscosity", None)
+        if kinematic_viscosity is None:
+            nu = getattr(self._viscous_config, "kinematic_viscosity", None)
             if nu is not None and nu > 0:
-                viscosity = np.full(len(position), nu, dtype=self.np_dtype)
+                kinematic_viscosity = np.full(len(position), nu, dtype=self.np_dtype)
             else:
                 raise ValueError(
                     "viscosity parameter is required.  Either set "
@@ -1290,18 +1286,18 @@ class VPMSolver:
         self.particles.replace_from_numpy(
             position=position,
             velocity=velocity,
-            circulation=circulation,
-            radius=radius,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
             volume=volume,
-            viscosity=viscosity,
-            viscosity_turbulent=viscosity_turbulent,
+            kinematic_viscosity=kinematic_viscosity,
+            eddy_viscosity=eddy_viscosity,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
             strain_rate=strain_rate,
         )
         self._axisymmetric_orbits_validated = False
-        magnitude = np.linalg.norm(np.asarray(circulation, dtype=np.float64), axis=1)
+        magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_replacement(magnitude, volume)
 
     def update_particle_circulations(
@@ -1332,21 +1328,32 @@ class VPMSolver:
         return self.time_step_size
 
     @staticmethod
-    def _validate_particle_property(prop_name: str, prop_value, N: int) -> np.ndarray:
-        """Validate shape and finiteness of a single particle property array."""
+    @staticmethod
+    def _validate_particle_property(
+        prop_name: str,
+        prop_value,
+        n_particles: int,
+    ) -> np.ndarray:
+        "Validate one canonical particle-property array."
         if not isinstance(prop_value, np.ndarray):
-            prop_value = np.array(prop_value)
-        expected_shape: tuple
-        if prop_name in ("positions", "velocities", "strengths", "vorticities"):
-            expected_shape = (N, 3)
-        elif prop_name in ("grad_u", "Sij"):
-            expected_shape = (N, 3, 3)
+            prop_value = np.asarray(prop_value)
+
+        if prop_name in {
+            "position",
+            "velocity",
+            "vortex_strength",
+            "vorticity",
+        }:
+            expected_shape = (n_particles, 3)
+        elif prop_name in {"velocity_gradient", "strain_rate"}:
+            expected_shape = (n_particles, 3, 3)
         else:
-            expected_shape = (N,)
+            expected_shape = (n_particles,)
+
         if prop_value.shape != expected_shape:
             raise ValueError(
                 f"Property '{prop_name}' has incorrect shape {prop_value.shape}. "
-                f"Expected {expected_shape} for {N} particles."
+                f"Expected {expected_shape} for {n_particles} particles."
             )
         if not np.all(np.isfinite(prop_value)):
             nan_count = int(np.sum(np.isnan(prop_value)))
@@ -1354,64 +1361,57 @@ class VPMSolver:
             raise ValueError(
                 f"Property '{prop_name}' contains invalid values: "
                 f"{nan_count} NaN, {inf_count} Inf. "
-                f"Cannot set particle properties with non-finite values."
+                "Cannot set particle properties with non-finite values."
             )
         return prop_value
 
     def set_particles_properties(self, **properties) -> None:
-        """Update one or more particle fields after validating names, shapes, and finiteness.
-
-        Supported keys are ``positions``, ``velocities``, ``strengths``,
-        ``vorticities``, ``radii``, ``volumes``, ``viscosities``, ``viscosities_t``,
-        ``viscosities_eff``, ``group_ids``, ``grad_u``, and ``Sij``.
-        """
+        "Update canonical particle fields after validating shape and finiteness."
         if not properties:
             return
 
         valid_properties = {
-            "positions": "position",
-            "velocities": "velocity",
-            "strengths": "circulation",
-            "vorticities": "vorticity",
-            "radii": "radius",
-            "volumes": "volume",
-            "viscosities": "viscosity",
-            "viscosities_t": "viscosity_turbulent",
-            "viscosities_eff": "viscosity_effective",
-            "group_ids": "group_id",
-            "grad_u": "velocity_gradient",
-            "Sij": "strain_rate",
+            "position",
+            "velocity",
+            "vortex_strength",
+            "vorticity",
+            "core_radius",
+            "volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "effective_viscosity",
+            "group_id",
+            "zone_id",
+            "velocity_gradient",
+            "strain_rate",
         }
-
-        for prop_name in properties:
-            if prop_name not in valid_properties:
-                raise ValueError(
-                    f"Invalid property name '{prop_name}'. "
-                    f"Valid properties: {list(valid_properties.keys())}"
-                )
-
-        N = self.particles.n_particles
-        if N == 0:
-            raise ValueError("Cannot set properties: particle system is empty")
-
-        validated_properties = {}
-        for prop_name, prop_value in properties.items():
-            field_name = valid_properties[prop_name]
-            validated_properties[field_name] = self._validate_particle_property(
-                prop_name, prop_value, N
+        invalid = [name for name in properties if name not in valid_properties]
+        if invalid:
+            raise ValueError(
+                f"Invalid property name {invalid[0]!r}. "
+                f"Valid properties: {sorted(valid_properties)}"
             )
 
-        for field_name, prop_value in validated_properties.items():
-            self.particles.set_field(field_name, prop_value)
+        n_particles = self.particles.n_particles
+        if n_particles == 0:
+            raise ValueError("Cannot set properties: particle system is empty")
+
+        for field_name, value in properties.items():
+            validated = self._validate_particle_property(
+                field_name,
+                value,
+                n_particles,
+            )
+            self.particles.set_field(field_name, validated)
 
         self.particles._cache_step = -1
 
-        property_names = list(properties.keys())
+        property_names = list(properties)
         if len(property_names) == 1:
             Logging.info(f"Updated particle property: {property_names[0]}")
         else:
             Logging.info(
-                f"Updated {len(property_names)} particle properties: {', '.join(property_names)}"
+                f"Updated {len(property_names)} particle properties: " + ", ".join(property_names)
             )
 
     # State and restart
@@ -1512,7 +1512,7 @@ class VPMSolver:
         Logging.message(f"Flow time: {restored_solver.time:.6f}")
         Logging.message(f"Time step: {restored_solver.step}")
         Logging.message(f"Particles: {restored_solver.particles.n_particles}")
-        Logging.message(f"Backend: {restored_solver.setup.processing_unit}")
+        Logging.message(f"Backend: {restored_solver.setup.compute_device}")
 
         return restored_solver
 

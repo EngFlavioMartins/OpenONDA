@@ -34,13 +34,13 @@ def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
     """Return a solver with only stretching active (advection=NONE, viscous=NONE)."""
     config = VPMSetup(
         time_step_size=_TIME_STEP_SIZE,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="NONE"),
         stretching=stretching_config,
         viscous=ViscousConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     n = len(positions)
@@ -48,10 +48,10 @@ def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
     solver.add_vortex_particles(
         position=positions,
         velocity=np.zeros((n, 3)),
-        circulation=circulations,
-        radius=np.full(n, _SIGMA),
+        vortex_strength=circulations,
+        core_radius=np.full(n, _SIGMA),
         volume=np.full(n, volume),
-        viscosity=np.full(n, 1e-5),
+        kinematic_viscosity=np.full(n, 1e-5),
     )
     return solver
 
@@ -90,12 +90,12 @@ def test_disabled_stretching_leaves_circulation_invariant(tmp_path):
         circulations=circulations,
     )
 
-    circ_before = solver.particles_circulation.copy()
+    circ_before = solver.particle_vortex_strength.copy()
     for _ in range(5):
         solver.advance()
 
     np.testing.assert_array_equal(
-        solver.particles_circulation,
+        solver.particle_vortex_strength,
         circ_before,
         err_msg="Disabled stretching must not modify any circulation component.",
     )
@@ -132,9 +132,9 @@ def test_direct_stretching_changes_total_circulation(tmp_path):
         circulations=circulations,
     )
 
-    sum_gamma_before = solver.particles_circulation.sum(axis=0)
+    sum_gamma_before = solver.particle_vortex_strength.sum(axis=0)
     solver.advance()
-    sum_gamma_after = solver.particles_circulation.sum(axis=0)
+    sum_gamma_after = solver.particle_vortex_strength.sum(axis=0)
 
     delta = np.linalg.norm(sum_gamma_after - sum_gamma_before)
     total_gamma = np.linalg.norm(sum_gamma_before)

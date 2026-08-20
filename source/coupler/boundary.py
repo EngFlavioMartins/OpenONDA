@@ -113,7 +113,7 @@ def evaluate_vpm_velocity(
     """
     normals = np.asarray(face_normals, dtype=np.float64).reshape(-1, 3)
     areas = np.asarray(face_areas, dtype=np.float64).reshape(-1)
-    logger.info("     [VPM-BC] particles=%d", vpm.particles.number_of_particles)
+    logger.info("     [VPM-BC] particles=%d", vpm.particles.n_particles)
     if evaluated_velocity is None:
         evaluated_velocity = vpm.compute_target_velocities(
             face_centers,

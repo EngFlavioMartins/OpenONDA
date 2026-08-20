@@ -43,7 +43,7 @@ class OctreeNode:
         half_size: Half the node width (node spans center ± half_size)
         particles: List of particle indices contained in this node (leaf only)
         children: List of child nodes (interior only, up to 8)
-        total_circulation: Sum of circulations Σ Γ_i for multipole
+        total_vortex_strength: Sum of circulations Σ Γ_i for multipole
         center_of_vorticity: Circulation-weighted centroid Σ(x_i |Γ_i|) / Σ|Γ_i|
         avg_radius: Average particle radius in this node (for kernel smoothing)
     """
@@ -54,7 +54,7 @@ class OctreeNode:
     children: list["OctreeNode"] = field(default_factory=list)
 
     # Multipole moments
-    total_circulation: np.ndarray = None
+    total_vortex_strength: np.ndarray = None
     center_of_vorticity: np.ndarray = None
     avg_radius: float = 0.0
 
@@ -213,7 +213,7 @@ class BarnesHutTreecode:
     def _compute_leaf_multipoles(self, node: OctreeNode) -> None:
         """Compute multipole moments for a leaf node."""
         if not node.particles:
-            node.total_circulation = np.zeros(3)
+            node.total_vortex_strength = np.zeros(3)
             node.center_of_vorticity = node.center.copy()
             node.avg_radius = 0.0
             return
@@ -222,7 +222,7 @@ class BarnesHutTreecode:
         poss = self.positions[node.particles]
         rads = self.radii[node.particles]
 
-        node.total_circulation = circs.sum(axis=0)
+        node.total_vortex_strength = circs.sum(axis=0)
         node.avg_radius = rads.mean()
 
         mags = np.linalg.norm(circs, axis=1, keepdims=True)
@@ -242,8 +242,8 @@ class BarnesHutTreecode:
         n_particles = 0
 
         for child in node.children:
-            total_circ += child.total_circulation
-            mag = np.linalg.norm(child.total_circulation)
+            total_circ += child.total_vortex_strength
+            mag = np.linalg.norm(child.total_vortex_strength)
             weighted_pos += child.center_of_vorticity * mag
             total_weight += mag
 
@@ -251,7 +251,7 @@ class BarnesHutTreecode:
             total_radius += child.avg_radius * n_child
             n_particles += n_child
 
-        node.total_circulation = total_circ
+        node.total_vortex_strength = total_circ
         node.avg_radius = total_radius / max(n_particles, 1)
 
         if total_weight > 1e-15:
@@ -320,7 +320,7 @@ class BarnesHutTreecode:
             q_val = self._q_kernel(r_sigma)
 
             # Biot-Savart: u = -q(r/σ) * (r × Γ) / r³
-            vel = -q_val * np.cross(r_vec, node.total_circulation) / (r_mag**3)
+            vel = -q_val * np.cross(r_vec, node.total_vortex_strength) / (r_mag**3)
 
         elif node.is_leaf:
             # Leaf node: direct summation over particles

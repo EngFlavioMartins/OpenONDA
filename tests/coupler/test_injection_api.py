@@ -18,14 +18,14 @@ from source.coupler.boundary import outflow_axis_sign
 
 
 class _FakeParticles:
-    number_of_particles = 0
+    n_particles = 0
 
 
 class _FakeVPM:
     def __init__(
         self,
         time_step_size,
-        vpm_domain_bounds=None,
+        domain_bounds=None,
         freestream_velocity=(1.0, 0.0, 0.0),
     ):
         self.time_step_size = float(time_step_size)
@@ -35,7 +35,7 @@ class _FakeVPM:
         self._freestream_velocity = np.asarray(freestream_velocity, dtype=float)
         self.setup = SimpleNamespace(
             particles_kernel="GAUSSIAN",
-            vpm_domain_bounds=vpm_domain_bounds,
+            domain_bounds=domain_bounds,
             viscous=SimpleNamespace(
                 scheme="CS",
                 viscosity=1e-3,
@@ -274,13 +274,13 @@ def test_injected_vpm_domain_must_contain_box(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     cfg = _make_config()
     # Domain too small in x (only ±1.0): does not contain the ±1.5 box.
-    bad_vpm = _FakeVPM(0.1, vpm_domain_bounds=(-1.0, 1.0, -2.0, 2.0, -2.0, 2.0))
+    bad_vpm = _FakeVPM(0.1, domain_bounds=(-1.0, 1.0, -2.0, 2.0, -2.0, 2.0))
     c = FVMVPMCoupler(_FakeFVM(), bad_vpm, cfg)
     with pytest.raises(ValueError, match="does not contain the FVM box"):
         c.initialize()
 
     # A domain that encloses the box passes.
-    good_vpm = _FakeVPM(0.1, vpm_domain_bounds=(-2.0, 15.0, -2.0, 2.0, -2.0, 2.0))
+    good_vpm = _FakeVPM(0.1, domain_bounds=(-2.0, 15.0, -2.0, 2.0, -2.0, 2.0))
     c2 = FVMVPMCoupler(_FakeFVM(), good_vpm, cfg)
     c2.initialize()  # no raise
 

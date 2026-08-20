@@ -24,7 +24,7 @@ def _solver_with_particles(make_solver, kernel_name, positions, circulations):
     """Create a solver with stretching enabled and given particles."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig(scheme="RK3"),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -34,10 +34,10 @@ def _solver_with_particles(make_solver, kernel_name, positions, circulations):
     solver.add_vortex_particles(
         position=np.array(positions),
         velocity=np.zeros((N, 3)),
-        circulation=np.array(circulations),
-        radius=np.full(N, _SIGMA),
+        vortex_strength=np.array(circulations),
+        core_radius=np.full(N, _SIGMA),
         volume=np.full(N, _VOLUME),
-        viscosity=np.zeros(N),
+        kinematic_viscosity=np.zeros(N),
     )
     return solver
 
@@ -64,11 +64,11 @@ def test_single_blob_no_stretching(kernel_name, scheme, mode, backend, solver_fo
         positions=[[0.0, 0.0, 0.0]],
         circulations=[[0.0, 0.0, 1.0]],
     )
-    gamma_before = solver.particles.circulation_cpu().copy()
+    gamma_before = solver.particles.vortex_strength_cpu().copy()
     solver.physics.vortex_stretching(
         solver.particles, time_step_size=0.01, scheme=scheme, mode=mode
     )
-    gamma_after = solver.particles.circulation_cpu()
+    gamma_after = solver.particles.vortex_strength_cpu()
     assert np.allclose(gamma_after, gamma_before, atol=1e-6), (
         f"{kernel_name}/{backend}/{scheme}/{mode}: single blob stretched: "
         f"before={gamma_before}, after={gamma_after}"
@@ -97,11 +97,11 @@ def test_two_parallel_vortices_2d_invariance(
         positions=[[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]],
         circulations=[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
     )
-    gamma_before = solver.particles.circulation_cpu().copy()
+    gamma_before = solver.particles.vortex_strength_cpu().copy()
     solver.physics.vortex_stretching(
         solver.particles, time_step_size=0.01, scheme=scheme, mode=mode
     )
-    gamma_after = solver.particles.circulation_cpu()
+    gamma_after = solver.particles.vortex_strength_cpu()
     assert np.allclose(gamma_after, gamma_before, atol=1e-6), (
         f"{kernel_name}/{backend}/{scheme}/{mode}: 2-D vortices stretched: "
         f"before={gamma_before}, after={gamma_after}"
@@ -124,11 +124,11 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
         positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
-    sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
+    sum_before = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
     solver.physics.vortex_stretching(
         solver.particles, time_step_size=0.01, scheme="RK3", mode="TRANSPOSED"
     )
-    sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
+    sum_after = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
     assert np.allclose(sum_after, sum_before, atol=1e-5), (
         f"{kernel_name}/{backend}/TRANSPOSED: circulation not conserved: "
         f"before={sum_before}, after={sum_after}"
@@ -167,7 +167,7 @@ def test_stretching_rate_matches_velocity_gradient_form(
         ],
     )
 
-    gamma0 = solver.particles.circulation_cpu().copy()
+    gamma0 = solver.particles.vortex_strength_cpu().copy()
     solver.physics.compute_velocity_gradients(solver.particles)
     grad_u = solver.particles.velocity_gradient_cpu()
 
@@ -177,8 +177,8 @@ def test_stretching_rate_matches_velocity_gradient_form(
     solver.physics._zero_temp_fields()
     solver.physics.compute_stretching_rate_kernel(
         solver.particles.position,
-        solver.particles.circulation,
-        solver.particles.radius,
+        solver.particles.vortex_strength,
+        solver.particles.core_radius,
         solver.physics.dstr_dt_temp,
         mode_int,
         n_particles,
@@ -225,16 +225,16 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
     p._zero_temp_fields(n_particles)
     p.compute_stretching_rate_kernel(
         particles.position,
-        particles.circulation,
-        particles.radius,
+        particles.vortex_strength,
+        particles.core_radius,
         p.dstr_dt_temp,
         1,
         n_particles,
     )
     p.compute_stretching_rate_batch_kernel(
         particles.position,
-        particles.circulation,
-        particles.radius,
+        particles.vortex_strength,
+        particles.core_radius,
         p.dstr_dt_temp2,
         1,
         0,
@@ -243,8 +243,8 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
     )
     p.compute_stretching_rate_batch_kernel(
         particles.position,
-        particles.circulation,
-        particles.radius,
+        particles.vortex_strength,
+        particles.core_radius,
         p.dstr_dt_temp2,
         1,
         2,
@@ -278,9 +278,9 @@ def test_nonconservative_stretching_changes_circulation(
         positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
-    sum_before = np.sum(solver.particles.circulation_cpu(), axis=0)
+    sum_before = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
     solver.physics.vortex_stretching(solver.particles, time_step_size=0.01, scheme="RK3", mode=mode)
-    sum_after = np.sum(solver.particles.circulation_cpu(), axis=0)
+    sum_after = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
     delta = np.linalg.norm(sum_after - sum_before)
     assert delta > 1e-5, (
         f"{kernel_name}/{backend}/{mode}: expected generic circulation drift, "
@@ -310,12 +310,12 @@ def test_small_dt_scheme_convergence(kernel_name, mode, backend, solver_for_back
     results = {}
     for scheme in ["EULER", "RK2", "RK3", "RK4"]:
         # Clone circulation state
-        gamma0 = solver.particles.circulation_cpu().copy()
-        solver.particles.set_field("circulation", gamma0)
+        gamma0 = solver.particles.vortex_strength_cpu().copy()
+        solver.particles.set_field("vortex_strength", gamma0)
         solver.physics.vortex_stretching(
             solver.particles, time_step_size=time_step_size, scheme=scheme, mode=mode
         )
-        results[scheme] = solver.particles.circulation_cpu().copy()
+        results[scheme] = solver.particles.vortex_strength_cpu().copy()
 
     # Compare RK4 (highest order) against the others
     ref = results["RK4"]

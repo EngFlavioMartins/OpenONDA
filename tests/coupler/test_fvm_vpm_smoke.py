@@ -39,9 +39,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
 
     vpm_setup = VPMSetup(
         time_step_size=VPM_TIME_STEP_SIZE,
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=50_000,
-        vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+        domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
     )
     vpm = VPMSolver(vpm_setup)
@@ -92,7 +92,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert fvm.time == pytest.approx(2 * VPM_TIME_STEP_SIZE)
 
     # Impulsive start with zero interior vorticity: hand-off ran, no particles.
-    assert vpm.particles.number_of_particles == 0
+    assert vpm.particles.n_particles == 0
 
     # Native FVM and coupler diagnostics are written independently.
     sol = tmp_path / "solution"
@@ -119,9 +119,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     restored_vpm = VPMSolver(
         VPMSetup(
             time_step_size=VPM_TIME_STEP_SIZE,
-            processing_unit="CPU",
+            compute_device="CPU",
             max_particles=50_000,
-            vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=[1.0, 0.0, 0.0],
         )
     )
@@ -134,7 +134,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert restored_fvm.step == 6
     assert restored_vpm.step == 2
     np.testing.assert_allclose(restored_fvm.velocity, expected_u, rtol=0.0, atol=1e-13)
-    np.testing.assert_allclose(restored_fvm.p, expected_p, rtol=0.0, atol=1e-13)
+    np.testing.assert_allclose(restored_fvm.kinematic_pressure, expected_p, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(restored_fvm.face_flux, expected_phi, rtol=0.0, atol=1e-13)
     # No external solver case artifacts were created anywhere.
     assert not (tmp_path / "constant").exists()

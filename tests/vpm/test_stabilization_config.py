@@ -10,7 +10,7 @@ from source.solvers.VPM import StabilizationConfig, TurbulenceConfig, VPMSetup
 def test_equilibrium_smagorinsky_factory_recovers_ck():
     config = TurbulenceConfig.equilibrium_smagorinsky()
 
-    recovered_ck = (config.cs**2 * config.ce**0.5) ** (2.0 / 3.0)
+    recovered_ck = (config.c_s**2 * config.c_e**0.5) ** (2.0 / 3.0)
     assert config.flow_model == "LES"
     assert recovered_ck == pytest.approx(0.094)
 
@@ -24,7 +24,7 @@ def test_retention_domain_is_normalized_and_nested():
 
 
 def test_retention_domain_requires_six_coordinates():
-    with pytest.raises(ValueError, match="must have 6 elements"):
+    with pytest.raises(ValueError, match="six values"):
         StabilizationConfig.bounded_domain([-1, 1])
 
 
@@ -40,7 +40,7 @@ def test_stretching_viscosity_factory_and_validation():
 def test_conservative_filter_factory_round_trip_and_validation():
     stabilization = StabilizationConfig.conservative_filter(
         coefficient=0.4,
-        frequency=25,
+        interval_steps=25,
         start_step=100,
         grid_spacing=0.08,
         max_particles=4000,
@@ -59,33 +59,33 @@ def test_conservative_filter_factory_round_trip_and_validation():
     assert stabilization.regularization_capacity_grid_spacing == pytest.approx(0.12)
     assert stabilization.regularization_core_radius == pytest.approx(0.2)
     assert stabilization.regularization_capacity_core_radius == pytest.approx(0.19)
-    with pytest.raises(ValueError, match="tail budget"):
+    with pytest.raises(ValueError, match="regularization_tail_budget"):
         StabilizationConfig.conservative_filter(
-            frequency=1,
+            interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
             max_particles=100,
             tail_budget=0.0,
         )
-    with pytest.raises(ValueError, match="misalignment trigger"):
+    with pytest.raises(ValueError, match="regularization_misalignment_trigger"):
         StabilizationConfig.conservative_filter(
-            frequency=1,
+            interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
             max_particles=100,
             misalignment_trigger=181.0,
         )
-    with pytest.raises(ValueError, match="enstrophy-dissipation"):
+    with pytest.raises(ValueError, match="regularization_enstrophy_dissipation_limit"):
         StabilizationConfig.conservative_filter(
-            frequency=1,
+            interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
             max_particles=100,
             enstrophy_dissipation_limit=1.0,
         )
-    with pytest.raises(ValueError, match="capacity fraction"):
+    with pytest.raises(ValueError, match="regularization_capacity_fraction"):
         StabilizationConfig.conservative_filter(
-            frequency=1,
+            interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
             max_particles=100,
@@ -94,7 +94,7 @@ def test_conservative_filter_factory_round_trip_and_validation():
     for name in ("capacity_grid_spacing", "core_radius", "capacity_core_radius"):
         with pytest.raises(ValueError, match="positive"):
             StabilizationConfig.conservative_filter(
-                frequency=1,
+                interval_steps=1,
                 start_step=0,
                 grid_spacing=0.08,
                 max_particles=100,
@@ -144,12 +144,12 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
     assert namespace["END_TIME"] == pytest.approx(1140 * namespace["TIME_STEP"])
     assert namespace["BASELINE_DIVERGENCE_LIMIT"] == pytest.approx(0.12)
     for config in configs.values():
-        assert config.processing_unit == "CPU"
+        assert config.compute_device == "CPU"
         assert config.precision == "f64"
         assert config.time_integration == "COUPLED"
         assert config.axisymmetric_no_swirl_axis is None
         assert config.velocity.method == "DIRECT"
-        assert config.particles_kernel == "GAUSSIAN"
+        assert config.particle_kernel == "GAUSSIAN"
         assert config.advection.scheme == config.stretching.scheme == "RK2"
         assert config.stretching.mode == "TRANSPOSED"
         assert not config.stretching.use_treecode
@@ -157,19 +157,19 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         assert config.stretching.conserve_energy
         assert config.coupled_max_strain_increment == pytest.approx(0.15)
         assert config.coupled_max_advection_fraction == pytest.approx(0.5)
-        assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
+        assert config.viscous.kinematic_viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
 
     for name in ("leapfrog_dns", "leapfrog_les", "collide_dns", "collide_les"):
         assert configs[name].viscous.scheme == "CS"
-        assert configs[name].viscous.characteristic_distance == pytest.approx(
+        assert configs[name].viscous.particle_spacing == pytest.approx(
             namespace["PARTICLE_SPACING"]
         )
 
     assert configs["leapfrog_dns"].turbulence.flow_model == "DNS"
-    assert configs["leapfrog_les"].turbulence.cs == pytest.approx(
+    assert configs["leapfrog_les"].turbulence.c_s == pytest.approx(
         namespace["LES_COEFFICIENT"]["leapfrog"]
     )
-    assert configs["collide_les"].turbulence.cs == pytest.approx(
+    assert configs["collide_les"].turbulence.c_s == pytest.approx(
         namespace["LES_COEFFICIENT"]["collide"]
     )
     assert configs["leapfrog_les"].stabilization == StabilizationConfig.disabled()
@@ -190,7 +190,7 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         == namespace["STABILIZED_MAX_PARTICLES"]
     )
     assert (
-        configs["leapfrog_les_stabilized"].stabilization.regularization_frequency
+        configs["leapfrog_les_stabilized"].stabilization.regularization_interval_steps
         == namespace["REGULARIZATION_FREQUENCY"]
     )
     assert configs[
@@ -280,10 +280,10 @@ def test_rotor_flow_uses_scalable_coupled_stabilization():
     assert config.stretching.treecode_theta == pytest.approx(namespace["TREECODE_THETA"])
     assert config.velocity.method == "TREECODE"
     assert config.velocity.theta == pytest.approx(namespace["TREECODE_THETA"])
-    assert config.particles_kernel == "WINCKELMANS"
+    assert config.particle_kernel == "WINCKELMANS"
     assert config.viscous.scheme == "CS"
-    assert config.viscous.viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
-    assert config.viscous.characteristic_distance == pytest.approx(
+    assert config.viscous.kinematic_viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
+    assert config.viscous.particle_spacing == pytest.approx(
         namespace["nominal_wake_spacing"](namespace["TIME_STEP"])
     )
     assert config.stabilization.remove_particles_by_bounds is not None

@@ -799,7 +799,7 @@ class PhysicsBase:
 
             kernel_functions = create_winckelmans_kernels(self.accumulator_dtype)
         else:
-            raise ValueError(f"Unknown particle kernel: {self.particles_kernel}")
+            raise ValueError(f"Unknown particle kernel: {self.particle_kernel}")
 
         # Create all kernels from factory
         self.kernels = create_kernels(kernel_functions)

@@ -41,13 +41,13 @@ def _minimal_config(tmp_path, *, stretching, viscous, advection, time_step_size=
     """Return a VPMSetup that writes nothing useful, only logs to tmp_path."""
     return VPMSetup(
         time_step_size=time_step_size,
-        processing_unit="CPU",
+        compute_device="CPU",
         stretching=stretching,
         viscous=viscous,
         advection=advection,
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
 
 
@@ -65,10 +65,10 @@ def _load_lamb_oseen(solver, bounds, h):
     solver.add_vortex_particles(
         position=positions,
         velocity=velocities,
-        circulation=circulations,
-        radius=radii,
+        vortex_strength=circulations,
+        core_radius=radii,
         volume=volumes,
-        viscosity=viscosities,
+        kinematic_viscosity=viscosities,
     )
     return circulations
 
@@ -119,10 +119,10 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
     solver.add_vortex_particles(
         position=positions,
         velocity=velocities,
-        circulation=circulations,
-        radius=radii,
+        vortex_strength=circulations,
+        core_radius=radii,
         volume=volumes,
-        viscosity=viscosities,
+        kinematic_viscosity=viscosities,
     )
 
     gamma_before = solver.particles_strengths.sum(axis=0)

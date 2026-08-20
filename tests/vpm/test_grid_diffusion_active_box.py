@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.config.backend import reset_taichi_backend
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 H = 0.05
 DOMAIN = [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]
@@ -180,10 +180,10 @@ def test_batched_m4_scatter_matches_single_dispatch(diffusion):
     particles.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=circulation,
-        radius=np.full(len(position), H, dtype=np.float32),
+        vortex_strength=circulation,
+        core_radius=np.full(len(position), H, dtype=np.float32),
         volume=np.full(len(position), H**3, dtype=np.float32),
-        viscosity=np.full(len(position), 1.0e-3, dtype=np.float32),
+        kinematic_viscosity=np.full(len(position), 1.0e-3, dtype=np.float32),
     )
     grid_min, (nx, ny, nz) = diffusion._lattice_aligned_bounds(position, H, 3.0)
     nx, ny, nz = diffusion._ensure_grid_capacity(nx, ny, nz)
@@ -192,7 +192,7 @@ def test_batched_m4_scatter_matches_single_dispatch(diffusion):
     diffusion._zero_grid_kernel(diffusion._current_grid, nx, ny, nz)
     diffusion._m4_scatter_gpu_kernel(
         particles.position,
-        particles.circulation,
+        particles.vortex_strength,
         diffusion._current_grid,
         *gmin,
         H,
@@ -210,7 +210,7 @@ def test_batched_m4_scatter_matches_single_dispatch(diffusion):
         count = min(4, len(position) - start)
         diffusion._m4_scatter_gpu_kernel(
             particles.position,
-            particles.circulation,
+            particles.vortex_strength,
             diffusion._current_grid,
             *gmin,
             H,
@@ -238,10 +238,10 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
     particles.add_vortex_particles(
         position=pos,
         velocity=np.zeros((n, 3), np.float32),
-        circulation=circ,
-        radius=np.full(n, 1.5 * H, np.float32),
+        vortex_strength=circ,
+        core_radius=np.full(n, 1.5 * H, np.float32),
         volume=np.full(n, H**3, np.float32),
-        viscosity=np.full(n, 1e-3, np.float32),
+        kinematic_viscosity=np.full(n, 1e-3, np.float32),
     )
     if force_full_domain:
         original = d._lattice_aligned_bounds
@@ -256,15 +256,15 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
     finally:
         if force_full_domain:
             d._lattice_aligned_bounds = original
-    n_out = particles.number_of_particles
+    n_out = particles.n_particles
     assert d._ping is True
     return {
         "n": n_out,
         "position": particles.position_cpu()[:n_out].copy(),
-        "circulation": particles.circulation_cpu()[:n_out].copy(),
-        "radius": particles.radius_cpu()[:n_out].copy(),
+        "circulation": particles.vortex_strength_cpu()[:n_out].copy(),
+        "radius": particles.core_radius_cpu()[:n_out].copy(),
         "group_id": particles.group_id_cpu()[:n_out].copy(),
-        "total_circulation": particles.circulation_cpu()[:n_out].sum(axis=0),
+        "total_circulation": particles.vortex_strength_cpu()[:n_out].sum(axis=0),
     }
 
 

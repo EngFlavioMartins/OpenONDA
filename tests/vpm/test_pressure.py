@@ -159,13 +159,13 @@ def _empty_solver(tmp_path):
     """Return a solver with no particles added."""
     config = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="NONE"),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     return VPMSolver(setup=config)
 
@@ -244,23 +244,23 @@ def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
     """
     config = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="NONE"),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     sigma = 0.1
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([sigma]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([sigma]),
         volume=np.full(1, (4.0 / 3.0) * np.pi * sigma**3),
-        viscosity=np.array([1e-5]),
+        kinematic_viscosity=np.array([1e-5]),
     )
 
     targets = np.array([[1.0, 0.0, 0.0]])
@@ -345,24 +345,24 @@ def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _A
     """Return a solver loaded with one z-circulation particle at the origin."""
     config = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
-        particles_kernel="GAUSSIAN",
+        compute_device="CPU",
+        particle_kernel="GAUSSIAN",
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
         advection=AdvectionConfig(scheme="NONE"),
         freestream_velocity=[0.0, 0.0, 0.0],
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, alpha_z]]),
-        radius=np.array([sigma]),
+        vortex_strength=np.array([[0.0, 0.0, alpha_z]]),
+        core_radius=np.array([sigma]),
         volume=np.array([(4.0 / 3.0) * pi * sigma**3]),
-        viscosity=np.full(1, _NU),
+        kinematic_viscosity=np.full(1, _NU),
     )
     return solver
 

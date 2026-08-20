@@ -306,17 +306,17 @@ def build_vpm(v: Variant, case_dir: Path):
         viscous = ViscousConfig.gbd(
             particle_spacing=v.particle_spacing,
             padding=3.0,
-            viscosity=NU,
+            kinematic_viscosity=NU,
             threshold_mode="relative_local",
             threshold=PROD_GBD_THRESHOLD,
             max_nodes=limit,
-            cap_abs_fraction=0.95,
+            cap_absolute_fraction=0.95,
             core_radius_ratio=1.0,
         )
     elif v.viscous == "cs":
         # Core spreading: deterministic diffusion, no regeneration and no
         # thresholding, so no particle is ever discarded.
-        viscous = ViscousConfig.cs(viscosity=NU, characteristic_distance=v.particle_spacing)
+        viscous = ViscousConfig.cs(kinematic_viscosity=NU, particle_spacing=v.particle_spacing)
     else:
         viscous = ViscousConfig.inviscid()
 
@@ -357,17 +357,17 @@ def build_vpm(v: Variant, case_dir: Path):
         turbulence=turbulence,
         velocity=velocity,
         stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
-        particles_kernel="GAUSSIAN",
+        particle_kernel="GAUSSIAN",
         precision=v.precision,
-        processing_unit=v.device,
+        compute_device=v.device,
         max_particles=limit,
-        max_targets=limit,
-        vpm_domain_bounds=list(VPM_DOMAIN),
+        max_evaluation_points=limit,
+        domain_bounds=list(VPM_DOMAIN),
         log_mode="file",
-        logging_frequency=50,
-        timing_frequency=50,
-        backup_frequency=0,
-        backup_directory=str(case_dir / "solution"),
+        logging_interval_steps=50,
+        timing_interval_steps=50,
+        checkpoint_interval_steps=0,
+        checkpoint_directory=str(case_dir / "solution"),
         export_flow_integrals=False,
         samplers=(),
         panel_solver=panel_solver,

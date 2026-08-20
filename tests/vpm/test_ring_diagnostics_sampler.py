@@ -34,7 +34,7 @@ def test_builtin_ring_sampler_writes_each_particle_group(tmp_path):
 
     solver = SimpleNamespace(
         particles_positions=np.vstack(positions),
-        particles_circulation=np.vstack(circulations),
+        particle_vortex_strength=np.vstack(circulations),
         particles_group_ids=np.concatenate(groups),
     )
     output = tmp_path / "ring_diagnostics.csv"
@@ -43,5 +43,5 @@ def test_builtin_ring_sampler_writes_each_particle_group(tmp_path):
     with output.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert [int(row["group_id"]) for row in rows] == [0, 1]
-    assert [int(row["time_step"]) for row in rows] == [5, 5]
+    assert [int(row["step"]) for row in rows] == [5, 5]
     np.testing.assert_allclose([float(row["major_radius"]) for row in rows], 1.0)

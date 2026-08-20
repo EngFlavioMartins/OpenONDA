@@ -39,7 +39,7 @@ from source.solvers.VPM.physics.diffusion import _DVH_BETA, DiffusionPhysics
 @pytest.fixture(scope="module")
 def physics():
     ti.init(arch=ti.cpu, default_fp=ti.f32)
-    return DiffusionPhysics(particles_kernel="GAUSSIAN", max_particles=10_000)
+    return DiffusionPhysics(particle_kernel="GAUSSIAN", max_particles=10_000)
 
 
 N = 32  # lattice nodes per axis
@@ -166,7 +166,7 @@ def test_gbd_stability_bound_alpha_one_sixth(physics):
 
 
 def test_gbd_max_dt_formula():
-    vc = ViscousConfig.gbd(particle_spacing=0.05, viscosity=0.001)
+    vc = ViscousConfig.gbd(particle_spacing=0.05, kinematic_viscosity=0.001)
     assert np.isclose(vc.gbd_max_time_step_size(), 0.05**2 / (6 * 0.001))
 
 
@@ -253,12 +253,12 @@ def test_regenerated_group_ids_fill_empty_diffusion_nodes(physics):
 def test_viscous_config_carries_particle_cap():
     vc = ViscousConfig.gbd(
         particle_spacing=0.05,
-        viscosity=0.001,
+        kinematic_viscosity=0.001,
         max_nodes=350_000,
-        cap_abs_fraction=0.99,
+        cap_absolute_fraction=0.99,
     )
     assert vc.gbd_max_nodes == 350_000
-    assert vc.regen_cap_abs_fraction == 0.99
+    assert vc.regeneration_cap_absolute_fraction == 0.99
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +319,9 @@ def test_dvh_diffusive_width_is_fixed_at_dt_d(physics, rd_ratio):
 
 
 def test_dvh_required_dt_formula():
-    vc = ViscousConfig.dvh(particle_spacing=0.05, viscosity=0.001, dvh_rd_ratio=3)
+    vc = ViscousConfig.dvh(
+        particle_spacing=0.05, kinematic_viscosity=0.001, dvh_support_radius_ratio=3
+    )
     expected = _DVH_BETA * (3 * 0.05) ** 2 / (4 * 0.001)
     assert np.isclose(vc.dvh_required_time_step_size(), expected)
     # cubeFlow numbers: this is ≈ 0.433 s — far above the convective dt,
@@ -434,16 +436,18 @@ def test_regen_radius_respects_configured_ratio(physics):
             out = physics._build_diffusion_particle_arrays(
                 ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 3, zone, group
             )
-            np.testing.assert_allclose(out["radius"], ratio * H, rtol=1e-6)
+            np.testing.assert_allclose(out["core_radius"], ratio * H, rtol=1e-6)
     finally:
         physics.core_radius_ratio = default_ratio
 
 
 def test_viscous_config_carries_core_radius_ratio():
     """ViscousConfig exposes the standard core_radius_ratio default of 2.5."""
-    vc = ViscousConfig.gbd(particle_spacing=0.05, viscosity=1e-3)
+    vc = ViscousConfig.gbd(particle_spacing=0.05, kinematic_viscosity=1e-3)
     assert vc.core_radius_ratio == 2.5
-    tuned = ViscousConfig.gbd(particle_spacing=0.05, viscosity=1e-3, core_radius_ratio=1.5)
+    tuned = ViscousConfig.gbd(
+        particle_spacing=0.05, kinematic_viscosity=1e-3, core_radius_ratio=1.5
+    )
     assert tuned.core_radius_ratio == 1.5
 
 
@@ -470,8 +474,8 @@ def test_regen_carries_viscosity_turbulent(physics):
     out_no_nut = physics._build_diffusion_particle_arrays(
         ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 4, zone, group
     )
-    assert "viscosity_turbulent" in out_no_nut
-    np.testing.assert_allclose(out_no_nut["viscosity_turbulent"], 0.0, atol=1e-12)
+    assert "eddy_viscosity" in out_no_nut
+    np.testing.assert_allclose(out_no_nut["eddy_viscosity"], 0.0, atol=1e-12)
 
     # With nu_t_grid → ν_t carried from grid node
     nu_t_grid = np.zeros((8, 8, 8), dtype=np.float32)
@@ -492,10 +496,10 @@ def test_regen_carries_viscosity_turbulent(physics):
         group,
         nu_t_grid=nu_t_grid,
     )
-    np.testing.assert_allclose(out_nut["viscosity_turbulent"], expected_nu_t, rtol=1e-6)
+    np.testing.assert_allclose(out_nut["eddy_viscosity"], expected_nu_t, rtol=1e-6)
 
     # Molecular viscosity is still stamped unchanged
-    np.testing.assert_allclose(out_nut["viscosity"], 1e-3, rtol=1e-6)
+    np.testing.assert_allclose(out_nut["kinematic_viscosity"], 1e-3, rtol=1e-6)
 
 
 def test_scatter_scalar_weighted_averages_by_circulation(physics):

@@ -83,7 +83,7 @@ class VLMSetup:
     density: float = 1.0
     sigma_factor: float = 2.5
     freestream_velocity: tuple[float, float, float] | None = None
-    logging_frequency: int = 1
+    logging_interval_steps: int = 1
     force: ForceConfig = field(default_factory=ForceConfig.kutta_joukowski)
     sample_surface_forces: bool = False
 
@@ -101,7 +101,7 @@ class VLMSetup:
             raise ValueError("VLM density must be positive")
         if self.sigma_factor <= 0:
             raise ValueError("VLM sigma_factor must be positive")
-        if self.logging_frequency < 1:
+        if self.logging_interval_steps < 1:
             raise ValueError("VLM logging_frequency must be positive")
         if self.freestream_velocity is not None:
             if len(self.freestream_velocity) != 3:

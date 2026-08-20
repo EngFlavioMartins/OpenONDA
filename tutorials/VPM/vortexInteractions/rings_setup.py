@@ -111,14 +111,14 @@ def ring_geometry(family: str) -> tuple[tuple[float, float], tuple[float, float]
 def turbulence(family: str, variant: str) -> TurbulenceConfig:
     if variant == "dns":
         return TurbulenceConfig.dns()
-    return TurbulenceConfig.les_smagorinsky(cs=LES_COEFFICIENT[family])
+    return TurbulenceConfig.les_smagorinsky(c_s=LES_COEFFICIENT[family])
 
 
 def stabilization(family: str, variant: str) -> StabilizationConfig:
     if variant == "les_stabilized":
         return StabilizationConfig.conservative_filter(
             coefficient=STABILIZATION_COEFFICIENT,
-            frequency=REGULARIZATION_FREQUENCY,
+            interval_steps=REGULARIZATION_FREQUENCY,
             start_step=REGULARIZATION_START_STEP,
             grid_spacing=REGULARIZATION_SPACING,
             max_particles=STABILIZED_MAX_PARTICLES,
@@ -141,8 +141,8 @@ def stabilization(family: str, variant: str) -> StabilizationConfig:
 
 def viscous_diffusion() -> ViscousConfig:
     return ViscousConfig.cs(
-        viscosity=KINEMATIC_VISCOSITY,
-        characteristic_distance=PARTICLE_SPACING,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
+        particle_spacing=PARTICLE_SPACING,
     )
 
 
@@ -163,17 +163,17 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
         turbulence=turbulence(family, variant),
         stabilization=stabilization(family, variant),
         velocity=VelocityConfig.direct(),
-        particles_kernel="GAUSSIAN",
+        particle_kernel="GAUSSIAN",
         precision="f64",
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=(
             STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else BASELINE_MAX_PARTICLES
         ),
-        backup_directory=str(output_dir),
-        backup_file_name=case_name,
-        backup_frequency=SNAPSHOT_FREQUENCY,
-        logging_frequency=DIAGNOSTIC_FREQUENCY,
-        timing_frequency=200,
+        checkpoint_directory=str(output_dir),
+        checkpoint_name=case_name,
+        checkpoint_interval_steps=SNAPSHOT_FREQUENCY,
+        logging_interval_steps=DIAGNOSTIC_FREQUENCY,
+        timing_interval_steps=200,
         export_flow_integrals=True,
         samplers=(RingDiagnosticsSampler(),),
         log_mode="file",

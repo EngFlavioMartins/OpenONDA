@@ -1796,7 +1796,7 @@ class TaichiTreecode:
         if M == 0:
             return np.zeros((0, 3), dtype=np.float32)
         if self.max_evaluation_points < M:
-            raise ValueError(f"Too many targets: {M} > {self.max_targets}")
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
         if freestream_velocity is not None:
@@ -1817,7 +1817,7 @@ class TaichiTreecode:
         if M == 0:
             return np.zeros((0, 3, 3), dtype=np.float32)
         if self.max_evaluation_points < M:
-            raise ValueError(f"Too many targets: {M} > {self.max_targets}")
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
         theta_sq = self.theta * self.theta
@@ -1838,7 +1838,7 @@ class TaichiTreecode:
                 np.zeros((0, 3, 3), dtype=np.float32),
             )
         if self.max_evaluation_points < M:
-            raise ValueError(f"Too many targets: {M} > {self.max_targets}")
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
         if freestream_velocity is not None:

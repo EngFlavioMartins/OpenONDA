@@ -5,12 +5,10 @@ def _names(chain):
     return [name for _, name in chain]
 
 
-def test_config_backend_shim_reexports_runtime():
-    from source.solvers.VPM.config import backend as shim
-
-    assert shim.initialize_taichi_backend is backend.initialize_taichi_backend
-    assert shim.reset_taichi_backend is backend.reset_taichi_backend
-    assert shim._build_backend_chain is backend._build_backend_chain
+def test_backend_api_lives_in_runtime_module():
+    assert callable(backend.initialize_taichi_backend)
+    assert callable(backend.reset_taichi_backend)
+    assert callable(backend._build_backend_chain)
 
 
 def test_explicit_vulkan_never_falls_back_to_cuda(monkeypatch):

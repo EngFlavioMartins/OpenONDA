@@ -64,24 +64,24 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
     """
     config = VPMSetup(
         time_step_size=_TIME_STEP_SIZE,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme=scheme),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
         freestream_velocity=background if background is not None else [0.0, 0.0, 0.0],
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=_X0.copy(),
         velocity=np.zeros((1, 3)),
-        circulation=np.zeros((1, 3)),  # zero → no Biot-Savart self-induction
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.zeros((1, 3)),  # zero → no Biot-Savart self-induction
+        core_radius=np.array([_SIGMA]),
         volume=np.array([volume]),
-        viscosity=np.array([1e-5]),
+        kinematic_viscosity=np.array([1e-5]),
     )
     return solver
 
@@ -163,14 +163,14 @@ def _self_induced_solver(tmp_path, *, velocity_config):
     """VPMSolver with a small cloud of finite-circulation particles (self-induced flow)."""
     config = VPMSetup(
         time_step_size=_TIME_STEP_SIZE,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="RK4"),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
         velocity=velocity_config,
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     rng = np.random.default_rng(0)
@@ -179,10 +179,10 @@ def _self_induced_solver(tmp_path, *, velocity_config):
     solver.add_vortex_particles(
         position=rng.uniform(-0.5, 0.5, size=(n, 3)),
         velocity=np.zeros((n, 3)),
-        circulation=rng.uniform(-1.0, 1.0, size=(n, 3)),  # finite → real self-induction
-        radius=np.full(n, _SIGMA),
+        vortex_strength=rng.uniform(-1.0, 1.0, size=(n, 3)),  # finite → real self-induction
+        core_radius=np.full(n, _SIGMA),
         volume=np.full(n, volume),
-        viscosity=np.full(n, 1e-5),
+        kinematic_viscosity=np.full(n, 1e-5),
     )
     return solver
 

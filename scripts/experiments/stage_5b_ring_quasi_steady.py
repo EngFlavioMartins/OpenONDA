@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from source.solvers.VPM import VPMSolver  # noqa: E402
-from source.solvers.VPM.io import BackupSystem  # noqa: E402
+from source.solvers.VPM.io import CheckpointManager  # noqa: E402
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = 1.0
@@ -445,7 +445,7 @@ def main() -> None:
             translation_speed=MEASURED_SPEED,
         )
 
-    BackupSystem.load_numerical_state(solver, INITIAL_H5)
+    CheckpointManager.load_numerical_state(solver, INITIAL_H5)
     initial = sample_solver(
         solver,
         GRID_SIZES[-1],

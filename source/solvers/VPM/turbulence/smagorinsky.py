@@ -1,7 +1,5 @@
 """Equilibrium Smagorinsky SGS model used by the VPM solver."""
 
-from __future__ import annotations
-
 import taichi as ti
 
 from ..config.constants import MAX_PARTICLES, SMAGORINSKY_CONSTANT

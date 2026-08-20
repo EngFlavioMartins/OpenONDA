@@ -79,7 +79,7 @@ def completed_metadata(
         metadata.get("core_radius_definition") == "gaussian_1_over_e_vorticity_radius",
         metadata.get("circulation_normalization") == "per_vortex_after_strength_cutoff",
         metadata.get("requested_processing_unit", metadata.get("processing_unit"))
-        == args.processing_unit,
+        == args.compute_device,
         metadata.get("advection_scheme") == "RK3",
         np.isclose(float(metadata.get("time_step", np.nan)), args.time_step),
         np.isclose(float(metadata.get("treecode_theta", np.nan)), 0.30),
@@ -126,7 +126,7 @@ def run_level(root: Path, spacing_ratio: float, args: argparse.Namespace) -> dic
         "--output-root",
         str(root),
         "--processing-unit",
-        args.processing_unit,
+        args.compute_device,
     ]
     print(f"  [grid] run {level_name(spacing_ratio)} (CS only)")
     subprocess.run(command, cwd=SCRIPT_DIR, check=True)  # noqa: S603
@@ -243,7 +243,7 @@ def write_results(
     rows: list[dict[str, float]],
     orders: dict[str, float],
     self_metrics: dict[str, dict[str, float | bool]],
-    processing_unit: str,
+    compute_device: str,
 ) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     csv_path = root / "grid_independence_cs.csv"
@@ -292,7 +292,7 @@ def write_results(
         "sampling_strategy": "fixed field grid at every level",
         "sample_plane_fraction": rows[0]["sample_plane_fraction"],
         "column_length_over_a0": rows[0]["column_length_over_a0"],
-        "processing_unit": processing_unit,
+        "processing_unit": compute_device,
         "resolved_processing_units": resolved_backends,
         "consistent_processing_backend": consistent_processing_backend,
         "complete_three_grid_study": complete_three_grid_study,
@@ -382,7 +382,7 @@ def main() -> int:
         return 0
     orders = add_convergence_metrics(rows)
     self_metrics = self_convergence_metrics(output_root, rows, float(ratios[0]))
-    report = write_results(output_root, rows, orders, self_metrics, args.processing_unit)
+    report = write_results(output_root, rows, orders, self_metrics, args.compute_device)
     if (
         args.require_converged
         and report["grid_independence_verdict"] != "supported_at_stated_tolerance"

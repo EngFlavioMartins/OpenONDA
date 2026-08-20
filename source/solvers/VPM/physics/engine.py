@@ -61,7 +61,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     def __str__(self):
         return (
-            f"  Kernel                   : {self.particles_kernel}\n"
+            f"  Kernel                   : {self.particle_kernel}\n"
             f"  Max Particles            : {self.max_particles}"
         )
 

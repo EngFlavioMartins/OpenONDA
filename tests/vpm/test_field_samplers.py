@@ -16,7 +16,7 @@ def test_surface_sampler_can_skip_velocity_derivatives(tmp_path):
     )
 
     class Solver:
-        particles = SimpleNamespace(number_of_particles=1)
+        particles = SimpleNamespace(n_particles=1)
 
         def compute_target_velocities(self, points, *, include_freestream):
             assert include_freestream

@@ -137,7 +137,7 @@ class ParticleFieldEvaluation:
     def __str__(self):
         """Return formatted string representation."""
         lines = []
-        lines.append(f"  Kernel Type              : {self.particles_kernel}")
+        lines.append(f"  Kernel Type              : {self.particle_kernel}")
         lines.append("  Domain Type              : Unbounded (diagnostic computations)")
         lines.append(f"  Accumulator Precision    : {self.accumulator_dtype}")
         lines.append(f"  Max Particles (allocated): {self.max_particles:,}")
@@ -169,7 +169,7 @@ class ParticleFieldEvaluation:
 
             kernel_dict = create_winckelmans_kernels(self.accumulator_dtype)
         else:
-            raise ValueError(f"Unknown particles_kernel: {self.particles_kernel}")
+            raise ValueError(f"Unknown particle_kernel: {self.particle_kernel}")
 
         # Extract kernel functions from dictionary
         kernel_functions = {

@@ -16,7 +16,7 @@ import pytest
 from source.solvers.VPM.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from source.solvers.VPM.config.types import VPMSetup
 from source.solvers.VPM.core.solver import VPMSolver
-from source.solvers.VPM.io.backup import BackupSystem
+from source.solvers.VPM.io.checkpoint import CheckpointManager
 from source.solvers.VPM.io.logging import Logging, _TeeLogStream
 from source.solvers.VPM.io.sampler import SamplerExecutor
 from source.solvers.VPM.io.sampling import SAMPLER_CSV_COLUMNS
@@ -26,7 +26,7 @@ from source.solvers.VPM.physics.base import PhysicsBase
 
 def test_output_and_target_configuration_round_trip():
     config = VPMSetup(
-        max_targets=1234,
+        max_evaluation_points=1234,
         export_flow_integrals=False,
         log_mode="tee",
         sample_subdirectory="test_case",
@@ -34,7 +34,7 @@ def test_output_and_target_configuration_round_trip():
 
     restored = VPMSetup.from_dict(config.to_dict())
 
-    assert restored.max_targets == 1234
+    assert restored.max_evaluation_points == 1234
     assert restored.export_flow_integrals is False
     assert restored.log_mode == "tee"
     assert restored.sample_subdirectory == "test_case"
@@ -44,28 +44,36 @@ def test_solver_setup_is_immutable_after_construction():
     setup = VPMSetup()
 
     with pytest.raises(FrozenInstanceError):
-        setup.logging_frequency = 5
+        setup.logging_interval_steps = 5
 
 
 @pytest.mark.parametrize("name", ["results/run", "run.h5", "vpm_run"])
 def test_backup_name_is_a_safe_infix(name):
     with pytest.raises(ValueError, match="filename-safe infix"):
-        VPMSetup(backup_file_name=name)
+        VPMSetup(checkpoint_name=name)
 
 
 class _BackupParticles:
-    number_of_particles = 1
+    n_particles = 1
 
     def __getattr__(self, name):
         if not name.endswith("_cpu"):
             raise AttributeError(name)
         field = name.removesuffix("_cpu")
-        if field in {"position", "velocity", "circulation", "vorticity"}:
+        if field in {"position", "velocity", "vortex_strength", "vorticity"}:
             return lambda: np.zeros((1, 3), dtype=np.float32)
-        if field == "group_id":
+        if field in {"group_id", "zone_id"}:
             return lambda: np.zeros(1, dtype=np.int32)
-        if field in {"radius", "volume", "viscosity", "viscosity_turbulent"}:
+        if field in {
+            "core_radius",
+            "volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "effective_viscosity",
+        }:
             return lambda: np.ones(1, dtype=np.float32)
+        if field in {"velocity_gradient", "strain_rate"}:
+            return lambda: np.zeros((1, 3, 3), dtype=np.float32)
         raise AttributeError(name)
 
 
@@ -76,17 +84,19 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
         time_step_size=0.05,
         particles=_BackupParticles(),
         freestream_velocity=np.zeros(3),
+        np_dtype=np.float32,
+        precision="f32",
     )
 
-    BackupSystem.backup_solver(solver, str(tmp_path / "vpm"))
+    CheckpointManager.write_checkpoint(solver, str(tmp_path / "vpm"))
     snapshot = tmp_path / "vpm_000007.h5"
     assert snapshot.is_file()
     assert (tmp_path / "vpm_000007.xdmf").is_file()
     ET.parse(tmp_path / "vpm_000007.xdmf")
     with h5py.File(snapshot, "r") as handle:
-        assert handle["solver"].attrs["flow_time"] == solver.time
+        assert handle["solver"].attrs["time"] == solver.time
 
-    BackupSystem.backup_solver(
+    CheckpointManager.write_checkpoint(
         solver,
         str(tmp_path / "checkpoint" / "vpm"),
         append_step=False,
@@ -95,7 +105,7 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
     assert not (tmp_path / "checkpoint" / "vpm_000007.h5").exists()
 
 
-@pytest.mark.parametrize("field, value", [("max_targets", 0), ("max_particles", 0)])
+@pytest.mark.parametrize("field, value", [("max_evaluation_points", 0), ("max_particles", 0)])
 def test_fixed_capacity_configuration_rejects_nonpositive_values(field, value):
     with pytest.raises(ValueError, match=field):
         VPMSetup(**{field: value})
@@ -129,9 +139,9 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[(sampler, "probe")]),
-        particles=SimpleNamespace(number_of_particles=2),
-        particles_circulation=np.ones((2, 3)),
-        backup_directory=str(tmp_path),
+        particles=SimpleNamespace(n_particles=2),
+        particle_vortex_strength=np.ones((2, 3)),
+        checkpoint_directory=str(tmp_path),
         time=0.1,
         step=1,
     )
@@ -145,7 +155,7 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
     with output.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.reader(stream))
 
-    assert rows[0] == ["flow_time", "time_step", *SAMPLER_CSV_COLUMNS]
+    assert rows[0] == ["time", "step", *SAMPLER_CSV_COLUMNS]
     assert len(rows) == 5
     assert [row[:2] for row in rows[1:]] == [
         ["0.1", "1"],
@@ -165,9 +175,9 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
 
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[LegacyCSVSampler()]),
-        particles=SimpleNamespace(number_of_particles=2),
-        particles_circulation=np.ones((2, 3)),
-        backup_directory=str(tmp_path),
+        particles=SimpleNamespace(n_particles=2),
+        particle_vortex_strength=np.ones((2, 3)),
+        checkpoint_directory=str(tmp_path),
         time=0.3,
         step=3,
     )
@@ -193,9 +203,9 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
 
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[TimeSeriesSampler()]),
-        particles=SimpleNamespace(number_of_particles=2),
-        particles_circulation=np.ones((2, 3)),
-        backup_directory=str(tmp_path),
+        particles=SimpleNamespace(n_particles=2),
+        particle_vortex_strength=np.ones((2, 3)),
+        checkpoint_directory=str(tmp_path),
         time=0.1,
         step=1,
     )
@@ -208,7 +218,7 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
     with (tmp_path / "samples" / "profile.csv").open(newline="", encoding="utf-8") as stream:
         rows = list(csv.reader(stream))
 
-    assert rows[0] == ["flow_time", "time_step", *SAMPLER_CSV_COLUMNS]
+    assert rows[0] == ["time", "step", *SAMPLER_CSV_COLUMNS]
     assert [row[:2] for row in rows[1:]] == [
         ["0.1", "1"],
         ["0.1", "1"],
@@ -236,9 +246,9 @@ def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
-        particles=SimpleNamespace(number_of_particles=2),
-        particles_circulation=np.ones((2, 3)),
-        backup_directory=str(tmp_path / "solution"),
+        particles=SimpleNamespace(n_particles=2),
+        particle_vortex_strength=np.ones((2, 3)),
+        checkpoint_directory=str(tmp_path / "solution"),
         time=0.1,
         step=1,
     )
@@ -259,7 +269,7 @@ def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
         n_p=10,
         time=0.2,
         step=2,
-        backup_directory=str(tmp_path / "solution"),
+        checkpoint_directory=str(tmp_path / "solution"),
         sample_subdirectory="flat_plate",
     )
 
@@ -273,7 +283,7 @@ def test_flow_integral_export_is_configurable(monkeypatch):
     monkeypatch.setattr(Logging, "flow_diagnostics", lambda _solver: None)
     solver = SimpleNamespace(
         setup=SimpleNamespace(export_flow_integrals=False),
-        LES=None,
+        turbulence_model=None,
         _export_flow_integrals_csv=lambda: exports.append(True),
         _execute_samplers=lambda: None,
     )
@@ -299,8 +309,8 @@ def test_tee_log_stream_writes_to_file_and_console():
 def test_log_name_uses_snapshot_prefix(tmp_path):
     solver = SimpleNamespace(
         setup=SimpleNamespace(log_mode="file"),
-        backup_file_name="wake",
-        backup_directory=str(tmp_path),
+        checkpoint_name="wake",
+        checkpoint_directory=str(tmp_path),
     )
 
     Logging.setup_output_redirection(solver)
@@ -308,3 +318,30 @@ def test_log_name_uses_snapshot_prefix(tmp_path):
         assert solver.log_file_path == str(tmp_path / "vpm_wake.log")
     finally:
         solver._restore_output_streams()
+
+
+def test_vpm_log_redirection_closes_previous_owner(tmp_path):
+    first = SimpleNamespace(
+        setup=SimpleNamespace(log_mode="file"),
+        checkpoint_name="first",
+        checkpoint_directory=str(tmp_path),
+    )
+    second = SimpleNamespace(
+        setup=SimpleNamespace(log_mode="file"),
+        checkpoint_name="second",
+        checkpoint_directory=str(tmp_path),
+    )
+
+    Logging.setup_output_redirection(first)
+    first_handle = first._log_file_handle
+    try:
+        assert not first_handle.closed
+
+        Logging.setup_output_redirection(second)
+        assert first_handle.closed
+        assert not second._log_file_handle.closed
+        assert second.log_file_path == str(tmp_path / "vpm_second.log")
+    finally:
+        second._restore_output_streams()
+
+    assert second._log_file_handle.closed

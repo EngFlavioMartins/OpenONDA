@@ -58,7 +58,7 @@ def _single_blob_solver(make_solver, kernel_name):
     """Create a solver with one z-circulation blob at the origin."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -66,10 +66,10 @@ def _single_blob_solver(make_solver, kernel_name):
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, _ALPHA_Z]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     return solver
 
@@ -244,7 +244,7 @@ def test_linear_impulse(kernel_name, backend, solver_for_backend):
     """
     solver = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -252,10 +252,10 @@ def test_linear_impulse(kernel_name, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=np.array([[1.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, _ALPHA_Z]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     solver.advance()
     solver._update_all_flow_integrals()
@@ -280,7 +280,7 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
     """
     solver = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -288,10 +288,10 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
     solver.add_vortex_particles(
         position=np.array([[1.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, _ALPHA_Z]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     solver.advance()
     solver._update_all_flow_integrals()

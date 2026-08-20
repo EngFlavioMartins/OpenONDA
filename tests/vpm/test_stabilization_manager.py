@@ -18,7 +18,7 @@ from source.solvers.VPM.stabilization import StabilizationError
 def _solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolver:
     solver = VPMSolver(
         setup=VPMSetup(
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             max_particles=16,
             advection=AdvectionConfig(scheme="NONE"),
@@ -26,19 +26,19 @@ def _solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolver:
             viscous=ViscousConfig(scheme="NONE"),
             stabilization=stabilization,
             velocity=VelocityConfig.direct(),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     count = 3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0], [0.3, 0.0, 0.0], [0.0, 0.3, 0.0]]),
         velocity=np.zeros((count, 3)),
-        circulation=np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]]),
-        radius=np.full(count, 0.2),
+        vortex_strength=np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]]),
+        core_radius=np.full(count, 0.2),
         volume=np.full(count, 0.5**3),
-        viscosity=np.zeros(count),
+        kinematic_viscosity=np.zeros(count),
     )
     return solver
 
@@ -50,8 +50,8 @@ def test_health_is_measured_from_the_uploaded_field(tmp_path):
     health = solver.stabilization.measure()
 
     assert health.particles == 3
-    np.testing.assert_allclose(health.circulation, [1.0, 2.0, 3.0])
-    assert health.strength_magnitude == pytest.approx(6.0)
+    np.testing.assert_allclose(health.vortex_strength, [1.0, 2.0, 3.0])
+    assert health.vortex_strength_magnitude == pytest.approx(6.0)
     assert health.peak_strength == pytest.approx(3.0)
     assert health.peak_vorticity == pytest.approx(3.0 / 0.5**3)
 
@@ -64,7 +64,7 @@ def test_master_accepts_a_dissipative_event_and_rejects_an_amplifying_one(tmp_pa
 
     # Halving every strength is what a filter does: strength and peak vorticity
     # fall, and the master lets it through even though circulation moved with it.
-    solver.set_particles_properties(strengths=0.5 * solver.particles.circulation_cpu())
+    solver.set_particles_properties(vortex_strength=0.5 * solver.particles.vortex_strength_cpu())
     manager.accept("test filter", before, conserves_circulation=False)
     assert manager.events == 1
     assert manager.last_strength_growth == pytest.approx(-0.5)
@@ -72,7 +72,7 @@ def test_master_accepts_a_dissipative_event_and_rejects_an_amplifying_one(tmp_pa
 
     # Doubling it back is amplification, and no mechanism is allowed to do that.
     amplified = manager.measure()
-    solver.set_particles_properties(strengths=4.0 * solver.particles.circulation_cpu())
+    solver.set_particles_properties(vortex_strength=4.0 * solver.particles.vortex_strength_cpu())
     with pytest.raises(StabilizationError, match="test amplifier produced a .* growth"):
         manager.accept("test amplifier", amplified, conserves_circulation=False)
 
@@ -93,10 +93,10 @@ def test_growth_criteria_do_not_apply_to_a_rebuilt_discretization(tmp_path):
     solver.replace_vortex_particles(
         position=np.zeros((1, 3)),
         velocity=np.zeros((1, 3)),
-        circulation=before.circulation.reshape(1, 3),
-        radius=np.full(1, 0.2),
+        vortex_strength=before.vortex_strength.reshape(1, 3),
+        core_radius=np.full(1, 0.2),
         volume=np.full(1, 0.5**3),
-        viscosity=np.zeros(1),
+        kinematic_viscosity=np.zeros(1),
     )
 
     manager.accept("test remesh", before, preserves_discretization=False)
@@ -113,9 +113,9 @@ def test_master_holds_conserving_mechanisms_to_their_circulation(tmp_path):
     manager = solver.stabilization
     before = manager.measure()
 
-    circulation = solver.particles.circulation_cpu()
+    circulation = solver.particles.vortex_strength_cpu()
     circulation[0] += np.array([0.1, 0.0, 0.0])
-    solver.set_particles_properties(strengths=circulation)
+    solver.set_particles_properties(vortex_strength=circulation)
 
     with pytest.raises(StabilizationError, match="circulation error"):
         manager.accept("test reassignment", before)
@@ -126,9 +126,9 @@ def test_active_mechanisms_names_the_configured_policy(tmp_path):
     stabilization = StabilizationConfig(
         stretching_viscosity_coefficient=0.5,
         pedrizzetti_relaxation_factor=0.3,
-        filament_refinement=FilamentRefinementConfig.adaptive(frequency=10),
+        filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=10),
         divergence_relaxation=DivergenceRelaxationConfig.constrained(
-            frequency=10, grid_spacing=0.1
+            interval_steps=10, grid_spacing=0.1
         ),
         remove_particles_by_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
     )
@@ -144,7 +144,7 @@ def test_active_mechanisms_names_the_configured_policy(tmp_path):
     assert set(solver.stabilization.diagnostics) == {
         "stabilization_events",
         "stabilization_last_mechanism",
-        "stabilization_circulation_error",
+        "stabilization_vortex_strength_error",
         "stabilization_strength_growth",
         "stabilization_vorticity_growth",
         "stabilization_max_vorticity_growth",
@@ -168,35 +168,35 @@ def test_rejected_regularization_restores_the_original_field(tmp_path):
 
     solver = VPMSolver(
         setup=VPMSetup(
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             max_particles=2048,
             advection=AdvectionConfig(scheme="NONE"),
             stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig.cs(viscosity=1e-3, characteristic_distance=spacing),
+            viscous=ViscousConfig.cs(kinematic_viscosity=1e-3, particle_spacing=spacing),
             velocity=VelocityConfig.direct(),
             stabilization=StabilizationConfig.conservative_filter(
-                frequency=1,
+                interval_steps=1,
                 start_step=0,
                 grid_spacing=spacing,
                 max_particles=1024,
                 divergence_trigger=0.0,
                 misalignment_trigger=0.0,
             ),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     solver.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=vorticity * volume[:, None],
-        radius=np.full(len(position), 1.5 * spacing),
+        vortex_strength=vorticity * volume[:, None],
+        core_radius=np.full(len(position), 1.5 * spacing),
         volume=volume,
-        viscosity=np.full(len(position), 1e-3),
+        kinematic_viscosity=np.full(len(position), 1e-3),
     )
-    circulation = solver.particles.circulation_cpu().copy()
+    circulation = solver.particles.vortex_strength_cpu().copy()
     solver.step = 1
 
     # This cloud is far too small for the redistribution grid, so the worker's
@@ -205,5 +205,5 @@ def test_rejected_regularization_restores_the_original_field(tmp_path):
         solver.stabilization.apply_regularization()
 
     np.testing.assert_array_equal(solver.particles.position_cpu(), position)
-    np.testing.assert_array_equal(solver.particles.circulation_cpu(), circulation)
+    np.testing.assert_array_equal(solver.particles.vortex_strength_cpu(), circulation)
     assert solver.stabilization.events == 0

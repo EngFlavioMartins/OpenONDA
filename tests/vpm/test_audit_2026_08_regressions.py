@@ -56,11 +56,11 @@ ONE_OVER_FOUR_PI = 0.07957747154594767
 @pytest.mark.parametrize("kernel", ["HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"])
 def test_treecode_rejects_unsupported_kernel_at_config_time(kernel):
     """An unsupported kernel + TREECODE must fail loudly in VPMSetup, not mid-run."""
-    with pytest.raises(ValueError, match="cannot be used with velocity method 'TREECODE'"):
+    with pytest.raises(ValueError, match="cannot be used with TREECODE velocity evaluation"):
         VPMSetup.dns_simulation(
-            particles_kernel=kernel,
+            particle_kernel=kernel,
             velocity=VelocityConfig.treecode(theta=0.5),
-            processing_unit="CPU",
+            compute_device="CPU",
             max_particles=1000,
         )
 
@@ -70,21 +70,21 @@ def test_treecode_rejects_unsupported_kernel_at_config_time(kernel):
 def test_direct_method_accepts_every_kernel(kernel):
     """The direct O(N^2) path implements all kernels, so nothing is rejected there."""
     setup = VPMSetup.dns_simulation(
-        particles_kernel=kernel,
+        particle_kernel=kernel,
         velocity=VelocityConfig.direct(),
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=1000,
     )
-    assert setup.particles_kernel == kernel
+    assert setup.particle_kernel == kernel
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("kernel", TREECODE_SUPPORTED_KERNELS)
 def test_treecode_supported_kernels_are_accepted(kernel):
     setup = VPMSetup.dns_simulation(
-        particles_kernel=kernel,
+        particle_kernel=kernel,
         velocity=VelocityConfig.treecode(theta=0.5),
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=1000,
     )
     assert setup.velocity.method == "TREECODE"
@@ -248,8 +248,8 @@ def test_shed_trailing_circulation_telescopes_to_zero(gamma):
 @pytest.mark.unit
 def test_random_seed_is_a_configuration_field_with_a_reproducible_default():
     """RWM reproducibility must be a choice, not a hardcoded constant."""
-    assert VPMSetup.dns_simulation(processing_unit="CPU").random_seed == 42
-    assert VPMSetup.dns_simulation(processing_unit="CPU", random_seed=7).random_seed == 7
+    assert VPMSetup.dns_simulation(compute_device="CPU").random_seed == 42
+    assert VPMSetup.dns_simulation(compute_device="CPU", random_seed=7).random_seed == 7
 
 
 # ── N-3: the precision contract is truthful ─────────────────────────────────
@@ -262,7 +262,7 @@ def test_f64_with_treecode_is_rejected_rather_than_silently_downgraded():
         VPMSetup.dns_simulation(
             precision="f64",
             velocity=VelocityConfig.treecode(theta=0.5),
-            processing_unit="CPU",
+            compute_device="CPU",
             max_particles=1000,
         )
 
@@ -273,7 +273,7 @@ def test_f64_with_direct_summation_is_accepted():
     setup = VPMSetup.dns_simulation(
         precision="f64",
         velocity=VelocityConfig.direct(),
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=1000,
     )
     assert setup.precision == "f64"

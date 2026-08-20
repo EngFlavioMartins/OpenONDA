@@ -45,17 +45,17 @@ def viscous_config(
 ) -> ViscousConfig:
     if scheme == "CS":
         return ViscousConfig.cs(
-            viscosity=viscosity,
-            characteristic_distance=spacing,
+            kinematic_viscosity=viscosity,
+            particle_spacing=spacing,
         )
     return ViscousConfig.gbd(
         particle_spacing=spacing,
         padding=5.0,
         threshold=1.0e-5,
         threshold_mode="budget",
-        viscosity=viscosity,
+        kinematic_viscosity=viscosity,
         max_nodes=150_000,
-        cap_abs_fraction=0.999,
+        cap_absolute_fraction=0.999,
         core_radius_ratio=core_radius_ratio,
     )
 
@@ -69,7 +69,7 @@ def run(
     final_time_star: float,
     viscous_scheme: str,
     velocity_method: str,
-    processing_unit: str,
+    compute_device: str,
     tail_fraction: float,
     backup_period: float,
     axisymmetric: bool,
@@ -132,7 +132,7 @@ def run(
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=time_step,
-            processing_unit=processing_unit,
+            compute_device=compute_device,
             time_integration="COUPLED",
             axisymmetric_no_swirl_axis="x" if axisymmetric else None,
             advection=AdvectionConfig(scheme="RK3"),
@@ -153,10 +153,10 @@ def run(
                 )
             ),
             viscous=viscous_config(viscous_scheme, spacing, viscosity, core_radius_ratio),
-            logging_frequency=cadence(0.25, time_step),
-            backup_frequency=cadence(backup_period, time_step),
-            backup_file_name=label,
-            backup_directory=str(output_directory),
+            logging_interval_steps=cadence(0.25, time_step),
+            checkpoint_interval_steps=cadence(backup_period, time_step),
+            checkpoint_name=label,
+            checkpoint_directory=str(output_directory),
             sample_subdirectory=None,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
             max_particles=150_000,
@@ -174,7 +174,7 @@ def run(
     )
 
     requested_steps = int(np.ceil(final_time_star / time_step))
-    initial_strength = float(np.abs(solver.particles.circulation_cpu()).max())
+    initial_strength = float(np.abs(solver.particles.vortex_strength_cpu()).max())
     manifest = {
         "status": "running",
         "source": "Verzicco and Shariff (1994), CTR proceedings, pp. 221-228",
@@ -201,7 +201,7 @@ def run(
         "treecode_theta": 0.1 if velocity_method == "TREECODE" else None,
         "molecular_diffusion": viscous_scheme,
         "sgs_model": "none",
-        "processing_unit": processing_unit,
+        "processing_unit": compute_device,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
@@ -210,7 +210,7 @@ def run(
     termination_reason = None
     for _ in range(requested_steps):
         solver.advance()
-        if np.abs(solver.particles.circulation_cpu()).max() > 50.0 * initial_strength:
+        if np.abs(solver.particles.vortex_strength_cpu()).max() > 50.0 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
         if solver.time_step % cadence(0.25, time_step):
@@ -266,7 +266,7 @@ def main() -> None:
         final_time_star=args.final_time_star,
         viscous_scheme=args.viscous_scheme,
         velocity_method=args.velocity_method,
-        processing_unit=args.processing_unit,
+        compute_device=args.compute_device,
         tail_fraction=args.tail_fraction,
         backup_period=args.backup_period,
         axisymmetric=args.axisymmetric,

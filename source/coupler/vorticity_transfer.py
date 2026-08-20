@@ -1212,7 +1212,7 @@ class VorticityTransfer:
         self.step += 1
         assert self._box is not None and self._cell_tree is not None and self._lattice is not None
 
-        n = vpm.particles.number_of_particles
+        n = vpm.particles.n_particles
         if n > 0:
             pos = np.asarray(vpm.particles_positions, dtype=np.float64).reshape(-1, 3)
             circ = np.asarray(vpm.particles_circulation, dtype=np.float64).reshape(-1, 3)
@@ -1322,11 +1322,11 @@ class VorticityTransfer:
         vpm.replace_vortex_particles(
             position=res.pos.astype(vpm_time_step_size),
             velocity=np.zeros((k, 3), dtype=vpm_time_step_size),
-            circulation=res.circ.astype(vpm_time_step_size),
-            radius=res.rad.astype(vpm_time_step_size),
+            vortex_strength=res.circ.astype(vpm_time_step_size),
+            core_radius=res.rad.astype(vpm_time_step_size),
             volume=res.vol.astype(vpm_time_step_size),
-            viscosity=np.full(k, self.nu, dtype=vpm_time_step_size),
-            viscosity_turbulent=np.zeros(k, dtype=vpm_time_step_size),
+            kinematic_viscosity=np.full(k, self.nu, dtype=vpm_time_step_size),
+            eddy_viscosity=np.zeros(k, dtype=vpm_time_step_size),
             zone_id=np.zeros(k, dtype=np.int32),
         )
 

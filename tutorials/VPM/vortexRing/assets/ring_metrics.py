@@ -36,6 +36,31 @@ P_REF = E_REF / T_REF  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
 # -- H5 helpers ----------------------------------------------------------------
 
 
+def _checkpoint_vortex_strength(handle: h5py.File) -> np.ndarray:
+    """Read canonical vortex strength, accepting legacy checkpoint files."""
+    particles = handle["particles"]
+    key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+    return particles[key][:]
+
+
+def _checkpoint_time(handle: h5py.File) -> float:
+    """Read canonical checkpoint time, accepting legacy ``flow_time``."""
+    attributes = handle["solver"].attrs
+    if "time" in attributes:
+        return float(attributes["time"])
+    return float(attributes.get("flow_time", 0.0))
+
+
+def _sample_time_column(data: pd.DataFrame) -> str:
+    """Return canonical sample time column, with legacy fallback."""
+    return "time" if "time" in data.columns else "flow_time"
+
+
+def _sample_step_column(data: pd.DataFrame) -> str:
+    """Return canonical sample step column, with legacy fallback."""
+    return "step" if "step" in data.columns else "time_step"
+
+
 def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     """Return (t_star, strength_norm) from H5 backups.
 
@@ -48,8 +73,8 @@ def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndar
     for path in sorted(h5_files):
         try:
             with h5py.File(path, "r") as f:
-                circ = f["particles/circulation"][:]
-                t = float(f["solver"].attrs.get("flow_time", 0.0))
+                circ = _checkpoint_vortex_strength(f)
+                t = _checkpoint_time(f)
                 total_circ = float(np.sum(np.linalg.norm(circ, axis=1)))
         except Exception as e:
             print(f"Error reading {path}: {e}")
@@ -145,8 +170,8 @@ def _ring_props_from_h5(path) -> dict | None:
         with h5py.File(path, "r") as f:
             pos = f["particles/position"][:]
             gid = f["particles/group_id"][:]
-            strength = f["particles/circulation"][:]
-            t = float(f["solver"].attrs.get("flow_time", 0.0))
+            strength = _checkpoint_vortex_strength(f)
+            t = _checkpoint_time(f)
     except Exception as e:
         print(f"Error reading {path}: {e}")
         return None
@@ -258,7 +283,9 @@ def load_sampled_ring_data(csv_path: Path) -> pd.DataFrame | None:
     data = pd.read_csv(csv_path)
     if data.empty:
         return None
-    return data.sort_values("flow_time").drop_duplicates("time_step", keep="last")
+    return data.sort_values(_sample_time_column(data)).drop_duplicates(
+        _sample_step_column(data), keep="last"
+    )
 
 
 def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -267,7 +294,7 @@ def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     if data is None or len(data) < 2:
         return np.array([]), np.array([])
 
-    time = data["flow_time"].to_numpy(float)
+    time = data[_sample_time_column(data)].to_numpy(float)
     position = data["x_centroid"].to_numpy(float)
     speed = np.empty_like(position)
     for index in range(len(time)):
@@ -286,7 +313,7 @@ def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarra
     valid = np.isfinite(circulation) & (circulation > 0.0)
     if not valid.any():
         return np.array([]), np.array([])
-    time = data["flow_time"].to_numpy(float)[valid] / T_REF
+    time = data[_sample_time_column(data)].to_numpy(float)[valid] / T_REF
     circulation = circulation[valid]
     return time, circulation / circulation[0]
 
@@ -302,7 +329,7 @@ def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, n
     strength0 = float(data["length_strength"].iloc[0])
     if strength0 <= 0.0:
         return np.array([]), np.array([])
-    time = data["flow_time"].to_numpy(float) / T_REF
+    time = data[_sample_time_column(data)].to_numpy(float) / T_REF
     error = np.linalg.norm(vector - vector[0], axis=1) / strength0
     return time, error
 

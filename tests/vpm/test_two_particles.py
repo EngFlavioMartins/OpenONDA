@@ -22,7 +22,7 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
     """Create a solver with two particles."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -30,10 +30,10 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
     solver.add_vortex_particles(
         position=np.array([pos1, pos2]),
         velocity=np.zeros((2, 3)),
-        circulation=np.array([gamma1, gamma2]),
-        radius=np.full(2, _SIGMA),
+        vortex_strength=np.array([gamma1, gamma2]),
+        core_radius=np.full(2, _SIGMA),
         volume=np.full(2, _VOLUME),
-        viscosity=np.zeros(2),
+        kinematic_viscosity=np.zeros(2),
     )
     return solver
 
@@ -93,7 +93,7 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
     # of the symmetric pair.
     solver1 = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -101,10 +101,10 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
     solver1.add_vortex_particles(
         position=np.array([[0.5, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     omega_one = solver1.compute_target_vorticities(np.array([[0.0, 0.0, 0.0]]))
 
@@ -139,7 +139,7 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
     # Self-energy of one blob (same as test_single_blob)
     solver1 = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -147,10 +147,10 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
     solver1.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     solver1.advance()
     solver1._update_all_flow_integrals()
@@ -236,7 +236,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
 
     solver1 = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -244,10 +244,10 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
     solver1.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     solver1.advance()
     solver1._update_all_flow_integrals()

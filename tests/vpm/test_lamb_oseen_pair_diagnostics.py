@@ -148,7 +148,7 @@ def test_production_configuration_uses_candidate_spacing_and_dvh_subcycling():
     assert pytest.approx(0.15) == FIELD_SPACING / CORE_RADIUS
     assert np.isclose(BETA_RMAX * GAUSSIAN_CORE_RADIUS, CORE_RADIUS)
     assert pytest.approx(1.5) == PARTICLE_RADIUS / SPACING
-    assert viscous.dvh_rd_ratio == DVH_RD_RATIO == 4
+    assert viscous.dvh_support_radius_ratio == DVH_RD_RATIO == 4
     assert viscous.dvh_max_nodes == DVH_MAX_NODES == 300_000
     assert viscous_config("gbd", viscosity, SPACING).gbd_max_nodes == GBD_MAX_NODES == 300_000
     assert float(f"{viscous.dvh_required_time_step_size():.3g}") == pytest.approx(0.291)

@@ -115,11 +115,11 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     old_state = {
         "position": position.astype(ctx.np_dtype),
         "velocity": particles.velocity_cpu().astype(ctx.np_dtype),
-        "circulation": vortex_strength.astype(ctx.np_dtype),
-        "radius": radius.astype(ctx.np_dtype),
+        "vortex_strength": vortex_strength.astype(ctx.np_dtype),
+        "core_radius": radius.astype(ctx.np_dtype),
         "volume": volume.astype(ctx.np_dtype),
-        "viscosity": viscosity.astype(ctx.np_dtype),
-        "viscosity_turbulent": particles.eddy_viscosity_cpu().astype(ctx.np_dtype),
+        "kinematic_viscosity": viscosity.astype(ctx.np_dtype),
+        "eddy_viscosity": particles.eddy_viscosity_cpu().astype(ctx.np_dtype),
         "zone_id": particles.zone_id_cpu().astype(np.int32),
         "group_id": particles.group_id_cpu().astype(np.int32),
     }
@@ -154,24 +154,24 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         else cfg.regularization_core_radius
     )
     if configured_core_radius is not None:
-        proposal["radius"] = np.full(
+        proposal["core_radius"] = np.full(
             len(proposal["position"]),
             configured_core_radius,
             dtype=ctx.np_dtype,
         )
 
     new_position = np.asarray(proposal["position"], dtype=np.float64)
-    proposed_circulation = np.asarray(proposal["circulation"], dtype=np.float64)
-    new_radius = np.asarray(proposal["radius"], dtype=np.float64)
+    proposed_circulation = np.asarray(proposal["vortex_strength"], dtype=np.float64)
+    new_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
     new_volume = np.asarray(proposal["volume"], dtype=np.float64)
     count = len(new_position)
     new_velocity = np.asarray(proposal.get("velocity", np.zeros((count, 3))), dtype=ctx.np_dtype)
     new_viscosity = np.asarray(
-        proposal.get("viscosity", np.full(count, molecular_viscosity)),
+        proposal.get("kinematic_viscosity", np.full(count, molecular_viscosity)),
         dtype=ctx.np_dtype,
     )
     new_viscosity_turbulent = np.asarray(
-        proposal.get("viscosity_turbulent", np.zeros(count)), dtype=ctx.np_dtype
+        proposal.get("eddy_viscosity", np.zeros(count)), dtype=ctx.np_dtype
     )
     new_zone_id = np.asarray(
         proposal.get("zone_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
@@ -186,7 +186,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             position=np.asarray(proposal["position"], dtype=ctx.np_dtype),
             velocity=new_velocity,
             vortex_strength=uploaded_strength,
-            core_radius=np.asarray(proposal["radius"], dtype=ctx.np_dtype),
+            core_radius=np.asarray(proposal["core_radius"], dtype=ctx.np_dtype),
             volume=np.asarray(proposal["volume"], dtype=ctx.np_dtype),
             kinematic_viscosity=new_viscosity,
             eddy_viscosity=new_viscosity_turbulent,
@@ -206,7 +206,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         ctx.set_vortex_strength_removed(circulation_removed_before)
 
     def evaluate_moment_corrected_candidate():
-        candidate_radius = np.asarray(proposal["radius"], dtype=np.float64)
+        candidate_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
         candidate_nullspace = _MomentNullspace(
             gaussian_invariant_rows(new_position, candidate_radius),
             new_volume,
@@ -269,7 +269,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                     break
                 adaptive_core_used = True
                 trial_core_radius = configured_core_radius * 1.05**retry
-                proposal["radius"] = np.full(
+                proposal["core_radius"] = np.full(
                     count,
                     trial_core_radius,
                     dtype=ctx.np_dtype,

@@ -62,10 +62,10 @@ class DivergenceRelaxationResult:
     correction_norm_relative: float
     quadratic_restoration_fraction: float
     reference_restoration_scale: float
-    circulation_restored: float
+    vortex_strength_restored: float
     linear_impulse_restored: float
     angular_impulse_restored: float
-    circulation_reference_error: float
+    vortex_strength_reference_error: float
     linear_impulse_reference_error: float
     angular_impulse_reference_error: float
     vortex_strength_error: float
@@ -536,10 +536,10 @@ def _constrained_divergence_relaxation_once(
             correction_norm_relative=0.0,
             quadratic_restoration_fraction=0.0,
             reference_restoration_scale=restoration_scale,
-            circulation_restored=0.0,
+            vortex_strength_restored=0.0,
             linear_impulse_restored=0.0,
             angular_impulse_restored=0.0,
-            circulation_reference_error=0.0,
+            vortex_strength_reference_error=0.0,
             linear_impulse_reference_error=0.0,
             angular_impulse_reference_error=0.0,
             vortex_strength_error=0.0,
@@ -805,13 +805,13 @@ def _constrained_divergence_relaxation_once(
     )
 
     after_moments = gaussian_particle_moments(position, relaxed, radius)
-    circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
+    vortex_strength_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
     linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
     angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
     vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
     linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
     angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
-    circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
+    vortex_strength_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
     linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
     angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
     variation_change_relative = (after_moments[1] - before_moments[1]) / max(
@@ -884,7 +884,7 @@ def _constrained_divergence_relaxation_once(
         (
             (
                 "circulation reference error",
-                circulation_reference_error / reference_scales[0],
+                vortex_strength_reference_error / reference_scales[0],
                 reference_tolerances[0],
             ),
             (
@@ -954,10 +954,10 @@ def _constrained_divergence_relaxation_once(
         correction_norm_relative=correction_norm_relative,
         quadratic_restoration_fraction=quadratic_restoration_fraction,
         reference_restoration_scale=restoration_scale,
-        circulation_restored=circulation_restored,
+        vortex_strength_restored=vortex_strength_restored,
         linear_impulse_restored=linear_impulse_restored,
         angular_impulse_restored=angular_impulse_restored,
-        circulation_reference_error=circulation_reference_error,
+        vortex_strength_reference_error=vortex_strength_reference_error,
         linear_impulse_reference_error=linear_impulse_reference_error,
         angular_impulse_reference_error=angular_impulse_reference_error,
         vortex_strength_error=vortex_strength_error,
@@ -1103,13 +1103,13 @@ def _combine_projection_sweeps(
     achieved_total = before_moments[0] + restoration_scale * (target_total - before_moments[0])
     achieved_impulse = before_moments[2] + restoration_scale * (target_impulse - before_moments[2])
     achieved_angular = before_moments[3] + restoration_scale * (target_angular - before_moments[3])
-    circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
+    vortex_strength_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
     linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
     angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
     vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
     linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
     angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
-    circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
+    vortex_strength_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
     linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
     angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
     variation_change_relative = (after_moments[1] - before_moments[1]) / max(
@@ -1214,7 +1214,7 @@ def _combine_projection_sweeps(
         (
             (
                 "circulation reference error",
-                circulation_reference_error / reference_scales[0],
+                vortex_strength_reference_error / reference_scales[0],
                 reference_tolerances[0],
             ),
             (
@@ -1276,10 +1276,10 @@ def _combine_projection_sweeps(
             sweep.quadratic_restoration_fraction for sweep in sweeps
         ),
         reference_restoration_scale=restoration_scale,
-        circulation_restored=circulation_restored,
+        vortex_strength_restored=vortex_strength_restored,
         linear_impulse_restored=linear_impulse_restored,
         angular_impulse_restored=angular_impulse_restored,
-        circulation_reference_error=circulation_reference_error,
+        vortex_strength_reference_error=vortex_strength_reference_error,
         linear_impulse_reference_error=linear_impulse_reference_error,
         angular_impulse_reference_error=angular_impulse_reference_error,
         vortex_strength_error=vortex_strength_error,

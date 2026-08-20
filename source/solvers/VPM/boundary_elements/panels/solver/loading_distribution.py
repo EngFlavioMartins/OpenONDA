@@ -32,7 +32,7 @@ class PanelLoadingDistribution:
         diagnostics_history: dict,
         step: int,
         time: float,
-        backup_directory: str,
+        checkpoint_directory: str,
     ) -> None:
         if panel_solver is None or panel_solver.lattice is None:
             return
@@ -61,7 +61,7 @@ class PanelLoadingDistribution:
                 else np.zeros((n, 3))
             )
 
-            samples_dir = resolve_samples_dir(backup_directory)
+            samples_dir = resolve_samples_dir(checkpoint_directory)
             samples_dir.mkdir(parents=True, exist_ok=True)
             csv_path = samples_dir / f"panel_distribution_step{step:06d}.csv"
 

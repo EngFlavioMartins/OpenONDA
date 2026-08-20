@@ -48,23 +48,23 @@ def _single_particle_cs_solver(tmp_path):
     """Return a solver with one z-circulation particle and CS enabled."""
     config = VPMSetup(
         time_step_size=_TIME_STEP_SIZE,
-        processing_unit="CPU",
+        compute_device="CPU",
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="CS"),
         advection=AdvectionConfig(scheme="NONE"),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA_0**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, _ALPHA_Z]]),
-        radius=np.array([_SIGMA_0]),
+        vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
+        core_radius=np.array([_SIGMA_0]),
         volume=np.array([volume]),
-        viscosity=np.array([_NU]),
+        kinematic_viscosity=np.array([_NU]),
     )
     return solver
 

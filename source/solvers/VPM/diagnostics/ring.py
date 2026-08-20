@@ -9,7 +9,7 @@ import numpy as np
 
 RING_DIAGNOSTIC_COLUMNS = (
     "time",
-    "time_step",
+    "step",
     "group_id",
     "x_centroid",
     "y_centroid",

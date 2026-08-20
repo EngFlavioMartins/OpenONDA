@@ -88,27 +88,27 @@ def test_format_report_handles_empty_profiler():
 # ── Integration: profiler wired into the solver time loop ──────────────────────
 
 
-def _tiny_solver(tmp_path, timing_frequency=0):
+def _tiny_solver(tmp_path, timing_interval_steps=0):
     config = VPMSetup(
         time_step_size=0.05,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="RK2"),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        timing_frequency=timing_frequency,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        timing_interval_steps=timing_interval_steps,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([volume]),
-        viscosity=np.array([1e-5]),
+        kinematic_viscosity=np.array([1e-5]),
     )
     return solver
 
@@ -125,7 +125,7 @@ def test_solver_uses_lightweight_timing_by_default(tmp_path):
     assert solver.profiler.n_steps == n_steps
     assert solver.profiler._cumulative == {}
     # The public mirror still tracks total solver wall time.
-    assert solver.simulation_time == pytest.approx(solver.profiler.wall_time)
+    assert solver.wall_time == pytest.approx(solver.profiler.wall_time)
 
 
 def test_solver_records_stage_timings_when_explicitly_enabled(tmp_path, monkeypatch):
@@ -143,7 +143,7 @@ def test_solver_records_stage_timings_when_explicitly_enabled(tmp_path, monkeypa
     assert "Viscous diffusion" in solver.profiler._cumulative
     assert "Stretching" in solver.profiler._cumulative
     # The public mirror tracks the profiler's cumulative wall time.
-    assert solver.simulation_time == pytest.approx(solver.profiler.wall_time)
+    assert solver.wall_time == pytest.approx(solver.profiler.wall_time)
 
 
 def test_print_timing_runs_without_error(tmp_path):
@@ -159,7 +159,7 @@ def test_print_timing_runs_without_error(tmp_path):
 
 
 def test_timing_frequency_triggers_periodic_report(tmp_path, monkeypatch):
-    solver = _tiny_solver(tmp_path, timing_frequency=2)
+    solver = _tiny_solver(tmp_path, timing_interval_steps=2)
     calls = {"n": 0}
     monkeypatch.setattr(solver.profiler, "report", lambda: calls.__setitem__("n", calls["n"] + 1))
     for _ in range(4):
@@ -169,7 +169,7 @@ def test_timing_frequency_triggers_periodic_report(tmp_path, monkeypatch):
 
 
 def test_timing_frequency_zero_never_reports(tmp_path, monkeypatch):
-    solver = _tiny_solver(tmp_path, timing_frequency=0)
+    solver = _tiny_solver(tmp_path, timing_interval_steps=0)
     calls = {"n": 0}
     monkeypatch.setattr(solver.profiler, "report", lambda: calls.__setitem__("n", calls["n"] + 1))
     for _ in range(3):

@@ -36,13 +36,7 @@ class SolverIO:
         """
         self.solver = solver
 
-        if (
-            hasattr(self.solver.setup, "backup_directory")
-            and self.solver.setup.checkpoint_directory
-        ):
-            self.export_dir = self.solver.setup.checkpoint_directory
-        else:
-            self.export_dir = "solution"
+        self.export_dir = self.solver.setup.checkpoint_directory or "solution"
 
         self._vlm_pvd_entries = []  # Track VLM time-series entries
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
@@ -57,11 +51,11 @@ class SolverIO:
 
     @property
     def vpm_prefix(self) -> str:
-        return f"vpm_{self.backup_file_name}" if self.checkpoint_name else "vpm"
+        return f"vpm_{self.checkpoint_name}" if self.checkpoint_name else "vpm"
 
     @property
     def vlm_prefix(self) -> str:
-        return f"vlm_{self.backup_file_name}" if self.checkpoint_name else "vlm"
+        return f"vlm_{self.checkpoint_name}" if self.checkpoint_name else "vlm"
 
     @property
     def step(self) -> int:
@@ -177,7 +171,7 @@ class SolverIO:
         print(f"[INFO] Diagnostics exported to {filename}")
 
     def export_flow_integrals_csv(self, solver: "VPMSolver") -> None:
-        """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``.
+        """Append one row of flow integrals to ``<checkpoint_directory>/samples/flow_integrals.csv``.
 
         Args:
             solver: Parent solver instance with evaluated flow integrals and

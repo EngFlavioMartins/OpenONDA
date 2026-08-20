@@ -32,7 +32,7 @@ from scripts.experiments.stage_5b_ring_quasi_steady import (  # noqa: E402
     serializable_metrics,
 )
 from source.solvers.VPM import VPMSolver  # noqa: E402
-from source.solvers.VPM.io import BackupSystem  # noqa: E402
+from source.solvers.VPM.io import CheckpointManager  # noqa: E402
 
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -57,16 +57,21 @@ LIMITS = {
 }
 
 
-def flow_time(path: Path) -> float:
+def checkpoint_time(path: Path) -> float:
     with h5py.File(path, "r") as handle:
-        return float(handle["solver"].attrs["flow_time"])
+        attributes = handle["solver"].attrs
+        if "time" in attributes:
+            return float(attributes["time"])
+        if "flow_time" in attributes:
+            return float(attributes["flow_time"])
+        raise KeyError("checkpoint has neither time nor legacy flow_time")
 
 
 def trajectory_files(run_directory: Path, label: str) -> list[Path]:
     candidates = list(run_directory.glob(f"vpm_{label}*.h5"))
     by_time: dict[float, Path] = {}
     for path in candidates:
-        time = flow_time(path)
+        time = checkpoint_time(path)
         current = by_time.get(time)
         if current is None or path.stem.endswith("_final"):
             by_time[time] = path
@@ -208,7 +213,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
         projection_ratios,
         strict=True,
     ):
-        BackupSystem.load_numerical_state(solver, path)
+        CheckpointManager.load_numerical_state(solver, path)
         sample = sample_solver(
             solver,
             grid_size,

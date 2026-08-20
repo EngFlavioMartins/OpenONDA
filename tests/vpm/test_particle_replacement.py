@@ -5,7 +5,6 @@ import taichi as ti
 from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.acceleration import treecode_gpu
 from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
-from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StabilizationConfig,
@@ -13,6 +12,7 @@ from source.solvers.VPM.config.types import (
     ViscousConfig,
 )
 from source.solvers.VPM.particles.container import Particles
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 
 def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
@@ -20,13 +20,13 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
     try:
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=16,
             )
         )
@@ -35,10 +35,10 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
         solver.add_vortex_particles(
             position=pos0,
             velocity=np.zeros((1, 3), dtype=np.float32),
-            circulation=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
-            radius=np.array([0.1], dtype=np.float32),
+            vortex_strength=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
+            core_radius=np.array([0.1], dtype=np.float32),
             volume=np.array([0.01], dtype=np.float32),
-            viscosity=np.zeros(1, dtype=np.float32),
+            kinematic_viscosity=np.zeros(1, dtype=np.float32),
         )
 
         position = np.array(
@@ -64,21 +64,21 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
         solver.replace_vortex_particles(
             position=position,
             velocity=velocity,
-            circulation=circulation,
-            radius=radius,
+            vortex_strength=circulation,
+            core_radius=radius,
             volume=volume,
-            viscosity=viscosity,
+            kinematic_viscosity=viscosity,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
             strain_rate=strain_rate,
         )
 
-        assert solver.particles.number_of_particles == 3
-        assert solver.particles.device_number_of_particles[None] == 3
+        assert solver.particles.n_particles == 3
+        assert solver.particles.device_n_particles[None] == 3
         np.testing.assert_allclose(solver.particles_positions, position)
         np.testing.assert_allclose(solver.particles_velocities, velocity)
-        np.testing.assert_allclose(solver.particles_circulation, circulation)
+        np.testing.assert_allclose(solver.particle_vortex_strength, circulation)
         np.testing.assert_allclose(solver.particles_radii, radius)
         np.testing.assert_allclose(solver.particles_volumes, volume)
         np.testing.assert_allclose(solver.particles_viscosities, viscosity)
@@ -91,13 +91,13 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
         solver.replace_vortex_particles(
             position=np.empty((0, 3), dtype=np.float32),
             velocity=np.empty((0, 3), dtype=np.float32),
-            circulation=np.empty((0, 3), dtype=np.float32),
-            radius=np.empty(0, dtype=np.float32),
+            vortex_strength=np.empty((0, 3), dtype=np.float32),
+            core_radius=np.empty(0, dtype=np.float32),
             volume=np.empty(0, dtype=np.float32),
-            viscosity=np.empty(0, dtype=np.float32),
+            kinematic_viscosity=np.empty(0, dtype=np.float32),
         )
-        assert solver.particles.number_of_particles == 0
-        assert solver.particles.device_number_of_particles[None] == 0
+        assert solver.particles.n_particles == 0
+        assert solver.particles.device_n_particles[None] == 0
     finally:
         reset_taichi_backend()
 
@@ -107,13 +107,13 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
     try:
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=16,
             )
         )
@@ -139,11 +139,11 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         solver.replace_vortex_particles(
             position=position,
             velocity=velocity,
-            circulation=circulation,
-            radius=radius,
+            vortex_strength=circulation,
+            core_radius=radius,
             volume=volume,
-            viscosity=viscosity,
-            viscosity_turbulent=viscosity_turbulent,
+            kinematic_viscosity=viscosity,
+            eddy_viscosity=viscosity_turbulent,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
@@ -153,8 +153,8 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         removed = solver.particles.remove_particles_by_bounds([0.5, 1.5, -1.0, 1.0, -1.0, 1.0])
 
         assert removed == 1
-        assert solver.particles.number_of_particles == 2
-        assert solver.particles.device_number_of_particles[None] == 2
+        assert solver.particles.n_particles == 2
+        assert solver.particles.device_n_particles[None] == 2
         np.testing.assert_allclose(solver.particles_positions, position[[0, 2]])
         np.testing.assert_array_equal(solver.particles.group_id_cpu(), group_id[[0, 2]])
         np.testing.assert_array_equal(solver.particles.zone_id_cpu(), zone_id[[0, 2]])
@@ -164,7 +164,7 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         )
         np.testing.assert_allclose(solver.particles.strain_rate_cpu(), strain_rate[[0, 2]])
         np.testing.assert_allclose(
-            solver.particles.viscosity_effective_cpu(),
+            solver.particles.effective_viscosity_cpu(),
             viscosity[[0, 2]] + viscosity_turbulent[[0, 2]],
         )
     finally:
@@ -177,13 +177,13 @@ def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
     try:
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=16,
             )
         )
@@ -196,10 +196,10 @@ def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
         solver.replace_vortex_particles(
             position=position,
             velocity=zeros,
-            circulation=zeros,
-            radius=scalar,
+            vortex_strength=zeros,
+            core_radius=scalar,
             volume=scalar,
-            viscosity=scalar,
+            kinematic_viscosity=scalar,
         )
 
         # Reproduce the failed Vulkan outcome: every device tag reads outside.
@@ -220,13 +220,13 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
     try:
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=16,
             )
         )
@@ -239,10 +239,10 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
         solver.replace_vortex_particles(
             position=position,
             velocity=zeros,
-            circulation=zeros,
-            radius=scalar,
+            vortex_strength=zeros,
+            core_radius=scalar,
             volume=scalar,
-            viscosity=scalar,
+            kinematic_viscosity=scalar,
         )
 
         particles = solver.particles
@@ -274,7 +274,7 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
 
         assert removed == 0
         assert position_reads == 1
-        assert particles.number_of_particles == 3
+        assert particles.n_particles == 3
     finally:
         reset_taichi_backend()
 
@@ -285,14 +285,14 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
     try:
         solver = VPMSolver(
             VPMSetup(
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 viscous=ViscousConfig(scheme="NONE"),
                 advection=AdvectionConfig(scheme="NONE"),
                 stabilization=StabilizationConfig.bounded_domain([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]),
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
                 max_particles=16,
             )
         )
@@ -308,10 +308,10 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
         solver.replace_vortex_particles(
             position=position,
             velocity=np.zeros((3, 3), dtype=np.float32),
-            circulation=circulation,
-            radius=np.full(3, 0.1, dtype=np.float32),
+            vortex_strength=circulation,
+            core_radius=np.full(3, 0.1, dtype=np.float32),
             volume=volume,
-            viscosity=np.full(3, 1.0e-5, dtype=np.float32),
+            kinematic_viscosity=np.full(3, 1.0e-5, dtype=np.float32),
         )
 
         def unexpected_reconstruction(_particles):
@@ -357,22 +357,22 @@ def test_vulkan_chunked_replacement_preserves_distinct_reused_buffers(monkeypatc
         particles.replace_from_numpy(
             position=position,
             velocity=velocity,
-            circulation=circulation,
-            radius=radius,
+            vortex_strength=circulation,
+            core_radius=radius,
             volume=volume,
-            viscosity=viscosity,
-            viscosity_turbulent=viscosity_turbulent,
+            kinematic_viscosity=viscosity,
+            eddy_viscosity=viscosity_turbulent,
             group_id=group_id,
             zone_id=zone_id,
         )
 
         np.testing.assert_array_equal(particles.position_cpu(), position)
         np.testing.assert_array_equal(particles.velocity_cpu(), velocity)
-        np.testing.assert_array_equal(particles.circulation_cpu(), circulation)
-        np.testing.assert_array_equal(particles.radius_cpu(), radius)
+        np.testing.assert_array_equal(particles.vortex_strength_cpu(), circulation)
+        np.testing.assert_array_equal(particles.core_radius_cpu(), radius)
         np.testing.assert_array_equal(particles.volume_cpu(), volume)
-        np.testing.assert_array_equal(particles.viscosity_cpu(), viscosity)
-        np.testing.assert_array_equal(particles.viscosity_turbulent_cpu(), viscosity_turbulent)
+        np.testing.assert_array_equal(particles.kinematic_viscosity_cpu(), viscosity)
+        np.testing.assert_array_equal(particles.eddy_viscosity_cpu(), viscosity_turbulent)
         np.testing.assert_array_equal(particles.group_id_cpu(), group_id)
         np.testing.assert_array_equal(particles.zone_id_cpu(), zone_id)
 

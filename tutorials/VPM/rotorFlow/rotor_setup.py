@@ -88,7 +88,7 @@ def build_solver_config(
     wake_spacing = nominal_wake_spacing(TIME_STEP)
     return VPMSetup(
         time_step_size=TIME_STEP,
-        processing_unit="AUTO",
+        compute_device="AUTO",
         time_integration="COUPLED",
         coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
         coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
@@ -113,21 +113,21 @@ def build_solver_config(
             ]
         ),
         viscous=ViscousConfig.cs(
-            viscosity=KINEMATIC_VISCOSITY,
-            characteristic_distance=wake_spacing,
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            particle_spacing=wake_spacing,
         ),
         velocity=VelocityConfig.treecode(
             theta=TREECODE_THETA,
             sort_particle_targets=True,
             traversal_block_dim=128,
         ),
-        particles_kernel="WINCKELMANS",
+        particle_kernel="WINCKELMANS",
         samplers=list(samplers),
-        backup_file_name=CASE_NAME,
-        backup_directory=str(SOLUTION_DIR),
+        checkpoint_name=CASE_NAME,
+        checkpoint_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
-        backup_frequency=cadence_steps(backup_period, TIME_STEP),
-        logging_frequency=cadence_steps(sample_period, TIME_STEP),
+        checkpoint_interval_steps=cadence_steps(backup_period, TIME_STEP),
+        logging_interval_steps=cadence_steps(sample_period, TIME_STEP),
         export_flow_integrals=True,
     )
 
@@ -171,12 +171,12 @@ def write_manifest(solver: VPMSolver) -> None:
         "case": "rotorFlow",
         "dt": TIME_STEP,
         "num_steps": NUMBER_OF_STEPS,
-        "sample_interval": cfg.logging_frequency * TIME_STEP,
-        "raw_backup_interval": cfg.backup_frequency * TIME_STEP,
+        "sample_interval": cfg.logging_interval_steps * TIME_STEP,
+        "raw_backup_interval": cfg.checkpoint_interval_steps * TIME_STEP,
         "treecode_theta": cfg.velocity.theta,
-        "kernel": cfg.particles_kernel,
+        "kernel": cfg.particle_kernel,
         "molecular_viscosity": cfg.viscous.viscosity,
-        "wake_characteristic_distance": cfg.viscous.characteristic_distance,
+        "wake_characteristic_distance": cfg.viscous.particle_spacing,
         "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
         "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
         "coupled_max_substeps": cfg.coupled_max_substeps,
@@ -245,7 +245,7 @@ def main() -> int:
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_frequency=cadence_steps(sample_period, TIME_STEP),
+        logging_interval_steps=cadence_steps(sample_period, TIME_STEP),
     )
 
     # Downstream planes at 1.5R, 3R, and 4.5R.

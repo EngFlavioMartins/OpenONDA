@@ -132,14 +132,14 @@ def test_coupler_setup_owns_no_solver_physics(bench):
 
 def test_vpm_setup_compatible(bench, vpm):
     assert type(vpm).__name__ == "VPMSetup"
-    assert vpm.viscous.viscosity == pytest.approx(bench.NU)
+    assert vpm.viscous.kinematic_viscosity == pytest.approx(bench.NU)
     assert tuple(vpm.freestream_velocity) == tuple(bench.FREESTREAM_VELOCITY)
     ratio = vpm.time_step_size / bench.FVM_TIME_STEP_SIZE
     assert ratio == pytest.approx(round(ratio))
-    domain = np.asarray(vpm.vpm_domain_bounds, dtype=float)
+    domain = np.asarray(vpm.domain_bounds, dtype=float)
     box = np.asarray(bench.FVM_BOX, dtype=float)
     assert np.all(domain[::2] <= box[::2]) and np.all(domain[1::2] >= box[1::2])
-    assert vpm.processing_unit == "AUTO"
+    assert vpm.compute_device == "AUTO"
     assert vpm.precision == "f32"
     assert vpm.panel_solver.bc_type == "NEUMANN"
     assert vpm.panel_solver.coupling_scope == "vpm_bc"
@@ -239,7 +239,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
 
     class _FakeVPMConfig:
         viscous = _FakeViscous()
-        vpm_domain_bounds = None
+        domain_bounds = None
 
     class _FakeVPM:
         config = _FakeVPMConfig()
@@ -297,7 +297,7 @@ def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, 
 
     class _FakeVPMConfig:
         viscous = _FakeViscous()
-        vpm_domain_bounds = None
+        domain_bounds = None
 
     class _FakeVPM:
         config = _FakeVPMConfig()

@@ -169,6 +169,59 @@ def print_openonda_header(precision="f32"):
     print(s)
 
 
+class _ActiveOutputRedirection:
+    """Own one process-global VPM stdout/stderr redirection."""
+
+    def __init__(
+        self,
+        stdout_original,
+        stderr_original,
+        stdout_redirected,
+        stderr_redirected,
+        file_handle,
+    ) -> None:
+        self.stdout_original = stdout_original
+        self.stderr_original = stderr_original
+        self.stdout_redirected = stdout_redirected
+        self.stderr_redirected = stderr_redirected
+        self.file_handle = file_handle
+        self.closed = False
+
+    def restore(self) -> None:
+        """Restore streams if still owned by this redirection and close its file."""
+        global _ACTIVE_OUTPUT_REDIRECTION
+
+        if self.closed:
+            if _ACTIVE_OUTPUT_REDIRECTION is self:
+                _ACTIVE_OUTPUT_REDIRECTION = None
+            return
+
+        import sys
+
+        if sys.stdout is self.stdout_redirected:
+            sys.stdout = self.stdout_original
+        if sys.stderr is self.stderr_redirected:
+            sys.stderr = self.stderr_original
+
+        try:
+            self.file_handle.flush()
+        finally:
+            self.file_handle.close()
+            self.closed = True
+            if _ACTIVE_OUTPUT_REDIRECTION is self:
+                _ACTIVE_OUTPUT_REDIRECTION = None
+
+
+_ACTIVE_OUTPUT_REDIRECTION: _ActiveOutputRedirection | None = None
+_OUTPUT_ATEXIT_REGISTERED = False
+
+
+def _restore_active_output_redirection() -> None:
+    """Close the one active VPM log redirection, if any."""
+    if _ACTIVE_OUTPUT_REDIRECTION is not None:
+        _ACTIVE_OUTPUT_REDIRECTION.restore()
+
+
 class Logging:
     """
     Centralized logging class for VPM solver output.
@@ -362,11 +415,11 @@ class Logging:
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
-        lines.append(f"  Processing Unit          : {system.processing_unit}")
+        lines.append(f"  Processing Unit          : {system.compute_device}")
         lines.append(f"  Time Step Size           : {system.time_step_size:.3e} s")
         lines.append(f"  Current Time Step        : {system.step}")
         lines.append(f"  Simulation Time          : {system.time:.3e} s")
-        lines.append(f"  Wall-clock Time          : {system.simulation_time:.2f} s")
+        lines.append(f"  Wall-clock Time          : {system.wall_time:.2f} s")
         return lines
 
     @staticmethod
@@ -416,8 +469,8 @@ class Logging:
                 return lines
 
             scheme = getattr(system, "viscous_scheme", None) or getattr(visc_cfg, "scheme", None)
-            particle_spacing = getattr(visc_cfg, "characteristic_distance", None)
-            nu = getattr(visc_cfg, "viscosity", None)
+            particle_spacing = getattr(visc_cfg, "particle_spacing", None)
+            nu = getattr(visc_cfg, "kinematic_viscosity", None)
 
             # Derive limit and label from the ViscousConfig stability methods.
             limit: float | None = None
@@ -491,7 +544,7 @@ class Logging:
                 lines.append(f"    Mean                   : {np.mean(viscosities_eff):.3e} m²/s")
         else:
             visc_cfg = getattr(getattr(system, "setup", None), "viscous", None)
-            nu = getattr(visc_cfg, "viscosity", None)
+            nu = getattr(visc_cfg, "kinematic_viscosity", None)
             if nu is not None and nu > 0:
                 lines.append(f"  Molecular Viscosity (nu)    : {nu:.3e} m²/s")
             else:
@@ -505,7 +558,7 @@ class Logging:
         lines.append("\n" + "-" * 60)
         lines.append("TURBULENCE MODEL")
         lines.append("-" * 60)
-        if hasattr(system, "LES") and system.turbulence_model is not None:
+        if system.turbulence_model is not None:
             lines.append(str(system.turbulence_model))
         elif system.flow_model == "INVISCID":
             lines.append("  Status: Not applicable (INVISCID — stretching only)")
@@ -524,11 +577,11 @@ class Logging:
         lines.append("\n" + "-" * 60)
         lines.append("MONITORING & I/O")
         lines.append("-" * 60)
-        lines.append(f"  Snapshot Frequency       : {system.backup_frequency} steps")
+        lines.append(f"  Snapshot Frequency       : {system.checkpoint_interval_steps} steps")
         lines.append(f"  Snapshot Prefix          : {prefix}")
-        logging_freq = getattr(system.setup, "logging_frequency", 0)
+        logging_freq = system.setup.logging_interval_steps
         lines.append(f"  Logging Frequency        : {logging_freq} steps")
-        timing_freq = getattr(system, "timing_frequency", 0)
+        timing_freq = system.timing_interval_steps
         lines.append(f"  Timing Report Frequency  : {timing_freq} steps")
         return lines
 
@@ -626,7 +679,7 @@ class Logging:
             lines.append(f"    C_stab                 : {coefficient:.3f}")
         else:
             lines.append("  Stretching viscosity     : Disabled")
-        regularization_interval_steps = getattr(cfg, "regularization_frequency", 0)
+        regularization_interval_steps = getattr(cfg, "regularization_interval_steps", 0)
         if regularization_interval_steps > 0:
             lines.append("  Conservative filter     : Enabled")
             lines.append(f"    Check every           : {regularization_interval_steps:d} steps")
@@ -733,15 +786,15 @@ class Logging:
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
-        lines.append(f"  Processing Unit          : {system.processing_unit}")
-        lines.append(f"  Particle Kernel          : {system.particles_kernel}")
+        lines.append(f"  Processing Unit          : {system.compute_device}")
+        lines.append(f"  Particle Kernel          : {system.particle_kernel}")
         lines.append(f"  Viscous Scheme           : {system.viscous_scheme}")
         lines.append(f"  Cutoff Radius Factor     : {DEFAULT_CUTOFF_RADIUS_FACTOR}")
         lines.append(f"  Time Step Size           : {system.time_step_size:.2e} s")
 
         # Turbulence model information
         if (
-            hasattr(system, "turbulence")
+            system.turbulence_model is not None
             and system.turbulence_model
             and hasattr(system.turbulence_model, "get_filter_info")
         ):
@@ -768,7 +821,7 @@ class Logging:
         lines.append("SIMULATION STATE:")
         lines.append(f"  Current Time Step        : {system.step}")
         lines.append(f"  Simulation Time          : {system.time:.2E} s")
-        lines.append(f"  Wall-clock Time          : {system.simulation_time:.2E} s")
+        lines.append(f"  Wall-clock Time          : {system.wall_time:.2E} s")
         lines.append(f"  Total Strength           : {total_strength:.2E} m³/s")
 
         # I/O and monitoring
@@ -776,7 +829,7 @@ class Logging:
         prefix = f"vpm_{name}" if name else "vpm"
         lines.append("")
         lines.append("MONITORING & I/O:")
-        lines.append(f"  Snapshot Frequency       : {system.backup_frequency} steps")
+        lines.append(f"  Snapshot Frequency       : {system.checkpoint_interval_steps} steps")
         lines.append(f"  Snapshot Prefix          : {prefix}")
 
         lines.append("-" * 60)
@@ -791,7 +844,7 @@ class Logging:
             system: Solver instance containing `LES` turbulence model object
         """
         # Only log if LES model is active
-        if not hasattr(system, "LES") or system.turbulence_model is None:
+        if system.turbulence_model is None:
             return
 
         les = system.turbulence_model
@@ -1009,66 +1062,71 @@ class Logging:
 
     @staticmethod
     def setup_output_redirection(solver: Any) -> None:
-        """Configure solver output as file-only, tee, or console-only.
+        """Configure process-global VPM output redirection.
+
+        Only one solver can own ``sys.stdout``/``sys.stderr`` at a time. Before
+        a new solver takes ownership, any previous VPM redirection is restored
+        and its log file is closed. This prevents sequential solver construction
+        from leaking one file descriptor per solver.
 
         Naming policy:
-          - backup_file_name empty/None  → vpm.log
-          - backup_file_name provided    → vpm_<backup_file_name>.log
-
-        Sets the following attributes on *solver*:
-          log_file_path, _stdout_original, _stderr_original,
-          _log_file_handle, _restore_output_streams.
+          - checkpoint_name empty/None  -> vpm.log
+          - checkpoint_name provided    -> vpm_<checkpoint_name>.log
         """
         import atexit
         import sys
 
+        global _ACTIVE_OUTPUT_REDIRECTION, _OUTPUT_ATEXIT_REGISTERED
+
+        if _ACTIVE_OUTPUT_REDIRECTION is not None:
+            _ACTIVE_OUTPUT_REDIRECTION.restore()
+
         log_mode = getattr(getattr(solver, "setup", None), "log_mode", "tee")
+        solver._stdout_original = sys.stdout  # type: ignore[attr-defined]
+        solver._stderr_original = sys.stderr  # type: ignore[attr-defined]
+
         if log_mode == "console":
             solver.log_file_path = None  # type: ignore[attr-defined]
-            solver._stdout_original = sys.stdout  # type: ignore[attr-defined]
-            solver._stderr_original = sys.stderr  # type: ignore[attr-defined]
             solver._log_file_handle = None  # type: ignore[attr-defined]
             solver._restore_output_streams = lambda: None  # type: ignore[attr-defined]
             return
         if log_mode not in {"file", "tee"}:
             raise ValueError(f"Unknown log_mode {log_mode!r}")
 
-        backup_name = (getattr(solver, "backup_file_name", "") or "").strip()
-        log_basename = f"vpm_{backup_name}.log" if backup_name else "vpm.log"
-        log_directory = getattr(solver, "backup_directory", None) or "solution"
+        checkpoint_name = (getattr(solver, "checkpoint_name", "") or "").strip()
+        log_basename = f"vpm_{checkpoint_name}.log" if checkpoint_name else "vpm.log"
+        log_directory = getattr(solver, "checkpoint_directory", None) or "solution"
         os.makedirs(log_directory, exist_ok=True)
 
         solver.log_file_path = os.path.join(log_directory, log_basename)  # type: ignore[attr-defined]
-        solver._stdout_original = sys.stdout  # type: ignore[attr-defined]
-        solver._stderr_original = sys.stderr  # type: ignore[attr-defined]
-        solver._log_file_handle = open(  # noqa: SIM115  # type: ignore[attr-defined]
-            solver.log_file_path, "w", buffering=1, encoding="utf-8"
+        file_handle = open(  # noqa: SIM115
+            solver.log_file_path,
+            "w",
+            buffering=1,
+            encoding="utf-8",
         )
+        solver._log_file_handle = file_handle  # type: ignore[attr-defined]
+
         if log_mode == "tee":
-            sys.stdout = _TeeLogStream(  # type: ignore[assignment]
-                solver._log_file_handle,
-                solver._stdout_original,  # type: ignore[attr-defined]
-            )
-            sys.stderr = _TeeLogStream(  # type: ignore[assignment]
-                solver._log_file_handle,
-                solver._stderr_original,  # type: ignore[attr-defined]
-            )
+            stdout_redirected = _TeeLogStream(file_handle, solver._stdout_original)
+            stderr_redirected = _TeeLogStream(file_handle, solver._stderr_original)
         else:
-            redirected = _LineBufferedLogStream(solver._log_file_handle)  # type: ignore[arg-type]
-            sys.stdout = redirected  # type: ignore[assignment]
-            sys.stderr = redirected  # type: ignore[assignment]
+            stdout_redirected = _LineBufferedLogStream(file_handle)
+            stderr_redirected = stdout_redirected
 
-        def _restore() -> None:
-            try:
-                sys.stdout = solver._stdout_original  # type: ignore[attr-defined]
-                sys.stderr = solver._stderr_original  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            try:
-                solver._log_file_handle.flush()  # type: ignore[attr-defined]
-                solver._log_file_handle.close()  # type: ignore[attr-defined]
-            except Exception:
-                pass
+        sys.stdout = stdout_redirected  # type: ignore[assignment]
+        sys.stderr = stderr_redirected  # type: ignore[assignment]
 
-        solver._restore_output_streams = _restore  # type: ignore[attr-defined]
-        atexit.register(_restore)
+        redirection = _ActiveOutputRedirection(
+            solver._stdout_original,
+            solver._stderr_original,
+            stdout_redirected,
+            stderr_redirected,
+            file_handle,
+        )
+        _ACTIVE_OUTPUT_REDIRECTION = redirection
+        solver._restore_output_streams = redirection.restore  # type: ignore[attr-defined]
+
+        if not _OUTPUT_ATEXIT_REGISTERED:
+            atexit.register(_restore_active_output_redirection)
+            _OUTPUT_ATEXIT_REGISTERED = True

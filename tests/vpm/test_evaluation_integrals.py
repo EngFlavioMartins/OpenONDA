@@ -27,7 +27,7 @@ def _two_particle_solver(make_solver, kernel_name, gamma1, gamma2):
     """Create a solver with two particles at fixed positions."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -36,10 +36,10 @@ def _two_particle_solver(make_solver, kernel_name, gamma1, gamma2):
     solver.add_vortex_particles(
         position=np.array([[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]]),
         velocity=np.zeros((2, 3)),
-        circulation=np.array([gamma1, gamma2]),
-        radius=np.full(2, _SIGMA),
+        vortex_strength=np.array([gamma1, gamma2]),
+        core_radius=np.full(2, _SIGMA),
         volume=np.full(2, _VOLUME),
-        viscosity=np.zeros(2),
+        kinematic_viscosity=np.zeros(2),
     )
     return solver
 
@@ -85,7 +85,7 @@ def test_empty_system_zero_integrals(kernel_name, backend, solver_for_backend):
     """
     solver = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -105,7 +105,7 @@ def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_bac
     """Unequal cores must use Σ sigma_i² Gamma_i, not mean(sigma²) Σ Gamma."""
     solver = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel="GAUSSIAN",
+        particle_kernel="GAUSSIAN",
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -114,10 +114,10 @@ def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_bac
     solver.add_vortex_particles(
         position=np.zeros((2, 3)),
         velocity=np.zeros((2, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]]),
-        radius=np.array([0.1, 0.3]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]]),
+        core_radius=np.array([0.1, 0.3]),
         volume=np.full(2, _VOLUME),
-        viscosity=np.zeros(2),
+        kinematic_viscosity=np.zeros(2),
     )
 
     integrals = solver.field_diagnostics.compute_flow_integrals(
@@ -244,7 +244,7 @@ def test_translation_invariance_energy_enstrophy(kernel_name, backend, solver_fo
     shift = np.array([10.0, -5.0, 3.0])
     solver2 = solver_for_backend(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -253,10 +253,10 @@ def test_translation_invariance_energy_enstrophy(kernel_name, backend, solver_fo
     solver2.add_vortex_particles(
         position=np.array([[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]]) + shift,
         velocity=np.zeros((2, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
-        radius=np.full(2, _SIGMA),
+        vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+        core_radius=np.full(2, _SIGMA),
         volume=np.full(2, _VOLUME),
-        viscosity=np.zeros(2),
+        kinematic_viscosity=np.zeros(2),
     )
     solver1.advance()
     solver1._update_all_flow_integrals()

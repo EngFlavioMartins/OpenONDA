@@ -2,9 +2,9 @@ import pytest
 import taichi as ti
 
 from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 from source.solvers.VPM.core import solver as solver_module
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 
 def _pretend_vulkan_on_cpu(monkeypatch):
@@ -20,12 +20,12 @@ def _pretend_vulkan_on_cpu(monkeypatch):
 def _grid_diffusion_config(**kwargs) -> VPMSetup:
     return VPMSetup(
         time_step_size=0.01,
-        processing_unit="VULKAN",
+        compute_device="VULKAN",
         stretching=StretchingConfig.disabled(),
         advection=AdvectionConfig(scheme="NONE"),
-        viscous=ViscousConfig.dvh(particle_spacing=0.25, padding=0.0, viscosity=1.0e-3),
-        backup_frequency=0,
-        logging_frequency=0,
+        viscous=ViscousConfig.dvh(particle_spacing=0.25, padding=0.0, kinematic_viscosity=1.0e-3),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
         **kwargs,
     )
 
@@ -34,8 +34,8 @@ def test_vulkan_grid_diffusion_requires_domain_bounds(monkeypatch, tmp_path):
     reset_taichi_backend()
     _pretend_vulkan_on_cpu(monkeypatch)
     try:
-        with pytest.raises(ValueError, match="requires vpm_domain_bounds"):
-            VPMSolver(_grid_diffusion_config(backup_directory=str(tmp_path)))
+        with pytest.raises(ValueError, match="requires domain_bounds"):
+            VPMSolver(_grid_diffusion_config(checkpoint_directory=str(tmp_path)))
     finally:
         reset_taichi_backend()
 
@@ -46,11 +46,11 @@ def test_vulkan_grid_diffusion_preallocates_fixed_domain_grid(monkeypatch, tmp_p
     try:
         solver = VPMSolver(
             _grid_diffusion_config(
-                backup_directory=str(tmp_path),
-                vpm_domain_bounds=[-0.5, 0.5, -0.25, 0.25, -0.25, 0.25],
+                checkpoint_directory=str(tmp_path),
+                domain_bounds=[-0.5, 0.5, -0.25, 0.25, -0.25, 0.25],
             )
         )
-        assert solver.processing_unit == "VULKAN"
+        assert solver.compute_device == "VULKAN"
         assert solver.physics._require_fixed_grid_allocation is True
         assert solver.physics._grid_shape == (5, 5, 5)
     finally:
@@ -64,17 +64,19 @@ def test_cpu_grid_diffusion_does_not_preallocate_the_removal_domain(tmp_path):
         solver = VPMSolver(
             VPMSetup(
                 time_step_size=0.01,
-                processing_unit="CPU",
+                compute_device="CPU",
                 stretching=StretchingConfig.disabled(),
                 advection=AdvectionConfig(scheme="NONE"),
-                viscous=ViscousConfig.dvh(particle_spacing=0.25, padding=3.0, viscosity=1.0e-3),
-                vpm_domain_bounds=[-2.0, 10.0, -2.0, 2.0, -2.0, 2.0],
-                backup_frequency=0,
-                logging_frequency=0,
-                backup_directory=str(tmp_path),
+                viscous=ViscousConfig.dvh(
+                    particle_spacing=0.25, padding=3.0, kinematic_viscosity=1.0e-3
+                ),
+                domain_bounds=[-2.0, 10.0, -2.0, 2.0, -2.0, 2.0],
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
             )
         )
-        assert solver.processing_unit == "CPU"
+        assert solver.compute_device == "CPU"
         assert solver.physics._require_fixed_grid_allocation is False
         assert solver.physics._grid_a is None
     finally:

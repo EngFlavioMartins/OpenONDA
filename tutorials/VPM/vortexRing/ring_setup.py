@@ -89,7 +89,7 @@ def run_case(
     time_integration: str = "FRACTIONAL",
     velocity_method: str = "TREECODE",
     treecode_theta: float = 0.3,
-    processing_unit: str = "AUTO",
+    compute_device: str = "AUTO",
 ) -> None:
     if widnall_amplitude < 0.0:
         raise ValueError("widnall_amplitude must be non-negative")
@@ -237,13 +237,13 @@ def run_case(
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=time_step,
-            processing_unit=processing_unit,
+            compute_device=compute_device,
             time_integration=time_integration,
             advection=AdvectionConfig(scheme="RK3"),
             turbulence=(
                 TurbulenceConfig.dns()
                 if mode == "dns"
-                else TurbulenceConfig.les_smagorinsky(cs=0.20)
+                else TurbulenceConfig.les_smagorinsky(c_s=0.20)
             ),
             stretching=stretching_setup(stretching),
             stabilization=StabilizationConfig.disabled(),
@@ -257,10 +257,10 @@ def run_case(
                 )
             ),
             viscous=ViscousConfig.cs(),
-            logging_frequency=cadence_steps(SAMPLE_PERIOD, time_step),
-            backup_frequency=cadence_steps(BACKUP_PERIOD, time_step),
-            backup_file_name=label,
-            backup_directory=str(output_directory),
+            logging_interval_steps=cadence_steps(SAMPLE_PERIOD, time_step),
+            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD, time_step),
+            checkpoint_name=label,
+            checkpoint_directory=str(output_directory),
             sample_subdirectory=sample_subdirectory,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
             max_particles=100_000,
@@ -278,7 +278,7 @@ def run_case(
     if particle_distribution == "hexagonal":
         solver.remove_weak_particles(percent=0.1, per_group=True)
 
-    initial_strength = np.abs(solver.particles.circulation_cpu()).max()
+    initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
     manifest = {
         "status": "running",
         "variant": name,
@@ -288,7 +288,7 @@ def run_case(
         "time_integration": time_integration,
         "velocity_method": velocity_method,
         "treecode_theta": treecode_theta if velocity_method == "TREECODE" else None,
-        "processing_unit": processing_unit,
+        "processing_unit": compute_device,
         "ring_radius": RING_RADIUS,
         "core_radius": CORE_RADIUS,
         "ring_circulation": RING_STRENGTH,
@@ -323,7 +323,7 @@ def run_case(
     termination_reason = None
     for _ in range(number_of_steps):
         solver.advance()
-        if np.abs(solver.particles.circulation_cpu()).max() > 50 * initial_strength:
+        if np.abs(solver.particles.vortex_strength_cpu()).max() > 50 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
         if solver.step % cadence_steps(SAMPLE_PERIOD, time_step):
@@ -442,7 +442,7 @@ def main() -> int:
         time_integration=args.time_integration,
         velocity_method=args.velocity_method,
         treecode_theta=args.treecode_theta,
-        processing_unit=args.processing_unit,
+        compute_device=args.compute_device,
     )
     return 0
 

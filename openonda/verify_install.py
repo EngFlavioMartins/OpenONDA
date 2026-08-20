@@ -17,11 +17,11 @@ import openonda
 import openonda.coupler
 from openonda.fvm import (
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
     coupling_box_mesh,
@@ -75,18 +75,18 @@ def _verify_native_fvm() -> dict[str, float | int]:
     )
     setup = FVMSetup(
         case_name="installedWheelSmoke",
-        execution=ExecutionConfig(operator_backend="numpy"),
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="upwind"),
+        execution=ComputeConfig(operator_backend="numpy"),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, output_interval_steps=100),
+        schemes=DiscretizationConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=1, n_outer_correctors=1),
-        transport=TransportConfig(density=1.0, nu=0.01),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("numericalBoundary", [1.0, 0.0, 0.0]),
             BoundaryConfig.wall("body"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
 
     with (
@@ -97,8 +97,8 @@ def _verify_native_fvm() -> dict[str, float | int]:
         try:
             solver.auto_write = False
             solver.advance(0.01)
-            velocity = np.asarray(solver.U[: mesh["n_elements"]], dtype=float)
-            pressure = np.asarray(solver.p[: mesh["n_elements"]], dtype=float)
+            velocity = np.asarray(solver.velocity[: mesh["n_cells"]], dtype=float)
+            pressure = np.asarray(solver.kinematic_pressure[: mesh["n_cells"]], dtype=float)
             diagnostics = solver.last_diagnostics
         finally:
             solver.close()
@@ -112,7 +112,7 @@ def _verify_native_fvm() -> dict[str, float | int]:
     ):
         raise RuntimeError("Native FVM installation smoke had an unconverged linear solve")
     return {
-        "cells": int(mesh["n_elements"]),
+        "cells": int(mesh["n_cells"]),
         "cfl_max": float(diagnostics.cfl_max),
         "continuity_max": float(diagnostics.continuity_max),
         "linear_solves": len(diagnostics.linear_solves),

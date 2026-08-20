@@ -116,7 +116,7 @@ def run() -> None:
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
-            processing_unit="AUTO",
+            compute_device="AUTO",
             vlm=vlm_setup,
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig.cs(),
@@ -126,15 +126,15 @@ def run() -> None:
                 traversal_block_dim=128,
             ),
             turbulence=TurbulenceConfig.dns(),
-            particles_kernel="WINCKELMANS",
+            particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=StabilizationConfig(
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
-            logging_frequency=sample_steps,
-            backup_frequency=cadence_steps(BACKUP_PERIOD),
-            backup_file_name=CASE_NAME,
-            backup_directory=str(SOLUTION_DIR),
+            logging_interval_steps=sample_steps,
+            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD),
+            checkpoint_name=CASE_NAME,
+            checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
             samplers=(
                 SurfaceSampler(

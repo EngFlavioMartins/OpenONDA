@@ -183,7 +183,7 @@ def run_case(
         force=ForceConfig.kutta_joukowski(),
         sigma_factor=PARTICLE_CORE_FACTOR,
         sample_surface_forces=True,
-        logging_frequency=sample_steps,
+        logging_interval_steps=sample_steps,
     )
     final_samplers = crossflow_samplers(name) if sample_planes else ()
     samples_dir = resolve_samples_dir(SOLUTION_DIR, name)
@@ -200,7 +200,7 @@ def run_case(
         setup=VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP,
-            processing_unit="AUTO",
+            compute_device="AUTO",
             advection=AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             freestream_velocity=freestream_velocity,
@@ -209,10 +209,10 @@ def run_case(
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
-            logging_frequency=sample_steps,
-            backup_frequency=cadence_steps(BACKUP_PERIOD),
-            backup_file_name=name,
-            backup_directory=str(SOLUTION_DIR),
+            logging_interval_steps=sample_steps,
+            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD),
+            checkpoint_name=name,
+            checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=name,
             max_particles=120_000,
             final_samplers=final_samplers,

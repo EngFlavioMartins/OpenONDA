@@ -172,7 +172,7 @@ class SamplerExecutor:
         with filepath.open("a", newline="", encoding="utf-8") as stream:
             writer = csv.writer(stream, lineterminator="\n")
             if write_header:
-                writer.writerow(["time", "time_step", *SAMPLER_CSV_COLUMNS])
+                writer.writerow(["time", "step", *SAMPLER_CSV_COLUMNS])
             step = "" if step is None else int(step)
             for values in zip(
                 *(np.asarray(data[name]).reshape(-1) for name in SAMPLER_CSV_COLUMNS),

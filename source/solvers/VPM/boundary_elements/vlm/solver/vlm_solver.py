@@ -87,7 +87,7 @@ class VLMSolver:
             if setup.freestream_velocity is None
             else np.array(setup.freestream_velocity, dtype=np.float64)
         )
-        self.logging_frequency = setup.logging_frequency
+        self.logging_interval_steps = setup.logging_interval_steps
         self.density = setup.density
         self.viscosity = setup.viscosity
         self.sigma_factor = setup.sigma_factor
@@ -1320,7 +1320,7 @@ class VLMSolver:
             return 0
 
         n_panels = self.lattice.num_panels
-        n_particles = particles.number_of_particles
+        n_particles = particles.n_particles
 
         if n_panels == 0 or n_particles == 0:
             return 0
@@ -1348,7 +1348,7 @@ class VLMSolver:
             n_keep = int(keep_mask.sum())
 
             if n_keep == 0:
-                particles.number_of_particles = 0
+                particles.n_particles = 0
                 particles.sync_device_counter()
                 particles._cached_step = -1
                 return n_hits
@@ -1358,10 +1358,10 @@ class VLMSolver:
             new_circulation = particles.circulation.to_numpy()[:n_particles][keep_mask]
             new_radius = particles.radius.to_numpy()[:n_particles][keep_mask]
             new_volume = particles.volume.to_numpy()[:n_particles][keep_mask]
-            new_viscosity = particles.viscosity.to_numpy()[:n_particles][keep_mask]
-            new_viscosity_turbulent = particles.viscosity_turbulent.to_numpy()[:n_particles][
-                keep_mask
-            ]
+            new_viscosity = particles.kinematic_viscosity.to_numpy()[:n_particles][keep_mask]
+            new_viscosity_turbulent = particles.kinematic_viscosity_turbulent.to_numpy()[
+                :n_particles
+            ][keep_mask]
             new_group_id = particles.group_id.to_numpy()[:n_particles][keep_mask]
             new_zone_id = particles.zone_id.to_numpy()[:n_particles][keep_mask]
             new_velocity_gradient = particles.velocity_gradient.to_numpy()[:n_particles][keep_mask]
@@ -1370,11 +1370,11 @@ class VLMSolver:
             particles.replace_from_numpy(
                 position=new_position,
                 velocity=new_velocity,
-                circulation=new_circulation,
-                radius=new_radius,
+                vortex_strength=new_circulation,
+                core_radius=new_radius,
                 volume=new_volume,
-                viscosity=new_viscosity,
-                viscosity_turbulent=new_viscosity_turbulent,
+                kinematic_viscosity=new_viscosity,
+                eddy_viscosity=new_viscosity_turbulent,
                 group_id=new_group_id,
                 zone_id=new_zone_id,
                 velocity_gradient=new_velocity_gradient,
@@ -1478,7 +1478,7 @@ class VLMSolver:
         V_external: np.ndarray,
         density: float = 1.0,
         U_ref: np.ndarray | None = None,
-        logging_frequency: int | None = None,
+        logging_interval_steps: int | None = None,
         step: int = 0,
         time: float | None = None,
     ) -> dict[str, np.ndarray] | None:
@@ -1525,7 +1525,11 @@ class VLMSolver:
         self._last_U_ref = U_ref
 
         # 3. Log forces if requested
-        log_freq = self.logging_frequency if logging_frequency is None else int(logging_frequency)
+        log_freq = (
+            self.logging_interval_steps
+            if logging_interval_steps is None
+            else int(logging_interval_steps)
+        )
         if log_freq > 0 and step % log_freq == 0:
             try:
                 self.log_forces_table(density, U_ref)
@@ -2145,7 +2149,7 @@ class VLMSolver:
                     self.lattice.wake_radii,
                     self.lattice.wake_volumes,
                     self.lattice.wake_group_ids,
-                    viscosity=self.viscosity,
+                    kinematic_viscosity=self.viscosity,
                 )
 
         # --------------------------------------------------------------

@@ -71,31 +71,31 @@ def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConf
     """Build one viscous model using the same spatial resolution for every case."""
     if scheme == "cs":
         return ViscousConfig.cs(
-            viscosity=viscosity,
-            characteristic_distance=spacing,
+            kinematic_viscosity=viscosity,
+            particle_spacing=spacing,
         )
     if scheme == "rwm":
         return ViscousConfig.rwm(
-            viscosity=viscosity,
-            characteristic_distance=spacing,
+            kinematic_viscosity=viscosity,
+            particle_spacing=spacing,
         )
     if scheme == "dvh":
         return ViscousConfig.dvh(
             particle_spacing=spacing,
             padding=DVH_PADDING,
-            viscosity=viscosity,
-            dvh_rd_ratio=DVH_RD_RATIO,
+            kinematic_viscosity=viscosity,
+            dvh_support_radius_ratio=DVH_RD_RATIO,
             threshold=DVH_THRESHOLD,
             threshold_mode="budget",
             max_nodes=DVH_MAX_NODES,
-            cap_abs_fraction=0.99,
+            cap_absolute_fraction=0.99,
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return ViscousConfig.gbd(
         particle_spacing=spacing,
-        viscosity=viscosity,
+        kinematic_viscosity=viscosity,
         max_nodes=GBD_MAX_NODES,
-        cap_abs_fraction=0.99,
+        cap_absolute_fraction=0.99,
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
 
@@ -211,15 +211,15 @@ def run_case(
                 multipole_order=TREECODE_MULTIPOLE_ORDER,
                 sort_particle_targets=True,
             ),
-            logging_frequency=sample_steps,
-            backup_frequency=backup_steps,
-            backup_file_name=case_name,
-            backup_directory=str(solution_dir),
+            logging_interval_steps=sample_steps,
+            checkpoint_interval_steps=backup_steps,
+            checkpoint_name=case_name,
+            checkpoint_directory=str(solution_dir),
             sample_subdirectory=case_name,
             samplers=scheduled_samplers,
             final_samplers=final_samplers,
-            vpm_domain_bounds=domain_bounds,
-            processing_unit="AUTO",
+            domain_bounds=domain_bounds,
+            compute_device="AUTO",
             random_seed=42,
         )
     )

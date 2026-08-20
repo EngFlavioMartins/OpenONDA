@@ -170,7 +170,7 @@ class FVMVPMCoupler:
                     mode,
                     scheme.lower(),
                 )
-        dom = vpm.setup.vpm_domain_bounds
+        dom = vpm.setup.domain_bounds
         if dom is not None:
             contains = (
                 dom[0] <= box[0]
@@ -188,7 +188,7 @@ class FVMVPMCoupler:
                     "Widen vpm_domain_bounds (or the VPM stabilization "
                     "remove_particles_by_bounds) to enclose fvm_box."
                 )
-        vpm_nu = vsc.viscosity
+        vpm_nu = vsc.kinematic_viscosity
         if vpm_nu is not None and abs(float(vpm_nu) - nu) > 1e-12:
             raise ValueError(
                 f"Incompatible kinematic viscosity: VPM viscous.viscosity="
@@ -525,7 +525,7 @@ class FVMVPMCoupler:
             assert self.transfer is not None
             vpm = self.vpm
             transfer = self.transfer
-            n_before = vpm.particles.number_of_particles
+            n_before = vpm.particles.n_particles
             sum_before = (
                 float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
                 if n_before > 0
@@ -536,7 +536,7 @@ class FVMVPMCoupler:
                 velocity=velocity_global,
                 velocity_gradient=gradient_global,
             )
-            n_after = vpm.particles.number_of_particles
+            n_after = vpm.particles.n_particles
             sum_after = (
                 float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
                 if n_after > 0

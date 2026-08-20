@@ -37,7 +37,7 @@ class PanelDiagnostics:
         diagnostics_history: dict,
         step: int,
         time: float,
-        backup_directory: str,
+        checkpoint_directory: str,
     ) -> None:
         if panel_solver is None:
             return
@@ -55,7 +55,7 @@ class PanelDiagnostics:
             freq = max(1, int(getattr(panel_solver, "logging_frequency", 1)))
             if step % freq == 0:
                 PanelDiagnostics.export_forces_csv(
-                    panel_solver, last_forces, time, step, backup_directory
+                    panel_solver, last_forces, time, step, checkpoint_directory
                 )
         except Exception as exc:
             print(f"(Warning) Failed to record panel diagnostics: {exc}")
@@ -66,9 +66,9 @@ class PanelDiagnostics:
         forces: dict,
         time: float,
         step: int,
-        backup_directory: str,
+        checkpoint_directory: str,
     ) -> None:
-        backup_dir = Path(backup_directory)
+        backup_dir = Path(checkpoint_directory)
         samples_dir = backup_dir / "samples"
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "panel_forces.csv"

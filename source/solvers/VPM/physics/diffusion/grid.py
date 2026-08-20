@@ -1233,12 +1233,12 @@ class _GridDiffusionMixin:
             viscosity_turbulent = np.zeros(M, dtype=np.float32)
         return {
             "position": new_pos,
-            "circulation": grid_np[ix, iy, iz].astype(np.float32),
+            "vortex_strength": grid_np[ix, iy, iz].astype(np.float32),
             "velocity": np.zeros((M, 3), dtype=np.float32),
             "volume": np.full(M, vol, dtype=np.float32),
-            "radius": np.full(M, r, dtype=np.float32),
-            "viscosity": np.full(M, nu, dtype=np.float32),
-            "viscosity_turbulent": viscosity_turbulent,
+            "core_radius": np.full(M, r, dtype=np.float32),
+            "kinematic_viscosity": np.full(M, nu, dtype=np.float32),
+            "eddy_viscosity": viscosity_turbulent,
             "zone_id": zone_winner_grid[ix, iy, iz].astype(np.int32),
             "group_id": group_winner_grid[ix, iy, iz].astype(np.int32),
         }

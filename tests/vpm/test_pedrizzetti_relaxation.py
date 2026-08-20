@@ -16,28 +16,28 @@ from source.solvers.VPM.config.types import (
 def _relaxation_solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolver:
     solver = VPMSolver(
         setup=VPMSetup(
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             max_particles=16,
             advection=AdvectionConfig(scheme="NONE"),
             stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig.cs(viscosity=0.01, characteristic_distance=0.5),
+            viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.5),
             stabilization=stabilization,
             velocity=VelocityConfig.direct(),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     count = 2
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0], [0.3, 0.0, 0.0]]),
         velocity=np.zeros((count, 3)),
-        circulation=np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]),
-        radius=np.full(count, 0.2),
+        vortex_strength=np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]),
+        core_radius=np.full(count, 0.2),
         volume=np.full(count, 0.5**3),
-        viscosity=np.full(count, 0.01),
-        viscosity_turbulent=np.zeros(count),
+        kinematic_viscosity=np.full(count, 0.01),
+        eddy_viscosity=np.zeros(count),
     )
     # curl of this gradient is 2 e_z for both particles: the first strength is
     # perpendicular to it, the second is perpendicular and twice as strong.
@@ -66,7 +66,7 @@ def test_relaxation_rotates_toward_vorticity_and_keeps_each_strength(tmp_path):
     expected = (
         np.array([1.0, 2.0])[:, None] * direction / np.linalg.norm(direction, axis=1)[:, None]
     )
-    np.testing.assert_allclose(solver.particles.circulation_cpu(), expected, rtol=1.0e-12)
+    np.testing.assert_allclose(solver.particles.vortex_strength_cpu(), expected, rtol=1.0e-12)
     assert diagnostics["pedrizzetti_misalignment_deg"] == pytest.approx(90.0)
     assert diagnostics["pedrizzetti_misalignment_max_deg"] == pytest.approx(90.0)
     assert diagnostics["pedrizzetti_strength_change_relative"] == pytest.approx(0.0, abs=1.0e-12)
@@ -78,7 +78,7 @@ def test_uncorrected_relaxation_shortens_a_misaligned_strength(tmp_path):
     factor = 0.25
     solver = _relaxation_solver(
         tmp_path,
-        StabilizationConfig.pedrizzetti_relaxation(factor=factor, conserve_strength=False),
+        StabilizationConfig.pedrizzetti_relaxation(factor=factor, preserve_vortex_strength=False),
     )
 
     diagnostics = solver.stabilization.operators.apply_pedrizzetti_relaxation(
@@ -87,7 +87,7 @@ def test_uncorrected_relaxation_shortens_a_misaligned_strength(tmp_path):
 
     # cos(theta) = 0 here, so every strength contracts by sqrt(1 - 2 f (1 - f)).
     contraction = np.sqrt(1.0 - 2.0 * factor * (1.0 - factor))
-    strength = np.linalg.norm(solver.particles.circulation_cpu(), axis=1)
+    strength = np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1)
     np.testing.assert_allclose(strength, contraction * np.array([1.0, 2.0]), rtol=1.0e-12)
     assert diagnostics["pedrizzetti_strength_change_relative"] == pytest.approx(contraction - 1.0)
 
@@ -96,11 +96,11 @@ def test_uncorrected_relaxation_shortens_a_misaligned_strength(tmp_path):
 def test_aligned_field_is_left_untouched(tmp_path):
     solver = _relaxation_solver(tmp_path, StabilizationConfig.pedrizzetti_relaxation())
     aligned = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0]])
-    solver.particles.set_field("circulation", aligned)
+    solver.particles.set_field("vortex_strength", aligned)
 
     diagnostics = solver.stabilization.operators.apply_pedrizzetti_relaxation(solver.particles, 0.3)
 
-    np.testing.assert_allclose(solver.particles.circulation_cpu(), aligned, atol=1.0e-12)
+    np.testing.assert_allclose(solver.particles.vortex_strength_cpu(), aligned, atol=1.0e-12)
     assert diagnostics["pedrizzetti_misalignment_deg"] == pytest.approx(0.0, abs=1.0e-6)
     assert diagnostics["pedrizzetti_strength_change_relative"] == pytest.approx(0.0, abs=1.0e-12)
 
@@ -109,7 +109,7 @@ def test_aligned_field_is_left_untouched(tmp_path):
 def test_step_applies_the_schedule_and_rotates_without_changing_strength(tmp_path):
     solver = _relaxation_solver(
         tmp_path,
-        StabilizationConfig.pedrizzetti_relaxation(factor=0.5, frequency=2, start_step=2),
+        StabilizationConfig.pedrizzetti_relaxation(factor=0.5, interval_steps=2, start_step=2),
     )
 
     solver.advance()
@@ -122,7 +122,7 @@ def test_step_applies_the_schedule_and_rotates_without_changing_strength(tmp_pat
     assert solver.stabilization.last_strength_growth == pytest.approx(0.0, abs=1e-12)
     assert solver.stabilization.last_vorticity_growth <= 1e-12
     np.testing.assert_allclose(
-        np.linalg.norm(solver.particles.circulation_cpu(), axis=1),
+        np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1),
         [1.0, 2.0],
         rtol=1.0e-12,
     )
@@ -135,18 +135,18 @@ def test_step_applies_the_schedule_and_rotates_without_changing_strength(tmp_pat
 def test_relaxation_configuration_is_validated_and_round_trips():
     stabilization = StabilizationConfig.pedrizzetti_relaxation(
         factor=0.4,
-        frequency=5,
+        interval_steps=5,
         start_step=10,
-        conserve_strength=False,
+        preserve_vortex_strength=False,
     )
     restored = VPMSetup.from_dict(VPMSetup(stabilization=stabilization).to_dict())
 
     assert restored.stabilization == stabilization
     assert stabilization.pedrizzetti_relaxation_enabled
     assert not StabilizationConfig.disabled().pedrizzetti_relaxation_enabled
-    with pytest.raises(ValueError, match="relaxation factor"):
+    with pytest.raises(ValueError, match="pedrizzetti_relaxation_factor"):
         StabilizationConfig.pedrizzetti_relaxation(factor=1.5)
-    with pytest.raises(ValueError, match="relaxation frequency"):
-        StabilizationConfig.pedrizzetti_relaxation(frequency=0)
-    with pytest.raises(ValueError, match="relaxation start step"):
+    with pytest.raises(ValueError, match="pedrizzetti_relaxation_interval_steps"):
+        StabilizationConfig.pedrizzetti_relaxation(interval_steps=0)
+    with pytest.raises(ValueError, match="pedrizzetti_relaxation_start_step"):
         StabilizationConfig.pedrizzetti_relaxation(start_step=-1)

@@ -38,17 +38,17 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
     from source.solvers.VPM.config.types import StretchingConfig, VelocityConfig, VPMSetup
 
     setup = VPMSetup.dns_simulation(
-        processing_unit=backend,
+        compute_device=backend,
         velocity=VelocityConfig.treecode(theta=0.5),
         stretching=StretchingConfig.transposed(
             scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
         ),
         max_particles=max(2 * n, 4096),
-        logging_frequency=0,
-        backup_frequency=0,
-        timing_frequency=0,
+        logging_interval_steps=0,
+        checkpoint_interval_steps=0,
+        timing_interval_steps=0,
         log_mode="console",
-        backup_directory=tmpdir,
+        checkpoint_directory=tmpdir,
     )
     solver = VPMSolver(setup=setup)
 

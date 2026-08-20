@@ -12,13 +12,13 @@ import numpy as np
 import pytest
 
 from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
 )
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 _SIGMA = 0.2
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -28,7 +28,7 @@ def _single_blob_solver(make_solver, kernel_name):
     """Create a solver with one z-circulation blob at the origin."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -36,10 +36,10 @@ def _single_blob_solver(make_solver, kernel_name):
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
     return solver
 
@@ -48,7 +48,7 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
     """Create a solver with two particles."""
     solver = make_solver(
         time_step_size=0.01,
-        particles_kernel=kernel_name,
+        particle_kernel=kernel_name,
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
         advection=AdvectionConfig(scheme="NONE"),
@@ -56,10 +56,10 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
     solver.add_vortex_particles(
         position=np.array([pos1, pos2]),
         velocity=np.zeros((2, 3)),
-        circulation=np.array([gamma1, gamma2]),
-        radius=np.full(2, _SIGMA),
+        vortex_strength=np.array([gamma1, gamma2]),
+        core_radius=np.full(2, _SIGMA),
         volume=np.full(2, _VOLUME),
-        viscosity=np.zeros(2),
+        kinematic_viscosity=np.zeros(2),
     )
     return solver
 
@@ -212,24 +212,24 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
     solver = VPMSolver(
         VPMSetup(
             time_step_size=0.01,
-            processing_unit="CPU",
-            particles_kernel="GAUSSIAN",
+            compute_device="CPU",
+            particle_kernel="GAUSSIAN",
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig(scheme="NONE"),
             advection=AdvectionConfig(scheme="NONE"),
-            backup_directory=str(tmp_path),
-            backup_frequency=0,
-            logging_frequency=0,
+            checkpoint_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
         )
     )
     sigma = 0.2
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.2, -0.4, 1.0]]),
-        radius=np.array([sigma]),
+        vortex_strength=np.array([[0.2, -0.4, 1.0]]),
+        core_radius=np.array([sigma]),
         volume=np.array([(4.0 / 3.0) * np.pi * sigma**3]),
-        viscosity=np.array([0.0]),
+        kinematic_viscosity=np.array([0.0]),
     )
 
     h = 1e-4
@@ -252,15 +252,15 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     solver = VPMSolver(
         VPMSetup(
             time_step_size=0.01,
-            processing_unit="CPU",
-            particles_kernel="GAUSSIAN",
+            compute_device="CPU",
+            particle_kernel="GAUSSIAN",
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig(scheme="NONE"),
             advection=AdvectionConfig(scheme="NONE"),
             velocity=VelocityConfig.treecode(theta=theta, multipole_order=2),
-            backup_directory=str(tmp_path),
-            backup_frequency=0,
-            logging_frequency=0,
+            checkpoint_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
         )
     )
     positions = np.array(
@@ -278,7 +278,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     solver.add_vortex_particles(
         position=positions,
         velocity=np.zeros_like(positions),
-        circulation=np.array(
+        vortex_strength=np.array(
             [
                 [0.2, -0.1, 0.6],
                 [-0.4, 0.3, 0.1],
@@ -290,9 +290,9 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
                 [0.2, 0.2, 0.4],
             ]
         ),
-        radius=np.full(len(positions), _SIGMA),
+        core_radius=np.full(len(positions), _SIGMA),
         volume=np.full(len(positions), _VOLUME),
-        viscosity=np.zeros(len(positions)),
+        kinematic_viscosity=np.zeros(len(positions)),
     )
 
     physics = solver.physics
@@ -347,8 +347,8 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     # accept that internal tree on the basis of a stale source revision.
     physics.velocity_self(
         solver.particles.position,
-        solver.particles.circulation,
-        solver.particles.radius,
+        solver.particles.vortex_strength,
+        solver.particles.core_radius,
         solver.particles.velocity,
         solver.particles.velocity_background,
         len(positions),
@@ -358,9 +358,9 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
 
     # Mutating a Biot--Savart source publishes a new particle revision and must
     # rebuild before the next target query; the cache may never serve this stale.
-    updated_circulation = solver.particles_circulation.copy()
+    updated_circulation = solver.particle_vortex_strength.copy()
     updated_circulation[0, 2] *= 1.1
-    solver.particles.set_field("circulation", updated_circulation)
+    solver.particles.set_field("vortex_strength", updated_circulation)
     solver.compute_target_velocities(target)
     assert len(tree_builds) == 4
 

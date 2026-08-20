@@ -39,14 +39,14 @@ class VLMDiagnostics:
         observed_dt:
             Wall-clock or physical dt observed for this step [s].
         """
-        if "flow_time" not in diagnostics_history:
+        if "time" not in diagnostics_history:
             return
-        ft_hist = diagnostics_history["flow_time"]
+        ft_hist = diagnostics_history["time"]
         if len(ft_hist) > 0 and ft_hist[-1] == time:
             return
         ft_hist.append(time)
-        if len(diagnostics_history["observed_dt"]) < len(ft_hist):
-            diagnostics_history["observed_dt"].append(float(observed_time_step_size))
+        if len(diagnostics_history["observed_time_step_size"]) < len(ft_hist):
+            diagnostics_history["observed_time_step_size"].append(float(observed_time_step_size))
 
     @staticmethod
     def record_vlm_diagnostics(
@@ -56,7 +56,7 @@ class VLMDiagnostics:
         diagnostics_history: dict,
         step: int,
         time: float,
-        backup_directory: str,
+        checkpoint_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
         """Record VLM force and circulation scalars and (if due) flush to CSV.
@@ -98,7 +98,7 @@ class VLMDiagnostics:
             gamma_bound_vec = np.sum(gamma_cum[te_mask, None] * bound_legs, axis=0)
             gamma_bound_y = float(gamma_bound_vec[1])
 
-            n_p = particles.number_of_particles
+            n_p = particles.n_particles
             gamma_wake_y = float(particles_strengths[:, 1].sum()) if n_p > 0 else 0.0
 
             lespnp = vlm_solver.lattice.lesp.to_numpy()[:n_panels]
@@ -106,8 +106,8 @@ class VLMDiagnostics:
 
             diagnostics_history["vlm_CL"].append(float(forces["CL"]))
             diagnostics_history["vlm_CD"].append(float(forces["CD"]))
-            diagnostics_history["vlm_gamma_bound_y"].append(gamma_bound_y)
-            diagnostics_history["vlm_gamma_wake_y"].append(gamma_wake_y)
+            diagnostics_history["vlm_bound_circulation_y"].append(gamma_bound_y)
+            diagnostics_history["vlm_wake_circulation_y"].append(gamma_wake_y)
             diagnostics_history["vlm_lesp_max"].append(lesp_max)
             diagnostics_history["vlm_n_particles"].append(float(n_p))
 
@@ -122,7 +122,7 @@ class VLMDiagnostics:
                     n_p,
                     time,
                     step,
-                    backup_directory,
+                    checkpoint_directory,
                     sample_subdirectory,
                 )
         except Exception as exc:
@@ -140,7 +140,7 @@ class VLMDiagnostics:
         n_p: int,
         time: float,
         step: int,
-        backup_directory: str,
+        checkpoint_directory: str,
         sample_subdirectory: str | None = None,
     ) -> None:
         """Append one row to ``<backup_directory>/samples/vlm_forces.csv``.
@@ -166,7 +166,7 @@ class VLMDiagnostics:
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(backup_directory, sample_subdirectory)
+        samples_dir = resolve_samples_dir(checkpoint_directory, sample_subdirectory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

@@ -34,15 +34,15 @@ def solver_and_rates(tmp_path_factory):
     rad = np.full(N, 0.15, np.float32)
     cfg = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="RK3"),
         stretching=StretchingConfig.transposed(scheme="RK3"),
         viscous=ViscousConfig(scheme="NONE"),
         velocity=VelocityConfig.treecode(theta=0.2),
         turbulence=TurbulenceConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=out,
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=out,
         clean=True,
         max_particles=N + 16,
     )
@@ -53,7 +53,7 @@ def solver_and_rates(tmp_path_factory):
         circ,
         rad,
         np.full(N, 1e-3, np.float32),
-        viscosity=np.full(N, 1e-3, np.float32),
+        kinematic_viscosity=np.full(N, 1e-3, np.float32),
         group_id=np.zeros(N, np.int32),
     )
     phys, pc, h = s.physics, s.particles, s.physics._stretching
@@ -64,11 +64,11 @@ def solver_and_rates(tmp_path_factory):
         phys._resize_temp_fields(len(pc))
         phys._zero_temp_fields()
         phys.compute_stretching_rate_kernel(
-            pc.position, pc.circulation, pc.radius, phys.dstr_dt_temp, m, len(pc)
+            pc.position, pc.vortex_strength, pc.core_radius, phys.dstr_dt_temp, m, len(pc)
         )
         direct[name] = phys.dstr_dt_temp.to_numpy()[: len(pc)].copy()
         h._use_treecode = True
-        h._rate(pc.position, pc.circulation, pc.radius, phys.dstr_dt_temp2, m, len(pc))
+        h._rate(pc.position, pc.vortex_strength, pc.core_radius, phys.dstr_dt_temp2, m, len(pc))
         treecode[name] = phys.dstr_dt_temp2.to_numpy()[: len(pc)].copy()
     yield direct, treecode
     s.reset_gpu()
@@ -111,7 +111,7 @@ def test_config_flag_plumbs_through():
 def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
     cfg = VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
+        compute_device="CPU",
         advection=AdvectionConfig(scheme="NONE"),
         stretching=StretchingConfig.disabled(),
         viscous=ViscousConfig(scheme="NONE"),
@@ -122,9 +122,9 @@ def test_velocity_treecode_tuning_flags_plumb_to_physics(tmp_path):
             traversal_block_dim=64,
         ),
         turbulence=TurbulenceConfig.inviscid(),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
         clean=True,
         max_particles=32,
     )

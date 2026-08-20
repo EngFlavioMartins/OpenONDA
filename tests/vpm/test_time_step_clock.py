@@ -33,22 +33,22 @@ _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 def _cpu_solver(tmp_path, time_step_size, viscous):
     config = VPMSetup(
         time_step_size=time_step_size,
-        processing_unit="CPU",
+        compute_device="CPU",
         stretching=StretchingConfig.disabled(),
         viscous=viscous,
         advection=AdvectionConfig(scheme="NONE"),
-        backup_frequency=0,
-        logging_frequency=0,
-        backup_directory=str(tmp_path),
+        checkpoint_interval_steps=0,
+        logging_interval_steps=0,
+        checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
-        circulation=np.array([[0.0, 0.0, 1.0]]),
-        radius=np.array([_SIGMA]),
+        vortex_strength=np.array([[0.0, 0.0, 1.0]]),
+        core_radius=np.array([_SIGMA]),
         volume=np.array([_VOLUME]),
-        viscosity=np.array([1e-3]),
+        kinematic_viscosity=np.array([1e-3]),
     )
     return solver
 
@@ -89,7 +89,7 @@ def test_flow_time_is_monotonic_across_a_dt_change(tmp_path):
 def test_cs_does_not_warn_about_stability_limit(tmp_path, capsys):
     """CS is analytic; a dt > h²/(4ν) is not an instability."""
     # h²/(4nu) = 0.0025 / (4e-3) = 0.625 s.  dt = 10 s is far beyond it.
-    viscous = ViscousConfig.cs(viscosity=1e-3, characteristic_distance=_SIGMA)
+    viscous = ViscousConfig.cs(kinematic_viscosity=1e-3, particle_spacing=_SIGMA)
     solver = _cpu_solver(tmp_path, time_step_size=10.0, viscous=viscous)
 
     with contextlib.redirect_stdout(io.StringIO()):
@@ -102,7 +102,9 @@ def test_cs_does_not_warn_about_stability_limit(tmp_path, capsys):
 
 
 def test_disabled_stretching_skips_velocity_gradient_evaluation(tmp_path, monkeypatch):
-    solver = _cpu_solver(tmp_path, time_step_size=0.02, viscous=ViscousConfig.cs(viscosity=1e-3))
+    solver = _cpu_solver(
+        tmp_path, time_step_size=0.02, viscous=ViscousConfig.cs(kinematic_viscosity=1e-3)
+    )
 
     def unexpected_gradient_evaluation(*args, **kwargs):
         raise AssertionError("disabled stretching must not evaluate velocity gradients")
@@ -120,12 +122,14 @@ def test_disabled_stretching_skips_velocity_gradient_evaluation(tmp_path, monkey
 
 
 def test_centroids_ignore_inactive_particle_capacity(tmp_path):
-    solver = _cpu_solver(tmp_path, time_step_size=0.02, viscous=ViscousConfig.cs(viscosity=1e-3))
+    solver = _cpu_solver(
+        tmp_path, time_step_size=0.02, viscous=ViscousConfig.cs(kinematic_viscosity=1e-3)
+    )
 
     # Particle fields are capacity-sized.  A replacement may leave arbitrary
     # values above the active count; diagnostics must never traverse them.
     solver.particles.position[1] = [np.nan, np.nan, np.nan]
-    solver.particles.circulation[1] = [np.nan, np.nan, np.nan]
+    solver.particles.vortex_strength[1] = [np.nan, np.nan, np.nan]
     solver.particles.group_id[1] = 0
 
     np.testing.assert_allclose(solver.centroid_of_circulation, [0.0, 0.0, 0.0])
@@ -153,29 +157,29 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
             time_step_size=0.02,
             time_integration="COUPLED",
             precision="f64",
-            processing_unit="CPU",
+            compute_device="CPU",
             max_particles=16,
             stretching=StretchingConfig.transposed(
                 scheme="RK2",
                 conserve_moments=True,
             ),
-            viscous=ViscousConfig.cs(viscosity=1.0e-3),
+            viscous=ViscousConfig.cs(kinematic_viscosity=1.0e-3),
             advection=AdvectionConfig(scheme="RK2"),
             velocity=VelocityConfig.direct(),
-            particles_kernel=particle_kernel,
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            particle_kernel=particle_kernel,
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     solver.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=circulation,
-        radius=radius,
+        vortex_strength=circulation,
+        core_radius=radius,
         volume=volume,
-        viscosity=np.full(count, 1.0e-3),
-        viscosity_turbulent=np.linspace(0.0, 0.02, count),
+        kinematic_viscosity=np.full(count, 1.0e-3),
+        eddy_viscosity=np.linspace(0.0, 0.02, count),
     )
 
     before = particle_moments(
@@ -187,8 +191,8 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
     solver.stepper._apply_core_spreading_diffusion(0.1)
     after = particle_moments(
         solver.particles.position_cpu(use_cache=False),
-        solver.particles.circulation_cpu(use_cache=False),
-        solver.particles.radius_cpu(use_cache=False),
+        solver.particles.vortex_strength_cpu(use_cache=False),
+        solver.particles.core_radius_cpu(use_cache=False),
         angular_core_coefficient=angular_core_coefficient,
     )
 

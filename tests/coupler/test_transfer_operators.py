@@ -49,7 +49,7 @@ def _cube_face_quadrature(nside: int = 6):
 
 def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
     class _Particles:
-        number_of_particles = 0
+        n_particles = 0
 
     class _VPM:
         particles = _Particles()
@@ -74,7 +74,7 @@ def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
 
 def test_body_potential_is_retained_before_particle_injection():
     class _Particles:
-        number_of_particles = 0
+        n_particles = 0
 
     class _VPM:
         particles = _Particles()
@@ -102,7 +102,7 @@ def test_body_potential_is_retained_before_particle_injection():
 
 def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
     class _Particles:
-        number_of_particles = 12
+        n_particles = 12
 
     class _VPM:
         particles = _Particles()
@@ -149,7 +149,7 @@ def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
 
 def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data():
     class _Particles:
-        number_of_particles = 12
+        n_particles = 12
 
     class _VPM:
         particles = _Particles()
@@ -212,7 +212,7 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
     offset = np.array([1.0, -0.2, 0.1])
 
     class _Particles:
-        number_of_particles = 4
+        n_particles = 4
 
     class _VPM:
         particles = _Particles()
@@ -394,7 +394,7 @@ def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
 
 def test_zero_target_evaluation_fails_before_blending_zone_mutation():
     class _Particles:
-        number_of_particles = 12
+        n_particles = 12
 
     class _VPM:
         particles = _Particles()

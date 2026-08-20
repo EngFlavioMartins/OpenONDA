@@ -156,7 +156,7 @@ def main() -> int:
     ap.add_argument("--download", action="store_true", help="Also copy device field back to NumPy.")
     args = ap.parse_args()
 
-    from source.solvers.VPM.config.backend import initialize_taichi_backend
+    from source.solvers.VPM.runtime.backend import initialize_taichi_backend
 
     backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[args.arch]
     chosen = initialize_taichi_backend(preferred_backend=backend, debug_mode=False, precision="f32")

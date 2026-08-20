@@ -15,7 +15,7 @@ import pandas as pd
 
 from generate_surface import create_flat_plate, save_surface
 from openonda.vpm import (
-    BackupSystem,
+    CheckpointManager,
     ForceConfig,
     SmoothRampVLM,
     VPMSolver,
@@ -102,14 +102,14 @@ def build_solver() -> VPMSolver:
             time_step_size=TIME_STEP,
             vlm=vlm,
             freestream_velocity=[0.0, 0.0, 0.0],
-            backup_directory=str(SOLUTION_DIR),
+            checkpoint_directory=str(SOLUTION_DIR),
         )
     )
 
 
 def spanwise_downwash(solver: VPMSolver, checkpoint: Path) -> pd.DataFrame:
     """Evaluate VPM velocity at each VLM collocation point."""
-    BackupSystem._load_numerical_data(solver, str(checkpoint))
+    CheckpointManager.load_numerical_state(solver, checkpoint)
 
     vlm = solver.vlm_solver
     if vlm is None:

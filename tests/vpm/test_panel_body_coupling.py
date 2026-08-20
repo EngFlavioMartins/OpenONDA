@@ -54,8 +54,8 @@ def test_body_field_is_added_at_each_advection_velocity_evaluation():
             output.values[:] = [1.0, 0.0, 0.0]
 
     particles = SimpleNamespace(
-        circulation=Field(np.zeros((2, 3))),
-        radius=Field(np.ones(2)),
+        vortex_strength=Field(np.zeros((2, 3))),
+        core_radius=Field(np.ones(2)),
         velocity_background=Field(np.zeros((2, 3))),
     )
     positions = Field([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
@@ -123,7 +123,7 @@ def test_panel_field_contributes_to_pressure_gradient():
     solver = VPMSolver.__new__(VPMSolver)
     freestream = np.array([1.0, 0.0, 0.0])
     solver.particles = SimpleNamespace(
-        number_of_particles=0,
+        n_particles=0,
         velocity_background_cpu=lambda: freestream,
     )
     solver._pressure_physics = PressurePhysics()

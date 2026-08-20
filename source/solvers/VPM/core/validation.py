@@ -36,7 +36,7 @@ def _compute_particle_statistics(system):
 
     # Turbulent viscosity
     nu_turbulent_max = 0.0
-    if hasattr(system, "LES") and system.turbulence_model is not None:
+    if getattr(system, "turbulence_model", None) is not None:
         try:
             nu_t_array = system.particles.eddy_viscosity_cpu()
             nu_turbulent_max = float(np.max(nu_t_array)) if len(nu_t_array) > 0 else 0.0

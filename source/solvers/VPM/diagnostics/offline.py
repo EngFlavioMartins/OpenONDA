@@ -450,7 +450,7 @@ def ComputeOfflineDiagnostics(
         >>> # From existing XDMF file
         >>> ComputeOfflineDiagnostics(xdmf_path='solution/vpm_temporal.xdmf')
     """
-    # Import BackupSystem internally to minimize user-facing imports
+    # Import CheckpointManager internally to minimize user-facing imports
     from ..io import CheckpointManager
 
     # Resolve XDMF path

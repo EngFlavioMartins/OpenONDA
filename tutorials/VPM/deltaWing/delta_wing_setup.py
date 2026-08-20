@@ -125,7 +125,7 @@ def run() -> None:
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_frequency=sample_steps,
+        logging_interval_steps=sample_steps,
     )
 
     samplers = tuple(
@@ -141,8 +141,8 @@ def run() -> None:
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
-            processing_unit="AUTO",
-            turbulence=TurbulenceConfig.les_smagorinsky(cs=0.3),
+            compute_device="AUTO",
+            turbulence=TurbulenceConfig.les_smagorinsky(c_s=0.3),
             vlm=vlm_setup,
             velocity=VelocityConfig.treecode(
                 theta=0.35,
@@ -160,10 +160,10 @@ def run() -> None:
                     1.5,
                 ]
             ),
-            logging_frequency=sample_steps,
-            backup_frequency=backup_steps,
-            backup_file_name=CASE_NAME,
-            backup_directory=str(SOLUTION_DIR),
+            logging_interval_steps=sample_steps,
+            checkpoint_interval_steps=backup_steps,
+            checkpoint_name=CASE_NAME,
+            checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
             samplers=samplers,
         )

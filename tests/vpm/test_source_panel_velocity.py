@@ -5,7 +5,7 @@ from source.solvers.VPM import PanelSolver
 from source.solvers.VPM.boundary_elements.panels.kernels.induced_velocity import (
     compute_source_induced_velocity_kernel,
 )
-from source.solvers.VPM.config.backend import reset_taichi_backend
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 
 def _cube_triangles() -> np.ndarray:

@@ -25,30 +25,30 @@ def test_coupled_transposed_step_preserves_total_strength(tmp_path):
         setup=VPMSetup(
             time_step_size=1.0e-3,
             time_integration="COUPLED",
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.transposed(scheme="RK2"),
             viscous=ViscousConfig.inviscid(),
             stabilization=StabilizationConfig.disabled(),
             velocity=VelocityConfig.direct(),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     solver.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=circulation,
-        radius=radius,
+        vortex_strength=circulation,
+        core_radius=radius,
         volume=volume,
-        viscosity=np.zeros(n_particles),
+        kinematic_viscosity=np.zeros(n_particles),
     )
 
     strength_before = circulation.sum(axis=0)
     solver.advance()
-    strength_after = solver.particles_circulation.sum(axis=0)
+    strength_after = solver.particle_vortex_strength.sum(axis=0)
 
     np.testing.assert_allclose(strength_after, strength_before, rtol=0.0, atol=2e-13)
 
@@ -65,7 +65,7 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
         setup=VPMSetup(
             time_step_size=2.0e-4,
             time_integration="COUPLED",
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.direct(
@@ -74,18 +74,18 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
             viscous=ViscousConfig.inviscid(),
             stabilization=StabilizationConfig.disabled(),
             velocity=VelocityConfig.direct(),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     solver.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=circulation,
-        radius=radius,
+        vortex_strength=circulation,
+        core_radius=radius,
         volume=volume,
-        viscosity=np.zeros(n_particles),
+        kinematic_viscosity=np.zeros(n_particles),
     )
 
     strength_before = circulation.sum(axis=0)
@@ -100,7 +100,7 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
     for _ in range(20):
         solver.advance()
     evolved_position = solver.particles_positions
-    evolved_circulation = solver.particles_circulation
+    evolved_circulation = solver.particle_vortex_strength
     energy_after = solver.field_diagnostics.compute_flow_integrals(
         solver.particles, solver.time, record_history=False
     )["kinetic_energy"]
@@ -143,25 +143,25 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
             time_step_size=1.0e-3,
             time_integration="COUPLED",
             axisymmetric_no_swirl_axis="x",
-            processing_unit="CPU",
+            compute_device="CPU",
             precision="f64",
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.mixed(scheme="RK2", conserve_moments=True),
             viscous=ViscousConfig.inviscid(),
             stabilization=StabilizationConfig.disabled(),
             velocity=VelocityConfig.direct(),
-            backup_frequency=0,
-            logging_frequency=0,
-            backup_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
         )
     )
     solver.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
-        circulation=circulation,
-        radius=radius,
+        vortex_strength=circulation,
+        core_radius=radius,
         volume=np.full(count, 0.2**3),
-        viscosity=np.zeros(count),
+        kinematic_viscosity=np.zeros(count),
         group_id=orbit_id,
         zone_id=orbit_id,
     )
@@ -170,7 +170,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
         solver.advance()
 
     evolved_position = solver.particles_positions
-    evolved_circulation = solver.particles_circulation
+    evolved_circulation = solver.particle_vortex_strength
     for orbit in range(2):
         selected = orbit_id == orbit
         rho = np.linalg.norm(evolved_position[selected, 1:], axis=1)
@@ -213,7 +213,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
                 "time_integration": "FRACTIONAL",
                 "stretching": StretchingConfig.direct(conserve_moments=True),
             },
-            "conserve_moments requires COUPLED",
+            "invariant projection requires COUPLED",
         ),
         (
             {
@@ -264,11 +264,11 @@ def test_coupled_dvh_runs_after_the_inviscid_update(tmp_path, monkeypatch):
             time_integration="COUPLED",
             advection=AdvectionConfig(scheme="RK2"),
             stretching=StretchingConfig.mixed(scheme="RK2"),
-            viscous=ViscousConfig.dvh(particle_spacing=0.05, viscosity=1.0e-3),
-            processing_unit="CPU",
-            backup_directory=str(tmp_path),
-            backup_frequency=0,
-            logging_frequency=0,
+            viscous=ViscousConfig.dvh(particle_spacing=0.05, kinematic_viscosity=1.0e-3),
+            compute_device="CPU",
+            checkpoint_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
         )
     )
     calls = []

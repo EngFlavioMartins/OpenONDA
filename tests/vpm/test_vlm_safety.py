@@ -13,8 +13,8 @@ from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import Aircraft,
 from source.solvers.VPM.boundary_elements.vlm.solver.lattice import VLMLattice
 from source.solvers.VPM.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
 from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from source.solvers.VPM.config.backend import reset_taichi_backend
 from source.solvers.VPM.core.validation import _validate_time_step_sizing
+from source.solvers.VPM.runtime.backend import reset_taichi_backend
 
 
 def _plate(*, chord: float = 2.0, panels_chord: int = 4) -> Aircraft:
@@ -131,7 +131,7 @@ def test_set_circulation_uploads_one_contiguous_array(taichi_f64):
 
 def test_spacing_variation_warning_uses_min_over_max_ratio():
     class Particles:
-        number_of_particles = 2
+        n_particles = 2
 
         @staticmethod
         def position_cpu():
@@ -142,11 +142,11 @@ def test_spacing_variation_warning_uses_min_over_max_ratio():
             return np.array([[1.0, 0.0, 0.0], [0.5, 0.0, 0.0]])
 
         @staticmethod
-        def radius_cpu():
+        def core_radius_cpu():
             return np.array([0.05, 0.20])
 
         @staticmethod
-        def viscosity_cpu():
+        def kinematic_viscosity_cpu():
             return np.full(2, 1.0e-5)
 
         @staticmethod

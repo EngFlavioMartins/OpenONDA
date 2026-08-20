@@ -267,9 +267,11 @@ class StabilizationManager:
             active.append("bounded-domain retention")
         return tuple(active)
 
-    def _due(self, frequency: int, start_step: int) -> bool:
+    def _due(self, interval_steps: int, start_step: int) -> bool:
         step = self.ctx.step()
-        return frequency > 0 and step >= start_step and (step - start_step) % frequency == 0
+        return (
+            interval_steps > 0 and step >= start_step and (step - start_step) % interval_steps == 0
+        )
 
     # -- lifecycle phases -------------------------------------------------------
 
@@ -372,7 +374,7 @@ class StabilizationManager:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
         ctx = self.ctx
         cfg = self.config.filament_refinement
-        if not cfg.enabled or ctx.step() % cfg.frequency != 0:
+        if not cfg.enabled or ctx.step() % cfg.interval_steps != 0:
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
@@ -434,7 +436,7 @@ class StabilizationManager:
         """Reassign strengths onto the solenoidal subspace of the blob field."""
         ctx = self.ctx
         cfg = self.config.divergence_relaxation
-        if not self._due(cfg.frequency, cfg.start_step):
+        if not self._due(cfg.interval_steps, cfg.start_step):
             return
 
         from .divergence_relaxation import (
@@ -488,7 +490,7 @@ class StabilizationManager:
         )
 
         uploaded_circulation = result.vortex_strength.astype(ctx.np_dtype)
-        ctx.set_particles_properties(strengths=uploaded_circulation)
+        ctx.set_particles_properties(vortex_strength=uploaded_circulation)
         self._rescale_lineage_reference(vortex_strength, uploaded_circulation.astype(np.float64))
         self.accept(
             "divergence relaxation",

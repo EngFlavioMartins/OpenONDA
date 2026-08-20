@@ -6,12 +6,12 @@ import platform
 import pytest
 
 from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.backend import initialize_taichi_backend, reset_taichi_backend
 from source.solvers.VPM.config.types import (
     AdvectionConfig,
     StretchingConfig,
     ViscousConfig,
 )
+from source.solvers.VPM.runtime.backend import initialize_taichi_backend, reset_taichi_backend
 
 # ── CLI options ──────────────────────────────────────────────────────────────
 
@@ -77,15 +77,15 @@ def solver_for_backend(tmp_path, backend):
 
     def _make_solver(**kwargs):
         config = VPMSetup(
-            processing_unit=backend,
-            backup_directory=str(tmp_path),
-            backup_frequency=0,
-            logging_frequency=0,
+            compute_device=backend,
+            checkpoint_directory=str(tmp_path),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
             **kwargs,
         )
         solver = VPMSolver(setup=config)
-        if solver.processing_unit != backend:
-            pytest.skip(f"{backend} unavailable; Taichi initialized {solver.processing_unit}")
+        if solver.compute_device != backend:
+            pytest.skip(f"{backend} unavailable; Taichi initialized {solver.compute_device}")
         return solver
 
     yield _make_solver
@@ -96,12 +96,12 @@ def solver_for_backend(tmp_path, backend):
 def minimal_solver_config(tmp_path):
     """Return a minimal ``VPMSetup`` that disables all I/O and physics."""
     return {
-        "dt": 0.01,
-        "processing_unit": "CPU",
+        "time_step_size": 0.01,
+        "compute_device": "CPU",
         "stretching": StretchingConfig.disabled(),
         "viscous": ViscousConfig(scheme="NONE"),
         "advection": AdvectionConfig(scheme="NONE"),
-        "backup_frequency": 0,
-        "logging_frequency": 0,
-        "backup_directory": str(tmp_path),
+        "checkpoint_interval_steps": 0,
+        "logging_interval_steps": 0,
+        "checkpoint_directory": str(tmp_path),
     }

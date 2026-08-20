@@ -39,21 +39,21 @@ def continue_run(
     output_directory = (
         output_directory.resolve()
         if output_directory is not None
-        else Path(solver.setup.backup_directory).resolve()
+        else Path(solver.setup.checkpoint_directory).resolve()
     )
     output_directory.mkdir(parents=True, exist_ok=True)
     if alternate_output:
         # Do not mix scheduled snapshots or diagnostic rows from a convergence
         # branch with the authoritative trajectory.
-        solver.backup_frequency = 0
-        solver.logging_frequency = 0
+        solver.checkpoint_interval_steps = 0
+        solver.logging_interval_steps = 0
     manifest_path = output_directory / f"extension_manifest_{extension_label}.json"
     final_base = output_directory / f"vpm_{extension_label}_final"
     if manifest_path.exists() or final_base.with_suffix(".h5").exists():
         raise FileExistsError(f"refusing to overwrite extension {extension_label}")
 
     remaining_steps = int(np.ceil((target_time_star - solver.time) / solver.time_step_size))
-    initial_strength = float(np.abs(solver.particles.circulation_cpu()).max())
+    initial_strength = float(np.abs(solver.particles.vortex_strength_cpu()).max())
     initial_energy = solver.total_kinetic_energy
     initial_dissipation = float(solver._flow_integrals["vorticity_dissipation_rate"])
     manifest = {
@@ -63,7 +63,7 @@ def continue_run(
         "start_time_star": solver.time,
         "target_time_star": target_time_star,
         "requested_additional_steps": remaining_steps,
-        "particle_spacing": solver.setup.viscous.characteristic_distance,
+        "particle_spacing": solver.setup.viscous.particle_spacing,
         "time_step": solver.time_step_size,
         "velocity_method": solver.setup.velocity.method,
         "molecular_diffusion": solver.setup.viscous.scheme,
@@ -75,7 +75,7 @@ def continue_run(
     health_cadence = max(1, round(0.25 / solver.time_step_size))
     for _ in range(remaining_steps):
         solver.advance()
-        if np.abs(solver.particles.circulation_cpu()).max() > 50.0 * initial_strength:
+        if np.abs(solver.particles.vortex_strength_cpu()).max() > 50.0 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times restart value"
             break
         if solver.step % health_cadence:

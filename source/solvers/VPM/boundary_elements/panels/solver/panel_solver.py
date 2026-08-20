@@ -106,7 +106,7 @@ class PanelSolver:
         bc_type: Literal["DIRICHLET", "NEUMANN"] = "DIRICHLET",
         density: float = 1.225,
         freestream_velocity: np.ndarray | None = None,
-        logging_frequency: int = 1,
+        logging_interval_steps: int = 1,
         coupling_scope: Literal["full", "vpm_bc", "normal", "pressure"] = "full",
     ):
         self.max_panels = max_panels
@@ -118,7 +118,7 @@ class PanelSolver:
         self.freestream_velocity = (
             None if freestream_velocity is None else np.array(freestream_velocity, dtype=np.float64)
         )
-        self.logging_frequency = max(1, int(logging_frequency))
+        self.logging_interval_steps = max(1, int(logging_interval_steps))
         if coupling_scope not in ("full", "vpm_bc", "normal", "pressure"):
             raise ValueError("coupling_scope must be 'full', 'vpm_bc', 'normal', or 'pressure'")
         self.coupling_scope = coupling_scope
@@ -551,7 +551,7 @@ class PanelSolver:
         config: Any = None,
         time: float | None = None,
         step: int | None = None,
-        logging_frequency: int | None = None,
+        logging_interval_steps: int | None = None,
         density: float | None = None,
         **kwargs,
     ) -> dict[str, np.ndarray] | None:
@@ -584,8 +584,8 @@ class PanelSolver:
             self.step = step
         if density is not None:
             self.density = density
-        if logging_frequency is not None:
-            self.logging_frequency = logging_frequency
+        if logging_interval_steps is not None:
+            self.logging_interval_steps = logging_interval_steps
 
         self.ensure_mesh_generated()
 
@@ -636,7 +636,7 @@ class PanelSolver:
                 coupled=(particles is not None),
             )
             self.compute_loads(V_inf, V_wake, time_step_size, self.density)
-            log_freq = self.logging_frequency
+            log_freq = self.logging_interval_steps
             if log_freq > 0 and self.step % log_freq == 0:
                 try:
                     self.log_forces_table(self.density, V_inf)
@@ -686,7 +686,7 @@ class PanelSolver:
         if self.lattice is None or self.lattice.num_panels == 0:
             return
 
-        n_particles = particles.number_of_particles
+        n_particles = particles.n_particles
         if n_particles == 0:
             return
 
@@ -732,7 +732,7 @@ class PanelSolver:
         if self.lattice is None or self.lattice.num_panels == 0:
             return 0
 
-        n_particles = particles.number_of_particles
+        n_particles = particles.n_particles
         n_panels = self.lattice.num_panels
 
         if n_particles == 0 or n_panels == 0:
@@ -786,7 +786,7 @@ class PanelSolver:
         # Compact particles
         n_keep = int(np.sum(keep_mask))
         if n_keep == 0:
-            particles.number_of_particles = 0
+            particles.n_particles = 0
             return n_removed
 
         # Extract kept particles
@@ -796,9 +796,13 @@ class PanelSolver:
         new_vorticity = particles.vorticity.to_numpy()[:n_particles][keep_mask]
         new_radius = particles.radius.to_numpy()[:n_particles][keep_mask]
         new_volume = particles.volume.to_numpy()[:n_particles][keep_mask]
-        new_viscosity = particles.viscosity.to_numpy()[:n_particles][keep_mask]
-        new_viscosity_turbulent = particles.viscosity_turbulent.to_numpy()[:n_particles][keep_mask]
-        new_viscosity_effective = particles.viscosity_effective.to_numpy()[:n_particles][keep_mask]
+        new_viscosity = particles.kinematic_viscosity.to_numpy()[:n_particles][keep_mask]
+        new_viscosity_turbulent = particles.kinematic_viscosity_turbulent.to_numpy()[:n_particles][
+            keep_mask
+        ]
+        new_viscosity_effective = particles.kinematic_viscosity_effective.to_numpy()[:n_particles][
+            keep_mask
+        ]
         new_group_id = particles.group_id.to_numpy()[:n_particles][keep_mask]
         new_velocity_gradient = particles.velocity_gradient.to_numpy()[:n_particles][keep_mask]
         new_strain_rate = particles.strain_rate.to_numpy()[:n_particles][keep_mask]
@@ -810,12 +814,12 @@ class PanelSolver:
         particles._copy_to_taichi_vectors(new_vorticity, particles.vorticity, 0, n_keep)
         particles._copy_to_taichi_scalars(new_radius, particles.radius, 0, n_keep)
         particles._copy_to_taichi_scalars(new_volume, particles.volume, 0, n_keep)
-        particles._copy_to_taichi_scalars(new_viscosity, particles.viscosity, 0, n_keep)
+        particles._copy_to_taichi_scalars(new_viscosity, particles.kinematic_viscosity, 0, n_keep)
         particles._copy_to_taichi_scalars(
-            new_viscosity_turbulent, particles.viscosity_turbulent, 0, n_keep
+            new_viscosity_turbulent, particles.kinematic_viscosity_turbulent, 0, n_keep
         )
         particles._copy_to_taichi_scalars(
-            new_viscosity_effective, particles.viscosity_effective, 0, n_keep
+            new_viscosity_effective, particles.kinematic_viscosity_effective, 0, n_keep
         )
         particles._copy_to_taichi_scalars(new_group_id, particles.group_id, 0, n_keep)
         particles._copy_to_taichi_matrices(
@@ -823,7 +827,7 @@ class PanelSolver:
         )
         particles._copy_to_taichi_matrices(new_strain_rate, particles.strain_rate, 0, n_keep)
 
-        particles.number_of_particles = n_keep
+        particles.n_particles = n_keep
         particles.sync_device_counter()
 
         print(f"   (Panel) Absorbed {n_removed} particles impinging on surface.")

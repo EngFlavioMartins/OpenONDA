@@ -1,7 +1,5 @@
 """LES turbulence-model orchestration for the VPM solver."""
 
-from __future__ import annotations
-
 import taichi as ti
 
 from ..config.constants import MAX_PARTICLES, SMAGORINSKY_CONSTANT
@@ -54,7 +52,7 @@ class ParticlesLES:
         max_particles: int = MAX_PARTICLES,
         particle_kernel: str = "GAUSSIAN",
         accumulator_dtype: ti.types = ti.f32,
-    ) -> ParticlesLES:
+    ) -> "ParticlesLES":
         return cls(
             model_name=getattr(turbulence_config, "model", "LES_SMAGORINSKY"),
             max_particles=max_particles,
